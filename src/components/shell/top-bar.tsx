@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Badge } from "@/components/ui/badge";
+import { Kbd } from "@/components/ui/kbd";
 import { clerkConfigured } from "@/lib/clerk";
 
 /*
@@ -13,11 +13,17 @@ import { clerkConfigured } from "@/lib/clerk";
  *
  * The theme toggle and the sign-in link are the only client-side pieces, and
  * each is its own island.
+ *
+ * The `⌘K` hint is a real Kbd, not a badge: it is a key, it says so to a
+ * screen reader, and it uses the mono face the rest of the machine facts use.
  */
 export function TopBar() {
   return (
-    <header className="border-border bg-background/95 sticky top-0 z-10 flex h-12 items-center gap-3 border-b px-3 backdrop-blur">
-      <Link href="/briefing" className="text-sm font-medium tracking-tight md:hidden">
+    <header className="border-border bg-background/85 engraved sticky top-0 z-20 flex h-12 items-center gap-3 border-b px-3 backdrop-blur">
+      <Link
+        href="/briefing"
+        className="text-[13px] font-medium tracking-tight md:hidden"
+      >
         Axiom
       </Link>
 
@@ -29,13 +35,11 @@ export function TopBar() {
           type="button"
           disabled
           title="Search arrives with the command palette"
-          className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-8 items-center gap-2 rounded-lg px-2 text-sm disabled:opacity-50"
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-7 items-center gap-2 rounded-md px-2 text-[13px] disabled:opacity-50"
         >
           <Search aria-hidden className="size-4" />
           <span className="hidden sm:inline">Search</span>
-          <Badge variant="secondary" className="hidden font-mono text-xs sm:inline">
-            ⌘K
-          </Badge>
+          <Kbd className="hidden sm:inline-flex">⌘K</Kbd>
         </button>
 
         <ThemeToggle />
@@ -48,7 +52,7 @@ export function TopBar() {
             <SignedOut>
               <Link
                 href="/sign-in"
-                className="text-muted-foreground hover:text-foreground rounded-lg px-2 py-1 text-sm"
+                className="text-muted-foreground hover:text-foreground rounded-md px-2 py-1 text-[13px]"
               >
                 Sign in
               </Link>

@@ -28,7 +28,7 @@ export default function DossiersPage() {
         </Section>
 
         <Section title="What a dossier holds">
-          <ul className="text-muted-foreground flex flex-col gap-2 text-sm">
+          <ul className="text-muted-foreground flex flex-col gap-2 text-[13px]">
             <li>
               <span className="text-foreground font-medium">A question.</span> Stated before the reading,
               so the boundary follows the question rather than the other way round.
@@ -48,13 +48,16 @@ export default function DossiersPage() {
           </ul>
         </Section>
 
-        <Section title="Bounded, or open">
+        <Section
+          title="Bounded, or open"
+          description="A bounded dossier answers only from the source versions admitted to it. An open dossier may reach further, and says when it does."
+        >
           <div className="flex gap-2">
             <Badge variant="outline" className="font-normal">
-              Bounded — only admitted sources
+              Bounded
             </Badge>
             <Badge variant="outline" className="font-normal">
-              Open — may reach beyond, and says so
+              Open
             </Badge>
           </div>
         </Section>

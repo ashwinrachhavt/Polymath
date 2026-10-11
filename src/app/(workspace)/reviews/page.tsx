@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata = { title: "Reviews · Axiom" };
@@ -25,7 +26,7 @@ export default function ReviewsPage() {
         purpose="Decide what happens next."
         actions={
           <Badge variant="secondary" className="font-normal">
-            0 waiting
+            <Readout>0 waiting</Readout>
           </Badge>
         }
       />
@@ -39,8 +40,8 @@ export default function ReviewsPage() {
         </Section>
 
         <Section title="What needs a decision" description="Deterministic policy sets the bar; the model never lowers it.">
-          <div className="border-border overflow-hidden rounded-xl border">
-            <table className="w-full text-sm">
+          <div className="panel overflow-hidden rounded-lg">
+            <table className="w-full text-[13px]">
               <caption className="sr-only">Risk classes and what each one requires</caption>
               <thead className="bg-muted/50 text-muted-foreground text-xs">
                 <tr>

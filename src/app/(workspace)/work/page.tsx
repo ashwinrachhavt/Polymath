@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata = { title: "Work · Axiom" };
@@ -18,19 +19,24 @@ export default function WorkPage() {
         title="Work"
         purpose="Execute your commitments."
         actions={
-          <div className="border-border flex items-center gap-0.5 rounded-lg border p-0.5">
+          // Disabled buttons, not inert spans: the switcher is not wired yet, and
+          // a control that looks operable but is not is worse than one that
+          // plainly says so. Each view lands with the data it presents.
+          <div className="panel flex items-center gap-0.5 rounded-md p-0.5">
             {views.map((view, index) => (
-              <span
+              <button
                 key={view}
-                aria-disabled
+                type="button"
+                disabled
+                title={`${view} view arrives with the data it presents`}
                 className={
                   index === 0
-                    ? "bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-xs font-medium"
-                    : "text-muted-foreground rounded-md px-2 py-1 text-xs opacity-60"
+                    ? "bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-xs font-medium disabled:opacity-60"
+                    : "text-muted-foreground rounded-md px-2 py-1 text-xs disabled:opacity-60"
                 }
               >
                 {view}
-              </span>
+              </button>
             ))}
           </div>
         }
@@ -44,7 +50,7 @@ export default function WorkPage() {
           <EmptyState
             title="No tasks yet"
             description="Tasks arrive from capture, from Alfred, or from this screen once creating one is wired."
-            action={<Badge variant="outline">0 open</Badge>}
+            action={<Badge variant="outline"><Readout>0 open</Readout></Badge>}
           />
         </Section>
 
@@ -53,7 +59,7 @@ export default function WorkPage() {
             {["No spaces yet", "No projects yet", "No saved views yet"].map((label) => (
               <div
                 key={label}
-                className="border-border text-muted-foreground rounded-xl border border-dashed px-3 py-4 text-sm"
+                className="panel-empty text-muted-foreground rounded-lg px-3 py-4 text-[13px]"
               >
                 {label}
               </div>

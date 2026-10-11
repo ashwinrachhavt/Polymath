@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata = { title: "Activity · Axiom" };
@@ -17,7 +18,7 @@ export default function ActivityPage() {
         purpose="See what changed and why."
         actions={
           <Badge variant="secondary" className="font-normal">
-            0 events
+            <Readout>0 events</Readout>
           </Badge>
         }
       />

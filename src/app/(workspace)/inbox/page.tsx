@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -18,7 +19,7 @@ export default function InboxPage() {
         purpose="Clarify what arrived."
         actions={
           <Badge variant="secondary" className="font-normal">
-            0 unprocessed
+            <Readout>0 unprocessed</Readout>
           </Badge>
         }
       />
@@ -37,7 +38,7 @@ export default function InboxPage() {
               rows={3}
               disabled
               placeholder="Capture lands here — the command is not wired yet."
-              className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-3 disabled:opacity-60"
+              className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60"
             />
             <p id="capture-hint" className="text-muted-foreground text-xs">
               Saving is disabled until the capture command exists. Nothing typed here is stored.
@@ -56,7 +57,7 @@ export default function InboxPage() {
         </Section>
 
         <Section title="How captures are classified" description="Rules first, then Alfred. You decide the last step.">
-          <ul className="text-muted-foreground flex flex-col gap-2 text-sm">
+          <ul className="text-muted-foreground flex flex-col gap-2 text-[13px]">
             <li>
               <span className="text-foreground font-medium">Obvious items classify immediately.</span>{" "}
               Files, URLs, events, and messages matching a known pattern propose a record on arrival.

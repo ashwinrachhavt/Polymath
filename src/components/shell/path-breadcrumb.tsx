@@ -13,11 +13,11 @@ export function PathBreadcrumb() {
   const [segment] = pathname.split("/").filter(Boolean);
   const match = destinations.find((d) => d.href === `/${segment}`);
 
-  if (!match) return <span className="text-sm font-medium tracking-tight">Axiom</span>;
+  if (!match) return <span className="text-[13px] font-medium tracking-tight">Axiom</span>;
 
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">
-      <ol className="flex items-center gap-1.5 text-sm">
+      <ol className="flex items-center gap-1.5 text-[13px]">
         <li className="hidden sm:block">
           <Link href="/briefing" className="text-muted-foreground hover:text-foreground">
             Axiom

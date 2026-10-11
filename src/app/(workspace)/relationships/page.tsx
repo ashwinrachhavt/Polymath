@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -35,7 +36,7 @@ export default function RelationshipsPage() {
             <EmptyState
               title="Nothing outstanding"
               description="Open follow-ups appear here with how long they have been waiting."
-              action={<Badge variant="outline">0 open</Badge>}
+              action={<Badge variant="outline"><Readout>0 open</Readout></Badge>}
             />
           </Section>
         </div>

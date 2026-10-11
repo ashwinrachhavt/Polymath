@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -28,9 +29,9 @@ export default function FocusPage() {
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Current session">
-          <div className="border-border flex flex-col gap-4 rounded-xl border px-4 py-5">
-            <p className="text-3xl font-medium tabular-nums">00:00</p>
-            <p className="text-muted-foreground max-w-prose text-sm">
+          <div className="panel flex flex-col gap-4 rounded-lg px-4 py-5">
+            <Readout className="text-3xl leading-none font-medium">00:00</Readout>
+            <p className="text-muted-foreground max-w-prose text-[13px]">
               The timer is authoritative in the database, so it survives a refresh, a navigation, and a
               second tab. Starting one is wired with the focus commands.
             </p>

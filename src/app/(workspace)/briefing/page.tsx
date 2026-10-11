@@ -1,8 +1,9 @@
 import { CalendarDays, Clock, Inbox, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata = { title: "Briefing · Axiom" };
 
@@ -32,16 +33,22 @@ export default function BriefingPage() {
           title="Today's outcomes"
           description="Accept up to three. Each one explains why it is here."
         >
+          {/* Three slots, numbered because they genuinely are a ranked
+              sequence — the rank is the information, not decoration. */}
           <div className="grid gap-3 sm:grid-cols-3">
             {[1, 2, 3].map((slot) => (
-              <Card key={slot} className="border-dashed">
-                <CardContent className="text-muted-foreground py-5 text-sm">
-                  Accepted outcome {slot}
-                </CardContent>
-              </Card>
+              <div
+                key={slot}
+                className="panel-empty flex flex-col gap-2 rounded-lg px-3.5 py-4"
+              >
+                <Readout className="text-muted-foreground text-[11px]">
+                  Rank {slot}
+                </Readout>
+                <p className="text-muted-foreground text-[13px]">Not accepted yet</p>
+              </div>
             ))}
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-[13px]">
             Three slots, ranked by deadline, dependencies, calendar fit, and what you already committed
             to. Each one will say why it was chosen.
           </p>
@@ -53,9 +60,9 @@ export default function BriefingPage() {
               title="No calendar connected"
               description="Connect Google Calendar to see today's events and free time."
               action={
-                <a href="/settings" className="text-primary text-sm hover:underline">
+                <Link href="/settings" className="text-primary text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
                   Connect a calendar
-                </a>
+                </Link>
               }
             />
           </Section>
@@ -72,9 +79,9 @@ export default function BriefingPage() {
               title="No decisions pending"
               description="Action proposals and generated output land here for approval."
               action={
-                <a href="/reviews" className="text-primary text-sm hover:underline">
+                <Link href="/reviews" className="text-primary text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
                   Open reviews
-                </a>
+                </Link>
               }
             />
           </Section>
@@ -87,29 +94,8 @@ export default function BriefingPage() {
           </Section>
         </div>
 
-        <Section title="Today at a glance">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Captured", value: "—", hint: "Items waiting in Inbox" },
-              { label: "Completed", value: "—", hint: "Tasks finished today" },
-              { label: "Focused", value: "—", hint: "Minutes in focus sessions" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="border-border flex items-center gap-3 rounded-xl border px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="text-muted-foreground text-xs">{stat.label}</p>
-                  <p className="text-lg font-medium tabular-nums">{stat.value}</p>
-                  <p className="text-muted-foreground truncate text-xs">{stat.hint}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-
         <Section title="Sync health">
-          <div className="text-muted-foreground flex flex-wrap gap-4 text-sm">
+          <div className="text-muted-foreground flex flex-wrap gap-4 text-[13px]">
             <span className="flex items-center gap-1.5">
               <Inbox aria-hidden className="size-4" /> Inbox: not connected
             </span>

@@ -17,7 +17,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Destinations"
-      className="border-border bg-background sticky bottom-0 z-10 flex border-t md:hidden"
+      className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
     >
       {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);

@@ -54,10 +54,10 @@ export default function SettingsPage() {
         </div>
 
         <Section title="Execution" description="One switch stops everything that leaves Axiom.">
-          <div className="border-border flex items-center justify-between gap-4 rounded-xl border px-4 py-3">
+          <div className="panel flex items-center justify-between gap-4 rounded-lg px-4 py-3">
             <div>
-              <p className="text-sm font-medium">Pause all external actions</p>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-[13px] font-medium">Pause all external actions</p>
+              <p className="text-muted-foreground text-[13px]">
                 Proposals can still be created and reviewed while paused. Nothing is sent.
               </p>
             </div>

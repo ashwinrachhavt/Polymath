@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
+import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -37,7 +38,7 @@ export default function KnowledgePage() {
               type="search"
               disabled
               placeholder="Search notes, documents, sources, and claims"
-              className="border-input bg-background focus-visible:ring-ring min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-3 disabled:opacity-60"
+              className="border-input bg-background focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60"
             />
             <Button type="button" disabled>
               Search
@@ -64,7 +65,7 @@ export default function KnowledgePage() {
             <EmptyState
               title="No cards yet"
               description="Flashcards and quizzes are proposed from your own material, and only scheduled once you approve them."
-              action={<Badge variant="outline">0 due</Badge>}
+              action={<Badge variant="outline"><Readout>0 due</Readout></Badge>}
             />
           </Section>
         </div>

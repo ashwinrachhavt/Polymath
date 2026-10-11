@@ -25,7 +25,7 @@ export default function MorePage() {
             >
               <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
               <span className="flex min-w-0 flex-col">
-                <span className="text-sm font-medium">{label}</span>
+                <span className="text-[13px] font-medium">{label}</span>
                 <span className="text-muted-foreground truncate text-xs">{purpose}</span>
               </span>
             </Link>

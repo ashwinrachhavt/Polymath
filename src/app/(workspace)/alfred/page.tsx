@@ -44,7 +44,7 @@ export default function AlfredPage() {
               rows={3}
               disabled
               placeholder="Describe an objective. Alfred proposes; you approve anything that leaves Axiom."
-              className="border-input bg-background w-full resize-y rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
+              className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60"
             />
             <Button disabled className="w-fit">
               Start a run

@@ -61,7 +61,7 @@ export default function OpportunitiesPage() {
               </span>
             ))}
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-[13px]">
             Prepared is not submitted, and submitted is not accepted. Each step is recorded when it
             actually happens, and nothing is submitted without your approval.
           </p>
