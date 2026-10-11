@@ -20,7 +20,7 @@ export default function Error({
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-3 p-6">
       <h1 className="text-lg font-medium tracking-tight">This screen did not load</h1>
-      <p className="text-muted-foreground max-w-prose text-sm">
+      <p className="text-muted-foreground max-w-prose text-[13px]">
         Something failed on the server. Nothing was saved, and no action was taken on your
         behalf.
       </p>

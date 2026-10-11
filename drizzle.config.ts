@@ -3,10 +3,8 @@ import { defineConfig } from "drizzle-kit";
 /*
  * Migrations are forward-only SQL, generated here and reviewed before they
  * run (agents/engineering.md). Each domain owns its `schema.ts`; this glob is
- * the only place the set of them is enumerated.
- *
- * Schema land in the domains that own them — there are none yet, so
- * `pnpm db:generate` has nothing to read until the identity domain lands.
+ * the only place the set of them is enumerated, and drizzle-kit resolves the
+ * intra-schema imports (shared columns, cross-domain foreign keys) itself.
  */
 
 const url = process.env.DATABASE_URL;

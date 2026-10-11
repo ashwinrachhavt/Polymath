@@ -8,67 +8,94 @@
  * Single source of truth for tokens (agents/design.md). Semantic names only,
  * in oklch so lightness can move without shifting hue.
  *
+ * The direction is **machined**: a precision instrument, not a document. Two
+ * consequences run through every value below.
+ *
+ * 1. Chroma is near zero and the hue is cool (~252). The earlier warm-paper
+ *    neutrals are gone; a warm ground is the most recognisable generated
+ *    palette of the moment, and this product is a control surface.
+ * 2. Surfaces carry an edge, not a glow. A 1px highlight inset at the top and
+ *    a hairline shade inset at the bottom is what makes a panel read as a
+ *    milled plate catching light from above. Depth comes from that edge and
+ *    from one soft shadow, never from an accent wash.
+ *
  * Two upstream token sets are reconciled here. shadcn owns the structure —
  * card, popover, primary, secondary, input, ring, chart, sidebar. Axiom owns
- * the values: warm paper light mode, graphite dark mode, restrained cyan.
+ * the values.
  *
  * One naming collision is worth knowing about. shadcn's --accent is a subtle
  * *hover surface* used by menu and list components, not a brand colour. The
- * spec's "cyan accent" therefore lives on --primary and --ring; --accent stays
- * a warm neutral. Re-pointing --accent at the cyan would flood every hover
- * state in the product.
+ * spec's cyan accent therefore lives on --primary and --ring; --accent stays a
+ * neutral. Re-pointing --accent at the cyan would flood every hover state in
+ * the product.
  *
  * .dark is the explicit theme; see ThemeProvider. Until it is wired there is
- * no OS-preference fallback — a page in light mode stays light. Modelled on
- * the shadcn default, deliberately minimal; a media fallback would duplicate
- * every value for little gain.
+ * no OS-preference fallback — a page in light mode stays light.
  */
 
 :root {
-  --radius: 0.5rem;
+  /* Sharp by default. 6px controls, 8px cards, 10px major surfaces. A large
+     radius is the single fastest way to make this look like every other
+     dashboard, so the ladder tops out low. */
+  --radius: 0.375rem;
 
-  --background: oklch(0.994 0.002 85);
-  --foreground: oklch(0.215 0.008 75);
+  --background: oklch(0.984 0.002 252);
+  --foreground: oklch(0.195 0.008 255);
 
-  --card: oklch(0.999 0.001 85);
-  --card-foreground: oklch(0.215 0.008 75);
-  --popover: oklch(0.999 0.001 85);
-  --popover-foreground: oklch(0.215 0.008 75);
+  --card: oklch(0.997 0.001 252);
+  --card-foreground: oklch(0.195 0.008 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.195 0.008 255);
 
-  /* The product's one accent: cyan/teal, never clay. */
-  --primary: oklch(0.52 0.086 205);
-  --primary-foreground: oklch(0.995 0.002 205);
+  /* The product's one accent: instrument cyan/teal, never clay. */
+  --primary: oklch(0.5 0.09 215);
+  --primary-foreground: oklch(0.995 0.002 215);
 
-  --secondary: oklch(0.968 0.003 85);
-  --secondary-foreground: oklch(0.215 0.008 75);
+  --secondary: oklch(0.955 0.003 252);
+  --secondary-foreground: oklch(0.195 0.008 255);
 
-  --muted: oklch(0.968 0.003 85);
-  --muted-foreground: oklch(0.505 0.008 75);
+  --muted: oklch(0.955 0.003 252);
+  --muted-foreground: oklch(0.492 0.008 255);
 
-  --accent: oklch(0.955 0.004 85);
-  --accent-foreground: oklch(0.215 0.008 75);
+  --accent: oklch(0.945 0.004 252);
+  --accent-foreground: oklch(0.195 0.008 255);
 
-  --destructive: oklch(0.52 0.19 27);
+  --destructive: oklch(0.52 0.2 27);
 
-  --border: oklch(0.905 0.004 85);
-  --input: oklch(0.905 0.004 85);
-  --ring: oklch(0.58 0.086 205);
+  --border: oklch(0.898 0.004 252);
+  --input: oklch(0.898 0.004 252);
+  --ring: oklch(0.55 0.09 215);
 
   /* Reserved for charts, where a text label always accompanies the colour. */
-  --chart-1: oklch(0.58 0.086 205);
-  --chart-2: oklch(0.62 0.07 165);
-  --chart-3: oklch(0.55 0.06 245);
-  --chart-4: oklch(0.68 0.09 95);
-  --chart-5: oklch(0.6 0.08 320);
+  --chart-1: oklch(0.55 0.09 215);
+  --chart-2: oklch(0.58 0.08 168);
+  --chart-3: oklch(0.5 0.09 268);
+  --chart-4: oklch(0.62 0.1 96);
+  --chart-5: oklch(0.55 0.09 330);
 
-  --sidebar: oklch(0.978 0.003 85);
-  --sidebar-foreground: oklch(0.215 0.008 75);
-  --sidebar-primary: oklch(0.52 0.086 205);
-  --sidebar-primary-foreground: oklch(0.995 0.002 205);
-  --sidebar-accent: oklch(0.955 0.004 85);
-  --sidebar-accent-foreground: oklch(0.215 0.008 75);
-  --sidebar-border: oklch(0.905 0.004 85);
-  --sidebar-ring: oklch(0.58 0.086 205);
+  --sidebar: oklch(0.968 0.003 252);
+  --sidebar-foreground: oklch(0.195 0.008 255);
+  --sidebar-primary: oklch(0.5 0.09 215);
+  --sidebar-primary-foreground: oklch(0.995 0.002 215);
+  --sidebar-accent: oklch(0.945 0.004 252);
+  --sidebar-accent-foreground: oklch(0.195 0.008 255);
+  --sidebar-border: oklch(0.898 0.004 252);
+  --sidebar-ring: oklch(0.55 0.09 215);
+
+  /* The machined edge. --edge-light is the 1px sheen along a panel's top
+     inside edge; --edge-shade is the hairline in its bottom inside edge.
+     Both live outside the shadcn set because shadcn has no vocabulary for
+     the inside of a border. */
+  --edge-light: oklch(1 0 0 / 70%);
+  --edge-shade: oklch(0.6 0.006 255 / 9%);
+
+  /* One elevation. It is used on things that genuinely float and nowhere
+     else; a shadow per card makes a grid of cards look like a contact sheet. */
+  --shadow: 0 1px 1px oklch(0.5 0.01 255 / 4%), 0 8px 24px oklch(0.5 0.01 255 / 6%);
+
+  /* The engraving: a 1px line every 3px at a whisper. Applied only to the
+     shell chrome, never to a reading surface. */
+  --engrave: oklch(0.5 0.01 255 / 4%);
 }
 
 @theme inline {
@@ -105,57 +132,125 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   /* Geist is the sans until the recorded typeface decision replaces it.
-     Do not point --font-sans at itself; that resolves to nothing. */
+     Geist is a low-contrast grotesque — flat terminals, closed apertures —
+     which is exactly the register a precision instrument wants, so the open
+     question in design.md is about *licence and pairing*, not about whether
+     this reads correctly. Do not point --font-sans at itself; that resolves
+     to nothing. */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* Half of a font-size unit: the one tracking value warm display type does
+     not want. Applied to every heading so the type reads machined rather than
+     kerned by a browser default. */
+  --tracking-tight: -0.011em;
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-xl: calc(var(--radius) * 1.5);
+
+  --shadow-raised: var(--shadow);
 }
 
 .dark {
-  --background: oklch(0.185 0.006 265);
-  --foreground: oklch(0.93 0.004 265);
+  --background: oklch(0.185 0.005 255);
+  --foreground: oklch(0.94 0.003 255);
 
-  --card: oklch(0.215 0.006 265);
-  --card-foreground: oklch(0.93 0.004 265);
-  --popover: oklch(0.215 0.006 265);
-  --popover-foreground: oklch(0.93 0.004 265);
+  --card: oklch(0.215 0.005 255);
+  --card-foreground: oklch(0.94 0.003 255);
+  --popover: oklch(0.228 0.005 255);
+  --popover-foreground: oklch(0.94 0.003 255);
 
-  --primary: oklch(0.72 0.09 205);
-  --primary-foreground: oklch(0.185 0.006 265);
+  --primary: oklch(0.74 0.1 215);
+  --primary-foreground: oklch(0.18 0.005 255);
 
-  --secondary: oklch(0.245 0.006 265);
-  --secondary-foreground: oklch(0.93 0.004 265);
+  --secondary: oklch(0.245 0.005 255);
+  --secondary-foreground: oklch(0.94 0.003 255);
 
-  --muted: oklch(0.245 0.006 265);
-  --muted-foreground: oklch(0.68 0.006 265);
+  --muted: oklch(0.245 0.005 255);
+  --muted-foreground: oklch(0.705 0.006 255);
 
-  --accent: oklch(0.265 0.006 265);
-  --accent-foreground: oklch(0.93 0.004 265);
+  --accent: oklch(0.262 0.006 255);
+  --accent-foreground: oklch(0.94 0.003 255);
 
   --destructive: oklch(0.68 0.17 25);
 
-  --border: oklch(0.3 0.008 265);
-  --input: oklch(0.3 0.008 265);
-  --ring: oklch(0.72 0.09 205);
+  --border: oklch(0.3 0.006 255);
+  --input: oklch(0.3 0.006 255);
+  --ring: oklch(0.74 0.1 215);
 
-  --chart-1: oklch(0.72 0.09 205);
-  --chart-2: oklch(0.74 0.07 165);
-  --chart-3: oklch(0.68 0.07 245);
-  --chart-4: oklch(0.78 0.09 95);
-  --chart-5: oklch(0.72 0.08 320);
+  --chart-1: oklch(0.74 0.1 215);
+  --chart-2: oklch(0.76 0.08 168);
+  --chart-3: oklch(0.7 0.09 268);
+  --chart-4: oklch(0.8 0.1 96);
+  --chart-5: oklch(0.74 0.09 330);
 
-  --sidebar: oklch(0.205 0.006 265);
-  --sidebar-foreground: oklch(0.93 0.004 265);
-  --sidebar-primary: oklch(0.72 0.09 205);
-  --sidebar-primary-foreground: oklch(0.185 0.006 265);
-  --sidebar-accent: oklch(0.265 0.006 265);
-  --sidebar-accent-foreground: oklch(0.93 0.004 265);
-  --sidebar-border: oklch(0.3 0.008 265);
-  --sidebar-ring: oklch(0.72 0.09 205);
+  --sidebar: oklch(0.205 0.005 255);
+  --sidebar-foreground: oklch(0.94 0.003 255);
+  --sidebar-primary: oklch(0.74 0.1 215);
+  --sidebar-primary-foreground: oklch(0.18 0.005 255);
+  --sidebar-accent: oklch(0.262 0.006 255);
+  --sidebar-accent-foreground: oklch(0.94 0.003 255);
+  --sidebar-border: oklch(0.3 0.006 255);
+  --sidebar-ring: oklch(0.74 0.1 215);
+
+  /* Dark metal reflects far less. A light-mode edge at this opacity would
+     read as a glow, which is the SaaS tell this direction exists to avoid. */
+  --edge-light: oklch(1 0 0 / 7%);
+  --edge-shade: oklch(0 0 0 / 25%);
+
+  --shadow: 0 1px 1px oklch(0 0 0 / 30%), 0 12px 32px oklch(0 0 0 / 35%);
+
+  --engrave: oklch(1 0 0 / 3%);
+}
+
+@layer components {
+  /*
+   * The panel. One surface primitive, and the only thing in Axiom that reads
+   * as a physical object: a hairline border, a sheen along the top inside
+   * edge, a shade along the bottom inside edge, and one soft shadow. A card,
+   * an empty state, a stat tile, and a settings row are all the same object at
+   * different sizes — which is why this is a class and not four components.
+   */
+  .panel {
+    border: 1px solid var(--border);
+    background-color: var(--card);
+    box-shadow:
+      inset 0 1px 0 0 var(--edge-light),
+      inset 0 -1px 0 0 var(--edge-shade),
+      var(--shadow);
+  }
+
+  /* A panel that holds nothing yet: the same edge, dashed and quieter. It is
+     an invitation, not a container that failed to load. */
+  .panel-empty {
+    border: 1px dashed var(--border);
+    background-color: color-mix(in oklab, var(--card) 50%, transparent);
+    box-shadow: inset 0 1px 0 0 var(--edge-light);
+  }
+
+  /*
+   * The engraving. A 1px line every 3px at ~4% — visible as a faint vertical
+   * tooth on the rail and the header, invisible as a pattern. Restricted to
+   * shell chrome: on a reading surface it would be noise under the text.
+   */
+  .engraved {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--engrave) 0 1px,
+      transparent 1px 3px
+    );
+  }
+
+  /* Numbers the owner reads as instrument output — counts, timers, spend,
+     run ids, state labels. Monospace plus tabular figures stops a live value
+     from reflowing as it changes, which is the whole point of a readout. */
+  .readout {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
 }
 
 @layer base {
@@ -167,5 +262,28 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Headings take the tight tracking by default; body text keeps normal
+     tracking so long-form reading is unaffected. */
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight;
+  }
+  /* The live indicator on anything currently running. Reduced motion stops it
+     rather than hiding it, so the state stays legible without the movement. */
+  @media (prefers-reduced-motion: no-preference) {
+    .pulse-dot {
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+  }
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
   }
 }
