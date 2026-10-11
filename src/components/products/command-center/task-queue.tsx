@@ -1,0 +1,26 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Empty, Field, Panel, Status } from "@/components/workspace/ui";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import type { Task, TaskStatus } from "@/components/workspace/types";
+import { Inspector, Select } from "./controls";
+
+export const taskStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"];
+export function TaskInspector({ task }: { task: Task }) {
+  const { state, updateTask, notify } = useWorkspace();
+  return <Inspector title="Task details" description="This is the same canonical task shown in NeuralFlow. Start changes status; it does not start an agent or focus timer." trigger={<Button variant="ghost" className="h-auto justify-start whitespace-normal px-0 text-left">{task.title}</Button>}><form key={`${task.id}-${task.version}`} className="grid gap-4" onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget); updateTask(task.id, { title: String(data.get("title")).trim(), description: String(data.get("description")), priority: data.get("priority") as Task["priority"], status: data.get("status") as TaskStatus, dueDate: String(data.get("dueDate")) || undefined, projectId: String(data.get("projectId")) || undefined, estimate: Number(data.get("estimate")) }); notify("Task saved in this browser."); }}><Field label="Title"><Input name="title" required defaultValue={task.title}/></Field><Field label="Details"><Textarea name="description" defaultValue={task.description}/></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Status"><Select name="status" defaultValue={task.status}>{taskStatuses.map((status) => <option key={status}>{status}</option>)}</Select></Field><Field label="Priority"><Select name="priority" defaultValue={task.priority}>{["High", "Medium", "Low"].map((priority) => <option key={priority}>{priority}</option>)}</Select></Field><Field label="Due date"><Input name="dueDate" type="date" defaultValue={task.dueDate}/></Field><Field label="Estimate (minutes)"><Input name="estimate" type="number" min="0" max="1440" required defaultValue={task.estimate}/></Field></div><Field label="Project"><Select name="projectId" defaultValue={task.projectId || ""}><option value="">No project</option>{state.projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</Select></Field><p className="readout text-xs text-muted-foreground">Revision {task.version}</p><Button type="submit">Save task</Button></form></Inspector>;
+}
+export function TaskQueue({ tasks, title, description }: { tasks: Task[]; title: string; description?: string }) {
+  const { updateTask } = useWorkspace();
+  const [page, setPage] = useState(0);
+  const current = Math.min(page, Math.max(0, Math.ceil(tasks.length / 8) - 1));
+  return <Panel title={title} description={description}><div className="divide-y divide-border">{tasks.slice(current * 8, current * 8 + 8).map((task) => <div key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0 flex-1"><TaskInspector task={task}/><div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Status>{task.status}</Status><span>{task.priority} priority</span><span className="readout">{task.estimate} min</span>{task.dueDate && <span className="readout">Due {task.dueDate}</span>}</div></div><div className="flex gap-2">{task.status !== "DONE" && <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: task.status === "IN_PROGRESS" ? "WAITING" : "IN_PROGRESS" })}>{task.status === "IN_PROGRESS" ? "Mark waiting" : task.status === "WAITING" ? "Resume" : "Start"}</Button>}<Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: task.status === "DONE" ? "READY" : "DONE" })}>{task.status === "DONE" ? "Reopen" : "Complete"}</Button></div></div>)}</div>{!tasks.length && <Empty title="Queue clear" description="Capture a task or change a task’s status to add it here."/>}{tasks.length > 8 && <div className="mt-4 flex items-center gap-3"><Button size="sm" variant="outline" disabled={current === 0} onClick={() => setPage(current - 1)}>Previous</Button><span className="readout text-xs">{current + 1} / {Math.ceil(tasks.length / 8)}</span><Button size="sm" variant="outline" disabled={(current + 1) * 8 >= tasks.length} onClick={() => setPage(current + 1)}>Next</Button></div>}</Panel>;
+}
+export function NewTask({ projectId }: { projectId?: string }) {
+  const { addTask, notify } = useWorkspace();
+  return <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); const input = e.currentTarget; const title = String(new FormData(input).get("title")).trim(); if (addTask(title, { projectId, status: "READY" })) { input.reset(); notify("Task created in the shared work queue."); } }}><Input name="title" aria-label="New task title" placeholder="What needs to happen?" required className="min-w-40 flex-1" maxLength={300}/><Button type="submit">Create task</Button></form>;
+}

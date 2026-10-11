@@ -59,6 +59,12 @@ Alfred is a supervised chief-of-staff agent with an identity, instructions, mode
 
 ## Information architecture
 
+### Three-product presentation update (2026-10-11)
+
+The owner requested three product lenses within one application: Command Center at `/apps/command-center` for briefing, CRM, opportunities, documents and reviewed operations; NeuralFlow at `/apps/neuralflow` for tasks, boards, calendar, planning, focus and rewards; Alfred at `/apps/alfred` for source reading, zettels, dossiers, notebook, research and learning. These are route and component groupings, not independent backends or tenants. The domain destinations below retain their canonical ownership. A shared AppSwitcher, command palette, capture, Reviews and account span all lenses; prior Axiom entry paths redirect to their corresponding product screens.
+
+The initial frontend delivery is an explicitly labeled browser-only interactive preview with fictional samples. Browser storage is not Neon, local review decisions do not authorize provider writes, and unconfigured AI, extraction, synchronization and companion actions must not report success. Production consolidation still requires the architecture plan's tenancy, domain command, durable workflow and migration gates.
+
 | Destination | Purpose | Core objects |
 |---|---|---|
 | Briefing | Decide what to do today | outcomes, tasks, events, reviews, risks, runs |

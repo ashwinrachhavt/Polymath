@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
@@ -17,10 +18,12 @@ import { clerkConfigured } from "@/lib/clerk";
  * and `auth()` would throw for want of keys, so the guard stands down.
  */
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
+  let storageScope = "anonymous";
   if (clerkConfigured) {
     const { userId } = await auth();
     if (!userId) redirect("/sign-in");
+    storageScope = createHash("sha256").update(userId).digest("hex");
   }
 
-  return <AppShell>{children}</AppShell>;
+  return <AppShell storageScope={storageScope}>{children}</AppShell>;
 }

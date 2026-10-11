@@ -1,0 +1,15 @@
+export type TaskStatus = "INBOX" | "BACKLOG" | "READY" | "IN_PROGRESS" | "WAITING" | "DONE";
+export type Task = { id: string; title: string; status: TaskStatus; priority: "High" | "Medium" | "Low"; projectId?: string; dueDate?: string; estimate: number; description: string; tags: string[]; version: number };
+export type ArtifactKind = "note" | "document" | "zettel" | "source" | "dossier" | "canvas";
+export type Artifact = { id: string; title: string; kind: ArtifactKind; body: string; tags: string[]; links: string[]; version: number; updatedAt: string };
+export type Capture = { id: string; text: string; kind: "text" | "url" | "file"; status: "UNPROCESSED" | "TASK" | "NOTE" | "ARCHIVED"; createdAt: string };
+export type Contact = { id: string; name: string; email: string; company: string; role: string; status: "Active" | "Follow up" | "New"; notes: string };
+export type Company = { id: string; name: string; industry: string; domain: string; notes: string };
+export type Opportunity = { id: string; title: string; company: string; stage: "Saved" | "Preparing" | "Applied" | "Interview" | "Offer" | "Closed"; value: string; notes: string };
+export type Review = { id: string; title: string; kind: string; risk: "External write" | "Sensitive write" | "Local change"; status: "Pending" | "Approved locally" | "Rejected"; payload: string; revision: number };
+export type Project = { id: string; title: string; description: string; status: string };
+export type CalendarEvent = { id: string; title: string; date: string; start: string; duration: number; taskId?: string; provider: "local" | "google"; type?: "Focus" | "Meeting" | "Personal" | "Break"; location?: string; tags?: string[]; notes?: string; notesArtifactId?: string; endDate?: string };
+export type ArtifactVersion = { id: string; artifactId: string; version: number; title: string; body: string; links: string[]; tags: string[]; createdAt: string };
+export type Focus = { taskId: string; startedAt: number; remaining: number; duration: number; status: "running" | "paused"; completed: number };
+export type Preferences = { celebrations: boolean; reducedMotion: boolean; killSwitch: boolean; timezone: string; weekStart: "Monday" | "Sunday" };
+export type WorkspaceState = { tasks: Task[]; artifacts: Artifact[]; artifactVersions: ArtifactVersion[]; captures: Capture[]; contacts: Contact[]; companies: Company[]; opportunities: Opportunity[]; reviews: Review[]; projects: Project[]; events: CalendarEvent[]; focus: Focus | null; rewards: { id: string; title: string; earnedAt: string; sessionId: string }[]; preferences: Preferences; activity: { id: string; title: string; detail: string; at: string }[] };

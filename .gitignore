@@ -41,3 +41,5 @@ next-env.d.ts
 .DS_Store
 *.pem
 npm-debug.log*
+/core
+/core.[0-9]*

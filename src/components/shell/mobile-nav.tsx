@@ -1,42 +1,7 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Menu } from "lucide-react";
 import { cn } from "cn";
-import { mobileDestinations, moreDestination } from "@/lib/navigation";
-
-/*
- * The bottom bar is the same destination list as the rail, cut down to the
- * four that fit plus More. Target size is 44 px, above the 24 px floor in
- * agents/design.md, because a thumb is not a cursor.
- */
-export function MobileNav() {
-  const pathname = usePathname();
-  const items = [...mobileDestinations, moreDestination];
-
-  return (
-    <nav
-      aria-label="Destinations"
-      className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
-    >
-      {items.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-xs outline-none",
-              "focus-visible:ring-ring focus-visible:ring-3",
-              active ? "text-primary" : "text-muted-foreground",
-            )}
-          >
-            <Icon aria-hidden className="size-4" />
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
+import { productForPath, productHref } from "@/lib/products";
+export function MobileNav() { const path=usePathname(); const product=productForPath(path); return <nav aria-label="Mobile destinations" className="sticky bottom-0 z-30 flex border-t border-border bg-background md:hidden">{product.destinations.slice(0,3).map((d) => <Link key={d.slug} href={productHref(product,d.slug)} className={cn("flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-[11px]",path === productHref(product,d.slug) ? "text-primary" : "text-muted-foreground")}><d.icon aria-hidden className="size-4"/>{d.label}</Link>)}<Link href="/more" className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground"><Menu aria-hidden className="size-4"/>All screens</Link></nav>; }
