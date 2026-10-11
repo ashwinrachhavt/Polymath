@@ -9,6 +9,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The build reads .node-version too; this keeps the runner honest if that
+  # file is ever renamed.
+  NODE_VERSION: "24"
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -17,10 +22,28 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Only chromium is configured; downloading the rest is wasted minutes.
+      - run: pnpm exec playwright install --with-deps chromium
+      # playwright.config.ts builds and starts the server itself.
+      - run: pnpm e2e
+
+  # Vercel deploys each branch as a preview through its own GitHub integration.
+  # Nothing is deployed from CI — this job exists so the fact is visible here.
