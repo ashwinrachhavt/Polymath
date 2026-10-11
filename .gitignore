@@ -2,6 +2,7 @@
 opencode.json
 .env
 .env.*
+!.env.example
 .env.axiom
 
 # gstack local artifacts
