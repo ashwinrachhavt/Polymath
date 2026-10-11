@@ -122,7 +122,7 @@ export default async function KnowledgePage({
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Search" description="Exact, full text, and semantic — one box.">
-          <form action="/knowledge" method="get" className="flex gap-2">
+          <form action="/alfred/knowledge" method="get" className="flex gap-2">
             <label htmlFor="search" className="sr-only">
               Search knowledge
             </label>
@@ -249,7 +249,7 @@ function ReviewWorkbench({
 
   return (
     <div className="flex flex-col gap-4">
-      <a href="/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
+      <a href="/alfred/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
         Back to inbox
       </a>
 
