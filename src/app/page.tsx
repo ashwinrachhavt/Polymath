@@ -6,5 +6,5 @@ import { redirect } from "next/navigation";
  * where it belongs.
  */
 export default function Home() {
-  redirect("/briefing");
+  redirect("/apps/command-center/briefing");
 }

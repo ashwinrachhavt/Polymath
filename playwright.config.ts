@@ -17,7 +17,13 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL, trace: "on-first-retry" },
+  use: {
+    baseURL,
+    trace: "on-first-retry",
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+      : undefined,
+  },
   projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
   // Reuse a server already listening; otherwise start one from the build.
   webServer: process.env.E2E_BASE_URL

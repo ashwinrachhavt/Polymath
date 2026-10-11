@@ -1,0 +1,39 @@
+"use client";
+
+import { useState } from "react";
+import dynamic from "next/dynamic";
+
+const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), { loading: () => <p role="status" className="text-xs text-muted-foreground">Loading rich editor…</p> });
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Empty, Field, Panel, Screen, SearchField, Status } from "@/components/workspace/ui";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import type { Artifact } from "@/components/workspace/types";
+import { Check, Select } from "./controls";
+
+function NoteWriter({ note }: { note: Artifact }) {
+  const { state, updateArtifact, notify } = useWorkspace();
+  const [title, setTitle] = useState(note.title);
+  const [body, setBody] = useState(note.body);
+  const [tags, setTags] = useState(note.tags.join(", "));
+  const [links, setLinks] = useState(note.links);
+  const [base, setBase] = useState(note.version);
+  const [mode, setMode] = useState("Source");
+  const [historyId, setHistoryId] = useState("");
+  const versions = state.artifactVersions.filter((version) => version.artifactId === note.id).sort((a, b) => b.version - a.version);
+  const historical = versions.find((version) => version.id === historyId);
+  const richUnsupported = /(^\s*\|)|(<[a-zA-Z][^>]*>)|(!\[)|(^\s*- \[[ x]\])|(^\[\^)/m.test(body);
+  const stale = note.version !== base;
+  const dirty = title !== note.title || body !== note.body || tags !== note.tags.join(", ") || links.join(",") !== note.links.join(",");
+  function loadCurrent() { setTitle(note.title); setBody(note.body); setTags(note.tags.join(", ")); setLinks(note.links); setBase(note.version); }
+  return <Panel title="Canonical note editor" description="Plain text preserves pasted Markdown without lossy conversion. Draft edits remain in this mounted editor until explicitly saved."><form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (stale || !title.trim()) return; updateArtifact(note.id, { title: title.trim(), body, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), links }); setBase(note.version + 1); notify("Canonical note saved in this browser. No publishing performed."); }}><div className="flex flex-wrap gap-2"><Status>{stale ? "Saved record changed" : dirty ? "Unsaved draft" : "Saved locally"}</Status><span className="readout text-xs">Current v{note.version}; draft base v{base}</span></div>{stale && <div role="alert" className="grid gap-2 text-[13px]"><p>The canonical note changed. Your draft is retained; compare the current saved text before replacing it.</p><details><summary className="cursor-pointer">Compare current saved content</summary><p className="whitespace-pre-wrap py-3">{note.body}</p></details><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={loadCurrent}>Discard draft and load current</Button><Button type="button" variant="outline" onClick={() => setBase(note.version)}>Keep draft on current revision</Button></div></div>}<Field label="Note title"><Input required value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300}/></Field><Field label="Editor mode"><Select value={mode} onChange={(e) => setMode(e.target.value)}><option>Source</option><option disabled={richUnsupported}>Rich</option></Select></Field>{richUnsupported && <p className="text-xs text-muted-foreground">This content includes tables, HTML, images, task lists or footnotes. Source mode preserves unsupported syntax without lossy rich conversion.</p>}{mode === "Rich" && !richUnsupported ? <div><p className="mb-2 text-[13px] font-medium">Note text</p><RichEditor content={body} onChange={setBody}/></div> : <Field label="Note text"><Textarea value={body} onChange={(e) => setBody(e.target.value)} className="min-h-72" maxLength={100000}/></Field>}<Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)}/></Field><details><summary className="cursor-pointer text-[13px]">Link canonical records</summary><div className="mt-3 grid max-h-64 gap-1 overflow-y-auto">{[...state.tasks.map((record) => ({ id: record.id, title: record.title })), ...state.projects.map((record) => ({ id: record.id, title: record.title })), ...state.artifacts.filter((record) => record.id !== note.id).map((record) => ({ id: record.id, title: record.title }))].map((record) => <Check key={record.id} label={record.title} checked={links.includes(record.id)} onChange={(checked) => setLinks(checked ? [...links, record.id] : links.filter((id) => id !== record.id))}/>)}</div></details><div className="flex flex-wrap gap-2"><Button type="submit" disabled={!title.trim() || !dirty || stale}>Save note revision</Button><Button type="button" variant="outline" disabled={!dirty} onClick={loadCurrent}>Discard draft</Button><Button type="button" variant="outline" onClick={() => { const blob = new Blob([`# ${note.title}\n\n${note.body}`], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${note.title.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 100) || "note"}.md`; anchor.click(); URL.revokeObjectURL(url); }}>Download saved text</Button></div><details><summary className="cursor-pointer text-[13px]">Saved local checkpoints</summary><div className="mt-3 grid gap-3"><Select aria-label="Saved note checkpoint" value={historyId} onChange={(e) => setHistoryId(e.target.value)}><option value="">Choose a saved version</option>{versions.map((version) => <option key={version.id} value={version.id}>Version {version.version}: {version.title}</option>)}</Select>{historical && <><p className="whitespace-pre-wrap text-[13px]">{historical.body}</p><Button type="button" variant="outline" onClick={() => { setTitle(historical.title); setBody(historical.body); setTags(historical.tags.join(", ")); setLinks(historical.links); setBase(note.version); }}>Load checkpoint into draft</Button></>}</div></details><p className="text-xs text-muted-foreground">Saved checkpoints are browser-preview records, not server persistence. Loading an older checkpoint prepares a draft; saving creates a new revision and preserves the previous checkpoints.</p></form></Panel>;
+}
+export default function Writing() {
+  const { state, addArtifact, notify } = useWorkspace();
+  const [id, setId] = useState("");
+  const [search, setSearch] = useState("");
+  const notes = state.artifacts.filter((artifact) => artifact.kind === "note" && `${artifact.title} ${artifact.body}`.toLowerCase().includes(search.toLowerCase()));
+  const selected = notes.find((note) => note.id === id) || notes[0];
+  return <Screen title="Writing studio" description="Write the same canonical notes used by Alfred and NeuralFlow. Saving never publishes, emails or authorizes an external action." actions={<Button onClick={() => { const record = addArtifact("Untitled note", "note"); if (record) { setId(record.id); setSearch(""); notify("Canonical note created."); } }}>New note</Button>}><SearchField value={search} onChange={setSearch} placeholder="Search note titles and text"/><div className="grid items-start gap-6 xl:grid-cols-[260px_1fr]"><Panel title={`${notes.length} notes`}><div className="flex flex-col gap-1">{notes.map((note) => <Button key={note.id} variant={selected?.id === note.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal text-left" onClick={() => setId(note.id)}>{note.title}</Button>)}</div>{!notes.length && <Empty title="No matching notes" description="Change the search or create a note."/>}</Panel>{selected && <NoteWriter key={selected.id} note={selected}/>}</div></Screen>;
+}
