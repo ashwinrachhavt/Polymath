@@ -1,0 +1,12 @@
+# secrets — never commit
+opencode.json
+.env
+.env.*
+.env.axiom
+
+# gstack local artifacts
+.gstack/
+
+# node
+node_modules/
+.next/
