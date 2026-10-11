@@ -10,3 +10,6 @@ opencode.json
 # node
 node_modules/
 .next/
+
+# macos
+.DS_Store
