@@ -70,6 +70,23 @@ function RichMarkdownEditor({ content, onChange }: { content: string; onChange: 
   const [recordQuery, setRecordQuery] = useState("");
   const [recordOpen, setRecordOpen] = useState(false);
   const editor = useEditor({ extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "Write a working note. Type / for a block, [[ to link a record." }), Markdown], content, contentType: "markdown", immediatelyRender: false, editorProps: { handleKeyDown: (_view, event) => {
+    // The link menu is handled before the slash menu so the two never both
+    // respond to the same key. Enter inserts the active record's [[title]].
+    if (link) {
+      const count = state.artifacts.filter((artifact) => artifact.title.toLowerCase().includes(link.query)).length;
+      if (count > 0) {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setLinkActive((current) => (current + (event.key === "ArrowDown" ? 1 : count - 1)) % count); return true; }
+        if (event.key === "Enter" || event.key === "Escape") {
+          event.preventDefault();
+          if (event.key === "Escape") { setLink(null); return true; }
+          const matches = state.artifacts.filter((artifact) => artifact.title.toLowerCase().includes(link.query)).slice(0, 8);
+          const match = matches[Math.min(linkActive, matches.length - 1)];
+          editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${match.title}]] `).run();
+          setLink(null);
+          return true;
+        }
+      }
+    }
     if (!slash) return false;
     const matches = filterBlockCommands(slash.query);
     if (!matches.length) return false;

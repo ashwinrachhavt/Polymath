@@ -4,17 +4,13 @@ import { notFound } from "next/navigation";
 const screens = ["dashboard", "tasks", "boards", "calendar", "scheduler", "focus", "projects", "notes", "meetings", "brain-dump", "reports", "rewards"];
 
 /*
- * The screen is validated outside the boundary so an unknown one still 404s
- * rather than rendering inside the fallback. Only the query string suspends,
- * which is what keeps navigation to a known screen instant.
+ * Both params and searchParams are awaited inside the boundary: Next 16 warns
+ * when URL data is read outside Suspense because it blocks instant
+ * navigation. An unknown screen still renders the not-found boundary.
  */
-export default async function NeuralFlowScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+async function SelectedScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { screen } = await params;
   if (!screens.includes(screen)) notFound();
-  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening screen…</p>}><SelectedScreen screen={screen} searchParams={searchParams}/></Suspense>;
-}
-
-async function SelectedScreen({ screen, searchParams }: { screen: string; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const task = typeof query.task === "string" ? query.task : undefined;
   const note = typeof query.note === "string" ? query.note : undefined;
@@ -69,4 +65,8 @@ async function SelectedScreen({ screen, searchParams }: { screen: string; search
       return <RewardsScreen />;
     }
   }
+}
+
+export default function NeuralFlowScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening screen…</p>}><SelectedScreen params={params} searchParams={searchParams}/></Suspense>;
 }

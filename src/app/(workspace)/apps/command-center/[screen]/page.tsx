@@ -6,12 +6,15 @@ import { products } from "@/lib/products";
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /*
- * The screen is validated before the boundary so an unknown one still 404s
- * instead of rendering inside the fallback. Reading the query string is the
- * only thing that suspends, and it happens in a server component: a client
- * component cannot await a promise that has no cache entry.
+ * Both params and searchParams are awaited inside the boundary: Next 16 warns
+ * when URL data is read outside Suspense because it blocks instant
+ * navigation. Validation (and notFound for an unknown screen) also runs
+ * inside, which still renders the not-found boundary.
  */
-async function SelectedScreen({ screen, searchParams }: { screen: string; searchParams: SearchParams }) {
+async function SelectedScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
+  const { screen } = await params;
+  const product = products.find((record) => record.id === "command-center");
+  if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
   const query = await searchParams;
   const rawId = typeof query.id === "string" ? query.id : undefined;
   const recordId = rawId && /^[a-zA-Z0-9_-]{1,100}$/.test(rawId) ? rawId : undefined;
@@ -19,9 +22,6 @@ async function SelectedScreen({ screen, searchParams }: { screen: string; search
   return <CommandCenterScreen key={`${screen}:${recordId || ""}:${invalidRecordId}`} screen={screen} recordId={recordId} invalidRecordId={invalidRecordId}/>;
 }
 
-export default async function Page({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
-  const { screen } = await params;
-  const product = products.find((record) => record.id === "command-center");
-  if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
-  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening record selection…</p>}><SelectedScreen screen={screen} searchParams={searchParams}/></Suspense>;
+export default function Page({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
+  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening record selection…</p>}><SelectedScreen params={params} searchParams={searchParams}/></Suspense>;
 }
