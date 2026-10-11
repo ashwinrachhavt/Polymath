@@ -70,6 +70,11 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
   for (const path of ["/apps/command-center/briefing", "/apps/command-center/reviews", "/apps/command-center/settings", "/apps/neuralflow/tasks", "/apps/neuralflow/focus", "/apps/alfred/library", "/apps/alfred/notebook"]) {
     await page.goto(path);
+    // Axe must evaluate the settled page: the capture button is disabled at
+    // opacity 50% until hydration, and entry animations pass through blended
+    // colors that read as contrast violations. Reduced motion collapses them.
+    await expect(page.getByRole("button", { name: "Capture", exact: true })).toBeEnabled();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
   }

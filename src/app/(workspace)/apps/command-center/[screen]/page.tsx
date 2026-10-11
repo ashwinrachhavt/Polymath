@@ -16,9 +16,13 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   const product = products.find((record) => record.id === "command-center");
   if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
   const query = await searchParams;
-  const rawId = typeof query.id === "string" ? query.id : undefined;
-  const recordId = rawId && /^[a-zA-Z0-9_-]{1,100}$/.test(rawId) ? rawId : undefined;
-  const invalidRecordId = rawId !== undefined && !recordId;
+  // A repeated id is ambiguous, not first-wins: it is rejected like an
+  // invalid one so a deep link can never silently pick a record.
+  const raw = query.id;
+  const rawId = Array.isArray(raw) ? (raw.length === 1 ? raw[0] : raw.join(",")) : raw;
+  const ambiguous = Array.isArray(raw) && raw.length > 1;
+  const recordId = !ambiguous && rawId && /^[a-zA-Z0-9_-]{1,100}$/.test(rawId) ? rawId : undefined;
+  const invalidRecordId = ambiguous || (rawId !== undefined && !recordId);
   return <CommandCenterScreen key={`${screen}:${recordId || ""}:${invalidRecordId}`} screen={screen} recordId={recordId} invalidRecordId={invalidRecordId}/>;
 }
 
