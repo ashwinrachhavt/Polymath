@@ -57,8 +57,9 @@ Alfred is a supervised chief-of-staff agent with an identity, instructions, mode
 - **No invisible work:** long jobs expose progress, questions, cancellation, retries, artifacts, and spend.
 - **Learning follows completion:** reflection should enrich completed work without obstructing it.
 
-## Information architecture
+## The suite
 
+<<<<<<< HEAD
 ### Three-product presentation update (2026-10-11)
 
 The owner requested three product lenses within one application: Command Center at `/apps/command-center` for briefing, CRM, opportunities, documents and reviewed operations; NeuralFlow at `/apps/neuralflow` for tasks, boards, calendar, planning, focus and rewards; Alfred at `/apps/alfred` for source reading, zettels, dossiers, notebook, research and learning. These are route and component groupings, not independent backends or tenants. The domain destinations below retain their canonical ownership. A shared AppSwitcher, command palette, capture, Reviews and account span all lenses; prior Axiom entry paths redirect to their corresponding product screens.
@@ -66,19 +67,135 @@ The owner requested three product lenses within one application: Command Center 
 The initial frontend delivery is an explicitly labeled browser-only interactive preview with fictional samples. Browser storage is not Neon, local review decisions do not authorize provider writes, and unconfigured AI, extraction, synchronization and companion actions must not report success. Production consolidation still requires the architecture plan's tenancy, domain command, durable workflow and migration gates.
 
 | Destination | Purpose | Core objects |
-|---|---|---|
-| Briefing | Decide what to do today | outcomes, tasks, events, reviews, risks, runs |
-| Inbox | Clarify incoming material | captures, messages, proposals, notifications |
-| Work | Execute commitments in list, board, and calendar modes | tasks, projects, spaces, focus sessions |
-| Alfred | Converse, delegate, inspect runs, answer questions | threads, messages, runs, steps, artifacts |
-| Knowledge | Write, retrieve, connect, and review | notes, documents, sources, embeddings, flashcards |
-| Relationships | Manage people and organizations | contacts, companies, correspondence, evidence |
-| Opportunities | Track roles, applications, leads, and opportunities | opportunities, jobs, applications, materials |
-| Reviews | Approve actions and agent output | proposals, revisions, approvals, attempts |
-| Activity | Audit what changed and why | audit events, deliveries, imports, run events |
-| Settings | Configure identity, connectors, models, policies, and budgets | accounts, policies, profiles, memberships |
+=======
+Axiom is a unified platform with **three micro-app experiences** over one
+canonical system of record. Each app has its own contextual navigation and
+feature ownership; all three read and write the same records and share the same
+platform services.
 
-Focus is a persistent action rather than a separate island. Gamification is ambient feedback within Work and Reviews. Browser-companion controls appear contextually in Opportunities and Settings.
+> A task prepared from a Command Center meeting appears in NeuralFlow without
+> being copied. Its supporting note opens in Alfred without being reimported.
+> The suite is a way of exposing the product, not three products.
+
+These are product boundaries, not deployment boundaries. There is one Postgres
+system of record, one identity provider, one agent runtime, one approval
+pipeline, and one spending ledger. A three-app interface does not require three
+databases.
+
+| App | Primary question | Owns |
+>>>>>>> 6c00aa1 (Split the suite into three apps with a shared launcher)
+|---|---|---|
+| Command Center | What is happening, what do I owe, and what needs action? | Briefing, inbox and capture, relationships, opportunities, correspondence, reviews of external action |
+| NeuralFlow | What should I work on, and how do I make progress? | Work in list/board/calendar modes, projects and spaces, planning, focus sessions, weekly review, rewards |
+| Alfred | What do I know, and what can I produce? | Threads and runs, knowledge and notes, dossiers and research, documents, learning |
+
+Three concerns are **shared, not owned**: Reviews (approve actions and agent
+output), Activity (audit), and Settings (identity, connectors, models, policies,
+budgets). Every app links into them from its own context.
+
+### Routes
+
+```text
+/command-center/{briefing,inbox,relationships,opportunities}
+/neuralflow/{work,focus}
+/alfred/{,knowledge,dossiers}
+/reviews  /activity  /settings          shared, unprefixed
+```
+
+The app segment is in the URL. That is what makes the boundary checkable rather
+than a naming convention, and it is what lets the breadcrumb name the app the
+owner crossed into.
+
+### Navigation
+
+The model is Google Workspace's, not a switcher welded into a nav rail. What
+each app sees is its own chrome plus one shared control.
+
+- **The app launcher** lives in the global header and is the only global
+  chrome. It lists the three apps and the cross-app links out of the current
+  one. It is not part of any app's navigation.
+- **Each app owns its own nav bar**, and its shape is the app's personality
+  expressed as structure:
+  - Command Center: a full-height lateral **rail**. An operations desk keeps
+    its sections in view because you move between them constantly.
+  - NeuralFlow and Alfred: a horizontal **bar** under the header. These are
+    places you read and work in, and a rail would take width from the material.
+- **A shared control means a shared accent.** Primary actions and the active
+  rule use `--app-accent`, scoped by a `data-app` attribute the shell sets, so
+  "New note" is violet in Alfred, green in NeuralFlow, cyan in Command Center
+  without any component knowing which app it is in. On shared routes (Reviews,
+  Activity, Settings, auth) the token falls back to the product's cyan, which is
+  also Command Center's. **The ground, type, radii, and edges stay identical
+  across all three**: the apps are three modes of one instrument, not three
+  products, and an app that also changed its weight or spacing would make the
+  suite look assembled from parts.
+- **Mobile bottom bar:** the apps themselves, then More. A phone cannot carry an
+  app's nav bar and the launcher in one 44px strip, and the launcher is the one
+  that has to survive — losing it would strand the owner inside one app. Within
+  an app, sections are reached from the app's home or from More, which lists
+  every destination grouped by app.
+- `⌘K` reaches everything from anywhere, including across apps.
+
+### Interoperability
+
+The apps are separate surfaces over one record set, so crossing between them has
+to be a first-class move rather than a copy. Two mechanisms, and they are
+different:
+
+- **The launcher's cross-app links.** Declared in one table
+  (`crossAppLinks`), each names what the owner is doing and opens the *other*
+  app at the record class that continues the work — "Turn into work", "Notes in
+  Alfred". Because both endpoints are declared, the link out and the ability to
+  name where you came from are the same data.
+- **Record-level links inside a screen.** A task shown in Command Center opens
+  in NeuralFlow *at that task*, not at NeuralFlow's home. This is the load-bearing
+  one: the launcher's links are navigation, and only record-level links make the
+  suite feel like one product.
+
+There is no "equivalent screen" mapping between apps. Alfred's Knowledge is not
+Command Center's Inbox under another name, and inventing that mapping would be a
+lie the navigation then has to maintain.
+
+### Record placement
+
+Feature ownership above says which app *presents* a capability, not which app
+owns the row. Concretely:
+
+- Notes belong to Alfred. NeuralFlow's task reflections are artifacts rendered
+  under Work, not a second note universe.
+- Boards are saved view configurations over the one task model. They never own
+  duplicate tasks.
+- Spaces (Command Center grouping and context) and projects (NeuralFlow,
+  outcome-carrying) and dossiers (Alfred, bounded source sets) are three
+  distinct objects that link to each other. They are not synonyms.
+- Focus sessions and Pomodoro sessions are one session model with explicit
+  timing modes and segments, not two.
+
+### Standing tensions
+
+Two conflicts between the app structure and the shared-record rule, resolved as
+follows so they are not re-litigated per screen:
+
+- **Work spans apps.** Tasks are created in Command Center (a meeting becomes a
+  task) and executed in NeuralFlow. Command Center owns *the route in*, not a
+  second task screen. Any Command Center screen that shows a task links into
+  NeuralFlow at that record.
+- **Dossiers versus Knowledge.** Research and general knowledge are close
+  neighbours, and the roster will drift if the distinction is soft. Dossiers are
+  bounded: a chosen set of sources with cited answers. Knowledge is unbounded
+  capture and retrieval. A dossier that stops being bounded is a note.
+
+### Progressive disclosure
+
+The launcher exists from the first release; the third app does not have to. Both
+Alfred and NeuralFlow are present in the spec, but a build order may ship
+Command Center first and let the launcher carry two entries. An app appears when
+it has a capability, not when its navigation exists.
+
+Because the launcher is the only global chrome, adding an app costs one entry in
+`apps` plus that app's own nav — no other app's chrome changes. That is the
+property worth protecting: a fourth surface should not require editing the three
+that exist.
 
 ## Global command layer
 
