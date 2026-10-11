@@ -1,3 +1,7 @@
+# pnpm 12 blocks lifecycle scripts by default; this is the allowlist.
+# Each entry earns its place: esbuild ships a platform binary that must be
+# installed by its own postinstall, or drizzle-kit cannot run.
 allowBuilds:
+  esbuild: true
   sharp: false
   unrs-resolver: false
