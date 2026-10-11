@@ -4,6 +4,10 @@ Conventions every agent working in this repo reads before writing code, schema,
 copy, or UI. The operator (Ashwin) drives; these files exist so the output has
 one consistent taste instead of one per session.
 
+The root `CLAUDE.md` `@`-imports this directory along with both `docs/` specs, so
+all of it is **loaded by default** in every session — not fetched on demand. Keep
+it short enough to stay in context and correct enough to be worth the tokens.
+
 | File | Governs | Read it when |
 |---|---|---|
 | [product.md](product.md) | What Axiom is, what is already decided, what is out of scope | proposing a feature, a screen, or copy |

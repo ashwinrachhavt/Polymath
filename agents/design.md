@@ -35,7 +35,7 @@ brief.
 
 ## Taste source
 
-Three sources, in order of authority:
+Taste is not asserted here, it is recorded. Two sources:
 
 **1. The recorded profile — authoritative when it exists.** gstack's
 `design-shotgun` writes the owner's demonstrated preferences to
@@ -45,40 +45,26 @@ running `design-shotgun`, never by editing the JSON. No profile exists for this
 project yet, so the rules below are the standing stance and every open item is
 genuinely open.
 
-**2. `minimalist-ui` — the primary local taste skill.** Installed from
-`Leonxlnx/taste-skill` into `.claude/skills/`. Warm monochrome, typographic
-contrast, flat hierarchy, muted accents, "document-style workspace" — the closest
-thing in that pack to a quiet command room. Read it before any new surface.
-
-**3. `frontend-design:frontend-design` — the anti-template check.** Its list of
+**2. `frontend-design:frontend-design` — the anti-template check.** Its list of
 generic tells (the cream/serif/terracotta cluster, the SaaS-card kit, ALL-CAPS
 eyebrows, `A · B · C` meta strings, `→` on every button) is a checklist of things
 to not ship. Run it as a critique pass, not a generator.
 
-### Do not use most of the installed pack
+### Landing-page design packs are out of scope
 
-The same install brought in `design-taste-frontend` (the pack's flagship),
-`gpt-taste`, `high-end-visual-design`, `industrial-brutalist-ui`,
-`imagegen-frontend-*`, and `image-to-code`. Read their own scope lines before
-reaching for one:
+Several popular "taste" skill packs (`design-taste-frontend`, `gpt-taste`,
+`high-end-visual-design`) state their own scope as landing pages, portfolios, and
+redesigns — one of them explicitly excludes "dashboards, data tables, multi-step
+product UI." Axiom is entirely that excluded category. Those packs drive GSAP
+scroll-triggered pinning, massive section spacing, and AIDA page structure; Axiom
+has no scroll narrative, it has tables that must stay scannable at 14 px. Do not
+install them here — the wrong pack is how a calm command room acquires pinning
+scroll animations.
 
-- `design-taste-frontend` states plainly: *"Landing pages, portfolios, and
-  redesigns. Not dashboards, not data tables, not multi-step product UI."* Axiom
-  is exactly that excluded category. Its rules misfire here.
-- `gpt-taste` and `high-end-visual-design` are Awwwards/agency landing-page
-  engines — GSAP scroll-triggered pinning, massive section spacing, AIDA page
-  structure. Axiom has no scroll narrative; it has tables that must stay scannable.
-- `stitch-design-taste` mandates "perpetual micro-motion" and asymmetric layouts,
-  which directly contradicts the restraint rule above. (Its *idea* — generating an
-  agent-facing `DESIGN.md` that enforces anti-generic standards — is what this
-  file already does by hand.)
+What was worth keeping from that family is folded in above: warm monochrome,
+typographic contrast, flat hierarchy, muted accents, no gradients, no heavy
+shadows. That is a direction, not a dependency.
 
-This is not a criticism of the pack; it is calibrated for a different page kind.
-Using the wrong one is how a calm dashboard acquires pinning scroll animations.
-
-**Keep only what earns its place.** `minimalist-ui` is the one to read first;
-`redesign-existing-projects` is useful when restyling a donor screen (T5);
-`brandkit` if a real brand asset set ever appears.
 
 ## Tokens
 
