@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { mutable, primaryId, tenantId } from "../../db/columns";
 import { tasks } from "../work/schema";
 
@@ -41,7 +51,7 @@ export const focusSessions = pgTable(
   (t) => [
     index("focus_sessions_workspace_started_idx").on(t.workspaceId, t.startedAt),
     // At most one live session per workspace; two tabs cannot both own the clock.
-    index("focus_sessions_active_idx")
+    uniqueIndex("focus_sessions_active_idx")
       .on(t.workspaceId)
       .where(sql`state in ('running', 'paused')`),
   ],

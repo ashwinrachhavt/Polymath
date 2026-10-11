@@ -1,4 +1,5 @@
-import { integer, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, integer, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { workspaces } from "../domains/identity/tables";
 
 /*
@@ -33,3 +34,46 @@ export const mutable = {
 export const recorded = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 };
+
+/** Append-only rows that still record who wrote them. */
+export const recordedBy = {
+  createdBy: uuid("created_by"),
+  ...recorded,
+};
+
+/*
+ * The record kinds a link row may point at. `targetId` carries no foreign key
+ * (a polymorphic FK is not expressible), so this list plus a check constraint
+ * on each link table is what stops a typo from inventing a new kind. One list,
+ * because two link tables disagreeing about what a "document" is called is the
+ * bug the constraint exists to prevent.
+ */
+export const linkTargetKinds = [
+  "task",
+  "project",
+  "space",
+  "note",
+  "artifact",
+  "document",
+  "source",
+  "event",
+  "contact",
+  "company",
+  "opportunity",
+  "run",
+  "thread",
+] as const;
+
+export const linkTargetKind = () => text("target_type").notNull();
+
+/*
+ * The `check` predicate paired with `linkTargetKind()`. `sql.raw` on purpose:
+ * a bound parameter renders as `$1` in the generated migration, and a `.sql`
+ * file has no bind step, so the literal list has to be written out. Safe
+ * because `linkTargetKinds` is a compile-time constant, not input.
+ */
+export const linkTargetKindCheck = (name: string) =>
+  check(
+    name,
+    sql.raw(`target_type in (${linkTargetKinds.map((k) => `'${k}'`).join(", ")})`),
+  );

@@ -11,7 +11,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import {
+  linkTargetKind,
+  linkTargetKindCheck,
+  mutable,
+  primaryId,
+  recorded,
+  tenantId,
+} from "../../db/columns";
 
 /*
  * Local plans and provider events keep distinct identities. A provider event
@@ -124,7 +131,7 @@ export const eventLinks = pgTable(
     eventId: uuid("event_id")
       .notNull()
       .references(() => events.id, { onDelete: "cascade" }),
-    targetType: text("target_type").notNull(),
+    targetType: linkTargetKind(),
     targetId: uuid("target_id").notNull(),
     label: text("label"),
     ...recorded,
@@ -132,6 +139,7 @@ export const eventLinks = pgTable(
   (t) => [
     uniqueIndex("event_links_edge_key").on(t.eventId, t.targetType, t.targetId),
     index("event_links_target_idx").on(t.workspaceId, t.targetType, t.targetId),
+    linkTargetKindCheck("event_links_target_type_check"),
   ],
 );
 

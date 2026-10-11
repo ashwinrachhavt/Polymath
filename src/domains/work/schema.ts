@@ -12,7 +12,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import {
+  linkTargetKind,
+  linkTargetKindCheck,
+  mutable,
+  primaryId,
+  recorded,
+  tenantId,
+} from "../../db/columns";
 
 /*
  * One task model, many views. Boards and saved views are projections and own
@@ -83,7 +90,10 @@ export const projects = pgTable(
     targetDate: date("target_date"),
     ...mutable,
   },
-  (t) => [index("projects_workspace_phase_idx").on(t.workspaceId, t.phase)],
+  (t) => [
+    index("projects_workspace_phase_idx").on(t.workspaceId, t.phase),
+    index("projects_space_idx").on(t.spaceId),
+  ],
 );
 
 /*
@@ -107,7 +117,10 @@ export const recurrenceTemplates = pgTable(
     active: boolean("active").notNull().default(true),
     ...mutable,
   },
-  (t) => [index("recurrence_templates_due_idx").on(t.workspaceId, t.nextOccurrenceAt, t.active)],
+  (t) => [
+    index("recurrence_templates_due_idx").on(t.workspaceId, t.nextOccurrenceAt, t.active),
+    index("recurrence_templates_project_idx").on(t.projectId),
+  ],
 );
 
 export const tasks = pgTable(
@@ -141,8 +154,10 @@ export const tasks = pgTable(
   },
   (t) => [
     index("tasks_workspace_status_idx").on(t.workspaceId, t.status, t.rank),
-    index("tasks_workspace_due_idx").on(t.workspaceId, t.dueAt).where(sqlOpen()),
+    index("tasks_workspace_due_idx").on(t.workspaceId, t.dueAt).where(sql`status not in ('done', 'cancelled')`),
     index("tasks_project_idx").on(t.projectId),
+    index("tasks_space_idx").on(t.spaceId),
+    index("tasks_recurrence_template_idx").on(t.recurrenceTemplateId),
   ],
 );
 
@@ -178,11 +193,11 @@ export const taskDependencies = pgTable(
 );
 
 /*
- * A constrained generic link table (ASH-107, R21). The target type is checked
- * against an enum-shaped list rather than free text, and there is no foreign
- * key on `targetId` — a polymorphic FK is not expressible, so integrity comes
- * from the services that write rows, and the check constraint stops a typo
- * from inventing a new record kind.
+ * A constrained generic link table (ASH-107, R21). The target kind is checked
+ * against the shared list in `db/columns.ts` rather than free text, and there
+ * is no foreign key on `targetId` — a polymorphic FK is not expressible, so
+ * the check constraint stops a typo from inventing a new record kind and the
+ * owning row's existence is the writing service's job.
  */
 export const taskLinks = pgTable(
   "task_links",
@@ -192,7 +207,7 @@ export const taskLinks = pgTable(
     taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
-    targetType: text("target_type").notNull(),
+    targetType: linkTargetKind(),
     targetId: uuid("target_id").notNull(),
     label: text("label"),
     ...recorded,
@@ -200,6 +215,7 @@ export const taskLinks = pgTable(
   (t) => [
     uniqueIndex("task_links_edge_key").on(t.taskId, t.targetType, t.targetId),
     index("task_links_target_idx").on(t.workspaceId, t.targetType, t.targetId),
+    linkTargetKindCheck("task_links_target_type_check"),
   ],
 );
 
@@ -215,7 +231,10 @@ export const boards = pgTable(
     groupBy: text("group_by").notNull().default("status"),
     ...mutable,
   },
-  (t) => [uniqueIndex("boards_workspace_name_key").on(t.workspaceId, t.name)],
+  (t) => [
+    uniqueIndex("boards_workspace_name_key").on(t.workspaceId, t.name),
+    index("boards_project_idx").on(t.projectId),
+  ],
 );
 
 export const boardColumns = pgTable(
@@ -279,7 +298,3 @@ export const dailyOutcomes = pgTable(
       .where(sql`task_id is not null`),
   ],
 );
-
-function sqlOpen() {
-  return sql`status not in ('done', 'cancelled')`;
-}

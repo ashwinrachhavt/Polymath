@@ -3,8 +3,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents, requestReceipts } from "@/domains/audit/schema";
+import { focusSessions } from "@/domains/focus/schema";
 import { users, workspaces } from "@/domains/identity/schema";
-import { tasks } from "@/domains/work/schema";
+import { taskLinks, tasks } from "@/domains/work/schema";
 
 /*
  * The invariants agents/engineering.md says run against real Postgres, because
@@ -14,7 +15,8 @@ import { tasks } from "@/domains/work/schema";
  *
  * Skipped unless TEST_DATABASE_URL points at a database with the migrations
  * applied — CI has no Postgres service yet, and a skipped test beats a test
- * that quietly passes against nothing.
+ * that quietly passes against nothing. That skip is a real coverage hole: read
+ * green CI as covering the schema, not these four.
  */
 
 const url = process.env.TEST_DATABASE_URL;
@@ -38,6 +40,14 @@ suite("reliability primitives", () => {
   // on the unique keys rather than proving anything.
   beforeAll(async () => {
     if (!url) return;
+    // Everything below deletes every row in the schema. Refuse to do that to
+    // the application database, because pointing the two at the same URL is
+    // the obvious mistake and it costs the owner their data.
+    if (url === process.env.DATABASE_URL) {
+      throw new Error(
+        "TEST_DATABASE_URL equals DATABASE_URL. This suite truncates every table; use a scratch database or a Neon branch.",
+      );
+    }
     await client.unsafe(
       `do $$ declare t text; begin for t in
          select tablename from pg_tables where schemaname = 'public'
@@ -126,5 +136,46 @@ suite("reliability primitives", () => {
 
     const [current] = await db.select().from(tasks).where(eq(tasks.id, task.id));
     expect(current.title).toBe("Stale edit");
+  });
+
+  /*
+   * The focus table documents "at most one live session per workspace; two tabs
+   * cannot both own the clock". That is only true because the index is unique —
+   * as a plain index it enforced nothing while the comment claimed it did.
+   */
+  it("a workspace cannot hold two live focus sessions", async () => {
+    const { workspace } = await seedWorkspace("focus");
+    await db.insert(focusSessions).values({ workspaceId: workspace.id, state: "running" });
+
+    const second = await db
+      .insert(focusSessions)
+      .values({ workspaceId: workspace.id, state: "running" })
+      .catch((e) => e);
+    expect((second as { cause?: { code?: string } }).cause?.code).toBe("23505");
+
+    // A finished session is not live, so it does not contend for the clock.
+    await db.insert(focusSessions).values({ workspaceId: workspace.id, state: "finished" });
+  });
+
+  /*
+   * `target_id` carries no foreign key, so the check constraint is the only
+   * thing standing between a typo and an unqueryable link row. Without this
+   * test the constraint is a comment again the moment someone edits it out.
+   */
+  it("a link row rejects a target kind that is not on the shared list", async () => {
+    const { workspace } = await seedWorkspace("link-kinds");
+    const [task] = await db
+      .insert(tasks)
+      .values({ workspaceId: workspace.id, title: "Linking" })
+      .returning();
+
+    await expect(
+      db.insert(taskLinks).values({
+        workspaceId: workspace.id,
+        taskId: task.id,
+        targetType: "typo_kind",
+        targetId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ cause: { code: "23514" } });
   });
 });

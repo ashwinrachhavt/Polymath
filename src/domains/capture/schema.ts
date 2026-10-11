@@ -75,7 +75,7 @@ export const captures = pgTable(
   },
   (t) => [
     // Partial index: the Inbox queue is the unprocessed rows.
-    index("captures_inbox_idx").on(t.workspaceId, t.createdAt).where(sqlUnprocessed()),
+    index("captures_inbox_idx").on(t.workspaceId, t.createdAt).where(sql`processing_state in ('unprocessed', 'classifying')`),
     // Duplicate detection on the provider identity and URL that arrived.
     uniqueIndex("captures_workspace_source_url_key")
       .on(t.workspaceId, t.source, t.url)
@@ -116,7 +116,3 @@ export const captureProposals = pgTable(
   },
   (t) => [index("capture_proposals_pending_idx").on(t.workspaceId, t.captureId, t.status)],
 );
-
-function sqlUnprocessed() {
-  return sql`processing_state in ('unprocessed', 'classifying')`;
-}

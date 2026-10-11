@@ -10,7 +10,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import {
+  linkTargetKind,
+  linkTargetKindCheck,
+  mutable,
+  primaryId,
+  recorded,
+  tenantId,
+} from "../../db/columns";
 
 /*
  * One generic opportunity, optional typed extensions. A job application, a
@@ -124,7 +131,7 @@ export const opportunityLinks = pgTable(
     opportunityId: uuid("opportunity_id")
       .notNull()
       .references(() => opportunities.id, { onDelete: "cascade" }),
-    targetType: text("target_type").notNull(),
+    targetType: linkTargetKind(),
     targetId: uuid("target_id").notNull(),
     label: text("label"),
     ...recorded,
@@ -132,6 +139,7 @@ export const opportunityLinks = pgTable(
   (t) => [
     uniqueIndex("opportunity_links_edge_key").on(t.opportunityId, t.targetType, t.targetId),
     index("opportunity_links_target_idx").on(t.workspaceId, t.targetType, t.targetId),
+    linkTargetKindCheck("opportunity_links_target_type_check"),
   ],
 );
 

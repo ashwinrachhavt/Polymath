@@ -104,5 +104,8 @@ export const applicationMaterials = pgTable(
     selected: boolean("selected").notNull().default(false),
     ...mutable,
   },
-  (t) => [uniqueIndex("application_materials_key").on(t.preparationId, t.artifactId, t.kind)],
+  (t) => [
+    uniqueIndex("application_materials_key").on(t.preparationId, t.artifactId, t.kind),
+    index("application_materials_artifact_idx").on(t.artifactId),
+  ],
 );

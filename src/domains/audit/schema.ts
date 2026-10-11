@@ -81,7 +81,7 @@ export const outboxEvents = pgTable(
     ...recorded,
   },
   // Partial index: the queue is the pending rows, not the table.
-  (t) => [index("outbox_events_pending_idx").on(t.availableAt).where(sqlPending())],
+  (t) => [index("outbox_events_pending_idx").on(t.availableAt).where(sql`status = 'pending'`)],
 );
 
 /*
@@ -107,7 +107,7 @@ export const webhookInbox = pgTable(
   },
   (t) => [
     uniqueIndex("webhook_inbox_provider_delivery_key").on(t.provider, t.deliveryId),
-    index("webhook_inbox_unprocessed_idx").on(t.createdAt).where(sqlReceived()),
+    index("webhook_inbox_unprocessed_idx").on(t.createdAt).where(sql`status in ('received', 'processing')`),
   ],
 );
 
@@ -133,12 +133,3 @@ export const blobObjects = pgTable(
     index("blob_objects_workspace_hash_idx").on(t.workspaceId, t.contentHash),
   ],
 );
-
-// Partial-index predicates, kept next to the indexes that use them.
-function sqlPending() {
-  return sql`status = 'pending'`;
-}
-
-function sqlReceived() {
-  return sql`status in ('received', 'processing')`;
-}

@@ -76,6 +76,7 @@ export const rewardLedger = pgTable(
   (t) => [
     uniqueIndex("reward_ledger_idempotency_key").on(t.workspaceId, t.idempotencyKey),
     index("reward_ledger_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    index("reward_ledger_definition_idx").on(t.rewardDefinitionId),
   ],
 );
 

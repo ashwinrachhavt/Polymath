@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
 
 /*
  * The unified proposal → review → attempt → observation machine. Every
@@ -110,7 +110,7 @@ export const actionProposals = pgTable(
   (t) => [
     uniqueIndex("action_proposals_dedupe_key").on(t.workspaceId, t.dedupeKey),
     // Partial index: the Reviews queue is the pending rows.
-    index("action_proposals_pending_idx").on(t.workspaceId, t.createdAt).where(sqlPending()),
+    index("action_proposals_pending_idx").on(t.workspaceId, t.createdAt).where(sql`status = 'pending'`),
   ],
 );
 
@@ -131,8 +131,7 @@ export const actionRevisions = pgTable(
     payload: jsonb("payload").notNull(),
     /** Preview shown to the owner: rendered subject, body, diff, or summary. */
     preview: jsonb("preview"),
-    createdBy: uuid("created_by"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    ...recordedBy,
   },
   (t) => [uniqueIndex("action_revisions_number_key").on(t.proposalId, t.revisionNumber)],
 );
@@ -210,7 +209,3 @@ export const providerObservations = pgTable(
   },
   (t) => [index("provider_observations_proposal_idx").on(t.proposalId, t.observedAt)],
 );
-
-function sqlPending() {
-  return sql`status = 'pending'`;
-}

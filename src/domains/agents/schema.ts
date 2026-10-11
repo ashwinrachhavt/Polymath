@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
 import { artifacts } from "../knowledge/schema";
 
 /*
@@ -85,6 +85,7 @@ export const threads = pgTable(
   (t) => [
     index("threads_workspace_updated_idx").on(t.workspaceId, t.updatedAt),
     index("threads_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId),
+    index("threads_agent_profile_idx").on(t.agentProfileId),
   ],
 );
 
@@ -118,8 +119,7 @@ export const threadCheckpoints = pgTable(
     messageId: uuid("message_id"),
     label: text("label"),
     summary: text("summary"),
-    createdBy: uuid("created_by"),
-    ...recorded,
+    ...recordedBy,
   },
   (t) => [index("thread_checkpoints_thread_idx").on(t.threadId, t.createdAt)],
 );
@@ -154,7 +154,8 @@ export const agentRuns = pgTable(
   (t) => [
     index("agent_runs_workspace_created_idx").on(t.workspaceId, t.createdAt),
     // Partial index: the live queue is the non-terminal rows.
-    index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sqlActive()),
+    index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
+    index("agent_runs_thread_idx").on(t.threadId),
   ],
 );
 
@@ -253,7 +254,10 @@ export const runArtifacts = pgTable(
     label: text("label"),
     ...recorded,
   },
-  (t) => [uniqueIndex("run_artifacts_key").on(t.runId, t.artifactId)],
+  (t) => [
+    uniqueIndex("run_artifacts_key").on(t.runId, t.artifactId),
+    index("run_artifacts_artifact_idx").on(t.artifactId),
+  ],
 );
 
 /*
@@ -309,7 +313,3 @@ export const memoryReviews = pgTable(
   },
   (t) => [index("memory_reviews_item_idx").on(t.memoryItemId, t.createdAt)],
 );
-
-function sqlActive() {
-  return sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`;
-}

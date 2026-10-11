@@ -118,7 +118,10 @@ export const contactCompanies = pgTable(
     isCurrent: boolean("is_current").notNull().default(false),
     ...recorded,
   },
-  (t) => [uniqueIndex("contact_companies_key").on(t.contactId, t.companyId, t.startedAt)],
+  (t) => [
+    uniqueIndex("contact_companies_key").on(t.contactId, t.companyId, t.startedAt),
+    index("contact_companies_company_idx").on(t.companyId),
+  ],
 );
 
 export const contactObservations = pgTable(
@@ -196,5 +199,9 @@ export const followUps = pgTable(
     supersededBy: uuid("superseded_by"),
     ...mutable,
   },
-  (t) => [index("follow_ups_open_idx").on(t.workspaceId, t.status, t.dueAt)],
+  (t) => [
+    index("follow_ups_open_idx").on(t.workspaceId, t.status, t.dueAt),
+    index("follow_ups_contact_idx").on(t.contactId),
+    index("follow_ups_company_idx").on(t.companyId),
+  ],
 );

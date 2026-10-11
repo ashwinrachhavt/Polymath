@@ -11,7 +11,15 @@ import {
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
+import {
+  linkTargetKind,
+  linkTargetKindCheck,
+  mutable,
+  primaryId,
+  recorded,
+  recordedBy,
+  tenantId,
+} from "../../db/columns";
 import { blobObjects } from "../audit/schema";
 
 /*
@@ -106,8 +114,7 @@ export const artifactVersions = pgTable(
     plainText: text("plain_text"),
     reason: versionReason("reason").notNull().default("edited"),
     note: text("note"),
-    createdBy: uuid("created_by"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    ...recordedBy,
   },
   (t) => [
     uniqueIndex("artifact_versions_number_key").on(t.artifactId, t.versionNumber),
@@ -181,7 +188,11 @@ export const documents = pgTable(
     pageCount: integer("page_count"),
     ...mutable,
   },
-  (t) => [index("documents_workspace_created_idx").on(t.workspaceId, t.createdAt)],
+  (t) => [
+    index("documents_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    index("documents_file_idx").on(t.fileId),
+    index("documents_artifact_idx").on(t.artifactId),
+  ],
 );
 
 /*
@@ -259,6 +270,7 @@ export const sources = pgTable(
       .on(t.workspaceId, t.url, t.contentHash)
       .where(sql`url is not null and content_hash is not null`),
     index("sources_workspace_kind_idx").on(t.workspaceId, t.kind),
+    index("sources_file_idx").on(t.fileId),
   ],
 );
 
@@ -287,7 +299,7 @@ export const artifactLinks = pgTable(
     artifactId: uuid("artifact_id")
       .notNull()
       .references(() => artifacts.id, { onDelete: "cascade" }),
-    targetType: text("target_type").notNull(),
+    targetType: linkTargetKind(),
     targetId: uuid("target_id").notNull(),
     label: text("label"),
     ...recorded,
@@ -296,6 +308,7 @@ export const artifactLinks = pgTable(
     uniqueIndex("artifact_links_edge_key").on(t.artifactId, t.targetType, t.targetId),
     // Backlinks are the reverse read of the same row.
     index("artifact_links_target_idx").on(t.workspaceId, t.targetType, t.targetId),
+    linkTargetKindCheck("artifact_links_target_type_check"),
   ],
 );
 
@@ -323,7 +336,11 @@ export const claimEvidence = pgTable(
     endOffset: integer("end_offset"),
     ...recorded,
   },
-  (t) => [index("claim_evidence_claim_idx").on(t.claimId)],
+  (t) => [
+    index("claim_evidence_claim_idx").on(t.claimId),
+    index("claim_evidence_source_idx").on(t.sourceId),
+    index("claim_evidence_extraction_idx").on(t.extractionId),
+  ],
 );
 
 /*
@@ -390,7 +407,10 @@ export const dossierSources = pgTable(
     note: text("note"),
     ...recorded,
   },
-  (t) => [uniqueIndex("dossier_sources_key").on(t.dossierId, t.sourceId)],
+  (t) => [
+    uniqueIndex("dossier_sources_key").on(t.dossierId, t.sourceId),
+    index("dossier_sources_source_idx").on(t.sourceId),
+  ],
 );
 
 export const dossierQuestions = pgTable(
@@ -460,8 +480,7 @@ export const canvasVersions = pgTable(
     scene: jsonb("scene").notNull(),
     /** [{ elementId, targetType, targetId }] — shapes that point at real records. */
     elementLinks: jsonb("element_links").notNull().default([]),
-    createdBy: uuid("created_by"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    ...recordedBy,
   },
   (t) => [uniqueIndex("canvas_versions_number_key").on(t.canvasId, t.versionNumber)],
 );
