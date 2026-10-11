@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "codebase-index": {
+      "command": "mcp-codebase-index",
+      "env": {
+        "PROJECT_ROOT": "."
+      }
+    }
+  }
+}

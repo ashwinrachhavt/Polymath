@@ -10,3 +10,12 @@ opencode.json
 # node
 node_modules/
 .next/
+
+# macos
+.DS_Store
+
+# private — personal job/outreach tracking, never public
+outreach/
+
+# tooling caches
+.codebase-index-cache.pkl
