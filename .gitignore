@@ -7,15 +7,32 @@ opencode.json
 # gstack local artifacts
 .gstack/
 
-# node
-node_modules/
-.next/
-
-# macos
-.DS_Store
-
 # private — personal job/outreach tracking, never public
 outreach/
 
 # tooling caches
 .codebase-index-cache.pkl
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+build/
+
+# testing
+coverage/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
