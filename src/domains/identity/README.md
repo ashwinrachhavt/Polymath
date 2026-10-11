@@ -2,5 +2,10 @@
 
 Owns: users, workspaces, memberships, preferences, api clients
 
-Empty until it has real tables and commands — a domain is a folder of schema,
-commands, queries, policies, and events, not a placeholder (agents/engineering.md).
+`users` and `workspaces` live in `tables.ts` rather than `schema.ts`: they are
+the root of the import graph, and `src/db/columns.ts` needs `workspaces` to
+build every other table's `workspace_id` foreign key.
+
+Tables are in those two files and nowhere else — a domain owns its tables, and
+UI code reads them through this domain's queries rather than joining across
+(agents/engineering.md).
