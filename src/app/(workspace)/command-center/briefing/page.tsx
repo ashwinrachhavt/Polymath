@@ -60,7 +60,7 @@ export default function BriefingPage() {
               title="No calendar connected"
               description="Connect Google Calendar to see today's events and free time."
               action={
-                <Link href="/settings" className="text-primary text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
+                <Link href="/settings" className="text-app-accent text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
                   Connect a calendar
                 </Link>
               }
@@ -79,7 +79,7 @@ export default function BriefingPage() {
               title="No decisions pending"
               description="Action proposals and generated output land here for approval."
               action={
-                <Link href="/reviews" className="text-primary text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
+                <Link href="/reviews" className="text-app-accent text-[13px] rounded-sm hover:underline focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none">
                   Open reviews
                 </Link>
               }

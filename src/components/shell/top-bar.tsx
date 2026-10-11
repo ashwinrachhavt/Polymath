@@ -1,15 +1,18 @@
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { Search } from "lucide-react";
 import Link from "next/link";
+import { AppLauncher } from "@/components/shell/app-launcher";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Kbd } from "@/components/ui/kbd";
 import { clerkConfigured } from "@/lib/clerk";
 
 /*
- * Breadcrumb, search, theme, account. The review count and capture button land
- * with the Reviews and capture flows; a control that does nothing is worse than
- * a control that is not there yet.
+ * The one piece of global chrome: the app launcher, the breadcrumb, search,
+ * theme, account. Each app's own navigation renders below this, not inside it.
+ *
+ * The review count and capture button land with the Reviews and capture flows;
+ * a control that does nothing is worse than a control that is not there yet.
  *
  * The theme toggle and the sign-in link are the only client-side pieces, and
  * each is its own island.
@@ -19,13 +22,10 @@ import { clerkConfigured } from "@/lib/clerk";
  */
 export function TopBar() {
   return (
-    <header className="border-border bg-background/85 engraved sticky top-0 z-20 flex h-12 items-center gap-3 border-b px-3 backdrop-blur">
-      <Link
-        href="/briefing"
-        className="text-[13px] font-medium tracking-tight md:hidden"
-      >
-        Axiom
-      </Link>
+    <header className="border-border bg-background/85 engraved sticky top-0 z-20 flex h-12 items-center gap-2 border-b px-3 backdrop-blur">
+      <AppLauncher />
+
+      <span aria-hidden className="bg-border hidden h-5 w-px md:block" />
 
       <PathBreadcrumb />
 

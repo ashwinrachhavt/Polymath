@@ -96,6 +96,36 @@
   /* The engraving: a 1px line every 3px at a whisper. Applied only to the
      shell chrome, never to a reading surface. */
   --engrave: oklch(0.5 0.01 255 / 4%);
+
+  /* Each app carries its own accent, and that is most of what "different
+     personality" means in this direction — the ground, the type, the radii,
+     and the edge stay identical across all three, so the apps read as one
+     instrument with three modes rather than three products.
+
+     Same lightness (~0.5) and chroma (0.09) across the three; only the hue
+     moves. A per-app accent that also changed weight or saturation would make
+     the suite look assembled from parts. Command Center holds the product's own
+     cyan because it is the app whose question you ask first.
+
+     Scoped by a `data-app` attribute on the app's shell, so a component never
+     hard-codes which app it is in. */
+  --app-accent: var(--primary);
+  --app-accent-foreground: oklch(0.995 0.002 215);
+}
+
+[data-app="command-center"] {
+  --app-accent: oklch(0.5 0.09 215);
+  --app-accent-foreground: oklch(0.995 0.002 215);
+}
+
+[data-app="neuralflow"] {
+  --app-accent: oklch(0.51 0.09 155);
+  --app-accent-foreground: oklch(0.995 0.002 155);
+}
+
+[data-app="alfred"] {
+  --app-accent: oklch(0.5 0.09 285);
+  --app-accent-foreground: oklch(0.995 0.002 285);
 }
 
 @theme inline {
@@ -130,6 +160,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* App-scoped accent. Components use `text-app-accent` / `bg-app-accent` and
+     inherit whichever app's shell they are inside; nothing hard-codes a hue. */
+  --color-app-accent: var(--app-accent);
+  --color-app-accent-foreground: var(--app-accent-foreground);
 
   /* Geist is the sans until the recorded typeface decision replaces it.
      Geist is a low-contrast grotesque — flat terminals, closed apertures —

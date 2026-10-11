@@ -3,20 +3,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
-import { mobileDestinations, moreDestination } from "@/lib/navigation";
+import { apps, moreDestination } from "@/lib/navigation";
 
 /*
- * The bottom bar is the same destination list as the rail, cut down to the
- * four that fit plus More. Target size is 44 px, above the 24 px floor in
- * agents/design.md, because a thumb is not a cursor.
+ * A phone cannot carry this app's nav bar and an app launcher in the same 44px
+ * strip, and the header launcher is the one that has to survive — losing it
+ * would strand the owner inside one app.
+ *
+ * So the bottom bar is the apps themselves: it is the launcher, at thumb range.
+ * Within an app, that app's sections are reached from its home page or from the
+ * More screen, which lists every destination grouped by app.
+ *
+ * Target size is 44px, above the 24px floor in agents/design.md, because a
+ * thumb is not a cursor.
  */
 export function MobileNav() {
   const pathname = usePathname();
-  const items = [...mobileDestinations, moreDestination];
+  const items = [...apps, moreDestination];
 
   return (
     <nav
-      aria-label="Destinations"
+      aria-label="Apps"
       className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
     >
       {items.map(({ href, label, icon: Icon }) => {
@@ -29,7 +36,7 @@ export function MobileNav() {
             className={cn(
               "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-xs outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
-              active ? "text-primary" : "text-muted-foreground",
+              active ? "text-app-accent font-medium" : "text-muted-foreground",
             )}
           >
             <Icon aria-hidden className="size-4" />

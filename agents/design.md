@@ -195,8 +195,17 @@ Until then, do not invent a pairing.
 ## Layout
 
 - **Shell:** 248px collapsible nav rail, flexible canvas, optional 360–440px
-  inspector. Tablet: icon rail + overlay inspector. Mobile: bottom nav for
-  Briefing, Inbox, Work, Alfred, More.
+  inspector. Tablet: icon rail + overlay inspector. Mobile: bottom nav for the
+  three apps plus More.
+- **The launcher is the only global chrome** (product spec § The suite). It sits
+  in the header; each app renders its own nav below it and picks its own shape —
+  a rail in Command Center, a bar in NeuralFlow and Alfred. Nothing global lists
+  another app's screens, and no app's nav contains another app's destinations.
+- **One accent token, scoped per app.** Primary actions, the active nav rule, and
+  the page-header cap use `--app-accent`, which the shell re-points per app. The
+  ground, type scale, radii, and edge recipe never vary between apps — sameness
+  there is what makes three accents read as one instrument rather than three
+  themes.
 - **The inspector is the rule, not the exception.** Details, backlinks,
   activity, and Alfred context open beside the list so the owner never loses
   their place. Full-page navigation is for changing what you are working on,

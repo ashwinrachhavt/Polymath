@@ -13,6 +13,13 @@ import { Slot } from "radix-ui"
  * gradient, not a brand wash: a 4% white-to-black ramp across the face plus an
  * inset top sheen and bottom shade. That is what makes a control look like it
  * was pressed from a die instead of filled with a flat colour.
+ *
+ * Primary actions use `--app-accent`, not `--primary`. That token falls back to
+ * `--primary` on shared routes (Reviews, Activity, Settings, auth) and is
+ * re-pointed by whichever app's shell you are inside, so "New note" is violet
+ * in Alfred and green in NeuralFlow without this component knowing which app it
+ * is in. It is the whole of what "each app has its own personality" means in
+ * the palette; the ground, type, radii, and edges stay identical.
  */
 const buttonVariants = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-[13px] font-medium tracking-tight whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -20,7 +27,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border-primary/60 bg-primary text-primary-foreground shadow-[inset_0_1px_0_0_oklch(1_0_0/22%),inset_0_-1px_0_0_oklch(0_0_0/12%)] hover:brightness-115",
+          "border-app-accent/60 bg-app-accent text-app-accent-foreground shadow-[inset_0_1px_0_0_oklch(1_0_0/22%),inset_0_-1px_0_0_oklch(0_0_0/12%)] hover:brightness-115",
         outline:
           "panel text-foreground hover:bg-muted aria-expanded:bg-muted",
         secondary:
