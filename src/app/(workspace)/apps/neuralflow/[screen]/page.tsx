@@ -1,7 +1,20 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
+const screens = ["dashboard", "tasks", "boards", "calendar", "scheduler", "focus", "projects", "notes", "meetings", "brain-dump", "reports", "rewards"];
+
+/*
+ * The screen is validated outside the boundary so an unknown one still 404s
+ * rather than rendering inside the fallback. Only the query string suspends,
+ * which is what keeps navigation to a known screen instant.
+ */
 export default async function NeuralFlowScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { screen } = await params;
+  if (!screens.includes(screen)) notFound();
+  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening screen…</p>}><SelectedScreen screen={screen} searchParams={searchParams}/></Suspense>;
+}
+
+async function SelectedScreen({ screen, searchParams }: { screen: string; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const task = typeof query.task === "string" ? query.task : undefined;
   const note = typeof query.note === "string" ? query.note : undefined;
@@ -55,6 +68,5 @@ export default async function NeuralFlowScreen({ params, searchParams }: { param
       const { RewardsScreen } = await import("@/components/products/neuralflow/reflection-screens");
       return <RewardsScreen />;
     }
-    default: notFound();
   }
 }
