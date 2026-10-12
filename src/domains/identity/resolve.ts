@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { memberships, users, workspaces } from "./schema";
 
@@ -33,16 +33,25 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
     .select({ workspaceId: memberships.workspaceId, role: memberships.role })
     .from(memberships)
     .innerJoin(workspaces, eq(workspaces.id, memberships.workspaceId))
-    .where(and(eq(memberships.userId, user.id), eq(memberships.status, "active")))
+    .where(
+      and(
+        eq(memberships.userId, user.id),
+        eq(memberships.status, "active"),
+        isNull(workspaces.archivedAt),
+      ),
+    )
     .limit(1);
 
   if (existing.length > 0) {
     return { userId: user.id, workspaceId: existing[0].workspaceId, role: existing[0].role };
   }
 
+  // v1: suspended owner still resolves owner; revisit when memberships serve
+  // more than one user. With one owner per workspace there is nobody left to
+  // hand the workspace to, so the suspended row is the only membership anyway.
   const [workspace] = await db
     .insert(workspaces)
-    .values({ name: "Personal", slug: `personal-${user.id.slice(0, 8)}`, isPersonal: true })
+    .values({ name: "Personal", slug: `personal-${user.id}`, isPersonal: true })
     .onConflictDoUpdate({ target: workspaces.slug, set: { updatedAt: new Date() } })
     .returning();
   await db

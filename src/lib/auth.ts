@@ -50,11 +50,3 @@ export function authedHandler(fn: (auth: AuthContext, request: Request) => Promi
     }
   };
 }
-
-/**
- * Route-handler-shaped alias of getAuthContext for code that wants the `request`
- * in hand; the session is resolved from Clerk either way, never from the request.
- */
-export async function requireAuthContext(_request: Request): Promise<AuthContext> {
-  return getAuthContext();
-}

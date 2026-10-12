@@ -7,9 +7,14 @@ import { memberships, workspaces } from "@/domains/identity/schema";
 /*
  * The auth invariants agents/engineering.md says run against real Postgres.
  * Skipped unless TEST_DATABASE_URL points at a database with the migrations
- * applied, and the resolver is imported lazily: src/lib/db.ts throws at module
- * load without DATABASE_URL, so a static import would fail this file instead
- * of skipping it, and take the whole suite down with it.
+ * applied. The resolver is imported lazily and only after DATABASE_URL is
+ * pointed at the same database: src/lib/db.ts reads DATABASE_URL at module
+ * load, so a static import would resolve against the wrong database (or throw
+ * without one) and fail this file instead of skipping it.
+ *
+ * This file inserts fresh unique clerk ids and truncates nothing, so pointing
+ * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no
+ * equality guard against DATABASE_URL is needed here.
  */
 
 const url = process.env.TEST_DATABASE_URL;
@@ -20,8 +25,9 @@ let resolveAuthContext: typeof import("@/domains/identity/resolve").resolveAuthC
 
 beforeAll(async () => {
   if (!url) return;
-  if (url === process.env.DATABASE_URL)
-    throw new Error("TEST_DATABASE_URL equals DATABASE_URL; use a scratch DB or Neon branch.");
+  // The resolver reads DATABASE_URL from src/lib/db.ts; the assertions below use
+  // their own client at `url`. Point both at the same database before importing.
+  process.env.DATABASE_URL = url;
   client = postgres(url, { max: 1 });
   db = drizzle(client);
   ({ resolveAuthContext } = await import("@/domains/identity/resolve"));
@@ -52,5 +58,19 @@ suite("auth resolution", () => {
   it("resolves role from an existing active membership", async () => {
     const ctx = await resolveAuthContext("clerk_spike_role_1");
     expect(["owner", "member"]).toContain(ctx.role);
+  });
+
+  // v1: suspended owner still resolves owner; revisit when memberships serve
+  // more than one user. Pinned here so the decision is visible, not accidental.
+  it("resolves a suspended owner as owner in v1", async () => {
+    const first = await resolveAuthContext("clerk_spike_suspended_1");
+    await db
+      .update(memberships)
+      .set({ status: "suspended" })
+      .where(eq(memberships.userId, first.userId));
+    const again = await resolveAuthContext("clerk_spike_suspended_1");
+    expect(again.userId).toBe(first.userId);
+    expect(again.workspaceId).toBe(first.workspaceId);
+    expect(again.role).toBe("owner");
   });
 });
