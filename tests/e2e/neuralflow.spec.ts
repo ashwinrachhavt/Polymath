@@ -38,7 +38,14 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect(state.captures.some((capture: { text: string }) => capture.text.includes("Prepare a bounded review"))).toBe(true);
   expect(state.artifacts.some((note: { title: string; links: string[] }) => note.title === "Brain dump: accepted local plan" && note.links.length === 2)).toBe(true);
   await page.goto("/apps/neuralflow/scheduler");
-  await page.getByLabel("Planning date").fill("2026-10-12");
+  // The hydration snapshot swap can remount the controlled input under the
+  // fill, so one fill reverts to today even with a hydration wait. Refill
+  // until the value sticks instead of assuming one fill landed post-hydration.
+  const planningDate = page.getByLabel("Planning date");
+  await expect.poll(async () => {
+    if ((await planningDate.inputValue()) !== "2026-10-12") await planningDate.fill("2026-10-12");
+    return (await planningDate.inputValue()) === "2026-10-12";
+  }, { timeout: 10_000 }).toBe(true);
   await page.getByRole("button", { name: "Prepare local proposals" }).click();
   const accept = page.getByRole("button", { name: /^Accept \d+ local blocks$/ });
   await expect(accept).toBeEnabled();

@@ -74,6 +74,11 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
     // opacity 50% until hydration, and entry animations pass through blended
     // colors that read as contrast violations. Reduced motion collapses them.
     await expect(page.getByRole("button", { name: "Capture", exact: true })).toBeEnabled();
+    // The Notebook rich editor mounts its toolbar async (immediatelyRender:
+    // false), so its buttons sit disabled at opacity 50% for a frame; axe
+    // must not sample inside that window. Other screens have no toolbar,
+    // so wait conditionally.
+    if (path === "/apps/alfred/notebook") await expect(page.getByRole("button", { name: "Heading", exact: true })).toBeEnabled();
     await page.emulateMedia({ reducedMotion: "reduce" });
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
