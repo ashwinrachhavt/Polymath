@@ -73,6 +73,26 @@ function firstRow<TRow extends Record<string, unknown>>(
   return rows[0] as TRow | undefined;
 }
 
+/*
+ * Proves the run belongs to the caller's workspace before anything is written
+ * against it. A run id from another tenant and a run that does not exist are
+ * the same error on purpose — the difference is not the caller's to learn. The
+ * write is scoped by both columns anyway; this is the guard that makes a
+ * cross-workspace call a no-op rather than a row with a mismatched owner.
+ */
+async function assertRunInWorkspace(
+  tx: TxDrizzle,
+  runId: string,
+  workspaceId: string,
+): Promise<void> {
+  const run = firstRow<{ id: string }>(
+    await tx.execute(
+      sql`select id from agent_runs where id = ${runId} and workspace_id = ${workspaceId} limit 1`,
+    ),
+  );
+  if (!run) throw new Error("run not found in workspace");
+}
+
 /**
  * Appends one run event and claims its sequence. Must run inside a transaction:
  * the per-run advisory lock, the max+1 read, and the insert commit together or
@@ -82,6 +102,8 @@ async function appendEvent(
   tx: TxDrizzle,
   input: { runId: string; workspaceId: string; type: string; data?: unknown },
 ): Promise<{ sequence: number; deduplicated: boolean }> {
+  await assertRunInWorkspace(tx, input.runId, input.workspaceId);
+
   // Serializes every writer for one run. The (run_id, sequence) conflict target
   // below is the second guard, for a writer that escaped the lock's reach.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.runId}, 0))`);
@@ -165,6 +187,7 @@ export async function recordToolCall(input: {
   errorCode?: string;
 }): Promise<void> {
   await withTransaction(async (tx) => {
+    await assertRunInWorkspace(tx, input.runId, input.workspaceId);
     await tx.insert(toolCalls).values({
       workspaceId: input.workspaceId,
       runId: input.runId,
@@ -182,6 +205,8 @@ export async function recordToolCall(input: {
 /**
  * A durable question. The run suspends on it, so it gets both the row the
  * Reviews/Inbox surface reads and a timeline event the SSE stream can announce.
+ * One transaction: the question row and its announcing event commit together, so
+ * a failure leaves neither.
  */
 export async function recordQuestion(input: {
   workspaceId: string;
@@ -190,7 +215,8 @@ export async function recordQuestion(input: {
   context?: string;
   options?: unknown;
 }): Promise<void> {
-  const questionId = await withTransaction(async (tx) => {
+  await withTransaction(async (tx) => {
+    await assertRunInWorkspace(tx, input.runId, input.workspaceId);
     const [row] = await tx
       .insert(agentQuestions)
       .values({
@@ -201,14 +227,12 @@ export async function recordQuestion(input: {
         options: (redact(input.options ?? []) ?? []) as unknown[],
       })
       .returning({ id: agentQuestions.id });
-    return row.id;
-  });
-
-  await recordRoundEvent({
-    runId: input.runId,
-    workspaceId: input.workspaceId,
-    type: "question.opened",
-    data: { questionId, question: input.question },
+    await appendEvent(tx, {
+      runId: input.runId,
+      workspaceId: input.workspaceId,
+      type: "question.opened",
+      data: { questionId: row.id, question: input.question },
+    });
   });
 }
 

@@ -139,6 +139,64 @@ suite("event bridge", () => {
     expect(run.lastEventSeq).toBe(12);
   });
 
+  it("a cancelled turn is a timeline event and never closes the run", async () => {
+    // eve documents turn.cancelled as non-terminal: the session takes the next
+    // message. A cancelled turn must not flip the run, stamp endedAt, or settle.
+    const { workspaceId, runId } = await seedRun("bridge-turn-cancel");
+
+    const event = await bridge.recordRoundEvent({
+      runId,
+      workspaceId,
+      type: "turn.cancelled",
+      data: { turnId: "t1" },
+    });
+    expect(event.deduplicated).toBe(false);
+
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
+    expect(run.state).toBe("running");
+    expect(run.endedAt).toBeNull();
+  });
+
+  it("refuses a run that belongs to another workspace", async () => {
+    // Guards against a caller passing a run id from a workspace it does not own.
+    const owner = await seedRun("bridge-owner");
+    const other = await seedRun("bridge-other");
+    await expect(
+      bridge.recordRoundEvent({
+        runId: owner.runId,
+        workspaceId: other.workspaceId,
+        type: "step.started",
+        data: { at: "x" },
+      }),
+    ).rejects.toThrow(/workspace/);
+    // The wrong-workspace tool call and question likewise write nothing.
+    await expect(
+      bridge.recordToolCall({
+        workspaceId: other.workspaceId,
+        runId: owner.runId,
+        toolName: "gmail.send",
+        ok: true,
+      }),
+    ).rejects.toThrow(/workspace/);
+    await expect(
+      bridge.recordQuestion({
+        workspaceId: other.workspaceId,
+        runId: owner.runId,
+        question: "?",
+      }),
+    ).rejects.toThrow(/workspace/);
+
+    const events = await db.select().from(runEvents).where(eq(runEvents.runId, owner.runId));
+    expect(events).toHaveLength(0);
+    const calls = await db.select().from(toolCalls).where(eq(toolCalls.runId, owner.runId));
+    expect(calls).toHaveLength(0);
+    const questions = await db
+      .select()
+      .from(agentQuestions)
+      .where(eq(agentQuestions.runId, owner.runId));
+    expect(questions).toHaveLength(0);
+  });
+
   it("stores tool call arguments and results redacted", async () => {
     const { workspaceId, runId } = await seedRun("bridge-tool");
 

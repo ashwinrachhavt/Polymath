@@ -127,7 +127,9 @@ export default defineHook({
           runId: ctx.session.id,
           toolName,
           ok: event.data.status === "completed",
-          errorCode: event.data.error?.code,
+          // A HITL "rejected" is a policy denial, not a runtime failure: it
+          // never executed. Distinguish it from a real error code.
+          errorCode: event.data.error?.code ?? (event.data.status === "rejected" ? "hitl_denied" : undefined),
           args,
           result: output,
         }),
@@ -204,8 +206,16 @@ export default defineHook({
     async "turn.cancelled"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
       if (!workspaceId) return;
+      // A cancelled turn is NOT a terminal run: the session continues and takes
+      // the next message (eve protocol docs), so only session.completed /
+      // session.failed close the run. Record the cancellation on the timeline.
       await guarded("turn.cancelled", () =>
-        closeRun({ runId: ctx.session.id, workspaceId, state: "cancelled" }),
+        recordRoundEvent({
+          runId: ctx.session.id,
+          workspaceId,
+          type: "turn.cancelled",
+          data: { turnId: event.data.turnId },
+        }),
       );
     },
   },
