@@ -1,10 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentProfiles, agentRuns, agentQuestions, messages, runEvents, toolCalls } from "@/domains/agents/schema";
 import { spendingReservations } from "@/domains/spending/schema";
-import { users, workspaces } from "@/domains/identity/schema";
+import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The bridge's invariants, against real Postgres: the per-run sequence claim
@@ -22,31 +20,27 @@ import { users, workspaces } from "@/domains/identity/schema";
  * DATABASE_URL points at that same database — a static import would resolve
  * against the wrong database (or throw without one) and fail instead of skip.
  *
- * Fresh unique slugs, no truncation: pointing TEST_DATABASE_URL at a scratch
- * database or a Neon branch is enough, so no equality guard against DATABASE_URL
- * is needed here.
+ * The workspace seed scaffolding lives in tests/helpers/test-workspace.ts; the
+ * profile+run seed below is specific to this suite and stays here.
  */
 
-const url = process.env.TEST_DATABASE_URL;
-const suite = url ? describe : describe.skip;
-let client: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof drizzle>;
+const handle = makeTestDb();
+const suite = handle ? describe : describe.skip;
+let db: NonNullable<typeof handle>["db"];
 let bridge: typeof import("@/domains/agents/event-bridge");
 let commands: typeof import("@/domains/spending/commands");
 let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
 
 beforeAll(async () => {
-  if (!url) return;
-  process.env.DATABASE_URL = url;
-  client = postgres(url, { max: 3 });
-  db = drizzle(client);
+  if (!handle) return;
+  ({ db } = handle);
   bridge = await import("@/domains/agents/event-bridge");
   commands = await import("@/domains/spending/commands");
   ({ withTransaction } = await import("@/lib/db-transaction"));
 });
 
 afterAll(async () => {
-  await client?.end();
+  await handle?.client.end();
 });
 
 let seedCounter = 0;
@@ -55,29 +49,22 @@ let seedCounter = 0;
 async function seedRun(label: string) {
   seedCounter += 1;
   const slug = `${label}-${Date.now()}-${seedCounter}`;
-  const [user] = await db
-    .insert(users)
-    .values({ clerkUserId: `bridge_${slug}` })
-    .returning();
-  const [ws] = await db
-    .insert(workspaces)
-    .values({ name: label, slug, isPersonal: true })
-    .returning();
+  const { userId, workspaceId } = await seedWorkspace(db, slug);
   const [profile] = await db
     .insert(agentProfiles)
-    .values({ workspaceId: ws.id, name: `bridge-${slug}` })
+    .values({ workspaceId, name: `bridge-${slug}` })
     .returning();
   const [run] = await db
     .insert(agentRuns)
     .values({
-      workspaceId: ws.id,
+      workspaceId,
       agentProfileId: profile.id,
       objective: "test",
       policySnapshot: {},
       state: "running",
     })
     .returning();
-  return { workspaceId: ws.id, userId: user.id, runId: run.id };
+  return { workspaceId, userId, runId: run.id };
 }
 
 suite("event bridge", () => {

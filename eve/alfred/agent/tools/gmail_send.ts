@@ -3,6 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../lib/policy";
 import { withTransaction } from "../../../../src/lib/db-transaction";
 import { createProposal } from "../../../../src/domains/actions/commands";
+import { getRunPolicySnapshot } from "../../../../src/domains/agents/queries";
 
 /*
  * An external-write capability. The handler does the one thing a consequential

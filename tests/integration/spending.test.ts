@@ -1,13 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { memberships, users, workspaces } from "@/domains/identity/schema";
 import {
   spendingPolicies,
   spendingReservations,
   spendSettlements,
 } from "@/domains/spending/schema";
+import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The spending invariants agents/engineering.md says run against real Postgres,
@@ -22,29 +20,25 @@ import {
  * the wrong database (or throw without one) and fail this file instead of
  * skipping it.
  *
- * This file inserts fresh unique slugs and truncates nothing, so pointing
- * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no
- * equality guard against DATABASE_URL is needed here.
+ * The seed scaffolding lives in tests/helpers/test-workspace.ts; this file
+ * inserts fresh unique slugs and truncates nothing.
  */
 
-const url = process.env.TEST_DATABASE_URL;
-const suite = url ? describe : describe.skip;
-let client: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof drizzle>;
+const handle = makeTestDb();
+const suite = handle ? describe : describe.skip;
+let db: NonNullable<typeof handle>["db"];
 let commands: typeof import("@/domains/spending/commands");
 let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
 
 beforeAll(async () => {
-  if (!url) return;
-  process.env.DATABASE_URL = url;
-  client = postgres(url, { max: 2 });
-  db = drizzle(client);
+  if (!handle) return;
+  ({ db } = handle);
   commands = await import("@/domains/spending/commands");
   ({ withTransaction } = await import("@/lib/db-transaction"));
 });
 
 afterAll(async () => {
-  await client?.end();
+  await handle?.client.end();
 });
 
 const TINY = "0.000001";
@@ -61,21 +55,14 @@ const PER_RUN = "0.0001";
 const ESTIMATE = "0.0001";
 
 async function seedWs(slug: string, daily?: string, perRun?: string) {
-  const [user] = await db.insert(users).values({ clerkUserId: `spend_${slug}` }).returning();
-  const [ws] = await db
-    .insert(workspaces)
-    .values({ name: slug, slug, isPersonal: true })
-    .returning();
-  await db
-    .insert(memberships)
-    .values({ workspaceId: ws.id, userId: user.id, role: "owner", status: "active" });
+  const { workspaceId } = await seedWorkspace(db, slug);
   await db.insert(spendingPolicies).values({
-    workspaceId: ws.id,
+    workspaceId,
     dailyCeilingUsd: daily ?? null,
     perRunCeilingUsd: perRun ?? null,
     onExceeded: "fail",
   });
-  return { workspaceId: ws.id };
+  return { workspaceId };
 }
 
 suite("spending commands", () => {

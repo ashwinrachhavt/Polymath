@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionProposals } from "@/domains/actions/schema";
-import { memberships, users, workspaces } from "@/domains/identity/schema";
+import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * `createProposal` is the single write path that turns model intent into an
@@ -20,48 +18,33 @@ import { memberships, users, workspaces } from "@/domains/identity/schema";
  * the wrong database (or throw without one) and fail this file instead of
  * skipping it.
  *
- * This file inserts fresh unique slugs and truncates nothing, so pointing
- * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no
- * equality guard against DATABASE_URL is needed here.
+ * The seed/truncate scaffolding lives in tests/helpers/test-workspace.ts;
+ * this file inserts fresh unique slugs and truncates nothing.
  */
 
-const url = process.env.TEST_DATABASE_URL;
-const suite = url ? describe : describe.skip;
-let client: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof drizzle>;
+const handle = makeTestDb();
+const suite = handle ? describe : describe.skip;
+let db: NonNullable<typeof handle>["db"];
 let actions: typeof import("@/domains/actions/commands");
 let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
 
 beforeAll(async () => {
-  if (!url) return;
-  process.env.DATABASE_URL = url;
-  client = postgres(url, { max: 3 });
-  db = drizzle(client);
+  if (!handle) return;
+  ({ db } = handle);
   actions = await import("@/domains/actions/commands");
   ({ withTransaction } = await import("@/lib/db-transaction"));
 });
 
 afterAll(async () => {
-  await client?.end();
+  await handle?.client.end();
 });
 
 let seedCounter = 0;
 
-async function seedWorkspace(label: string) {
+async function seed(label: string) {
   seedCounter += 1;
-  const slug = `${label}-${Date.now()}-${seedCounter}`;
-  const [user] = await db
-    .insert(users)
-    .values({ clerkUserId: `proposal_${slug}` })
-    .returning();
-  const [ws] = await db
-    .insert(workspaces)
-    .values({ name: label, slug, isPersonal: true })
-    .returning();
-  await db
-    .insert(memberships)
-    .values({ workspaceId: ws.id, userId: user.id, role: "owner", status: "active" });
-  return ws.id;
+  const { workspaceId } = await seedWorkspace(db, `${label}-${Date.now()}-${seedCounter}`);
+  return workspaceId;
 }
 
 const propose = (
@@ -73,7 +56,7 @@ const propose = (
 
 suite("createProposal", () => {
   it("replaying a dedupe key yields one proposal row, never a second effect", async () => {
-    const workspaceId = await seedWorkspace("proposal-replay");
+    const workspaceId = await seed("proposal-replay");
     const input = {
       capability: "gmail.send",
       riskClass: "external_write" as const,
@@ -103,7 +86,7 @@ suite("createProposal", () => {
   });
 
   it("concurrent replays of one dedupe key still land one row", async () => {
-    const workspaceId = await seedWorkspace("proposal-conc");
+    const workspaceId = await seed("proposal-conc");
     const input = {
       capability: "gmail.send",
       riskClass: "external_write" as const,
@@ -127,8 +110,8 @@ suite("createProposal", () => {
   });
 
   it("the same dedupe key in another workspace is a different proposal", async () => {
-    const a = await seedWorkspace("proposal-scope-a");
-    const b = await seedWorkspace("proposal-scope-b");
+    const a = await seed("proposal-scope-a");
+    const b = await seed("proposal-scope-b");
     const shared = { capability: "gmail.send", riskClass: "external_write" as const, title: "x", expectedEffect: "y", runId: null, dedupeKey: "shared-key" };
 
     const pa = await propose(a, shared);
@@ -139,7 +122,7 @@ suite("createProposal", () => {
   });
 
   it("persists a prepare risk class with an already-past expiry", async () => {
-    const workspaceId = await seedWorkspace("proposal-expiry");
+    const workspaceId = await seed("proposal-expiry");
     const past = new Date(Date.now() - 1000);
     const { proposalId } = await propose(workspaceId, {
       capability: "gmail.draft",
