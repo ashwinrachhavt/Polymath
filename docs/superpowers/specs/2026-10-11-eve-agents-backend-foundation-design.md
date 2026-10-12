@@ -545,9 +545,11 @@ the per-message hook.
    `withEve()` "verified at eve@0.77.0"; npm installed **0.76.3**, which is what
    these shapes describe. Confirm the intended pin before Task 5.
 4. **`eve dev` leaves artifacts under the agent root** — `.eve/` (compile,
-   discovery, dev-runtime snapshots, sandbox cache) and `.output/`. `.eve/` is
-   now gitignored; `.output/` agrees with the existing `out/` rule and is not
-   committed. `pnpm build` does not leave `.output/` behind; `eve dev` does.
+   discovery, dev-runtime snapshots, sandbox cache) and `.output/`. **Both are
+   now gitignored** (`.eve/` and `.output/`): the pre-existing `out/` rule did
+   *not* cover `.output/`, which is a different path — verified with
+   `git check-ignore -v eve/alfred/.output` (exit 0 after the fix, exit 1
+   before). `pnpm build` does not leave `.output/` behind; `eve dev` does.
 5. **The spike agent needs a `package.json` that `pnpm install` must tolerate.**
    It has no entry in `pnpm-workspace.yaml`, so it resolves `eve` through Node's
    ordinary upward lookup and adds nothing to the lockfile. Adding an entry would

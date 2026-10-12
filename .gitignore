@@ -46,3 +46,4 @@ npm-debug.log*
 
 # eve local artifacts (spike, Task 1)
 .eve/
+.output/
