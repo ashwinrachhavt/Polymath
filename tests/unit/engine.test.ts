@@ -34,34 +34,51 @@ const RUN = { id: "run_1", workspaceId: WS, state: "queued" };
 
 type StubResult = { rows?: unknown[]; returning?: unknown };
 let stubResults: Record<string, StubResult> = {};
-let calls: { sql: string; args: unknown[] }[] = [];
 
-const { fakeDb } = vi.hoisted(() => ({ fakeDb: {} as Record<string, unknown> }));
+/*
+ * One recording of every move that matters, in call order: the drizzle op
+ * (select/insert/update/execute), the spend command, and the driver call. The
+ * test asserts the order, because the order is the contract.
+ */
+const { fakeDb, ops, setCalls } = vi.hoisted(() => ({
+  fakeDb: {} as Record<string, unknown>,
+  ops: [] as string[],
+  setCalls: [] as unknown[],
+}));
 
 vi.mock("@/lib/db", () => {
-  const result = () => stubResults[(calls.at(-1)?.sql ?? "") as string] ?? {};
-  const chain = (sqlText: string, args: unknown[]) => {
-    calls.push({ sql: sqlText, args });
+  const current = () => stubResults[(ops.at(-1) ?? "") as string] ?? {};
+  const chain = (op: string) => {
+    ops.push(op);
     const self: Record<string, unknown> = {};
-    for (const method of ["from", "where", "limit", "values", "set"]) {
+    for (const method of ["from", "where", "limit", "values"]) {
       self[method] = () => self;
     }
-    self.returning = async () => result().returning ?? [];
-    self.execute = async () => result().rows ?? [];
+    self.set = (values: unknown) => {
+      setCalls.push(values);
+      return self;
+    };
+    self.returning = async () => current().returning ?? [];
+    self.execute = async () => current().rows ?? [];
     // Executing a read chain is awaiting the chain itself (limit/from/where).
-    self.then = (resolve: (value: unknown) => unknown) => resolve(result().returning ?? []);
+    self.then = (resolve: (value: unknown) => unknown) => resolve(current().returning ?? []);
     return self;
   };
-  fakeDb.select = vi.fn(() => chain("select", []));
-  fakeDb.insert = vi.fn(() => chain("insert", []));
-  fakeDb.update = vi.fn(() => chain("update", []));
-  fakeDb.execute = vi.fn(() => chain("execute", []));
+  fakeDb.select = vi.fn(() => chain("select"));
+  fakeDb.insert = vi.fn(() => chain("insert"));
+  fakeDb.update = vi.fn(() => chain("update"));
+  fakeDb.execute = vi.fn(() => chain("execute"));
   return { db: fakeDb };
 });
 
 vi.mock("@/domains/spending/commands", () => ({
-  reserveSpend: vi.fn(async () => ({ ok: true, reservationId: "rsv_1" })),
-  releaseSpend: vi.fn(async () => {}),
+  reserveSpend: vi.fn(async () => {
+    ops.push("reserve");
+    return { ok: true, reservationId: "rsv_1" };
+  }),
+  releaseSpend: vi.fn(async () => {
+    ops.push("release");
+  }),
 }));
 
 vi.mock("@/lib/db-transaction", () => ({
@@ -71,7 +88,8 @@ vi.mock("@/lib/db-transaction", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  calls = [];
+  ops.length = 0;
+  setCalls.length = 0;
   stubResults = {
     select: { returning: [profileRow] },
     insert: { returning: [{ id: RUN.id }] },
@@ -80,14 +98,15 @@ beforeEach(() => {
   };
 });
 
+/** The payload of the most recent `update(...).set(...)` — what the row became. */
+const lastUpdateSet = () => setCalls.at(-1);
+
 function fakeDriver() {
-  const order: string[] = [];
   return {
-    order,
     driver: {
-      start: vi.fn(async () => void order.push("start")),
-      signal: vi.fn(async () => void order.push("signal")),
-      cancel: vi.fn(async () => void order.push("cancel")),
+      start: vi.fn(async () => void ops.push("start")),
+      signal: vi.fn(async () => void ops.push("signal")),
+      cancel: vi.fn(async () => void ops.push("cancel")),
     },
   };
 }
@@ -104,17 +123,14 @@ const startInput = {
 
 describe("engine", () => {
   it("start claims the reservation before the driver starts the session", async () => {
-    const { driver, order } = fakeDriver();
-    vi.mocked(reserveSpend).mockImplementation(async () => {
-      order.push("reserve");
-      return { ok: true, reservationId: "rsv_1" };
-    });
+    const { driver } = fakeDriver();
 
     const { runId, reservationId } = await createEngine(driver).start(startInput);
 
     expect(runId).toBe(RUN.id);
     expect(reservationId).toBe("rsv_1");
-    expect(order).toEqual(["reserve", "start"]);
+    // Run row, then spend, then the session: the order is the invariant.
+    expect(ops).toEqual(["select", "insert", "reserve", "update", "start"]);
     expect(reserveSpend).toHaveBeenCalledWith(
       expect.anything(),
       { workspaceId: WS },
@@ -141,6 +157,30 @@ describe("engine", () => {
 
     await expect(createEngine(driver).start(startInput)).rejects.toThrow("Spend ceiling exceeded");
     expect(driver.start).not.toHaveBeenCalled();
+    // The run is closed as failed with the reason, not left live.
+    expect(lastUpdateSet()).toEqual(
+      expect.objectContaining({ state: "failed", error: expect.stringContaining("ceiling") }),
+    );
+  });
+
+  it("start marks the run failed and releases the reservation when the driver will not start", async () => {
+    const { driver } = fakeDriver();
+    driver.start.mockRejectedValueOnce(new Error("eve unreachable"));
+    stubResults.execute = { rows: [{ id: "rsv_7" }] };
+
+    await expect(createEngine(driver).start(startInput)).rejects.toThrow("eve unreachable");
+
+    expect(lastUpdateSet()).toEqual(
+      expect.objectContaining({
+        state: "failed",
+        error: expect.stringContaining("driver failed to start"),
+      }),
+    );
+    expect(releaseSpend).toHaveBeenCalledWith(
+      expect.anything(),
+      { workspaceId: WS },
+      { reservationId: "rsv_7" },
+    );
   });
 
   it("cancel is terminal-only-once: second cancel is a no-op", async () => {

@@ -94,6 +94,33 @@ async function scopeCheck(runId: string, auth: AuthContext) {
   return run;
 }
 
+/** Closes a run that will never do work. The error is redacted by the caller. */
+async function failRun(runId: string, error: string, at: Date): Promise<void> {
+  await db
+    .update(agentRuns)
+    .set({ state: "failed", error, endedAt: at, updatedAt: at })
+    .where(eq(agentRuns.id, runId));
+}
+
+/*
+ * Hands back whatever budget the run still holds. Scoped to the workspace so a
+ * run id from elsewhere cannot touch another tenant's reservation; a settled or
+ * already-released claim matches nothing (releaseSpend is guarded the same way).
+ */
+async function releaseOpenReservation(runId: string, workspaceId: string): Promise<void> {
+  await withTransaction(async (tx) => {
+    const open = (await tx.execute(
+      sql`select id from spending_reservations
+          where run_id = ${runId} and workspace_id = ${workspaceId} and status = 'reserved'
+          limit 1`,
+    )) as unknown as { id: string }[];
+    const reservation = open[0];
+    if (reservation) {
+      await releaseSpend(tx, { workspaceId }, { reservationId: reservation.id });
+    }
+  });
+}
+
 export function createEngine(
   driver: SessionDriver,
   now: () => Date = () => new Date(),
@@ -147,15 +174,7 @@ export function createEngine(
       );
       if (!claim.ok) {
         // No budget, no run: the row is closed rather than left live to retry.
-        await db
-          .update(agentRuns)
-          .set({
-            state: "failed",
-            error: `spend ${claim.reason}`,
-            endedAt: now(),
-            updatedAt: now(),
-          })
-          .where(eq(agentRuns.id, run.id));
+        await failRun(run.id, `spend ${claim.reason}`, now());
         throw new Error("Spend ceiling exceeded");
       }
 
@@ -164,12 +183,21 @@ export function createEngine(
         .set({ state: "running", startedAt: now(), updatedAt: now() })
         .where(eq(agentRuns.id, run.id));
 
-      await driver.start({
-        sessionId: run.id,
-        auth: input.auth,
-        policy,
-        instructions: profile.instructions ?? null,
-      });
+      try {
+        await driver.start({
+          sessionId: run.id,
+          auth: input.auth,
+          policy,
+          instructions: profile.instructions ?? null,
+        });
+      } catch (cause) {
+        // A session that never started is not a running run: close it and give
+        // the budget back, else the row stays live with money held forever.
+        const message = cause instanceof Error ? cause.message : String(cause);
+        await failRun(run.id, `driver failed to start: ${message}`, now());
+        await releaseOpenReservation(run.id, input.auth.workspaceId);
+        throw cause;
+      }
 
       return { runId: run.id, reservationId: claim.reservationId };
     },
@@ -200,18 +228,9 @@ export function createEngine(
 
       await driver.cancel(runId);
 
-      // The reservation is released in the same transaction that reads it;
-      // releaseSpend is itself guarded on status = 'reserved', so a settled or
-      // already-released claim is left alone.
-      await withTransaction(async (tx) => {
-        const open = (await tx.execute(
-          sql`select id from spending_reservations where run_id = ${runId} and status = 'reserved' limit 1`,
-        )) as unknown as { id: string }[];
-        const reservation = open[0];
-        if (reservation) {
-          await releaseSpend(tx, { workspaceId: auth.workspaceId }, { reservationId: reservation.id });
-        }
-      });
+      // The run is terminal before the budget is handed back; the release is
+      // guarded on status = 'reserved', so a settled claim is left alone.
+      await releaseOpenReservation(runId, auth.workspaceId);
 
       return { cancelled: true };
     },
