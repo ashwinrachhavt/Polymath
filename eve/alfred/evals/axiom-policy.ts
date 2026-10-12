@@ -10,9 +10,8 @@
  *   sensitive_write approval plus confirmation
  *   prohibited      deny
  *
- * `prepare`/`external_write`/`sensitive_write` are the three `risk_class`
- * values in src/domains/actions/schema.ts; `read` and `prohibited` never reach
- * a proposal row, which is why they have no column.
+ * All five are members of `risk_class` in src/domains/actions/schema.ts; this
+ * fixture restates them so the evals never drift from the enum without a diff.
  */
 export type AxiomRiskClass = "read" | "prepare" | "external_write" | "sensitive_write" | "prohibited";
 
@@ -69,7 +68,8 @@ export function approvalForRisk(risk: AxiomRiskClass): AxiomApproval {
 
 /** Fail closed: a capability with no risk class is not a capability Axiom granted. */
 export function approvalForCapability(capability: string): AxiomApproval {
-  const risk = CAPABILITY_RISK[capability];
+  // hasOwn keeps inherited keys like "toString" falling through to denial.
+  const risk = Object.hasOwn(CAPABILITY_RISK, capability) ? CAPABILITY_RISK[capability] : undefined;
   return risk === undefined ? "denied" : approvalForRisk(risk);
 }
 
