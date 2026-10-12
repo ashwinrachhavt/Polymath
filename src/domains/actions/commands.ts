@@ -58,5 +58,8 @@ export async function createProposal(
       ),
     )
     .limit(1);
+  // ponytail: racy caller deleted the row between insert and select; treat as
+  // retryable failure, not a TypeError, when the contract next changes.
+  if (!existing) throw new Error("proposal vanished during dedupe resolve");
   return { proposalId: existing.id, deduplicated: true };
 }

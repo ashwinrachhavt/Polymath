@@ -28,8 +28,7 @@ export async function truncateAll(client: ReturnType<typeof postgres>) {
     select tablename from pg_tables where schemaname = 'public'
     loop execute format('truncate table %I cascade', t); end loop; end $$;`);
 }
-
-/** An owner workspace a test owns outright — fresh slugs, no shared fixtures. */
+void truncateAll; // exported for suites that opt into truncation; reliability.test.ts owns its own
 export async function seedWorkspace(
   db: ReturnType<typeof drizzle>,
   slug: string,
