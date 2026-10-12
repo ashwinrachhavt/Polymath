@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { products, productHref } from "../../src/lib/products";
+import { waitSettled } from "./helpers/settled";
 
 test("home opens the canonical Command Center briefing", async ({ page }) => {
   await page.goto("/");
@@ -17,8 +18,10 @@ for (const product of products) {
     for (const destination of product.destinations) {
       const response = await page.goto(productHref(product, destination.slug));
       expect(response?.status(), destination.slug).toBe(200);
-      await expect(page.locator("main h1")).toHaveCount(1);
-      await expect(page.locator("main")).not.toContainText("Nothing is here");
+      // Route-level loading.tsx renders a second skeleton <main>; scope to
+      // the shell's content main so navigation never races the skeleton.
+      await expect(page.locator("#content h1")).toHaveCount(1);
+      await expect(page.locator("#content")).not.toContainText("Nothing is here");
       await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: destination.label, exact: true })).toHaveAttribute("aria-current", "page");
     }
     expect(errors).toEqual([]);
@@ -36,11 +39,11 @@ test("switch products without forking a captured task", async ({ page }) => {
   await page.getByRole("button", { name: "Switch product" }).click();
   await page.getByRole("dialog").getByRole("link").filter({ hasText: "NeuralFlow" }).click();
   await page.goto("/apps/neuralflow/tasks");
-  await expect(page.locator("main")).toContainText("Parity journey task");
+  await expect(page.locator("#content")).toContainText("Parity journey task");
   await page.reload();
-  await expect(page.locator("main")).toContainText("Parity journey task");
+  await expect(page.locator("#content")).toContainText("Parity journey task");
   await page.goto("/apps/command-center/work");
-  await expect(page.locator("main")).toContainText("Parity journey task");
+  await expect(page.locator("#content")).toContainText("Parity journey task");
 });
 
 test("command search is keyboard reachable and handles empty results", async ({ page }) => {
@@ -70,16 +73,10 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
   for (const path of ["/apps/command-center/briefing", "/apps/command-center/reviews", "/apps/command-center/settings", "/apps/neuralflow/tasks", "/apps/neuralflow/focus", "/apps/alfred/library", "/apps/alfred/notebook"]) {
     await page.goto(path);
-    // Axe must evaluate the settled page: the capture button is disabled at
-    // opacity 50% until hydration, and entry animations pass through blended
-    // colors that read as contrast violations. Reduced motion collapses them.
-    await expect(page.getByRole("button", { name: "Capture", exact: true })).toBeEnabled();
-    // The Notebook rich editor mounts its toolbar async (immediatelyRender:
-    // false), so its buttons sit disabled at opacity 50% for a frame; axe
-    // must not sample inside that window. Other screens have no toolbar,
-    // so wait conditionally.
-    if (path === "/apps/alfred/notebook") await expect(page.getByRole("button", { name: "Heading", exact: true })).toBeEnabled();
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    // Axe must evaluate the settled page: the topbar buttons sit at
+    // disabled:opacity-50 until hydration and transition to full opacity,
+    // and axe composites whatever it samples through in-flight opacity.
+    await waitSettled(page, path === "/apps/alfred/notebook" ? { heading: "Heading" } : {});
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
   }
