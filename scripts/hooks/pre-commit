@@ -1,0 +1,22 @@
+#!/bin/sh
+# Pre-commit guard for CI flakes that only appear on remote runs (agents/
+# engineering.md: a bug fixed twice is a rule). Fast checks only — build and
+# e2e stay in CI. Set core.hooksPath to scripts/hooks to install:
+#   git config core.hooksPath scripts/hooks
+set -e
+
+fails=0
+
+# The app renders two <main> elements (shell content main plus the route
+# loading skeleton), so a bare page.locator("main") resolves to 2 elements
+# and fails CI under strict mode. Scope to "#content".
+if git diff --cached --name-only --diff-filter=ACM | grep -q '\.spec\.ts$'; then
+  if git diff --cached --name-only --diff-filter=ACM | grep -q '^tests/e2e/'; then
+    if git diff --cached -U0 -- 'tests/e2e/*.spec.ts' | grep -E '^\+' | grep -qE 'locator\("main"\)|locator\(.(main).\)'; then
+      echo "ERROR: bare locator(\"main\") in e2e tests. Two <main> elements render (shell #content + route loading skeleton); scope to locator(\"#content\")." >&2
+      fails=1
+    fi
+  fi
+fi
+
+exit $fails

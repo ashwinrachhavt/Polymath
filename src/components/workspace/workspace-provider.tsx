@@ -3,9 +3,10 @@
 import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
 import { sampleState } from "./sample-state";
-import type { Artifact, ArtifactKind, CalendarEvent, Capture, Company, Contact, Focus, Opportunity, Preferences, Project, Review, Task, WorkspaceState } from "./types";
+import { completionPatch, nextRank, reorderTasks, statusLabels } from "./tasks";
+import type { Artifact, ArtifactKind, CalendarEvent, Capture, Company, Contact, Focus, Opportunity, Preferences, Project, Review, Task, TaskAttachment, TaskStatus, WorkspaceState } from "./types";
 
-const task = z.object({ id: z.string(), title: z.string(), status: z.enum(["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"]), priority: z.enum(["High", "Medium", "Low"]), projectId: z.string().optional(), dueDate: z.string().optional(), estimate: z.number().nonnegative(), description: z.string(), tags: z.array(z.string()), version: z.number().int().positive() });
+const task = z.object({ id: z.string(), title: z.string(), status: z.enum(["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"]), priority: z.enum(["High", "Medium", "Low"]), projectId: z.string().optional(), dueDate: z.string().optional(), estimate: z.number().nonnegative(), description: z.string(), tags: z.array(z.string()), version: z.number().int().positive(), rank: z.number().optional(), recurrence: z.object({ frequency: z.enum(["daily", "weekly", "monthly"]), interval: z.number().int().positive(), until: z.string().optional(), count: z.number().int().positive().optional() }).optional(), attachments: z.array(z.object({ id: z.string(), kind: z.enum(["file", "url", "note"]), label: z.string(), value: z.string(), size: z.number().optional(), addedAt: z.string() })).optional(), completedAt: z.string().optional(), completionCount: z.number().int().nonnegative().optional() });
 const artifact = z.object({ id: z.string(), title: z.string(), kind: z.enum(["note", "document", "zettel", "source", "dossier", "canvas"]), body: z.string(), tags: z.array(z.string()), links: z.array(z.string()), version: z.number().int().positive(), updatedAt: z.string() });
 const schema = z.object({
   tasks: z.array(task), artifacts: z.array(artifact),
@@ -16,14 +17,30 @@ const schema = z.object({
   opportunities: z.array(z.object({ id: z.string(), title: z.string(), company: z.string(), stage: z.enum(["Saved", "Preparing", "Applied", "Interview", "Offer", "Closed"]), value: z.string(), notes: z.string() })),
   reviews: z.array(z.object({ id: z.string(), title: z.string(), kind: z.string(), risk: z.enum(["External write", "Sensitive write", "Local change"]), status: z.enum(["Pending", "Approved locally", "Rejected"]), payload: z.string(), revision: z.number().int().positive() })),
   projects: z.array(z.object({ id: z.string(), title: z.string(), description: z.string(), status: z.string() })),
-  events: z.array(z.object({ id: z.string(), title: z.string(), date: z.string(), start: z.string(), duration: z.number().positive(), taskId: z.string().optional(), provider: z.enum(["local", "google"]), type: z.enum(["Focus", "Meeting", "Personal", "Break"]).optional(), location: z.string().optional(), tags: z.array(z.string()).optional(), notes: z.string().optional(), notesArtifactId: z.string().optional(), endDate: z.string().optional() })),
+  events: z.array(z.object({ id: z.string(), title: z.string(), date: z.string(), start: z.string(), duration: z.number().positive(), taskId: z.string().optional(), provider: z.enum(["local", "google"]), type: z.enum(["Focus", "Meeting", "Personal", "Break"]).optional(), location: z.string().optional(), tags: z.array(z.string()).optional(), notes: z.string().optional(), notesArtifactId: z.string().optional(), endDate: z.string().optional(), recurrence: z.object({ frequency: z.enum(["daily", "weekly", "monthly"]), interval: z.number().int().positive(), until: z.string().optional(), count: z.number().int().positive().optional() }).optional(), exceptionDates: z.array(z.string()).optional() })),
   focus: z.object({ taskId: z.string(), startedAt: z.number(), remaining: z.number().nonnegative(), duration: z.number().positive(), status: z.enum(["running", "paused"]), completed: z.number().int().nonnegative() }).nullable(),
   rewards: z.array(z.object({ id: z.string(), title: z.string(), earnedAt: z.string(), sessionId: z.string() })),
-  preferences: z.object({ celebrations: z.boolean(), reducedMotion: z.boolean(), killSwitch: z.boolean(), timezone: z.string(), weekStart: z.enum(["Monday", "Sunday"]) }),
+  // `scheduler` carries a default so a workspace saved before this field
+  // existed still loads instead of being rejected as an incompatible format.
+  preferences: z.object({ celebrations: z.boolean(), reducedMotion: z.boolean(), killSwitch: z.boolean(), timezone: z.string(), weekStart: z.enum(["Monday", "Sunday"]), scheduler: z.object({ workStartHour: z.number().int(), workEndHour: z.number().int(), weekdays: z.array(z.number().int()), suggestionsEnabled: z.boolean(), eveningEnabled: z.boolean(), eveningStartHour: z.number().int(), eveningTitle: z.string(), topics: z.array(z.string()) }).default({ workStartHour: 9, workEndHour: 18, weekdays: [1, 2, 3, 4, 5], suggestionsEnabled: true, eveningEnabled: false, eveningStartHour: 19, eveningTitle: "Vibe coding", topics: [] }) }),
   activity: z.array(z.object({ id: z.string(), title: z.string(), detail: z.string(), at: z.string() })),
 });
 
-export function createPreviewWorkspace(scope = "anonymous") {
+/*
+ * localStorage is reachable as both a global and a window property depending
+ * on the runtime, and reading it can throw in a locked-down privacy mode, so
+ * every access goes through here.
+ */
+function resolveStorage(injected?: Pick<Storage, "getItem" | "setItem">) {
+  if (injected) return injected;
+  try { return globalThis.localStorage ?? window.localStorage; } catch { return undefined; }
+}
+/*
+ * The second argument is the storage backend. It defaults to localStorage and
+ * exists so a test can drive the real store without a browser; nothing in the
+ * app passes it.
+ */
+export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Storage, "getItem" | "setItem">) {
 const key = scope === "anonymous" ? "axiom-ui-preview-v1" : `axiom-ui-preview-v1:${scope}`;
 let snapshot: WorkspaceState = sampleState;
 let loaded = false;
@@ -42,9 +59,10 @@ function subscribe(listener: () => void) {
 }
 function publish() { for (const listener of listeners) listener(); }
 function getSnapshot() {
-  if (typeof window !== "undefined") {
+  const store = resolveStorage(storage);
+  if (store) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = store.getItem(key);
       if (!loaded || raw !== observedRaw) {
         loaded = true;
         observedRaw = raw;
@@ -67,24 +85,57 @@ function commit(next: WorkspaceState, title: string, detail = "Browser preview o
     return false;
   }
   snapshot = { ...next, activity: [{ id: crypto.randomUUID(), title, detail, at: new Date().toISOString() }, ...next.activity].slice(0, 200) };
+  const store = resolveStorage(storage);
   try {
     const raw = JSON.stringify(snapshot);
-    localStorage.setItem(key, raw);
-    observedRaw = raw;
+    if (store) { store.setItem(key, raw); observedRaw = raw; }
     storageWarning = "";
   } catch { storageWarning = "Browser storage could not save this change. Keep this tab open or export your work; refreshing will lose unsaved changes."; }
   publish();
   return true;
 }
 function notify(message: string) { notice = message; publish(); }
-function addTask(title: string, extras: Partial<Omit<Task, "id" | "title" | "version">> = {}) {
-  const record: Task = { id: crypto.randomUUID(), title: title.trim(), status: "INBOX", priority: "Medium", estimate: 25, description: "", tags: [], ...extras, version: 1 };
+function addTask(title: string, extras: Partial<Omit<Task, "id" | "title" | "version" | "rank">> = {}) {
+  const status = extras.status || "INBOX";
+  const record: Task = { id: crypto.randomUUID(), title: title.trim(), priority: "Medium", estimate: 25, description: "", tags: [], ...extras, status, rank: nextRank(snapshot.tasks, status), version: 1 };
   if (!record.title) return undefined;
   commit({ ...getSnapshot(), tasks: [record, ...snapshot.tasks] }, "Task captured", record.title);
   return record;
 }
 function updateTask(id: string, patch: Partial<Task>) {
-  commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...patch, id: record.id, version: record.version + 1 } : record) }, "Task updated");
+  const current = getSnapshot().tasks.find((task) => task.id === id);
+  // Moving between columns lands at the end of the target column unless the
+  // caller supplied an explicit index, so a status change never inherits a
+  // rank that belongs to the lane it just left.
+  const moved = current && patch.status && patch.status !== current.status && patch.rank === undefined ? { ...patch, rank: nextRank(snapshot.tasks.filter((task) => task.id !== id), patch.status) } : patch;
+  commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...moved, id: record.id, version: record.version + 1 } : record) }, "Task updated");
+}
+function reorderTask(id: string, status: TaskStatus, index: number) {
+  const changed = reorderTasks(snapshot.tasks, id, status, index);
+  if (!changed.length) return;
+  const ranks = new Map(changed.map((entry) => [entry.id, entry.rank]));
+  commit({ ...snapshot, tasks: snapshot.tasks.map((record) => ranks.has(record.id) ? { ...record, rank: ranks.get(record.id), version: record.version + 1 } : record) }, "Task order changed", `${changed.length} tasks renumbered in ${statusLabels[status]}`);
+}
+function completeTask(id: string) {
+  const task = getSnapshot().tasks.find((record) => record.id === id);
+  if (!task) return;
+  const patch = completionPatch(task);
+  const label = task.recurrence && patch.status !== "DONE" ? `${task.title} moves to ${patch.dueDate}` : task.title;
+  commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...patch, id: record.id, version: record.version + 1 } : record) }, task.recurrence ? "Recurring task advanced" : "Task completed", label);
+}
+function addAttachment(id: string, attachment: Omit<TaskAttachment, "id" | "addedAt">) {
+  const task = getSnapshot().tasks.find((record) => record.id === id);
+  if (!task) return;
+  const record: TaskAttachment = { ...attachment, id: crypto.randomUUID(), addedAt: new Date().toISOString() };
+  const existing = task.attachments || [];
+  // Same URL or file name twice in one task is a duplicate, not a second copy.
+  if (existing.some((item) => item.value === record.value && item.kind === record.kind)) { notify("That attachment is already on this task."); return; }
+  updateTask(id, { attachments: [...existing, record] });
+}
+function removeAttachment(id: string, attachmentId: string) {
+  const task = getSnapshot().tasks.find((record) => record.id === id);
+  if (!task) return;
+  updateTask(id, { attachments: (task.attachments || []).filter((item) => item.id !== attachmentId) });
 }
 function addArtifact(title: string, kind: ArtifactKind, body = "") {
   const record: Artifact = { id: crypto.randomUUID(), title: title.trim(), kind, body, tags: [], links: [], version: 1, updatedAt: new Date().toISOString() };
@@ -123,6 +174,22 @@ function updateReview(id: string, patch: Partial<Review>) {
 function updateFocus(focus: Focus | null) { commit({ ...getSnapshot(), focus }, focus ? "Focus session updated" : "Focus session ended"); }
 function updatePreferences(patch: Partial<Preferences>) { commit({ ...getSnapshot(), preferences: { ...snapshot.preferences, ...patch } }, "Preview preferences updated"); }
 function addEvent(event: Omit<CalendarEvent, "id">) { const record = { ...event, id: crypto.randomUUID() }; commit({ ...getSnapshot(), events: [...snapshot.events, record] }, "Local work block created"); return record; }
+function deleteEvent(id: string) {
+  const event = getSnapshot().events.find((item) => item.id === id);
+  // A provider event is not ours to delete locally; it would reappear on the
+  // next sync and the local record would silently disagree with the provider.
+  if (!event || event.provider !== "local") { notify("Provider events are read-only in this preview. Removing one requires a reviewed provider write."); return; }
+  commit({ ...getSnapshot(), events: snapshot.events.filter((item) => item.id !== id) }, "Local work block removed", event.title);
+}
+/*
+ * Cancelling one occurrence of a repeating block records the date as an
+ * exception, so the series stays intact and the change is reversible.
+ */
+function cancelOccurrence(id: string, date: string) {
+  const event = getSnapshot().events.find((item) => item.id === id);
+  if (!event) return;
+  commit({ ...getSnapshot(), events: snapshot.events.map((item) => item.id === id ? { ...item, exceptionDates: [...new Set([...(item.exceptionDates || []), date])] } : item) }, "Occurrence cancelled", `${event.title} on ${date}`);
+}
 function updateEvent(id: string, patch: Partial<CalendarEvent>) { commit({ ...getSnapshot(), events: snapshot.events.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Local work block updated"); }
 function addProject(project: Omit<Project, "id">) { const record = { ...project, id: crypto.randomUUID() }; commit({ ...getSnapshot(), projects: [...snapshot.projects, record] }, "Project created", record.title); return record; }
 function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
@@ -131,7 +198,7 @@ function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
 }
 function resetPreview() { commit(sampleState, "Sample workspace reset"); notify("Sample workspace reset. Your previous browser preview changes were replaced."); }
 
-return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, addArtifact, updateArtifact, addCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, addProject, awardReward, resetPreview, notify };
+return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
 }
 export const previewWorkspace = createPreviewWorkspace();
 const WorkspaceContext = createContext(previewWorkspace);

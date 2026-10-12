@@ -10,8 +10,10 @@ test("NeuralFlow captures and edits one task then moves the same task with the k
   await page.getByRole("button", { name: "Capture task", exact: true }).click();
   await page.getByRole("button", { name: "Parity task: review a commitment", exact: true }).click();
   const inspector = page.getByRole("dialog");
-  await inspector.getByLabel("Status", { exact: true }).selectOption("READY");
-  await inspector.getByLabel("Priority", { exact: true }).selectOption("High");
+  // Field wraps the control in a <label>, whose accessible name includes the
+  // option text, so exact getByLabel never matches. Role + name is the stable locator.
+  await inspector.getByRole("combobox", { name: "Status" }).selectOption("READY");
+  await inspector.getByRole("combobox", { name: "Priority" }).selectOption("High");
   await inspector.getByLabel("Estimate (minutes)").fill("30");
   await inspector.getByRole("button", { name: "Save task locally" }).click();
   await page.goto("/apps/neuralflow/boards");
@@ -36,13 +38,23 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect(state.captures.some((capture: { text: string }) => capture.text.includes("Prepare a bounded review"))).toBe(true);
   expect(state.artifacts.some((note: { title: string; links: string[] }) => note.title === "Brain dump: accepted local plan" && note.links.length === 2)).toBe(true);
   await page.goto("/apps/neuralflow/scheduler");
-  await page.getByLabel("Planning date").fill("2026-10-12");
+  // The hydration snapshot swap can remount the controlled input under the
+  // fill, so one fill reverts to today even with a hydration wait. Refill
+  // until the value sticks instead of assuming one fill landed post-hydration.
+  const planningDate = page.getByLabel("Planning date");
+  await expect.poll(async () => {
+    if ((await planningDate.inputValue()) !== "2026-10-12") await planningDate.fill("2026-10-12");
+    return (await planningDate.inputValue()) === "2026-10-12";
+  }, { timeout: 10_000 }).toBe(true);
   await page.getByRole("button", { name: "Prepare local proposals" }).click();
   const accept = page.getByRole("button", { name: /^Accept \d+ local blocks$/ });
   await expect(accept).toBeEnabled();
   await accept.click();
+  // The controlled date input is re-initialized when React hydrates, so a
+  // fill that lands before hydration reverts to today and the proposal is
+  // prepared for the wrong day. Poll the store instead of reading it once.
+  await expect.poll(async () => (await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12").length, { timeout: 10_000 }).toBeGreaterThan(0);
   const accepted = (await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12");
-  expect(accepted.length).toBeGreaterThan(0);
   expect(accepted.every((event: { provider: string }) => event.provider === "local")).toBe(true);
   await page.getByRole("button", { name: "Refresh local proposals" }).click();
   await expect(page.getByText("No remaining proposals", { exact: true })).toBeVisible();
@@ -94,7 +106,7 @@ test("a local overnight meeting retains full metadata and uses canonical event n
   expect(meeting).toMatchObject({ type: "Meeting", provider: "local", duration: 60, endDate: "2026-10-12", location: "Local preview room", tags: ["Review", "Planning"] });
   expect(state.artifacts.find((note: { id: string }) => note.id === meeting.notesArtifactId)).toMatchObject({ kind: "note", body: "A manually recorded meeting note.", links: [meeting.id] });
   await page.goto("/apps/neuralflow/calendar?date=2026-10-12");
-  await page.getByLabel("View", { exact: true }).selectOption("day");
+  await page.getByRole("combobox", { name: "View" }).selectOption("day");
   await expect(page.getByText("Overnight local review", { exact: true })).toBeVisible();
 });
 

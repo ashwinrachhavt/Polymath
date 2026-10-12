@@ -4,193 +4,155 @@
 inventory are owned by [axiom-product-spec.md](../docs/axiom-product-spec.md)
 (§ Frontend and design); this file owns the taste.
 
-Toolchain pin (verified against neuralflow, the closest donor):
-**Tailwind v4** (CSS-first `@theme`, no `tailwind.config.js`), **shadcn**
-(`radix-nova` style, `baseColor: neutral`, `cssVariables: true`), **Radix**
-primitives, **lucide** icons, `class-variance-authority` + `tailwind-merge` via
-`cn`, **next-themes** for dark mode, React 19, Next.js 16. Components are copied
-into `src/components/ui/` and owned here — no component library as a black box.
+## The governing skill
 
-## Direction: the machined console
+The installed `taste-skill` set (`.agents/skills/`, lockfile `skills-lock.json`)
+is the authority for visual decisions. Where a skill rule and this file
+disagree, **the skill wins** — the outcome the owner asked for on 2026-10-11.
+This file's job is now to do three things the skill cannot:
 
-A control surface for one person's attention, built like an instrument rather
-than a document. The reference set is lab equipment, mixing desks, and flight
-deck panels: black-anodised aluminium, engraved legends, one lit indicator when
-something is actually on, hairlines instead of boxes, and numbers set in a face
-that does not move when the number changes.
+1. **Read the brief for this product**, so the skill's contextual rules have
+   something to fire against (§ Brief read below).
+2. **Record Axiom's dial values** and the decisions already made, so the
+   direction is stable between sessions.
+3. **State the token and state discipline** the code is held to.
 
-Three shared traits of the two references this direction was drawn from
-(the operator's visual intent, and the design language of gamut.so as actually
-inspected — see § References below). What survives from both is restraint:
-near-zero chrome, no decorative colour, state carried by a word as well as a
-hue.
+Skill map — which one governs which surface:
 
-Spend the boldness in **one** place: the panel edge. Everything else is quiet.
+| Skill | Governs | Note |
+|---|---|---|
+| `design-taste-frontend` | The default. Brief inference, dials, colour, typography, tells, pre-flight check. | Its own §13 excludes dashboards and dense product UI. Axiom is exactly that, so its marketing-page sections (§4.7 hero, §4.8 asset strategy, §4.9 landing density, §5 scroll/GSAP, §12 block library) **do not apply**. Everything else does, and §14's pre-flight still runs. |
+| `redesign-existing-projects` | Any pass over an existing screen. Scan → diagnose → fix with the audit list and fix-priority order. | The stack-agnostic audit. This is the one to run before touching a built surface. |
+| `minimalist-ui` | Palette and type register for reading surfaces. | Warm monochrome, editorial. Overrides the cool base where a surface is read rather than operated. |
+| `industrial-brutalist-ui` | Dense operational surfaces — tables, run timelines, telemetry. | Pick **one** of its two substrates per surface and commit; never mix. |
+| `full-output-enforcement` | Any task where a partial file is a broken file. | |
 
-## The honest warning
+Two caveats, recorded rather than routed around:
 
-The generated-design default of the moment is a warm cream ground with a
-high-contrast serif and a terracotta accent. The machined console is one step
-away from it in the same way "warm neutral" was: get the hue or the accent
-wrong and the result is a design-studio sample, not an instrument. So:
+- **`gpt-taste` and the imagegen skills are out of scope.** Their own
+  descriptions are AIDA landing pages, GSAP ScrollTrigger pinning, and generated
+  imagery. Axiom has no scroll narrative and no marketing page; it has tables
+  that stay scannable at 13px. They stay installed but unused.
+- **`image-to-code` is Codex-oriented** (image-first, generate-then-implement).
+  Use it only if a design task explicitly calls for generated references.
 
-- **The ground is cool, not warm.** Hue ~252, chroma ≤ 0.006. A warm ground
-  plus a near-black ink plus a mono face is a recognisable genre, and this
-  product is not that genre.
-- **The accent is cyan/teal, never clay**, and it is used on ~3% of the
-  surface: primary actions, the focus ring, the active-rail rule, and nothing
-  else. An accent that appears on every card is a theme, not an accent.
-- **The display face is not a high-contrast serif**, and headings are weight
-  400–500, never 700. Instrument legends are not bold.
-- **No gradient washes.** The only permitted gradients are light gradients —
-  a 4% white-to-black ramp across a control's face, a sheen along a panel's top
-  edge. A gradient used as decoration is a tell.
-- **Never a large empty dark surface.** Density is the product. An empty panel
-  in this direction gets a hairline and a next action, not a void.
+## Brief read
 
-## References, and what was taken from each
+> Reading this as: **dense single-operator product UI** for one technical owner,
+> with a **restrained instrument language**, leaning toward **Tailwind v4 +
+> shadcn + Radix + Geist**, with a **cool neutral base and one desaturated
+> cyan accent**.
 
-**gamut.so** (inspected live, 2026-10-11). Its actual design language
-contradicts the "metallic" description in the brief: it is light-mode-first
-(`#fcfcfb`), softly rounded (11–32px radii), shadowless, and built from
-hairline-bordered white cards. It is friendly, well-lit SaaS — not a precision
-instrument. What was worth taking, and was taken:
+Audience picks the aesthetic. The audience here is one person, mid-task, at a
+desk, scanning a table for the third time today. That is a cockpit reading, not
+a magazine reading, and it is why the skill's own exclusion of dashboards
+applies and why the marketing-page half of the skill is inert here.
 
-- **Geist Mono for machine facts.** Timestamps, tool names, file paths, IDs,
-  and keyboard hints are set in mono against a quiet neutral ground. This is
-  the site's single strongest motif and it is the one that belongs here; it is
-  Axiom's `.readout`.
-- **One accent, used once.** Every CTA on that site is the same flat
-  `#0099ff`; nothing else is coloured except semantic status. Axiom keeps the
-  discipline and uses a darker, less saturated cyan at hue 215.
-- **Status as a word plus a colour.** Their audit log never relies on hue.
-- **Discipline about what *not* to do:** no ALL-CAPS eyebrows, no `A · B · C`
-  meta strings, no `→` glued to buttons, no grain, no gradient borders — their
-  stylesheet contains none of these, and neither does ours.
+Reach for this read before any UI work and state it if the read has shifted.
 
-**Explicitly not taken from gamut.so:** its roundness (12–32px), its
-soft-shadowless flatness, its warm near-white ground (`#fcfcfb` is the warm
-tell), and its marketing-page density. Those are what the brief's "sharp
-metallic" overrides.
+### The three dials
 
-**The operator's intent** supplies the rest: sharp radii, the lit edge, the
-engraving, and mono readouts as a system rather than a garnish.
+| Dial | Value | Why |
+|---|---|---|
+| `DESIGN_VARIANCE` | **4** | Offset, not chaotic. Structured grids and tables want predictability; asymmetry is spent on section headers and the shell, never on the data. |
+| `MOTION_INTENSITY` | **4** | Fluid CSS only — transition, transform, opacity. No scroll choreography, no pinned sections, no magnetic physics. Motion exists to answer a user action. |
+| `VISUAL_DENSITY` | **8** | Cockpit. Tight padding, hairlines over card boxes, `font-mono` for every number. This is the dial that makes the product feel like itself. |
 
-## The recorded taste profile
+Overrides happen conversationally, per the skill's §1. Do not edit this table to
+change a single screen's feel — raise it in the brief instead.
 
-`~/.gstack/projects/axiom/taste-profile.json` is authoritative when it exists —
-it records the owner's *demonstrated* preferences rather than an asserted
-stance. Read it before proposing visual variants; update it by running
-`design-shotgun`, never by editing the JSON. **No profile exists for this
-project yet**, so everything below is the standing stance and every open item
-is genuinely open.
+## Palette
 
-### Landing-page design packs are out of scope
+Adopted from `minimalist-ui`, with the one deviation §11.C of the skill requires:
+extract the existing brand colour before applying the skill's own palette rules.
+Axiom's accent is already a considered single, desaturated, non-AI-purple cyan,
+so it is carried forward rather than replaced.
 
-Several popular "taste" skill packs (`design-taste-frontend`, `gpt-taste`,
-`high-end-visual-design`) state their own scope as landing pages, portfolios,
-and redesigns — one of them explicitly excludes "dashboards, data tables,
-multi-step product UI." Axiom is entirely that excluded category. Those packs
-drive GSAP scroll-triggered pinning, massive section spacing, and AIDA page
-structure; Axiom has no scroll narrative, it has tables that must stay
-scannable at 13px. Do not install them here. What was worth keeping from that
-family is folded in above: monochrome, typographic contrast, flat hierarchy,
-muted accents, no gradients, no heavy shadows.
+- **Ground:** the skill's warm monochrome family. Warm bone/off-white
+  (`#F7F6F3`, `#FBFBFA`) for reading and marketing-adjacent surfaces; the cooler
+  near-white stays for high-density operational screens where a warm ground
+  fights the tabular greys.
+- **Ink:** never `#000000`. Off-black/charcoal (`#111111`, `#2F3437`), body
+  line-height 1.6.
+- **One accent, locked for the whole surface.** Axiom's cyan/teal. Saturation
+  under 80%, used on primary actions, the focus ring, and the active-rail rule —
+  nothing else. The skill's §4.2 Color Consistency Lock is absolute: a
+  teal-accented screen does not sprout a blue CTA in one panel.
+- **Semantic pastels** for status, from the skill's set: pale red `#FDEBEC` /
+  `#9F2F2D`, pale blue `#E1F3FE` / `#1F6C9F`, pale green `#EDF3EC` / `#346538`,
+  pale yellow `#FBF3DB` / `#956400`. Always paired with a word, never carried by
+  hue alone.
+- **Banned outright:** the AI-purple/lila glow, gradient text, neon outer glows,
+  more than one accent, and the beige+brass+espresso family the skill names as
+  the premium-consumer default.
 
-## Tokens
+**Dark mode is mandatory and is designed in the same pass**, not retrofitted.
+Dual-mode by default (§6.C); respect `prefers-color-scheme` and keep the manual
+toggle. Hierarchy parity across modes, no pure `#000` or `#fff`, contrast held at
+AA for body and AAA for hero copy. Test in both modes before calling anything
+done.
 
-Single source of truth: a `:root` block plus a `.dark` block in
-`src/app/globals.css`, surfaced to utilities through Tailwind v4's `@theme
-inline`. Semantic names only (`--background`, `--muted-foreground`, `--border`),
-defined in **oklch** so lightness can be tuned without shifting hue. Components
-never carry raw hex, and never a Tailwind palette class like `bg-slate-800`.
+## Type
 
-```css
-:root {
-  --radius: 0.375rem;                    /* 6px — the ladder's midpoint */
-  --background: oklch(0.984 0.002 252);  /* cool near-white, not paper */
-  --foreground: oklch(0.195 0.008 255);  /* near-black, cool */
-  --muted-foreground: oklch(0.492 0.008 255);
-  --border: oklch(0.898 0.004 252);
-  --primary: oklch(0.5 0.09 215);        /* instrument cyan/teal */
-}
-.dark {
-  --background: oklch(0.185 0.005 255);  /* the machined default */
-  --card: oklch(0.215 0.005 255);
-  --edge-light: oklch(1 0 0 / 7%);       /* sheen is far weaker in dark */
-}
-```
+- **Sans for everything display.** Geist (in place) + Geist Mono. Geist is the
+  skill's first choice and the correct register; Inter is discouraged and is
+  not used. **No serif** — the skill bans it as a default and nothing in this
+  brief names one. This closes the pairing question the earlier version of this
+  file left open.
+- Body 13px, metadata 11px, page title 15px, section heading 13px, stat readout
+  20px. Line length under 80 characters; line-height ≥1.5 for prose. Headings
+  tighten tracking; body text keeps normal tracking.
+- Hierarchy comes from **weight and colour, not raw scale** (§9.B). No oversized
+  H1s.
+- **Every number the owner reads as instrument output is `.readout`** — mono +
+  tabular figures, via `<Readout>` / `<Stat>` in `src/components/readout.tsx`.
+  Never for prose. A live value must not reflow as it changes.
+- Italic in display type needs `leading-[1.1]` minimum where a descender is
+  present (`y g j p q`); `leading-none` clips it.
 
-### The edge — the one signature move
+## The edge, engraving, and readout
 
-`--edge-light` and `--edge-shade` are 1px inner lines: a sheen along a panel's
-top inside edge, a hairline shade along its bottom inside edge. That pair is
-what makes a rectangle read as a milled plate catching light from above rather
-than as a filled box, and it is the difference between this direction and a
-generic dark dashboard.
+Three shared classes in `src/app/globals.css` carry the surface vocabulary.
+They are the only place a border recipe is written.
 
-It is applied through **one class**, `.panel` in `globals.css`:
+- `.panel` — border + background + a 1px sheen along the top inside edge and a
+  hairline shade along the bottom, plus one soft shadow. A card, an empty state,
+  a stat tile, a settings row, and a table frame are all `.panel` at different
+  sizes. Depth comes from the edge, never from an accent wash.
+- `.panel-empty` — the same edge, dashed and quieter, for a surface holding
+  nothing yet. An invitation, not a failed load.
+- `.engraved` — a 1px line every 3px at ~4%, on **shell chrome only**. On a
+  reading surface it is noise under the text.
+- `.readout` — mono + tabular figures.
 
-- `.panel` — border + card background + edge pair + one soft shadow.
-- `.panel-empty` — the same edge, dashed and half-opaque, for a surface that
-  holds nothing yet. Same object, waiting for its part.
+Shadows follow the skill: tinted to the background hue, never pure-black at low
+opacity, and used on genuinely floating overlays only. A shadow per card makes a
+grid of cards look like a contact sheet.
 
-A card, an empty state, a stat readout, a settings row, an outlined button, and
-a table frame are all `.panel` at different sizes. Do not write a local border
-recipe; if a surface needs one, it is a variant of `.panel`.
+**Shape consistency lock (§4.4)** — one documented scale, applied everywhere:
+3px inline / 4.5px controls / 6px cards / 9px overlays. Never a pill except a
+genuine status dot. This is the "documented rule" that lets a mixed ladder stand.
 
-`.engraved` is the second shared class: a 1px line every 3px at ~4%, applied to
-**shell chrome only** (rail, header, mobile bar). On a reading surface it is
-noise under the text.
+## Icons, motion, imagery
 
-`.readout` is the third: mono + tabular figures, via `<Readout>` and `<Stat>` in
-`src/components/readout.tsx`. Use it for every number the owner reads as
-instrument output — counts, timers, spend, run ids, state labels. Never for
-prose. Live values must not reflow.
-
-### Scale
-
-- **Radius ladder:** 3px (`sm`, inline) / 4.5px (`md`, controls) / 6px (`lg`,
-  cards) / 9px (`xl`, major surfaces and overlays). Never a pill except a
-  genuine status dot. The upstream registry defaults to 8px controls and
-  `rounded-4xl` badges; both were cut.
-- **Spacing:** 4px base; the working set is 4/8/12/16/24/32. Density comes from
-  rhythm, not from shrinking targets. Target size stays ≥24px.
-- **Type:** body **13px**, metadata **11px**, page title **15px**, section
-  heading **13px**, stat readout **20px** (or `text-3xl` for a lone timer).
-  Headings carry `--tracking-tight` (-0.011em); body text does not. Line
-  length under 80 characters; line-height ≥1.5 for body prose.
-- **Colour is never the only signal.** Risk class, run state, and sync health
-  each carry a word or a glyph as well as a hue.
-- **Elevation:** `.panel`'s edge establishes structure; `--shadow` is used on
-  genuinely floating overlays only. A shadow per card makes a grid of cards
-  look like a contact sheet.
-
-**Open: the typeface.** Geist is in place and is the right *register* — a
-low-contrast grotesque with flat terminals reads correctly as instrument
-labelling — but it is also the templated answer, and the pairing question
-(does the display face need to differ from the mono?) is unresolved. Choose
-deliberately, verify the licence, and record the pick in the taste profile.
-Until then, do not invent a pairing.
-
-## shadcn rules
-
-- Add with the CLI (`pnpm dlx shadcn@latest add x`) so `components.json` stays
-  honest; `radix-nova` style, neutral base. Restyle via tokens and the three
-  shared classes — when a component genuinely needs new behaviour, fork it and
-  delete what you did not need.
-- Extend a shadcn primitive before writing a div. `Dialog`, `Popover`, `Sheet`,
-  `Tooltip`, `Command`, `Table`, `Select`, `Tabs`, `ScrollArea`, `HoverCard`,
-  `Kbd` already exist.
-- Compose with `cva` variants and `cn()`; no boolean-prop trains, no
-  `style={{}}` for anything a token covers, no `!important`.
-- Every interactive element ships all states: default, hover, focus-visible,
-  active, disabled, loading, and empty/error where it holds data. A missing
-  disabled state is a bug.
-- Build the Axiom-specific vocabulary from spec §Components (`AppShell`,
-  `NavRail`, `DataTable`, `KanbanBoard`, `RunCard`, `ReviewCard`, `Inspector`,
-  `QuickCapture`, `SourceSpan`) as thin wrappers over the primitives — the
-  spec's list is the component contract.
+- **Icons:** migrate to `@phosphor-icons/react` or `@tabler/icons-react`. Lucide
+  is the skill's named default choice and is discouraged (§3.C); `lucide-react`
+  is currently in `package.json`, so this is an open migration, not a rule
+  already met. One family per tree, one global `strokeWidth`, never a hand-rolled
+  icon path.
+- **Motion:** the `motion` package (`motion/react`) is the skill's default at
+  this dial, and is **not yet installed**. Until it is, `MOTION_INTENSITY: 4` is
+  satisfied by CSS transitions alone, which need no dependency. Every animation
+  must answer "what does this communicate?" in one sentence (§5). No fade-and-
+  slide-up entrances per section, no hover-scale on every card, no decorative
+  loop. Animate `transform` and `opacity` only. `useState` never tracks a
+  continuous value (§3.B).
+- **Imagery:** for the rare surface that needs one, use a generated or real
+  asset. **Div-based fake screenshots are banned** (§4.8, §9.E) — that is the
+  single most-detected tell. A preview shows a real component, not rectangles.
+  Placeholders, when unavoidable, are `picsum.photos/seed/{descriptive}/{w}/{h}`.
+- **Grain/noise**, if used at all, lives on a fixed `pointer-events-none`
+  overlay and never on a scrolling container (§6.E).
 
 ## Layout
 
@@ -199,63 +161,119 @@ Until then, do not invent a pairing.
   Briefing, Inbox, Work, Alfred, More.
 - **The inspector is the rule, not the exception.** Details, backlinks,
   activity, and Alfred context open beside the list so the owner never loses
-  their place. Full-page navigation is for changing what you are working on,
-  not for looking something up.
-- Left-aligned text, generous gutters, one column of attention. A list is a
-  list — not a stack of cards.
+  their place. Full-page navigation changes what you are working on; it is not
+  for looking something up.
+- CSS Grid over flex percentage math. Container max-width around 1400px.
+  `min-h-[100dvh]`, never `h-screen`. Breakpoints at 640/768/1024/1280/1536.
+- **Every multi-column layout declares its `< 768px` collapse in the same
+  component** (§4.7). No "Tailwind handles it".
 - Whitespace separates groups; it does not pad a sparse screen into looking
-  finished. A dense screen is fine — a cramped one is not.
-- Headings act as **engraved legends**, not as display type: small, medium
-  weight, tight-tracked, sitting directly above the thing they label. Do not
-  scale a heading up to signal importance; use position and the rule.
+  finished. Dense is fine; cramped is not. Target size ≥24px.
+- `z-index` comes from a documented scale, never an arbitrary `z-50` (§6.F).
 
-## Motion
+## States
 
-Direct motion 120–200ms, `ease-out`, answering a user action: opening,
-expanding, confirming, reordering. **No** fade-and-slide-up entrances per
-section, no hover-scale on every card, no decorative animation. The one
-non-user-triggered motion is the live-run indicator (`.pulse-dot`), and it is
-reserved for something genuinely running.
+Every interactive element and every data surface ships the full cycle, designed
+rather than defaulted: **loading** (a skeleton matching the final layout's
+shape, not a spinner), **empty** (composed, and it says how to populate),
+**partial, stale, error, offline, permission-denied, success**. Plus default,
+hover, focus-visible, active, disabled, loading.
 
-Honour `prefers-reduced-motion` everywhere — `.pulse-dot` stops rather than
-hides — always paired with the product settings for reduced motion and disabled
-celebration. Timers and run streaming use restrained `aria-live` regions, never
-a stream of announcements.
-
-## Accessibility — quality floor, not a phase
-
-WCAG 2.2 AA. Complete keyboard operation (a keyboard alternative exists for
-every drag interaction, and rank changes are reachable from the inspector).
-Visible focus on every focusable element. Stable focus order; focus returns to
-the trigger when an overlay closes. Status never depends on color alone. Charts
-and rewards carry text equivalents. Target size ≥24px. Every feature defines
-loading, empty, partial, stale, error, offline, permission-denied, and success
-states — and each one is designed, not defaulted.
+- Press feedback on `:active` — `scale-[0.98]` or `translate-y-[1px]`.
+- **Contrast checks are mandatory before ship** (§4.5): button label against its
+  own background, placeholder/helper/error text against the section, focus rings
+  against everything. AA minimum. A missing disabled state is a bug; a white
+  label on a white CTA is a pre-flight failure.
+- Labels sit **above** inputs, error text below. Never placeholder-as-label.
+- Status never depends on colour alone — a word or glyph always accompanies the
+  hue, and decorative status dots are not used (§9.F).
 
 ## Copy
 
-Interface text is part of the design, held to the same standard as spacing.
-Rules live in [product.md](product.md#voice) — active voice, sentence case, one
-name per thing for the whole flow, errors that state what happened and how to
-fix it, empty screens that invite action. Avoid the meta tells while writing UI
-copy: no ALL-CAPS eyebrow labels, no `A · B · C` metadata strings, no
-`word — fragment` labels, no `→` glued to every button. A figure with no source
-is an em dash, never a fabricated `0`.
+The voice rules live in [product.md](product.md#voice) and are unchanged:
+active voice, sentence case, one name per thing for the whole flow, errors that
+state what happened and how to fix it, empty screens that invite action. The
+skill adds the anti-slop layer on top:
+
+- **The em dash is banned in every user-visible string** (§9.G — the skill's
+  single most-violated tell, with no natural-language allowance): headings,
+  labels, body copy, quotes, captions, button text, alt text. Also banned as a
+  separator in en-dash form. Hyphen for compounds and ranges. This overrides the earlier
+  "a figure with no source is an em dash" rule: **a figure with no source is a
+  hairline placeholder or the row is omitted, never a typographic dash and never
+  a fabricated `0`.**
+- No `Elevate`, `Seamless`, `Unleash`, `Next-Gen`, `Revolutionize`, `Delve`.
+  Concrete verbs only.
+- No `John Doe`, `Acme Corp`, `Lorem Ipsum`. Realistic, contextual content.
+- No fake-precise numbers. `47.2%` not `50%`; mock data is labelled as mock.
+- **Eyebrows are rationed to one per three sections** (§9.F) — not banned as
+  before, but not on every header. No section-number labels (`01 / INDEX`), no
+  version stamps in a hero, no locale/time/weather strips, no scroll cues, no
+  decorative dotted metadata strips, and the middle dot (`·`) is limited to one
+  per line.
+- Re-read every visible string before calling it done, and rewrite anything that
+  reads as grammatically broken or as an LLM sounding thoughtful (§4.9).
+
+## Accessibility — quality floor, not a phase
+
+WCAG 2.2 AA. Complete keyboard operation, with a keyboard alternative for every
+drag interaction (rank changes are reachable from the inspector). Visible focus
+on every focusable element, from the `:focus-visible` rule in `globals.css` and
+not from a component-local override. Stable focus order, and focus returns to
+the trigger when an overlay closes. Charts and rewards carry text equivalents.
+**Any motion above `MOTION_INTENSITY: 3` honours `prefers-reduced-motion`** —
+`.pulse-dot` stops rather than hides, and infinite loops, parallax, and magnetic
+physics collapse to static. Live regions for timers and run streaming are
+restrained, never a stream of announcements. Targets ≥24px.
+
+## Tokens
+
+Single source of truth: a `:root` block plus a `.dark` block in
+`src/app/globals.css`, surfaced to utilities through Tailwind v4's
+`@theme inline`. Semantic names only (`--background`, `--muted-foreground`,
+`--border`), defined in **oklch** so lightness moves without shifting hue.
+Components never carry raw hex and never a Tailwind palette class like
+`bg-slate-800`.
+
+One naming collision to know: shadcn's `--accent` is a subtle *hover surface*,
+not a brand colour. Axiom's cyan lives on `--primary` and `--ring`; re-pointing
+`--accent` at the accent colour would flood every hover state in the product.
+
+New shadcn components are added with the CLI (`pnpm dlx shadcn@latest add x`) so
+`components.json` stays honest, then restyled through tokens and the three
+shared classes. **Never ship shadcn in default state** (§9.E). Extend a primitive
+before writing a div; `Dialog`, `Popover`, `Sheet`, `Tooltip`, `Command`,
+`Table`, `Select`, `Tabs`, `ScrollArea`, `HoverCard`, and `Kbd` already exist.
+Compose with `cva` variants and `cn()` — no boolean-prop trains, no `style={{}}`
+for anything a token covers, no `!important`.
 
 ## Working method
 
-Design in two passes as the frontend-design skill prescribes: first a compact
-plan (palette hexes, typefaces and roles, layout concept with an ASCII
-wireframe, principles), then check that plan for anything you would have
-produced for any similar product — revise that part *before* writing code.
-Then build, screenshot, and critique: before finishing, look in the mirror and
-remove one accessory.
-
-Screenshots are the review medium. `design-review` and `design-shotgun` are the
-skills for a visual pass and for generating variants; run one before a design is
-declared done.
+1. **State the brief read** in one line before generating.
+2. **Set the dials** from the table above, or from the brief if it overrides.
+3. **Audit before touching an existing surface** — brand tokens, IA, content
+   blocks, patterns to preserve, patterns to retire, current dial reading
+   (`redesign-existing-projects`, and the skill's §11.B/§11.C). Preserve IA,
+   copy voice, and existing accessibility wins; never silently change routes,
+   nav labels, or form field names.
+4. **Build, then look at it.** Screenshots are the review medium.
+   `design-review` and `design-shotgun` are the skills for a visual pass and for
+   variants; run one before declaring a design done. `~/.gstack/projects/axiom/taste-profile.json`
+   records the owner's demonstrated preferences when it exists and is
+   authoritative; update it only by running `design-shotgun`, never by editing
+   the JSON.
+5. **Run the skill's §14 pre-flight check**, then remove one accessory before
+   finishing.
 
 **Watch for the stale-CSS trap.** Turbopack does not always reload
-`globals.css` in a long-running dev server, and the symptom is a page that
-renders the *old* tokens with no error anywhere. If a token change appears to
-have no effect, restart the dev server before debugging the CSS.
+`globals.css` in a long-running dev server, and the symptom is a page rendering
+the *old* tokens with no error anywhere. If a token change appears to have no
+effect, restart the dev server before debugging the CSS.
+
+## Open items
+
+- **Icon migration:** `lucide-react` → Phosphor or Tabler, one family per tree.
+- **Motion dependency:** install `motion` only when a real animation need
+  arrives, not in advance.
+- **Warm-ground scope:** decide which operational screens take the warm
+  monochrome ground and which keep the cooler near-white. Currently unresolved.

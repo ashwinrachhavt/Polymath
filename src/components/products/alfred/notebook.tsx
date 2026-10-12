@@ -20,7 +20,11 @@ function RichNote({ record }: { record: Artifact }) {
   const versions = state.artifactVersions.filter((item) => item.artifactId === record.id).sort((a, b) => b.version - a.version);
   function save() {
     if (!title.trim()) return;
-    const embeddedLinks = [...body.matchAll(/\/apps\/alfred\/[a-z-]+\?id=([a-zA-Z0-9-]+)/g)].map((match) => match[1]).filter((id) => id !== record.id && state.artifacts.some((item) => item.id === id));
+    const idLinks = [...body.matchAll(/\/apps\/alfred\/[a-z-]+\?id=([a-zA-Z0-9-]+)/g)].map((match) => match[1]).filter((id) => id !== record.id && state.artifacts.some((item) => item.id === id));
+    // [[Title]] resolves against this workspace. A title matching nothing is
+    // left in the text as the owner wrote it and simply creates no backlink.
+    const titleLinks = [...body.matchAll(/\[\[([^\]\n]+)\]\]/g)].map((match) => state.artifacts.find((item) => item.title.toLowerCase() === match[1].trim().toLowerCase())?.id).filter((id): id is string => Boolean(id) && id !== record.id);
+    const embeddedLinks = [...new Set([...idLinks, ...titleLinks])];
     updateArtifact(record.id, { title: title.trim(), body, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))], links: [...new Set([...record.links, ...embeddedLinks])] });
     notify("Note saved with a canonical browser-only checkpoint.");
   }
