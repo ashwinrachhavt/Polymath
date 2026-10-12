@@ -1,38 +1,47 @@
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { memberships, workspaces } from "@/domains/identity/schema";
 
 /*
  * The auth invariants agents/engineering.md says run against real Postgres.
  * Skipped unless TEST_DATABASE_URL points at a database with the migrations
- * applied. The resolver is imported lazily and only after DATABASE_URL is
- * pointed at the same database: src/lib/db.ts reads DATABASE_URL at module
- * load, so a static import would resolve against the wrong database (or throw
- * without one) and fail this file instead of skipping it.
+ * applied.
+ *
+ * `@/lib/db` (the Neon HTTP driver resolve.ts reads through) opens fetch
+ * connections a localhost test database cannot serve, so it is mocked to the
+ * same postgres-js client the assertions use — the policy suite's transport
+ * swap. The swap must happen before the resolver is lazy-imported.
  *
  * This file inserts fresh unique clerk ids and truncates nothing, so pointing
  * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no
  * equality guard against DATABASE_URL is needed here.
  */
 
-const url = process.env.TEST_DATABASE_URL;
-const suite = url ? describe : describe.skip;
-let client: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof drizzle>;
+const handle = (function () {
+  const url = process.env.TEST_DATABASE_URL;
+  if (!url) return null;
+  // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
+  // before anything lazy-imports that module.
+  process.env.DATABASE_URL = url;
+  const client = postgres(url, { max: 1 });
+  return { url, client, db: drizzle(client) };
+})();
+const suite = handle ? describe : describe.skip;
+let db = handle?.db;
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+
 let resolveAuthContext: typeof import("@/domains/identity/resolve").resolveAuthContext;
 
 beforeAll(async () => {
-  if (!url) return;
-  // The resolver reads DATABASE_URL from src/lib/db.ts; the assertions below use
-  // their own client at `url`. Point both at the same database before importing.
-  process.env.DATABASE_URL = url;
-  client = postgres(url, { max: 1 });
-  db = drizzle(client);
+  if (!handle) return;
+  holder.db = handle.db;
+  db = handle.db;
   ({ resolveAuthContext } = await import("@/domains/identity/resolve"));
 });
-afterAll(async () => { await client?.end(); });
+afterAll(async () => { await handle?.client.end(); });
 
 suite("auth resolution", () => {
   it("auto-provisions workspace + owner membership on first sign-in", async () => {
