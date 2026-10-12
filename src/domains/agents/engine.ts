@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { redactText } from "./event-bridge";
 import { agentProfiles, agentRuns } from "./schema";
 
 /*
@@ -94,11 +95,13 @@ async function scopeCheck(runId: string, auth: AuthContext) {
   return run;
 }
 
-/** Closes a run that will never do work. The error is redacted by the caller. */
+/** Closes a run that will never do work. The error text is redacted on write. */
 async function failRun(runId: string, error: string, at: Date): Promise<void> {
+  // A driver/provider failure message is where a credential leaks into a
+  // column; the schema says redacted detail only, never a raw provider payload.
   await db
     .update(agentRuns)
-    .set({ state: "failed", error, endedAt: at, updatedAt: at })
+    .set({ state: "failed", error: redactText(error), endedAt: at, updatedAt: at })
     .where(eq(agentRuns.id, runId));
 }
 
