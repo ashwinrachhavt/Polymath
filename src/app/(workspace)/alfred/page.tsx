@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Readout } from "@/components/readout";
 import { connection } from "next/server";
 import { getAuthContext } from "@/lib/auth";
-import { listRecentRuns } from "@/domains/agents/queries";
+import { listDocumentSearchResults, listRecentRuns } from "@/domains/agents/queries";
+import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { StartRunForm } from "./start-run-form";
 
@@ -43,6 +44,7 @@ export default async function AlfredPage() {
   }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
 
   return (
@@ -90,6 +92,7 @@ export default async function AlfredPage() {
                     {" · "}
                     {run.summary ?? run.error ?? "in progress"}
                   </p>
+                  <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
                 </li>
               ))}
             </ul>
@@ -97,5 +100,28 @@ export default async function AlfredPage() {
         </Section>
       </div>
     </>
+  );
+}
+
+/* Sources Alfred read for a run: the passages its documents.search calls returned. */
+function Citations({ citations }: { citations: ReturnType<typeof collectCitations> }) {
+  if (citations.length === 0) return null;
+  return (
+    <details className="text-xs">
+      <summary className="text-muted-foreground cursor-pointer">
+        {citations.length} {citations.length === 1 ? "source" : "sources"} read
+      </summary>
+      <ol className="mt-1 flex flex-col gap-1.5">
+        {citations.map((c) => (
+          <li key={`${c.documentId}:${c.span.start}`}>
+            <span className="text-[13px]">{c.title}</span>
+            <span className="text-muted-foreground">
+              {c.span.page ? ` · page ${c.span.page}` : ""} · chars {c.span.start}-{c.span.end}
+            </span>
+            <p className="text-muted-foreground line-clamp-2">{c.text}</p>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
