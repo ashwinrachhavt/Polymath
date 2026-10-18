@@ -9,6 +9,7 @@ import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { listThreads, isFinished } from "@/domains/agents/thread";
 import { RunControls } from "./run-controls";
+import { Markdown } from "@/components/markdown";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -104,7 +105,7 @@ export default async function AlfredPage() {
                         <span className="text-muted-foreground text-xs">
                           {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Alfred" : "Run"}:{" "}
                         </span>
-                        {entry.text}
+                        {entry.kind === "assistant" ? <Markdown text={entry.text} /> : entry.text}
                       </li>
                     ))}
                   </ul>
