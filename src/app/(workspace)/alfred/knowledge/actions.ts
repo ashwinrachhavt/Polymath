@@ -6,6 +6,7 @@ import { z } from "zod";
 import { acceptFieldProposal, deferFieldProposal, partyAttribute, rejectFieldProposal } from "@/domains/knowledge/fields";
 import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/knowledge/parties";
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
+import { captureUrl } from "@/domains/knowledge/capture-url";
 import { applyTitle } from "@/domains/knowledge/naming";
 import { documentParties, fieldProposals } from "@/domains/knowledge/schema";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
@@ -228,4 +229,24 @@ export async function applyTitleAction(
     }
     throw cause;
   }
+}
+
+export type CaptureUrlActionResult = { ok: true; message: string } | { ok: false; message: string };
+
+/*
+ * Paste a URL, get the same document an upload would make. Failures come back
+ * as a message rather than a throw: a site that is down is an ordinary outcome,
+ * not an application error. The document stays in the inbox as "Could not
+ * read" with the reason on its extraction row; pasting the URL again retries.
+ */
+export async function captureUrlAction(url: string): Promise<CaptureUrlActionResult> {
+  const auth = await authorize();
+  const result = await captureUrl(auth, { url: z.string().max(2000).parse(url) });
+  revalidate();
+  if (!result.ok) return { ok: false, message: result.error };
+  if (!result.extraction.ok) return { ok: false, message: result.extraction.error };
+  return {
+    ok: true,
+    message: result.created ? "Captured. It is in the inbox." : "That address is already in the inbox.",
+  };
 }

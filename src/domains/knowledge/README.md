@@ -20,6 +20,18 @@ may write the result, so a stale process cannot overwrite a newer attempt. Every
 claim writes a `document_extraction_attempts` row; a retry never deletes the
 earlier error. Extractor revisions remain unfinished.
 
+URL capture (`capture-url.ts`) is the same intake as an upload, not a second
+one: the document is inserted first with `source_url` (one per workspace, by a
+partial unique index), the bytes are fetched server-side by `src/lib/safe-fetch.ts`
+(http/https only; loopback, private, link-local and metadata addresses refused at
+connect time and on every redirect hop; 4 MB and 10 s limits), then stored by
+`intake.ts`, the path `POST /api/v1/files` also uses, and run through the existing
+extract and proposal pass. A fetch that fails leaves the document without a file
+or type and records the reason on a failed extraction row (content hash
+`unfetched:<sha256(url)>`), so it reads "Could not read", never Filed. Pasting the
+URL again retries on the same document. Only the v1 file allowlist (PDF, PNG,
+JPEG) is captured; web pages are not.
+
 The proposal pass (fields, parties, obligations) is a separate retry boundary
 on the extraction row (`proposal_status`, `proposer`, `proposal_error`): text
 that succeeded is never re-read, but a later extract call reruns a failed or

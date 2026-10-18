@@ -25,6 +25,7 @@ import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions }
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
+import { CaptureUrlForm } from "./capture-url-form";
 import { UploadButton } from "./upload-button";
 
 export const metadata = { title: "Knowledge · Axiom" };
@@ -128,6 +129,7 @@ export default async function KnowledgePage({
         actions={
           <>
             <UploadButton />
+            <CaptureUrlForm />
             <Button variant="outline" disabled>
               Import
             </Button>
