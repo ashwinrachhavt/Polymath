@@ -230,11 +230,54 @@ export const documentExtractions = pgTable(
     proposalError: text("proposal_error"),
     /** When the current proposal claim was taken; a stale pending claim is reclaimable. */
     proposalClaimedAt: timestamp("proposal_claimed_at", { withTimezone: true }),
+    /*
+     * The extraction lease. A caller claims a row by stamping `claimedAt` and
+     * its own `claimedBy` token; only that token may write the result, so a
+     * process that outlives its lease cannot overwrite a newer attempt. A
+     * pending row whose lease is older than EXTRACTION_LEASE_SECONDS belongs
+     * to a dead process and may be reclaimed. Null `claimedAt` is a row from
+     * before leases existed; its `createdAt` stands in.
+     */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    claimedBy: text("claimed_by"),
     ...recorded,
   },
   (t) => [
     uniqueIndex("document_extractions_content_key").on(t.documentId, t.contentHash),
     index("document_extractions_pending_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * Append-only attempt history for one extraction row. The row above holds the
+ * current state; this holds every try, so a retry never erases the error that
+ * made it necessary. `outcome` is null while the attempt holds the lease.
+ */
+export const extractionAttemptOutcome = pgEnum("extraction_attempt_outcome", [
+  "succeeded",
+  "failed",
+  "abandoned",
+]);
+
+export const documentExtractionAttempts = pgTable(
+  "document_extraction_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    /** 1 for the first claim of the extraction, then one more per retry. */
+    attempt: integer("attempt").notNull(),
+    claimedBy: text("claimed_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    outcome: extractionAttemptOutcome("outcome"),
+    error: text("error"),
+  },
+  (t) => [
+    uniqueIndex("document_extraction_attempts_number_key").on(t.extractionId, t.attempt),
+    index("document_extraction_attempts_workspace_idx").on(t.workspaceId, t.extractionId),
   ],
 );
 

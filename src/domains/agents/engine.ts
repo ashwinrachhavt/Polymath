@@ -212,6 +212,12 @@ export function createEngine(
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
       await driver.signal(run.id, signal);
+      // The follow-up is real work again: a parked run goes back to running.
+      // Conditional, so a close that landed meanwhile is never rewritten.
+      await db
+        .update(agentRuns)
+        .set({ state: "running", updatedAt: now() })
+        .where(and(eq(agentRuns.id, run.id), eq(agentRuns.state, "waiting_input")));
     },
 
     async resume(runId, auth) {
