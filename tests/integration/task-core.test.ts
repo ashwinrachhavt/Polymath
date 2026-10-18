@@ -287,3 +287,64 @@ suite("rank moves", () => {
     await expect(db.update(tasks).set({ rank: "Z9" }).where(eq(tasks.id, id))).rejects.toThrow();
   });
 });
+
+suite("work list reads and rank assignment", () => {
+  it("new tasks go to the end of the list, so a move between neighbours always has room", async () => {
+    const { a } = await setup("end");
+    const ids: string[] = [];
+    for (const t of ["first", "second", "third"]) ids.push((await work.createOwnerTask(a, { title: t })).id);
+    const rows = await queries.listWorkRows(a, "open");
+    expect(rows.map((r) => r.id)).toEqual(ids);
+    expect(new Set(rows.map((r) => r.rank)).size).toBe(3);
+  });
+
+  it("concurrent creates never tie on rank", async () => {
+    const { a } = await setup("end-race");
+    await Promise.all(Array.from({ length: 8 }, (_, i) => work.createOwnerTask(a, { title: `t${i}` })));
+    const rows = await queries.listWorkRows(a, "open");
+    expect(new Set(rows.map((r) => r.rank)).size).toBe(8);
+  });
+
+  it("createOwnerTask with one key creates one task", async () => {
+    const { a } = await setup("create-idem");
+    const k = key();
+    const one = await work.createOwnerTask(a, { title: "Once", idempotencyKey: k });
+    const two = await work.createOwnerTask(a, { title: "Once", idempotencyKey: k });
+    expect(two).toEqual(one);
+    expect(await queries.listWorkRows(a, "open")).toHaveLength(1);
+  });
+
+  it("a move between tasks that share a legacy rank spreads them first instead of failing", async () => {
+    const { a, workspaceId } = await setup("tie");
+    const made: string[] = [];
+    for (const t of ["x", "y", "z"]) {
+      const [row] = await db.insert(tasks).values({ workspaceId, title: t, rank: "m", createdBy: a.userId, updatedBy: a.userId }).returning({ id: tasks.id });
+      made.push(row.id);
+    }
+    const order = (await queries.listWorkRows(a, "open")).map((r) => r.id);
+    const [first, second, third] = order;
+    // move `third` between first and second, which tie at "m"
+    await cmd.moveTask(a, { taskId: third, expectedVersion: 1, afterTaskId: first, beforeTaskId: second, idempotencyKey: key() });
+    expect((await queries.listWorkRows(a, "open")).map((r) => r.id)).toEqual([first, third, second]);
+  });
+
+  it("the today view is Ready and In progress only; done lists finished work; blocked and subtask counts are exact", async () => {
+    const { a } = await setup("views");
+    const { id: ready } = await work.createOwnerTask(a, { title: "Ready one" });
+    const { id: inbox } = await work.createOwnerTask(a, { title: "Inbox one" });
+    const { id: finished } = await work.createOwnerTask(a, { title: "Finished one" });
+    await cmd.updateTask(a, { taskId: ready, expectedVersion: 1, idempotencyKey: key(), patch: { status: "ready" } });
+    await work.completeTask(a, { taskId: finished });
+    const sub = await cmd.createSubtask(a, { parentTaskId: ready, title: "Part", idempotencyKey: key() });
+    await cmd.createSubtask(a, { parentTaskId: ready, title: "Part two", idempotencyKey: key() });
+    await work.completeTask(a, { taskId: sub.id });
+    await cmd.addDependency(a, { taskId: inbox, otherTaskId: ready, kind: "blocked_by", idempotencyKey: key() });
+    const today = await queries.listWorkRows(a, "today");
+    expect(today.map((r) => r.id)).toEqual([ready]);
+    expect(today[0]).toMatchObject({ subtaskCount: 2, subtasksDone: 1, blockedBy: 0 });
+    const open = await queries.listWorkRows(a, "open");
+    expect(open.map((r) => r.id).sort()).toEqual([ready, inbox].sort());
+    expect(open.find((r) => r.id === inbox)?.blockedBy).toBe(1);
+    expect((await queries.listWorkRows(a, "done")).map((r) => r.id)).toEqual([finished]);
+  });
+});

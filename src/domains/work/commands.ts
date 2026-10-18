@@ -1,11 +1,13 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
 import { organizations, people } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { taskLinks, tasks } from "./schema";
+import { rankBetween } from "./rank";
 import { settleBlockers } from "./task-commands";
 
 /*
@@ -45,6 +47,21 @@ export async function createTask(
   },
   tx: Db = db,
 ) {
+  let rank = input.rank;
+  if (!rank) {
+    // New work goes to the end of the list. The lock makes "last rank" safe:
+    // two concurrent creates would otherwise read the same last rank and tie,
+    // and a tie cannot be ordered by a later move.
+    if (tx === db) throw new Error("createTask needs a transaction to assign a rank");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`rank:${auth.workspaceId}`}, 0))`);
+    const [last] = await tx
+      .select({ rank: tasks.rank })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.parentTaskId)))
+      .orderBy(sql`${tasks.rank} collate "C" desc`)
+      .limit(1);
+    rank = rankBetween(last?.rank ?? null, null);
+  }
   const [task] = await tx
     .insert(tasks)
     .values({
@@ -52,7 +69,7 @@ export async function createTask(
       title: input.title,
       description: input.description ?? null,
       dueAt: input.dueAt ?? null,
-      rank: input.rank ?? "m",
+      rank,
       createdBy: auth.userId,
       updatedBy: auth.userId,
     })
@@ -81,9 +98,11 @@ export async function createTask(
 /** Owner-created task: createTask in its own transaction plus the task.created audit row. */
 export async function createOwnerTask(
   auth: AuthContext,
-  input: { title: string; dueAt?: Date; personId?: string; organizationId?: string },
+  input: { title: string; dueAt?: Date; personId?: string; organizationId?: string; idempotencyKey?: string },
 ): Promise<{ id: string }> {
   return withTransaction(async (tx) => {
+    const { idempotencyKey, ...request } = input;
+    const { value } = await withReceipt(tx, auth, idempotencyKey, { op: "createOwnerTask", ...request }, async () => {
     // task_links.target_id carries no FK (it is polymorphic), so the link's
     // tenancy is this check's job. Without it a caller could point a task at
     // another workspace's person: no row leaks, but the edge would be a lie.
@@ -129,6 +148,8 @@ export async function createOwnerTask(
       tx,
     );
     return { id: task.id };
+    });
+    return value;
   });
 }
 

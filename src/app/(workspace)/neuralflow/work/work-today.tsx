@@ -6,6 +6,7 @@ const views: { id: WorkView; label: string }[] = [
   { id: "list", label: "List" },
   { id: "board", label: "Board" },
   { id: "calendar", label: "Calendar" },
+  { id: "saved", label: "Saved tasks" },
 ];
 
 export function WorkViewLinks({ active }: { active: WorkView }) {

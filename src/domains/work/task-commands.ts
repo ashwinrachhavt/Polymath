@@ -224,8 +224,16 @@ export async function moveTask(
         if (!r) throw new TaskNotFoundError();
         return r.rank;
       };
-      const lo = await rankOf(input.afterTaskId);
-      const hi = await rankOf(input.beforeTaskId);
+      let lo = await rankOf(input.afterTaskId);
+      let hi = await rankOf(input.beforeTaskId);
+      if (lo !== null && lo === hi) {
+        // Tasks created before ranks were assigned all share "m". A tie has no
+        // gap to move into, so spread the open top-level tasks once (stable by
+        // rank then id) and read the neighbours again.
+        await spreadRanks(tx, auth);
+        lo = await rankOf(input.afterTaskId);
+        hi = await rankOf(input.beforeTaskId);
+      }
       if (lo !== null && hi !== null && lo >= hi) throw new RankOrderError();
 
       const rank = rankBetween(lo, hi);
@@ -265,6 +273,22 @@ export async function moveTask(
     });
     return value;
   });
+}
+
+/** Renumber a workspace's top-level tasks in their current order. No version bump: order is unchanged. */
+async function spreadRanks(tx: TxDrizzle, auth: AuthContext) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`rank:${auth.workspaceId}`}, 0))`);
+  const rows = await tx
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.parentTaskId)))
+    .orderBy(sql`${tasks.rank} collate "C"`, tasks.id);
+  let prev: string | null = null;
+  for (const row of rows) {
+    const next = rankBetween(prev, null);
+    await tx.update(tasks).set({ rank: next }).where(eq(tasks.id, row.id));
+    prev = next;
+  }
 }
 
 async function ownedTask(tx: TxDrizzle, auth: AuthContext, id: string) {

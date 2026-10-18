@@ -1,6 +1,6 @@
 import type { Task } from "@/components/workspace/types";
 
-export const workViews = ["today", "list", "board", "calendar"] as const;
+export const workViews = ["today", "list", "board", "calendar", "saved"] as const;
 export type WorkView = (typeof workViews)[number];
 
 export function workView(value: string | string[] | undefined): WorkView {

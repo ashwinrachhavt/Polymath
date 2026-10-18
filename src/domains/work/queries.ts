@@ -24,7 +24,7 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
 
 export type TaskDetail = {
   task: typeof tasks.$inferSelect;
-  subtasks: { id: string; title: string; status: (typeof tasks.$inferSelect)["status"]; rank: string }[];
+  subtasks: { id: string; title: string; status: (typeof tasks.$inferSelect)["status"]; rank: string; version: number }[];
   /** Unresolved blockers, whichever way the edge was written. */
   blockedBy: { dependencyId: string; taskId: string; title: string }[];
   blocking: { dependencyId: string; taskId: string; title: string }[];
@@ -44,7 +44,7 @@ export async function getTaskDetail(
   if (!task) return null;
 
   const subtasks = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status, rank: tasks.rank })
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, rank: tasks.rank, version: tasks.version })
     .from(tasks)
     .where(and(eq(tasks.parentTaskId, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id));
@@ -78,4 +78,61 @@ export async function getTaskDetail(
     (iAmBlocker ? detail.blocking : detail.blockedBy).push(entry);
   }
   return detail;
+}
+
+export type WorkRow = {
+  id: string;
+  title: string;
+  status: (typeof tasks.$inferSelect)["status"];
+  priority: (typeof tasks.$inferSelect)["priority"];
+  dueAt: Date | null;
+  version: number;
+  rank: string;
+  subtaskCount: number;
+  subtasksDone: number;
+  /** Unresolved blockers. */
+  blockedBy: number;
+};
+
+/**
+ * The Work list: top-level tasks in rank order. "today" is the owner's explicit
+ * commitment (Ready or In progress); "open" is everything not finished;
+ * "done" is finished and cancelled work, newest first.
+ */
+export async function listWorkRows(
+  auth: Pick<AuthContext, "workspaceId">,
+  view: "today" | "open" | "done",
+  limit = 100,
+): Promise<WorkRow[]> {
+  const statusFilter =
+    view === "today"
+      ? sql`t.status in ('ready', 'in_progress')`
+      : view === "open"
+        ? sql`t.status not in ('done', 'cancelled')`
+        : sql`t.status in ('done', 'cancelled')`;
+  const order =
+    view === "done" ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id` : sql`t.rank collate "C", t.id`;
+  const rows = await db.execute(sql`
+    select t.id, t.title, t.status, t.priority, t.due_at, t.version, t.rank,
+      (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null)::int as subtask_count,
+      (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null and s.status = 'done')::int as subtasks_done,
+      (select count(*) from task_dependencies d
+         where d.workspace_id = t.workspace_id and d.resolved_at is null
+           and ((d.kind = 'blocked_by' and d.task_id = t.id) or (d.kind = 'blocks' and d.depends_on_task_id = t.id)))::int as blocked_by
+    from tasks t
+    where t.workspace_id = ${auth.workspaceId} and t.archived_at is null and t.parent_task_id is null and ${statusFilter}
+    order by ${order}
+    limit ${limit}`);
+  return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    status: r.status as WorkRow["status"],
+    priority: r.priority as WorkRow["priority"],
+    dueAt: r.due_at ? new Date(r.due_at as string) : null,
+    version: r.version as number,
+    rank: r.rank as string,
+    subtaskCount: r.subtask_count as number,
+    subtasksDone: r.subtasks_done as number,
+    blockedBy: r.blocked_by as number,
+  }));
 }
