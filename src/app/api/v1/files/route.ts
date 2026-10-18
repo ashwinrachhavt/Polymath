@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { authedHandler } from "@/lib/auth";
@@ -8,6 +9,7 @@ import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, validateFile } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
 import { requestReceipts } from "@/domains/audit/schema";
+import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 
@@ -135,6 +137,20 @@ export const POST = authedHandler(async (auth, request) => {
       { status: 200 },
     );
   }
+
+  // The response does not wait on AI enrichment: extraction runs after the
+  // 201 (the platform keeps the function alive for `after` work), so the row
+  // moves Added -> Reading -> its outcome on its own. A throw here is already
+  // recorded on the durable extraction row by extractDocument's own failure
+  // path; swallow it so the log stays an observation, not an error storm.
+  const documentId = result.documentId;
+  after(async () => {
+    try {
+      await extractDocument(auth, { documentId });
+    } catch {
+      // The extraction row carries the failure; the inbox offers a retry.
+    }
+  });
 
   return Response.json(
     { documentId: result.documentId, contentHash: result.contentHash },
