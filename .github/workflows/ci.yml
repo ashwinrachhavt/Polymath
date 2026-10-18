@@ -37,7 +37,7 @@ jobs:
       # without a database the server renders error boundaries and the
       # journey tests would test the boundary, not the page.
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: axiom
           POSTGRES_PASSWORD: axiom
