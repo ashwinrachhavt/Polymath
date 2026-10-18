@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { documentExtractions, documents, dossierSources, dossiers, sources } from "./schema";
+import { agentRuns } from "@/domains/agents/schema";
 
 /*
  * Dossiers: a name plus a set of documents in this workspace. A dossier is a
@@ -161,4 +162,14 @@ export async function listAttachableDocuments(auth: AuthContext) {
   const latest = new Map<string, string>();
   for (const row of extractions) if (!latest.has(row.documentId)) latest.set(row.documentId, row.status);
   return docs.map((doc) => ({ ...doc, extractionStatus: latest.get(doc.id) ?? null }));
+}
+
+/** The runs bound to a dossier (Studio Generate binds with a dossier subject), newest first. */
+export async function listDossierRuns(auth: AuthContext, dossierId: string, limit = 5) {
+  return db
+    .select({ id: agentRuns.id, state: agentRuns.state, objective: agentRuns.objective, createdAt: agentRuns.createdAt })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.workspaceId, auth.workspaceId), sql`${agentRuns.subjects} @> ${JSON.stringify([{ type: "dossier", id: dossierId }])}::jsonb`))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(limit);
 }

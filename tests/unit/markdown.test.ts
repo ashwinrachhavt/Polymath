@@ -29,3 +29,13 @@ describe("transcript markdown", () => {
     expect(html).toContain("&lt;img");
   });
 });
+
+describe("citations and escapes", () => {
+  it("renders citation marks as chips and unescapes pipes", () => {
+    const html = renderToStaticMarkup(h(Markdown, { text: "Per 【Document: Lease】 the total is \\| 5." }));
+    expect(html).toContain("Document: Lease");
+    expect(html).not.toContain("【");
+    expect(html).toContain("| 5");
+    expect(html).not.toContain("\\|");
+  });
+});

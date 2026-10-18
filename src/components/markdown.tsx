@@ -7,10 +7,20 @@ import type { ReactNode } from "react";
  * only ever render as text, emphasis, lists, and tables.
  */
 
-const INLINE = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+const INLINE = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|【[^】\n]+】)/g;
 
-function inline(text: string): ReactNode[] {
+function inline(raw: string): ReactNode[] {
+  // Models escape pipes in answers; a citation mark like 【Document: Lease】
+  // becomes a chip instead of raw brackets.
+  const text = raw.replace(/\\\|/g, "|");
   return text.split(INLINE).map((part, i) => {
+    if (part.startsWith("【") && part.endsWith("】")) {
+      return (
+        <span key={i} className="bg-muted text-muted-foreground mx-0.5 inline-block rounded px-1 py-px align-baseline text-[11px]">
+          {part.slice(1, -1)}
+        </span>
+      );
+    }
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return <strong key={i}>{part.slice(2, -2)}</strong>;
     }

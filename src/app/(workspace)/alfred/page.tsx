@@ -116,7 +116,7 @@ export default async function AlfredPage() {
                   </ul>
                   <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
                   {unavailable && !isFinished(run.state) ? null : <RunControls runId={run.id} finished={isFinished(run.state)} />}
-                  <DraftControls runId={run.id} draft={runDrafts.get(run.id) ?? null} canSave={run.state === "succeeded"} />
+                  <DraftControls runId={run.id} draft={runDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
                 </li>
               ))}
             </ul>

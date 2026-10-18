@@ -2,7 +2,10 @@ import { connection } from "next/server";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
-import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
+import { getDossierDetail, listAttachableDocuments, listDossierRuns, listDossiers } from "@/domains/knowledge/dossiers";
+import { draftsForRuns } from "@/domains/knowledge/studio";
+import { DraftControls } from "../draft-controls";
+import { Badge } from "@/components/ui/badge";
 import { CreateDossierForm } from "./create-dossier-form";
 import { GenerateForm } from "./generate-form";
 
@@ -39,6 +42,8 @@ export default async function DossiersPage({
     listAttachableDocuments(auth),
     params.dossier ? getDossierDetail(auth, params.dossier) : Promise.resolve(null),
   ]);
+  const dossierRuns = detail ? await listDossierRuns(auth, detail.id) : [];
+  const dossierRunDrafts = await draftsForRuns(auth, dossierRuns.map((run) => run.id));
 
   return (
     <>
@@ -85,6 +90,19 @@ export default async function DossiersPage({
             )}
             <Section title="Generate a draft" description="Starts a run that reads only this dossier. The result is a draft you save or discard; nothing publishes.">
               <GenerateForm dossierId={detail.id} />
+              {dossierRuns.length > 0 ? (
+                <ul className="mt-3 flex flex-col gap-2">
+                  {dossierRuns.map((run) => (
+                    <li key={run.id} className="flex flex-col gap-1 rounded-md border border-border px-3 py-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="line-clamp-1 text-[13px]">{run.objective}</p>
+                        <Badge variant="secondary" className="font-normal">{run.state === "waiting_input" ? "Answered" : run.state}</Badge>
+                      </div>
+                      <DraftControls runId={run.id} draft={dossierRunDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </Section>
           </Section>
         ) : null}
