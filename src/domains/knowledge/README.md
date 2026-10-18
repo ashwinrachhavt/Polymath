@@ -34,6 +34,20 @@ fetched; an HTML page is reduced to its reading text (`html-to-text.ts`) and
 stored as markdown, which `plain-text.ts` extracts in place of a parsing
 provider. Other types are refused.
 
+The embedding pass (`embedding.ts`, `chunking.ts`) runs only on a succeeded
+extraction and reads its stored text, never the file. Chunks of about 1,200
+characters (150 overlap, at most 400) become `embeddings` rows owned by the
+extraction row (`owner_type = document_extraction`), each with its offsets and
+page. Re-running replaces that extraction's chunks in one transaction, behind an
+advisory lock, so chunks are never doubled. A failure is written to
+`embed_error` and never changes the extraction's status; a later call retries
+from the stored text. `searchChunks` in `search.ts` returns the nearest chunks by
+cosine distance, inside one workspace, from each document's newest succeeded
+extraction, and only from the model that embedded the query. The provider is
+OpenAI `text-embedding-3-small` (1536 wide, matching the column) when
+`OPENAI_API_KEY` is set; with no key the pass records that and extraction is
+unaffected. pgvector only; there is no Qdrant.
+
 The proposal pass (fields, parties, obligations) is a separate retry boundary
 on the extraction row (`proposal_status`, `proposer`, `proposal_error`): text
 that succeeded is never re-read, but a later extract call reruns a failed or

@@ -13,6 +13,7 @@ import type {
 } from "@/integrations/extraction/provider";
 import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "../audit/schema";
+import { embedExtraction } from "./embedding";
 import { proposeFromText, RULES_PROPOSER } from "./field-rules";
 import { flagConflicts, proposeFields } from "./fields";
 import { proposeObligationsFromDocument } from "./obligations";
@@ -141,6 +142,7 @@ export async function extractDocument(
         text: documentExtractions.text,
         spans: documentExtractions.spans,
         error: documentExtractions.error,
+        embeddedAt: documentExtractions.embeddedAt,
       })
       .from(documentExtractions)
       .where(scope)
@@ -155,6 +157,7 @@ export async function extractDocument(
         text,
         spans: existing.spans as ExtractionSpan[],
       });
+      await embedAfterText(auth, existing.id, existing.embeddedAt);
       return { ok: true, extractionId: existing.id, text, deduplicated: true, proposals };
     }
     return {
@@ -216,7 +219,22 @@ export async function extractDocument(
     providerFields: result.fields,
     extractor: result.extractor,
   });
+  await embedAfterText(auth, row.id, null);
   return { ok: true, extractionId: row.id, text: result.text, deduplicated: false, proposals };
+}
+
+/**
+ * Chunks the text once it has succeeded, and again on a later call only if the
+ * first embed never landed. It never throws and never touches the extraction's
+ * status: a failed embed is recorded on `embed_error` and the text stays valid.
+ */
+async function embedAfterText(auth: AuthContext, extractionId: string, embeddedAt: Date | null): Promise<void> {
+  if (embeddedAt) return;
+  try {
+    await embedExtraction(auth, { extractionId });
+  } catch (cause) {
+    console.error(`embedding pass threw for extraction ${extractionId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
 }
 
 type Attempt = { id: string };

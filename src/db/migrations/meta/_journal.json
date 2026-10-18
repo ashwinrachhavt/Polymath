@@ -78,6 +78,13 @@
       "when": 1792349640841,
       "tag": "0009_document_source_url",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792349904944,
+      "tag": "0010_embedding_pass",
+      "breakpoints": true
     }
   ]
 }

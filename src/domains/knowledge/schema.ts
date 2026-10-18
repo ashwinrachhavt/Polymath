@@ -246,6 +246,14 @@ export const documentExtractions = pgTable(
      */
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     claimedBy: text("claimed_by"),
+    /*
+     * The embedding pass is its own boundary, like the proposal pass: text can
+     * be durable evidence while chunks failed to embed. A failure here never
+     * touches `status`, and a retry reads `text`, never the file.
+     */
+    embeddedAt: timestamp("embedded_at", { withTimezone: true }),
+    embedModel: text("embed_model"),
+    embedError: text("embed_error"),
     ...recorded,
   },
   (t) => [
@@ -423,6 +431,10 @@ export const embeddings = pgTable(
     sourceVersionId: uuid("source_version_id"),
     chunkIndex: integer("chunk_index").notNull().default(0),
     content: text("content").notNull(),
+    /** Where the chunk sits in the extraction text (same offsets as extraction spans), and its page. */
+    spanStart: integer("span_start"),
+    spanEnd: integer("span_end"),
+    page: integer("page"),
     embedding: vector("embedding", { dimensions: 1536 }).notNull(),
     model: text("model").notNull(),
     ...recorded,
