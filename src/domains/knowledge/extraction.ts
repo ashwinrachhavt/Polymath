@@ -26,9 +26,7 @@ import { documentExtractionAttempts, documentExtractions, documents, files } fro
  *
  * Provider resolution: docling-serve in docker locally; LlamaParse on Vercel
  * where the docker is unreachable. Env decides — the presence of each
- * provider's URL/key picks the adapter. With neither, development reads the
- * PDF's own text layer in process so the loop runs without secrets;
- * production fails closed and the route reports the missing configuration.
+ * provider's URL/key picks the adapter; the text-layer reader is the floor.
  */
 
 export async function extractionProvider(): Promise<ExtractionProvider> {
@@ -36,10 +34,10 @@ export async function extractionProvider(): Promise<ExtractionProvider> {
   if (doclingUrl) return createDoclingDockerProvider(doclingUrl);
   const llamaKey = process.env.LLAMAPARSE_API_KEY;
   if (llamaKey) return createLlamaParseProvider(llamaKey);
-  if (process.env.NODE_ENV !== "production") return createPdfTextLayerProvider();
-  throw new Error(
-    "No extraction provider configured. Set DOCLING_SERVE_URL (local docker) or LLAMAPARSE_API_KEY (hosted).",
-  );
+  // The in-process reader is the floor in every environment: it needs no
+  // secrets, so a text-layer PDF (a resume, an export) always reads. No OCR -
+  // a scan or an image fails with the message naming the provider it needs.
+  return createPdfTextLayerProvider();
 }
 
 /** Where the proposal pass stands after this call: done now, done before, failed, or another caller holds it. */
