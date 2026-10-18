@@ -24,7 +24,6 @@ export type OpenTask = {
 };
 
 
-
 export function TaskComposer() {
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");

@@ -174,6 +174,11 @@ export const organizations = pgTable(
     uniqueIndex("organizations_workspace_domain_key")
       .on(t.workspaceId, t.domain)
       .where(sql`domain is not null`),
+    // The connections import matches organizations case-insensitively. The
+    // name index above is case-sensitive and cannot serve that lookup.
+    index("organizations_workspace_lower_name_idx")
+      .on(t.workspaceId, sql`lower(${t.name})`)
+      .where(sql`archived_at is null`),
   ],
 );
 
@@ -212,10 +217,14 @@ export const partyEmployment = pgTable(
       columns: [t.workspaceId, t.organizationId],
       foreignColumns: [organizations.workspaceId, organizations.id],
     }).onDelete("cascade"),
-    // One current edge per person per org; a rehire is a new row with a later
-    // started_at, matched by the index below rather than a unique key.
     index("party_employment_person_idx").on(t.personId, t.endedAt),
     index("party_employment_organization_idx").on(t.organizationId, t.endedAt),
+    // One current edge per person per org, so the import's onConflictDoNothing
+    // is safe against a concurrent run. A rehire is a new row: the old edge is
+    // closed (ended_at set) and no longer participates in this index.
+    uniqueIndex("party_employment_current_key")
+      .on(t.workspaceId, t.personId, t.organizationId)
+      .where(sql`ended_at is null`),
   ],
 );
 

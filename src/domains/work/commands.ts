@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { linkTargetKinds } from "@/db/columns";
+import { organizations, people } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -57,8 +58,14 @@ export async function createTask(
     .returning();
 
   if (input.links?.length) {
+    // task_links_edge_key is unique on (task, type, target): a repeated entry
+    // would abort the whole transaction with a constraint error, so collapse
+    // duplicates here where the caller's intent is unambiguous.
+    const unique = new Map(
+      input.links.map((link) => [`${link.targetType}:${link.targetId}`, link]),
+    );
     await tx.insert(taskLinks).values(
-      input.links.map((link) => ({
+      [...unique.values()].map((link) => ({
         workspaceId: auth.workspaceId,
         taskId: task.id,
         targetType: link.targetType,
@@ -75,13 +82,35 @@ export async function createOwnerTask(
   auth: AuthContext,
   input: { title: string; dueAt?: Date; personId?: string; organizationId?: string },
 ): Promise<{ id: string }> {
-  const links: TaskLinkInput[] = [];
-  if (input.personId) links.push({ targetType: "person", targetId: input.personId, label: "Person" });
-  if (input.organizationId) {
-    links.push({ targetType: "organization", targetId: input.organizationId, label: "Organization" });
-  }
-
   return withTransaction(async (tx) => {
+    // task_links.target_id carries no FK (it is polymorphic), so the link's
+    // tenancy is this check's job. Without it a caller could point a task at
+    // another workspace's person: no row leaks, but the edge would be a lie.
+    const links: TaskLinkInput[] = [];
+    if (input.personId) {
+      const [person] = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, input.personId), eq(people.workspaceId, auth.workspaceId)))
+        .limit(1);
+      if (!person) throw new Error("person not found in workspace");
+      links.push({ targetType: "person", targetId: person.id, label: "Person" });
+    }
+    if (input.organizationId) {
+      const [org] = await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(
+          and(
+            eq(organizations.id, input.organizationId),
+            eq(organizations.workspaceId, auth.workspaceId),
+          ),
+        )
+        .limit(1);
+      if (!org) throw new Error("organization not found in workspace");
+      links.push({ targetType: "organization", targetId: org.id, label: "Organization" });
+    }
+
     const task = await createTask(auth, { title: input.title, dueAt: input.dueAt, links }, tx);
 
     await recordAudit(
@@ -151,7 +180,20 @@ export async function completeTask(
         ),
       )
       .returning({ id: tasks.id, title: tasks.title });
+    // A no-op click writes nothing, including no audit row: the guard decided
+    // there was no change to record.
     if (!task) return null;
+
+    await recordAudit(
+      auth,
+      {
+        action: "task.completed",
+        subjectType: "task",
+        subjectId: task.id,
+        summary: `Completed task "${task.title}"`,
+      },
+      tx,
+    );
     return { id: task.id };
   });
 }

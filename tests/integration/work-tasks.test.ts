@@ -40,8 +40,15 @@ suite("work tasks", () => {
     expect(await work.completeTask(a, { taskId: id })).toEqual({ id });
     expect(await work.listOpenTasks(a)).toHaveLength(0);
 
-    // A second click is a no-op, not a second completion.
+    // A second click is a no-op, not a second completion — and writes no
+    // second audit row.
     expect(await work.completeTask(a, { taskId: id })).toBeNull();
+
+    const completions = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.completed")));
+    expect(completions).toHaveLength(1);
 
     const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
     expect(row.status).toBe("done");
@@ -77,9 +84,13 @@ suite("work tasks", () => {
   });
 
 
-  it("links a task to an organization as well as a person", async () => {
+  it("links a task to a person and an organization in one insert", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-links-org-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
+    const [person] = await db
+      .insert(people)
+      .values({ workspaceId, displayName: "Ada Lovelace" })
+      .returning();
     const [organization] = await db
       .insert(organizations)
       .values({ workspaceId, name: "Analytical Engines" })
@@ -87,14 +98,23 @@ suite("work tasks", () => {
 
     const { id } = await work.createOwnerTask(a, {
       title: "Send the invoice",
+      personId: person.id,
       organizationId: organization.id,
     });
 
+    // The two-link branch: a bug that dropped either entry would still pass
+    // the single-link tests above.
     const links = await db
       .select({ targetType: taskLinks.targetType, targetId: taskLinks.targetId })
       .from(taskLinks)
       .where(eq(taskLinks.taskId, id));
-    expect(links).toEqual([{ targetType: "organization", targetId: organization.id }]);
+    expect(links).toHaveLength(2);
+    expect(links).toEqual(
+      expect.arrayContaining([
+        { targetType: "person", targetId: person.id },
+        { targetType: "organization", targetId: organization.id },
+      ]),
+    );
   });
 
   it("cannot complete a cancelled task", async () => {
@@ -125,6 +145,24 @@ suite("work tasks", () => {
       "Later",
       "No date",
     ]);
+  });
+
+  it("refuses a link to a person in another workspace", async () => {
+    const one = await seedWorkspace(db, `task-link-a-${Date.now()}`);
+    const two = await seedWorkspace(db, `task-link-b-${Date.now()}`);
+    const [foreign] = await db
+      .insert(people)
+      .values({ workspaceId: two.workspaceId, displayName: "Not Mine" })
+      .returning();
+
+    await expect(
+      work.createOwnerTask(ownerAuth(one.userId, one.workspaceId), {
+        title: "Cross-tenant",
+        personId: foreign.id,
+      }),
+    ).rejects.toThrow(/not found in workspace/);
+    // The transaction rolled back: no task and no link survived.
+    expect(await work.listOpenTasks(ownerAuth(one.userId, one.workspaceId))).toHaveLength(0);
   });
   it("cannot complete a task from another workspace", async () => {
     const one = await seedWorkspace(db, `task-ws-a-${Date.now()}`);

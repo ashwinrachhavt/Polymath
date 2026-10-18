@@ -15,6 +15,14 @@ import { memberships, users, workspaces } from "@/domains/identity/schema";
 
 export function makeTestDb() {
   const url = process.env.TEST_DATABASE_URL;
+  // In CI a missing database is a broken gate, not a reason to skip: the
+  // suite would report green while every invariant it exists to prove never
+  // ran. A local clone without a scratch DB is the only legitimate skip.
+  if (!url && process.env.CI) {
+    throw new Error(
+      "CI must provide TEST_DATABASE_URL: the integration suites cannot silently skip.",
+    );
+  }
   if (!url) return null;
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
   // before anything lazy-imports that module.

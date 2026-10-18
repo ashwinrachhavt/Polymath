@@ -1,5 +1,4 @@
-import { Section } from "@/components/page-header";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, Section } from "@/components/page-header";
 import { Readout } from "@/components/readout";
 import { listOpenTasks } from "@/domains/work/commands";
 import { getAuthContext } from "@/lib/auth";

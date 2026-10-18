@@ -18,8 +18,11 @@ import type { AuthContext } from "./resolve";
  * The invariants, in priority order (ADR 0001 § Invariants 3):
  *   - Email is the identity key *within this workspace*: same email twice is
  *     one person, never two rows.
- *   - A name alone never merges. No email means a new row per row unless an
- *     exact name+company edge already exists.
+ *   - A name alone never merges. A row with no email always creates a person,
+ *     even when an identically named one exists.
+ *   - Organizations key on the `Company` column, not the address domain —
+ *     most connections use a personal mailbox, so domain keying split one
+ *     employer into many. A consumer domain is never claimed as an employer's.
  *   - Nothing is deleted. A re-run adds rows, updates edges, and reports what
  *     it skipped; a wrong import can be reversed by archiving rows, not by
  *     pretending it never happened.
@@ -123,13 +126,14 @@ function rowsFromCsv(csvRows: string[][]): CsvRow[] {
 }
 
 /**
- * Import connections. One transaction per source row would be 5k transactions;
- * one transaction for the whole file is one bad row away from an all-or-nothing
- * loss. So: one transaction, but a row that fails is recorded and skipped
- * rather than aborting the import — which is what `problems` is for.
+ * Import connections in one transaction. Validation failures (no name, a
+ * malformed address) are recorded in `problems` and skipped, so one bad row
+ * does not cost the file. A database error still aborts the whole import —
+ * throwing inside this transaction rolls everything back, which is the honest
+ * outcome when the schema rejected a write, not a partial import to explain.
  *
- * Idempotent on re-run: email-keyed people and domain-keyed orgs are matched,
- * and an employment edge that already exists is counted as linked, not created.
+ * Idempotent on re-run: email-keyed people and name-keyed organizations are
+ * matched, and an employment edge that already exists is not duplicated.
  */
 export async function importConnections(
   auth: AuthContext,
@@ -179,8 +183,9 @@ export async function importConnections(
       }
     }
 
-    // The org read is by lower(name) so it cannot use the name index; it runs
-    // once per import rather than once per row, which is the cost that mattered.
+    // Every active organization, once, collapsed into a lower-name Map. The
+    // per-row lookup that would need the lower(name) index is the case this
+    // pre-pass exists to avoid.
     const knownOrgs = new Map<string, string>();
     const takenDomains = new Set<string>();
     const orgs = await tx
