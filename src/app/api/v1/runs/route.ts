@@ -107,6 +107,8 @@ export const POST = authedHandler(async (auth, request) => {
         .delete(requestReceipts)
         .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, receipt.key)));
     }
-    throw cause;
+    // A failed start is a problem response, never a bare 500 with no body.
+    console.error("run start failed", cause);
+    return problemResponse(502, "agent_start_failed", "The run could not be started. Try again.");
   }
 });

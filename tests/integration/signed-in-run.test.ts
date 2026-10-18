@@ -95,12 +95,24 @@ suite("signed-in run start", () => {
     expect(eveCalls).toHaveLength(0);
   });
 
-  it("a failed Eve create frees the key so a retry can start", async () => {
+  it("a failed Eve create frees the key so a retry can start, and answers with a problem, not a bare 500", async () => {
     const key = "7b2e1b6a-ad20-4b5a-9c77-2e3f4a5b6c7d";
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
-    await expect(post({ objective: "Will fail" }, key)).rejects.toThrow();
+    const failed = await post({ objective: "Will fail" }, key);
+    expect(failed.status).toBe(502);
+    expect(failed.headers.get("content-type")).toContain("application/problem+json");
+    expect(await failed.json()).toMatchObject({ code: "agent_start_failed" });
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sessionId: "wrun_ok" }, { status: 202 })));
     expect((await post({ objective: "Will fail" }, key)).status).toBe(201);
+  });
+
+  it("without EVE_BASE_URL on Vercel, Eve is called on the deployment's own origin at /eve/alfred/v1", async () => {
+    vi.stubEnv("EVE_BASE_URL", "");
+    vi.stubEnv("VERCEL_BRANCH_URL", "axiom-git-feat-pr4.example.vercel.app");
+    const res = await post({ objective: "Same origin" });
+    expect(res.status).toBe(201);
+    expect(eveCalls[0].url).toBe("https://axiom-git-feat-pr4.example.vercel.app/eve/alfred/v1/session");
+    vi.stubEnv("VERCEL_BRANCH_URL", "");
   });
 });
 
