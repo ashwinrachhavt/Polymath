@@ -14,9 +14,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "prepare": "git config core.hooksPath scripts/hooks"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.96",
     "@clerk/nextjs": "7.9.14",
     "@excalidraw/excalidraw": "^0.18.1",
     "@neondatabase/serverless": "1.2.0",
@@ -26,9 +28,12 @@
     "@tiptap/pm": "^3.31.4",
     "@tiptap/react": "^3.31.4",
     "@tiptap/starter-kit": "^3.31.4",
+    "@vercel/blob": "^2.8.1",
+    "ai": "^7.0.137",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "drizzle-orm": "0.45.4",
+    "eve": "^0.76.3",
     "lucide-react": "^1.55.0",
     "next": "16.4.0",
     "next-themes": "0.4.6",
@@ -41,6 +46,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@clerk/types": "^4.101.20",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
@@ -49,10 +55,14 @@
     "drizzle-kit": "0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "just-bash": "^3.6.0",
     "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^5.0.3"
   },
-  "packageManager": "pnpm@12.10.1"
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=24"
+  }
 }

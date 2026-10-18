@@ -3,12 +3,12 @@ import type { WorkspaceState } from "./types";
 const at = "2026-10-11T09:00:00.000Z";
 export const sampleState: WorkspaceState = {
   tasks: [
-    { id: "task-architecture", title: "Review the canonical Axiom data model", status: "IN_PROGRESS", priority: "High", projectId: "project-axiom", dueDate: "2026-10-11", estimate: 50, description: "Keep tasks independent of boards. Link notes to many records. Review pgvector dimensions before migration.", tags: ["Architecture", "Deep work"], version: 1 },
-    { id: "task-parity", title: "Map the three donor products", status: "READY", priority: "High", projectId: "project-axiom", dueDate: "2026-10-11", estimate: 25, description: "Compare implemented screens with the PRD. Separate source evidence from future plans.", tags: ["Research"], version: 1 },
-    { id: "task-followup", title: "Prepare a follow-up for Morgan", status: "WAITING", priority: "Medium", projectId: "project-career", estimate: 15, description: "Waiting on feedback. Draft locally; review the exact payload before sending.", tags: ["Follow up"], version: 1 },
-    { id: "task-notes", title: "Turn research notes into atomic zettels", status: "BACKLOG", priority: "Medium", projectId: "project-learning", estimate: 25, description: "One idea per card, with evidence and links back to the source.", tags: ["Learning"], version: 1 },
-    { id: "task-calendar", title: "Protect an afternoon focus block", status: "READY", priority: "Low", estimate: 10, description: "Create a local work block. Provider calendar writes need review.", tags: ["Planning"], version: 1 },
-    { id: "task-shell", title: "Define the shared app shell", status: "DONE", priority: "High", projectId: "project-axiom", estimate: 25, description: "One workspace, three product lenses, shared capture and reviews.", tags: ["Design"], version: 1 },
+    { id: "task-architecture", title: "Review the canonical Axiom data model", status: "IN_PROGRESS", priority: "High", projectId: "project-axiom", dueDate: "2026-10-11", estimate: 50, description: "Keep tasks independent of boards. Link notes to many records. Review pgvector dimensions before migration.", tags: ["Architecture", "Deep work"], rank: 1, version: 1, attachments: [{ id: "attachment-model", kind: "url", label: "Canonical schema notes", value: "https://example.test/axiom-schema", addedAt: at }] },
+    { id: "task-parity", title: "Map the three donor products", status: "READY", priority: "High", projectId: "project-axiom", dueDate: "2026-10-11", estimate: 25, description: "Compare implemented screens with the PRD. Separate source evidence from future plans.", tags: ["Research"], rank: 1, version: 1 },
+    { id: "task-followup", title: "Prepare a follow-up for Morgan", status: "WAITING", priority: "Medium", projectId: "project-career", estimate: 15, description: "Waiting on feedback. Draft locally; review the exact payload before sending.", tags: ["Follow up"], rank: 1, version: 1 },
+    { id: "task-notes", title: "Turn research notes into atomic zettels", status: "BACKLOG", priority: "Medium", projectId: "project-learning", estimate: 25, description: "One idea per card, with evidence and links back to the source.", tags: ["Learning"], rank: 1, version: 1 },
+    { id: "task-calendar", title: "Protect an afternoon focus block", status: "READY", priority: "Low", estimate: 10, description: "Create a local work block. Provider calendar writes need review.", tags: ["Planning"], rank: 2, dueDate: "2026-10-11", recurrence: { frequency: "weekly", interval: 5 }, version: 1 },
+    { id: "task-shell", title: "Define the shared app shell", status: "DONE", priority: "High", projectId: "project-axiom", estimate: 25, description: "One workspace, three product lenses, shared capture and reviews.", tags: ["Design"], rank: 1, completedAt: at, version: 1 },
   ],
   artifacts: [
     { id: "note-axiom", title: "One record, many views", kind: "note", body: "Axiom is one workspace, not three disconnected backends.\n\nA task is a commitment. Boards, lists, calendars and focus sessions are views over the same record.\n\nA note can stand alone and link to tasks, dossiers or projects.\n\nOpen question: which workflow adapter should own durable agent execution?", tags: ["Architecture", "Axiom"], links: ["task-architecture", "source-spec"], version: 1, updatedAt: at },
@@ -52,7 +52,7 @@ export const sampleState: WorkspaceState = {
   ],
   focus: null,
   rewards: [],
-  preferences: { celebrations: true, reducedMotion: false, killSwitch: true, timezone: "America/Los_Angeles", weekStart: "Monday" },
+  preferences: { celebrations: true, reducedMotion: false, killSwitch: true, timezone: "America/Los_Angeles", weekStart: "Monday", scheduler: { workStartHour: 9, workEndHour: 18, weekdays: [1, 2, 3, 4, 5], suggestionsEnabled: true, eveningEnabled: false, eveningStartHour: 19, eveningTitle: "Vibe coding", topics: ["Research", "Engineering"] } },
   activity: [{ id: "activity-sample", title: "Sample workspace opened", detail: "All records are fictional. Changes stay in this browser, not Neon.", at }],
 };
 sampleState.artifactVersions = sampleState.artifacts.map((a) => ({ id: `version-${a.id}-1`, artifactId: a.id, version: a.version, title: a.title, body: a.body, links: [...a.links], tags: [...a.tags], createdAt: a.updatedAt }));

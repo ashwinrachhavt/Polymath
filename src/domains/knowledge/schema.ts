@@ -1,5 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
+  check,
+  date,
   index,
   integer,
   jsonb,
@@ -21,6 +24,7 @@ import {
   tenantId,
 } from "../../db/columns";
 import { blobObjects } from "../audit/schema";
+import { companies, contacts } from "../crm/schema";
 
 /*
  * Artifacts are the one versioned container: a note, a document, a generated
@@ -483,4 +487,207 @@ export const canvasVersions = pgTable(
     ...recordedBy,
   },
   (t) => [uniqueIndex("canvas_versions_number_key").on(t.canvasId, t.versionNumber)],
+);
+
+/*
+ * Document intelligence: what was extracted (field_proposals), who the document
+ * is about (document_parties), what facts it evidences (reviewed_assertions),
+ * and what paperwork it implies (document_obligations). Everything here is a
+ * proposal until a human decides it; the assertion ledger is the only table
+ * whose rows are accepted into the system of record, and it appends rather
+ * than overwrites so "what did we believe on day N" stays answerable.
+ */
+
+export const documentPartyRole = pgEnum("document_party_role", [
+  "subject",
+  "sender",
+  "recipient",
+  "issuer",
+  "signatory",
+  "representative",
+  "mentioned",
+]);
+export const documentPartyKind = pgEnum("document_party_kind", ["contact", "company"]);
+export const partyResolutionStatus = pgEnum("party_resolution_status", [
+  "unresolved",
+  "matched",
+  "created",
+  "rejected",
+]);
+export const fieldProposalStatus = pgEnum("field_proposal_status", [
+  "proposed",
+  "accepted",
+  "rejected",
+  "superseded",
+]);
+export const fieldKind = pgEnum("field_kind", [
+  "date",
+  "money",
+  "text",
+  "identifier",
+  "person",
+  "organization",
+  "address",
+  "other",
+]);
+export type FieldKind = (typeof fieldKind.enumValues)[number];
+export const assertionStatus = pgEnum("assertion_status", ["active", "superseded", "retracted"]);
+export const assertionSubjectType = pgEnum("assertion_subject_type", [
+  "contact",
+  "company",
+  "project",
+  "document",
+]);
+export const obligationStatus = pgEnum("obligation_status", [
+  "proposed",
+  "accepted",
+  "rejected",
+  "superseded",
+]);
+
+export const documentParties = pgTable(
+  "document_parties",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    partyRole: documentPartyRole("party_role").notNull(),
+    partyKind: documentPartyKind("party_kind").notNull(),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
+    /** The raw extracted name, before resolution to a contact or company. */
+    displayName: text("display_name").notNull(),
+    resolutionStatus: partyResolutionStatus("resolution_status").notNull().default("unresolved"),
+    evidenceExtractionId: uuid("evidence_extraction_id").references(() => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    evidenceSpans: jsonb("evidence_spans").notNull().default([]),
+    ...mutable,
+  },
+  (t) => [
+    // At most one target: both null is an unresolved party awaiting a human
+    // decision, exactly one is resolved, both set is a double-counted one.
+    check(
+      "document_parties_one_target_check",
+      sql`not (contact_id is not null and company_id is not null)`,
+    ),
+    uniqueIndex("document_parties_contact_key")
+      .on(t.documentId, t.partyRole, t.contactId)
+      .where(sql`contact_id is not null`),
+    uniqueIndex("document_parties_company_key")
+      .on(t.documentId, t.partyRole, t.companyId)
+      .where(sql`company_id is not null`),
+    index("document_parties_document_idx").on(t.documentId),
+  ],
+);
+
+export const fieldProposals = pgTable(
+  "field_proposals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    fieldKind: fieldKind("field_kind").notNull(),
+    fieldName: text("field_name").notNull(),
+    rawValue: text("raw_value"),
+    /** An ambiguous date stays null; the note says why. */
+    normalizedValue: jsonb("normalized_value"),
+    normalizationNote: text("normalization_note"),
+    confidence: text("confidence"),
+    /** Stable per document+field context, so reprocessing finds its twin. */
+    dedupeKey: text("dedupe_key").notNull(),
+    status: fieldProposalStatus("status").notNull().default("proposed"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by"),
+    /** What the user actually approved, when it differs from normalizedValue. */
+    acceptedValue: jsonb("accepted_value"),
+    evidenceSpans: jsonb("evidence_spans").notNull().default([]),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("field_proposals_dedupe_key").on(t.documentId, t.dedupeKey),
+    index("field_proposals_workspace_status_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * Accepted facts live here as rows, never as overwrites. A corrected belief is
+ * a new row that supersedes the old one; the old row keeps its value, status,
+ * and evidence so the history is queryable rather than merely reconstructible.
+ */
+export const reviewedAssertions = pgTable(
+  "reviewed_assertions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    subjectType: assertionSubjectType("subject_type").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    attribute: text("attribute").notNull(),
+    value: jsonb("value").notNull(),
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
+    extractionId: uuid("extraction_id").references(() => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    fieldProposalId: uuid("field_proposal_id").references(() => fieldProposals.id, {
+      onDelete: "set null",
+    }),
+    evidenceSpans: jsonb("evidence_spans").notNull().default([]),
+    /** Human-readable provenance: "supplied résumé v2". */
+    sourceAttribution: text("source_attribution").notNull(),
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
+    supersedesAssertionId: uuid("supersedes_assertion_id").references(
+      (): AnyPgColumn => reviewedAssertions.id,
+      { onDelete: "set null" },
+    ),
+    status: assertionStatus("status").notNull().default("active"),
+    ...mutable,
+  },
+  (t) => [
+    index("reviewed_assertions_subject_idx").on(
+      t.workspaceId,
+      t.subjectType,
+      t.subjectId,
+      t.attribute,
+      t.status,
+    ),
+  ],
+);
+
+export const documentObligations = pgTable(
+  "document_obligations",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    fieldProposalId: uuid("field_proposal_id").references(() => fieldProposals.id, {
+      onDelete: "set null",
+    }),
+    kind: text("kind").notNull(),
+    note: text("note"),
+    /** A date in a document is not a deadline until a human accepts it. */
+    dueFromDocument: timestamp("due_from_document", { withTimezone: true }),
+    dedupeKey: text("dedupe_key").notNull(),
+    // No FK, matching tasks.actionProposalId: the work domain sets this when
+    // the obligation is accepted, and knowledge does not depend on work.
+    taskId: uuid("task_id"),
+    status: obligationStatus("status").notNull().default("proposed"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by"),
+    supersededBy: uuid("superseded_by"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("document_obligations_dedupe_key").on(t.documentId, t.dedupeKey),
+    index("document_obligations_workspace_status_idx").on(t.workspaceId, t.status),
+  ],
 );

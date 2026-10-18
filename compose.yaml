@@ -1,0 +1,12 @@
+# Local docling-serve: the extraction provider for development (D2 plan).
+# Start: docker compose up -d docling
+# Point the app at it: DOCLING_SERVE_URL="http://localhost:5001" in .env
+#
+# The deployed Vercel app cannot reach this container; there, LLAMAPARSE_API_KEY
+# picks the hosted adapter instead. First-run pulls ~2GB of models.
+services:
+  docling:
+    image: quay.io/docling-project/docling-serve
+    ports:
+      - "127.0.0.1:5001:5001"
+    restart: unless-stopped

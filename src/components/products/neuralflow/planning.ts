@@ -1,7 +1,9 @@
-import type { CalendarEvent, Focus, Task, TaskStatus } from "@/components/workspace/types";
+import type { CalendarEvent, Focus, Task } from "@/components/workspace/types";
+import { advanceRecurrence } from "@/components/workspace/tasks";
 
-export const taskStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"];
-export const statusLabels: Record<TaskStatus, string> = { INBOX: "Inbox", BACKLOG: "Backlog", READY: "Ready", IN_PROGRESS: "In progress", WAITING: "Waiting", DONE: "Done" };
+// Canonical task vocabulary lives in the shared workspace layer so the Command
+// Center queue and the NeuralFlow views cannot disagree on status names.
+export { statusLabels, taskStatuses } from "@/components/workspace/tasks";
 export function localDate(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -41,6 +43,30 @@ export function calendarDaySegments(events: CalendarEvent[], day: string) {
   });
   return positioned.map((segment) => ({ ...segment, laneCount: lanes.length }));
 }
+/*
+ * A repeating block is stored once. Expansion materialises the dates it lands
+ * on, so every view sees the same series and cancelling one date is an
+ * exception rather than a duplicated record.
+ */
+export function expandRecurrence(event: CalendarEvent, through: string): CalendarEvent[] {
+  if (!event.recurrence) return [event];
+  const spans = (start: string, end: string) => Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86400000);
+  const length = event.endDate ? spans(event.date, event.endDate) : 0;
+  const occurrences: CalendarEvent[] = [];
+  let date = event.date;
+  for (let guard = 0; guard < 400 && date <= through; guard++) {
+    if (!event.exceptionDates?.includes(date)) occurrences.push({ ...event, date, endDate: event.endDate ? shiftDate(date, length) : undefined });
+    const next = advanceRecurrence(date, event.recurrence);
+    if (!next) break;
+    date = next;
+  }
+  return occurrences;
+}
+
+export function expandEvents(events: CalendarEvent[], through: string) {
+  return events.flatMap((event) => expandRecurrence(event, through));
+}
+
 export type ScheduleProposal = { taskId: string; taskVersion: number; title: string; date: string; start: string; duration: number; reason: string };
 export function proposeSchedule(tasks: Task[], events: CalendarEvent[], date: string, start: string, end: string, limit = 5): ScheduleProposal[] {
   const proposals: ScheduleProposal[] = [];
