@@ -190,9 +190,15 @@ export const documents = pgTable(
     title: text("title").notNull(),
     mimeType: text("mime_type"),
     pageCount: integer("page_count"),
+    /** Where the bytes came from when the document was captured from a URL; null for an upload. */
+    sourceUrl: text("source_url"),
     ...mutable,
   },
   (t) => [
+    // One document per URL per workspace: pasting a URL twice finds this row.
+    uniqueIndex("documents_workspace_source_url_key")
+      .on(t.workspaceId, t.sourceUrl)
+      .where(sql`source_url is not null`),
     index("documents_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("documents_file_idx").on(t.fileId),
     index("documents_artifact_idx").on(t.artifactId),

@@ -23,8 +23,10 @@ import {
 import { getAuthContext } from "@/lib/auth";
 import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions } from "./decision-buttons";
 import { RetryExtractionButton } from "./retry-extraction-button";
+import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
+import { CaptureUrlForm } from "./capture-url-form";
 import { UploadButton } from "./upload-button";
 
 export const metadata = { title: "Knowledge · Axiom" };
@@ -60,12 +62,33 @@ function StatusBadge({ label, tone }: { label: string; tone: DocumentStatusTone 
   );
 }
 
+function pageDomain(sourceUrl: string | null): string {
+  if (!sourceUrl) return "page";
+  try {
+    return new URL(sourceUrl).hostname;
+  } catch {
+    return "page";
+  }
+}
+
+const fetchedDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
+
+/** The inbox row's second line: a page shows where it came from, a file shows what it is. */
+function rowSubtitle(doc: { kind: "web_page" | "file"; sourceUrl: string | null; fetchedAt: Date | null; filename: string | null; mimeType: string | null }): string {
+  if (doc.kind === "web_page") {
+    const fetched = doc.fetchedAt ? ` · Fetched ${fetchedDate.format(doc.fetchedAt)}` : "";
+    return `Web page · ${pageDomain(doc.sourceUrl)}${fetched}`;
+  }
+  return `${doc.filename ?? "No file"} · ${mimeTypeLabel(doc.mimeType)}`;
+}
+
 function mimeTypeLabel(mimeType: string | null): string {
   if (!mimeType) return "Unknown type";
   const known: Record<string, string> = {
     "application/pdf": "PDF",
     "image/png": "PNG",
     "image/jpeg": "JPEG",
+    "text/markdown": "Web page",
   };
   return known[mimeType] ?? mimeType;
 }
@@ -128,6 +151,7 @@ export default async function KnowledgePage({
         actions={
           <>
             <UploadButton />
+            <CaptureUrlForm />
             <Button variant="outline" disabled>
               Import
             </Button>
@@ -217,11 +241,24 @@ export default async function KnowledgePage({
                           {doc.title}
                         </a>
                         <p className="text-muted-foreground truncate text-xs">
-                          {doc.filename ?? "No file"} · {mimeTypeLabel(doc.mimeType)}
+                          {rowSubtitle(doc)}
                           {doc.partyNames.length > 0 ? ` · ${doc.partyNames.join(", ")}` : ""}
                         </p>
                       </div>
-                      <StatusBadge label={status.label} tone={status.tone} />
+                      <div className="flex items-center gap-2">
+                        {/* A row that never got read heals from the inbox: a
+                            page re-fetches on the same document, a file re-runs
+                            the idempotent extraction route. */}
+                        {doc.kind === "web_page" && !doc.fetchedAt ? (
+                          <RetryCaptureButton url={doc.sourceUrl!} />
+                        ) : doc.extractionStatus === null || doc.extractionStatus === "failed" ? (
+                          <RetryExtractionButton
+                            documentId={doc.id}
+                            label={doc.extractionStatus === null ? "Read now" : "Retry"}
+                          />
+                        ) : null}
+                        <StatusBadge label={status.label} tone={status.tone} />
+                      </div>
                     </div>
                   </li>
                 );
@@ -277,7 +314,16 @@ function ReviewWorkbench({
           <div className="panel rounded-lg px-3.5 py-3">
             <h3 className="text-[13px] font-medium">{doc.title}</h3>
             <p className="text-muted-foreground mt-1 text-xs">
-              {mimeTypeLabel(doc.mimeType)}
+              {doc.sourceUrl ? (
+                <>
+                  {"Web page · "}
+                  <a href={doc.sourceUrl} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                    {pageDomain(doc.sourceUrl)}
+                  </a>
+                </>
+              ) : (
+                mimeTypeLabel(doc.mimeType)
+              )}
             </p>
             <div className="mt-2">
               <StatusBadge label={status.label} tone={status.tone} />
