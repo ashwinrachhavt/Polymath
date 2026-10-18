@@ -5,15 +5,9 @@ import type { ReactNode } from "react";
  * for, and the actions that belong to it. Actions sit last so the reading
  * order is title, purpose, controls.
  *
- * The rule under the header is engraved rather than drawn: a second hairline
- * 8px above a 1px border, at 3% opacity. It is the cheapest structural device
- * that reads as machined, and unlike a border it does not compete with the
- * panel edges below it.
- *
- * The 2px cap above the title carries the app's own accent via `--app-accent`,
- * so the page announces which app it belongs to without a repeated label. It is
- * 24px wide, not full-bleed: in this direction a lit indicator marks something,
- * it does not stripe a surface.
+ * No accent rule above the title: the breadcrumb already names the app, and a
+ * second coloured mark on every page made the accent a theme instead of an
+ * indicator. The single hairline below is the whole structure, as in Notion.
  */
 export function PageHeader({
   title,
@@ -25,10 +19,9 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="border-border bg-background/95 sticky top-12 z-10 border-b px-4 pt-5 pb-3.5 backdrop-blur md:px-6">
+    <header className="border-border bg-background/95 sticky top-12 z-10 border-b px-4 pt-6 pb-4 backdrop-blur md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <span aria-hidden className="bg-app-accent h-0.5 w-6 rounded-full" />
           <h1 className="text-[15px] leading-none font-medium">{title}</h1>
           <p className="text-muted-foreground text-[13px]">{purpose}</p>
         </div>

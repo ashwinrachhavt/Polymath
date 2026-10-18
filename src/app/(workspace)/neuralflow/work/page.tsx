@@ -1,7 +1,5 @@
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader, Section } from "@/components/page-header";
-import { Readout } from "@/components/readout";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { WorkContainers, WorkToday } from "./work-today";
 
 export const metadata = { title: "Work · Axiom" };
 
@@ -43,29 +41,9 @@ export default function WorkPage() {
       />
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
-        <Section
-          title="Today"
-          description="Accepted outcomes first, then ready work, then what is waiting."
-        >
-          <EmptyState
-            title="No tasks yet"
-            description="Tasks arrive from capture, from Alfred, or from this screen once creating one is wired."
-            action={<Badge variant="outline"><Readout>0 open</Readout></Badge>}
-          />
-        </Section>
+        <WorkToday />
 
-        <Section title="Spaces and projects" description="Spaces group; projects carry an outcome.">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {["No spaces yet", "No projects yet", "No saved views yet"].map((label) => (
-              <div
-                key={label}
-                className="panel-empty text-muted-foreground rounded-lg px-3 py-4 text-[13px]"
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-        </Section>
+        <WorkContainers />
       </div>
     </>
   );

@@ -148,7 +148,7 @@ export default async function KnowledgePage({
                 {searchHits.map((hit) => (
                   <li key={hit.id} className="text-[13px]">
                     <a
-                      href={`/knowledge?doc=${hit.id}`}
+                      href={`/alfred/knowledge?doc=${hit.id}`}
                       className="font-medium underline-offset-4 hover:underline"
                     >
                       {hit.title}
@@ -193,7 +193,7 @@ export default async function KnowledgePage({
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <a
-                          href={`/knowledge?doc=${doc.id}`}
+                          href={`/alfred/knowledge?doc=${doc.id}`}
                           className="text-[13px] font-medium underline-offset-4 hover:underline"
                         >
                           {doc.title}

@@ -21,7 +21,7 @@ import { appForPath } from "@/lib/navigation";
  * layout above it stays a server component, so the auth guard there is
  * unaffected.
  */
-export function AppShell({ children, storageScope = "anonymous" }: { children: ReactNode; storageScope?: string }) {
+export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
   const pathname = usePathname();
   const app = appForPath(pathname);
 
@@ -29,9 +29,12 @@ export function AppShell({ children, storageScope = "anonymous" }: { children: R
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
       <div data-app={app?.slug} className="flex min-h-dvh flex-1 flex-col">
-        <TopBar />
-        {app ? <AppNav app={app} /> : null}
-        <div className="flex flex-1">
+        <TopBar clerkConfigured={clerkConfigured} />
+        {/* The rail is a column of the work area, not a band above it: it has to
+            sit beside the canvas so the owner keeps their place while moving
+            between sections. */}
+        <div className="flex min-h-0 flex-1">
+          {app ? <AppNav app={app} /> : null}
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
             <PreviewBanner />
             <PreviewStorageWarning />

@@ -48,7 +48,7 @@
   --popover-foreground: oklch(0.195 0.008 255);
 
   /* The product's one accent: instrument cyan/teal, never clay. */
-  --primary: oklch(0.49 0.082 214);
+  --primary: oklch(0.44 0.085 214);
   --primary-foreground: oklch(0.995 0.002 215);
 
   --secondary: oklch(0.955 0.003 252);
@@ -114,9 +114,9 @@
 
   /* Per-app accent variables, readable outside any [data-app] scope (the
      launcher). The [data-app] rules below point --app-accent at these. */
-  --accent-command-center: oklch(0.5 0.09 215);
-  --accent-neuralflow: oklch(0.51 0.09 155);
-  --accent-alfred: oklch(0.5 0.09 285);
+  --accent-command-center: oklch(0.44 0.085 215);
+  --accent-neuralflow: oklch(0.45 0.085 155);
+  --accent-alfred: oklch(0.45 0.09 285);
 }
 
 [data-app="command-center"] {
@@ -204,6 +204,11 @@
   --popover-foreground: oklch(0.94 0.003 255);
 
   --primary: oklch(0.74 0.1 215);
+  /* The app accents are declared once in :root; lift them for the dark
+     ground or accent-coloured text drops below 4.5:1 on it. */
+  --accent-command-center: oklch(0.74 0.095 215);
+  --accent-neuralflow: oklch(0.76 0.095 155);
+  --accent-alfred: oklch(0.75 0.1 285);
   --primary-foreground: oklch(0.18 0.005 255);
 
   --secondary: oklch(0.245 0.005 255);
