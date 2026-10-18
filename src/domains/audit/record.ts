@@ -20,7 +20,7 @@ export type AuditInput = {
 };
 
 export async function recordAudit(
-  auth: Pick<AuthContext, "userId" | "workspaceId">,
+  auth: AuthContext,
   input: AuditInput,
   tx: TxDrizzle | typeof db = db,
 ) {

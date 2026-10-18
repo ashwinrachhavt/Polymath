@@ -15,8 +15,8 @@ import { parseCsv } from "@/domains/identity/party-csv";
  */
 
 const LINKEDIN = `﻿First Name,Last Name,URL,Email Address,Company,Position,Connected On\r
-Ada,Lovelace,https://linkedin.com/in/ada,ada@calc.dev,Analytical Engines,Engineer,01 Jan 2026\r
-Grace,Hopper,,grace@navy.mil,"Navy, Federal",Rear Admiral,02 Jan 2026\r
+Ada,Lovelace,https://linkedin.com/in/ada,ada@example.com,Analytical Engines,Engineer,01 Jan 2026\r
+Grace,Hopper,,grace@example.org,"Navy, Federal",Rear Admiral,02 Jan 2026\r
 Alan,Turing,https://linkedin.com/in/alan,,Bletchley Park,,03 Jan 2026\r
 `;
 

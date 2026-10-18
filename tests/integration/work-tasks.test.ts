@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
-import { people } from "@/domains/identity/schema";
+import { organizations, people } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -76,6 +76,56 @@ suite("work tasks", () => {
     expect(audit[0].action).toBe("task.created");
   });
 
+
+  it("links a task to an organization as well as a person", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `task-links-org-${Date.now()}`);
+    const a = ownerAuth(userId, workspaceId);
+    const [organization] = await db
+      .insert(organizations)
+      .values({ workspaceId, name: "Analytical Engines" })
+      .returning();
+
+    const { id } = await work.createOwnerTask(a, {
+      title: "Send the invoice",
+      organizationId: organization.id,
+    });
+
+    const links = await db
+      .select({ targetType: taskLinks.targetType, targetId: taskLinks.targetId })
+      .from(taskLinks)
+      .where(eq(taskLinks.taskId, id));
+    expect(links).toEqual([{ targetType: "organization", targetId: organization.id }]);
+  });
+
+  it("cannot complete a cancelled task", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `task-cancelled-${Date.now()}`);
+    const a = ownerAuth(userId, workspaceId);
+    const { id } = await work.createOwnerTask(a, { title: "Dropped" });
+    await db
+      .update(tasks)
+      .set({ status: "cancelled", cancelledAt: new Date() })
+      .where(eq(tasks.id, id));
+
+    // A cancelled task is terminal: completing it would resurrect work the
+    // owner explicitly dropped.
+    expect(await work.completeTask(a, { taskId: id })).toBeNull();
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
+    expect(row.status).toBe("cancelled");
+  });
+
+  it("orders open tasks by due date, undated last", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `task-order-${Date.now()}`);
+    const a = ownerAuth(userId, workspaceId);
+    await work.createOwnerTask(a, { title: "No date" });
+    await work.createOwnerTask(a, { title: "Later", dueAt: new Date("2026-12-01T00:00:00Z") });
+    await work.createOwnerTask(a, { title: "Sooner", dueAt: new Date("2026-11-01T00:00:00Z") });
+
+    expect((await work.listOpenTasks(a)).map((t) => t.title)).toEqual([
+      "Sooner",
+      "Later",
+      "No date",
+    ]);
+  });
   it("cannot complete a task from another workspace", async () => {
     const one = await seedWorkspace(db, `task-ws-a-${Date.now()}`);
     const two = await seedWorkspace(db, `task-ws-b-${Date.now()}`);
