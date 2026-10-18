@@ -347,3 +347,81 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
     </div>
   );
 }
+
+export function BoardCard({
+  taskId,
+  title,
+  status,
+  priority,
+  version,
+  detailHref,
+  blockedBy,
+  up,
+  down,
+}: {
+  taskId: string;
+  title: string;
+  status: Status;
+  priority: Priority;
+  version: number;
+  detailHref: string;
+  blockedBy: number;
+  up: { after?: string; before?: string } | null;
+  down: { after?: string; before?: string } | null;
+}) {
+  const intent = useIntent();
+  const { pending, error, run } = useRun();
+  return (
+    <div className="panel rounded-lg p-3">
+      <div className="flex items-start justify-between gap-2">
+        <a href={detailHref} className="min-w-0 text-[13px] font-medium hover:underline">
+          {title}
+        </a>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending || !up}
+            aria-label={`Move ${title} up`}
+            onClick={() =>
+              up && run(intent, () => moveTaskAction({ taskId, expectedVersion: version, afterTaskId: up.after, beforeTaskId: up.before, idempotencyKey: intent.key() }))
+            }
+          >
+            Up
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending || !down}
+            aria-label={`Move ${title} down`}
+            onClick={() =>
+              down && run(intent, () => moveTaskAction({ taskId, expectedVersion: version, afterTaskId: down.after, beforeTaskId: down.before, idempotencyKey: intent.key() }))
+            }
+          >
+            Down
+          </Button>
+        </div>
+      </div>
+      <div className="my-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+        {priority !== "none" && <span>{priority}</span>}
+        {blockedBy > 0 && <span>Blocked by {blockedBy}</span>}
+      </div>
+      <select
+        aria-label={`Move ${title} to status`}
+        className={selectClass}
+        value={status}
+        disabled={pending}
+        onChange={(event) =>
+          run(intent, () => updateTaskAction({ taskId, expectedVersion: version, idempotencyKey: intent.key(), patch: { status: event.target.value as Status } }))
+        }
+      >
+        {statuses.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <ErrorLine error={error} />
+    </div>
+  );
+}

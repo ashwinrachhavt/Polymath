@@ -73,3 +73,41 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   await page.goto("/neuralflow/work?view=saved&show=done");
   await expect(page.getByRole("link", { name: b, exact: true })).toBeVisible();
 });
+
+test("board lanes and the calendar show the same saved rows", async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const a = `Board lane ${tag}`;
+  const due = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10); // tomorrow, UTC
+  const dueDay = new Date(`${due}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+
+  await page.goto("/neuralflow/work?view=saved");
+  await page.getByLabel("New task title").fill(a);
+  await page.getByRole("button", { name: "Add task" }).click();
+  await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();
+
+  // Give it a status and a due date on the card.
+  await page.getByRole("link", { name: a, exact: true }).click();
+  await page.getByRole("combobox", { name: "Status" }).selectOption("in_progress");
+  await page.getByLabel("Due").fill(due);
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("In progress", { exact: true })).toBeVisible();
+
+  // The board files it under In progress, and a lane move saves a new status.
+  await page.goto("/neuralflow/work?view=board");
+  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  const lane = page.getByRole("heading", { name: "In progress", exact: true }).locator("..").locator("..").locator("..");
+  await expect(lane.getByText(a, { exact: true })).toBeVisible();
+  await page.getByLabel(`Move ${a} to status`).selectOption("waiting");
+  await expect
+    .poll(async () => {
+      await page.reload();
+      return await page.getByRole("heading", { name: "Waiting", exact: true }).locator("..").locator("..").locator("..").getByText(a, { exact: true }).count();
+    })
+    .toBe(1);
+
+  // The calendar places it on its due day.
+  await page.goto(`/neuralflow/work?view=calendar&date=${due}`);
+  const dayPanel = page.getByRole("heading", { name: dueDay, exact: true }).locator("..").locator("..").locator("..");
+  await expect(dayPanel.getByRole("link", { name: a, exact: true })).toBeVisible();
+  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+});
