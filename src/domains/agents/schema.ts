@@ -147,6 +147,12 @@ export const agentRuns = pgTable(
     error: text("error"),
     /** Highest event sequence written, for SSE reconnect. */
     lastEventSeq: integer("last_event_seq").notNull().default(0),
+    /**
+     * The eve session this run drives. eve allocates its own `wrun_…` ids and
+     * does not support caller-assigned ones, so the bridge resolves the run
+     * through this column instead of assuming session id == run id.
+     */
+    sessionRef: text("session_ref"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     ...mutable,

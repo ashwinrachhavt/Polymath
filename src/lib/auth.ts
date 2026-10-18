@@ -2,6 +2,7 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveMachineClient } from "@/domains/identity/machine";
+import { clerkConfigured } from "@/lib/clerk";
 import { problemResponse } from "./problems";
 
 /*
@@ -57,6 +58,16 @@ export function withAuth<A extends unknown[]>(
  * go through this; webhooks keep their HMAC auth instead.
  */
 export const getAnyAuthContext = cache(async (): Promise<AuthContext> => {
+  // Dev fallback: without Clerk keys the proxy is a no-op, and Clerk's auth()
+  // throws instead of returning "unauthenticated", which turned every authed
+  // route into a 500. Resolve a fixed dev owner so a clone boots and serves.
+  // gstack-shortcut(dec-qa-001): dev-only owner, upgrade when Clerk keys land
+  // in a shared dev env — then delete this branch. Tests mock the Clerk module
+  // without touching clerkConfigured's env read, so the flag gates the branch:
+  // configured keys always take the real path below.
+  if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+    return resolveAuthContext("dev-user");
+  }
   const session = await auth({ acceptsToken: "any" });
   if (session.isAuthenticated) {
     if ("userId" in session && session.userId) {

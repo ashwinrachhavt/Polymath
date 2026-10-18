@@ -9,6 +9,7 @@ import {
   recordToolCall,
   recordUsageEvent,
 } from "../../../../src/domains/agents/event-bridge";
+import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
  * The Axiom side of eve: this is the only file that imports eve, and its only
@@ -19,14 +20,26 @@ import {
  * Every handler is best-effort: a mirror write must never break the turn. A
  * failure is logged and swallowed here on purpose — the run table is a mirror,
  * eve's own stream stays authoritative, and a thrown hook error would fail the
- * user's turn over a bookkeeping write. `runId` is the session id by
- * construction (engine.ts passes `sessionId: run.id`).
+ * user's turn over a bookkeeping write.
+ *
+ * eve allocates its own session ids (`wrun_…`), so the run id the bridge needs
+ * comes from the run row whose `session_ref` is `ctx.session.id` — the driver
+ * recorded it at start. An unknown session is skipped, not an error: schedule
+ * and TUI sessions have no Axiom run to mirror into.
  */
 
 /** The workspace the session belongs to, captured by the channel's AuthFn. */
 function workspaceIdOf(ctx: HookContext): string | null {
   const value = ctx.session.auth.current?.attributes?.workspaceId;
   return typeof value === "string" ? value : null;
+}
+
+/** The Axiom run a session mirrors into, or null when the session has none. */
+async function runIdOf(ctx: HookContext): Promise<string | null> {
+  const workspaceId = workspaceIdOf(ctx);
+  if (!workspaceId) return null;
+  const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+  return run?.id ?? null;
 }
 
 /** Files headers and other opaque objects are stripped before a row is written. */
@@ -58,10 +71,11 @@ export default defineHook({
   events: {
     async "session.started"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("session.started", () =>
         recordRoundEvent({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           type: "session.started",
           data: { at: event.meta.at },
@@ -71,12 +85,13 @@ export default defineHook({
 
     async "step.completed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       // Usage is what settlement sums; the step's coordinates are the dedupe key.
       if (event.data.usage) {
         await guarded("step.completed usage", () =>
           recordUsageEvent({
-            runId: ctx.session.id,
+            runId,
             workspaceId,
             usage: event.data.usage as Record<string, unknown>,
             source: { turnId: event.data.turnId, stepIndex: event.data.stepIndex },
@@ -87,10 +102,11 @@ export default defineHook({
 
     async "step.failed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("step.failed", () =>
         recordRoundEvent({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           type: "step.failed",
           data: {
@@ -112,7 +128,8 @@ export default defineHook({
 
     async "action.result"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       // Only authored tool calls carry a tool name; framework controls do not.
       const result = event.data.result;
       const toolName = "toolName" in result ? result.toolName : null;
@@ -124,7 +141,7 @@ export default defineHook({
       await guarded("action.result", () =>
         recordToolCall({
           workspaceId,
-          runId: ctx.session.id,
+          runId,
           toolName,
           ok: event.data.status === "completed",
           // A HITL "rejected" is a policy denial, not a runtime failure: it
@@ -138,14 +155,15 @@ export default defineHook({
 
     async "input.requested"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       for (const request of event.data.requests) {
         // Only a question is a durable agent question; approvals and session
         // limits ride the reviews/approvals surface instead.
         if (request.kind !== "question") continue;
         await guarded("input.requested", () =>
           recordQuestion({
-            runId: ctx.session.id,
+            runId,
             workspaceId,
             question: request.prompt,
             options: request.options ?? [],
@@ -156,10 +174,11 @@ export default defineHook({
 
     async "message.received"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("message.received", () =>
         mirrorMessage({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           role: "user",
           content: event.data.message,
@@ -170,10 +189,11 @@ export default defineHook({
 
     async "message.completed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("message.completed", () =>
         mirrorMessage({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           role: "assistant",
           content: event.data.message,
@@ -183,19 +203,21 @@ export default defineHook({
 
     async "session.completed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("session.completed", () =>
-        closeRun({ runId: ctx.session.id, workspaceId, state: "succeeded" }),
+        closeRun({ runId, workspaceId, state: "succeeded" }),
       );
       void event;
     },
 
     async "session.failed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       await guarded("session.failed", () =>
         closeRun({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           state: "failed",
           error: failureDetail(event),
@@ -205,13 +227,14 @@ export default defineHook({
 
     async "turn.cancelled"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      if (!workspaceId) return;
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
       // A cancelled turn is NOT a terminal run: the session continues and takes
       // the next message (eve protocol docs), so only session.completed /
       // session.failed close the run. Record the cancellation on the timeline.
       await guarded("turn.cancelled", () =>
         recordRoundEvent({
-          runId: ctx.session.id,
+          runId,
           workspaceId,
           type: "turn.cancelled",
           data: { turnId: event.data.turnId },

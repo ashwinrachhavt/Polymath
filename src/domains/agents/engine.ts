@@ -40,6 +40,8 @@ export interface SessionDriver {
     auth: AuthContext;
     policy: PolicySnapshot;
     instructions: string | null;
+    /** The objective becomes the session's first message: it starts the turn. */
+    objective: string;
   }): Promise<void>;
   signal(sessionId: string, signal: string): Promise<void>;
   cancel(sessionId: string): Promise<void>;
@@ -192,6 +194,7 @@ export function createEngine(
           auth: input.auth,
           policy,
           instructions: profile.instructions ?? null,
+          objective: input.objective,
         });
       } catch (cause) {
         // A session that never started is not a running run: close it and give

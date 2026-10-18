@@ -1,22 +1,21 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 
 /*
- * Neon's HTTP driver, not a TCP pool. Every query is one fetch, which is what
- * a serverless request wants; there is no connection to leak between
- * invocations. Swap to `neon-serverless` the day a transaction spans code
- * that awaits a provider call.
+ * postgres-js over TCP, the same driver db-transaction.ts uses. The neon-http
+ * driver was tried here and rejected for two reasons: it speaks Neon's HTTPS
+ * proxy protocol, which a plain local Postgres does not (a clone could not
+ * develop against localhost), and unioning the two drizzle driver types breaks
+ * overload resolution on `.returning({fields})` at every call site. Neon
+ * accepts standard TCP through its pooled connection string, so one driver
+ * serves both.
  *
- * Nothing imports this yet, so a clone with no DATABASE_URL still builds —
- * the throw below only fires when a domain actually reaches for the database.
- */
-
-/*
  * An empty string is accepted here so a clone with no .env still *builds* —
  * `next build` evaluates route modules, and a throw at import time failed CI.
  * The missing URL is surfaced at first query instead, where it is an actual
  * runtime error rather than a build one.
  */
+
 const url = process.env.DATABASE_URL ?? "";
 
-export const db = drizzle(neon(url));
+export const db = drizzle(postgres(url, { max: 5 }));
