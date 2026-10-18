@@ -35,7 +35,7 @@ export default async function AlfredPage() {
         <div className="px-4 py-5 md:px-6">
           <EmptyState
             title="Agent storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Verified Clerk-to-Eve identity transport is not implemented."
+            description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
           />
         </div>
       </>

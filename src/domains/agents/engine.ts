@@ -43,8 +43,8 @@ export interface SessionDriver {
     /** The objective becomes the session's first message: it starts the turn. */
     objective: string;
   }): Promise<void>;
-  signal(sessionId: string, signal: string): Promise<void>;
-  cancel(sessionId: string): Promise<void>;
+  signal(sessionId: string, signal: string, auth: AuthContext): Promise<void>;
+  cancel(sessionId: string, auth: AuthContext): Promise<void>;
 }
 
 export interface AgentEngine {
@@ -211,7 +211,7 @@ export function createEngine(
     async signal(runId, signal, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, signal);
+      await driver.signal(run.id, signal, auth);
       // The follow-up is real work again: a parked run goes back to running.
       // Conditional, so a close that landed meanwhile is never rewritten.
       await db
@@ -223,7 +223,7 @@ export function createEngine(
     async resume(runId, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, "resume");
+      await driver.signal(run.id, "resume", auth);
     },
 
     async cancel(runId, auth) {
@@ -238,7 +238,7 @@ export function createEngine(
         .returning({ id: agentRuns.id });
       if (ended.length === 0) return { cancelled: false };
 
-      await driver.cancel(runId);
+      await driver.cancel(runId, auth);
 
       // The run is terminal before the budget is handed back; the release is
       // guarded on status = 'reserved', so a settled claim is left alone.

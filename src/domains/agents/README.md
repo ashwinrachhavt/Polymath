@@ -11,9 +11,20 @@ Eve tools resolve their run UUID and frozen policy through the persisted
 session_ref plus authenticated workspace. Missing, ambiguous, or terminal
 bindings fail closed; tasks.read returns bounded canonical open tasks.
 
-The header-based Eve channel is a local-development spike, not Clerk
-authentication. It is disabled in production and whenever Clerk is configured;
-run creation then returns agent_bridge_unavailable before reserving spend.
-Verified scoped identity transport, enforced runtime model/budget snapshots,
-start/binding reconciliation, signal/resume and terminal lifecycle handling
-remain unfinished (ASH-119/ASH-134). Do not treat this bridge as production-ready.
+## Signed-in run start
+
+The app authenticates the caller (Clerk), resolves their workspace, and mints a
+60-second HMAC bridge token (`bridge-token.ts`, `EVE_BRIDGE_SECRET`, 32+ chars,
+the same value for the app and the Eve agent). The Eve channel verifies the
+signature, then re-checks the active membership and role in the database
+(`verifyWorkspaceBinding`) before it puts the workspace id in the session
+attributes. The old `x-spike-clerk-user-id` header is gone. Without the secret,
+POST /api/v1/runs returns 503 `agent_bridge_unavailable` and reserves nothing.
+
+POST /api/v1/runs accepts an `Idempotency-Key` (UUID). The receipt is claimed
+before the engine runs: the same key returns the first run, a different body is
+422, an in-flight key is 409, and a failed start frees the key. The Eve
+`operationId` is `axiom-run-<runId>`, so Eve's create is also once-only. The
+Eve session id lives in `agent_runs.session_ref`. GET /api/v1/runs/:runId
+returns 404 for a run in another workspace. Retrieval, signal/resume and
+terminal lifecycle handling are later work.

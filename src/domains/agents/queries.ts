@@ -57,3 +57,27 @@ export async function listRecentRuns(workspaceId: string, limit = 10) {
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 }
+
+/**
+ * One run, for the workspace that owns it. A run in another workspace and a
+ * run that does not exist return the same null: the difference is not the
+ * caller's to learn.
+ */
+export async function getRun(workspaceId: string, runId: string) {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      model: agentRuns.model,
+      summary: agentRuns.summary,
+      error: agentRuns.error,
+      startedAt: agentRuns.startedAt,
+      endedAt: agentRuns.endedAt,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
+    .limit(1);
+  return run ?? null;
+}
