@@ -6,6 +6,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { taskLinks, tasks } from "./schema";
+import { settleBlockers } from "./task-commands";
 
 /*
  * The work domain's mutation surface. Minimal by design: callers outside the
@@ -183,6 +184,9 @@ export async function completeTask(
     // A no-op click writes nothing, including no audit row: the guard decided
     // there was no change to record.
     if (!task) return null;
+
+    // Whatever this task was blocking is no longer waiting on it.
+    await settleBlockers(tx, auth, task.id, true);
 
     await recordAudit(
       auth,
