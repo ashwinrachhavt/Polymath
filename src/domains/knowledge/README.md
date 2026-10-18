@@ -81,3 +81,14 @@ unknown dossier is an error.
 
 Not in this PR: Studio Generate (a run saved as a draft artifact linked to the
 pinned versions). The brief says not to start Studio until PR 5 and PR 8 merge.
+
+## Studio Generate
+
+`startStudioGenerate` starts a run whose objective names the dossier and whose
+subjects bind it to that dossier. `saveGeneratedDraft` turns the run's last
+assistant message into a `draft` artifact (version 1, reason `generated`), linked
+to each pinned document (`pinned:<content hash>`) and to the run, once per run.
+The owner then calls `saveDraft` (status `reviewed`) or `discardDraft`
+(`archived`); a decided draft is never rewritten. No code path sets `published`.
+API: POST /api/v1/dossiers/:id/generate, POST /api/v1/drafts, POST
+/api/v1/drafts/:artifactId/save|discard.
