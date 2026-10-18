@@ -10,6 +10,32 @@ test("home opens the canonical Command Center briefing", async ({ page }) => {
   await expect(page.getByText("Interactive preview", { exact: true })).toBeVisible();
 });
 
+/*
+ * The canonical three-app routes: the IA this branch delivers. The unit layer
+ * tests the navigation lib; this journey proves the routes themselves render —
+ * a broken appForPath, shell, or dropped page file fails here.
+ */
+test("canonical app routes render", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await expect(page).toHaveURL("/command-center/briefing");
+  await expect(page.locator("#content h1")).toContainText("Briefing");
+
+  for (const [path, heading] of [
+    ["/neuralflow/work", "Work"],
+    ["/alfred/knowledge", "Knowledge"],
+    ["/more", "More"],
+  ] as const) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(200);
+    await expect(page.locator("#content h1"), path).toContainText(heading);
+  }
+  expect(errors).toEqual([]);
+});
+
 for (const product of products) {
   test(`${product.name} destinations are real screens`, async ({ page }) => {
     test.setTimeout(180_000);

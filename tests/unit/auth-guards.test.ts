@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "@/lib/auth";
-import { assertWorkspaceScope, requireRole, type Role } from "@/lib/auth/guards";
+import {
+  assertWorkspaceScope,
+  ForbiddenRoleError,
+  requireRole,
+  type Role,
+} from "@/lib/auth/guards";
 
 /*
  * ASH-120 F03 — the pure guards. Resolution itself (deny paths, membership
@@ -16,7 +21,16 @@ const ctx = (role: Role, workspaceId = "ws-1"): AuthContext => ({
 
 describe("requireRole", () => {
   it("a viewer cannot pass a member check, an owner passes everything", () => {
-    expect(() => requireRole(ctx("viewer"), "member")).toThrowError(/Requires member/);
+    // Route handlers map on the machine code, not the message — assert both.
+    let caught: unknown;
+    try {
+      requireRole(ctx("viewer"), "member");
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ForbiddenRoleError);
+    expect((caught as ForbiddenRoleError).code).toBe("AUTH_FORBIDDEN");
+    expect((caught as Error).message).toMatch(/Requires member/);
     expect(() => requireRole(ctx("member"), "member")).not.toThrow();
     expect(() => requireRole(ctx("admin"), "admin")).not.toThrow();
     expect(() => requireRole(ctx("owner"), "viewer")).not.toThrow();
@@ -38,10 +52,16 @@ describe("assertWorkspaceScope", () => {
     expect(() => assertWorkspaceScope({ workspaceId: "ws-1" }, ctx("member"))).not.toThrow();
   });
 
-  it("rejects a row from another workspace", () => {
-    expect(() => assertWorkspaceScope({ workspaceId: "ws-2" }, ctx("member"))).toThrowError(
-      /another workspace/,
-    );
+  it("rejects a row from another workspace with the mismatch code", () => {
+    let caught: unknown;
+    try {
+      assertWorkspaceScope({ workspaceId: "ws-2" }, ctx("member"));
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ForbiddenRoleError);
+    expect((caught as ForbiddenRoleError).code).toBe("AUTH_WORKSPACE_MISMATCH");
+    expect((caught as Error).message).toMatch(/another workspace/);
   });
 
   it("an owner is not exempt from tenant scope", () => {

@@ -187,3 +187,47 @@ suite("canonical party model", () => {
     expect((dupe as { cause?: { code?: string } }).cause?.code).toBe("23505");
   });
 });
+
+suite("unique invariants (ASH-120 review)", () => {
+  it("only one primary contact point per party per kind", async () => {
+    // The partial unique index fires only for is_primary rows of the same
+    // party and kind; a non-primary duplicate must still insert.
+    const { workspace } = await seedWorkspace();
+    const [person] = await db
+      .insert(people)
+      .values({ workspaceId: workspace.id, displayName: "Primary Check" })
+      .returning();
+    const point = {
+      workspaceId: workspace.id,
+      personId: person.id,
+      kind: "email" as const,
+      isPrimary: true,
+    };
+    await db.insert(contactPoints).values({ ...point, value: "first@example.com" });
+
+    const dupe = await db
+      .insert(contactPoints).values({ ...point, value: "second@example.com" })
+      .catch((e) => e);
+    expect((dupe as { cause?: { code?: string } }).cause?.code).toBe("23505");
+
+    // A non-primary email and a primary phone are not blocked.
+    await db.insert(contactPoints).values({ ...point, isPrimary: false, value: "third@example.com" });
+    await db.insert(contactPoints).values({ ...point, kind: "phone", value: "+1 555 0100" });
+  });
+
+  it("one person per account per workspace on account_person_links", async () => {
+    const { user, workspace } = await seedWorkspace();
+    const [person] = await db
+      .insert(people)
+      .values({ workspaceId: workspace.id, displayName: "Link Check" })
+      .returning();
+    const link = {
+      workspaceId: workspace.id,
+      accountId: user.id,
+      personId: person.id,
+    };
+    await db.insert(accountPersonLinks).values(link);
+    const dupe = await db.insert(accountPersonLinks).values(link).catch((e) => e);
+    expect((dupe as { cause?: { code?: string } }).cause?.code).toBe("23505");
+  });
+});
