@@ -13,7 +13,6 @@ export const priorityRank: Record<Task["priority"], number> = { High: 0, Medium:
 export const recurrenceFrequencies: Recurrence["frequency"][] = ["daily", "weekly", "monthly"];
 export const recurringStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING"];
 export const attachmentKinds: NonNullable<Task["attachments"]>[number]["kind"][] = ["file", "url", "note"];
-export const openStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING"];
 
 /*
  * Manual order. Rank is only meaningful inside a status column, which is what

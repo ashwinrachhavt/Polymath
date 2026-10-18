@@ -174,6 +174,57 @@ export const organizations = pgTable(
     uniqueIndex("organizations_workspace_domain_key")
       .on(t.workspaceId, t.domain)
       .where(sql`domain is not null`),
+    // The connections import matches organizations case-insensitively. The
+    // name index above is case-sensitive and cannot serve that lookup.
+    index("organizations_workspace_lower_name_idx")
+      .on(t.workspaceId, sql`lower(${t.name})`)
+      .where(sql`archived_at is null`),
+  ],
+);
+
+/*
+ * Person → Organization employment. `party_relationships` cannot hold this:
+ * its one-side check forbids both endpoints at once, because it classifies a
+ * single party against the workspace's business. This table holds the
+ * two-ended fact — who works where — and is the reason the import path can
+ * file a contact under a company without inventing a second contact table.
+ *
+ * `ended_at` null means current; a job change closes the old edge and opens a
+ * new one rather than overwriting history.
+ */
+export const partyEmployment = pgTable(
+  "party_employment",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    personId: uuid("person_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    title: text("title"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    // Composite FKs on (workspace_id, id): a cross-tenant employment edge is a
+    // constraint violation, not an application check someone forgets to call.
+    foreignKey({
+      name: "party_employment_person_fk",
+      columns: [t.workspaceId, t.personId],
+      foreignColumns: [people.workspaceId, people.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "party_employment_organization_fk",
+      columns: [t.workspaceId, t.organizationId],
+      foreignColumns: [organizations.workspaceId, organizations.id],
+    }).onDelete("cascade"),
+    index("party_employment_person_idx").on(t.personId, t.endedAt),
+    index("party_employment_organization_idx").on(t.organizationId, t.endedAt),
+    // One current edge per person per org, so the import's onConflictDoNothing
+    // is safe against a concurrent run. A rehire is a new row: the old edge is
+    // closed (ended_at set) and no longer participates in this index.
+    uniqueIndex("party_employment_current_key")
+      .on(t.workspaceId, t.personId, t.organizationId)
+      .where(sql`ended_at is null`),
   ],
 );
 

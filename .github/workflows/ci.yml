@@ -17,6 +17,26 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # The integration suites hold the invariants a mock cannot: idempotency,
+      # tenancy, version conflicts, the import's identity rules. Without a
+      # database every one of them describe.skips, so the gate would report
+      # green while proving nothing.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: axiom
+          POSTGRES_PASSWORD: axiom
+          POSTGRES_DB: axiom_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axiom"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -25,6 +45,12 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Applied directly, in journal order: drizzle-kit migrate has a
+      # pre-existing identifier-truncation issue on the early migrations.
+      - run: |
+          for f in src/db/migrations/*.sql; do
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
