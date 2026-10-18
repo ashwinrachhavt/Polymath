@@ -1,0 +1,2 @@
+ALTER TABLE "documents" ADD COLUMN "source_url" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "documents_workspace_source_url_key" ON "documents" USING btree ("workspace_id","source_url") WHERE source_url is not null;

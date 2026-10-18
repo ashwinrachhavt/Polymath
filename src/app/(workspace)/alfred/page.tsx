@@ -4,8 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Readout } from "@/components/readout";
 import { connection } from "next/server";
 import { getAuthContext } from "@/lib/auth";
-import { listRecentRuns } from "@/domains/agents/queries";
+import { listDocumentSearchResults, listRecentRuns } from "@/domains/agents/queries";
+import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { listThreads, isFinished } from "@/domains/agents/thread";
+import { RunControls } from "./run-controls";
+import { DraftControls } from "./draft-controls";
+import { draftsForRuns } from "@/domains/knowledge/studio";
+import { Markdown } from "@/components/markdown";
+import { listDossiers } from "@/domains/knowledge/dossiers";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -35,7 +42,7 @@ export default async function AlfredPage() {
         <div className="px-4 py-5 md:px-6">
           <EmptyState
             title="Agent storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Verified Clerk-to-Eve identity transport is not implemented."
+            description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
           />
         </div>
       </>
@@ -43,6 +50,10 @@ export default async function AlfredPage() {
   }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const dossierList = await listDossiers(auth);
+  const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
+  const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
+  const runDrafts = await draftsForRuns(auth, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
 
   return (
@@ -59,7 +70,7 @@ export default async function AlfredPage() {
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm />}
+          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm dossiers={dossierList} />}
         </Section>
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
@@ -90,6 +101,22 @@ export default async function AlfredPage() {
                     {" · "}
                     {run.summary ?? run.error ?? "in progress"}
                   </p>
+                  <ul className="flex flex-col gap-1">
+                    {(threads.get(run.id) ?? []).map((entry) => (
+                      <li
+                        key={entry.sequence}
+                        className={entry.kind === "user" ? "text-[13px]" : "text-muted-foreground text-[13px]"}
+                      >
+                        <span className="text-muted-foreground text-xs">
+                          {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Alfred" : "Run"}:{" "}
+                        </span>
+                        {entry.kind === "assistant" ? <Markdown text={entry.text} /> : entry.text}
+                      </li>
+                    ))}
+                  </ul>
+                  <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
+                  {unavailable && !isFinished(run.state) ? null : <RunControls runId={run.id} finished={isFinished(run.state)} />}
+                  <DraftControls runId={run.id} draft={runDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
                 </li>
               ))}
             </ul>
@@ -97,5 +124,28 @@ export default async function AlfredPage() {
         </Section>
       </div>
     </>
+  );
+}
+
+/* Sources Alfred read for a run: the passages its documents.search calls returned. */
+function Citations({ citations }: { citations: ReturnType<typeof collectCitations> }) {
+  if (citations.length === 0) return null;
+  return (
+    <details className="text-xs">
+      <summary className="text-muted-foreground cursor-pointer">
+        {citations.length} {citations.length === 1 ? "source" : "sources"} read
+      </summary>
+      <ol className="mt-1 flex flex-col gap-1.5">
+        {citations.map((c) => (
+          <li key={`${c.documentId}:${c.span.start}`}>
+            <span className="text-[13px]">{c.title}</span>
+            <span className="text-muted-foreground">
+              {c.span.page ? ` · page ${c.span.page}` : ""} · chars {c.span.start}-{c.span.end}
+            </span>
+            <p className="text-muted-foreground line-clamp-2">{c.text}</p>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }

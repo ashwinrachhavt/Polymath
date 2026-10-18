@@ -12,13 +12,25 @@ import { agentProfiles } from "./schema";
  * ponytail: model id and budget defaults live here, not in a settings screen,
  * until profile management lands.
  */
+/** The first-party profile's capabilities. documents.search is read-only. */
+export const DEFAULT_ALLOWED_TOOLS = ["tasks.read", "documents.search", "gmail.send"];
+
 export async function ensureProfile(workspaceId: string, name = "alfred") {
   const [existing] = await db
-    .select({ id: agentProfiles.id })
+    .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
     .from(agentProfiles)
     .where(eq(agentProfiles.workspaceId, workspaceId))
     .limit(1);
-  if (existing) return existing.id;
+  if (existing) {
+    // A profile made before documents.search existed gains that read-only
+    // capability. Nothing else is added, and runs already started keep their
+    // frozen snapshot.
+    const tools = Array.isArray(existing.allowedTools) ? (existing.allowedTools as string[]) : [];
+    if (!tools.includes("documents.search")) {
+      await db.update(agentProfiles).set({ allowedTools: [...tools, "documents.search"] }).where(eq(agentProfiles.id, existing.id));
+    }
+    return existing.id;
+  }
   const [profile] = await db
     .insert(agentProfiles)
     .values({
@@ -26,7 +38,7 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       name,
       description: "Chief of staff. Researches and drafts; proposes anything consequential.",
       modelPolicy: { primary: "claude-hive-glm-5.3-flash" },
-      allowedTools: ["tasks.read", "gmail.send"],
+      allowedTools: DEFAULT_ALLOWED_TOOLS,
       budgetPolicy: { perRunCeilingUsd: "2.00", dailyCeilingUsd: "10.00" },
       isDefault: true,
     })

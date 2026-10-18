@@ -1,15 +1,17 @@
 import { and, eq } from "drizzle-orm";
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, validateFile } from "@/lib/file-validation";
-import { ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
-import { auditEvents, blobObjects, outboxEvents, requestReceipts } from "@/domains/audit/schema";
-import { documents, files } from "@/domains/knowledge/schema";
+import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
+import { requestReceipts } from "@/domains/audit/schema";
+import { extractDocument } from "@/domains/knowledge/extraction";
+import { intakeFile } from "@/domains/knowledge/intake";
+import { documents } from "@/domains/knowledge/schema";
 
 /*
  * POST /api/v1/files — upload a document, store the binary in Vercel Blob,
@@ -97,14 +99,30 @@ export const POST = authedHandler(async (auth, request) => {
     }
   }
 
-  let stored: Awaited<ReturnType<typeof putBlob>>;
+  let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
-    stored = await putBlob({
+    result = await intakeFile(auth, {
       bytes,
       filename: file.name,
-      contentType: verdict.ok ? verdict.mimeType : "application/octet-stream",
-      workspaceId: auth.workspaceId,
+      title: parsedTitle.data,
+      verdict,
       contentHash: contentHex,
+      origin: "upload",
+      // Receipt in the same transaction as finalize, for quarantine too: the
+      // retry path most likely to be exercised (re-POST after fixing something)
+      // must not mint a second blob + file row for the same key.
+      inTransaction: async (tx, rows) => {
+        if (!idempotencyKey) return;
+        await tx.insert(requestReceipts).values({
+          workspaceId: auth.workspaceId,
+          idempotencyKey,
+          requestHash: requestHash!,
+          statusCode: rows.documentId ? 201 : 200,
+          response: rows.documentId
+            ? { documentId: rows.documentId, contentHash: contentHex }
+            : { fileId: rows.fileId, fileStatus: "quarantined" },
+        });
+      },
     });
   } catch (error) {
     if (error instanceof ObjectStoreUnconfiguredError) {
@@ -113,92 +131,6 @@ export const POST = authedHandler(async (auth, request) => {
     throw error;
   }
 
-  // ponytail: a replay racing the first finalize hits the unique index and
-  // surfaces as a 500; queue-front retries go through the receipt read above.
-  const result = await withTransaction(async (tx) => {
-    const [blob] = await tx
-      .insert(blobObjects)
-      .values({
-        workspaceId: auth.workspaceId,
-        storageKey: stored.storageKey,
-        contentHash: stored.contentHash,
-        sizeBytes: stored.sizeBytes,
-        mimeType: verdict.ok ? verdict.mimeType : "application/octet-stream",
-        retentionClass: "standard",
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: blobObjects.id });
-
-    const [fileRow] = await tx
-      .insert(files)
-      .values({
-        workspaceId: auth.workspaceId,
-        blobId: blob.id,
-        filename: file.name,
-        // Content wins: an allowlist mismatch keeps the original but marks it
-        // for manual review instead of minting a document from it.
-        status: verdict.ok ? "uploaded" : "quarantined",
-        origin: "upload",
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: files.id });
-
-    let documentId: string | null = null;
-    if (verdict.ok) {
-      const [doc] = await tx
-        .insert(documents)
-        .values({
-          workspaceId: auth.workspaceId,
-          fileId: fileRow.id,
-          title: parsedTitle.data,
-          mimeType: verdict.mimeType,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning({ id: documents.id });
-      documentId = doc.id;
-
-      // Upload succeeds independently of AI enrichment; a consumer picks this
-      // up and runs extraction. Nothing here calls a model.
-      await tx.insert(outboxEvents).values({
-        workspaceId: auth.workspaceId,
-        topic: "document.extraction_requested",
-        payload: { documentId },
-      });
-    }
-
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: verdict.ok ? "file.uploaded" : "file.quarantined",
-      subjectType: verdict.ok ? "document" : "file",
-      subjectId: verdict.ok ? documentId : fileRow.id,
-      summary: verdict.ok
-        ? `Uploaded ${file.name}`
-        : `Quarantined ${file.name}: content did not match the allowlist`,
-    });
-
-    // Receipt in the same transaction as finalize — for quarantine too: the
-    // retry path most likely to be exercised (re-POST after fixing something)
-    // must not mint a second blob + file row for the same key.
-    if (idempotencyKey) {
-      await tx.insert(requestReceipts).values({
-        workspaceId: auth.workspaceId,
-        idempotencyKey,
-        requestHash: requestHash!,
-        statusCode: documentId ? 201 : 200,
-        response: documentId
-          ? { documentId, contentHash: stored.contentHash }
-          : { fileId: fileRow.id, fileStatus: "quarantined" },
-      });
-    }
-
-    return { documentId, fileId: fileRow.id };
-  });
-
   if (!result.documentId) {
     return Response.json(
       { fileId: result.fileId, fileStatus: "quarantined" },
@@ -206,8 +138,29 @@ export const POST = authedHandler(async (auth, request) => {
     );
   }
 
+  // The response does not wait on AI enrichment: extraction runs after the
+  // 201 (the platform keeps the function alive for `after` work), so the row
+  // moves Added -> Reading -> its outcome on its own. A throw here is already
+  // recorded on the durable extraction row by extractDocument's own failure
+  // path; swallow it so the log stays an observation, not an error storm.
+  const documentId = result.documentId;
+  const work = async () => {
+    try {
+      await extractDocument(auth, { documentId });
+    } catch {
+      // The extraction row carries the failure; the inbox offers a retry.
+    }
+  };
+  try {
+    after(work);
+  } catch {
+    // Outside a request scope (a direct handler call, as in tests) `after`
+    // throws; run the same work fire-and-forget instead.
+    void work();
+  }
+
   return Response.json(
-    { documentId: result.documentId, contentHash: stored.contentHash },
+    { documentId: result.documentId, contentHash: result.contentHash },
     { status: 201 },
   );
 });

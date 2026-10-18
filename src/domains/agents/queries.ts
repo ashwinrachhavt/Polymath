@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { agentRuns } from "./schema";
+import { agentRuns, toolCalls } from "./schema";
 
 /*
  * A run's frozen policy snapshot, read back for the tools that must honour it.
@@ -29,9 +29,9 @@ export async function getRunPolicySnapshot(
 export async function getRunBySessionRef(
   sessionRef: string,
   workspaceId: string,
-): Promise<Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> | null> {
+): Promise<(Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> & Partial<Pick<typeof agentRuns.$inferSelect, "subjects">>) | null> {
   const runs = await db
-    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state })
+    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state, subjects: agentRuns.subjects })
     .from(agentRuns)
     .where(and(eq(agentRuns.sessionRef, sessionRef), eq(agentRuns.workspaceId, workspaceId)))
     .limit(2);
@@ -56,4 +56,52 @@ export async function listRecentRuns(workspaceId: string, limit = 10) {
     .where(eq(agentRuns.workspaceId, workspaceId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
+}
+
+/**
+ * One run, for the workspace that owns it. A run in another workspace and a
+ * run that does not exist return the same null: the difference is not the
+ * caller's to learn.
+ */
+export async function getRun(workspaceId: string, runId: string) {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      model: agentRuns.model,
+      summary: agentRuns.summary,
+      error: agentRuns.error,
+      startedAt: agentRuns.startedAt,
+      endedAt: agentRuns.endedAt,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
+    .limit(1);
+  return run ?? null;
+}
+
+/** Tool names a documents search is recorded under (the capability and the tool file name). */
+const DOCUMENT_SEARCH_TOOLS = ["documents_search", "documents.search"];
+
+/**
+ * The raw documents.search results for each run, oldest first. The caller
+ * folds them into citations; reading stays inside the workspace.
+ */
+export async function listDocumentSearchResults(workspaceId: string, runIds: string[]) {
+  if (runIds.length === 0) return new Map<string, unknown[]>();
+  const rows = await db
+    .select({ runId: toolCalls.runId, result: toolCalls.result })
+    .from(toolCalls)
+    .where(and(
+      eq(toolCalls.workspaceId, workspaceId),
+      inArray(toolCalls.runId, runIds),
+      inArray(toolCalls.toolName, DOCUMENT_SEARCH_TOOLS),
+      eq(toolCalls.ok, true),
+    ))
+    .orderBy(toolCalls.createdAt);
+  const byRun = new Map<string, unknown[]>();
+  for (const row of rows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row.result]);
+  return byRun;
 }

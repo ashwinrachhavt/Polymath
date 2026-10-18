@@ -77,6 +77,7 @@ export const claimStatus = pgEnum("claim_status", [
   "rejected",
   "retracted",
 ]);
+export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
 export const dossierSourcePolicy = pgEnum("dossier_source_policy", ["bounded", "open"]);
 export const dossierQuestionStatus = pgEnum("dossier_question_status", [
   "open",
@@ -190,9 +191,15 @@ export const documents = pgTable(
     title: text("title").notNull(),
     mimeType: text("mime_type"),
     pageCount: integer("page_count"),
+    /** Where the bytes came from when the document was captured from a URL; null for an upload. */
+    sourceUrl: text("source_url"),
     ...mutable,
   },
   (t) => [
+    // One document per URL per workspace: pasting a URL twice finds this row.
+    uniqueIndex("documents_workspace_source_url_key")
+      .on(t.workspaceId, t.sourceUrl)
+      .where(sql`source_url is not null`),
     index("documents_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("documents_file_idx").on(t.fileId),
     index("documents_artifact_idx").on(t.artifactId),
@@ -230,11 +237,62 @@ export const documentExtractions = pgTable(
     proposalError: text("proposal_error"),
     /** When the current proposal claim was taken; a stale pending claim is reclaimable. */
     proposalClaimedAt: timestamp("proposal_claimed_at", { withTimezone: true }),
+    /*
+     * The extraction lease. A caller claims a row by stamping `claimedAt` and
+     * its own `claimedBy` token; only that token may write the result, so a
+     * process that outlives its lease cannot overwrite a newer attempt. A
+     * pending row whose lease is older than EXTRACTION_LEASE_SECONDS belongs
+     * to a dead process and may be reclaimed. Null `claimedAt` is a row from
+     * before leases existed; its `createdAt` stands in.
+     */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    claimedBy: text("claimed_by"),
+    /*
+     * The embedding pass is its own boundary, like the proposal pass: text can
+     * be durable evidence while chunks failed to embed. A failure here never
+     * touches `status`, and a retry reads `text`, never the file.
+     */
+    embeddedAt: timestamp("embedded_at", { withTimezone: true }),
+    embedModel: text("embed_model"),
+    embedError: text("embed_error"),
     ...recorded,
   },
   (t) => [
     uniqueIndex("document_extractions_content_key").on(t.documentId, t.contentHash),
     index("document_extractions_pending_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * Append-only attempt history for one extraction row. The row above holds the
+ * current state; this holds every try, so a retry never erases the error that
+ * made it necessary. `outcome` is null while the attempt holds the lease.
+ */
+export const extractionAttemptOutcome = pgEnum("extraction_attempt_outcome", [
+  "succeeded",
+  "failed",
+  "abandoned",
+]);
+
+export const documentExtractionAttempts = pgTable(
+  "document_extraction_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    /** 1 for the first claim of the extraction, then one more per retry. */
+    attempt: integer("attempt").notNull(),
+    claimedBy: text("claimed_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    outcome: extractionAttemptOutcome("outcome"),
+    error: text("error"),
+  },
+  (t) => [
+    uniqueIndex("document_extraction_attempts_number_key").on(t.extractionId, t.attempt),
+    index("document_extraction_attempts_workspace_idx").on(t.workspaceId, t.extractionId),
   ],
 );
 
@@ -374,6 +432,10 @@ export const embeddings = pgTable(
     sourceVersionId: uuid("source_version_id"),
     chunkIndex: integer("chunk_index").notNull().default(0),
     content: text("content").notNull(),
+    /** Where the chunk sits in the extraction text (same offsets as extraction spans), and its page. */
+    spanStart: integer("span_start"),
+    spanEnd: integer("span_end"),
+    page: integer("page"),
     embedding: vector("embedding", { dimensions: 1536 }).notNull(),
     model: text("model").notNull(),
     ...recorded,
@@ -702,5 +764,45 @@ export const documentObligations = pgTable(
   (t) => [
     uniqueIndex("document_obligations_dedupe_key").on(t.documentId, t.dedupeKey),
     index("document_obligations_workspace_status_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * A proposed zettel: one claim drawn from one succeeded document, with the
+ * exact passage it rests on. Nothing here is knowledge until a human accepts
+ * it; accepting writes the concept and the evidence link, rejecting writes
+ * nothing else. The dedupe key follows obligationDedupeKey: a re-run lands on
+ * the existing row.
+ */
+export const zettelProposals = pgTable(
+  "zettel_proposals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    claim: text("claim").notNull(),
+    /** The verbatim passage; span offsets index into the extraction text. */
+    quote: text("quote").notNull(),
+    spanStart: integer("span_start").notNull(),
+    spanEnd: integer("span_end").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    status: zettelProposalStatus("status").notNull().default("proposed"),
+    conceptId: uuid("concept_id"),
+    claimId: uuid("claim_id"),
+    proposer: text("proposer"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("zettel_proposals_dedupe_key").on(t.documentId, t.dedupeKey),
+    index("zettel_proposals_workspace_status_idx").on(t.workspaceId, t.status),
+    check("zettel_proposals_span_check", sql`span_start >= 0 AND span_end > span_start`),
   ],
 );
