@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type ReactNode, type FormEvent } from "react";
 import { Plus, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { localDate, statusLabels, taskStatuses } from "./planning";
 import { recurrenceForPreset, presetForRecurrence, recurrencePresets } from "@/components/workspace/slash-commands";
 import { ImportDrop, ImportedFileState } from "@/components/workspace/import-drop";
 import { recurrenceLabel } from "@/components/workspace/tasks";
+import "./neuralflow-stones.css";
 
 export const selectClass = "h-9 w-full rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
@@ -78,7 +80,7 @@ function Attachments({ task }: { task: Task }) {
     addAttachment(task.id, { kind: result.kind, label: result.label, value: result.value, size: result.size });
   }
   return <div className="mt-6 space-y-3"><h3 className="text-[13px] font-medium">Attachments</h3>
-    {attached.length ? attached.map((item) => <ImportedFileState key={item.id} name={item.label} size={item.size} onRemove={() => removeAttachment(task.id, item.id)} />) : <Empty title="No attachments" description="Attach a link, a file or a pasted note. Nothing is uploaded in this preview." />}
+    {attached.length ? attached.map((item) => <ImportedFileState key={item.id} name={item.label} size={item.size} value={item.value} onRemove={() => removeAttachment(task.id, item.id)} />) : <Empty title="No attachments" description="Attach a link, a file or a pasted note. Nothing is uploaded in this preview." />}
     <ImportDrop onImport={accept} hint="Drop a file here, or paste a URL or some text. Files stay in this browser at up to 1 MB." accept={undefined} />
   </div>;
 }
@@ -86,30 +88,55 @@ function Attachments({ task }: { task: Task }) {
 function InspectorContent({ task, close }: { task: Task; close: () => void }) {
   const { state } = useWorkspace();
   const notes = state.artifacts.filter((artifact) => artifact.kind === "note" && artifact.links.includes(task.id));
-  return <><TaskForm task={task} onSaved={close} /><Attachments task={task} /><div className="mt-6 space-y-3"><h3 className="text-[13px] font-medium">Linked canonical notes</h3>{notes.length ? notes.map((note) => <Link key={note.id} href={`/apps/neuralflow/notes?note=${note.id}`} className="block text-[13px] underline underline-offset-4">{note.title}</Link>) : <Empty title="No linked notes" description="Create a note in Notes and link it to this task. Opening this inspector does not create an empty note." />}<Button variant="outline" asChild><Link href={`/apps/neuralflow/focus?task=${task.id}`}><Timer aria-hidden className="size-4" />Focus on this task</Link></Button><Unavailable feature="Task AI assistance">Enrichment, breakdown, and summaries require a supervised Alfred run. No generated content or task updates are simulated.</Unavailable></div></>;
+  return <><TaskForm task={task} onSaved={close} /><Attachments task={task} /><div className="mt-6 space-y-3"><h3 className="text-[13px] font-medium">Linked canonical notes</h3>{notes.length ? notes.map((note) => <Link key={note.id} href={`/apps/neuralflow/notes?note=${note.id}`} className="block text-[13px] underline underline-offset-4">{note.title}</Link>) : <Empty title="No linked notes" description="Create a note in Notes and link it to this task. Opening this inspector does not create an empty note." />}<Button variant="outline" asChild><Link href={`/neuralflow/focus?task=${encodeURIComponent(task.id)}`}><Timer aria-hidden className="size-4" />Focus on this task</Link></Button><Unavailable feature="Task AI assistance">Enrichment, breakdown, and summaries require a supervised Alfred run. No generated content or task updates are simulated.</Unavailable></div></>;
+}
+
+function TaskSheet({ task, open, onOpenChange, trigger, onCloseAutoFocus }: { task: Task; open: boolean; onOpenChange: (open: boolean) => void; trigger?: ReactNode; onCloseAutoFocus?: (event: Event) => void }) {
+  return <Sheet open={open} onOpenChange={onOpenChange}>{trigger && <SheetTrigger asChild>{trigger}</SheetTrigger>}<SheetContent className="w-full overflow-y-auto p-4 sm:max-w-lg" onCloseAutoFocus={onCloseAutoFocus}><SheetHeader className="px-0 pr-8"><SheetTitle>Task inspector</SheetTitle><SheetDescription>Canonical task, revision {task.version}. Changes stay in this browser.</SheetDescription></SheetHeader>{open && <InspectorContent task={task} close={() => onOpenChange(false)} />}</SheetContent></Sheet>;
 }
 
 export function TaskInspector({ task, children }: { task: Task; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  return <Sheet open={open} onOpenChange={setOpen}><SheetTrigger asChild>{children}</SheetTrigger><SheetContent className="w-full overflow-y-auto p-4 sm:max-w-lg"><SheetHeader className="px-0 pr-8"><SheetTitle>Task inspector</SheetTitle><SheetDescription>Canonical task, revision {task.version}. Changes stay in this browser.</SheetDescription></SheetHeader>{open && <InspectorContent task={task} close={() => setOpen(false)} />}</SheetContent></Sheet>;
+  return <TaskSheet task={task} open={open} onOpenChange={setOpen} trigger={children} />;
 }
 
+/*
+ * A `?task=` deep link opens the inspector with no visible trigger. Closing it
+ * removes only `task` from the URL, so a refresh does not reopen it and other
+ * parameters such as `view` survive. Focus returns to the task's row when it
+ * is listed, otherwise to the workspace search that most deep links come from.
+ */
 export function SelectedTask({ id }: { id: string }) {
   const { state } = useWorkspace();
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
   const task = state.tasks.find((item) => item.id === id);
-  return task ? <TaskInspector task={task}><Button variant="outline">Inspect {task.title}</Button></TaskInspector> : <Empty title="Task not found in this preview" description="This link may refer to a record from another browser or a reset workspace." />;
+  function clearLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("task");
+    router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+  }
+  function returnFocus(event: Event) {
+    event.preventDefault();
+    const row = [...document.querySelectorAll<HTMLElement>("[data-task-trigger]")].find((element) => element.dataset.taskTrigger === id);
+    (row ?? document.querySelector<HTMLElement>('button[aria-label="Search workspace"]'))?.focus();
+  }
+  if (!task) return <Empty title="Task not found in this preview" description="This link may refer to a record from another browser or a reset workspace." action={<Button variant="outline" size="sm" onClick={clearLink}>Clear task link</Button>} />;
+  return <TaskSheet task={task} open={open} onOpenChange={(next) => { setOpen(next); if (!next) clearLink(); }} onCloseAutoFocus={returnFocus} />;
 }
 
 export function TaskRow({ task }: { task: Task }) {
   const { state, updateTask, completeTask, notify } = useWorkspace();
   const project = state.projects.find((item) => item.id === task.projectId);
+  const done = task.status === "DONE";
   function toggleDone() {
     if (task.status === "DONE") { updateTask(task.id, { status: "READY", completedAt: undefined }); notify("Task reopened locally."); return; }
     completeTask(task.id);
     notify(task.recurrence ? "Task completed locally and moved to its next date." : "Task marked done locally. Reopen with its checkbox; task completion does not grant focus rewards.");
   }
-  return <div className="flex items-start gap-3 border-b border-border py-3 last:border-0">
-    <input type="checkbox" checked={task.status === "DONE"} onChange={toggleDone} aria-label={`${task.status === "DONE" ? "Reopen" : "Complete"} ${task.title}`} className="mt-1 size-5 accent-primary" />
-    <div className="min-w-0 flex-1"><TaskInspector task={task}><button type="button" className={`text-left text-[13px] hover:underline focus-visible:outline-2 focus-visible:outline-ring ${task.status === "DONE" ? "text-muted-foreground line-through" : ""}`}>{task.title}</button></TaskInspector><div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Status>{statusLabels[task.status]}</Status><span>{task.priority} priority</span><span className="readout">{task.estimate} min</span>{task.dueDate && <span>Due {task.dueDate}</span>}{project && <span>{project.title}</span>}{task.recurrence && <span>{recurrenceLabel(task.recurrence)}</span>}{task.attachments?.length ? <span>{task.attachments.length} attached</span> : null}{task.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div></div>
+  return <div className={`nf-row grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 border-b border-border py-2.5 last:border-0 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto]`} data-done={done} data-motion={state.preferences.reducedMotion ? "reduce" : "full"}>
+    <label className="flex size-6 items-center justify-center"><input type="checkbox" checked={done} onChange={toggleDone} aria-label={`${done ? "Reopen" : "Complete"} ${task.title}`} className={`nf-check size-4 accent-primary`} /></label>
+    <div className="min-w-0"><TaskInspector task={task}><button type="button" data-task-trigger={task.id} className={`min-h-6 text-left text-[13px] font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring ${done ? "text-muted-foreground" : ""}`}><span className="nf-title">{task.title}</span></button></TaskInspector><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><Status>{statusLabels[task.status]}</Status><span>{task.priority} priority</span>{project && <span>{project.title}</span>}{task.recurrence && <span>{recurrenceLabel(task.recurrence)}</span>}{task.attachments?.length ? <span>{task.attachments.length} attached</span> : null}{task.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div></div>
+    <div className="col-start-2 mt-1 flex items-center gap-3 text-xs text-muted-foreground sm:col-start-3 sm:mt-0 sm:min-h-6 sm:justify-end">{task.dueDate && <span>Due <span className="readout">{task.dueDate}</span></span>}<span className="readout">{task.estimate} min</span></div>
   </div>;
 }

@@ -12,18 +12,21 @@ vi.mock("@/domains/identity/machine", () => ({
 }));
 
 /*
- * auth({acceptsToken: "any"}) returns the session auth object in this app's
+ * auth({acceptsToken: [...]}) returns the session auth object in this app's
  * usage; the machine path is exercised through the mocked resolveMachineClient
  * by driving getAnyAuthContext with an unauthenticated session plus a machine
  * resolvable subject — here, simulated by userId holding the subject.
  */
 vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(async (options?: { acceptsToken?: string }) => {
-    if (options?.acceptsToken === "any") {
+  auth: vi.fn(async (options?: { acceptsToken?: string | string[] }) => {
+    if (Array.isArray(options?.acceptsToken)) {
       // A machine subject carries no userId — that is the discriminator the
       // guard uses. Subjects starting with mch_ are m2m tokens.
       if (userId?.startsWith("mch_")) {
         return { isAuthenticated: true, machineId: userId, tokenType: "m2m_token" };
+      }
+      if (userId?.startsWith("api_")) {
+        return { isAuthenticated: true, id: "mch_good", tokenType: "api_key" };
       }
       return userId
         ? { isAuthenticated: true, userId }
@@ -59,6 +62,15 @@ describe("auth guards", () => {
     const handler = authedHandler(async (auth) => new Response(auth.workspaceId));
     const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
     expect(await res.text()).toBe("w-machine");
+  });
+
+  it("authedHandler accepts an api_key only through its registered client workspace", async () => {
+    userId = "api_registered";
+    const handler = authedHandler(async (auth) => new Response(auth.workspaceId));
+    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
+    expect(await res.text()).toBe("w-machine");
+    const { auth } = await import("@clerk/nextjs/server");
+    expect(auth).toHaveBeenLastCalledWith({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
   });
 
   it("authedHandler returns 429 problem+json when the client hits its ceiling", async () => {

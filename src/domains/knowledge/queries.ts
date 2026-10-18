@@ -38,8 +38,12 @@ export type DocumentReview = {
     status: string;
     contentHash: string;
     error: string | null;
+    proposalStatus: string | null;
+    proposalError: string | null;
+    proposer: string | null;
   } | null;
-  fieldProposals: Awaited<ReturnType<typeof getFieldProposals>>;
+  /** Each proposal with the line of extracted text it was read from. */
+  fieldProposals: Array<Awaited<ReturnType<typeof getFieldProposals>>[number] & { evidenceQuote: string | null }>;
   parties: DocumentReviewParty[];
   obligations: Awaited<ReturnType<typeof getDocumentObligations>>;
 };
@@ -70,6 +74,10 @@ export async function getDocumentReview(
         status: documentExtractions.status,
         contentHash: documentExtractions.contentHash,
         error: documentExtractions.error,
+        proposalStatus: documentExtractions.proposalStatus,
+        proposalError: documentExtractions.proposalError,
+        proposer: documentExtractions.proposer,
+        text: documentExtractions.text,
       })
       .from(documentExtractions)
       .where(eq(documentExtractions.documentId, input.documentId))
@@ -104,10 +112,24 @@ export async function getDocumentReview(
   const contactName = new Map(contactRows.map((c) => [c.id, c.fullName]));
   const companyName = new Map(companyRows.map((c) => [c.id, c.name]));
 
+  const latest = extraction[0] ?? null;
   return {
     document: doc,
-    extraction: extraction[0] ?? null,
-    fieldProposals,
+    extraction: latest
+      ? {
+          id: latest.id,
+          status: latest.status,
+          contentHash: latest.contentHash,
+          error: latest.error,
+          proposalStatus: latest.proposalStatus,
+          proposalError: latest.proposalError,
+          proposer: latest.proposer,
+        }
+      : null,
+    fieldProposals: fieldProposals.map((p) => ({
+      ...p,
+      evidenceQuote: p.extractionId === latest?.id ? evidenceLine(latest.text, p.evidenceSpans) : null,
+    })),
     parties: partyRows.map((p) => ({
       id: p.id,
       partyRole: p.partyRole,
@@ -121,6 +143,15 @@ export async function getDocumentReview(
     })),
     obligations: obligationRows,
   };
+}
+
+/** The whole line around a proposal's first evidence span: what the owner checks the value against. */
+function evidenceLine(text: string | null, spans: unknown): string | null {
+  const span = Array.isArray(spans) ? (spans[0] as { start?: unknown; end?: unknown } | undefined) : undefined;
+  if (!text || typeof span?.start !== "number" || typeof span.end !== "number" || span.end > text.length) return null;
+  const from = text.lastIndexOf("\n", span.start - 1) + 1;
+  const to = text.indexOf("\n", span.end);
+  return text.slice(from, to === -1 ? undefined : to).trim().slice(0, 240);
 }
 
 /** Latest extraction's field proposals, oldest first — the review order. */
@@ -137,6 +168,9 @@ export async function getFieldProposals(auth: AuthContext, documentId: string) {
       status: fieldProposals.status,
       acceptedValue: fieldProposals.acceptedValue,
       dedupeKey: fieldProposals.dedupeKey,
+      partyRole: fieldProposals.partyRole,
+      extractionId: fieldProposals.extractionId,
+      evidenceSpans: fieldProposals.evidenceSpans,
     })
     .from(fieldProposals)
     .where(
@@ -174,6 +208,8 @@ export type DocumentInboxRow = {
   createdAt: Date;
   /** Latest extraction's status, or null when the document has not been read. */
   extractionStatus: string | null;
+  /** That extraction's proposal-pass status; null when it has not run. */
+  proposalStatus: string | null;
   /** Field proposals still awaiting a decision. */
   undecidedProposals: number;
   /** Resolved party names — the people and companies the document is about. */
@@ -195,6 +231,11 @@ export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<D
       createdAt: documents.createdAt,
       extractionStatus: sql<string | null>`(
         select de.status::text from document_extractions de
+        where de.document_id = ${documents.id}
+        order by de.created_at desc limit 1
+      )`,
+      proposalStatus: sql<string | null>`(
+        select de.proposal_status::text from document_extractions de
         where de.document_id = ${documents.id}
         order by de.created_at desc limit 1
       )`,

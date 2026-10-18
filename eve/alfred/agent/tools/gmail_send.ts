@@ -3,7 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../lib/policy";
 import { withTransaction } from "../../../../src/lib/db-transaction";
 import { createProposal } from "../../../../src/domains/actions/commands";
-import { getRunPolicySnapshot } from "../../../../src/domains/agents/queries";
+import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
  * An external-write capability. The handler does the one thing a consequential
@@ -29,8 +29,11 @@ export default defineTool({
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
 
-    const snapshot = await getRunPolicySnapshot(ctx.session.id, workspaceId);
-    if (!toolAllowed(snapshot, "gmail.send")) {
+    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    if (!run || run.state !== "running") {
+      return { ok: false as const, error: "no active Axiom run bound to this session" };
+    }
+    if (!toolAllowed(run.policySnapshot, "gmail.send")) {
       return { ok: false as const, error: "gmail.send is not in this run's policy snapshot" };
     }
 
@@ -50,7 +53,7 @@ export default defineTool({
           title: `Send "${input.subject}"`,
           expectedEffect: `Sends an email to ${input.to} from ${input.accountAlias ?? "the default account"}`,
           dedupeKey,
-          runId: ctx.session.id,
+          runId: run.id,
           // An external write the owner has not decided on inside a day is stale.
           expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
         },

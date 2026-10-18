@@ -26,14 +26,26 @@ describe("documentStatus", () => {
   });
 
   it("a succeeded extraction with undecided proposals needs your check", () => {
-    expect(documentStatus({ status: "succeeded" }, 2)).toEqual({
+    expect(documentStatus({ status: "succeeded", proposalStatus: "succeeded" }, 2)).toEqual({
       label: "Needs your check",
       tone: "attention",
     });
   });
 
   it("a succeeded extraction with every proposal decided is Filed", () => {
-    expect(documentStatus({ status: "succeeded" }, 0)).toEqual({ label: "Filed", tone: "done" });
+    expect(documentStatus({ status: "succeeded", proposalStatus: "succeeded" }, 0)).toEqual({ label: "Filed", tone: "done" });
+  });
+
+  it("read text whose fields were never proposed, or failed to be, is never Filed", () => {
+    expect(documentStatus({ status: "succeeded", proposalStatus: null }, 0)).toEqual({
+      label: "Fields not proposed",
+      tone: "attention",
+    });
+    expect(documentStatus({ status: "succeeded", proposalStatus: "pending" }, 0)).toEqual({ label: "Reading", tone: "progress" });
+    expect(documentStatus({ status: "succeeded", proposalStatus: "failed" }, 0)).toEqual({
+      label: "Fields not read",
+      tone: "error",
+    });
   });
 
   it("no raw enum value ever reaches the label", () => {

@@ -50,3 +50,6 @@ npm-debug.log*
 
 # taste-skill inspector output
 .taste-skill/
+
+# local development uploads (object-store/local-fs.ts) — never commit
+.cache/

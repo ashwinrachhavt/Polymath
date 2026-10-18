@@ -1,4 +1,5 @@
 import { authedHandler } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { extractDocument } from "@/domains/knowledge/extraction";
 
@@ -8,6 +9,7 @@ import { extractDocument } from "@/domains/knowledge/extraction";
  * returns the stored text instead of re-running the provider.
  */
 export const POST = authedHandler(async (auth, _request, ctx: { params: Promise<{ documentId: string }> }) => {
+  requireRole(auth, "member");
   const { documentId } = await ctx.params;
   try {
     const result = await extractDocument(auth, { documentId });

@@ -1,15 +1,52 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty, Field, Panel, Screen, Status, Unavailable } from "@/components/workspace/ui";
+import { ImportedFileState } from "@/components/workspace/import-drop";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Select } from "./controls";
 
+const labels = { UNPROCESSED: "To clarify", TASK: "Turned into a task", NOTE: "Turned into a note", ARCHIVED: "Archived", All: "All captures" };
+
 export default function Inbox() {
-  const { state, addCapture, updateCapture, addTask, addArtifact, updateArtifact, notify } = useWorkspace();
-  const [filter, setFilter] = useState("UNPROCESSED");
+  const { state, addCapture, clarifyCapture, updateCapture, notify } = useWorkspace();
+  const [filter, setFilter] = useState<keyof typeof labels>("UNPROCESSED");
+  const [text, setText] = useState("");
   const captures = state.captures.filter((capture) => filter === "All" || capture.status === filter);
-  return <Screen title="Inbox" description="Clarify captured material before committing. Original capture text stays here after conversion; URLs are not fetched."><Panel title="Capture material"><form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const data = new FormData(form); if (addCapture(String(data.get("text")), data.get("kind") as "text" | "url")) form.reset(); }}><Field label="Original material"><Textarea required name="text" maxLength={20000} placeholder="Paste a thought, source excerpt, or URL"/></Field><div className="flex gap-2"><Select name="kind" aria-label="Capture kind"><option value="text">Text</option><option value="url">URL (no fetch)</option></Select><Button type="submit">Capture to inbox</Button></div></form></Panel><Field label="Triage status"><Select value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs">{["UNPROCESSED", "TASK", "NOTE", "ARCHIVED", "All"].map((value) => <option key={value}>{value}</option>)}</Select></Field><Panel title={`${captures.length} captures`}><div className="divide-y divide-border">{captures.map((capture) => <article key={capture.id} className="py-4 first:pt-0"><div className="mb-2 flex flex-wrap items-center gap-2"><Status>{capture.status}</Status><span className="text-xs text-muted-foreground">{capture.kind}</span><time className="readout text-xs text-muted-foreground" dateTime={capture.createdAt}>{capture.createdAt.slice(0, 10)}</time></div><p className="whitespace-pre-wrap break-words text-[13px]">{capture.text}</p>{capture.status === "UNPROCESSED" && <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { const task = addTask(capture.text.split("\n")[0].slice(0, 300), { description: `${capture.text}\n\nOriginal capture: ${capture.id}`, tags: ["Inbox"] }); if (task) { updateCapture(capture.id, { status: "TASK" }); notify("Capture converted to a shared task. Original text retained."); } }}>Make task</Button><Button size="sm" variant="outline" onClick={() => { const note = addArtifact(capture.text.split("\n")[0].slice(0, 200), "note", capture.text); if (note) { updateArtifact(note.id, { links: [capture.id], tags: ["Inbox lineage"] }); updateCapture(capture.id, { status: "NOTE" }); notify("Capture converted to a canonical note. Original text retained."); } }}>Make note</Button><Button size="sm" variant="ghost" onClick={() => updateCapture(capture.id, { status: "ARCHIVED" })}>Archive</Button></div>}{capture.status === "ARCHIVED" && <Button className="mt-3" size="sm" variant="outline" onClick={() => updateCapture(capture.id, { status: "UNPROCESSED" })}>Restore capture</Button>}</article>)}</div>{!captures.length && <Empty title="Nothing in this view" description="Capture material above or choose another triage status."/>}</Panel><Unavailable feature="Mailbox acquisition">No messages are pulled on arrival. Explicit mailbox reads require a configured account and authenticated read adapter.</Unavailable></Screen>;
+  const pending = state.captures.filter((capture) => capture.status === "UNPROCESSED").length;
+
+  return <Screen title="Inbox" description="Clarify before committing. Original text and attachments stay here after conversion. This inbox is a browser preview, not a connected mailbox." actions={<Status>{pending} to clarify</Status>}>
+    <Panel title="Capture material" description="Paste text or a URL. Remote content is not fetched.">
+      <form className="grid gap-3" onSubmit={(event) => {
+        event.preventDefault();
+        if (addCapture(text, /^https?:\/\//i.test(text.trim()) ? "url" : "text")) { setText(""); setFilter("UNPROCESSED"); notify("Item added to the preview inbox."); }
+      }}>
+        <Field label="Original material"><Textarea required maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="Paste a thought, source excerpt, or URL" /></Field>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Use Capture in the header to attach a local file.</p><Button type="submit" disabled={!text.trim()}>Capture to inbox</Button></div>
+      </form>
+    </Panel>
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <Field label="Triage status"><Select value={filter} onChange={(event) => setFilter(event.target.value as keyof typeof labels)} className="max-w-xs">{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
+      <Button variant="outline" asChild><Link href="/alfred/knowledge">Upload and extract documents</Link></Button>
+    </div>
+    <Panel title={`${captures.length} ${captures.length === 1 ? "capture" : "captures"}`}>
+      <div className="divide-y divide-border">{captures.map((capture) => <article key={capture.id} className="py-4 first:pt-0">
+        <div className="mb-2 flex flex-wrap items-center gap-2"><Status>{labels[capture.status]}</Status><span className="text-xs text-muted-foreground">{capture.kind}</span><time className="readout text-xs text-muted-foreground" dateTime={capture.createdAt}>{new Intl.DateTimeFormat("en", { timeZone: state.preferences.timezone, dateStyle: "medium" }).format(new Date(capture.createdAt))}</time></div>
+        <p className="whitespace-pre-wrap break-words text-[13px]">{capture.text}</p>
+        {capture.attachment && <div className="mt-3"><ImportedFileState name={capture.attachment.label} size={capture.attachment.size} value={capture.attachment.value} /></div>}
+        {capture.status === "UNPROCESSED" && <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "task")) notify("Task created in NeuralFlow. Original material retained in Inbox."); }}>Make task</Button>
+          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "note")) notify("Note created in Alfred. Original material retained in Inbox."); }}>Make note</Button>
+          <Button size="sm" variant="ghost" onClick={() => updateCapture(capture.id, { status: "ARCHIVED" })}>Archive</Button>
+        </div>}
+        {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/alfred/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in NeuralFlow" : "Open note in Alfred"}</Link></Button>}
+        {capture.status === "ARCHIVED" && <Button className="mt-3" size="sm" variant="outline" onClick={() => updateCapture(capture.id, { status: "UNPROCESSED" })}>Restore capture</Button>}
+      </article>)}</div>
+      {!captures.length && <Empty title="Nothing in this view" description="Capture material above or choose another triage status." />}
+    </Panel>
+    <Unavailable feature="Mailbox acquisition">No messages are pulled on arrival. Explicit mailbox reads require a configured account and authenticated read adapter.</Unavailable>
+  </Screen>;
 }

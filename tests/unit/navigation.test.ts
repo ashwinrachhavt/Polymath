@@ -4,6 +4,9 @@ import {
   apps,
   crossAppLinks,
   crossAppLinksFrom,
+  additionalDestinationsIn,
+  featureDestinations,
+  isBrowserPreviewPath,
   destinations,
   destinationForPath,
   destinationsIn,
@@ -23,6 +26,37 @@ describe("navigation", () => {
     expect(appForPath("/alfred")?.slug).toBe("alfred");
     expect(appForPath("/alfred/knowledge")?.slug).toBe("alfred");
     expect(appForPath("/reviews")).toBeUndefined();
+  });
+
+  it("keeps preview routes inside their app without matching similar prefixes", () => {
+    expect(appForPath("/apps/neuralflow/tasks")?.slug).toBe("neuralflow");
+    expect(appForPath("/apps/alfred/notebook")?.slug).toBe("alfred");
+    expect(appForPath("/apps/command-center/contacts")?.slug).toBe("command-center");
+    expect(appForPath("/apps/alfred-other/notebook")).toBeUndefined();
+    expect(destinationForPath("/apps/neuralflow/tasks")?.href).toBe("/neuralflow/work");
+    expect(destinationForPath("/apps/alfred/notebook")?.label).toBe("Notebook");
+    expect(destinationForPath("/apps/alfred/not-a-screen")).toBeUndefined();
+  });
+
+  it("keeps every noncanonical feature reachable from its own app", () => {
+    for (const app of apps) {
+      const additional = additionalDestinationsIn(app.slug);
+      expect(additional.length).toBeGreaterThan(0);
+      for (const destination of additional) {
+        expect(appForPath(destination.href)?.slug).toBe(app.slug);
+        expect(featureDestinations).toContain(destination);
+      }
+    }
+    expect(additionalDestinationsIn("neuralflow").some((destination) => destination.label === "Stone collection")).toBe(true);
+  });
+
+  it("does not label live Alfred routes as disconnected browser previews", () => {
+    expect(isBrowserPreviewPath("/alfred")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/knowledge")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/knowledge/document-id")).toBe(false);
+    expect(isBrowserPreviewPath("/neuralflow/work")).toBe(true);
+    expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
+    expect(isBrowserPreviewPath("/reviews")).toBe(true);
   });
 
   it("prefers the exact destination over a prefix match", () => {

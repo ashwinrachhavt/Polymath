@@ -4,6 +4,8 @@ import { advanceRecurrence } from "@/components/workspace/tasks";
 // Canonical task vocabulary lives in the shared workspace layer so the Command
 // Center queue and the NeuralFlow views cannot disagree on status names.
 export { statusLabels, taskStatuses } from "@/components/workspace/tasks";
+/* "1 task", "3 tasks": interface counts never read as "1 tasks". */
+export function countLabel(count: number, singular: string, plural = `${singular}s`) { return `${count} ${count === 1 ? singular : plural}`; }
 export function localDate(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

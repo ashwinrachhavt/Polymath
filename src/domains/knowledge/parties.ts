@@ -2,7 +2,7 @@ import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { companies, contacts } from "../crm/schema";
 import {
   documentParties,
@@ -343,6 +343,22 @@ export async function acceptParty(
   const decision = input.decision;
 
   if (decision.action === "match") {
+    // The target id arrives from the client: it must name a record in this
+    // workspace, or a document could be linked to another tenant's contact.
+    const [target] = decision.contactId
+      ? await db
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(and(eq(contacts.id, decision.contactId), eq(contacts.workspaceId, auth.workspaceId)))
+      : decision.companyId
+        ? await db
+            .select({ id: companies.id })
+            .from(companies)
+            .where(and(eq(companies.id, decision.companyId), eq(companies.workspaceId, auth.workspaceId)))
+        : [];
+    if ((decision.contactId || decision.companyId) && !target) {
+      throw new Error("match target not found in workspace");
+    }
     if (decision.contactId) {
       await applyResolution(party.id, {
         contactId: decision.contactId,
@@ -488,6 +504,7 @@ export type AssertionInput = {
   attribute: string;
   value: unknown;
   fieldProposalId?: string;
+  extractionId?: string;
   evidenceSpans?: unknown;
   effectiveFrom?: string;
   effectiveTo?: string;
@@ -503,8 +520,9 @@ export type AssertionInput = {
 export async function acceptAssertions(
   auth: AuthContext,
   input: { documentId: string; assertions: AssertionInput[] },
+  tx: typeof db | TxDrizzle = db,
 ): Promise<{ written: number }> {
-  const [document] = await db
+  const [document] = await tx
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
@@ -516,7 +534,7 @@ export async function acceptAssertions(
     : document.title;
 
   for (const assertion of input.assertions) {
-    await db.insert(reviewedAssertions).values({
+    await tx.insert(reviewedAssertions).values({
       workspaceId: auth.workspaceId,
       subjectType: assertion.subjectType,
       subjectId: assertion.subjectId,
@@ -524,6 +542,7 @@ export async function acceptAssertions(
       value: assertion.value as Record<string, unknown>,
       documentId: input.documentId,
       fieldProposalId: assertion.fieldProposalId ?? null,
+      extractionId: assertion.extractionId ?? null,
       evidenceSpans: (assertion.evidenceSpans ?? []) as unknown[],
       sourceAttribution,
       effectiveFrom: assertion.effectiveFrom ?? null,
@@ -534,7 +553,7 @@ export async function acceptAssertions(
     });
 
     if (assertion.supersedesAssertionId) {
-      await db
+      await tx
         .update(reviewedAssertions)
         .set({ status: "superseded", updatedBy: auth.userId, updatedAt: new Date() })
         .where(

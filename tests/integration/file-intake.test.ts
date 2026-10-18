@@ -61,6 +61,8 @@ vi.mock("@/integrations/object-store/vercel-blob", () => ({
 import { POST } from "@/app/api/v1/files/route";
 
 beforeAll(() => {
+  // Vercel Blob mode, so the object-store seam routes to the mocked adapter.
+  vi.stubEnv("BLOB_READ_WRITE_TOKEN", "test-token");
   if (!handle) return;
   holder.db = handle.db;
 });

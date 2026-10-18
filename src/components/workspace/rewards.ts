@@ -25,8 +25,8 @@ export function focusRecords(rewards: WorkspaceState["rewards"]): FocusRecord[] 
   return rewards.flatMap((reward) => {
     const parts = reward.sessionId.split(":");
     if (parts.length !== 5 || parts[0] !== "neuralflow-focus") return [];
-    const seconds = Number(parts[3]);
-    return [{ id: reward.id, taskId: parts[1], minutes: Number.isFinite(seconds) ? Math.round(seconds / 60) : 0, earnedAt: reward.earnedAt, day: localDay(reward.earnedAt) }];
+    const minutes = Number(parts[3]);
+    return [{ id: reward.id, taskId: parts[1], minutes: Number.isFinite(minutes) ? minutes : 0, earnedAt: reward.earnedAt, day: localDay(reward.earnedAt) }];
   });
 }
 

@@ -14,7 +14,7 @@ export type ExtractionSpan = { page: number; start: number; end: number };
 
 /** A structured field a provider already reported. Normalization is the domain's job.
  * fieldKind is derived from the schema enum so the two lists cannot drift. */
-import type { FieldKind } from "@/domains/knowledge/schema";
+import type { FieldKind, documentPartyRole } from "@/domains/knowledge/schema";
 
 export type ExtractedField = {
   fieldKind: FieldKind;
@@ -24,6 +24,8 @@ export type ExtractedField = {
   normalizationNote?: string;
   confidence?: string;
   evidenceSpans: Array<{ page?: number; start: number; end: number }>;
+  /** The party whose block the value was read from; absent for document-level facts. */
+  partyRole?: (typeof documentPartyRole.enumValues)[number];
 };
 
 export type ExtractionResult =

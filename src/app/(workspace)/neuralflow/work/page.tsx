@@ -1,75 +1,43 @@
-import { PageHeader, Section } from "@/components/page-header";
-import { Readout } from "@/components/readout";
-import { listOpenTasks } from "@/domains/work/commands";
-import { getAuthContext } from "@/lib/auth";
-import { OpenTaskList, TaskComposer } from "./work-today";
+import { Suspense } from "react";
+import { workView } from "@/components/products/neuralflow/work-views";
+import { NeuralFlowFeatureLinks, WorkViewLinks } from "./work-today";
 
 export const metadata = { title: "Work · Axiom" };
 
-/*
- * One task model, four presentations. The view switcher is present but inert:
- * list, board, and calendar read the same rows, and none of them exist yet.
- * Showing the switch now is honest about the shape; wiring it to nothing is not.
- */
-const views = ["Today", "List", "Board", "Calendar"] as const;
+type WorkQuery = Promise<Record<string, string | string[] | undefined>>;
 
-/*
- * Today reads the canonical `tasks` table, so the obligation a document
- * review accepted is on this list — same row, no bridge, no sync. The header
- * and this read are server-side; the row interactions are the client island.
- */
-export default async function WorkPage() {
-  const auth = await getAuthContext();
-  const tasks = await listOpenTasks(auth);
+async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
+  const query = await searchParams;
+  const view = workView(query.view);
+  const task = typeof query.task === "string" ? query.task : undefined;
+  const date = typeof query.date === "string" ? query.date : undefined;
+  let surface;
+
+  if (view === "board") {
+    const { BoardsScreen } = await import("@/components/products/neuralflow/work-screens");
+    surface = <BoardsScreen title="Work" />;
+  } else if (view === "calendar") {
+    const { CalendarScreen } = await import("@/components/products/neuralflow/calendar-screens");
+    surface = <CalendarScreen key={date || "current"} title="Work" initialDate={date} />;
+  } else {
+    const { TasksScreen } = await import("@/components/products/neuralflow/work-screens");
+    surface = <TasksScreen key={view} title="Work" view={view} selectedTask={task} />;
+  }
 
   return (
     <>
-      <PageHeader
-        title="Work"
-        purpose="Execute your commitments."
-        actions={
-          // Disabled buttons, not inert spans: the switcher is not wired yet, and
-          // a control that looks operable but is not is worse than one that
-          // plainly says so. Each view lands with the data it presents.
-          <div className="panel flex items-center gap-0.5 rounded-md p-0.5">
-            {views.map((view, index) => (
-              <button
-                key={view}
-                type="button"
-                disabled
-                title={`${view} view arrives with the data it presents`}
-                className={
-                  index === 0
-                    ? "bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-xs font-medium disabled:opacity-60"
-                    : "text-muted-foreground rounded-md px-2 py-1 text-xs disabled:opacity-60"
-                }
-              >
-                {view}
-              </button>
-            ))}
-          </div>
-        }
-      />
-
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
-        <Section
-          title="Today"
-          description="Everything open, soonest due first."
-        >
-          <TaskComposer />
-          <OpenTaskList
-            tasks={tasks.map((task) => ({
-              id: task.id,
-              title: task.title,
-              status: task.status,
-              dueAt: task.dueAt,
-            }))}
-          />
-          <p className="text-muted-foreground mt-3 text-[13px]">
-            <Readout>{tasks.length}</Readout> open
-          </p>
-        </Section>
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <WorkViewLinks active={view} />
+          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Browser-only preview. Sample records and edits stay in this browser, not Neon; no production persistence or provider sync.</p>
+        </div>
+        <NeuralFlowFeatureLinks />
       </div>
+      {surface}
     </>
   );
+}
+
+export default function WorkPage({ searchParams }: { searchParams: WorkQuery }) {
+  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening Work…</p>}><WorkSurface searchParams={searchParams} /></Suspense>;
 }

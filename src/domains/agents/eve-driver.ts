@@ -1,4 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
+import { clerkConfigured } from "@/lib/clerk";
 import { db } from "@/lib/db";
 import { agentRuns } from "./schema";
 import type { SessionDriver } from "./engine";
@@ -38,19 +41,34 @@ function eveBaseUrl(): string {
   return "";
 }
 
+export function eveBridgeUnavailableReason(): string | null {
+  if (process.env.NODE_ENV === "production" || clerkConfigured) {
+    return "Agent execution is unavailable: the Eve bridge does not yet support verified Clerk identity. No run was started.";
+  }
+  return null;
+}
+
+async function localOwner(): Promise<AuthContext> {
+  const reason = eveBridgeUnavailableReason();
+  if (reason) throw new Error(reason);
+  return resolveAuthContext("dev-user");
+}
+
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
-    async start({ sessionId, objective }) {
+    async start({ sessionId, objective, auth }) {
+      const owner = await localOwner();
+      if (auth.userId !== owner.userId || auth.workspaceId !== owner.workspaceId || auth.role !== owner.role) {
+        throw new Error("The development Eve bridge cannot execute for another identity.");
+      }
       const base = eveBaseUrl();
       const mount = base ? `${base}/eve/v1` : `/eve/${agentName}/v1`;
       const response = await fetch(`${mount}/session`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          // The spike channel's AuthFn resolves this through resolveAuthContext,
-          // which expects a CLERK user id, not the internal one. One owner in
-          // v1, so a fixed key is correct and stable across requests; the
-          // channel grows a real Clerk verifier when keys land.
+          // Only the unconfigured local-development owner may use this spike.
+          // This is not a Clerk credential and is never sent for real users.
           "x-spike-clerk-user-id": "dev-user",
         },
         body: JSON.stringify({
@@ -65,17 +83,19 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       if (!response.ok) {
         throw new Error(`eve session create failed: ${response.status} ${await response.text()}`);
       }
-      const { sessionId: ref } = (await response.json()) as { sessionId: string };
-      await db.update(agentRuns).set({ sessionRef: ref }).where(eq(agentRuns.id, sessionId));
+      const { sessionId: ref } = z.object({ sessionId: z.string().min(1) }).parse(await response.json());
+      await db.update(agentRuns).set({ sessionRef: ref })
+        .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)));
     },
     async signal() {
       // Resume and steer arrive with the real tool surfaces; nothing to send yet.
     },
     async cancel(sessionId) {
+      const owner = await localOwner();
       const [run] = await db
         .select({ sessionRef: agentRuns.sessionRef })
         .from(agentRuns)
-        .where(eq(agentRuns.id, sessionId))
+        .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, owner.workspaceId)))
         .limit(1);
       const ref = run?.sessionRef;
       if (!ref) return;
