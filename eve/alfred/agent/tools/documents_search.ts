@@ -23,6 +23,7 @@ export default defineTool({
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),
+    dossierId: z.string().uuid().optional().describe("Limit the search to one dossier. Ignored when the run is already bound to a dossier."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -39,10 +40,15 @@ export default defineTool({
       return { ok: false as const, error: "documents.search is not in this run's policy snapshot" };
     }
 
+    // A run started from a dossier stays inside it, whatever the model asks for.
+    const bound = Array.isArray(run.subjects)
+      ? (run.subjects as Array<{ type?: string; id?: string }>).find((x) => x?.type === "dossier" && typeof x.id === "string")
+      : undefined;
+
     // Search needs only the workspace; the role is the lowest that can read.
     return searchDocumentsForAgent(
       { userId: current.principalId, workspaceId, role: "viewer" },
-      { query: input.query, limit: input.limit },
+      { query: input.query, limit: input.limit, dossierId: bound?.id ?? input.dossierId },
     );
   },
 });

@@ -57,6 +57,8 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/neuralflow/work")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
     expect(isBrowserPreviewPath("/reviews")).toBe(true);
+    // The dossiers screen is backed by Neon, not browser samples, so no preview banner.
+    expect(isBrowserPreviewPath("/alfred/dossiers")).toBe(false);
   });
 
   it("prefers the exact destination over a prefix match", () => {

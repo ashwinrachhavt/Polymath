@@ -302,7 +302,7 @@ export function isBrowserPreviewPath(pathname: string) {
   return pathname.startsWith("/apps/")
     || pathname.startsWith("/command-center/")
     || pathname.startsWith("/neuralflow/")
-    || ["/alfred/dossiers", "/reviews", "/activity", "/settings"].includes(pathname);
+    || ["/reviews", "/activity", "/settings"].includes(pathname);
 }
 
 export const moreDestination = {

@@ -9,7 +9,10 @@ import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { listThreads, isFinished } from "@/domains/agents/thread";
 import { RunControls } from "./run-controls";
+import { DraftControls } from "./draft-controls";
+import { draftsForRuns } from "@/domains/knowledge/studio";
 import { Markdown } from "@/components/markdown";
+import { listDossiers } from "@/domains/knowledge/dossiers";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -47,8 +50,10 @@ export default async function AlfredPage() {
   }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const dossierList = await listDossiers(auth);
   const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
+  const runDrafts = await draftsForRuns(auth, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
 
   return (
@@ -65,7 +70,7 @@ export default async function AlfredPage() {
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm />}
+          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm dossiers={dossierList} />}
         </Section>
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
@@ -111,6 +116,7 @@ export default async function AlfredPage() {
                   </ul>
                   <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
                   {unavailable && !isFinished(run.state) ? null : <RunControls runId={run.id} finished={isFinished(run.state)} />}
+                  <DraftControls runId={run.id} draft={runDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
                 </li>
               ))}
             </ul>
