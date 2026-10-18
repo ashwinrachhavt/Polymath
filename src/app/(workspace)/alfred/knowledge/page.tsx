@@ -21,7 +21,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { getAuthContext } from "@/lib/auth";
-import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions } from "./decision-buttons";
+import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
+import { listZettelProposals } from "@/domains/knowledge/zettels";
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
@@ -216,6 +217,7 @@ export default async function KnowledgePage({
           ) : selected ? (
             <ReviewWorkbench
               review={selected}
+              zettels={await listZettelProposals(auth, selected.document.id)}
               partyOptions={optionsByParty}
               suggestedTitle={
                 suggestedTitle && suggestedTitle !== selected.document.title ? suggestedTitle : null
@@ -293,7 +295,9 @@ function ReviewWorkbench({
   review,
   partyOptions,
   suggestedTitle,
+  zettels,
 }: {
+  zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
   partyOptions: Map<string, { kind: "contact" | "company"; id: string; name: string; via: string }[]>;
   suggestedTitle: string | null;
@@ -453,6 +457,33 @@ function ReviewWorkbench({
                         : obligation.status === "rejected"
                           ? "Rejected"
                           : "Superseded by a newer document"}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3 className="mt-2 text-[13px] font-medium">Proposed zettels</h3>
+          {extraction?.status === "succeeded" ? <ProposeZettelsButton documentId={doc.id} /> : null}
+          {zettels.length === 0 ? (
+            <p className="text-muted-foreground text-xs">No zettels proposed yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {zettels.map((z) => (
+                <li key={z.id} className="panel rounded-lg px-3.5 py-3">
+                  <p className="text-[13px] font-medium">{z.title}</p>
+                  <p className="text-[13px]">{z.claim}</p>
+                  <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+                    &ldquo;{z.quote}&rdquo; · chars {z.spanStart}-{z.spanEnd}
+                  </p>
+                  {z.status === "proposed" ? (
+                    <div className="mt-2">
+                      <ZettelDecisions proposalId={z.id} />
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {z.status === "accepted" ? "Accepted. Concept and evidence link written." : "Rejected"}
                     </p>
                   )}
                 </li>

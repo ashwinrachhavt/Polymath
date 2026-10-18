@@ -77,6 +77,7 @@ export const claimStatus = pgEnum("claim_status", [
   "rejected",
   "retracted",
 ]);
+export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
 export const dossierSourcePolicy = pgEnum("dossier_source_policy", ["bounded", "open"]);
 export const dossierQuestionStatus = pgEnum("dossier_question_status", [
   "open",
@@ -763,5 +764,45 @@ export const documentObligations = pgTable(
   (t) => [
     uniqueIndex("document_obligations_dedupe_key").on(t.documentId, t.dedupeKey),
     index("document_obligations_workspace_status_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * A proposed zettel: one claim drawn from one succeeded document, with the
+ * exact passage it rests on. Nothing here is knowledge until a human accepts
+ * it; accepting writes the concept and the evidence link, rejecting writes
+ * nothing else. The dedupe key follows obligationDedupeKey: a re-run lands on
+ * the existing row.
+ */
+export const zettelProposals = pgTable(
+  "zettel_proposals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    claim: text("claim").notNull(),
+    /** The verbatim passage; span offsets index into the extraction text. */
+    quote: text("quote").notNull(),
+    spanStart: integer("span_start").notNull(),
+    spanEnd: integer("span_end").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    status: zettelProposalStatus("status").notNull().default("proposed"),
+    conceptId: uuid("concept_id"),
+    claimId: uuid("claim_id"),
+    proposer: text("proposer"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("zettel_proposals_dedupe_key").on(t.documentId, t.dedupeKey),
+    index("zettel_proposals_workspace_status_idx").on(t.workspaceId, t.status),
+    check("zettel_proposals_span_check", sql`span_start >= 0 AND span_end > span_start`),
   ],
 );
