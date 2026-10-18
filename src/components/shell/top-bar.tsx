@@ -8,7 +8,7 @@ import { CommandLayer } from "@/components/shell/command-layer";
 
 export function TopBar({ clerkConfigured }: { clerkConfigured: boolean }) {
   return (
-    <header className="border-border bg-background/85 engraved sticky top-0 z-20 flex h-12 items-center gap-2 border-b px-3 backdrop-blur">
+    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 items-center gap-2 border-b px-3 backdrop-blur">
       <AppLauncher />
 
       <span aria-hidden className="bg-border hidden h-5 w-px md:block" />

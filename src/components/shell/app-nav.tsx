@@ -55,11 +55,11 @@ export function AppNav({ app }: { app: AppDefinition }) {
   return <nav aria-label={`${app.label} sections`} className="border-border bg-sidebar hidden w-[224px] shrink-0 border-r md:block">
     <div className="sticky top-12 flex h-[calc(100dvh-3rem)] flex-col gap-4 overflow-y-auto py-3">
       <div>
-        <p className="text-muted-foreground px-4 pb-1 text-[11px] font-medium">{app.label}</p>
+        <p className="text-muted-foreground px-4 pb-1 text-[11px] font-medium uppercase tracking-wider">{app.label}</p>
         <div className="flex flex-col gap-px px-2">{items.map(itemLink)}</div>
       </div>
       <div>
-        <p className="text-muted-foreground px-4 pb-1 text-[11px] font-medium">More features</p>
+        <p className="text-muted-foreground px-4 pb-1 text-[11px] font-medium uppercase tracking-wider">More features</p>
         <div className="flex flex-col gap-px px-2">{additional.map(itemLink)}</div>
       </div>
     </div>

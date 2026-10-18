@@ -46,10 +46,7 @@ export function PathBreadcrumb() {
         <li aria-hidden className="text-muted-foreground hidden sm:block">
           /
         </li>
-        {/* The app's own accent on the current page. It is the one place the
-            accent appears in global chrome, so the colour tells the owner which
-            app they are in even when the label is truncated away. */}
-        <li className="text-app-accent truncate font-medium" aria-current="page">
+        <li className="text-foreground truncate font-medium" aria-current="page">
           {destination.label}
         </li>
       </ol>
