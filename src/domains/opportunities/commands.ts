@@ -3,7 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { companies, contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import type { OpportunityStage } from "./queries";
+import type { OpportunityStage } from "./status";
 import { opportunities, opportunitiesDeadlines, opportunityStageHistory } from "./schema";
 
 /*

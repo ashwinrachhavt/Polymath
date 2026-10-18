@@ -5,9 +5,17 @@ import { db } from "@/lib/db";
 import {
   opportunities,
   opportunitiesDeadlines,
-  opportunityStage,
   opportunityStageHistory,
 } from "./schema";
+import {
+  OPPORTUNITY_STAGES,
+  PIPELINE_STAGES,
+  STAGE_LABELS,
+  type OpportunityStage,
+} from "./status";
+
+export { OPPORTUNITY_STAGES, PIPELINE_STAGES, STAGE_LABELS };
+export type { OpportunityStage };
 
 /*
  * Read queries for the opportunities pipeline. Stage is the grouping axis:
@@ -15,26 +23,6 @@ import {
  * detail read composes the record, its append-only stage history and its
  * deadlines in parallel.
  */
-
-export type OpportunityStage = (typeof opportunityStage.enumValues)[number];
-export const OPPORTUNITY_STAGES = opportunityStage.enumValues;
-
-export const STAGE_LABELS: Record<OpportunityStage, string> = {
-  identified: "Identified",
-  researching: "Researching",
-  preparing: "Preparing",
-  submitted: "Submitted",
-  interviewing: "Interviewing",
-  negotiating: "Negotiating",
-  won: "Won",
-  lost: "Lost",
-  withdrawn: "Withdrawn",
-};
-
-/** The stages a pipeline view shows as columns; terminal outcomes are listed, not pipelined. */
-export const PIPELINE_STAGES = opportunityStage.enumValues.filter(
-  (stage) => !["won", "lost", "withdrawn"].includes(stage),
-);
 
 function escapeLike(value: string) {
   return value.replace(/[%_\\]/g, (match) => `\\${match}`);
