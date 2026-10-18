@@ -27,6 +27,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated eve dev-host artifacts (gitignored; appears after `pnpm dev`).
+    "**/.eve/**",
   ]),
 ]);
 

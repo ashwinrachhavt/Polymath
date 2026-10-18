@@ -11,12 +11,12 @@ import { drizzle } from "drizzle-orm/neon-http";
  * the throw below only fires when a domain actually reaches for the database.
  */
 
-const url = process.env.DATABASE_URL;
-
-if (!url) {
-  throw new Error(
-    "DATABASE_URL is not set. Copy .env.example to .env and paste the Neon connection string.",
-  );
-}
+/*
+ * An empty string is accepted here so a clone with no .env still *builds* —
+ * `next build` evaluates route modules, and a throw at import time failed CI.
+ * The missing URL is surfaced at first query instead, where it is an actual
+ * runtime error rather than a build one.
+ */
+const url = process.env.DATABASE_URL ?? "";
 
 export const db = drizzle(neon(url));

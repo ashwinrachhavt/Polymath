@@ -15,13 +15,12 @@ import postgres from "postgres";
  * ponytail: per-process pool, unshared. Enough at current traffic; move to a
  * pooled Neon endpoint when concurrent transactions outnumber the pool.
  */
-const url = process.env.DATABASE_URL;
-
-if (!url) {
-  throw new Error(
-    "DATABASE_URL is not set. Copy .env.example to .env and paste the Neon connection string.",
-  );
-}
+/*
+ * Same deal as src/lib/db.ts: postgres() tolerates an empty URL at
+ * construction, so a clone with no .env still builds. The connection fails at
+ * first use, which is where a missing DATABASE_URL is a real error.
+ */
+const url = process.env.DATABASE_URL ?? "";
 
 const client = postgres(url, { max: 5 });
 const db = drizzle(client);
