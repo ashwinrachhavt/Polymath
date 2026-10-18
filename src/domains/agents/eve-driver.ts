@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
-import { clerkConfigured } from "@/lib/clerk";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { bridgeSecret, signBridgeToken } from "./bridge-token";
 import { agentRuns } from "./schema";
 import type { SessionDriver } from "./engine";
 
@@ -42,41 +42,38 @@ function eveBaseUrl(): string {
 }
 
 export function eveBridgeUnavailableReason(): string | null {
-  if (process.env.NODE_ENV === "production" || clerkConfigured) {
-    return "Agent execution is unavailable: the Eve bridge does not yet support verified Clerk identity. No run was started.";
+  if (!bridgeSecret()) {
+    return "Agent execution is unavailable: EVE_BRIDGE_SECRET is not set (32 or more characters, the same value for the app and the Eve agent). No run was started.";
   }
   return null;
 }
 
-async function localOwner(): Promise<AuthContext> {
-  const reason = eveBridgeUnavailableReason();
-  if (reason) throw new Error(reason);
-  return resolveAuthContext("dev-user");
+/** The Authorization header for one Eve call, minted from the caller's verified context. */
+function bridgeHeaders(auth: AuthContext): Record<string, string> {
+  const secret = bridgeSecret();
+  if (!secret) throw new Error(eveBridgeUnavailableReason() ?? "Eve bridge is not configured.");
+  const token = signBridgeToken(
+    { userId: auth.userId, workspaceId: auth.workspaceId, role: auth.role },
+    { secret },
+  );
+  return { authorization: `Bearer ${token}` };
 }
 
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
     async start({ sessionId, objective, auth }) {
-      const owner = await localOwner();
-      if (auth.userId !== owner.userId || auth.workspaceId !== owner.workspaceId || auth.role !== owner.role) {
-        throw new Error("The development Eve bridge cannot execute for another identity.");
-      }
       const base = eveBaseUrl();
       const mount = base ? `${base}/eve/v1` : `/eve/${agentName}/v1`;
       const response = await fetch(`${mount}/session`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          // Only the unconfigured local-development owner may use this spike.
-          // This is not a Clerk credential and is never sent for real users.
-          "x-spike-clerk-user-id": "dev-user",
-        },
+        headers: { "content-type": "application/json", ...bridgeHeaders(auth) },
         body: JSON.stringify({
           // The objective IS the first message: eve only starts a turn when
           // the create request carries one (message-free create parks the
           // session waiting for its first message, and no run would ever do
           // work).
           message: objective,
+          // Create-once: a retried start of this run cannot fork a second session.
           operationId: `axiom-run-${sessionId}`,
         }),
       });
@@ -90,12 +87,11 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
     async signal() {
       // Resume and steer arrive with the real tool surfaces; nothing to send yet.
     },
-    async cancel(sessionId) {
-      const owner = await localOwner();
+    async cancel(sessionId, auth) {
       const [run] = await db
         .select({ sessionRef: agentRuns.sessionRef })
         .from(agentRuns)
-        .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, owner.workspaceId)))
+        .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)))
         .limit(1);
       const ref = run?.sessionRef;
       if (!ref) return;
@@ -103,7 +99,7 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       const mount = base ? `${base}/eve/v1` : `/eve/${agentName}/v1`;
       await fetch(`${mount}/session/${ref}/cancel`, {
         method: "POST",
-        headers: { "x-spike-clerk-user-id": "dev-user" },
+        headers: bridgeHeaders(auth),
       }).catch(() => undefined);
     },
   };
