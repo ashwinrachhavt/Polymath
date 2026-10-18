@@ -1,26 +1,35 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Readout } from "@/components/readout";
+import { connection } from "next/server";
+import { getAuthContext } from "@/lib/auth";
+import { listRecentRuns } from "@/domains/agents/queries";
+import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
 
 /*
- * Conversation, delegation, and the run timeline. The run states are listed
- * because they are the contract the owner relies on: a run that is waiting for
- * input is visibly waiting, not silently stuck.
+ * Conversation, delegation, and the run timeline. Reads the workspace's real
+ * run rows; the form posts to /api/v1/runs, which drives the engine.
  */
-const runStates = [
-  "Queued",
-  "Running",
-  "Waiting for input",
-  "Waiting for approval",
-  "Succeeded",
-  "Failed",
-  "Cancelled",
-];
 
-export default function AlfredPage() {
+const stateLabel: Record<string, string> = {
+  queued: "Queued",
+  running: "Running",
+  waiting_input: "Waiting for input",
+  waiting_approval: "Waiting for approval",
+  succeeded: "Succeeded",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+export default async function AlfredPage() {
+  // Per-request data (auth upserts touch now()); opt this route out of prerender.
+  await connection();
+  const auth = await getAuthContext();
+  const runs = await listRecentRuns(auth.workspaceId, 8);
+
   return (
     <>
       <PageHeader
@@ -28,31 +37,14 @@ export default function AlfredPage() {
         purpose="Delegate and inspect what it did."
         actions={
           <Badge variant="secondary" className="font-normal">
-            No profile yet
+            Profile: alfred
           </Badge>
         }
       />
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          <div className="flex flex-col gap-3">
-            <label htmlFor="objective" className="sr-only">
-              What should Alfred do?
-            </label>
-            <textarea
-              id="objective"
-              rows={3}
-              disabled
-              placeholder="Describe an objective. Alfred proposes; you approve anything that leaves Axiom."
-              className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60"
-            />
-            <Button disabled className="w-fit">
-              Start a run
-            </Button>
-            <p className="text-muted-foreground text-xs">
-              Disabled until the run engine lands. Nothing typed here is sent anywhere.
-            </p>
-          </div>
+          <StartRunForm />
         </Section>
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
@@ -63,13 +55,30 @@ export default function AlfredPage() {
         </Section>
 
         <Section title="Recent runs" description="Every run shows its steps, questions, artifacts, and spend.">
-          <EmptyState
-            title="No runs yet"
-            description="A run is durable: reloading rebuilds its timeline, retries create a new run, and finished runs never change."
-          />
-          <p className="text-muted-foreground text-xs">
-            States: {runStates.join(" → ")}.
-          </p>
+          {runs.length === 0 ? (
+            <EmptyState
+              title="No runs yet"
+              description="Describe an objective above and start one. A run is durable: reloading rebuilds its timeline, retries create a new run, and finished runs never change."
+            />
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {runs.map((run) => (
+                <li key={run.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-[13px]">{run.objective}</p>
+                    <Badge variant="secondary" className="font-normal">
+                      {stateLabel[run.state] ?? run.state}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    <Readout className="text-xs">{run.model ?? "model unset"}</Readout>
+                    {" · "}
+                    {run.summary ?? run.error ?? "in progress"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
       </div>
     </>

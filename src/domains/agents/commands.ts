@@ -1,4 +1,46 @@
 import type postgres from "postgres";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { agentProfiles } from "./schema";
+
+/*
+ * The first-party profile, ensured before a start so the engine's lookup
+ * succeeds. One owner in v1 ships one profile (agents/product.md): idempotent
+ * on (workspace, name) via the unique index, so two racing starts land on one
+ * row.
+ *
+ * ponytail: model id and budget defaults live here, not in a settings screen,
+ * until profile management lands.
+ */
+export async function ensureProfile(workspaceId: string, name = "alfred") {
+  const [existing] = await db
+    .select({ id: agentProfiles.id })
+    .from(agentProfiles)
+    .where(eq(agentProfiles.workspaceId, workspaceId))
+    .limit(1);
+  if (existing) return existing.id;
+  const [profile] = await db
+    .insert(agentProfiles)
+    .values({
+      workspaceId,
+      name,
+      description: "Chief of staff. Researches and drafts; proposes anything consequential.",
+      modelPolicy: { primary: "claude-hive-glm-5.3-flash" },
+      allowedTools: ["tasks.read", "gmail.send"],
+      budgetPolicy: { perRunCeilingUsd: "2.00", dailyCeilingUsd: "10.00" },
+      isDefault: true,
+    })
+    .onConflictDoNothing()
+    .returning({ id: agentProfiles.id });
+  if (profile) return profile.id;
+  const [raced] = await db
+    .select({ id: agentProfiles.id })
+    .from(agentProfiles)
+    .where(eq(agentProfiles.workspaceId, workspaceId))
+    .limit(1);
+  if (!raced) throw new Error("agent profile did not persist");
+  return raced.id;
+}
 
 /*
  * The orphaned-run remedy. A run whose worker died — a Vercel function evicted,
