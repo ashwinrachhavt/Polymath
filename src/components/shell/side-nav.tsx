@@ -161,6 +161,7 @@ export function SideNav() {
           type="button"
           onClick={openCommand}
           aria-label="Search workspace"
+          data-search-trigger
           aria-keyshortcuts="Meta+K Control+K"
           className={cn(
             "border-sidebar-border bg-card text-muted-foreground hover:text-foreground flex h-8 items-center gap-2.5 rounded-md border text-[13px] transition-colors",

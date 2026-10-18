@@ -48,7 +48,7 @@ for (const app of apps) {
       // the shell's content main so navigation never races the skeleton.
       await expect(page.locator("#content h1")).toHaveCount(1);
       await expect(page.locator("#content")).not.toContainText("Nothing is here");
-      await expect(page.getByRole("navigation", { name: `${app.label} sections`, exact: true }).getByRole("link", { name: destination.label, exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: destination.label, exact: true })).toHaveAttribute("aria-current", "page");
     }
     expect(errors).toEqual([]);
   });
@@ -56,7 +56,7 @@ for (const app of apps) {
 
 test("the launcher crosses apps and shared routes are reachable", async ({ page }) => {
   await page.goto("/command-center/briefing");
-  await page.getByRole("button", { name: "Open apps" }).click();
+  await page.getByRole("button", { name: "Switch product" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
   // Cross-app links out of Command Center target the other two apps.
@@ -73,7 +73,7 @@ test("the launcher crosses apps and shared routes are reachable", async ({ page 
 
 test("the app launcher is keyboard reachable and closes on escape", async ({ page }) => {
   await page.goto("/neuralflow/work");
-  const trigger = page.getByRole("button", { name: "Open apps" });
+  const trigger = page.getByRole("button", { name: "Switch product" });
   await expect(trigger).toBeEnabled();
   await trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();

@@ -58,9 +58,7 @@ test("preview routes retain app context and all tools are reachable on a phone",
   await waitSettled(page, { heading: "Heading" });
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Notebook");
   await expect(page.locator("[data-app]")).toHaveAttribute("data-app", "alfred");
-  await page.getByRole("button", { name: "More features", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("link", { name: "Learning", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: "Learning", exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/inbox");
