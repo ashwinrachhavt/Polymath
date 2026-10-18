@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { agentRuns } from "./schema";
+import { agentRuns, toolCalls } from "./schema";
 
 /*
  * A run's frozen policy snapshot, read back for the tools that must honour it.
@@ -80,4 +80,28 @@ export async function getRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return run ?? null;
+}
+
+/** Tool names a documents search is recorded under (the capability and the tool file name). */
+const DOCUMENT_SEARCH_TOOLS = ["documents_search", "documents.search"];
+
+/**
+ * The raw documents.search results for each run, oldest first. The caller
+ * folds them into citations; reading stays inside the workspace.
+ */
+export async function listDocumentSearchResults(workspaceId: string, runIds: string[]) {
+  if (runIds.length === 0) return new Map<string, unknown[]>();
+  const rows = await db
+    .select({ runId: toolCalls.runId, result: toolCalls.result })
+    .from(toolCalls)
+    .where(and(
+      eq(toolCalls.workspaceId, workspaceId),
+      inArray(toolCalls.runId, runIds),
+      inArray(toolCalls.toolName, DOCUMENT_SEARCH_TOOLS),
+      eq(toolCalls.ok, true),
+    ))
+    .orderBy(toolCalls.createdAt);
+  const byRun = new Map<string, unknown[]>();
+  for (const row of rows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row.result]);
+  return byRun;
 }
