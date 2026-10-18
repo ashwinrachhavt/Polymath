@@ -2,7 +2,10 @@ import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
-import { StudioError, saveGeneratedDraft } from "@/domains/knowledge/studio";
+import { StudioError, listDrafts, saveGeneratedDraft } from "@/domains/knowledge/studio";
+
+/* GET /api/v1/drafts — the workspace's open generated drafts, newest first. */
+export const GET = authedHandler(async (auth) => Response.json({ drafts: await listDrafts(auth) }));
 
 /* POST /api/v1/drafts { runId } — turns a Studio run's output into a draft artifact (once per run). */
 export const POST = authedHandler(async (auth, request) => {

@@ -140,11 +140,25 @@ export async function getDossierDetail(auth: AuthContext, dossierId: string) {
 }
 
 /** The workspace's filed documents, for the attach picker. */
+/*
+ * The documents a dossier can pick up. Each row carries its latest extraction
+ * status so the picker can say which ones are unread yet (a dossier pins the
+ * latest succeeded text, and a document without one contributes nothing).
+ */
 export async function listAttachableDocuments(auth: AuthContext) {
-  return db
+  const docs = await db
     .select({ id: documents.id, title: documents.title })
     .from(documents)
     .where(and(eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`, sql`${documents.fileId} is not null`))
     .orderBy(desc(documents.createdAt))
     .limit(200);
+  if (docs.length === 0) return docs.map((doc) => ({ ...doc, extractionStatus: null as string | null }));
+  const extractions = await db
+    .select({ documentId: documentExtractions.documentId, status: documentExtractions.status })
+    .from(documentExtractions)
+    .where(and(eq(documentExtractions.workspaceId, auth.workspaceId), inArray(documentExtractions.documentId, docs.map((doc) => doc.id))))
+    .orderBy(desc(documentExtractions.createdAt));
+  const latest = new Map<string, string>();
+  for (const row of extractions) if (!latest.has(row.documentId)) latest.set(row.documentId, row.status);
+  return docs.map((doc) => ({ ...doc, extractionStatus: latest.get(doc.id) ?? null }));
 }

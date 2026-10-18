@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
  * /api/v1/dossiers, which rejects any document outside the workspace; a
  * success lands in the server-rendered list on refresh.
  */
-export function CreateDossierForm({ documents }: { documents: Array<{ id: string; title: string }> }) {
+const extractionLabel: Record<string, string> = {
+  succeeded: "Filed",
+  pending: "Reading…",
+  running: "Reading…",
+  failed: "Extraction failed",
+};
+
+export function CreateDossierForm({ documents }: { documents: Array<{ id: string; title: string; extractionStatus: string | null }> }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -74,6 +81,7 @@ export function CreateDossierForm({ documents }: { documents: Array<{ id: string
             <label key={doc.id} className="flex items-center gap-2 text-[13px]">
               <input type="checkbox" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} />
               <span className="truncate">{doc.title}</span>
+              <span className="text-muted-foreground text-xs">{doc.extractionStatus ? (extractionLabel[doc.extractionStatus] ?? doc.extractionStatus) : "Unread"}</span>
             </label>
           ))}
         </div>

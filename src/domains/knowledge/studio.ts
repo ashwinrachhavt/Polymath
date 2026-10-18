@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
@@ -132,3 +132,25 @@ async function decide(auth: AuthContext, artifactId: string, status: "reviewed" 
 export const saveDraft = (auth: AuthContext, input: { artifactId: string }) => decide(auth, input.artifactId, "reviewed", "draft.saved");
 /** Throw it away: archived, hidden, versions kept for the record. */
 export const discardDraft = (auth: AuthContext, input: { artifactId: string }) => decide(auth, input.artifactId, "archived", "draft.discarded");
+
+/** The artifact each run produced, keyed by run id — so a run row can render its save/keep/discard state. */
+export async function draftsForRuns(auth: AuthContext, runIds: string[]) {
+  const map = new Map<string, { artifactId: string; status: string }>();
+  if (runIds.length === 0) return map;
+  const rows = await db
+    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status })
+    .from(artifacts)
+    .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.producedByRunId, runIds)));
+  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status });
+  return map;
+}
+
+/** Open generated drafts, newest first — the list behind GET /api/v1/drafts. */
+export async function listDrafts(auth: AuthContext) {
+  return db
+    .select({ artifactId: artifacts.id, title: artifacts.title, runId: artifacts.producedByRunId, createdAt: artifacts.createdAt })
+    .from(artifacts)
+    .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.status, "draft"), sql`${artifacts.archivedAt} is null`))
+    .orderBy(desc(artifacts.createdAt))
+    .limit(100);
+}

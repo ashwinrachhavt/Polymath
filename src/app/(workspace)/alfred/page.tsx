@@ -9,6 +9,8 @@ import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { listThreads, isFinished } from "@/domains/agents/thread";
 import { RunControls } from "./run-controls";
+import { DraftControls } from "./draft-controls";
+import { draftsForRuns } from "@/domains/knowledge/studio";
 import { Markdown } from "@/components/markdown";
 import { listDossiers } from "@/domains/knowledge/dossiers";
 import { StartRunForm } from "./start-run-form";
@@ -51,6 +53,7 @@ export default async function AlfredPage() {
   const dossierList = await listDossiers(auth);
   const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
+  const runDrafts = await draftsForRuns(auth, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
 
   return (
@@ -113,6 +116,7 @@ export default async function AlfredPage() {
                   </ul>
                   <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
                   {unavailable && !isFinished(run.state) ? null : <RunControls runId={run.id} finished={isFinished(run.state)} />}
+                  <DraftControls runId={run.id} draft={runDrafts.get(run.id) ?? null} canSave={run.state === "succeeded"} />
                 </li>
               ))}
             </ul>
