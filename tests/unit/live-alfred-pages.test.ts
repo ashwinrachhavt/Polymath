@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn() }));
 vi.mock("@/domains/knowledge/queries", () => ({ getDocumentInbox: vi.fn(), getDocumentReview: vi.fn() }));
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/agents/queries", () => ({ listRecentRuns: vi.fn(), listDocumentSearchResults: vi.fn(async () => new Map()) }));

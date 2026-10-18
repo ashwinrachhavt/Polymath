@@ -29,7 +29,7 @@ async function seedRun() {
 suite("persisted Eve session binding and task reads (real Postgres)", () => {
   it("resolves a wrun text ID to the run UUID and its original frozen policy", async () => {
     const { run, auth, sessionRef, policySnapshot } = await seedRun();
-    expect(await getRunBySessionRef(sessionRef, auth.workspaceId)).toEqual({ id: run.id, state: "running", policySnapshot });
+    expect(await getRunBySessionRef(sessionRef, auth.workspaceId)).toEqual({ id: run.id, state: "running", policySnapshot, subjects: [] });
   });
 
   it("does not guess a run from a foreign workspace or treat a run UUID as a session reference", async () => {

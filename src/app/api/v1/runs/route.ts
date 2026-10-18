@@ -10,6 +10,7 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { listRecentRuns } from "@/domains/agents/queries";
+import { dossierDocumentIds } from "@/domains/knowledge/dossiers";
 
 /*
  * GET /api/v1/runs — the workspace's recent agent runs; the Alfred page reads
@@ -33,6 +34,8 @@ const startRun = z.object({
     .regex(/^\d+(\.\d{1,4})?$/)
     .default("0.50"),
   profileName: z.string().default("alfred"),
+  /** Keep this run inside one dossier: documents.search then only reads its documents. */
+  dossierId: z.string().uuid().optional(),
 });
 
 export const GET = authedHandler(async (auth) => {
@@ -53,8 +56,12 @@ export const POST = authedHandler(async (auth, request) => {
   const unavailable = eveBridgeUnavailableReason();
   if (unavailable) return problemResponse(503, "agent_bridge_unavailable", unavailable);
 
+  if (parsed.data.dossierId && (await dossierDocumentIds(auth, parsed.data.dossierId)) === null) {
+    return problemResponse(404, "not_found", "No such dossier.");
+  }
+
   const receipt = key
-    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd])) }
+    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd, parsed.data.dossierId ?? null])) }
     : null;
   if (receipt) {
     const [claimed] = await db
@@ -90,7 +97,7 @@ export const POST = authedHandler(async (auth, request) => {
       auth,
       profileName: parsed.data.profileName,
       objective: parsed.data.objective,
-      subjects: [],
+      subjects: parsed.data.dossierId ? [{ type: "dossier", id: parsed.data.dossierId }] : [],
       estimateUsd: parsed.data.estimateUsd,
     });
     if (receipt) {

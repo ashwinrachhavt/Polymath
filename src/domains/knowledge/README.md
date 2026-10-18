@@ -68,3 +68,16 @@ anything that is not verbatim, so every proposal row carries a real span
 `zettel:<documentId>:<start>-<end>`. Accept writes a concept, a claim and a
 `claim_evidence` row pointing at the span; reject writes only the decision.
 Controls live on the Knowledge screen (/alfred/knowledge); there is no graph page.
+
+## Dossiers
+
+A dossier is a name plus a set of documents in this workspace
+(`createDossier`, `attachDocuments`). A foreign or unknown document id fails the
+whole command. Each attachment pins the document's latest succeeded extraction
+hash on `dossier_sources`. `documents.search` takes an optional `dossierId`, and
+a run started with a dossier (`POST /api/v1/runs` with `dossierId`, set from the
+Ask Alfred form) stays inside it; an empty dossier returns nothing and an
+unknown dossier is an error.
+
+Not in this PR: Studio Generate (a run saved as a draft artifact linked to the
+pinned versions). The brief says not to start Studio until PR 5 and PR 8 merge.

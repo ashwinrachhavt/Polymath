@@ -29,9 +29,9 @@ export async function getRunPolicySnapshot(
 export async function getRunBySessionRef(
   sessionRef: string,
   workspaceId: string,
-): Promise<Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> | null> {
+): Promise<(Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> & Partial<Pick<typeof agentRuns.$inferSelect, "subjects">>) | null> {
   const runs = await db
-    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state })
+    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state, subjects: agentRuns.subjects })
     .from(agentRuns)
     .where(and(eq(agentRuns.sessionRef, sessionRef), eq(agentRuns.workspaceId, workspaceId)))
     .limit(2);

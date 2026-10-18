@@ -172,10 +172,12 @@ export type ChunkHit = {
  */
 export async function searchChunks(
   auth: AuthContext,
-  input: { query: string; limit?: number; provider?: EmbeddingProvider },
+  input: { query: string; limit?: number; provider?: EmbeddingProvider; documentIds?: string[] },
 ): Promise<ChunkHit[]> {
   const query = input.query.trim();
   if (!query) return [];
+  // An empty boundary (a dossier with no documents) matches nothing, never everything.
+  if (input.documentIds && input.documentIds.length === 0) return [];
   const provider = input.provider ?? embeddingProvider();
   const [vector] = await provider.embed([query]);
   const limit = Math.min(Math.max(input.limit ?? 8, 1), 50);
@@ -203,6 +205,7 @@ export async function searchChunks(
       eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
       eq(embeddings.model, provider.model),
       isNull(documents.archivedAt),
+      input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
       eq(documentExtractions.status, "succeeded"),
       sql`not exists (
         select 1 from document_extractions newer

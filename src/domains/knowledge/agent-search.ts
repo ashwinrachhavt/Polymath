@@ -1,5 +1,6 @@
 import { EmbeddingUnconfiguredError, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { dossierDocumentIds } from "./dossiers";
 import { searchChunks } from "./search";
 
 /*
@@ -32,13 +33,21 @@ export type AgentSearchResult =
 
 export async function searchDocumentsForAgent(
   auth: AuthContext,
-  input: { query: string; limit?: number; provider?: EmbeddingProvider },
+  input: { query: string; limit?: number; provider?: EmbeddingProvider; dossierId?: string },
 ): Promise<AgentSearchResult> {
   const query = input.query.trim();
   if (!query) return { ok: false, error: "query is empty" };
   const limit = Math.min(Math.max(input.limit ?? 5, 1), AGENT_SEARCH_MAX_RESULTS);
   try {
-    const hits = await searchChunks(auth, { query, limit, provider: input.provider });
+    // A dossier narrows the search to its documents. An unknown or foreign
+    // dossier is an error, never a silent search of everything.
+    let documentIds: string[] | undefined;
+    if (input.dossierId) {
+      const ids = await dossierDocumentIds(auth, input.dossierId);
+      if (!ids) return { ok: false, error: "dossier not found" };
+      documentIds = ids;
+    }
+    const hits = await searchChunks(auth, { query, limit, provider: input.provider, documentIds });
     return {
       ok: true,
       query,

@@ -10,6 +10,7 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { listThreads, isFinished } from "@/domains/agents/thread";
 import { RunControls } from "./run-controls";
 import { Markdown } from "@/components/markdown";
+import { listDossiers } from "@/domains/knowledge/dossiers";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -47,6 +48,7 @@ export default async function AlfredPage() {
   }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const dossierList = await listDossiers(auth);
   const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
@@ -65,7 +67,7 @@ export default async function AlfredPage() {
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm />}
+          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm dossiers={dossierList} />}
         </Section>
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
