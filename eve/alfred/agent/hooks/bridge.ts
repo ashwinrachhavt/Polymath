@@ -3,6 +3,7 @@ import { defineHook, type HookContext } from "eve/hooks";
 // does not carry the app's tsconfig paths, so the alias does not resolve here.
 import {
   closeRun,
+  markWaitingForInput,
   mirrorMessage,
   recordQuestion,
   recordRoundEvent,
@@ -241,6 +242,9 @@ export default defineHook({
           data: { turnId: event.data.turnId },
         }),
       );
+      // The session waits for its next message; the run row says so instead of
+      // "running" while nothing is computing.
+      await guarded("turn.completed waiting state", () => markWaitingForInput({ runId, workspaceId }));
     },
 
     async "turn.cancelled"(event, ctx) {
