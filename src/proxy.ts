@@ -1,17 +1,30 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { clerkConfigured } from "@/lib/clerk";
 
 /*
  * Next 16 renamed middleware to proxy; this file is the old middleware.ts.
  *
- * Once both keys are set, Clerk owns every matched request. Nothing downstream
- * may assume an unauthenticated request is legitimate — the server resolves
- * the owner from Clerk, and a client never supplies it.
+ * Once both keys are set, Clerk owns every matched request. Public routes
+ * (sign-in, sign-up, webhooks) stay open; everything else requires a session
+ * at the edge via auth.protect(). Workspace layouts still default-deny as a
+ * second line of defense.
+ *
+ * Webhooks use HMAC (webhook_inbox), not Clerk sessions — they must stay public.
  */
 
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/webhooks(.*)",
+]);
+
 export default clerkConfigured
-  ? clerkMiddleware()
+  ? clerkMiddleware(async (auth, request) => {
+      if (!isPublicRoute(request)) {
+        await auth.protect();
+      }
+    })
   : () => NextResponse.next();
 
 export const config = {

@@ -59,7 +59,9 @@ const SECRET_PAIR =
 const BEARER = /\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi;
 
 export function redactText(text: string): string {
-  return text.replace(SECRET_PAIR, "$1[redacted]").replace(BEARER, "Bearer [redacted]");
+  // Bearer first: SECRET_PAIR also matches "Authorization: <value>", so running
+  // it first consumes the line and the bearer value would survive as a token.
+  return text.replace(BEARER, "Bearer [redacted]").replace(SECRET_PAIR, "$1[redacted]");
 }
 
 /*

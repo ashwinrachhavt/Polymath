@@ -29,7 +29,7 @@ const handle = (function () {
   return { url, client, db: drizzle(client) };
 })();
 const suite = handle ? describe : describe.skip;
-let db = handle?.db;
+let db = handle?.db as ReturnType<typeof drizzle>;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 

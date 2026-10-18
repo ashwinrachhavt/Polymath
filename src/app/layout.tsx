@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import { clerkConfigured } from "@/lib/clerk";
 import "./globals.css";
 
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
  */
 function AuthProvider({ children }: { children: ReactNode }) {
   if (!clerkConfigured) return children;
-  return <ClerkProvider>{children}</ClerkProvider>;
+  return <ClerkProvider appearance={clerkAppearance}>{children}</ClerkProvider>;
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
