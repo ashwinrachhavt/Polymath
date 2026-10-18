@@ -12021,12 +12021,16 @@
           "name": "reviewed_assertions_workspace_document_active_idx",
           "columns": [
             {
-              "name": "workspace_id",
-              "type": "uuid"
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             },
             {
-              "name": "document_id",
-              "type": "uuid"
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,

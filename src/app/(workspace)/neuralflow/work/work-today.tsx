@@ -1,89 +1,41 @@
-"use client";
+import Link from "next/link";
+import type { WorkView } from "@/components/products/neuralflow/work-views";
 
-import { useWorkspace } from "@/components/workspace/workspace-provider";
-import { compareTasks, openStatuses, statusLabels } from "@/components/workspace/tasks";
-import { EmptyState } from "@/components/empty-state";
-import { Readout } from "@/components/readout";
-import { Section } from "@/components/page-header";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Check } from "lucide-react";
+const views: { id: WorkView; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "list", label: "List" },
+  { id: "board", label: "Board" },
+  { id: "calendar", label: "Calendar" },
+];
 
-/*
- * Today, read from the workspace rather than asserted. The server page renders
- * the header and this client island below it, because the tasks live in a
- * store that only exists in the browser — a server component cannot see them,
- * and hardcoding "0 open" while the store held real rows was a lie the screen
- * told on every load.
- */
-export function WorkToday() {
-  const { state, completeTask, notify } = useWorkspace();
-  const open = state.tasks.filter((task) => openStatuses.includes(task.status)).sort(compareTasks);
-  const doneToday = state.tasks.filter((task) => task.status === "DONE" && task.completedAt?.slice(0, 10) === new Date().toISOString().slice(0, 10));
-
+export function WorkViewLinks({ active }: { active: WorkView }) {
   return (
-    <Section
-      title="Today"
-      description="Accepted outcomes first, then ready work, then what is waiting."
-    >
-      {open.length === 0 ? (
-        <EmptyState
-          title="No open tasks"
-          description="Tasks arrive from capture, from Alfred, or from the Inbox and Briefing screens."
-          action={<Button variant="outline" onClick={() => notify("Capturing from Work arrives with the capture command.")}>Capture a task</Button>}
-        />
-      ) : (
-        <ul className="flex flex-col">
-          {open.map((task) => (
-            <li key={task.id} className="border-border flex items-center gap-3 border-b py-2 last:border-b-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`Complete ${task.title}`}
-                onClick={() => completeTask(task.id)}
-                className="text-muted-foreground hover:text-foreground -ml-2 shrink-0 px-2"
-              >
-                <Check aria-hidden />
-              </Button>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{task.title}</span>
-              {task.dueDate ? <span className="text-muted-foreground shrink-0 text-[13px]">{task.dueDate}</span> : null}
-              {/* Word, not hue alone: the status is readable without colour. */}
-              <Badge variant="outline" className="shrink-0">{statusLabels[task.status]}</Badge>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-muted-foreground mt-3 flex items-center gap-2 text-[13px]">
-        <Readout>{open.length}</Readout> open
-        {doneToday.length ? <><span aria-hidden>·</span><Readout>{doneToday.length}</Readout> done today</> : null}
-      </p>
-    </Section>
+    <nav aria-label="Work views" className="flex flex-wrap gap-1">
+      {views.map(({ id, label }) => (
+        <Link
+          key={id}
+          href={`/neuralflow/work?view=${id}`}
+          aria-current={active === id ? "page" : undefined}
+          className={`inline-flex min-h-9 items-center rounded-md px-3 text-[13px] font-medium transition-colors active:translate-y-px ${active === id ? "bg-app-accent text-app-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
-/*
- * Spaces are a Command Center grouping; projects carry an outcome. Neither has
- * rows in the workspace store yet, so this states the distinction rather than
- * drawing three identical empty boxes that say nothing about what they hold.
- */
-export function WorkContainers() {
-  const { state } = useWorkspace();
+export function NeuralFlowFeatureLinks() {
   return (
-    <Section title="Spaces and projects" description="Spaces group; projects carry an outcome.">
-      {state.projects.length === 0 ? (
-        <p className="text-muted-foreground text-[13px]">
-          No projects yet. A project carries one outcome to done; spaces group related work across projects.
-        </p>
-      ) : (
-        <ul className="flex flex-col">
-          {state.projects.map((project) => (
-            <li key={project.id} className="border-border flex items-center gap-3 border-b py-2 last:border-b-0">
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.title}</span>
-              <Badge variant="outline">{project.status}</Badge>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
+    <nav aria-label="NeuralFlow tools" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/focus">Focus</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/projects">Projects</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/meetings">Meetings</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/notes">Notes</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
+      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
+    </nav>
   );
 }

@@ -4,6 +4,30 @@
 inventory are owned by [axiom-product-spec.md](../docs/axiom-product-spec.md)
 (§ Frontend and design); this file owns the taste.
 
+## Owner direction (2026-10-17) — takes precedence over the sections below
+
+The owner asked for Axiom to carry NeuralFlow's elegance, purposeful animation,
+and the NeuralFlow stones, and for the product to tell its own story. Where the
+rules below disagree, this section wins:
+
+- **The story lives in the product, not on a marketing page.** Briefing opens
+  with the loop strip (Capture, Clarify, Commit, Focus, Review, Learn): live
+  counts, a plain reason, one link to the record class that continues the work,
+  and the next step that needs the owner lit. No scroll narrative.
+- **Animation answers an action and is allowed to delight at reward moments.**
+  Completion springs, the strike line, the forming stone and the stone reveal
+  are in scope. Every one honours both `prefers-reduced-motion` and the in-app
+  Reduce motion and Celebrations settings, and plays once.
+- **Stone art and colour are allowed inside reward surfaces only** (Focus,
+  Stone collection, Work memories, the Learn beat). Everywhere else the
+  one-accent rule stands. Stones are work memories with a stated reason, never
+  a leaderboard or a streak that can be lost.
+- **Celebration tiers:** a small tick on completion, a non-blocking card when a
+  stone is earned, a full reveal reserved for milestones.
+- **Styling:** `*.module.css` does not work under the current Turbopack CSS rule
+  in `next.config.ts`; use a plain stylesheet with a feature prefix (`nf-`,
+  `loop-`) until that rule is fixed.
+
 ## The governing skill
 
 The installed `taste-skill` set (`.agents/skills/`, lockfile `skills-lock.json`)

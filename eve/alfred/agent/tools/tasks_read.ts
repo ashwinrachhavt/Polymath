@@ -3,7 +3,8 @@ import { z } from "zod";
 import { toolAllowed } from "../lib/policy";
 // Relative, not "@/...": eve bundles this agent from its own package root and
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
-import { getRunPolicySnapshot } from "../../../../src/domains/agents/queries";
+import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
+import { listOpenTasks } from "../../../../src/domains/work/queries";
 
 /*
  * A read capability: it returns rows and touches nothing. Reads still check the
@@ -19,14 +20,16 @@ export default defineTool({
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
 
-    const snapshot = await getRunPolicySnapshot(ctx.session.id, workspaceId);
-    if (!toolAllowed(snapshot, "tasks.read")) {
+    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    if (!run || run.state !== "running") {
+      return { ok: false as const, error: "no active Axiom run bound to this session" };
+    }
+    if (!toolAllowed(run.policySnapshot, "tasks.read")) {
       return { ok: false as const, error: "tasks.read is not in this run's policy snapshot" };
     }
 
-    // ponytail: placeholder read shape; the real projection lands when the Work
-    // domain ships its `listOpenTasks` query. The seam being proven is that a
-    // read is gated by the frozen snapshot, not how it is shaped.
-    return { ok: true as const, tasks: [], limit: input.limit ?? 25 };
+    const limit = input.limit ?? 25;
+    const tasks = await listOpenTasks({ workspaceId }, limit);
+    return { ok: true as const, tasks, limit };
   },
 });

@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { auditEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { ExtractedField } from "@/integrations/extraction/provider";
 import { db } from "@/lib/db";
-import { fieldProposals } from "./schema";
+import { withTransaction } from "@/lib/db-transaction";
+import { acceptAssertions } from "./parties";
+import { documentParties, fieldProposals } from "./schema";
 
 /*
  * Field proposals: the machine's reading of a document, stored as rows a human
@@ -48,6 +52,7 @@ export async function proposeFields(
       confidence: field.confidence ?? null,
       dedupeKey: fieldDedupeKey(field),
       evidenceSpans: field.evidenceSpans,
+      partyRole: field.partyRole ?? null,
     };
   });
   if (rows.length === 0) return { proposed: 0, skipped: 0 };
@@ -63,6 +68,192 @@ export async function proposeFields(
     .returning({ id: fieldProposals.id });
 
   return { proposed: inserted.length, skipped: rows.length - inserted.length };
+}
+
+/*
+ * Human decisions on one proposal. Each is one transaction with its audit row:
+ * a decision with no audit row did not happen, and an audit row for a decision
+ * that rolled back is a lie. The status guard in each WHERE is the idempotency.
+ */
+
+const alreadyDecided = () => new Error("field proposal already decided");
+
+/**
+ * Accept one proposal, optionally with a typed correction (stored in
+ * acceptedValue; rawValue is never edited). When the value was read from a
+ * party's block and that party is already linked to a contact or company, the
+ * fact lands on that record's assertion ledger in the same transaction, so
+ * the order of "link party" and "accept field" does not matter.
+ */
+export async function acceptFieldProposal(
+  auth: AuthContext,
+  input: { fieldProposalId: string; acceptedValue?: string | null },
+): Promise<{ id: string }> {
+  return withTransaction(async (tx) => {
+    const [proposal] = await tx
+      .select({
+        id: fieldProposals.id,
+        documentId: fieldProposals.documentId,
+        extractionId: fieldProposals.extractionId,
+        fieldName: fieldProposals.fieldName,
+        normalizedValue: fieldProposals.normalizedValue,
+        evidenceSpans: fieldProposals.evidenceSpans,
+        partyRole: fieldProposals.partyRole,
+        status: fieldProposals.status,
+      })
+      .from(fieldProposals)
+      .where(and(eq(fieldProposals.id, input.fieldProposalId), eq(fieldProposals.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!proposal) throw new Error("field proposal not found in workspace");
+    if (proposal.status !== "proposed") throw alreadyDecided();
+
+    // The value is the whole point of a field: an unreadable one needs a typed value.
+    const typed = input.acceptedValue?.trim() || null;
+    if (proposal.normalizedValue == null && !typed) {
+      throw new Error("This value couldn't be read with confidence. Type the value to accept it.");
+    }
+
+    const [row] = await tx
+      .update(fieldProposals)
+      .set({
+        status: "accepted",
+        acceptedValue: typed,
+        decidedAt: new Date(),
+        decidedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${fieldProposals.version} + 1`,
+      })
+      .where(
+        and(
+          eq(fieldProposals.id, proposal.id),
+          eq(fieldProposals.status, "proposed"),
+          eq(fieldProposals.workspaceId, auth.workspaceId),
+        ),
+      )
+      .returning({ id: fieldProposals.id });
+    if (!row) throw alreadyDecided();
+
+    if (proposal.partyRole) {
+      const [party] = await tx
+        .select({ contactId: documentParties.contactId, companyId: documentParties.companyId })
+        .from(documentParties)
+        .where(
+          and(
+            eq(documentParties.documentId, proposal.documentId),
+            eq(documentParties.workspaceId, auth.workspaceId),
+            eq(documentParties.partyRole, proposal.partyRole),
+            inArray(documentParties.resolutionStatus, ["matched", "created"]),
+          ),
+        )
+        .limit(1);
+      const subjectId = party?.contactId ?? party?.companyId;
+      if (party && subjectId) {
+        await acceptAssertions(
+          auth,
+          {
+            documentId: proposal.documentId,
+            assertions: [
+              {
+                subjectType: party.contactId ? "contact" : "company",
+                subjectId,
+                attribute: partyAttribute(proposal.fieldName, proposal.partyRole),
+                value: typed ?? proposal.normalizedValue,
+                fieldProposalId: proposal.id,
+                extractionId: proposal.extractionId,
+                evidenceSpans: proposal.evidenceSpans,
+              },
+            ],
+          },
+          tx,
+        );
+      }
+    }
+
+    await tx.insert(auditEvents).values({
+      workspaceId: auth.workspaceId,
+      actorId: auth.userId,
+      actorKind: "user",
+      action: "field_proposal.accepted",
+      subjectType: "field_proposal",
+      subjectId: proposal.id,
+      summary: `Accepted ${proposal.fieldName}`,
+      metadata: { documentId: proposal.documentId, acceptedValue: typed },
+    });
+    return { id: proposal.id };
+  });
+}
+
+export async function rejectFieldProposal(
+  auth: AuthContext,
+  input: { fieldProposalId: string },
+): Promise<{ id: string }> {
+  return withTransaction(async (tx) => {
+    const [row] = await tx
+      .update(fieldProposals)
+      .set({
+        status: "rejected",
+        decidedAt: new Date(),
+        decidedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${fieldProposals.version} + 1`,
+      })
+      .where(
+        and(
+          eq(fieldProposals.id, input.fieldProposalId),
+          eq(fieldProposals.status, "proposed"),
+          eq(fieldProposals.workspaceId, auth.workspaceId),
+        ),
+      )
+      .returning({ id: fieldProposals.id, fieldName: fieldProposals.fieldName, documentId: fieldProposals.documentId });
+    if (!row) throw alreadyDecided();
+
+    await tx.insert(auditEvents).values({
+      workspaceId: auth.workspaceId,
+      actorId: auth.userId,
+      actorKind: "user",
+      action: "field_proposal.rejected",
+      subjectType: "field_proposal",
+      subjectId: row.id,
+      summary: `Rejected ${row.fieldName}`,
+      metadata: { documentId: row.documentId },
+    });
+    return { id: row.id };
+  });
+}
+
+/*
+ * Defer is not a status: the enum's superseded means "replaced by a newer
+ * extraction", which a deferral is not. Deferring records that the owner saw
+ * the proposal and moved on; the row stays proposed and stays in the queue.
+ */
+export async function deferFieldProposal(
+  auth: AuthContext,
+  input: { fieldProposalId: string },
+): Promise<{ id: string }> {
+  const [row] = await db
+    .select({ id: fieldProposals.id, documentId: fieldProposals.documentId, fieldName: fieldProposals.fieldName })
+    .from(fieldProposals)
+    .where(and(eq(fieldProposals.id, input.fieldProposalId), eq(fieldProposals.workspaceId, auth.workspaceId)))
+    .limit(1);
+  if (!row) throw new Error("field proposal not found in workspace");
+
+  // A single insert is its own transaction; there is no state change to pair it with.
+  await db.insert(auditEvents).values({
+    workspaceId: auth.workspaceId,
+    actorId: auth.userId,
+    actorKind: "user",
+    action: "field_proposal.deferred",
+    subjectType: "field_proposal",
+    subjectId: row.id,
+    summary: `Deferred ${row.fieldName}`,
+    metadata: { documentId: row.documentId },
+  });
+  return { id: row.id };
+}
+
+/** "recipient_email" read from the recipient's block is that party's "email". */
+export function partyAttribute(fieldName: string, partyRole: string): string {
+  return fieldName.startsWith(`${partyRole}_`) ? fieldName.slice(partyRole.length + 1) : fieldName;
 }
 
 /** Stable per document: same kind+name+value always maps to the same key. */

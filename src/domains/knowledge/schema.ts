@@ -219,6 +219,17 @@ export const documentExtractions = pgTable(
     spans: jsonb("spans").notNull().default([]),
     extractor: text("extractor"),
     error: text("error"),
+    /*
+     * The proposal pass (fields, parties, obligations) is its own retry
+     * boundary: text can be durable evidence while proposals failed or never
+     * ran. Null means the pass has not been attempted for this extraction.
+     */
+    proposalStatus: extractionStatus("proposal_status"),
+    /** What proposed the fields, e.g. "text-rules@1" or the provider's own. */
+    proposer: text("proposer"),
+    proposalError: text("proposal_error"),
+    /** When the current proposal claim was taken; a stale pending claim is reclaimable. */
+    proposalClaimedAt: timestamp("proposal_claimed_at", { withTimezone: true }),
     ...recorded,
   },
   (t) => [
@@ -609,6 +620,8 @@ export const fieldProposals = pgTable(
     /** What the user actually approved, when it differs from normalizedValue. */
     acceptedValue: jsonb("accepted_value"),
     evidenceSpans: jsonb("evidence_spans").notNull().default([]),
+    /** Which party the value describes, when the proposer read it from that party's block. */
+    partyRole: documentPartyRole("party_role"),
     ...mutable,
   },
   (t) => [

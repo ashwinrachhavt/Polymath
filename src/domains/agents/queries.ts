@@ -29,13 +29,15 @@ export async function getRunPolicySnapshot(
 export async function getRunBySessionRef(
   sessionRef: string,
   workspaceId: string,
-): Promise<{ id: string } | null> {
-  const [run] = await db
-    .select({ id: agentRuns.id })
+): Promise<Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> | null> {
+  const runs = await db
+    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state })
     .from(agentRuns)
     .where(and(eq(agentRuns.sessionRef, sessionRef), eq(agentRuns.workspaceId, workspaceId)))
-    .limit(1);
-  return run ?? null;
+    .limit(2);
+  // Legacy rows lack a unique session_ref constraint. Ambiguity is a denial,
+  // never an arbitrary choice of another run's policy or spending reservation.
+  return runs.length === 1 ? runs[0] : null;
 }
 
 /** The workspace's recent runs, newest first. Feeds the Alfred page. */

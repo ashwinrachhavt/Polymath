@@ -80,6 +80,9 @@ test("focus survives navigation and pause, then records one outcome and one idem
   await page.getByLabel("What changed? (optional)").fill("Recorded an explicit decision.");
   await page.getByRole("button", { name: "Save outcome and end locally" }).click();
   await expect.poll(async () => (await preview(page)).rewards.length).toBe(1);
+  await expect(page.getByRole("heading", { name: "The session is complete. The task is not.", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clarity stone earned", exact: true })).toBeVisible();
+  await expect(page.getByText('Completed a focus interval on "Review the canonical Axiom data model".', { exact: false })).toBeVisible();
   const state = await preview(page);
   expect(state.focus).toBeNull();
   expect(state.artifacts.some((note: { body: string; links: string[] }) => note.body.includes("Recorded an explicit decision") && note.links.includes("task-architecture"))).toBe(true);

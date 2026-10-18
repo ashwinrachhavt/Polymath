@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveMachineClient } from "@/domains/identity/machine";
 import { clerkConfigured } from "@/lib/clerk";
+import { ForbiddenRoleError } from "./auth/guards";
 import { problemResponse } from "./problems";
 
 /*
@@ -73,7 +74,7 @@ export const getAnyAuthContext = cache(async (): Promise<AuthContext> => {
   if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
     return resolveAuthContext("dev-user");
   }
-  const session = await auth({ acceptsToken: "any" });
+  const session = await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
   if (session.isAuthenticated) {
     if ("userId" in session && session.userId) {
       return resolveAuthContext(session.userId);
@@ -110,6 +111,7 @@ export function authedHandler<C = unknown>(
           return problemResponse(429, "rate_limited", "Daily request ceiling reached.");
         return problemResponse(403, "forbidden", "This client cannot use this endpoint.");
       }
+      if (error instanceof ForbiddenRoleError) return problemResponse(403, "forbidden", error.message);
       throw error;
     }
   };

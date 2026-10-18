@@ -1,13 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { AppNav } from "@/components/shell/app-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
 import { PreviewBanner } from "@/components/shell/preview-banner";
-import { appForPath } from "@/lib/navigation";
+import { appForPath, isBrowserPreviewPath } from "@/lib/navigation";
+import { FocusDock } from "@/components/shell/focus-dock";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const subscribeToHydration = () => () => {};
 
 /*
  * The shell is global chrome: header, the app's own nav, the canvas, and the
@@ -24,25 +28,40 @@ import { appForPath } from "@/lib/navigation";
 export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
   const pathname = usePathname();
   const app = appForPath(pathname);
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  // Browser-preview records live in localStorage; rendering the server's sample
+  // snapshot first flashed stale rows before the stored workspace replaced them.
+  const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
 
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
       <div data-app={app?.slug} className="flex min-h-dvh flex-1 flex-col">
         <TopBar clerkConfigured={clerkConfigured} />
-        {/* The rail is a column of the work area, not a band above it: it has to
-            sit beside the canvas so the owner keeps their place while moving
-            between sections. */}
+        {app?.nav === "bar" ? <AppNav app={app} /> : null}
         <div className="flex min-h-0 flex-1">
-          {app ? <AppNav app={app} /> : null}
+          {app?.nav === "rail" ? <AppNav app={app} /> : null}
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
             <PreviewBanner />
-            <PreviewStorageWarning />
-            {children}
+            {isBrowserPreviewPath(pathname) ? <PreviewStorageWarning /> : null}
+            {waitingForStorage ? <PreviewSkeleton /> : null}
+            {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
+            <div hidden={waitingForStorage} className="flex min-w-0 flex-1 flex-col">{children}</div>
+            <FocusDock />
           </main>
         </div>
         <MobileNav />
       </div>
     </WorkspaceProvider>
   );
+}
+
+function PreviewSkeleton() {
+  return <div role="status" aria-label="Loading your browser preview" className="suite-screen">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2"><Skeleton className="h-6 w-40" /><Skeleton className="h-4 w-full max-w-xl" /></div>
+      <Skeleton className="h-24 w-full" />
+      <div className="grid gap-3 md:grid-cols-2"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
+    </div>
+  </div>;
 }

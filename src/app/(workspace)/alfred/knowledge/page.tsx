@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/empty-state";
+import { fieldLabel, fieldValueText } from "./field-display";
 import { PageHeader, Section } from "@/components/page-header";
 import { Readout } from "@/components/readout";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import { getAuthContext } from "@/lib/auth";
 import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions } from "./decision-buttons";
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
+import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
 import { UploadButton } from "./upload-button";
 
 export const metadata = { title: "Knowledge · Axiom" };
@@ -75,6 +77,19 @@ export default async function KnowledgePage({
 }) {
   // Per-request data; opt this route out of prerender.
   await connection();
+  if (!process.env.DATABASE_URL?.trim()) {
+    return (
+      <>
+        <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
+        <div className="px-4 py-5 md:px-6">
+          <EmptyState
+            title="Knowledge storage is not configured"
+            description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and DOCLING_SERVE_URL or LLAMAPARSE_API_KEY."
+          />
+        </div>
+      </>
+    );
+  }
   const auth = await getAuthContext();
   const params = await searchParams;
   const query = params.q?.trim();
@@ -112,6 +127,7 @@ export default async function KnowledgePage({
         purpose="Write, retrieve, and connect."
         actions={
           <>
+            <UploadButton />
             <Button variant="outline" disabled>
               Import
             </Button>
@@ -156,6 +172,7 @@ export default async function KnowledgePage({
                     <span className="text-muted-foreground">
                       {hit.filename ? ` · ${hit.filename}` : ""}
                     </span>
+                    {hit.snippet ? <Snippet text={hit.snippet} /> : null}
                   </li>
                 ))}
               </ul>
@@ -171,7 +188,6 @@ export default async function KnowledgePage({
             <EmptyState
               title="No documents yet"
               description="Upload a PDF or image and it appears here. Axiom reads it, proposes the fields, and you decide each one."
-              action={<UploadButton />}
             />
           ) : selected ? (
             <ReviewWorkbench
@@ -185,7 +201,9 @@ export default async function KnowledgePage({
             <ul className="flex flex-col gap-2">
               {inbox.map((doc) => {
                 const status = documentStatus(
-                  doc.extractionStatus ? { status: doc.extractionStatus } : null,
+                  doc.extractionStatus
+                    ? { status: doc.extractionStatus, proposalStatus: doc.proposalStatus }
+                    : null,
                   doc.undecidedProposals,
                 );
                 return (
@@ -269,6 +287,16 @@ function ReviewWorkbench({
                 {extraction.error}
               </p>
             ) : null}
+            {extraction?.status === "succeeded" && extraction.proposalStatus === "failed" && extraction.proposalError ? (
+              <p role="alert" className="text-destructive mt-2 text-xs">
+                {extraction.proposalError}
+              </p>
+            ) : null}
+            {extraction?.status === "succeeded" && extraction.proposalStatus === null ? (
+              <p className="text-muted-foreground mt-2 text-xs">
+                The text was read, but no fields have been proposed from it yet.
+              </p>
+            ) : null}
             {extraction?.status === "pending" || extraction === null ? (
               <p className="text-muted-foreground mt-2 text-xs">
                 {extraction === null
@@ -279,6 +307,12 @@ function ReviewWorkbench({
           </div>
           {extraction === null || extraction.status === "failed" ? (
             <RetryExtractionButton documentId={doc.id} label={extraction === null ? "Read now" : "Retry"} />
+          ) : extraction.status === "succeeded" &&
+            (extraction.proposalStatus === null || extraction.proposalStatus === "failed") ? (
+            <RetryExtractionButton
+              documentId={doc.id}
+              label={extraction.proposalStatus === null ? "Propose fields" : "Retry proposing fields"}
+            />
           ) : null}
           {suggestedTitle ? (
             <ApplyTitleButton
@@ -293,6 +327,11 @@ function ReviewWorkbench({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3">
             <h3 className="text-[13px] font-medium">Extracted fields</h3>
+            {extraction?.proposer === RULES_PROPOSER && fieldProposals.length > 0 ? (
+              <p className="text-muted-foreground text-xs">
+                Proposed by text rules, not AI. Check each value against the line it was read from.
+              </p>
+            ) : null}
             {undecided.length === 0 && fieldProposals.length === 0 ? (
               <p className="text-muted-foreground text-xs">
                 {extraction?.status === "succeeded"
@@ -303,20 +342,28 @@ function ReviewWorkbench({
               <ul className="flex flex-col gap-2">
                 {fieldProposals.map((proposal) => (
                   <li key={proposal.id} className="panel rounded-lg px-3.5 py-3">
-                    <p className="text-[13px] font-medium">{sentenceCase(proposal.fieldName.replace(/[_-]+/g, " "))}</p>
+                    <p className="text-[13px] font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
+                    {proposal.evidenceQuote ? (
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        Read from: <q className="text-foreground">{proposal.evidenceQuote}</q>
+                      </p>
+                    ) : null}
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      Raw: {proposal.rawValue ?? "(nothing)"} · Normalized:{" "}
-                      {proposal.normalizedValue == null
-                        ? (proposal.normalizationNote ?? "unreadable")
-                        : typeof proposal.normalizedValue === "string"
-                          ? proposal.normalizedValue
-                          : JSON.stringify(proposal.normalizedValue)}
+                      {proposal.partyRole ? `About the ${proposal.partyRole}. ` : ""}
+                      {proposal.confidence ? `Confidence: ${proposal.confidence}.` : ""}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Reads as{" "}
+                      <span className="text-foreground">{fieldValueText(proposal.normalizedValue, proposal.normalizationNote)}</span>
+                      {proposal.rawValue && proposal.rawValue !== fieldValueText(proposal.normalizedValue, proposal.normalizationNote)
+                        ? ` (written “${proposal.rawValue}”)`
+                        : ""}
                     </p>
                     {proposal.status === "proposed" ? (
                       <div className="mt-2">
                         <FieldDecisions
                           proposalId={proposal.id}
-                          fieldName={proposal.fieldName}
+                          fieldName={fieldLabel(proposal.fieldName)}
                           readable={proposal.normalizedValue != null}
                         />
                       </div>
@@ -369,6 +416,23 @@ function ReviewWorkbench({
         </div>
       </div>
     </div>
+  );
+}
+
+/** A search passage with the matched words marked; ts_headline wraps them in [[ ]]. */
+function Snippet({ text }: { text: string }) {
+  return (
+    <p className="text-muted-foreground mt-0.5 text-xs">
+      {text.split(/(\[\[.*?\]\])/).map((part, index) =>
+        part.startsWith("[[") && part.endsWith("]]") ? (
+          <mark key={index} className="text-foreground bg-transparent font-medium underline underline-offset-2">
+            {part.slice(2, -2)}
+          </mark>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </p>
   );
 }
 
