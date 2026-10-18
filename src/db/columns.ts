@@ -59,6 +59,8 @@ export const linkTargetKinds = [
   "event",
   "contact",
   "company",
+  "person",
+  "organization",
   "opportunity",
   "run",
   "thread",

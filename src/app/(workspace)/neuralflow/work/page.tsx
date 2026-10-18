@@ -1,5 +1,9 @@
+import { Section } from "@/components/page-header";
 import { PageHeader } from "@/components/page-header";
-import { WorkContainers, WorkToday } from "./work-today";
+import { Readout } from "@/components/readout";
+import { listOpenTasks } from "@/domains/work/commands";
+import { getAuthContext } from "@/lib/auth";
+import { OpenTaskList, TaskComposer } from "./work-today";
 
 export const metadata = { title: "Work · Axiom" };
 
@@ -10,7 +14,15 @@ export const metadata = { title: "Work · Axiom" };
  */
 const views = ["Today", "List", "Board", "Calendar"] as const;
 
-export default function WorkPage() {
+/*
+ * Today reads the canonical `tasks` table, so the obligation a document
+ * review accepted is on this list — same row, no bridge, no sync. The header
+ * and this read are server-side; the row interactions are the client island.
+ */
+export default async function WorkPage() {
+  const auth = await getAuthContext();
+  const tasks = await listOpenTasks(auth);
+
   return (
     <>
       <PageHeader
@@ -41,9 +53,24 @@ export default function WorkPage() {
       />
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
-        <WorkToday />
-
-        <WorkContainers />
+        <Section
+          title="Today"
+          description="Everything open, soonest due first."
+        >
+          <TaskComposer />
+          <OpenTaskList
+            tasks={tasks.map((task) => ({
+              id: task.id,
+              title: task.title,
+              status: task.status,
+              dueAt: task.dueAt,
+              createdAt: task.createdAt,
+            }))}
+          />
+          <p className="text-muted-foreground mt-3 text-[13px]">
+            <Readout>{tasks.length}</Readout> open
+          </p>
+        </Section>
       </div>
     </>
   );
