@@ -120,3 +120,31 @@ export async function dossierDocumentIds(auth: AuthContext, dossierId: string): 
     .where(and(eq(dossierSources.dossierId, dossierId), eq(dossierSources.workspaceId, auth.workspaceId)));
   return [...new Set(rows.map((r) => r.id))];
 }
+
+/** One dossier with its documents, or null when it is not in this workspace. */
+export async function getDossierDetail(auth: AuthContext, dossierId: string) {
+  const [dossier] = await db
+    .select({ id: dossiers.id, title: dossiers.title })
+    .from(dossiers)
+    .where(and(eq(dossiers.id, dossierId), eq(dossiers.workspaceId, auth.workspaceId), sql`${dossiers.archivedAt} is null`))
+    .limit(1);
+  if (!dossier) return null;
+  const docs = await db
+    .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
+    .from(dossierSources)
+    .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .where(and(eq(dossierSources.dossierId, dossierId), eq(dossierSources.workspaceId, auth.workspaceId)));
+  const seen = new Set<string>();
+  return { ...dossier, documents: docs.filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true))) };
+}
+
+/** The workspace's filed documents, for the attach picker. */
+export async function listAttachableDocuments(auth: AuthContext) {
+  return db
+    .select({ id: documents.id, title: documents.title })
+    .from(documents)
+    .where(and(eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`, sql`${documents.fileId} is not null`))
+    .orderBy(desc(documents.createdAt))
+    .limit(200);
+}
