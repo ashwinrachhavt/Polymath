@@ -85,6 +85,13 @@
       "when": 1792349904944,
       "tag": "0010_embedding_pass",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792313000000,
+      "tag": "0012_zettel_proposals",
+      "breakpoints": true
     }
   ]
 }

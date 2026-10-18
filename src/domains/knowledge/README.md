@@ -56,3 +56,15 @@ values only, exact spans, honest confidence) unless a provider emits its own.
 Values read inside a party's block carry `party_role`, and only those reach
 that party's assertion ledger. In development with no Blob token or provider,
 uploads go to `AXIOM_LOCAL_BLOB_DIR` and PDFs are read from their text layer.
+
+## Zettel proposals
+
+`proposeZettels(auth, { documentId })` reads a document's newest succeeded
+extraction and asks an extractor (default: OpenRouter, `ZETTEL_MODEL`, needs
+`OPENROUTER_API_KEY`) for candidate notes. Each candidate is a title, one claim
+and a quote. The domain re-locates the quote in the extraction text and drops
+anything that is not verbatim, so every proposal row carries a real span
+(`span_start`/`span_end`). Rows are `zettel_proposals`, deduped by
+`zettel:<documentId>:<start>-<end>`. Accept writes a concept, a claim and a
+`claim_evidence` row pointing at the span; reject writes only the decision.
+Controls live on the Knowledge screen (/alfred/knowledge); there is no graph page.
