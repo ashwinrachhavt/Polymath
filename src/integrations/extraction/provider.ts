@@ -12,6 +12,20 @@ export type ExtractionInput = {
 
 export type ExtractionSpan = { page: number; start: number; end: number };
 
+/** A structured field a provider already reported. Normalization is the domain's job.
+ * fieldKind is derived from the schema enum so the two lists cannot drift. */
+import type { FieldKind } from "@/domains/knowledge/schema";
+
+export type ExtractedField = {
+  fieldKind: FieldKind;
+  fieldName: string;
+  rawValue: string;
+  normalizedValue?: unknown;
+  normalizationNote?: string;
+  confidence?: string;
+  evidenceSpans: Array<{ page?: number; start: number; end: number }>;
+};
+
 export type ExtractionResult =
   | {
       ok: true;
@@ -20,6 +34,8 @@ export type ExtractionResult =
       pageCount: number | null;
       /** Recorded in document_extractions.extractor, e.g. "docling-serve@local". */
       extractor: string;
+      /** Optional structured output; adapters that do not produce it leave it off. */
+      fields?: ExtractedField[];
     }
   | { ok: false; error: string; extractor: string };
 

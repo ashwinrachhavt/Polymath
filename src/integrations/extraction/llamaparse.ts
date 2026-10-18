@@ -86,7 +86,10 @@ export function createLlamaParseProvider(
         return {
           ok: true,
           text,
-          // Same honest single-span shape as the docling adapter.
+          // Same honest single-span shape as the docling adapter. The markdown
+          // result carries no structured field list (that is LlamaExtract, a
+          // separate product), so fields stay undefined — normalized fields
+          // come from the domain's own pass over the text, never fabricated here.
           spans: [{ page: 1, start: 0, end: text.length }],
           pageCount: null,
           extractor,
