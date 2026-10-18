@@ -1,15 +1,17 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { documents, documentExtractions, files, reviewedAssertions } from "./schema";
+import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
+import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
+import { documents, documentExtractions, embeddings, files, reviewedAssertions } from "./schema";
 
 /*
  * Document search: Postgres full-text over extraction text, with an ILIKE
  * fallback over filename and title so a document whose extraction failed is
  * still findable by name. Everything is OR-combined and workspace-scoped.
  *
- * No embeddings/pgvector here in v1 — semantic retrieval joins this module
- * later as a third branch of the same OR, not as a replacement.
+ * Semantic retrieval is `searchChunks` below: the same workspace scope, over
+ * the chunks the embedding pass wrote. It returns spans, not whole documents.
  */
 
 export type DocumentSearchFilters = {
@@ -143,5 +145,81 @@ export async function explainAssertion(
   return assertions.map((a) => ({
     ...a,
     documentTitle: a.documentId ? (titleById.get(a.documentId) ?? null) : null,
+  }));
+}
+
+export type ChunkHit = {
+  documentId: string;
+  title: string;
+  extractionId: string;
+  chunkIndex: number;
+  /** The passage that matched. */
+  text: string;
+  /** Offsets into the extraction text, the same coordinates as extraction spans. */
+  span: { start: number; end: number; page: number | null };
+  /** Cosine distance: 0 is identical, 2 is opposite. Lower is closer. */
+  distance: number;
+};
+
+/*
+ * Nearest chunks to a question, inside one workspace. Three scopes apply to
+ * every row, so a chunk can only appear when all of them hold: the chunk
+ * belongs to the workspace, its document belongs to the workspace, and its
+ * extraction is the document's newest succeeded one (so a re-extracted
+ * document never answers from stale text). Only chunks written by the same
+ * model as the query vector are compared; vectors from different models are
+ * not comparable.
+ */
+export async function searchChunks(
+  auth: AuthContext,
+  input: { query: string; limit?: number; provider?: EmbeddingProvider },
+): Promise<ChunkHit[]> {
+  const query = input.query.trim();
+  if (!query) return [];
+  const provider = input.provider ?? embeddingProvider();
+  const [vector] = await provider.embed([query]);
+  const limit = Math.min(Math.max(input.limit ?? 8, 1), 50);
+  const distance = sql<number>`${embeddings.embedding} <=> ${vectorLiteral(vector)}::vector`;
+
+  const rows = await db
+    .select({
+      documentId: documents.id,
+      title: documents.title,
+      extractionId: documentExtractions.id,
+      chunkIndex: embeddings.chunkIndex,
+      text: embeddings.content,
+      start: embeddings.spanStart,
+      end: embeddings.spanEnd,
+      page: embeddings.page,
+      distance,
+    })
+    .from(embeddings)
+    .innerJoin(documentExtractions, eq(documentExtractions.id, embeddings.ownerId))
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+    .where(and(
+      eq(embeddings.workspaceId, auth.workspaceId),
+      eq(documentExtractions.workspaceId, auth.workspaceId),
+      eq(documents.workspaceId, auth.workspaceId),
+      eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+      eq(embeddings.model, provider.model),
+      isNull(documents.archivedAt),
+      eq(documentExtractions.status, "succeeded"),
+      sql`not exists (
+        select 1 from document_extractions newer
+        where newer.document_id = ${documents.id} and newer.status = 'succeeded'
+          and newer.created_at > ${documentExtractions.createdAt}
+      )`,
+    ))
+    .orderBy(distance)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    documentId: r.documentId,
+    title: r.title,
+    extractionId: r.extractionId,
+    chunkIndex: r.chunkIndex,
+    text: r.text,
+    span: { start: r.start ?? 0, end: r.end ?? r.text.length, page: r.page },
+    distance: Number(r.distance),
   }));
 }
