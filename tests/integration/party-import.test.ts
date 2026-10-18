@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contactPoints, organizations, partyEmployment, people } from "@/domains/identity/schema";
-import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The import invariants that only real Postgres can hold: email is the merge
@@ -26,18 +26,12 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const auth = (userId: string, workspaceId: string) => ({
-  userId,
-  workspaceId,
-  role: "owner" as const,
-});
-
 const HEADER = "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n";
 
 suite("connections import", () => {
   it("creates people and orgs, then a re-run adds nothing", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-rerun-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     const csv =
       HEADER +
       "Ada,Lovelace,,ada@calc.dev,Analytical Engines,Engineer,01 Jan 2026\n" +
@@ -46,13 +40,19 @@ suite("connections import", () => {
     const first = await importConnections(a, { csv });
     expect(first.peopleCreated).toBe(2);
     expect(first.organizationsCreated).toBe(1);
-    expect(first.employmentsLinked).toBe(2);
 
     const second = await importConnections(a, { csv });
     expect(second.peopleCreated).toBe(0);
     expect(second.peopleMatched).toBe(2);
     expect(second.organizationsCreated).toBe(0);
-    expect(second.employmentsLinked).toBe(0);
+
+    // The edges are the evidence that a re-run wrote nothing new: two people
+    // at one company, still two rows after the second import.
+    const edges = await db
+      .select({ id: partyEmployment.id })
+      .from(partyEmployment)
+      .where(eq(partyEmployment.workspaceId, workspaceId));
+    expect(edges).toHaveLength(2);
 
     const orgs = await db
       .select({ id: organizations.id })
@@ -69,7 +69,7 @@ suite("connections import", () => {
 
   it("same email in two rows is one person, even with different names", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-email-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     const csv =
       HEADER +
       "Ada,Lovelace,,ada@calc.dev,Analytical Engines,Engineer,01 Jan 2026\n" +
@@ -102,7 +102,7 @@ suite("connections import", () => {
 
   it("a name with no email is never merged into an existing person", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-name-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     const csv =
       HEADER +
       "Ada,Lovelace,,ada@calc.dev,Analytical Engines,Engineer,01 Jan 2026\n" +
@@ -116,7 +116,7 @@ suite("connections import", () => {
 
   it("a malformed email skips its row and reports the line", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-bad-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     const csv =
       HEADER +
       "Ada,Lovelace,,not-an-email,Analytical Engines,Engineer,01 Jan 2026\n" +
@@ -130,7 +130,7 @@ suite("connections import", () => {
 
   it("a domain owned by another org does not abort the file", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-domain-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     await db
       .insert(organizations)
       .values({ workspaceId, name: "Owner Of calc.dev", domain: "calc.dev" });
@@ -149,11 +149,16 @@ suite("connections import", () => {
 
   it("refuses a file over the row limit before writing anything", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-limit-${Date.now()}`);
-    const a = auth(userId, workspaceId);
-    const csv = HEADER + "Ada,Lovelace,,,X,,01 Jan 2026\nGrace,Hopper,,,X,,01 Jan 2026\n";
-    await expect(importConnections(a, { csv, maxRows: 1 })).rejects.toThrow(/import limit/);
+    const a = ownerAuth(userId, workspaceId);
+    const csvRows = Array.from({ length: 5001 }, (_, i) => `P${i},Q,,,X,,01 Jan 2026`).join("\n");
+    await expect(importConnections(a, { csv: HEADER + csvRows + "\n" })).rejects.toThrow(
+      /import limit/,
+    );
 
-    const rows = await db.select({ id: people.id }).from(people).where(eq(people.workspaceId, workspaceId));
-    expect(rows).toHaveLength(0);
+    const written = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(eq(people.workspaceId, workspaceId));
+    expect(written).toHaveLength(0);
   });
 });

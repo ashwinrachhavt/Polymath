@@ -46,3 +46,8 @@ export async function seedWorkspace(
     .values({ workspaceId: ws.id, userId: user.id, role: "owner", status: "active" });
   return { userId: user.id, workspaceId: ws.id };
 }
+
+/** The owner AuthContext every integration suite builds from seedWorkspace. */
+export function ownerAuth(userId: string, workspaceId: string) {
+  return { userId, workspaceId, role: "owner" as const };
+}

@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { linkTargetKinds } from "@/db/columns";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -13,6 +13,9 @@ import { taskLinks, tasks } from "./schema";
  */
 
 type Db = typeof db | TxDrizzle;
+
+/* One page per render; Today paginates past this when the list outgrows a screen. */
+const OPEN_TASK_PAGE = 100;
 
 export type TaskLinkInput = {
   targetType: (typeof linkTargetKinds)[number];
@@ -81,26 +84,26 @@ export async function createOwnerTask(
   return withTransaction(async (tx) => {
     const task = await createTask(auth, { title: input.title, dueAt: input.dueAt, links }, tx);
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "task.created",
-      subjectType: "task",
-      subjectId: task.id,
-      summary: `Created task "${task.title}"`,
-      metadata: {
-        personId: input.personId ?? null,
-        organizationId: input.organizationId ?? null,
+    await recordAudit(
+      auth,
+      {
+        action: "task.created",
+        subjectType: "task",
+        subjectId: task.id,
+        summary: `Created task "${task.title}"`,
+        metadata: {
+          personId: input.personId ?? null,
+          organizationId: input.organizationId ?? null,
+        },
       },
-    });
+      tx,
+    );
     return { id: task.id };
   });
 }
 
-/** Open tasks, soonest due first, nulls last. One page; pagination when the list outgrows a screen. */
-export async function listOpenTasks(auth: AuthContext, input?: { limit?: number }) {
-  const limit = Math.min(input?.limit ?? 100, 500);
+/** Open tasks, soonest due first, nulls last. One page; paginate when the list outgrows a screen. */
+export async function listOpenTasks(auth: AuthContext) {
   return db
     .select({
       id: tasks.id,
@@ -118,7 +121,7 @@ export async function listOpenTasks(auth: AuthContext, input?: { limit?: number 
       ),
     )
     .orderBy(sql`${tasks.dueAt} asc nulls last`, tasks.createdAt)
-    .limit(limit);
+    .limit(OPEN_TASK_PAGE);
 }
 
 /**

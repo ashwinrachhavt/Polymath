@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import {
@@ -28,14 +28,28 @@ import type { AuthContext } from "./resolve";
  * presentation concern: the server action hands over the text.
  */
 
-export type CsvRow = Record<string, string>;
+type CsvRow = Record<string, string>;
+
+/**
+ * Rows past this are refused before any write. A LinkedIn export of a very
+ * large network is the only file that gets near it, and one transaction over
+ * 5k rows is already the practical ceiling for a serverless request.
+ */
+const MAX_ROWS = 5000;
+
+/** Raised before any write; the action turns it into a message the owner can act on. */
+export class ImportLimitError extends Error {
+  constructor(readonly rowCount: number) {
+    super(`This file has ${rowCount} rows; the import limit is ${MAX_ROWS}.`);
+    this.name = "ImportLimitError";
+  }
+}
 
 export type ImportSummary = {
   rowsRead: number;
   peopleCreated: number;
   peopleMatched: number;
   organizationsCreated: number;
-  employmentsLinked: number;
   skipped: number;
   /** Per-line reasons, capped so a 5k-row file cannot become a 5k-message page. */
   problems: { line: number; reason: string }[];
@@ -95,7 +109,7 @@ export function parseCsv(text: string): string[][] {
 }
 
 /** Header-keyed rows, lowercased and trimmed. Unknown columns are kept. */
-export function rowsFromCsv(csvRows: string[][]): CsvRow[] {
+function rowsFromCsv(csvRows: string[][]): CsvRow[] {
   const [header, ...body] = csvRows;
   if (!header) return [];
   const keys = header.map((h) => h.trim().toLowerCase());
@@ -108,12 +122,6 @@ export function rowsFromCsv(csvRows: string[][]): CsvRow[] {
   });
 }
 
-export type PartyImportInput = {
-  csv: string;
-  /** Reject files larger than this before parsing; callers pass the limit they can render. */
-  maxRows?: number;
-};
-
 /**
  * Import connections. One transaction per source row would be 5k transactions;
  * one transaction for the whole file is one bad row away from an all-or-nothing
@@ -125,12 +133,11 @@ export type PartyImportInput = {
  */
 export async function importConnections(
   auth: AuthContext,
-  input: PartyImportInput,
+  input: { csv: string },
 ): Promise<ImportSummary> {
   const rows = rowsFromCsv(parseCsv(input.csv));
-  const limit = input.maxRows ?? 5000;
-  if (rows.length > limit) {
-    throw new Error(`This file has ${rows.length} rows; the import limit is ${limit}.`);
+  if (rows.length > MAX_ROWS) {
+    throw new ImportLimitError(rows.length);
   }
 
   const summary: ImportSummary = {
@@ -138,7 +145,6 @@ export async function importConnections(
     peopleCreated: 0,
     peopleMatched: 0,
     organizationsCreated: 0,
-    employmentsLinked: 0,
     skipped: 0,
     problems: [],
   };
@@ -154,10 +160,6 @@ export async function importConnections(
   const emails = [...new Set(
     rows.map((row) => (row["email address"] ?? "").toLowerCase()).filter(Boolean),
   )];
-  const companyNames = [...new Set(
-    rows.map((row) => (row["company"] ?? "").trim()).filter(Boolean).map((n) => n.toLowerCase()),
-  )];
-
   await withTransaction(async (tx) => {
     const knownPeople = new Map<string, string>();
     if (emails.length) {
@@ -177,19 +179,17 @@ export async function importConnections(
       }
     }
 
+    // The org read is by lower(name) so it cannot use the name index; it runs
+    // once per import rather than once per row, which is the cost that mattered.
     const knownOrgs = new Map<string, string>();
     const takenDomains = new Set<string>();
-    if (companyNames.length || emails.length) {
-      // The org read is by lower(name) so it cannot use the name index; it runs
-      // once per import rather than once per row, which is the cost that mattered.
-      const orgs = await tx
-        .select({ id: organizations.id, name: organizations.name, domain: organizations.domain })
-        .from(organizations)
-        .where(and(eq(organizations.workspaceId, auth.workspaceId), isNull(organizations.archivedAt)));
-      for (const org of orgs) {
-        knownOrgs.set(org.name.toLowerCase(), org.id);
-        if (org.domain) takenDomains.add(org.domain.toLowerCase());
-      }
+    const orgs = await tx
+      .select({ id: organizations.id, name: organizations.name, domain: organizations.domain })
+      .from(organizations)
+      .where(and(eq(organizations.workspaceId, auth.workspaceId), isNull(organizations.archivedAt)));
+    for (const org of orgs) {
+      knownOrgs.set(org.name.toLowerCase(), org.id);
+      if (org.domain) takenDomains.add(org.domain.toLowerCase());
     }
 
     const knownEdges = new Set<string>();
@@ -290,7 +290,7 @@ export async function importConnections(
       if (!knownEdges.has(edgeKey)) {
         // knownEdges covers duplicates inside this file; the unique index on
         // the current edge covers a second import running concurrently.
-        const [created] = await tx
+        await tx
           .insert(partyEmployment)
           .values({
             workspaceId: auth.workspaceId,
@@ -300,27 +300,26 @@ export async function importConnections(
             createdBy: auth.userId,
             updatedBy: auth.userId,
           })
-          .onConflictDoNothing()
-          .returning({ id: partyEmployment.id });
+          .onConflictDoNothing();
         knownEdges.add(edgeKey);
-        if (created) summary.employmentsLinked += 1;
       }
     }
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "parties.imported",
-      subjectType: "workspace",
-      subjectId: auth.workspaceId,
-      summary: `Imported ${summary.peopleCreated} people, ${summary.organizationsCreated} organizations from LinkedIn CSV`,
-      metadata: {
-        rowsRead: summary.rowsRead,
-        peopleMatched: summary.peopleMatched,
-        skipped: summary.skipped,
+    await recordAudit(
+      auth,
+      {
+        action: "parties.imported",
+        subjectType: "workspace",
+        subjectId: auth.workspaceId,
+        summary: `Imported ${summary.peopleCreated} people, ${summary.organizationsCreated} organizations from LinkedIn CSV`,
+        metadata: {
+          rowsRead: summary.rowsRead,
+          peopleMatched: summary.peopleMatched,
+          skipped: summary.skipped,
+        },
       },
-    });
+      tx,
+    );
   });
 
   return summary;
@@ -457,69 +456,3 @@ export async function listOrganizations(auth: AuthContext): Promise<Organization
   return rows;
 }
 
-/** Link a person to an organization by hand; idempotent on the current edge. */
-export async function linkPersonToOrganization(
-  auth: AuthContext,
-  input: { personId: string; organizationId: string; title?: string },
-): Promise<{ employmentId: string }> {
-  return withTransaction(async (tx) => {
-    // Both sides are read under the workspace filter; a foreign id is "not
-    // found", never a cross-workspace link the FKs would then throw on.
-    const [person] = await tx
-      .select({ id: people.id })
-      .from(people)
-      .where(and(eq(people.id, input.personId), eq(people.workspaceId, auth.workspaceId)))
-      .limit(1);
-    if (!person) throw new Error("person not found in workspace");
-    const [organization] = await tx
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(
-        and(
-          eq(organizations.id, input.organizationId),
-          eq(organizations.workspaceId, auth.workspaceId),
-        ),
-      )
-      .limit(1);
-    if (!organization) throw new Error("organization not found in workspace");
-
-    const [existing] = await tx
-      .select({ id: partyEmployment.id })
-      .from(partyEmployment)
-      .where(
-        and(
-          eq(partyEmployment.workspaceId, auth.workspaceId),
-          eq(partyEmployment.personId, input.personId),
-          eq(partyEmployment.organizationId, input.organizationId),
-          isNull(partyEmployment.endedAt),
-        ),
-      )
-      .limit(1);
-    if (existing) return { employmentId: existing.id };
-
-    const [created] = await tx
-      .insert(partyEmployment)
-      .values({
-        workspaceId: auth.workspaceId,
-        personId: input.personId,
-        organizationId: input.organizationId,
-        title: input.title ?? null,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: partyEmployment.id });
-
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "party_employment.linked",
-      subjectType: "person",
-      subjectId: input.personId,
-      summary: "Linked person to organization",
-      metadata: { organizationId: input.organizationId, employmentId: created.id },
-    });
-
-    return { employmentId: created.id };
-  });
-}

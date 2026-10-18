@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/db-transaction", () => ({ withTransaction: vi.fn() }));
 
-import { parseCsv, rowsFromCsv } from "@/domains/identity/party-csv";
+import { parseCsv } from "@/domains/identity/party-csv";
 
 /*
  * LinkedIn's own export is the fixture that matters: a BOM on the first byte,
@@ -22,11 +22,12 @@ Alan,Turing,https://linkedin.com/in/alan,,Bletchley Park,,03 Jan 2026\r
 
 describe("parseCsv", () => {
   it("strips the BOM, handles CRLF and quoted commas", () => {
-    const rows = rowsFromCsv(parseCsv(LINKEDIN));
-    expect(rows).toHaveLength(3);
-    expect(Object.keys(rows[0])[0]).toBe("first name");
-    expect(rows[1]["company"]).toBe("Navy, Federal");
-    expect(rows[2]["email address"]).toBe("");
+    const rows = parseCsv(LINKEDIN);
+    // Header + 3 connections; the BOM is gone from the first header cell.
+    expect(rows).toHaveLength(4);
+    expect(rows[0][0]).toBe("First Name");
+    expect(rows[2][4]).toBe("Navy, Federal");
+    expect(rows[3][3]).toBe("");
   });
 
   it("keeps a doubled quote inside a quoted field", () => {

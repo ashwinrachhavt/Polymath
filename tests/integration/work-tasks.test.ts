@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
 import { people } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
-import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The continuity the audit called out: a task written by the domain is the
@@ -27,16 +27,10 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const auth = (userId: string, workspaceId: string) => ({
-  userId,
-  workspaceId,
-  role: "owner" as const,
-});
-
 suite("work tasks", () => {
   it("a created task appears in the open list and completes once", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-open-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
 
     const { id } = await work.createOwnerTask(a, { title: "Send the status update" });
     const open = await work.listOpenTasks(a);
@@ -57,7 +51,7 @@ suite("work tasks", () => {
 
   it("links a task to a person and an organization", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-links-${Date.now()}`);
-    const a = auth(userId, workspaceId);
+    const a = ownerAuth(userId, workspaceId);
     const [person] = await db
       .insert(people)
       .values({ workspaceId, displayName: "Ada Lovelace" })
@@ -85,11 +79,11 @@ suite("work tasks", () => {
   it("cannot complete a task from another workspace", async () => {
     const one = await seedWorkspace(db, `task-ws-a-${Date.now()}`);
     const two = await seedWorkspace(db, `task-ws-b-${Date.now()}`);
-    const { id } = await work.createOwnerTask(auth(one.userId, one.workspaceId), {
+    const { id } = await work.createOwnerTask(ownerAuth(one.userId, one.workspaceId), {
       title: "Mine",
     });
 
-    expect(await work.completeTask(auth(two.userId, two.workspaceId), { taskId: id })).toBeNull();
+    expect(await work.completeTask(ownerAuth(two.userId, two.workspaceId), { taskId: id })).toBeNull();
     const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
     expect(row.status).toBe("inbox");
   });

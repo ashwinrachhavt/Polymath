@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { importConnections, type ImportSummary } from "@/domains/identity/party-csv";
+import { ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
 import { getAuthContext } from "@/lib/auth";
 
 /*
@@ -33,11 +33,9 @@ export async function importConnectionsCsv(input: {
     revalidate();
     return { ok: true, summary };
   } catch (error) {
-    // A thrown message here is a deliberate refusal ("row limit"), not a
-    // stack trace; anything else is rethrown to the error boundary.
-    if (error instanceof Error && /import limit/.test(error.message)) {
-      return { ok: false, error: error.message };
-    }
+    // A deliberate refusal is the one error the owner can act on; anything
+    // else is rethrown to the error boundary.
+    if (error instanceof ImportLimitError) return { ok: false, error: error.message };
     throw error;
   }
 }

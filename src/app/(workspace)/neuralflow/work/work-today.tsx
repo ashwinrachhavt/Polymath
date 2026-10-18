@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { localDate } from "@/components/products/neuralflow/planning";
 import { statusLabels } from "@/components/workspace/tasks";
 import { completeTaskAction, createTaskAction } from "./actions";
 
@@ -22,18 +23,7 @@ export type OpenTask = {
   dueAt: Date | null;
 };
 
-/* The DB enum is lowercase; components/workspace/tasks.ts owns the words. One
- * vocabulary, so Work and the Command Center queue cannot drift on the same
- * status. `cancelled` is the DB-only value and carries its own word. */
-function statusLabel(status: string): string {
-  if (status === "cancelled") return "Cancelled";
-  return statusLabels[status.toUpperCase() as keyof typeof statusLabels] ?? status;
-}
 
-function formatDue(dueAt: Date | null): string | null {
-  if (!dueAt) return null;
-  return dueAt.toISOString().slice(0, 10);
-}
 
 export function TaskComposer() {
   const [title, setTitle] = useState("");
@@ -110,11 +100,15 @@ function TaskRow({ task }: { task: OpenTask }) {
           {error}
         </span>
       ) : null}
-      {formatDue(task.dueAt) ? (
-        <span className="text-muted-foreground shrink-0 text-[13px]">{formatDue(task.dueAt)}</span>
+      {task.dueAt ? (
+        <span className="text-muted-foreground shrink-0 text-[13px]">{localDate(task.dueAt)}</span>
       ) : null}
       <span className="text-muted-foreground shrink-0 text-[12px]">
-        {statusLabel(task.status)}
+        {/* The DB enum is lowercase; components/workspace/tasks.ts owns the words, so
+            Work and the Command Center queue cannot drift on the same status. */}
+        {task.status === "cancelled"
+          ? "Cancelled"
+          : (statusLabels[task.status.toUpperCase() as keyof typeof statusLabels] ?? task.status)}
       </span>
     </li>
   );
