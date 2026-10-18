@@ -26,10 +26,17 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
   // Reuse a server already listening; otherwise start one from the build.
+  //
+  // `next start` runs with NODE_ENV=production, where the keyless dev-auth
+  // fallback in lib/auth.ts stands down and Clerk's auth() throws for want of
+  // a mounted proxy — every authed route 500s. E2E runs keyless, so the
+  // server is `next dev` behind Playwright's proxy: same routes, same
+  // Postgres reads, auth resolves to the dev owner. DATABASE_URL comes from
+  // the caller (CI's postgres service, or the developer's env).
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: "pnpm build && pnpm start",
+        command: "pnpm dev",
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

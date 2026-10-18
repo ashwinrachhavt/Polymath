@@ -1,86 +1,70 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/domains/identity/resolve", () => ({
-  resolveAuthContext: vi.fn(async () => ({ userId: "u", workspaceId: "w", role: "owner" })),
-}));
-vi.mock("@/domains/identity/machine", () => ({
-  resolveMachineClient: vi.fn(async (subject: string) =>
-    subject === "mch_good"
-      ? { ok: true, client: { clientId: "c1", workspaceId: "w-machine", role: "owner" } }
-      : { ok: false as const, reason: subject === "mch_rate" ? "rate_limited" : "not_found" },
-  ),
-}));
+import { describe, expect, it } from "vitest";
+import type { AuthContext } from "@/lib/auth";
+import {
+  assertWorkspaceScope,
+  ForbiddenRoleError,
+  requireRole,
+  type Role,
+} from "@/lib/auth/guards";
 
 /*
- * auth({acceptsToken: "any"}) returns the session auth object in this app's
- * usage; the machine path is exercised through the mocked resolveMachineClient
- * by driving getAnyAuthContext with an unauthenticated session plus a machine
- * resolvable subject — here, simulated by userId holding the subject.
+ * ASH-120 F03 — the pure guards. Resolution itself (deny paths, membership
+ * filtering) is owned by identity/resolve.ts and covered by the auth-resolution
+ * integration suite that landed with the resolver.
  */
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(async (options?: { acceptsToken?: string }) => {
-    if (options?.acceptsToken === "any") {
-      // A machine subject carries no userId — that is the discriminator the
-      // guard uses. Subjects starting with mch_ are m2m tokens.
-      if (userId?.startsWith("mch_")) {
-        return { isAuthenticated: true, machineId: userId, tokenType: "m2m_token" };
-      }
-      return userId
-        ? { isAuthenticated: true, userId }
-        : { isAuthenticated: false, userId: null };
+
+const ctx = (role: Role, workspaceId = "ws-1"): AuthContext => ({
+  userId: "u-1",
+  workspaceId,
+  role,
+});
+
+describe("requireRole", () => {
+  it("a viewer cannot pass a member check, an owner passes everything", () => {
+    // Route handlers map on the machine code, not the message — assert both.
+    let caught: unknown;
+    try {
+      requireRole(ctx("viewer"), "member");
+    } catch (e) {
+      caught = e;
     }
-    return { userId };
-  }),
-}));
-
-let userId: string | undefined;
-import { authedHandler, getAuthContext, UnauthorizedError } from "@/lib/auth";
-
-describe("auth guards", () => {
-  it("authedHandler returns 401 problem+json when unauthenticated", async () => {
-    userId = undefined;
-    const handler = authedHandler(async () => new Response("ok"));
-    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
-    expect(res.status).toBe(401);
-    expect(res.headers.get("content-type")).toBe("application/problem+json");
-    const body = await res.json();
-    expect(body.code).toBe("unauthorized");
+    expect(caught).toBeInstanceOf(ForbiddenRoleError);
+    expect((caught as ForbiddenRoleError).code).toBe("AUTH_FORBIDDEN");
+    expect((caught as Error).message).toMatch(/Requires member/);
+    expect(() => requireRole(ctx("member"), "member")).not.toThrow();
+    expect(() => requireRole(ctx("admin"), "admin")).not.toThrow();
+    expect(() => requireRole(ctx("owner"), "viewer")).not.toThrow();
   });
 
-  it("authedHandler passes AuthContext through when authenticated", async () => {
-    userId = "clerk_x";
-    const handler = authedHandler(async (auth) => new Response(auth.workspaceId));
-    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
-    expect(await res.text()).toBe("w");
+  it("a member cannot pass an admin check", () => {
+    expect(() => requireRole(ctx("member"), "admin")).toThrowError(/Requires admin/);
   });
 
-  it("authedHandler maps a machine subject to its api_client workspace", async () => {
-    userId = "mch_good";
-    const handler = authedHandler(async (auth) => new Response(auth.workspaceId));
-    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
-    expect(await res.text()).toBe("w-machine");
+  it("rank is a total order — each role passes its own check", () => {
+    for (const role of ["owner", "admin", "member", "viewer"] as const) {
+      expect(() => requireRole(ctx(role), role)).not.toThrow();
+    }
+  });
+});
+
+describe("assertWorkspaceScope", () => {
+  it("accepts a row from the context's own workspace", () => {
+    expect(() => assertWorkspaceScope({ workspaceId: "ws-1" }, ctx("member"))).not.toThrow();
   });
 
-  it("authedHandler returns 429 problem+json when the client hits its ceiling", async () => {
-    userId = "mch_rate";
-    const handler = authedHandler(async () => new Response("ok"));
-    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
-    expect(res.status).toBe(429);
-    const body = await res.json();
-    expect(body.code).toBe("rate_limited");
+  it("rejects a row from another workspace with the mismatch code", () => {
+    let caught: unknown;
+    try {
+      assertWorkspaceScope({ workspaceId: "ws-2" }, ctx("member"));
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ForbiddenRoleError);
+    expect((caught as ForbiddenRoleError).code).toBe("AUTH_WORKSPACE_MISMATCH");
+    expect((caught as Error).message).toMatch(/another workspace/);
   });
 
-  it("authedHandler returns 403 problem+json for a revoked or unknown client", async () => {
-    userId = "mch_revoked";
-    const handler = authedHandler(async () => new Response("ok"));
-    const res = await handler(new Request("https://axiom.dev/api/v1/x"), undefined);
-    expect(res.status).toBe(403);
-    const body = await res.json();
-    expect(body.code).toBe("forbidden");
-  });
-
-  it("getAuthContext throws UnauthorizedError when unauthenticated", async () => {
-    userId = undefined;
-    await expect(getAuthContext()).rejects.toBeInstanceOf(UnauthorizedError);
+  it("an owner is not exempt from tenant scope", () => {
+    expect(() => assertWorkspaceScope({ workspaceId: "ws-2" }, ctx("owner"))).toThrowError();
   });
 });

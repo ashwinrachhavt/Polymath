@@ -20,7 +20,7 @@ import { db } from "@/lib/db";
 
 const uuid = z.string().uuid();
 
-const revalidate = () => revalidatePath("/knowledge");
+const revalidate = () => revalidatePath("/alfred/knowledge");
 
 function isAlreadyDecided(cause: unknown) {
   return cause instanceof Error && /already decided/.test(cause.message);

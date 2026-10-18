@@ -32,6 +32,25 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    services:
+      # The canonical routes read Postgres (identity resolution, run rows);
+      # without a database the server renders error boundaries and the
+      # journey tests would test the boundary, not the page.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: axiom
+          POSTGRES_PASSWORD: axiom
+          POSTGRES_DB: axiom_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axiom"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -40,6 +59,13 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Canonical schema before the server starts: drizzle-kit migrate has a
+      # pre-existing identifier-truncation issue on 0000-0002, so the SQL
+      # files are applied directly, in journal order.
+      - run: |
+          for f in src/db/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself.

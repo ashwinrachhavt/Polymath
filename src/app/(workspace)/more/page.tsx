@@ -1,5 +1,49 @@
 import Link from "next/link";
-import { products, productHref } from "@/lib/products";
+import { PageHeader, Section } from "@/components/page-header";
+import { apps, destinationsIn } from "@/lib/navigation";
 
-export const metadata = { title: "All screens · Axiom" };
-export default function MorePage() { return <div className="suite-screen"><h1 className="text-xl font-medium">All screens</h1><p className="mt-2 text-[13px] text-muted-foreground">Every product shares the same workspace, capture and reviews.</p><div className="mt-6 grid gap-6 lg:grid-cols-3">{products.map((p) => <section key={p.id} className="panel rounded-xl p-4"><h2 className="flex items-center gap-2 text-sm font-medium"><span className="product-mark" data-product={p.id}><p.icon aria-hidden className="size-4"/></span>{p.name}</h2><ul className="mt-4 flex flex-col gap-1">{p.destinations.map((d) => <li key={d.slug}><Link href={productHref(p,d.slug)} className="suite-nav-link"><d.icon aria-hidden className="size-4"/>{d.label}</Link></li>)}</ul></section>)}</div></div>; }
+export const metadata = { title: "More · Axiom" };
+
+/*
+ * The mobile overflow: the three apps, then every destination in each, read
+ * from the same source as the rail. Nothing can be reachable on desktop and
+ * unreachable on a phone.
+ *
+ * Grouped by app rather than listed flat, because an unlabelled list of twelve
+ * rows teaches the owner nothing about where the boundary is — and the boundary
+ * is the one thing this shell exists to make visible.
+ */
+export default function MorePage() {
+  const sections = [
+    ...apps.map((app) => ({ key: app.slug, label: app.label, items: destinationsIn(app.slug) })),
+    { key: "shared" as const, label: "Shared", items: destinationsIn("shared") },
+  ];
+
+  return (
+    <>
+      <PageHeader title="More" purpose="Every destination, by app." />
+      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+        {sections.map(({ key, label, items }) => (
+          <Section key={key} title={label}>
+            <ul className="flex flex-col">
+              {items.map(({ href, label: itemLabel, purpose, icon: Icon }) => (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    className="border-border hover:bg-muted focus-visible:ring-ring flex min-h-11 items-center gap-3 border-b py-3 outline-none focus-visible:ring-3"
+                  >
+                    <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[13px] font-medium">{itemLabel}</span>
+                      <span className="text-muted-foreground truncate text-xs">{purpose}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ))}
+      </div>
+    </>
+  );
+}

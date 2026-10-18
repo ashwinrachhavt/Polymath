@@ -21,18 +21,23 @@ schema decisions, not UI decisions, until the owner asks otherwise.
 
 1. **Briefing before browsing.** Home answers "what should I do now" without an
    LLM call on load. A dashboard that only reports is not a briefing.
-2. **Objects before pages.** Tasks, projects, people, documents, events,
+2. **Three apps, one record.** Axiom presents three micro-app experiences —
+   Command Center, NeuralFlow, Alfred — over one canonical system of record
+   (spec § The suite). The boundary is a product boundary, never a deployment
+   or data boundary: a second task table, a second note universe, or a second
+   approval pipeline is a bug, however clean the app split looks.
+3. **Objects before pages.** Tasks, projects, people, documents, events,
    messages, and runs are canonical records. Screens are views over them.
-3. **One record, many views.** List, board, calendar, and focus read one task
+4. **One record, many views.** List, board, calendar, and focus read one task
    model. Never fork a second task universe to get a nicer screen.
-4. **AI proposes; policy disposes.** Model output never overrides deterministic
+5. **AI proposes; policy disposes.** Model output never overrides deterministic
    authorization. The risk table in the spec is law.
-5. **No invisible work.** Long jobs expose progress, cost, questions,
+6. **No invisible work.** Long jobs expose progress, cost, questions,
    cancellation, and artifacts. If the owner cannot see it, it did not happen.
-6. **Reversible by default.** External writes go through proposals with a
+7. **Reversible by default.** External writes go through proposals with a
    preview, a risk class, a dedupe key, and an expiry. Uncertain provider
    outcomes become `UNKNOWN` and reconcile before any retry.
-7. **Learning follows completion.** Reflection enriches finished work; it never
+8. **Learning follows completion.** Reflection enriches finished work; it never
    blocks it.
 
 ## Decisions already made — do not re-propose
@@ -42,6 +47,13 @@ schema decisions, not UI decisions, until the owner asks otherwise.
   as the end state. *(The `docs/superpowers/.../consolidation-design.md` iframe
   plan was an earlier approach that the Next.js/Neon plan supersedes — follow the
   newer document.)*
+- **Three micro-app experiences, one system of record.** Command Center,
+  NeuralFlow, and Alfred are product surfaces with their own navigation and
+  feature ownership; they are not three systems and not a federation of donors
+  behind one shell. This **supersedes the earlier flat ten-destination model** in
+  the product spec (2026-10-11); it does not supersede the modular-monolith or
+  single-system-of-record decisions. A shared record is never copied to cross an
+  app boundary.
 - **Next.js 16 modular monolith on Vercel.** App Router, RSC reads, Server
   Actions for first-party mutations, Route Handlers for webhooks/SSE/files.
   Not microservices; not FastAPI/Celery retained after parity.
