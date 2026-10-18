@@ -3,6 +3,10 @@
 # installed by its own postinstall, or drizzle-kit cannot run.
 allowBuilds:
   '@clerk/shared': false
+  # Optional natives of just-bash (a dev-only sandbox provider); the package
+  # works without them, so the scripts are declined rather than approved.
+  '@mongodb-js/zstd': false
+  'node-liblzma': false
   esbuild: true
   sharp: false
   unrs-resolver: false
