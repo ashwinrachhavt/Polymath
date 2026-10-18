@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Popover } from "radix-ui";
@@ -28,9 +28,11 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
  */
 
 const COLLAPSED_KEY = "axiom-sidenav-collapsed";
+const subscribeToHydration = () => () => {};
 
 export function SideNav() {
   const pathname = usePathname();
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const { state } = useWorkspace();
   const [collapsed, setCollapsed] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -71,6 +73,7 @@ export function SideNav() {
       <Link
         key={destination.href}
         href={destination.href}
+        aria-label={destination.label}
         title={collapsed ? destination.label : undefined}
         aria-current={active ? "page" : undefined}
         className={cn(
@@ -160,11 +163,12 @@ export function SideNav() {
         <button
           type="button"
           onClick={openCommand}
+          disabled={!hydrated}
           aria-label="Search workspace"
           data-search-trigger
           aria-keyshortcuts="Meta+K Control+K"
           className={cn(
-            "border-sidebar-border bg-card text-muted-foreground hover:text-foreground flex h-8 items-center gap-2.5 rounded-md border text-[13px] transition-colors",
+            "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 items-center gap-2.5 rounded-md border text-[13px] transition-colors",
             collapsed ? "justify-center border-transparent bg-transparent px-0 hover:bg-sidebar-accent" : "px-2.5",
           )}
         >
@@ -190,7 +194,7 @@ export function SideNav() {
                   {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 my-2 border-t" /> : (
                     <p className="text-muted-foreground px-2.5 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider">Preview tools</p>
                   )}
-                  <div className="flex flex-col gap-px opacity-80">{additionalDestinationsIn(activeApp.slug).map(itemLink)}</div>
+                  <div className="flex flex-col gap-px">{additionalDestinationsIn(activeApp.slug).map(itemLink)}</div>
                 </>
               ) : null}
             </>
