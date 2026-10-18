@@ -32,7 +32,7 @@ export type DocumentReviewParty = {
 };
 
 export type DocumentReview = {
-  document: { id: string; title: string; mimeType: string | null; version: number };
+  document: { id: string; title: string; mimeType: string | null; version: number; sourceUrl: string | null };
   extraction: {
     id: string;
     status: string;
@@ -59,6 +59,7 @@ export async function getDocumentReview(
       title: documents.title,
       mimeType: documents.mimeType,
       version: documents.version,
+      sourceUrl: documents.sourceUrl,
     })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
@@ -206,6 +207,12 @@ export type DocumentInboxRow = {
   filename: string | null;
   mimeType: string | null;
   createdAt: Date;
+  /** A captured page keeps the address it came from; an uploaded file has none. */
+  sourceUrl: string | null;
+  /** What the row is: a fetched web page or an uploaded file. Derived, never stored. */
+  kind: "web_page" | "file";
+  /** When the page's bytes were last fetched and attached; null until the first fetch lands. */
+  fetchedAt: Date | null;
   /** Latest extraction's status, or null when the document has not been read. */
   extractionStatus: string | null;
   /** That extraction's proposal-pass status; null when it has not run. */
@@ -229,6 +236,8 @@ export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<D
       filename: files.filename,
       mimeType: documents.mimeType,
       createdAt: documents.createdAt,
+      sourceUrl: documents.sourceUrl,
+      fetchedAt: files.createdAt,
       extractionStatus: sql<string | null>`(
         select de.status::text from document_extractions de
         where de.document_id = ${documents.id}
@@ -306,6 +315,7 @@ export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<D
 
   return docRows.map((d) => ({
     ...d,
+    kind: d.sourceUrl ? ("web_page" as const) : ("file" as const),
     undecidedProposals: undecidedBy.get(d.id) ?? 0,
     partyNames: namesBy.get(d.id) ?? [],
   }));

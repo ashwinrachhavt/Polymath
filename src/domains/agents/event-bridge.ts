@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
+import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import {
   agentQuestions,
@@ -315,6 +316,24 @@ type UsageTotals = {
   cache_read_tokens: number;
   cache_write_tokens: number;
 };
+
+/**
+ * A finished turn parks the run as waiting for the owner's next message rather
+ * than "running" forever: the session is still open, but nothing is computing.
+ * Conditional on "running", so a close that landed first is never rewritten.
+ */
+export async function markWaitingForInput(input: { workspaceId: string; runId: string }): Promise<void> {
+  await db
+    .update(agentRuns)
+    .set({ state: "waiting_input", updatedAt: new Date() })
+    .where(
+      and(
+        eq(agentRuns.id, input.runId),
+        eq(agentRuns.workspaceId, input.workspaceId),
+        eq(agentRuns.state, "running"),
+      ),
+    );
+}
 
 /**
  * Closes a run: terminal event, state flip, and settlement, in one transaction.

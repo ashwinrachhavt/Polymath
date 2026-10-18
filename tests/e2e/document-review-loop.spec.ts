@@ -22,8 +22,16 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   await expect(page.getByRole("status").filter({ hasText: "added to the inbox" })).toBeVisible();
 
   await page.getByRole("link", { name: `invoice-${run}`, exact: true }).click();
-  await page.getByRole("button", { name: "Read now" }).click();
-  await expect(page.getByText("Proposed by text rules, not AI.")).toBeVisible({ timeout: 30_000 });
+  // Uploading already starts the read in the background, so "Read now" only
+  // remains for a row the read never started on. Click it when it is there,
+  // then reload until the proposals land - the page is server-rendered and
+  // does not stream the extraction's completion.
+  const readNow = page.getByRole("button", { name: "Read now" });
+  if (await readNow.isVisible().catch(() => false)) await readNow.click();
+  await expect(async () => {
+    await page.reload();
+    await expect(page.getByText("Proposed by text rules, not AI.")).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000, intervals: [2_000, 5_000] });
 
   const field = (label: string) => page.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) });
   await expect(field("invoice number")).toContainText(`Read from: Invoice number: ${invoiceNumber}`);

@@ -60,3 +60,31 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
     .onConflictDoNothing({ target: [memberships.workspaceId, memberships.userId] });
   return { userId: user.id, workspaceId: workspace.id, role: "owner" };
 });
+
+/**
+ * Re-proves a workspace binding that arrived as a claim (the Eve bridge token):
+ * the user must hold an active membership in that workspace right now, with the
+ * role the claim states, and the workspace must not be archived. Returns the
+ * context only on an exact match, so a stale or forged claim gets nothing.
+ */
+export async function verifyWorkspaceBinding(claim: {
+  userId: string;
+  workspaceId: string;
+  role: AuthRole;
+}): Promise<AuthContext | null> {
+  const [row] = await db
+    .select({ role: memberships.role })
+    .from(memberships)
+    .innerJoin(workspaces, eq(workspaces.id, memberships.workspaceId))
+    .where(
+      and(
+        eq(memberships.userId, claim.userId),
+        eq(memberships.workspaceId, claim.workspaceId),
+        eq(memberships.status, "active"),
+        isNull(workspaces.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!row || row.role !== claim.role) return null;
+  return { userId: claim.userId, workspaceId: claim.workspaceId, role: row.role };
+}

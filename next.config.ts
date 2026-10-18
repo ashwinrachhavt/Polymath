@@ -13,7 +13,9 @@ const nextConfig: NextConfig = {
       // /alfred keeps its workspace page: the run UI (start a run, recent
       // runs) is server-rendered there. The lens chat screen stays at
       // /apps/alfred/chat for lens navigation.
-      knowledge: "/apps/alfred/library", dossiers: "/apps/alfred/dossiers",
+      // Knowledge and Dossiers have real Neon-backed workspace screens, so their
+      // legacy bare paths go there, not to the sample lens preview.
+      knowledge: "/alfred/knowledge", dossiers: "/alfred/dossiers",
       relationships: "/apps/command-center/contacts", opportunities: "/apps/command-center/opportunities",
     };
     return Object.entries(paths).map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }));

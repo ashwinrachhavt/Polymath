@@ -3,6 +3,7 @@ import { defineHook, type HookContext } from "eve/hooks";
 // does not carry the app's tsconfig paths, so the alias does not resolve here.
 import {
   closeRun,
+  markWaitingForInput,
   mirrorMessage,
   recordQuestion,
   recordRoundEvent,
@@ -199,6 +200,15 @@ export default defineHook({
           content: event.data.message,
         }),
       );
+      // The same reply, appended to the run's thread so /alfred reads it after a reload.
+      await guarded("message.completed thread", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "message",
+          data: { role: "assistant", content: event.data.message, turnId: event.data.turnId },
+        }),
+      );
     },
 
     async "session.completed"(event, ctx) {
@@ -241,6 +251,9 @@ export default defineHook({
           data: { turnId: event.data.turnId },
         }),
       );
+      // The session waits for its next message; the run row says so instead of
+      // "running" while nothing is computing.
+      await guarded("turn.completed waiting state", () => markWaitingForInput({ runId, workspaceId }));
     },
 
     async "turn.cancelled"(event, ctx) {

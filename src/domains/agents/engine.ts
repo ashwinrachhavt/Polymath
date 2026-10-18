@@ -3,7 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { redactText } from "./event-bridge";
+import { recordRoundEvent, redactText } from "./event-bridge";
 import { agentProfiles, agentRuns } from "./schema";
 
 /*
@@ -43,8 +43,8 @@ export interface SessionDriver {
     /** The objective becomes the session's first message: it starts the turn. */
     objective: string;
   }): Promise<void>;
-  signal(sessionId: string, signal: string): Promise<void>;
-  cancel(sessionId: string): Promise<void>;
+  signal(sessionId: string, signal: string, auth: AuthContext): Promise<void>;
+  cancel(sessionId: string, auth: AuthContext): Promise<void>;
 }
 
 export interface AgentEngine {
@@ -55,6 +55,8 @@ export interface AgentEngine {
     subjects: unknown[];
     estimateUsd: string;
     threadId?: string;
+    /** Set when this run retries a finished one. */
+    retryOfRunId?: string;
   }): Promise<{ runId: string; reservationId: string }>;
   signal(runId: string, signal: string, auth: AuthContext): Promise<void>;
   resume(runId: string, auth: AuthContext): Promise<void>;
@@ -126,9 +128,18 @@ async function releaseOpenReservation(runId: string, workspaceId: string): Promi
   });
 }
 
+/** Appends one line to a run's persisted thread (run_events). Injected so unit tests need no database. */
+export type ThreadWriter = (input: {
+  runId: string;
+  workspaceId: string;
+  type: string;
+  data?: unknown;
+}) => Promise<unknown>;
+
 export function createEngine(
   driver: SessionDriver,
   now: () => Date = () => new Date(),
+  writeEvent: ThreadWriter = recordRoundEvent,
 ): AgentEngine {
   return {
     async start(input) {
@@ -163,6 +174,7 @@ export function createEngine(
           threadId: input.threadId ?? null,
           agentProfileId: profile.id,
           objective: input.objective,
+          retryOfRunId: input.retryOfRunId ?? null,
           subjects: input.subjects,
           state: "queued",
           policySnapshot: policy,
@@ -188,6 +200,15 @@ export function createEngine(
         .set({ state: "running", startedAt: now(), updatedAt: now() })
         .where(eq(agentRuns.id, run.id));
 
+      // The objective is the thread's first message, written before Eve can
+      // emit anything so a reload always reads it first.
+      await writeEvent({
+        runId: run.id,
+        workspaceId: input.auth.workspaceId,
+        type: "message",
+        data: { role: "user", content: input.objective },
+      });
+
       try {
         await driver.start({
           sessionId: run.id,
@@ -211,13 +232,19 @@ export function createEngine(
     async signal(runId, signal, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, signal);
+      await driver.signal(run.id, signal, auth);
+      // The follow-up is real work again: a parked run goes back to running.
+      // Conditional, so a close that landed meanwhile is never rewritten.
+      await db
+        .update(agentRuns)
+        .set({ state: "running", updatedAt: now() })
+        .where(and(eq(agentRuns.id, run.id), eq(agentRuns.state, "waiting_input")));
     },
 
     async resume(runId, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, "resume");
+      await driver.signal(run.id, "resume", auth);
     },
 
     async cancel(runId, auth) {
@@ -232,7 +259,8 @@ export function createEngine(
         .returning({ id: agentRuns.id });
       if (ended.length === 0) return { cancelled: false };
 
-      await driver.cancel(runId);
+      await driver.cancel(runId, auth);
+      await writeEvent({ runId, workspaceId: auth.workspaceId, type: "cancelled", data: { by: auth.userId } });
 
       // The run is terminal before the budget is handed back; the release is
       // guarded on status = 'reserved', so a settled claim is left alone.
