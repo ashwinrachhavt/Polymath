@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Readout } from "@/components/readout";
+import { connection } from "next/server";
 import { getAuthContext } from "@/lib/auth";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { StartRunForm } from "./start-run-form";
@@ -24,6 +25,8 @@ const stateLabel: Record<string, string> = {
 };
 
 export default async function AlfredPage() {
+  // Per-request data (auth upserts touch now()); opt this route out of prerender.
+  await connection();
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
 
