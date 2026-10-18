@@ -25,5 +25,5 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     storageScope = createHash("sha256").update(userId).digest("hex");
   }
 
-  return <AppShell storageScope={storageScope}>{children}</AppShell>;
+  return <AppShell storageScope={storageScope} clerkConfigured={clerkConfigured}>{children}</AppShell>;
 }
