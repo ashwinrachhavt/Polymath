@@ -14,6 +14,7 @@ vi.mock("@/domains/knowledge/queries", () => ({ getDocumentInbox: vi.fn(), getDo
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/agents/queries", () => ({ listRecentRuns: vi.fn(), listDocumentSearchResults: vi.fn(async () => new Map()) }));
+vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
 
 const document = {

@@ -7,6 +7,9 @@ import { getAuthContext } from "@/lib/auth";
 import { listDocumentSearchResults, listRecentRuns } from "@/domains/agents/queries";
 import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { listThreads, isFinished } from "@/domains/agents/thread";
+import { RunControls } from "./run-controls";
+import { Markdown } from "@/components/markdown";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -44,6 +47,7 @@ export default async function AlfredPage() {
   }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
   const unavailable = eveBridgeUnavailableReason();
 
@@ -92,7 +96,21 @@ export default async function AlfredPage() {
                     {" · "}
                     {run.summary ?? run.error ?? "in progress"}
                   </p>
+                  <ul className="flex flex-col gap-1">
+                    {(threads.get(run.id) ?? []).map((entry) => (
+                      <li
+                        key={entry.sequence}
+                        className={entry.kind === "user" ? "text-[13px]" : "text-muted-foreground text-[13px]"}
+                      >
+                        <span className="text-muted-foreground text-xs">
+                          {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Alfred" : "Run"}:{" "}
+                        </span>
+                        {entry.kind === "assistant" ? <Markdown text={entry.text} /> : entry.text}
+                      </li>
+                    ))}
+                  </ul>
                   <Citations citations={collectCitations(searchResults.get(run.id) ?? [])} />
+                  {unavailable && !isFinished(run.state) ? null : <RunControls runId={run.id} finished={isFinished(run.state)} />}
                 </li>
               ))}
             </ul>
