@@ -59,15 +59,6 @@ Alfred is a supervised chief-of-staff agent with an identity, instructions, mode
 
 ## The suite
 
-<<<<<<< HEAD
-### Three-product presentation update (2026-10-11)
-
-The owner requested three product lenses within one application: Command Center at `/apps/command-center` for briefing, CRM, opportunities, documents and reviewed operations; NeuralFlow at `/apps/neuralflow` for tasks, boards, calendar, planning, focus and rewards; Alfred at `/apps/alfred` for source reading, zettels, dossiers, notebook, research and learning. These are route and component groupings, not independent backends or tenants. The domain destinations below retain their canonical ownership. A shared AppSwitcher, command palette, capture, Reviews and account span all lenses; prior Axiom entry paths redirect to their corresponding product screens.
-
-The initial frontend delivery is an explicitly labeled browser-only interactive preview with fictional samples. Browser storage is not Neon, local review decisions do not authorize provider writes, and unconfigured AI, extraction, synchronization and companion actions must not report success. Production consolidation still requires the architecture plan's tenancy, domain command, durable workflow and migration gates.
-
-| Destination | Purpose | Core objects |
-=======
 Axiom is a unified platform with **three micro-app experiences** over one
 canonical system of record. Each app has its own contextual navigation and
 feature ownership; all three read and write the same records and share the same
@@ -83,7 +74,6 @@ pipeline, and one spending ledger. A three-app interface does not require three
 databases.
 
 | App | Primary question | Owns |
->>>>>>> 6c00aa1 (Split the suite into three apps with a shared launcher)
 |---|---|---|
 | Command Center | What is happening, what do I owe, and what needs action? | Briefing, inbox and capture, relationships, opportunities, correspondence, reviews of external action |
 | NeuralFlow | What should I work on, and how do I make progress? | Work in list/board/calendar modes, projects and spaces, planning, focus sessions, weekly review, rewards |
@@ -134,7 +124,9 @@ each app sees is its own chrome plus one shared control.
   that has to survive — losing it would strand the owner inside one app. Within
   an app, sections are reached from the app's home or from More, which lists
   every destination grouped by app.
-- `⌘K` reaches everything from anywhere, including across apps.
+- `⌘K` reaches everything from anywhere, including across apps. *(Lands with
+  the command palette; until then the header search button marks the spot it
+  will occupy.)*
 
 ### Interoperability
 

@@ -5,12 +5,15 @@ import { AppLauncher } from "@/components/shell/app-launcher";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { clerkConfigured } from "@/lib/clerk";
-import { AppSwitcher } from "./app-switcher";
-import { CommandLayer } from "./command-layer";
 
 /*
  * The one piece of global chrome: the app launcher, the breadcrumb, search,
  * theme, account. Each app's own navigation renders below this, not inside it.
+ *
+ * The legacy AppSwitcher/CommandLayer are not here: the launcher replaces them,
+ * and rendering both gave the header two switchers. The /apps preview routes
+ * still ship for the donor-parity screens; the launcher links into the same
+ * destinations at their canonical /command-center, /neuralflow, /alfred paths.
  */
 export function TopBar() {
   return (
@@ -22,10 +25,8 @@ export function TopBar() {
       <PathBreadcrumb />
 
       <div className="ml-auto flex items-center gap-1">
-        <CommandLayer />
-        <AppSwitcher />
         <Link
-          href="/command-center/reviews"
+          href="/reviews"
           aria-label="Open shared reviews"
           title="Shared reviews"
           className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center rounded-md"

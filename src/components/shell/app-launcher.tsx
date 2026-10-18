@@ -74,7 +74,11 @@ export function AppLauncher() {
                   <Icon
                     aria-hidden
                     className={cn("size-5", active && "text-app-accent")}
-                    style={active ? { color: appAccent(slug) } : undefined}
+                    style={
+                      active
+                        ? ({ "--app-accent": `var(--accent-${slug})` } as React.CSSProperties)
+                        : undefined
+                    }
                   />
                   <span className="text-[11px] leading-tight font-medium">{label}</span>
                 </Link>
@@ -109,18 +113,7 @@ export function AppLauncher() {
 /*
  * The launcher sits outside any `[data-app]` scope — it is global chrome, so the
  * app-accent token it would inherit is whatever the last scope set, not the app
- * this glyph represents. Read the accent per app directly instead.
- *
- * ponytail: hues are duplicated from globals.css. A token per app would need
- * dynamic class names that Tailwind cannot see at build time; if a fourth app
- * arrives, move these to a `--accent-<slug>` variable and read it here.
+ * this glyph represents. Each glyph re-points `--app-accent` at its own app's
+ * `--accent-<slug>` variable (declared in globals.css next to the data-app
+ * scopes) so the hue has one source of truth and no inline oklch here.
  */
-const ACCENTS: Record<string, string> = {
-  "command-center": "oklch(0.5 0.09 215)",
-  neuralflow: "oklch(0.51 0.09 155)",
-  alfred: "oklch(0.5 0.09 285)",
-};
-
-function appAccent(slug: string) {
-  return ACCENTS[slug] ?? ACCENTS["command-center"];
-}

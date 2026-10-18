@@ -111,20 +111,26 @@
      hard-codes which app it is in. */
   --app-accent: var(--primary);
   --app-accent-foreground: oklch(0.995 0.002 215);
+
+  /* Per-app accent variables, readable outside any [data-app] scope (the
+     launcher). The [data-app] rules below point --app-accent at these. */
+  --accent-command-center: oklch(0.5 0.09 215);
+  --accent-neuralflow: oklch(0.51 0.09 155);
+  --accent-alfred: oklch(0.5 0.09 285);
 }
 
 [data-app="command-center"] {
-  --app-accent: oklch(0.5 0.09 215);
+  --app-accent: var(--accent-command-center);
   --app-accent-foreground: oklch(0.995 0.002 215);
 }
 
 [data-app="neuralflow"] {
-  --app-accent: oklch(0.51 0.09 155);
+  --app-accent: var(--accent-neuralflow);
   --app-accent-foreground: oklch(0.995 0.002 155);
 }
 
 [data-app="alfred"] {
-  --app-accent: oklch(0.5 0.09 285);
+  --app-accent: var(--accent-alfred);
   --app-accent-foreground: oklch(0.995 0.002 285);
 }
 

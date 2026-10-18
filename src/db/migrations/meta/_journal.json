@@ -43,6 +43,13 @@
       "when": 1792291707265,
       "tag": "0005_confused_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792291616906,
+      "tag": "0006_professional_identity",
+      "breakpoints": true
     }
   ]
 }
