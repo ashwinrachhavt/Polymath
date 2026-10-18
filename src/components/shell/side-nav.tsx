@@ -34,7 +34,9 @@ export function SideNav() {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    setCollapsed(window.localStorage.getItem(COLLAPSED_KEY) === "1");
+    if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
+    const frame = requestAnimationFrame(() => setCollapsed(true));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   function toggle() {
