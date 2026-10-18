@@ -108,8 +108,22 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       await db.update(agentRuns).set({ sessionRef: ref })
         .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)));
     },
-    async signal() {
-      // Resume and steer arrive with the real tool surfaces; nothing to send yet.
+    async signal(sessionId, signal, auth) {
+      const [run] = await db
+        .select({ sessionRef: agentRuns.sessionRef })
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)))
+        .limit(1);
+      const ref = run?.sessionRef;
+      if (!ref) throw new Error("run has no Eve session yet");
+      // "resume" carries no text to send; a follow-up is the message itself.
+      if (signal === "resume") return;
+      const response = await fetch(`${eveMount(agentName)}/session/${ref}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...bridgeHeaders(auth) },
+        body: JSON.stringify({ message: signal }),
+      });
+      if (!response.ok) throw new Error(`eve follow-up failed: ${response.status}`);
     },
     async cancel(sessionId, auth) {
       const [run] = await db

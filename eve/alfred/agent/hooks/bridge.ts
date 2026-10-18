@@ -200,6 +200,15 @@ export default defineHook({
           content: event.data.message,
         }),
       );
+      // The same reply, appended to the run's thread so /alfred reads it after a reload.
+      await guarded("message.completed thread", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "message",
+          data: { role: "assistant", content: event.data.message, turnId: event.data.turnId },
+        }),
+      );
     },
 
     async "session.completed"(event, ctx) {
