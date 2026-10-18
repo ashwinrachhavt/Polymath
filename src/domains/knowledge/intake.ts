@@ -53,22 +53,33 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
     contentHash,
   });
 
-  // ponytail: a replay racing the first finalize hits the unique index and
-  // surfaces as a 500; queue-front retries go through the receipt read above.
   const result = await withTransaction(async (tx) => {
-    const [blob] = await tx
-      .insert(blobObjects)
-      .values({
-        workspaceId: auth.workspaceId,
-        storageKey: stored.storageKey,
-        contentHash: stored.contentHash,
-        sizeBytes: stored.sizeBytes,
-        mimeType,
-        retentionClass: "standard",
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: blobObjects.id });
+    // Two intakes of the same content race on the storage-key unique index.
+    // ON CONFLICT makes the loser wait for the winner's commit and join its
+    // blob row; the document attach below then throws
+    // DocumentAlreadyHasFileError and the loser's file row rolls back.
+    const blob =
+      (await tx
+        .insert(blobObjects)
+        .values({
+          workspaceId: auth.workspaceId,
+          storageKey: stored.storageKey,
+          contentHash: stored.contentHash,
+          sizeBytes: stored.sizeBytes,
+          mimeType,
+          retentionClass: "standard",
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .onConflictDoNothing({ target: blobObjects.storageKey })
+        .returning({ id: blobObjects.id }))[0] ??
+      (
+        await tx
+          .select({ id: blobObjects.id })
+          .from(blobObjects)
+          .where(eq(blobObjects.storageKey, stored.storageKey))
+          .limit(1)
+      )[0];
 
     const [fileRow] = await tx
       .insert(files)
@@ -90,7 +101,7 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       if (input.documentId) {
         const [attached] = await tx
           .update(documents)
-          .set({ fileId: fileRow.id, mimeType, updatedBy: auth.userId, updatedAt: new Date() })
+          .set({ fileId: fileRow.id, mimeType, title: input.title, updatedBy: auth.userId, updatedAt: new Date() })
           .where(and(
             eq(documents.id, input.documentId),
             eq(documents.workspaceId, auth.workspaceId),

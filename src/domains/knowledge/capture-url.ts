@@ -3,8 +3,10 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { validateFile } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
+import { MAX_UPLOAD_BYTES, type FileValidationResult } from "@/lib/file-validation";
 import { parseCaptureUrl, safeFetch, type SafeFetchOptions } from "@/lib/safe-fetch";
 import { extractDocument, type ExtractDocumentResult } from "./extraction";
+import { extractPageText, isHtmlDocument } from "./html-to-text";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
 import { documentExtractions, documents } from "./schema";
 
@@ -14,6 +16,9 @@ import { documentExtractions, documents } from "./schema";
  * from the first click. The bytes then go through intakeFile (the same path as
  * an upload) and the existing extract + proposal pass. There is no second
  * ingest API.
+ *
+ * HTML pages are reduced to their reading text at the boundary and stored
+ * as markdown; the extraction pass then reads the text directly.
  *
  * A fetch that fails leaves the document without a file or a type, with the
  * reason on an extraction row, so the inbox says "Could not read" instead of
@@ -50,6 +55,30 @@ async function recordFetchFailure(
       target: [documentExtractions.documentId, documentExtractions.contentHash],
       set: { error, createdAt: new Date() },
     });
+}
+
+type IntakeAttachment = {
+  bytes: Uint8Array;
+  filename: string;
+  title: string;
+  verdict: FileValidationResult;
+  sourceUrl: string;
+  documentId: string;
+};
+
+/** The one attach step both content kinds share; a concurrent paste's win is not an error. */
+async function attachIntake(
+  auth: AuthContext,
+  input: IntakeAttachment,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await intakeFile(auth, { ...input, origin: "url" });
+    return { ok: true };
+  } catch (cause) {
+    // A concurrent paste attached its bytes first; this call joins its result.
+    if (cause instanceof DocumentAlreadyHasFileError) return { ok: true };
+    throw cause;
+  }
 }
 
 export async function captureUrl(
@@ -101,28 +130,50 @@ export async function captureUrl(
     await recordFetchFailure(auth, documentId, sourceUrl, fetched.error);
     return { ok: false, documentId, error: fetched.error };
   }
+  // A web page is captured as its reading text: HTML in, markdown bytes out,
+  // so every page extracts without a parsing provider.
+  if (isHtmlDocument(fetched.contentType, fetched.bytes)) {
+    const page = extractPageText(new TextDecoder("utf-8").decode(fetched.bytes));
+    if (!page.text) {
+      const error = "The page had no readable text to capture.";
+      await recordFetchFailure(auth, documentId, sourceUrl, error);
+      return { ok: false, documentId, error };
+    }
+    const pageBytes = new TextEncoder().encode(page.text);
+    if (pageBytes.byteLength > MAX_UPLOAD_BYTES) {
+      const error = "That page is larger than the 4 MB limit once reduced to text.";
+      await recordFetchFailure(auth, documentId, sourceUrl, error);
+      return { ok: false, documentId, error };
+    }
+    const attached = await attachIntake(auth, {
+      bytes: pageBytes,
+      filename: `${titleFor(parsed.url)}.md`,
+      title: (page.title ?? titleFor(parsed.url)).slice(0, 200),
+      verdict: { ok: true, mimeType: "text/markdown" },
+      sourceUrl,
+      documentId,
+    });
+    if (!attached.ok) return { ok: false, documentId, error: attached.error };
+    return { ok: true, documentId, created, extraction: await extractDocument(auth, { documentId }) };
+  }
+
   const verdict = validateFile(fetched.bytes);
   if (!verdict.ok) {
     const error = verdict.reason === "unidentified"
-      ? "That address is not a PDF or image, which are the types Axiom can read today."
+      ? "That address is not a PDF, an image, or a web page, which are the types Axiom can read today."
       : verdict.reason === "empty_file" ? "The address returned an empty file." : "That file is larger than the 4 MB limit.";
     await recordFetchFailure(auth, documentId, sourceUrl, error);
     return { ok: false, documentId, error };
   }
 
-  try {
-    await intakeFile(auth, {
-      bytes: fetched.bytes,
-      filename: titleFor(parsed.url) + (verdict.mimeType === "application/pdf" ? ".pdf" : ""),
-      title: titleFor(parsed.url),
-      verdict,
-      origin: "url",
-      sourceUrl,
-      documentId,
-    });
-  } catch (cause) {
-    // A concurrent paste attached its bytes first; this call joins its result.
-    if (!(cause instanceof DocumentAlreadyHasFileError)) throw cause;
-  }
+  const attached = await attachIntake(auth, {
+    bytes: fetched.bytes,
+    filename: titleFor(parsed.url) + (verdict.mimeType === "application/pdf" ? ".pdf" : ""),
+    title: titleFor(parsed.url),
+    verdict,
+    sourceUrl,
+    documentId,
+  });
+  if (!attached.ok) return { ok: false, documentId, error: attached.error };
   return { ok: true, documentId, created, extraction: await extractDocument(auth, { documentId }) };
 }

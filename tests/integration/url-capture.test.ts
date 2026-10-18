@@ -44,7 +44,13 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     hits[req.url ?? ""] = (hits[req.url ?? ""] ?? 0) + 1;
     if (req.url === "/lease.pdf") return void res.writeHead(200, { "content-type": "application/pdf" }).end(PDF);
-    if (req.url === "/page.html") return void res.writeHead(200, { "content-type": "text/html" }).end("<html>hi</html>");
+    if (req.url === "/page.html") {
+      const page = `<!doctype html><html><head><title>Lease renewal notes</title><style>body{color:red}</style></head>
+        <body><h1>Renewal</h1><p>The rent is 1400.</p><script>track()</script></body></html>`;
+      return void res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(page);
+    }
+    if (req.url === "/download.bin") return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14]));
+    if (req.url === "/empty.html") return void res.writeHead(200, { "content-type": "text/html" }).end("<html><body><script>only()</script></body></html>");
     if (req.url === "/flaky.pdf") {
       return void (hits["/flaky.pdf"] === 1 ? res.writeHead(503).end() : res.writeHead(200).end(PDF));
     }
@@ -140,10 +146,33 @@ suite("URL capture (real Postgres)", () => {
     expect(latest.text).toBe("rent: 1200");
   });
 
-  it("a page that is not a PDF or image fails with a reason and never becomes Filed", async () => {
+  it("an HTML page is captured as its reading text and extracted without a parsing provider", async () => {
     const auth = await workspace();
     const result = await captureUrl(auth, { url: `${base}/page.html`, fetchOptions });
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not a PDF or image") });
+    expect(result).toMatchObject({ ok: true, created: true, extraction: { ok: true } });
+    const [doc] = await docsFor(auth.workspaceId);
+    expect(doc).toMatchObject({ sourceUrl: `${base}/page.html`, mimeType: "text/markdown", title: "Lease renewal notes" });
+    expect(doc.fileId).not.toBeNull();
+    const [file] = await holder.db!.select().from(files).where(eq(files.id, doc.fileId!));
+    expect(file).toMatchObject({ origin: "url", status: "uploaded", filename: "page.md" });
+    const [extraction] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.documentId, doc.id));
+    expect(extraction).toMatchObject({ status: "succeeded", extractor: "plain-text@local" });
+    expect(extraction.text).toBe("# Renewal\n\nThe rent is 1400.");
+    expect(provider.extract).not.toHaveBeenCalled();
+  });
+
+  it("a page with no readable text fails with a reason and never becomes Filed", async () => {
+    const auth = await workspace();
+    const result = await captureUrl(auth, { url: `${base}/empty.html`, fetchOptions });
+    expect(result).toMatchObject({ ok: false, error: "The page had no readable text to capture." });
+    const [doc] = await docsFor(auth.workspaceId);
+    expect(doc.fileId).toBeNull();
+  });
+
+  it("a binary download that is not a PDF, image, or web page fails with a reason", async () => {
+    const auth = await workspace();
+    const result = await captureUrl(auth, { url: `${base}/download.bin`, fetchOptions });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not a PDF, an image, or a web page") });
     const [doc] = await docsFor(auth.workspaceId);
     expect(doc.fileId).toBeNull();
   });

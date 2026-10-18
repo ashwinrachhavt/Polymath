@@ -67,6 +67,7 @@ function mimeTypeLabel(mimeType: string | null): string {
     "application/pdf": "PDF",
     "image/png": "PNG",
     "image/jpeg": "JPEG",
+    "text/markdown": "Web page",
   };
   return known[mimeType] ?? mimeType;
 }

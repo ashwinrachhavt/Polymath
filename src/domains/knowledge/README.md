@@ -29,8 +29,10 @@ connect time and on every redirect hop; 4 MB and 10 s limits), then stored by
 extract and proposal pass. A fetch that fails leaves the document without a file
 or type and records the reason on a failed extraction row (content hash
 `unfetched:<sha256(url)>`), so it reads "Could not read", never Filed. Pasting the
-URL again retries on the same document. Only the v1 file allowlist (PDF, PNG,
-JPEG) is captured; web pages are not.
+URL again retries on the same document. PDF, PNG, and JPEG are stored as
+fetched; an HTML page is reduced to its reading text (`html-to-text.ts`) and
+stored as markdown, which `plain-text.ts` extracts in place of a parsing
+provider. Other types are refused.
 
 The proposal pass (fields, parties, obligations) is a separate retry boundary
 on the extraction row (`proposal_status`, `proposer`, `proposal_error`): text

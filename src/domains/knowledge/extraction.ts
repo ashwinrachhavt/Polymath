@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createDoclingDockerProvider } from "@/integrations/extraction/docling-docker";
 import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
 import { createPdfTextLayerProvider } from "@/integrations/extraction/pdf-text-layer";
+import { createPlainTextProvider } from "@/integrations/extraction/plain-text";
 import type {
   ExtractedField,
   ExtractionProvider,
@@ -169,7 +170,10 @@ export async function extractDocument(
   const mine = and(scope, eq(documentExtractions.id, claim.id), eq(documentExtractions.claimedBy, claimedBy));
   let result: ExtractionResult;
   try {
-    const provider = await extractionProvider();
+    // Text needs no parsing provider: the stored bytes are the reading text.
+    const provider = document.mimeType?.startsWith("text/")
+      ? createPlainTextProvider()
+      : await extractionProvider();
     const bytes = await readBlob(blob.storageKey);
     result = await provider.extract({
       bytes,

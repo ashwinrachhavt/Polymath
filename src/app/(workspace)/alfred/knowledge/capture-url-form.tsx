@@ -35,14 +35,14 @@ export function CaptureUrlForm() {
       }}
     >
       <div className="flex items-center gap-2">
-        <label htmlFor={inputId} className="sr-only">Address of a PDF or image</label>
+        <label htmlFor={inputId} className="sr-only">Address of a PDF, image, or web page</label>
         <input
           id={inputId}
           name="url"
           type="url"
           inputMode="url"
           required
-          placeholder="Paste a link to a PDF or image"
+          placeholder="Paste a link to a PDF, image, or web page"
           disabled={pending}
           className="border-input bg-background h-9 w-64 rounded-md border px-3 text-sm"
         />
