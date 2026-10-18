@@ -25,21 +25,24 @@ export function MobileNav() {
       aria-label="Apps"
       className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
     >
-      {items.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon, ...rest }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
+        // `short` only exists on apps; the More entry has no such field.
+        const text = "short" in rest ? rest.short : label;
         return (
           <Link
             key={href}
             href={href}
+            aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-xs outline-none",
+              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
               active ? "text-app-accent font-medium" : "text-muted-foreground",
             )}
           >
             <Icon aria-hidden className="size-4" />
-            {label}
+            <span className="truncate px-1">{text}</span>
           </Link>
         );
       })}

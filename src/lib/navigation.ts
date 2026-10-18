@@ -36,6 +36,8 @@ export type AppSlug = "command-center" | "neuralflow" | "alfred";
 export type AppDefinition = {
   slug: AppSlug;
   label: string;
+  /** The label the phone bar uses. A 5-across 44px strip cannot carry two words. */
+  short: string;
   /** The question this app answers, in the owner's words. */
   question: string;
   /** The app's home. `/alfred` is its own root, so these are plain strings. */
@@ -60,6 +62,7 @@ export const apps: AppDefinition[] = [
   {
     slug: "command-center",
     label: "Command Center",
+    short: "Command",
     question: "What is happening, what do I owe, and what needs action?",
     href: "/command-center/briefing",
     icon: Compass,
@@ -68,6 +71,7 @@ export const apps: AppDefinition[] = [
   {
     slug: "neuralflow",
     label: "NeuralFlow",
+    short: "NeuralFlow",
     question: "What should I work on, and how do I make progress?",
     href: "/neuralflow/work",
     icon: SquareCheckBig,
@@ -76,6 +80,7 @@ export const apps: AppDefinition[] = [
   {
     slug: "alfred",
     label: "Alfred",
+    short: "Alfred",
     question: "What do I know, and what can I produce?",
     href: "/alfred",
     icon: Sparkles,
