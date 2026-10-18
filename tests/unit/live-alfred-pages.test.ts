@@ -19,6 +19,7 @@ vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.f
 const document = {
   id: "doc-fixture", title: "Existing document", filename: "fixture.pdf", mimeType: "application/pdf", createdAt: new Date(),
   extractionStatus: "succeeded", proposalStatus: "succeeded", undecidedProposals: 0, partyNames: [],
+  sourceUrl: null, kind: "file" as const, fetchedAt: null,
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -47,10 +48,22 @@ describe("live Alfred route functionality", () => {
     expect(populated).toContain('type="file"');
   });
 
+  it("presents a captured URL as a web page, not a file row", async () => {
+    vi.mocked(getDocumentInbox).mockResolvedValue([{
+      ...document,
+      id: "page-fixture", title: "Ashwin Rachha", filename: null, mimeType: "text/markdown",
+      sourceUrl: "https://ashwinrachha.com/", kind: "web_page" as const, fetchedAt: new Date("2026-10-18T12:00:00Z"),
+    }]);
+    const html = await knowledge();
+    expect(html).toContain("Web page · ashwinrachha.com");
+    expect(html).toContain("Fetched");
+    expect(html).not.toContain("No file");
+  });
+
   it("keeps upload available while reviewing an existing document", async () => {
     vi.mocked(getDocumentInbox).mockResolvedValue([document]);
     vi.mocked(getDocumentReview).mockResolvedValue({
-      document: { id: document.id, title: document.title, mimeType: document.mimeType, version: 1 },
+      document: { id: document.id, title: document.title, mimeType: document.mimeType, version: 1, sourceUrl: null },
       extraction: { id: "extraction", status: "succeeded", contentHash: "fixture", error: null, proposalStatus: "succeeded", proposalError: null, proposer: "text-rules@1" },
       fieldProposals: [], parties: [], obligations: [],
     });
