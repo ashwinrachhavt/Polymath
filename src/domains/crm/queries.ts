@@ -7,8 +7,11 @@ import {
   contactObservations,
   contacts,
   followUps,
-  relationshipStatus,
 } from "./schema";
+import { RELATIONSHIP_STATUSES, type RelationshipStatus } from "./status";
+
+export { RELATIONSHIP_STATUSES };
+export type { RelationshipStatus };
 
 /*
  * Read queries for the relationships surface. The page composes exactly these
@@ -16,9 +19,6 @@ import {
  * and open follow-up counts ride along as subqueries so the list stays one
  * round trip instead of one per row.
  */
-
-export type RelationshipStatus = (typeof relationshipStatus.enumValues)[number];
-export const RELATIONSHIP_STATUSES = relationshipStatus.enumValues;
 
 /* Qualified table names are written literally inside the correlated
  * subqueries: drizzle renders ${table.column} there as an unqualified "id",

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/workspace/ui";
-import { RELATIONSHIP_STATUSES, type RelationshipStatus } from "@/domains/crm/queries";
+import { RELATIONSHIP_STATUS_LABELS, RELATIONSHIP_STATUSES, type RelationshipStatus } from "@/domains/crm/status";
 import { createContactAction, updateContactAction } from "./actions";
 
 /*
@@ -28,14 +28,6 @@ type ContactDefaults = {
   relationshipStatus: RelationshipStatus;
   notes: string | null;
   currentCompanyId: string | null;
-};
-
-const STATUS_LABELS: Record<RelationshipStatus, string> = {
-  unknown: "Unknown",
-  cold: "Cold",
-  warm: "Warm",
-  active: "Active",
-  dormant: "Dormant",
 };
 
 export function ContactForm({
@@ -123,7 +115,7 @@ export function ContactForm({
           >
             {RELATIONSHIP_STATUSES.map((status) => (
               <option key={status} value={status}>
-                {STATUS_LABELS[status]}
+                {RELATIONSHIP_STATUS_LABELS[status]}
               </option>
             ))}
           </select>

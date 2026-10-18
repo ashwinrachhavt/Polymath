@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import type { RelationshipStatus } from "./queries";
+import type { RelationshipStatus } from "./status";
 import {
   companies,
   contactCompanies,
