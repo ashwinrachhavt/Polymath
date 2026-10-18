@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -9,7 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, tenantId } from "../../db/columns";
+import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 import { users } from "./tables";
 
 /*
@@ -88,4 +89,24 @@ export const apiClients = pgTable(
     ...mutable,
   },
   (t) => [index("api_clients_workspace_status_idx").on(t.workspaceId, t.status)],
+);
+
+/*
+ * One counter row per client per UTC day. Rate limiting reads and bumps this
+ * in the shared route-handler guard; a day key keeps the row count bounded.
+ * ponytail: fixed-window UTC-day limit; sliding window when a client needs it.
+ */
+export const apiClientUsage = pgTable(
+  "api_client_usage",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => apiClients.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    ...recorded,
+  },
+  (t) => [uniqueIndex("api_client_usage_key").on(t.clientId, t.day)],
 );
