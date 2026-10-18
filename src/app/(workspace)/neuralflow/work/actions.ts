@@ -32,6 +32,7 @@ const createInput = z.object({
   dueAt: z.coerce.date().optional(),
   personId: z.string().uuid().optional(),
   organizationId: z.string().uuid().optional(),
+  idempotencyKey: z.string().uuid().optional(),
 });
 
 export async function createTaskAction(input: {
@@ -39,6 +40,7 @@ export async function createTaskAction(input: {
   dueAt?: string;
   personId?: string;
   organizationId?: string;
+  idempotencyKey?: string;
 }): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the task a title." };

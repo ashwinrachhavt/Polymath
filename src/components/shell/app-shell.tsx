@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { AppNav } from "@/components/shell/app-nav";
@@ -42,7 +42,7 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
         <div className="flex min-h-0 flex-1">
           {app?.nav === "rail" ? <AppNav app={app} /> : null}
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
-            <PreviewBanner />
+            <Suspense fallback={null}><PreviewBanner /></Suspense>
             {isBrowserPreviewPath(pathname) ? <PreviewStorageWarning /> : null}
             {waitingForStorage ? <PreviewSkeleton /> : null}
             {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
