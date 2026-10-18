@@ -90,7 +90,7 @@ export function CommandLayer() {
         <DialogTitle>{mode === "search" ? "Search and commands" : "Capture without switching context"}</DialogTitle>
         <DialogDescription>{mode === "search" ? "Navigate every app or find browser-preview records. Live documents use the search in Alfred Knowledge." : "Add to the shared browser-preview inbox, task list or notebook. Nothing is sent to a provider or saved to the production database."}</DialogDescription>
         {mode === "search" ? <>
-          <Input key="search" autoFocus role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
+          <Input key="search" autoFocus className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setSelected(Math.min(active + 1, results.length - 1)); }
             if (event.key === "ArrowUp") { event.preventDefault(); setSelected(Math.max(active - 1, 0)); }
             if (event.key === "Enter" && results[active]) { event.preventDefault(); navigate(results[active].href); }
