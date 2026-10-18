@@ -13,6 +13,8 @@ import { clerkConfigured } from "@/lib/clerk";
  * Webhooks use HMAC (webhook_inbox), not Clerk sessions — they must stay public.
  */
 
+const isApiRoute = createRouteMatcher(["/api/v1", "/api/v1/(.*)"]);
+
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
@@ -22,7 +24,13 @@ const isPublicRoute = createRouteMatcher([
 export default clerkConfigured
   ? clerkMiddleware(async (auth, request) => {
       if (!isPublicRoute(request)) {
-        await auth.protect();
+        if (isApiRoute(request)) {
+          // Match getAnyAuthContext's supported identities. Browser routes
+          // remain session-only; API clients still need domain authorization.
+          await auth.protect({ token: ["session_token", "m2m_token", "api_key"] });
+        } else {
+          await auth.protect();
+        }
       }
     })
   : () => NextResponse.next();

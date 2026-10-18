@@ -60,6 +60,7 @@ export function AppLauncher() {
                 <Link
                   key={slug}
                   href={href}
+                  onClick={() => setOpen(false)}
                   aria-current={active ? "true" : undefined}
                   title={question}
                   className={cn(

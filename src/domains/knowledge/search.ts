@@ -72,12 +72,26 @@ export async function searchDocuments(auth: AuthContext, input: DocumentSearchIn
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
   const offset = Math.max(input.offset ?? 0, 0);
 
+  // The evidence a hit is shown with: the matching passage of the latest
+  // succeeded extraction, with matches wrapped in [[ ]] for the UI to mark.
+  const snippet = query
+    ? sql<string | null>`(
+        select ts_headline('english', de.text, plainto_tsquery('english', ${query}),
+          'StartSel=[[, StopSel=]], MaxWords=24, MinWords=8, MaxFragments=1')
+        from document_extractions de
+        where de.document_id = ${documents.id} and de.status = 'succeeded'
+          and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${query})
+        order by de.created_at desc limit 1
+      )`
+    : sql<string | null>`null`;
+
   // One query, no joins that could duplicate a document with several extraction
   // versions: status comes from a correlated latest-extraction subquery.
   return db
     .select({
       id: documents.id,
       title: documents.title,
+      snippet,
       filename: files.filename,
       extractionStatus: sql<string | null>`(
         select de.status::text from document_extractions de

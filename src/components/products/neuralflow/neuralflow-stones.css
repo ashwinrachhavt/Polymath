@@ -1,0 +1,206 @@
+/*
+ * NeuralFlow-only material and motion, prefixed `nf-` because this repo's
+ * Turbopack CSS rule compiles `*.module.css` as global CSS (class names are not
+ * hashed). Every animation answers a user action (recording a focus outcome,
+ * completing a task, pointing at an earned stone) and runs once; nothing loops.
+ * `data-motion="reduce"` mirrors the owner's Reduce motion preference and the
+ * media query mirrors the operating system setting.
+ */
+
+/* A stone sits in a small dark vitrine so the donor art keeps its lighting in both themes. */
+.nf-vitrine {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: oklch(0.17 0.006 250);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.14), inset 0 -1px 0 oklch(0 0 0 / 0.4);
+}
+.nf-vitrine img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nf-vitrine.nf-locked img {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+/* A single light pass across the facets when an earned stone is pointed at or focused. */
+.nf-sheen::after {
+  content: "";
+  position: absolute;
+  inset: -20% auto -20% -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, oklch(1 0 0 / 0.28), transparent);
+  transform: skewX(-12deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.nf-tile:hover .nf-sheen::after,
+.nf-tile:focus-visible .nf-sheen::after {
+  animation: nf-sweep 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+}
+@keyframes nf-sweep {
+  0% { opacity: 0; transform: translateX(0) skewX(-12deg); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(420%) skewX(-12deg); }
+}
+.nf-tile {
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+.nf-tile:active {
+  transform: translateY(1px);
+}
+
+/* Forming stone beside the timer: a grey crystal lights up as the interval elapses. */
+.nf-vitrine.nf-forming {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+.nf-vitrine.nf-forming img {
+  position: absolute;
+  inset: 0;
+}
+.nf-vitrine.nf-forming img.nf-forming-base {
+  filter: grayscale(1) brightness(0.75);
+  opacity: 0.4;
+}
+.nf-vitrine.nf-forming img.nf-forming-lit {
+  opacity: var(--nf-forming, 0);
+  transition: opacity 600ms linear;
+}
+
+/*
+ * Reveal after a recorded interval, after the donor's StoneCelebrateModal:
+ * the stone turns in from -12deg and 0.92 scale while a ring of particles
+ * leaves it once.
+ */
+.nf-reveal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+  flex-shrink: 0;
+}
+.nf-reveal .nf-reveal-stone {
+  position: relative;
+  z-index: 1;
+}
+.nf-halo,
+.nf-ring {
+  position: absolute;
+  inset: 0.75rem;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+}
+.nf-halo {
+  background: radial-gradient(closest-side, color-mix(in oklch, var(--foreground) 16%, transparent), transparent);
+}
+.nf-ring {
+  border: 1px solid color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+.nf-shard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin: -0.1875rem;
+  background: color-mix(in oklch, var(--foreground) 55%, transparent);
+  transform: rotate(45deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.nf-animate .nf-reveal-stone { animation: nf-turn-in 500ms ease-out both; }
+.nf-animate .nf-halo { animation: nf-pulse 900ms ease-out 120ms both; }
+.nf-animate .nf-ring { animation: nf-ripple 800ms ease-out 160ms both; }
+.nf-animate .nf-shard { animation: nf-scatter 1200ms ease-out both; }
+.nf-animate .nf-shard:nth-child(3) { --nf-dx: 3.5rem; --nf-dy: 0rem; animation-delay: 0ms; }
+.nf-animate .nf-shard:nth-child(4) { --nf-dx: 2.5rem; --nf-dy: -2.5rem; animation-delay: 50ms; }
+.nf-animate .nf-shard:nth-child(5) { --nf-dx: 0rem; --nf-dy: -3.5rem; animation-delay: 100ms; }
+.nf-animate .nf-shard:nth-child(6) { --nf-dx: -2.5rem; --nf-dy: -2.5rem; animation-delay: 150ms; }
+.nf-animate .nf-shard:nth-child(7) { --nf-dx: -3.5rem; --nf-dy: 0rem; animation-delay: 200ms; }
+.nf-animate .nf-shard:nth-child(8) { --nf-dx: -2.5rem; --nf-dy: 2.5rem; animation-delay: 250ms; }
+.nf-animate .nf-shard:nth-child(9) { --nf-dx: 0rem; --nf-dy: 3.5rem; animation-delay: 300ms; }
+.nf-animate .nf-shard:nth-child(10) { --nf-dx: 2.5rem; --nf-dy: 2.5rem; animation-delay: 350ms; }
+@keyframes nf-turn-in {
+  from { opacity: 0; transform: rotate(-12deg) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nf-pulse {
+  0% { opacity: 0; transform: scale(0.9); }
+  40% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+@keyframes nf-ripple {
+  0% { opacity: 0.6; transform: scale(0.6); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+@keyframes nf-scatter {
+  0% { opacity: 0; transform: translate(0, 0) rotate(45deg) scale(0.5); }
+  45% { opacity: 1; transform: translate(calc(var(--nf-dx) * 0.6), calc(var(--nf-dy) * 0.6)) rotate(90deg) scale(1.2); }
+  100% { opacity: 0; transform: translate(var(--nf-dx), var(--nf-dy)) rotate(135deg) scale(0.5); }
+}
+
+/* Task rows: a check with the donor's spring and a strike that draws across. */
+.nf-row {
+  transition: opacity 200ms ease;
+}
+.nf-row[data-done="true"] { opacity: 0.72; }
+.nf-row .nf-check:checked { animation: nf-settle 400ms ease-out 1; }
+@keyframes nf-settle {
+  0% { transform: scale(1); }
+  20% { transform: scale(0.95); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.nf-title {
+  position: relative;
+}
+.nf-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 55%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.nf-row[data-done="true"] .nf-title::after { transform: scaleX(1); }
+
+/* Owner preference: Reduce motion. JSX also omits `nf-animate` and `nf-sheen` in this mode. */
+.nf-row[data-motion="reduce"],
+.nf-row[data-motion="reduce"] .nf-title::after,
+.nf-vitrine.nf-forming[data-motion="reduce"] img.nf-forming-lit {
+  transition: none;
+}
+.nf-row[data-motion="reduce"] .nf-check:checked {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nf-tile,
+  .nf-row,
+  .nf-title::after,
+  .nf-vitrine.nf-forming img.nf-forming-lit {
+    transition: none;
+  }
+  .nf-row .nf-check:checked,
+  .nf-tile:hover .nf-sheen::after,
+  .nf-tile:focus-visible .nf-sheen::after,
+  .nf-animate .nf-reveal-stone,
+  .nf-animate .nf-halo,
+  .nf-animate .nf-ring,
+  .nf-animate .nf-shard {
+    animation: none;
+  }
+}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Section } from "@/components/page-header";
-import { apps, destinationsIn } from "@/lib/navigation";
+import { additionalDestinationsIn, apps, destinationsIn } from "@/lib/navigation";
 
 export const metadata = { title: "More · Axiom" };
 
@@ -15,7 +15,7 @@ export const metadata = { title: "More · Axiom" };
  */
 export default function MorePage() {
   const sections = [
-    ...apps.map((app) => ({ key: app.slug, label: app.label, items: destinationsIn(app.slug) })),
+    ...apps.map((app) => ({ key: app.slug, label: app.label, items: [...destinationsIn(app.slug), ...additionalDestinationsIn(app.slug)] })),
     { key: "shared" as const, label: "Shared", items: destinationsIn("shared") },
   ];
 

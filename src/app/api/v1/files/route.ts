@@ -3,10 +3,11 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { authedHandler } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, validateFile } from "@/lib/file-validation";
-import { putBlob } from "@/integrations/object-store/vercel-blob";
+import { ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
 import { auditEvents, blobObjects, outboxEvents, requestReceipts } from "@/domains/audit/schema";
 import { documents, files } from "@/domains/knowledge/schema";
 
@@ -29,6 +30,7 @@ const documentMeta = z.object({
 });
 
 export const POST = authedHandler(async (auth, request) => {
+  requireRole(auth, "member");
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
     return problemResponse(415, "unsupported_media_type", "Upload as multipart/form-data.");
@@ -95,13 +97,21 @@ export const POST = authedHandler(async (auth, request) => {
     }
   }
 
-  const stored = await putBlob({
-    bytes,
-    filename: file.name,
-    contentType: verdict.ok ? verdict.mimeType : "application/octet-stream",
-    workspaceId: auth.workspaceId,
-    contentHash: contentHex,
-  });
+  let stored: Awaited<ReturnType<typeof putBlob>>;
+  try {
+    stored = await putBlob({
+      bytes,
+      filename: file.name,
+      contentType: verdict.ok ? verdict.mimeType : "application/octet-stream",
+      workspaceId: auth.workspaceId,
+      contentHash: contentHex,
+    });
+  } catch (error) {
+    if (error instanceof ObjectStoreUnconfiguredError) {
+      return problemResponse(503, "storage_unconfigured", error.message);
+    }
+    throw error;
+  }
 
   // ponytail: a replay racing the first finalize hits the unique index and
   // surfaces as a 500; queue-front retries go through the receipt read above.

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
 import { sampleState } from "./sample-state";
 import { completionPatch, nextRank, reorderTasks, statusLabels } from "./tasks";
@@ -11,7 +11,7 @@ const artifact = z.object({ id: z.string(), title: z.string(), kind: z.enum(["no
 const schema = z.object({
   tasks: z.array(task), artifacts: z.array(artifact),
   artifactVersions: z.array(z.object({ id: z.string(), artifactId: z.string(), version: z.number().int().positive(), title: z.string(), body: z.string(), links: z.array(z.string()), tags: z.array(z.string()), createdAt: z.string() })).default([]),
-  captures: z.array(z.object({ id: z.string(), text: z.string(), kind: z.enum(["text", "url", "file"]), status: z.enum(["UNPROCESSED", "TASK", "NOTE", "ARCHIVED"]), createdAt: z.string() })),
+  captures: z.array(z.object({ id: z.string(), text: z.string(), kind: z.enum(["text", "url", "file"]), status: z.enum(["UNPROCESSED", "TASK", "NOTE", "ARCHIVED"]), createdAt: z.string(), attachment: z.object({ label: z.string(), value: z.string(), size: z.number().nonnegative() }).optional(), derivedId: z.string().optional() })),
   contacts: z.array(z.object({ id: z.string(), name: z.string(), email: z.string(), company: z.string(), role: z.string(), status: z.enum(["Active", "Follow up", "New"]), notes: z.string() })),
   companies: z.array(z.object({ id: z.string(), name: z.string(), industry: z.string(), domain: z.string(), notes: z.string() })),
   opportunities: z.array(z.object({ id: z.string(), title: z.string(), company: z.string(), stage: z.enum(["Saved", "Preparing", "Applied", "Interview", "Offer", "Closed"]), value: z.string(), notes: z.string() })),
@@ -94,7 +94,8 @@ function commitWithExpected(expectedRaw: string | null, next: WorkspaceState, ti
   let persisted = true;
   try {
     const raw = JSON.stringify(snapshot);
-    if (store) { store.setItem(key, raw); observedRaw = raw; }
+    if (!store) throw new Error("Browser storage is unavailable");
+    store.setItem(key, raw); observedRaw = raw;
     storageWarning = "";
   } catch { persisted = false; storageWarning = "Browser storage could not save this change. Keep this tab open or export your work; refreshing will lose unsaved changes."; }
   publish();
@@ -166,11 +167,30 @@ function updateArtifact(id: string, patch: Partial<Artifact>) {
   const version = { id: crypto.randomUUID(), artifactId: id, version: record.version, title: record.title, body: record.body, links: [...record.links], tags: [...record.tags], createdAt: record.updatedAt };
   return commitWithExpected(expectedRaw, { ...snapshot, artifacts: snapshot.artifacts.map((a) => a.id === id ? record : a), artifactVersions: [...snapshot.artifactVersions, ...baseline, version] }, "Artifact checkpoint saved");
 }
-function addCapture(text: string, kind: Capture["kind"] = "text") {
-  const record: Capture = { id: crypto.randomUUID(), text: text.trim(), kind, status: "UNPROCESSED", createdAt: new Date().toISOString() };
+function addCapture(text: string, kind: Capture["kind"] = "text", attachment?: Capture["attachment"]) {
+  const record: Capture = { id: crypto.randomUUID(), text: text.trim(), kind, status: "UNPROCESSED", createdAt: new Date().toISOString(), attachment };
   if (!record.text) return undefined;
-  commit({ ...getSnapshot(), captures: [record, ...snapshot.captures] }, "Item captured", record.text);
-  return record;
+  const result = commit({ ...getSnapshot(), captures: [record, ...snapshot.captures] }, "Item captured", record.text);
+  return result.ok ? record : undefined;
+}
+function clarifyCapture(id: string, kind: "task" | "note") {
+  const current = getSnapshot();
+  const capture = current.captures.find((record) => record.id === id);
+  if (!capture || capture.status !== "UNPROCESSED") return undefined;
+  const derivedId = crypto.randomUUID();
+  const at = new Date().toISOString();
+  const title = capture.text.split("\n")[0].slice(0, kind === "task" ? 300 : 200);
+  const captures = current.captures.map((record) => record.id === id ? { ...record, status: kind === "task" ? "TASK" as const : "NOTE" as const, derivedId } : record);
+  const next = { ...current, captures };
+  if (kind === "task") {
+    const task: Task = { id: derivedId, title, description: `${capture.text}\n\nOriginal capture: ${id}`, status: "INBOX", priority: "Medium", estimate: 25, tags: ["Inbox"], version: 1, rank: nextRank(current.tasks, "INBOX"), attachments: capture.attachment ? [{ id: crypto.randomUUID(), kind: "file", ...capture.attachment, addedAt: at }] : [] };
+    next.tasks = [task, ...current.tasks];
+  } else {
+    const artifact: Artifact = { id: derivedId, title, body: capture.text, kind: "note", tags: ["Inbox lineage"], links: [id], version: 1, updatedAt: at };
+    next.artifacts = [artifact, ...current.artifacts];
+    next.artifactVersions = [...current.artifactVersions, { id: crypto.randomUUID(), artifactId: derivedId, version: 1, title, body: artifact.body, links: [id], tags: artifact.tags, createdAt: at }];
+  }
+  return commit(next, "Capture clarified", `Original ${id} retained; ${kind} ${derivedId} created`).ok ? derivedId : undefined;
 }
 function updateCapture(id: string, patch: Partial<Capture>) { commit({ ...getSnapshot(), captures: snapshot.captures.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Capture clarified"); }
 function addContact(contact: Omit<Contact, "id">) { const record = { ...contact, id: crypto.randomUUID() }; commit({ ...getSnapshot(), contacts: [record, ...snapshot.contacts] }, "Contact created", record.name); return record; }
@@ -213,7 +233,7 @@ function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
 }
 function resetPreview() { commit(sampleState, "Sample workspace reset"); notify("Sample workspace reset. Your previous browser preview changes were replaced."); }
 
-return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
+return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, clarifyCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
 }
 export const previewWorkspace = createPreviewWorkspace();
 const WorkspaceContext = createContext(previewWorkspace);
@@ -240,5 +260,10 @@ export function PreviewStorageWarning() {
 export function WorkspaceProvider({ children, storageScope = "anonymous" }: { children: ReactNode; storageScope?: string }) {
   const [workspace] = useState(() => createPreviewWorkspace(storageScope));
   const message = useSyncExternalStore(workspace.subscribe, workspace.getNotice, () => "");
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => { if (workspace.getNotice() === message) workspace.notify(""); }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [message, workspace]);
   return <WorkspaceContext.Provider value={workspace}>{children}{message && <div role="status" className="panel fixed right-4 bottom-20 z-50 flex max-w-sm items-start gap-3 rounded-xl p-4 text-[13px] md:bottom-4"><span>{message}</span><button type="button" className="shrink-0 text-muted-foreground underline" aria-label="Dismiss notification" onClick={() => workspace.notify("")}>Dismiss</button></div>}</WorkspaceContext.Provider>;
 }

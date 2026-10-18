@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { apps, moreDestination } from "@/lib/navigation";
+import { appForPath, apps, moreDestination } from "@/lib/navigation";
 import { cn } from "cn";
 
 /*
@@ -26,7 +26,7 @@ export function MobileNav() {
       className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
     >
       {items.map(({ href, label, icon: Icon, ...rest }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
+        const active = "slug" in rest ? appForPath(pathname)?.slug === rest.slug : pathname === href;
         // `short` only exists on apps; the More entry has no such field.
         const text = "short" in rest ? rest.short : label;
         return (

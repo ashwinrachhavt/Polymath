@@ -5,6 +5,7 @@ import { Readout } from "@/components/readout";
 import { connection } from "next/server";
 import { getAuthContext } from "@/lib/auth";
 import { listRecentRuns } from "@/domains/agents/queries";
+import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
@@ -27,8 +28,22 @@ const stateLabel: Record<string, string> = {
 export default async function AlfredPage() {
   // Per-request data (auth upserts touch now()); opt this route out of prerender.
   await connection();
+  if (!process.env.DATABASE_URL?.trim()) {
+    return (
+      <>
+        <PageHeader title="Alfred" purpose="Delegate and inspect what it did." />
+        <div className="px-4 py-5 md:px-6">
+          <EmptyState
+            title="Agent storage is not configured"
+            description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Verified Clerk-to-Eve identity transport is not implemented."
+          />
+        </div>
+      </>
+    );
+  }
   const auth = await getAuthContext();
   const runs = await listRecentRuns(auth.workspaceId, 8);
+  const unavailable = eveBridgeUnavailableReason();
 
   return (
     <>
@@ -44,7 +59,7 @@ export default async function AlfredPage() {
 
       <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          <StartRunForm />
+          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm />}
         </Section>
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
@@ -58,7 +73,7 @@ export default async function AlfredPage() {
           {runs.length === 0 ? (
             <EmptyState
               title="No runs yet"
-              description="Describe an objective above and start one. A run is durable: reloading rebuilds its timeline, retries create a new run, and finished runs never change."
+              description={unavailable ? "Recorded runs appear here once agent execution is connected." : "Describe an objective above to start a development run."}
             />
           ) : (
             <ul className="flex flex-col divide-y divide-border">

@@ -50,6 +50,13 @@
       "when": 1792291616906,
       "tag": "0006_professional_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792300000000,
+      "tag": "0007_document_proposal_pass",
+      "breakpoints": true
     }
   ]
 }

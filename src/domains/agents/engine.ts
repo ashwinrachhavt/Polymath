@@ -31,8 +31,8 @@ export type PolicySnapshot = {
 };
 
 /**
- * The seam domain code sees. `sessionId` is the run id: the bridge keys its
- * mirror on it, so a run and its session are the same thing by construction.
+ * `sessionId` is the Axiom run UUID. A driver may allocate its own session ID;
+ * Eve persists that binding in session_ref before tools can resolve the run.
  */
 export interface SessionDriver {
   start(input: {
