@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -130,7 +132,7 @@ export const tasks = pgTable(
     workspaceId: tenantId(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     spaceId: uuid("space_id").references(() => spaces.id, { onDelete: "set null" }),
-    parentTaskId: uuid("parent_task_id"),
+    parentTaskId: uuid("parent_task_id").references((): AnyPgColumn => tasks.id, { onDelete: "set null" }),
     recurrenceTemplateId: uuid("recurrence_template_id").references(() => recurrenceTemplates.id, {
       onDelete: "set null",
     }),
@@ -158,6 +160,9 @@ export const tasks = pgTable(
     index("tasks_project_idx").on(t.projectId),
     index("tasks_space_idx").on(t.spaceId),
     index("tasks_recurrence_template_idx").on(t.recurrenceTemplateId),
+    index("tasks_parent_idx").on(t.parentTaskId).where(sql`parent_task_id is not null`),
+    check("tasks_parent_not_self_check", sql`parent_task_id is null or parent_task_id <> id`),
+    check("tasks_rank_format_check", sql`rank ~ '^[a-z]+$'`),
   ],
 );
 
@@ -187,6 +192,14 @@ export const taskDependencies = pgTable(
     uniqueIndex("task_dependencies_edge_key")
       .on(t.taskId, t.kind, t.dependsOnTaskId)
       .where(sql`depends_on_task_id is not null`),
+    uniqueIndex("task_dependencies_waiting_key")
+      .on(t.taskId, t.waitingOnType, t.waitingOnId)
+      .where(sql`waiting_on_id is not null`),
+    check(
+      "task_dependencies_target_check",
+      sql`(kind = 'waiting_on' and depends_on_task_id is null and waiting_on_id is not null)
+        or (kind <> 'waiting_on' and depends_on_task_id is not null and depends_on_task_id <> task_id)`,
+    ),
     index("task_dependencies_task_idx").on(t.taskId),
     index("task_dependencies_reverse_idx").on(t.dependsOnTaskId),
   ],

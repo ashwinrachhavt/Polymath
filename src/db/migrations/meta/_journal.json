@@ -64,6 +64,13 @@
       "when": 1792308000000,
       "tag": "0008_party_employment_and_person_links",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792400000000,
+      "tag": "0020_task_core_invariants",
+      "breakpoints": true
     }
   ]
 }
