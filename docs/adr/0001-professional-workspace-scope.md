@@ -131,6 +131,25 @@ A professional-workspace release ships only when:
    baseline (schema and behaviour).
 4. Cross-workspace merge attempts are blocked and audited.
 
+### Authorization matrix (ASH-120 F03)
+
+Roles are hierarchical: owner > admin > member > viewer. Membership is the only
+grant; Customer and Subscriber records confer nothing. Enforcement lives in
+`src/lib/auth/` (`resolveAuthContext`, `requireRole`, `assertWorkspaceScope`).
+
+| Capability        | owner | admin | member | viewer |
+|-------------------|:-----:|:-----:|:------:|:------:|
+| Briefing read     |   ✓   |   ✓   |   ✓    |   ✓    |
+| Work read         |   ✓   |   ✓   |   ✓    |   ✓    |
+| Work write        |   ✓   |   ✓   |   ✓    |        |
+| Reviews approve   |   ✓   |   ✓   |        |        |
+| Settings write    |   ✓   |   ✓   |        |        |
+| Membership manage |   ✓   |       |        |        |
+
+Postgres RLS is defense-in-depth on top of the `workspace_id` query-scope check
+and is deferred to a later ticket (F11/F12 territory). Custom role definitions
+beyond the four fixed roles are post-v1.
+
 ## Consequences
 
 - The spec's "single owner in v1" line is amended to "single-owner baseline;
