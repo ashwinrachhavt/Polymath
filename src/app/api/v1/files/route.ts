@@ -144,13 +144,20 @@ export const POST = authedHandler(async (auth, request) => {
   // recorded on the durable extraction row by extractDocument's own failure
   // path; swallow it so the log stays an observation, not an error storm.
   const documentId = result.documentId;
-  after(async () => {
+  const work = async () => {
     try {
       await extractDocument(auth, { documentId });
     } catch {
       // The extraction row carries the failure; the inbox offers a retry.
     }
-  });
+  };
+  try {
+    after(work);
+  } catch {
+    // Outside a request scope (a direct handler call, as in tests) `after`
+    // throws; run the same work fire-and-forget instead.
+    void work();
+  }
 
   return Response.json(
     { documentId: result.documentId, contentHash: result.contentHash },
