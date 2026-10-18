@@ -2,7 +2,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { createTask } from "@/domains/work/commands";
-import { taskLinks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { documentObligations, documents, fieldProposals } from "./schema";
@@ -119,6 +118,9 @@ export async function acceptObligation(
       {
         title: obligation.note ?? obligation.kind,
         dueAt: input.dueAt, // only the human's explicit date, never dueFromDocument
+        links: [
+          { targetType: "document", targetId: obligation.documentId, label: obligation.kind },
+        ],
       },
       tx,
     );
@@ -126,14 +128,6 @@ export async function acceptObligation(
       .update(documentObligations)
       .set({ taskId: task.id, updatedAt: new Date() })
       .where(eq(documentObligations.id, obligation.id));
-
-    await tx.insert(taskLinks).values({
-      workspaceId: auth.workspaceId,
-      taskId: task.id,
-      targetType: "document",
-      targetId: obligation.documentId,
-      label: obligation.kind,
-    });
     await tx.insert(auditEvents).values({
       workspaceId: auth.workspaceId,
       actorId: auth.userId,
