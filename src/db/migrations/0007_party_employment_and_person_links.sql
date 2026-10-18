@@ -30,6 +30,15 @@ CREATE INDEX "party_employment_person_idx" ON "party_employment" USING btree ("p
 --> statement-breakpoint
 CREATE INDEX "party_employment_organization_idx" ON "party_employment" USING btree ("organization_id","ended_at");
 --> statement-breakpoint
+-- The import probes "is this person already at this org" per row; the two
+-- indexes above lead with one column each and cannot serve both.
+CREATE UNIQUE INDEX "party_employment_current_key" ON "party_employment" USING btree ("workspace_id","person_id","organization_id") WHERE ended_at IS NULL;
+--> statement-breakpoint
+-- The connections import keys organizations on lower(name) (the Company column
+-- is the curated fact; the address domain usually is not the employer). The
+-- schema's name index is case-sensitive and cannot serve that lookup.
+CREATE INDEX "organizations_workspace_lower_name_idx" ON "organizations" USING btree ("workspace_id", lower(name)) WHERE archived_at IS NULL;
+--> statement-breakpoint
 -- Same target-type set as linkTargetKindCheck("task_links_target_type_check")
 -- in src/db/columns.ts, which gained "person" and "organization" for tasks
 -- that are about someone.

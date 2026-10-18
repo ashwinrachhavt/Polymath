@@ -64,7 +64,6 @@ export default async function WorkPage() {
               title: task.title,
               status: task.status,
               dueAt: task.dueAt,
-              createdAt: task.createdAt,
             }))}
           />
           <p className="text-muted-foreground mt-3 text-[13px]">

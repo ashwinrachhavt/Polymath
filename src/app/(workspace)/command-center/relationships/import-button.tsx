@@ -26,7 +26,7 @@ export function ImportButton() {
 
     startTransition(async () => {
       const csv = await file.text();
-      const result = await importConnectionsCsv({ csv, fileName: file.name });
+      const result = await importConnectionsCsv({ csv });
       if (result.ok) setSummary(result.summary);
       else setError(result.error);
     });

@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditEvents } from "@/domains/audit/schema";
+import { linkTargetKinds } from "@/db/columns";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -13,10 +14,30 @@ import { taskLinks, tasks } from "./schema";
 
 type Db = typeof db | TxDrizzle;
 
-/** Minimal insert with defaults (status "inbox", priority "none"). Returns the row. */
+export type TaskLinkInput = {
+  targetType: (typeof linkTargetKinds)[number];
+  targetId: string;
+  label?: string;
+};
+
+/**
+ * The only task insert. Defaults are status "inbox", priority "none", rank "m".
+ *
+ * `links` lives here rather than at each caller because "a task about a
+ * document / a person / an organization" is the same edge every caller wants
+ * to write, and writing it twice is how the two edges drift. The caller owns
+ * the audit row, because only it knows the action name that describes the
+ * change (an obligation acceptance is not a bare task creation).
+ */
 export async function createTask(
   auth: AuthContext,
-  input: { title: string; description?: string; dueAt?: Date; rank?: string },
+  input: {
+    title: string;
+    description?: string;
+    dueAt?: Date;
+    rank?: string;
+    links?: TaskLinkInput[];
+  },
   tx: Db = db,
 ) {
   const [task] = await tx
@@ -31,41 +52,34 @@ export async function createTask(
       updatedBy: auth.userId,
     })
     .returning();
+
+  if (input.links?.length) {
+    await tx.insert(taskLinks).values(
+      input.links.map((link) => ({
+        workspaceId: auth.workspaceId,
+        taskId: task.id,
+        targetType: link.targetType,
+        targetId: link.targetId,
+        label: link.label ?? null,
+      })),
+    );
+  }
   return task;
 }
 
-/**
- * Owner-created task. Same row as the one obligation acceptance writes —
- * there is no second task universe — so this is createTask plus the audit
- * row an owner-initiated change owes.
- */
+/** Owner-created task: createTask in its own transaction plus the task.created audit row. */
 export async function createOwnerTask(
   auth: AuthContext,
   input: { title: string; dueAt?: Date; personId?: string; organizationId?: string },
 ): Promise<{ id: string }> {
-  return withTransaction(async (tx) => {
-    const task = await createTask(auth, input, tx);
+  const links: TaskLinkInput[] = [];
+  if (input.personId) links.push({ targetType: "person", targetId: input.personId, label: "Person" });
+  if (input.organizationId) {
+    links.push({ targetType: "organization", targetId: input.organizationId, label: "Organization" });
+  }
 
-    // Links are what make a task "about" someone; they live on task_links so
-    // a person's tasks are one query, not a column per entity that grows.
-    if (input.personId) {
-      await tx.insert(taskLinks).values({
-        workspaceId: auth.workspaceId,
-        taskId: task.id,
-        targetType: "person",
-        targetId: input.personId,
-        label: "Person",
-      });
-    }
-    if (input.organizationId) {
-      await tx.insert(taskLinks).values({
-        workspaceId: auth.workspaceId,
-        taskId: task.id,
-        targetType: "organization",
-        targetId: input.organizationId,
-        label: "Organization",
-      });
-    }
+  return withTransaction(async (tx) => {
+    const task = await createTask(auth, { title: input.title, dueAt: input.dueAt, links }, tx);
 
     await tx.insert(auditEvents).values({
       workspaceId: auth.workspaceId,
@@ -93,7 +107,6 @@ export async function listOpenTasks(auth: AuthContext, input?: { limit?: number 
       title: tasks.title,
       status: tasks.status,
       dueAt: tasks.dueAt,
-      description: tasks.description,
       createdAt: tasks.createdAt,
     })
     .from(tasks)

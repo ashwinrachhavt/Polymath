@@ -1,7 +1,7 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
-import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { withTransaction } from "@/lib/db-transaction";
 import {
   contactPoints,
   organizations,
@@ -42,6 +42,9 @@ export type ImportSummary = {
 };
 
 const MAX_PROBLEMS = 30;
+/* One page per render for people and organizations; paginate past this when the
+ * lists outgrow one screen. */
+const LIST_PAGE = 200;
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** RFC 4180-ish CSV: quoted fields, doubled quotes, CRLF. One pass, no dependency. */
@@ -140,7 +143,62 @@ export async function importConnections(
     problems: [],
   };
 
+  // Pre-pass: every lookup the loop needs, in three reads instead of one per
+  // row. A 5k-row file was ~30k sequential round trips inside one open
+  // transaction; this is 3 plus the writes.
+  const skippedRow = (line: number, reason: string) => {
+    summary.skipped += 1;
+    if (summary.problems.length < MAX_PROBLEMS) summary.problems.push({ line, reason });
+  };
+
+  const emails = [...new Set(
+    rows.map((row) => (row["email address"] ?? "").toLowerCase()).filter(Boolean),
+  )];
+  const companyNames = [...new Set(
+    rows.map((row) => (row["company"] ?? "").trim()).filter(Boolean).map((n) => n.toLowerCase()),
+  )];
+
   await withTransaction(async (tx) => {
+    const knownPeople = new Map<string, string>();
+    if (emails.length) {
+      const points = await tx
+        .select({ value: contactPoints.value, personId: contactPoints.personId })
+        .from(contactPoints)
+        .where(
+          and(
+            eq(contactPoints.workspaceId, auth.workspaceId),
+            eq(contactPoints.kind, "email"),
+            inArray(contactPoints.value, emails),
+            isNull(contactPoints.archivedAt),
+          ),
+        );
+      for (const point of points) {
+        if (point.personId) knownPeople.set(point.value.toLowerCase(), point.personId);
+      }
+    }
+
+    const knownOrgs = new Map<string, string>();
+    const takenDomains = new Set<string>();
+    if (companyNames.length || emails.length) {
+      // The org read is by lower(name) so it cannot use the name index; it runs
+      // once per import rather than once per row, which is the cost that mattered.
+      const orgs = await tx
+        .select({ id: organizations.id, name: organizations.name, domain: organizations.domain })
+        .from(organizations)
+        .where(and(eq(organizations.workspaceId, auth.workspaceId), isNull(organizations.archivedAt)));
+      for (const org of orgs) {
+        knownOrgs.set(org.name.toLowerCase(), org.id);
+        if (org.domain) takenDomains.add(org.domain.toLowerCase());
+      }
+    }
+
+    const knownEdges = new Set<string>();
+    const edges = await tx
+      .select({ personId: partyEmployment.personId, organizationId: partyEmployment.organizationId })
+      .from(partyEmployment)
+      .where(and(eq(partyEmployment.workspaceId, auth.workspaceId), isNull(partyEmployment.endedAt)));
+    for (const edge of edges) knownEdges.add(`${edge.personId}:${edge.organizationId}`);
+
     for (const [index, row] of rows.entries()) {
       const line = index + 2; // header is line 1
       const email = (row["email address"] ?? "").toLowerCase();
@@ -151,38 +209,17 @@ export async function importConnections(
       const position = row["position"] ?? "";
 
       if (!fullName) {
-        summary.skipped += 1;
-        if (summary.problems.length < MAX_PROBLEMS) {
-          summary.problems.push({ line, reason: "No name on this row." });
-        }
+        skippedRow(line, "No name on this row.");
         continue;
       }
       if (email && !EMAIL_SHAPE.test(email)) {
-        summary.skipped += 1;
-        if (summary.problems.length < MAX_PROBLEMS) {
-          summary.problems.push({ line, reason: `"${email}" is not an email address.` });
-        }
+        skippedRow(line, `"${email}" is not an email address.`);
         continue;
       }
 
       // Identity: the verified email is the only automatic merge. A name match
       // creates a separate person on purpose — two Adas stay two people.
-      let personId: string | null = null;
-      if (email) {
-        const [point] = await tx
-          .select({ personId: contactPoints.personId })
-          .from(contactPoints)
-          .where(
-            and(
-              eq(contactPoints.workspaceId, auth.workspaceId),
-              eq(contactPoints.kind, "email"),
-              eq(contactPoints.value, email),
-              isNull(contactPoints.archivedAt),
-            ),
-          )
-          .limit(1);
-        personId = point?.personId ?? null;
-      }
+      let personId: string | null = email ? knownPeople.get(email) ?? null : null;
 
       if (personId) {
         summary.peopleMatched += 1;
@@ -198,6 +235,7 @@ export async function importConnections(
           })
           .returning({ id: people.id });
         personId = created.id;
+        if (email) knownPeople.set(email, created.id);
         summary.peopleCreated += 1;
 
         if (email) {
@@ -206,10 +244,10 @@ export async function importConnections(
             kind: "email" satisfies (typeof contactPointKind.enumValues)[number],
             value: email,
             isPrimary: true,
-            // Verified: the address came from the owner's own exported
-            // connections file, not from a document or a guess. The distinction
-            // the schema draws is provenance, and this is the owner's data.
-            isVerified: true,
+            // Owner-asserted, not provider-verified: schema.ts reserves
+            // isVerified for an address a provider confirmed. The owner's own
+            // export is strong evidence, but it is provenance, not verification.
+            isVerified: false,
             personId,
             createdBy: auth.userId,
             updatedBy: auth.userId,
@@ -225,60 +263,47 @@ export async function importConnections(
       // keying on it splits one employer into a dozen organizations. The
       // domain-first rule in ADR 0001 is for records discovered from real
       // business addresses, which this file rarely carries.
-      const [existingOrg] = await tx
-        .select({ id: organizations.id })
-        .from(organizations)
-        .where(
-          and(
-            eq(organizations.workspaceId, auth.workspaceId),
-            sql`lower(${organizations.name}) = ${companyName.toLowerCase()}`,
-            isNull(organizations.archivedAt),
-          ),
-        )
-        .limit(1);
-      let organizationId: string | null = existingOrg?.id ?? null;
+      let organizationId = knownOrgs.get(companyName.toLowerCase()) ?? null;
 
       if (!organizationId) {
         const domain = businessDomain(email);
+        // Only a domain the address confirms AND no other org owns; the unique
+        // index would otherwise throw mid-file.
+        const claimDomain = domain && !takenDomains.has(domain) ? domain : null;
         const [created] = await tx
           .insert(organizations)
           .values({
             workspaceId: auth.workspaceId,
             name: companyName,
-            // Only a domain the address confirms AND no other org owns; the
-            // unique index would otherwise throw mid-file.
-            domain: domain && !(await domainTaken(tx, auth.workspaceId, domain)) ? domain : null,
+            domain: claimDomain,
             createdBy: auth.userId,
             updatedBy: auth.userId,
           })
           .returning({ id: organizations.id });
         organizationId = created.id;
+        knownOrgs.set(companyName.toLowerCase(), created.id);
+        if (claimDomain) takenDomains.add(claimDomain);
         summary.organizationsCreated += 1;
       }
 
-      const [edge] = await tx
-        .select({ id: partyEmployment.id })
-        .from(partyEmployment)
-        .where(
-          and(
-            eq(partyEmployment.workspaceId, auth.workspaceId),
-            eq(partyEmployment.personId, personId),
-            eq(partyEmployment.organizationId, organizationId),
-            isNull(partyEmployment.endedAt),
-          ),
-        )
-        .limit(1);
-
-      if (!edge) {
-        await tx.insert(partyEmployment).values({
-          workspaceId: auth.workspaceId,
-          personId,
-          organizationId,
-          title: position || null,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        });
-        summary.employmentsLinked += 1;
+      const edgeKey = `${personId}:${organizationId}`;
+      if (!knownEdges.has(edgeKey)) {
+        // knownEdges covers duplicates inside this file; the unique index on
+        // the current edge covers a second import running concurrently.
+        const [created] = await tx
+          .insert(partyEmployment)
+          .values({
+            workspaceId: auth.workspaceId,
+            personId,
+            organizationId,
+            title: position || null,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .onConflictDoNothing()
+          .returning({ id: partyEmployment.id });
+        knownEdges.add(edgeKey);
+        if (created) summary.employmentsLinked += 1;
       }
     }
 
@@ -321,19 +346,6 @@ function businessDomain(email: string): string | null {
   return domain;
 }
 
-async function domainTaken(
-  tx: TxDrizzle,
-  workspaceId: string,
-  domain: string,
-) {
-  const [row] = await tx
-    .select({ id: organizations.id })
-    .from(organizations)
-    .where(and(eq(organizations.workspaceId, workspaceId), eq(organizations.domain, domain)))
-    .limit(1);
-  return Boolean(row);
-}
-
 export type PersonRow = {
   id: string;
   displayName: string;
@@ -342,60 +354,75 @@ export type PersonRow = {
   organizations: { id: string; name: string; title: string | null }[];
 };
 
-/** The Relationships read: every person with their current org edges. */
-export async function listPeople(auth: AuthContext, input?: { limit?: number }): Promise<PersonRow[]> {
-  const limit = Math.min(input?.limit ?? 200, 500);
-  const rows = await db
-    .select({
-      id: people.id,
-      displayName: people.displayName,
-      title: people.title,
-      email: sql<string | null>`(
-        select cp.value from contact_points cp
-        where cp.workspace_id = ${people.workspaceId}
-          and cp.person_id = ${people.id}
-          and cp.kind = 'email'
-          and cp.archived_at is null
-        order by cp.is_primary desc
-        limit 1
-      )`,
-      organizationId: organizations.id,
-      organizationName: organizations.name,
-      employmentTitle: partyEmployment.title,
-    })
+/*
+ * The Relationships read: one page of people, then two batched reads for their
+ * emails and current org edges. Three queries regardless of page size — the
+ * correlated-subquery version scanned contact_points once per person.
+ *
+ * `ponytail:` three queries in sequence, not one join. The join would fan out
+ * over both emails and employments and need the same collapse in JS anyway.
+ */
+export async function listPeople(auth: AuthContext): Promise<PersonRow[]> {
+  const page = await db
+    .select({ id: people.id, displayName: people.displayName, title: people.title })
     .from(people)
-    .leftJoin(
-      partyEmployment,
-      and(
-        eq(partyEmployment.personId, people.id),
-        eq(partyEmployment.workspaceId, people.workspaceId),
-        isNull(partyEmployment.endedAt),
-      ),
-    )
-    .leftJoin(organizations, eq(organizations.id, partyEmployment.organizationId))
     .where(and(eq(people.workspaceId, auth.workspaceId), isNull(people.archivedAt)))
     .orderBy(people.displayName)
-    .limit(limit);
+    .limit(LIST_PAGE);
+  if (page.length === 0) return [];
 
-  const byPerson = new Map<string, PersonRow>();
-  for (const row of rows) {
-    const person = byPerson.get(row.id) ?? {
-      id: row.id,
-      displayName: row.displayName,
-      title: row.title,
-      email: row.email,
-      organizations: [],
-    };
-    if (row.organizationId && row.organizationName) {
-      person.organizations.push({
-        id: row.organizationId,
-        name: row.organizationName,
-        title: row.employmentTitle,
-      });
+  const ids = page.map((person) => person.id);
+  const [emails, edges] = await Promise.all([
+    db
+      .select({ personId: contactPoints.personId, value: contactPoints.value })
+      .from(contactPoints)
+      .where(
+        and(
+          eq(contactPoints.workspaceId, auth.workspaceId),
+          eq(contactPoints.kind, "email"),
+          inArray(contactPoints.personId, ids),
+          isNull(contactPoints.archivedAt),
+        ),
+      )
+      .orderBy(desc(contactPoints.isPrimary)),
+    db
+      .select({
+        personId: partyEmployment.personId,
+        organizationId: organizations.id,
+        name: organizations.name,
+        title: partyEmployment.title,
+      })
+      .from(partyEmployment)
+      .innerJoin(organizations, eq(organizations.id, partyEmployment.organizationId))
+      .where(
+        and(
+          eq(partyEmployment.workspaceId, auth.workspaceId),
+          inArray(partyEmployment.personId, ids),
+          isNull(partyEmployment.endedAt),
+        ),
+      ),
+  ]);
+
+  // Primary first, so the first row seen for a person is the one shown; the
+  // schema allows only one primary per person per kind.
+  const emailByPerson = new Map<string, string>();
+  for (const email of emails) {
+    if (email.personId && !emailByPerson.has(email.personId)) {
+      emailByPerson.set(email.personId, email.value);
     }
-    byPerson.set(row.id, person);
   }
-  return [...byPerson.values()];
+  const orgsByPerson = new Map<string, PersonRow["organizations"]>();
+  for (const edge of edges) {
+    const list = orgsByPerson.get(edge.personId) ?? [];
+    list.push({ id: edge.organizationId, name: edge.name, title: edge.title });
+    orgsByPerson.set(edge.personId, list);
+  }
+
+  return page.map((person) => ({
+    ...person,
+    email: emailByPerson.get(person.id) ?? null,
+    organizations: orgsByPerson.get(person.id) ?? [],
+  }));
 }
 
 export type OrganizationRow = {
@@ -424,7 +451,8 @@ export async function listOrganizations(auth: AuthContext): Promise<Organization
     )
     .where(and(eq(organizations.workspaceId, auth.workspaceId), isNull(organizations.archivedAt)))
     .groupBy(organizations.id)
-    .orderBy(organizations.name);
+    .orderBy(organizations.name)
+    .limit(LIST_PAGE);
 
   return rows;
 }

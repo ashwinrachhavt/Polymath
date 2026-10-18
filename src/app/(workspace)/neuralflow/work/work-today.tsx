@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { statusLabels } from "@/components/workspace/tasks";
 import { completeTaskAction, createTaskAction } from "./actions";
 
 /*
@@ -19,18 +20,15 @@ export type OpenTask = {
   title: string;
   status: string;
   dueAt: Date | null;
-  createdAt: Date;
 };
 
-const statusLabel: Record<string, string> = {
-  inbox: "Inbox",
-  backlog: "Backlog",
-  ready: "Ready",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
-  cancelled: "Cancelled",
-};
+/* The DB enum is lowercase; components/workspace/tasks.ts owns the words. One
+ * vocabulary, so Work and the Command Center queue cannot drift on the same
+ * status. `cancelled` is the DB-only value and carries its own word. */
+function statusLabel(status: string): string {
+  if (status === "cancelled") return "Cancelled";
+  return statusLabels[status.toUpperCase() as keyof typeof statusLabels] ?? status;
+}
 
 function formatDue(dueAt: Date | null): string | null {
   if (!dueAt) return null;
@@ -116,7 +114,7 @@ function TaskRow({ task }: { task: OpenTask }) {
         <span className="text-muted-foreground shrink-0 text-[13px]">{formatDue(task.dueAt)}</span>
       ) : null}
       <span className="text-muted-foreground shrink-0 text-[12px]">
-        {statusLabel[task.status] ?? task.status}
+        {statusLabel(task.status)}
       </span>
     </li>
   );
