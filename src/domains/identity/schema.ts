@@ -4,6 +4,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -55,7 +56,12 @@ export const memberships = pgTable(
     status: membershipStatus("status").notNull().default("active"),
     ...mutable,
   },
-  (t) => [uniqueIndex("memberships_workspace_user_key").on(t.workspaceId, t.userId)],
+  (t) => [
+    uniqueIndex("memberships_workspace_user_key").on(t.workspaceId, t.userId),
+    // Serves the per-request authorization query (resolve.ts), which filters
+    // by user_id + status; the workspace-leading unique index cannot.
+    index("memberships_user_active_idx").on(t.userId).where(sql`status = 'active'`),
+  ],
 );
 
 export const userPreferences = pgTable(
@@ -101,6 +107,21 @@ export const apiClients = pgTable(
     ...mutable,
   },
   (t) => [index("api_clients_workspace_status_idx").on(t.workspaceId, t.status)],
+);
+
+export const apiClientUsage = pgTable(
+  "api_client_usage",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => apiClients.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    ...recorded,
+  },
+  (t) => [uniqueIndex("api_client_usage_key").on(t.clientId, t.day)],
 );
 
 /*
@@ -243,9 +264,15 @@ export const contactPoints = pgTable(
       foreignColumns: [organizations.workspaceId, organizations.id],
     })
       .onDelete("cascade"),
-    uniqueIndex("contact_points_primary_key")
-      .on(t.personId, t.organizationId, t.kind)
-      .where(sql`is_primary`),
+    // Exactly one primary per party per kind. Two indexes, not one over both
+    // sides: the one-side check leaves the other column NULL, and Postgres
+    // btree treats NULLs as distinct — a combined index would never fire.
+    uniqueIndex("contact_points_primary_person_key")
+      .on(t.personId, t.kind)
+      .where(sql`is_primary and organization_id is null`),
+    uniqueIndex("contact_points_primary_organization_key")
+      .on(t.organizationId, t.kind)
+      .where(sql`is_primary and person_id is null`),
     index("contact_points_value_idx").on(t.kind, t.value),
   ],
 );
@@ -270,9 +297,10 @@ export const externalIdentities = pgTable(
     ...recordedBy,
   },
   (t) => [
-    uniqueIndex("external_identities_provider_key").on(t.provider, t.providerAccountId),
-    // One person per (workspace, provider account): the link can be revisited,
-    // but two people cannot share one provider account inside a tenant.
+    // Scoped, not global: the same human legitimately exists in several
+    // workspaces (ADR 0001), so (provider, provider_account_id) must be
+    // unique only inside a tenant. Two people in one workspace cannot share
+    // one provider account.
     uniqueIndex("external_identities_workspace_provider_key")
       .on(t.workspaceId, t.provider, t.providerAccountId),
     index("external_identities_email_idx").on(t.workspaceId, t.email),
@@ -305,7 +333,6 @@ export const accountPersonLinks = pgTable(
       foreignColumns: [people.workspaceId, people.id],
     })
       .onDelete("cascade"),
-    uniqueIndex("account_person_links_key").on(t.workspaceId, t.accountId, t.personId),
     // One person per account per workspace: a second link for the same
     // account must name a different person or be an edit, not a duplicate.
     uniqueIndex("account_person_links_account_key").on(t.workspaceId, t.accountId),

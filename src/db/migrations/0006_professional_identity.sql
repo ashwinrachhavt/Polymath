@@ -105,15 +105,18 @@ ALTER TABLE "party_relationships" ADD CONSTRAINT "party_relationships_workspace_
 ALTER TABLE "party_relationships" ADD CONSTRAINT "party_relationships_person_fk" FOREIGN KEY ("workspace_id","person_id") REFERENCES "public"."people"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "party_relationships" ADD CONSTRAINT "party_relationships_organization_fk" FOREIGN KEY ("workspace_id","organization_id") REFERENCES "public"."organizations"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "people" ADD CONSTRAINT "people_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "account_person_links_key" ON "account_person_links" USING btree ("workspace_id","account_id","person_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "account_person_links_account_key" ON "account_person_links" USING btree ("workspace_id","account_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "contact_points_primary_key" ON "contact_points" USING btree ("person_id","organization_id","kind") WHERE is_primary;--> statement-breakpoint
+CREATE UNIQUE INDEX "contact_points_primary_person_key" ON "contact_points" USING btree ("person_id","kind") WHERE is_primary and person_id is not null and organization_id is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "contact_points_primary_organization_key" ON "contact_points" USING btree ("organization_id","kind") WHERE is_primary and organization_id is not null and person_id is null;--> statement-breakpoint
 CREATE INDEX "contact_points_value_idx" ON "contact_points" USING btree ("kind","value");--> statement-breakpoint
-CREATE UNIQUE INDEX "external_identities_provider_key" ON "external_identities" USING btree ("provider","provider_account_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "external_identities_workspace_provider_key" ON "external_identities" USING btree ("workspace_id","provider","provider_account_id");--> statement-breakpoint
 CREATE INDEX "external_identities_email_idx" ON "external_identities" USING btree ("workspace_id","email");--> statement-breakpoint
 CREATE INDEX "organizations_workspace_active_idx" ON "organizations" USING btree ("workspace_id","name") WHERE archived_at is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "organizations_workspace_domain_key" ON "organizations" USING btree ("workspace_id","domain") WHERE domain is not null;--> statement-breakpoint
 CREATE INDEX "party_relationships_person_idx" ON "party_relationships" USING btree ("person_id","kind");--> statement-breakpoint
 CREATE INDEX "party_relationships_organization_idx" ON "party_relationships" USING btree ("organization_id","kind");--> statement-breakpoint
-CREATE INDEX "people_workspace_active_idx" ON "people" USING btree ("workspace_id","display_name") WHERE archived_at is null;
+CREATE INDEX "people_workspace_active_idx" ON "people" USING btree ("workspace_id","display_name") WHERE archived_at is null;--> statement-breakpoint
+-- The per-request authorization query (identity/resolve.ts) filters
+-- memberships by user_id and status; the workspace-leading unique index
+-- cannot serve it.
+CREATE INDEX "memberships_user_active_idx" ON "memberships" USING btree ("user_id") WHERE status = 'active';
