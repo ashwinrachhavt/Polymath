@@ -9,8 +9,9 @@ import { expect, type Page } from "@playwright/test";
  * resolves on a still-fading button. Every axe run goes through here.
  */
 export async function waitSettled(page: Page, landmarks: { capture?: boolean; heading?: string } = {}) {
-  // Hydration: the capture button enables when the page has hydrated.
-  if (landmarks.capture !== false) await expect(page.getByRole("button", { name: "Capture", exact: true })).toBeEnabled();
+  // Hydration: the app launcher's trigger enables when the page has hydrated
+  // (it was the Capture button before the three-app shell landed).
+  if (landmarks.capture !== false) await expect(page.getByRole("button", { name: "Open apps" })).toBeEnabled();
   // Async client-only surfaces (the Notebook rich editor toolbar mounts
   // through immediatelyRender: false) hold disabled buttons a frame longer.
   if (landmarks.heading) await expect(page.getByRole("button", { name: landmarks.heading, exact: true })).toBeEnabled();

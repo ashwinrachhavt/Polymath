@@ -16,6 +16,8 @@ import type { AuthRole } from "@/domains/identity/resolve";
 
 export type Role = AuthRole;
 
+// `?? -1` keeps an unknown role fail-closed: without it, `undefined < n` is
+// false and an out-of-enum role would pass every check.
 const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
 
 /** Thrown by the guards; route handlers map it through problemResponse. */
@@ -31,7 +33,7 @@ export class ForbiddenRoleError extends Error {
 
 /** Throws unless the context's role meets or exceeds `minimum`. */
 export function requireRole(ctx: AuthContext, minimum: Role): void {
-  if (RANK[ctx.role] < RANK[minimum]) {
+  if ((RANK[ctx.role] ?? -1) < RANK[minimum]) {
     throw new ForbiddenRoleError(
       "AUTH_FORBIDDEN",
       `Requires ${minimum}; this member is ${ctx.role}.`,
