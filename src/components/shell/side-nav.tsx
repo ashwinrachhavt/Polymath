@@ -3,35 +3,37 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { Popover } from "radix-ui";
+import { ChevronsLeft, ChevronsRight, ChevronsUpDown, Search } from "lucide-react";
 import { cn } from "cn";
 import {
   additionalDestinationsIn,
+  appForPath,
   apps,
   destinationForPath,
   destinationsIn,
-  type AppSlug,
   type Destination,
 } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 /*
- * The Linear-style sidebar: one persistent lateral nav for the whole suite.
- * The workspace row sits on top, search under it, then one section per app
- * (Alfred, NeuralFlow, Command Center) plus the shared Workspace section.
- * It collapses to an icon rail; the choice persists in localStorage.
+ * The shell's left rail, GSuite-style: a product picker anchored at the top
+ * left (the active product's icon and name, opening a grid of all three
+ * products), and under it the feature sidebar for the product you are in.
+ * Shared workspace services (Reviews, Activity, Settings) sit at the bottom.
+ * Collapses to an icon rail; the choice persists in localStorage.
  *
  * Count badges come from the browser-preview workspace state, the only
  * counts available to chrome without a server round-trip.
  */
 
 const COLLAPSED_KEY = "axiom-sidenav-collapsed";
-const APP_ORDER: AppSlug[] = ["alfred", "neuralflow", "command-center"];
 
 export function SideNav() {
   const pathname = usePathname();
   const { state } = useWorkspace();
   const [collapsed, setCollapsed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
@@ -50,6 +52,7 @@ export function SideNav() {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
   }
 
+  const activeApp = appForPath(pathname);
   const activeHref = destinationForPath(pathname)?.href;
   const badges: Partial<Record<string, number>> = {
     "/command-center/inbox": state.captures.filter((capture) => capture.status === "UNPROCESSED").length,
@@ -58,6 +61,8 @@ export function SideNav() {
     "/neuralflow/work": state.tasks.length,
     "/alfred/knowledge": state.artifacts.length,
   };
+
+  const PickerIcon = activeApp?.icon;
 
   function itemLink(destination: Destination) {
     const active = activeHref === destination.href;
@@ -96,18 +101,61 @@ export function SideNav() {
       )}
     >
       <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-2.5">
-        <div className={cn("flex items-center gap-2 pb-1.5", collapsed ? "flex-col" : "px-1")}>
-          <span aria-hidden className="axiom-mark">A</span>
-          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight">Axiom</span>}
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground ml-auto flex size-6 shrink-0 items-center justify-center rounded-md transition-colors"
+        {/* The product picker: the top-left anchor. Shows the active product
+            and opens a grid of all three, GSuite-style. */}
+        <Popover.Root open={pickerOpen} onOpenChange={setPickerOpen}>
+          <Popover.Trigger
+            aria-label="Switch product"
+            className={cn(
+              "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3 data-[state=open]:bg-sidebar-accent",
+              collapsed ? "justify-center px-0" : "px-2",
+            )}
           >
-            {collapsed ? <ChevronsRight aria-hidden className="size-3.5" /> : <ChevronsLeft aria-hidden className="size-3.5" />}
-          </button>
-        </div>
+            {PickerIcon ? (
+              <span className="product-mark !size-6 !rounded-[5px]"><PickerIcon aria-hidden className="size-3.5" /></span>
+            ) : (
+              <span aria-hidden className="axiom-mark !size-6 !text-[15px]">A</span>
+            )}
+            {collapsed ? null : (
+              <>
+                <span className="min-w-0 flex-1 truncate text-left">{activeApp?.label ?? "Axiom"}</span>
+                <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+              </>
+            )}
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              align="start"
+              sideOffset={6}
+              className="panel bg-popover text-popover-foreground z-50 w-[268px] rounded-xl p-2 shadow-raised outline-none"
+            >
+              <p className="text-muted-foreground px-2 pt-1 pb-2 text-[11px] font-medium uppercase tracking-wider">Products</p>
+              <div className="grid grid-cols-3 gap-1">
+                {apps.map(({ slug, label, question, href, icon: Icon }) => {
+                  const active = activeApp?.slug === slug;
+                  return (
+                    <Link
+                      key={slug}
+                      href={href}
+                      onClick={() => setPickerOpen(false)}
+                      aria-current={active ? "true" : undefined}
+                      title={question}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 rounded-lg px-1 py-2.5 text-center outline-none",
+                        "hover:bg-accent focus-visible:ring-ring focus-visible:ring-3",
+                        active ? "bg-accent text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      <span className="product-mark !size-8"><Icon aria-hidden className="size-4" /></span>
+                      <span className="text-[11px] leading-tight font-medium">{label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
 
         <button
           type="button"
@@ -128,29 +176,50 @@ export function SideNav() {
           )}
         </button>
 
-        <div className="mt-2 flex flex-col gap-4">
-          {APP_ORDER.map((slug) => {
-            const app = apps.find((candidate) => candidate.slug === slug);
-            if (!app) return null;
-            const additional = additionalDestinationsIn(app.slug);
-            return (
-              <div key={app.slug}>
-                {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 mb-1 border-t" /> : (
-                  <p className="text-muted-foreground px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider">{app.label}</p>
-                )}
-                <div className="flex flex-col gap-px">{destinationsIn(app.slug).map(itemLink)}</div>
-                {additional.length > 0 ? (
-                  <div className="mt-0.5 flex flex-col gap-px opacity-75">{additional.map(itemLink)}</div>
-                ) : null}
-              </div>
-            );
-          })}
-          <div>
-            {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 mb-1 border-t" /> : (
-              <p className="text-muted-foreground px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider">Workspace</p>
-            )}
+        {/* The active product's features. */}
+        <div className="mt-2 flex flex-1 flex-col gap-0.5">
+          {activeApp ? (
+            <>
+              {collapsed ? null : (
+                <p className="text-muted-foreground px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider">{activeApp.label}</p>
+              )}
+              <div className="flex flex-col gap-px">{destinationsIn(activeApp.slug).map(itemLink)}</div>
+              {additionalDestinationsIn(activeApp.slug).length > 0 ? (
+                <>
+                  {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 my-2 border-t" /> : (
+                    <p className="text-muted-foreground px-2.5 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider">Preview tools</p>
+                  )}
+                  <div className="flex flex-col gap-px opacity-80">{additionalDestinationsIn(activeApp.slug).map(itemLink)}</div>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        {/* Shared workspace services and the collapse control, at the foot. */}
+        <div className="mt-auto flex flex-col gap-0.5 pt-2">
+          {activeApp ? (
+            <>
+              {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 mb-1 border-t" /> : (
+                <p className="text-muted-foreground px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider">Workspace</p>
+              )}
+              <div className="flex flex-col gap-px">{destinationsIn("shared").map(itemLink)}</div>
+            </>
+          ) : (
             <div className="flex flex-col gap-px">{destinationsIn("shared").map(itemLink)}</div>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={cn(
+              "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground mt-1 flex h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors",
+              collapsed ? "justify-center px-0" : "px-2.5",
+            )}
+          >
+            {collapsed ? <ChevronsRight aria-hidden className="size-4 shrink-0" /> : <ChevronsLeft aria-hidden className="size-4 shrink-0" />}
+            {collapsed ? null : <span>Collapse</span>}
+          </button>
         </div>
       </div>
     </nav>
