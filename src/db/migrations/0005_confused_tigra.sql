@@ -14,7 +14,6 @@ CREATE TABLE "document_obligations" (
 	"kind" text NOT NULL,
 	"note" text,
 	"due_from_document" timestamp with time zone,
-	"due_kind" text,
 	"dedupe_key" text NOT NULL,
 	"task_id" uuid,
 	"status" "obligation_status" DEFAULT 'proposed' NOT NULL,
@@ -61,8 +60,6 @@ CREATE TABLE "field_proposals" (
 	"normalized_value" jsonb,
 	"normalization_note" text,
 	"confidence" text,
-	"model" text,
-	"prompt_version" text,
 	"dedupe_key" text NOT NULL,
 	"status" "field_proposal_status" DEFAULT 'proposed' NOT NULL,
 	"decided_at" timestamp with time zone,
@@ -125,3 +122,4 @@ CREATE INDEX "document_parties_document_idx" ON "document_parties" USING btree (
 CREATE UNIQUE INDEX "field_proposals_dedupe_key" ON "field_proposals" USING btree ("document_id","dedupe_key");--> statement-breakpoint
 CREATE INDEX "field_proposals_workspace_status_idx" ON "field_proposals" USING btree ("workspace_id","status");--> statement-breakpoint
 CREATE INDEX "reviewed_assertions_subject_idx" ON "reviewed_assertions" USING btree ("workspace_id","subject_type","subject_id","attribute","status");
+CREATE INDEX "reviewed_assertions_workspace_document_active_idx" ON "reviewed_assertions" USING btree ("workspace_id","document_id") WHERE "status" = 'active';

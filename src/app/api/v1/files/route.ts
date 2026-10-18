@@ -1,8 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { authedHandler } from "@/lib/auth";
 import { problemResponse } from "@/lib/problems";
+import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, validateFile } from "@/lib/file-validation";
 import { putBlob } from "@/integrations/object-store/vercel-blob";
 import { auditEvents, blobObjects, outboxEvents, requestReceipts } from "@/domains/audit/schema";
@@ -18,21 +20,13 @@ import { documents, files } from "@/domains/knowledge/schema";
  * with the allowlist quarantines the original rather than losing it (a
  * preserved original beats a 415 the owner cannot retry). Idempotency-Key
  * replays return the stored response from request_receipts instead of
- * creating a duplicate document, and finalize writes the extraction outbox
- * row so upload never waits on AI enrichment.
+ * creating a duplicate, and finalize writes the extraction outbox row so
+ * upload never waits on AI enrichment.
  */
 
 const documentMeta = z.object({
   title: z.string().min(1).max(500),
 });
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function sha256Hex(input: string): Promise<string> {
-  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export const POST = authedHandler(async (auth, request) => {
   const contentType = request.headers.get("content-type") ?? "";
@@ -54,7 +48,7 @@ export const POST = authedHandler(async (auth, request) => {
   }
 
   const idempotencyKey = request.headers.get("idempotency-key");
-  if (idempotencyKey !== null && !UUID_RE.test(idempotencyKey)) {
+  if (idempotencyKey !== null && !z.string().uuid().safeParse(idempotencyKey).success) {
     return problemResponse(400, "invalid_request", "Idempotency-Key must be a UUID.");
   }
 
@@ -69,10 +63,9 @@ export const POST = authedHandler(async (auth, request) => {
 
   // Key the receipt on what the request actually carried: content, title.
   // Name and claimed type are excluded — a retry with a corrected filename is
-  // the same upload, a different title is not.
-  const contentHex = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  // the same upload, a different title is not. One digest serves both this
+  // receipt hash and the blob row via putBlob's contentHash passthrough.
+  const contentHex = await sha256Hex(bytes);
   const requestHash = idempotencyKey
     ? await sha256Hex(`${contentHex}:${parsedTitle.data}`)
     : null;
@@ -107,11 +100,12 @@ export const POST = authedHandler(async (auth, request) => {
     filename: file.name,
     contentType: verdict.ok ? verdict.mimeType : "application/octet-stream",
     workspaceId: auth.workspaceId,
+    contentHash: contentHex,
   });
 
   // ponytail: a replay racing the first finalize hits the unique index and
   // surfaces as a 500; queue-front retries go through the receipt read above.
-  const result = await db.transaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     const [blob] = await tx
       .insert(blobObjects)
       .values({
@@ -177,15 +171,18 @@ export const POST = authedHandler(async (auth, request) => {
         : `Quarantined ${file.name}: content did not match the allowlist`,
     });
 
-    // Receipt in the same transaction as finalize: a replay either sees both
-    // the document and the receipt, or neither.
-    if (idempotencyKey && documentId) {
+    // Receipt in the same transaction as finalize — for quarantine too: the
+    // retry path most likely to be exercised (re-POST after fixing something)
+    // must not mint a second blob + file row for the same key.
+    if (idempotencyKey) {
       await tx.insert(requestReceipts).values({
         workspaceId: auth.workspaceId,
         idempotencyKey,
         requestHash: requestHash!,
-        statusCode: 201,
-        response: { documentId, contentHash: stored.contentHash },
+        statusCode: documentId ? 201 : 200,
+        response: documentId
+          ? { documentId, contentHash: stored.contentHash }
+          : { fileId: fileRow.id, fileStatus: "quarantined" },
       });
     }
 

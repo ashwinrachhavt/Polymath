@@ -26,6 +26,18 @@ const holder: { db: ReturnType<typeof drizzle> | undefined; auth: { userId: stri
 };
 
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+// The route finalizes through db-transaction (the shared pool); point its
+// module-load DATABASE_URL at the scratch database too.
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    // The generic drizzle types disagree on row-shape Records; the runtime
+    // objects are interchangeable, so the cast is a test-only bridge.
+    return (fn: Parameters<
+      typeof import("@/lib/db-transaction").withTransaction
+    >[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
 vi.mock("@/lib/clerk", () => ({ clerkConfigured: true }));
 // The route's authedHandler would call Clerk's auth() otherwise; the suite
 // supplies the AuthContext directly, same swap the other suites make.

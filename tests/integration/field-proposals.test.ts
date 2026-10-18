@@ -23,7 +23,7 @@ const holder: {
 
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 
-import { proposeFields } from "@/domains/knowledge/fields";
+import { flagConflicts, proposeFields } from "@/domains/knowledge/fields";
 
 beforeAll(() => {
   if (!handle) return;
@@ -95,6 +95,56 @@ suite("field proposals", () => {
     const money = rows.find((r) => r.fieldKind === "money");
     expect(money?.rawValue).toBe("$1,200.00");
     expect(money?.normalizedValue).toEqual({ amount: 1200.0, currency: "USD" });
+  });
+
+  it("persists a conflict note from flagConflicts through proposeFields", async () => {
+    const db = holder.db!;
+    const { userId, workspaceId } = await seedWorkspace(db, `fields-conflict-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const [document] = await db
+      .insert(documents)
+      .values({ workspaceId, title: "Conflicted invoice" })
+      .returning();
+    const [extraction] = await db
+      .insert(documentExtractions)
+      .values({ workspaceId, documentId: document.id, contentHash: `hash-${crypto.randomUUID()}` })
+      .returning();
+
+    // flagConflicts marks the mismatch onto the field; the persistence
+    // boundary must merge it with the normalizer's note, not drop it.
+    const flagged = flagConflicts([
+      {
+        fieldKind: "money" as const,
+        fieldName: "line_item_1",
+        rawValue: "$100.00",
+        evidenceSpans: [],
+      },
+      {
+        fieldKind: "money" as const,
+        fieldName: "line_item_2",
+        rawValue: "$250.00",
+        evidenceSpans: [],
+      },
+      {
+        fieldKind: "money" as const,
+        fieldName: "total",
+        rawValue: "$400.00",
+        evidenceSpans: [],
+      },
+    ]);
+
+    await proposeFields(holder.auth!, {
+      documentId: document.id,
+      extractionId: extraction.id,
+      fields: flagged,
+    });
+
+    const rows = await db
+      .select()
+      .from(fieldProposals)
+      .where(eq(fieldProposals.documentId, document.id));
+    const total = rows.find((r) => r.fieldName === "total");
+    expect(total?.normalizationNote).toContain("line items sum to 350 but stated total is 400");
   });
 
   it("does not see another workspace's proposals", async () => {

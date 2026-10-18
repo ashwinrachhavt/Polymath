@@ -32,6 +32,10 @@ export async function proposeFields(
 ): Promise<{ proposed: number; skipped: number }> {
   const rows = input.fields.map((field) => {
     const normalized = normalizeFieldValue(field, input.currencyHint);
+    // Conflict notes from flagConflicts ride in on field.normalizationNote;
+    // merge them with the normalizer's own note so the flag survives to the
+    // row instead of dying at this boundary.
+    const note = [field.normalizationNote, normalized.note].filter(Boolean).join("; ") || null;
     return {
       workspaceId: auth.workspaceId,
       documentId: input.documentId,
@@ -40,7 +44,7 @@ export async function proposeFields(
       fieldName: field.fieldName,
       rawValue: field.rawValue,
       normalizedValue: normalized.normalizedValue,
-      normalizationNote: normalized.note,
+      normalizationNote: note,
       confidence: field.confidence ?? null,
       dedupeKey: fieldDedupeKey(field),
       evidenceSpans: field.evidenceSpans,
@@ -150,10 +154,8 @@ export function normalizeMoney(raw: string, currencyHint?: string): NormalizedFi
   // Numeric amount: first number in the text, stripping separators. Negative
   // and parenthesised negatives both honored.
   const negative = /^\(.*\)$/.test(value) || value.includes("-");
-  const match = /[\d][\d.,]*\d|[\d]/.exec(value.replace(/[()]/g, ""));
-  if (!match) return { normalizedValue: null, note: "no numeric amount found" };
-  const amount = Number(match[0].replace(/,/g, ""));
-  if (Number.isNaN(amount)) return { normalizedValue: null, note: "unparseable amount" };
+  const amount = parseAmount(value);
+  if (amount === null) return { normalizedValue: null, note: "no numeric amount found" };
 
   return {
     normalizedValue: { amount: negative ? -Math.abs(amount) : amount, currency },
@@ -165,6 +167,16 @@ const KNOWN_CURRENCIES = new Set([
   "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK",
   "INR", "CNY", "SGD", "HKD", "ZAR",
 ]);
+
+/** First number in a money string, separators stripped; null when none. One
+ * parser for normalizeMoney and flagConflicts — a fix to separator handling
+ * lands once, not three times. */
+function parseAmount(raw: string): number | null {
+  const match = /[\d][\d.,]*\d|[\d]/.exec(raw.replace(/[()]/g, ""));
+  if (!match) return null;
+  const amount = Number(match[0].replace(/,/g, ""));
+  return Number.isNaN(amount) ? null : amount;
+}
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -180,13 +192,9 @@ export function flagConflicts(fields: ExtractedField[]): ExtractedField[] {
   const total = money.find((f) => f.fieldName.toLowerCase() === "total");
   if (!total || lineItems.length < 2) return fields;
 
-  const sum = lineItems.reduce((acc, f) => {
-    const m = /[\d][\d.,]*\d|[\d]/.exec(f.rawValue.replace(/[()]/g, ""));
-    return m ? acc + Number(m[0].replace(/,/g, "")) : acc;
-  }, 0);
-  const totalMatch = /[\d][\d.,]*\d|[\d]/.exec(total.rawValue.replace(/[()]/g, ""));
-  if (!totalMatch) return fields;
-  const totalValue = Number(totalMatch[0].replace(/,/g, ""));
+  const sum = lineItems.reduce((acc, f) => acc + (parseAmount(f.rawValue) ?? 0), 0);
+  const totalValue = parseAmount(total.rawValue);
+  if (totalValue === null) return fields;
 
   if (Math.abs(sum - totalValue) > 0.005) {
     return fields.map((f) =>

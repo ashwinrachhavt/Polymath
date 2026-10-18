@@ -40,7 +40,7 @@ const textMatch = (query: string): SQL =>
       and to_tsvector('english', ${documentExtractions.text}) @@ plainto_tsquery('english', ${query})
   )`;
 
-const partyMatch = (column: SQL | ReturnType<typeof eq>): SQL =>
+const partyMatch = (column: SQL): SQL =>
   sql`exists (select 1 from document_parties where document_parties.document_id = ${documents.id} and ${column})`;
 
 export async function searchDocuments(auth: AuthContext, input: DocumentSearchInput = {}) {

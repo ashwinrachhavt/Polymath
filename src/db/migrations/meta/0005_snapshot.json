@@ -10148,12 +10148,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "due_kind": {
-          "name": "due_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "dedupe_key": {
           "name": "dedupe_key",
           "type": "text",
@@ -11405,18 +11399,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "prompt_version": {
-          "name": "prompt_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "dedupe_key": {
           "name": "dedupe_key",
           "type": "text",
@@ -12031,6 +12013,24 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "reviewed_assertions_workspace_document_active_idx": {
+          "name": "reviewed_assertions_workspace_document_active_idx",
+          "columns": [
+            {
+              "name": "workspace_id",
+              "type": "uuid"
+            },
+            {
+              "name": "document_id",
+              "type": "uuid"
+            }
+          ],
+          "isUnique": false,
+          "where": "status = 'active'",
           "concurrently": false,
           "method": "btree",
           "with": {}

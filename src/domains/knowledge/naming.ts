@@ -22,13 +22,16 @@ const pick = (fields: Fields, ...keys: string[]) => {
   return null;
 };
 
+/** Uppercase the first character; the one capitalizer this file uses. */
+const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
 /** Drop empty segments and adjacent separators; sentence-case the whole line. */
 const join = (parts: (string | null)[]) => {
   const title = parts
     .filter((p): p is string => Boolean(p && p.trim()))
     .map((p) => p.trim())
     .join(" — ");
-  return title ? title[0].toUpperCase() + title.slice(1) : "";
+  return capitalize(title);
 };
 
 /**
@@ -36,13 +39,12 @@ const join = (parts: (string | null)[]) => {
  * mixed-case names like "OpenAI" are left alone. Party names never go through
  * this — mangling a provenance name is worse than a loud one.
  */
-const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const cap = capitalize;
 
 export function sentenceCase(value: string): string {
   const trimmed = value.trim();
   if (!/^[A-Z0-9\s'-]+$/.test(trimmed) || !/[A-Z]/.test(trimmed)) return trimmed;
-  const lowered = trimmed.toLowerCase();
-  return lowered[0].toUpperCase() + lowered.slice(1);
+  return capitalize(trimmed.toLowerCase());
 }
 
 export function suggestTitle(docType: string, fields: Fields): string {

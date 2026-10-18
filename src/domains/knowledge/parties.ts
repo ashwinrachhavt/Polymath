@@ -2,6 +2,7 @@ import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { companies, contacts } from "../crm/schema";
 import {
   documentParties,
@@ -230,25 +231,46 @@ export async function resolvePartyCandidates(
         )
     : [];
 
+  // Display names for already-resolved parties: two batched lookups, not one
+  // query per party — the same shape getDocumentReview uses for this need.
+  const resolvedContactIds = parties
+    .filter((p) => p.resolutionStatus !== "unresolved" && p.contactId)
+    .map((p) => p.contactId!);
+  const resolvedCompanyIds = parties
+    .filter((p) => p.resolutionStatus !== "unresolved" && p.companyId)
+    .map((p) => p.companyId!);
+  const resolvedContacts = resolvedContactIds.length
+    ? await db
+        .select({ id: contacts.id, fullName: contacts.fullName })
+        .from(contacts)
+        .where(inArray(contacts.id, resolvedContactIds))
+    : [];
+  const resolvedCompanies = resolvedCompanyIds.length
+    ? await db
+        .select({ id: companies.id, name: companies.name })
+        .from(companies)
+        .where(inArray(companies.id, resolvedCompanyIds))
+    : [];
+  const contactNamesById = new Map(resolvedContacts.map((c) => [c.id, c.fullName]));
+  const companyNamesById = new Map(resolvedCompanies.map((c) => [c.id, c.name]));
+
   const results: PartyResolutionOption[] = [];
   for (const party of parties) {
     if (party.resolutionStatus !== "unresolved") {
       // Resolve the display name of the record it points at for the UI.
       let resolvedTo: PartyResolutionOption["resolvedTo"];
-      if (party.contactId) {
-        const [c] = await db
-          .select({ id: contacts.id, fullName: contacts.fullName })
-          .from(contacts)
-          .where(eq(contacts.id, party.contactId))
-          .limit(1);
-        if (c) resolvedTo = { kind: "contact", id: c.id, name: c.fullName };
-      } else if (party.companyId) {
-        const [co] = await db
-          .select({ id: companies.id, name: companies.name })
-          .from(companies)
-          .where(eq(companies.id, party.companyId))
-          .limit(1);
-        if (co) resolvedTo = { kind: "company", id: co.id, name: co.name };
+      if (party.contactId && contactNamesById.has(party.contactId)) {
+        resolvedTo = {
+          kind: "contact",
+          id: party.contactId,
+          name: contactNamesById.get(party.contactId)!,
+        };
+      } else if (party.companyId && companyNamesById.has(party.companyId)) {
+        resolvedTo = {
+          kind: "company",
+          id: party.companyId,
+          name: companyNamesById.get(party.companyId)!,
+        };
       }
       results.push({
         partyId: party.id,
@@ -288,6 +310,23 @@ export async function resolvePartyCandidates(
  * only; the resolution edge (documentId + role + target) is what stops a
  * reprocessed document from minting a second record.
  */
+/** One writer for the resolution update every decision ends with; the six
+ * decision branches differ only in the values, never in the shape. */
+function applyResolution(
+  partyId: string,
+  values: {
+    contactId: string | null;
+    companyId: string | null;
+    resolutionStatus: "matched" | "created" | "rejected" | "unresolved";
+    updatedBy: string;
+  },
+) {
+  return db
+    .update(documentParties)
+    .set({ ...values, updatedAt: new Date() })
+    .where(eq(documentParties.id, partyId));
+}
+
 export async function acceptParty(
   auth: AuthContext,
   input: { partyId: string; decision: PartyDecision },
@@ -305,59 +344,43 @@ export async function acceptParty(
 
   if (decision.action === "match") {
     if (decision.contactId) {
-      await db
-        .update(documentParties)
-        .set({
-          contactId: decision.contactId,
-          companyId: null,
-          resolutionStatus: "matched",
-          updatedBy: auth.userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(documentParties.id, party.id));
+      await applyResolution(party.id, {
+        contactId: decision.contactId,
+        companyId: null,
+        resolutionStatus: "matched",
+        updatedBy: auth.userId,
+      });
       return { ok: true, contactId: decision.contactId };
     }
     if (decision.companyId) {
-      await db
-        .update(documentParties)
-        .set({
-          companyId: decision.companyId,
-          contactId: null,
-          resolutionStatus: "matched",
-          updatedBy: auth.userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(documentParties.id, party.id));
+      await applyResolution(party.id, {
+        contactId: null,
+        companyId: decision.companyId,
+        resolutionStatus: "matched",
+        updatedBy: auth.userId,
+      });
       return { ok: true, companyId: decision.companyId };
     }
     throw new Error("match decision requires contactId or companyId");
   }
 
   if (decision.action === "reject") {
-    await db
-      .update(documentParties)
-      .set({
-        resolutionStatus: "rejected",
-        contactId: null,
-        companyId: null,
-        updatedBy: auth.userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(documentParties.id, party.id));
+    await applyResolution(party.id, {
+      contactId: null,
+      companyId: null,
+      resolutionStatus: "rejected",
+      updatedBy: auth.userId,
+    });
     return { ok: true };
   }
 
   if (decision.action === "leave_unresolved") {
-    await db
-      .update(documentParties)
-      .set({
-        resolutionStatus: "unresolved",
-        contactId: null,
-        companyId: null,
-        updatedBy: auth.userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(documentParties.id, party.id));
+    await applyResolution(party.id, {
+      contactId: null,
+      companyId: null,
+      resolutionStatus: "unresolved",
+      updatedBy: auth.userId,
+    });
     return { ok: true };
   }
 
@@ -365,21 +388,23 @@ export async function acceptParty(
   if (party.partyKind === "contact") {
     const fullName = decision.contact?.fullName ?? party.displayName;
     const primaryEmail = decision.contact?.primaryEmail;
-    // An existing contact with the same verified email is the same person —
-    // link it instead of creating a duplicate. Name alone is not identity.
-    let contactId: string | undefined;
-    if (primaryEmail) {
-      const [existing] = await db
-        .select({ id: contacts.id })
-        .from(contacts)
-        .where(
-          and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.primaryEmail, primaryEmail)),
-        )
-        .limit(1);
-      if (existing) contactId = existing.id;
-    }
-    if (!contactId) {
-      const [created] = await db
+    // One transaction: the CRM row, its audit event, and the party edge land
+    // together or not at all — an audit event claiming a decision that
+    // half-happened is the failure acceptObligation's transaction prevents.
+    const contactId = await withTransaction(async (tx) => {
+      // An existing contact with the same verified email is the same person —
+      // link it instead of creating a duplicate. Name alone is not identity.
+      if (primaryEmail) {
+        const [existing] = await tx
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(
+            and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.primaryEmail, primaryEmail)),
+          )
+          .limit(1);
+        if (existing) return existing.id;
+      }
+      const [created] = await tx
         .insert(contacts)
         .values({
           workspaceId: auth.workspaceId,
@@ -389,47 +414,42 @@ export async function acceptParty(
           updatedBy: auth.userId,
         })
         .returning({ id: contacts.id });
-      contactId = created.id;
 
-      await db.insert(auditEvents).values({
+      await tx.insert(auditEvents).values({
         workspaceId: auth.workspaceId,
         actorId: auth.userId,
         actorKind: "user",
         action: "contact.created_from_document",
         subjectType: "contact",
-        subjectId: contactId,
+        subjectId: created.id,
         summary: `Created contact ${fullName} from document party ${party.displayName}`,
         metadata: { documentId: party.documentId, partyId: party.id },
       });
-    }
+      return created.id;
+    });
 
-    await db
-      .update(documentParties)
-      .set({
-        contactId,
-        companyId: null,
-        resolutionStatus: "created",
-        updatedBy: auth.userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(documentParties.id, party.id));
+    await applyResolution(party.id, {
+      contactId,
+      companyId: null,
+      resolutionStatus: "created",
+      updatedBy: auth.userId,
+    });
     return { ok: true, contactId };
   }
 
-  // create company
+  // create company — same transactional shape as the contact path.
   const name = decision.company?.name ?? party.displayName;
   const domain = decision.company?.domain;
-  let companyId: string | undefined;
-  if (domain) {
-    const [existing] = await db
-      .select({ id: companies.id })
-      .from(companies)
-      .where(and(eq(companies.workspaceId, auth.workspaceId), eq(companies.domain, domain)))
-      .limit(1);
-    if (existing) companyId = existing.id;
-  }
-  if (!companyId) {
-    const [created] = await db
+  const companyId = await withTransaction(async (tx) => {
+    if (domain) {
+      const [existing] = await tx
+        .select({ id: companies.id })
+        .from(companies)
+        .where(and(eq(companies.workspaceId, auth.workspaceId), eq(companies.domain, domain)))
+        .limit(1);
+      if (existing) return existing.id;
+    }
+    const [created] = await tx
       .insert(companies)
       .values({
         workspaceId: auth.workspaceId,
@@ -439,30 +459,26 @@ export async function acceptParty(
         updatedBy: auth.userId,
       })
       .returning({ id: companies.id });
-    companyId = created.id;
 
-    await db.insert(auditEvents).values({
+    await tx.insert(auditEvents).values({
       workspaceId: auth.workspaceId,
       actorId: auth.userId,
       actorKind: "user",
       action: "company.created_from_document",
       subjectType: "company",
-      subjectId: companyId,
+      subjectId: created.id,
       summary: `Created company ${name} from document party ${party.displayName}`,
       metadata: { documentId: party.documentId, partyId: party.id },
     });
-  }
+    return created.id;
+  });
 
-  await db
-    .update(documentParties)
-    .set({
-      companyId,
-      contactId: null,
-      resolutionStatus: "created",
-      updatedBy: auth.userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(documentParties.id, party.id));
+  await applyResolution(party.id, {
+    contactId: null,
+    companyId,
+    resolutionStatus: "created",
+    updatedBy: auth.userId,
+  });
   return { ok: true, companyId };
 }
 

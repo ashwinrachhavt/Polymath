@@ -530,6 +530,7 @@ export const fieldKind = pgEnum("field_kind", [
   "address",
   "other",
 ]);
+export type FieldKind = (typeof fieldKind.enumValues)[number];
 export const assertionStatus = pgEnum("assertion_status", ["active", "superseded", "retracted"]);
 export const assertionSubjectType = pgEnum("assertion_subject_type", [
   "contact",
@@ -600,8 +601,6 @@ export const fieldProposals = pgTable(
     normalizedValue: jsonb("normalized_value"),
     normalizationNote: text("normalization_note"),
     confidence: text("confidence"),
-    model: text("model"),
-    promptVersion: text("prompt_version"),
     /** Stable per document+field context, so reprocessing finds its twin. */
     dedupeKey: text("dedupe_key").notNull(),
     status: fieldProposalStatus("status").notNull().default("proposed"),
@@ -677,7 +676,6 @@ export const documentObligations = pgTable(
     note: text("note"),
     /** A date in a document is not a deadline until a human accepts it. */
     dueFromDocument: timestamp("due_from_document", { withTimezone: true }),
-    dueKind: text("due_kind"),
     dedupeKey: text("dedupe_key").notNull(),
     // No FK, matching tasks.actionProposalId: the work domain sets this when
     // the obligation is accepted, and knowledge does not depend on work.

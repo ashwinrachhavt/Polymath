@@ -6,6 +6,7 @@ import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
 import type { ExtractionProvider } from "@/integrations/extraction/provider";
 import { blobObjects } from "../audit/schema";
 import { flagConflicts, proposeFields } from "./fields";
+import { proposeObligationsFromDocument } from "./obligations";
 import { documentExtractions, documents, files } from "./schema";
 
 /*
@@ -120,6 +121,15 @@ export async function extractDocument(
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);
         console.error(`field proposal failed for document ${input.documentId}: ${message}`);
+      }
+
+      // The rules pass reads the proposals that were just written; same
+      // never-sink-the-extraction guard, same idempotent re-run story.
+      try {
+        await proposeObligationsFromDocument(auth, { documentId: input.documentId });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        console.error(`obligation proposal failed for document ${input.documentId}: ${message}`);
       }
     }
 

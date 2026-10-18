@@ -1,4 +1,5 @@
 import { put } from "@vercel/blob";
+import { sha256Hex } from "@/lib/hash";
 
 /*
  * The Vercel Blob adapter (D2: Vercel primary, R2 documented fallback). Private
@@ -14,6 +15,8 @@ export async function putBlob(input: {
   filename: string;
   contentType: string;
   workspaceId: string;
+  /** Caller-supplied digest of the same bytes; skips re-hashing on intake. */
+  contentHash?: string;
 }): Promise<{ storageKey: string; contentHash: string; sizeBytes: number }> {
   // Private access: reads go through signed URLs, so a storage-key leak is not
   // a document leak. Public was never the intent for owned documents.
@@ -22,13 +25,6 @@ export async function putBlob(input: {
     new Blob([new Uint8Array(input.bytes)], { type: input.contentType }),
     { access: "private", addRandomSuffix: false },
   );
-  const contentHash = await sha256Hex(input.bytes);
+  const contentHash = input.contentHash ?? (await sha256Hex(input.bytes));
   return { storageKey: blob.url, contentHash, sizeBytes: input.bytes.byteLength };
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }

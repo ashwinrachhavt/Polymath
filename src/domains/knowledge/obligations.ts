@@ -4,6 +4,7 @@ import { auditEvents } from "@/domains/audit/schema";
 import { createTask } from "@/domains/work/commands";
 import { taskLinks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { documentObligations, documents, fieldProposals } from "./schema";
 
 /*
@@ -24,8 +25,8 @@ export function obligationDedupeKey(kind: string, documentId: string, fieldPropo
 type Rule = {
   kind: ObligationKind;
   note: string;
-  /** A field_proposals dedupeKey substring that gates the rule. */
-  match: (p: { fieldKind: string; fieldName: string; status: string }) => boolean;
+  /** Gates the rule off the proposal's kind and name; status is not a signal. */
+  match: (p: { fieldKind: string; fieldName: string }) => boolean;
 };
 
 const RULES: Rule[] = [
@@ -39,6 +40,13 @@ const RULES: Rule[] = [
     note: "This document has unresolved missing-field proposals. Supply the missing information.",
     match: (p) => /missing/.test(p.fieldName),
   },
+  // Never fired by the field loop (match always false): this rule keys off the
+  // document title, and the note is reused by the title-based hit below.
+  {
+    kind: "review_agreement",
+    note: "This looks like an agreement. Review its terms and execution status.",
+    match: () => false,
+  },
 ];
 
 export async function proposeObligation(
@@ -49,7 +57,6 @@ export async function proposeObligation(
     kind: string;
     note?: string;
     dueFromDocument?: Date;
-    dueKind?: "due" | "issue" | "expiration" | "service" | "renewal_window";
     dedupeKey: string;
   },
 ) {
@@ -62,7 +69,6 @@ export async function proposeObligation(
       kind: input.kind,
       note: input.note ?? null,
       dueFromDocument: input.dueFromDocument ?? null,
-      dueKind: input.dueKind ?? null,
       dedupeKey: input.dedupeKey,
       status: "proposed",
       createdBy: auth.userId,
@@ -84,7 +90,9 @@ export async function acceptObligation(
   auth: AuthContext,
   input: { obligationId: string; dueAt?: Date },
 ): Promise<{ taskId: string }> {
-  return db.transaction(async (tx) => {
+  // Atomic via the shared pool: the flip, the task, the link, and the audit
+  // row are one decision.
+  return withTransaction(async (tx) => {
     // Version-checked flip is the idempotency guard: a second accept matches
     // only status='proposed', so it cannot create a second task.
     const [obligation] = await tx
@@ -220,37 +228,36 @@ export async function proposeObligationsFromDocument(
       id: fieldProposals.id,
       fieldKind: fieldProposals.fieldKind,
       fieldName: fieldProposals.fieldName,
-      status: fieldProposals.status,
     })
     .from(fieldProposals)
     .where(
       and(eq(fieldProposals.documentId, input.documentId), eq(fieldProposals.workspaceId, auth.workspaceId)),
     );
 
-  const ruleHits = new Map<ObligationKind, (typeof proposals)[number]>();
+  // kind -> the matched rule and the proposal that fired it (null when the
+  // rule keys off the document itself, as the agreement title rule does).
+  const ruleHits = new Map<ObligationKind, { rule: Rule; proposalId: string | null }>();
   for (const p of proposals) {
     for (const rule of RULES) {
-      if (rule.match(p) && !ruleHits.has(rule.kind)) ruleHits.set(rule.kind, p);
+      if (rule.match(p) && !ruleHits.has(rule.kind)) ruleHits.set(rule.kind, { rule, proposalId: p.id });
     }
   }
   // The agreement rule keys off the document itself, not a field proposal.
   if (/agreement|contract/i.test(document.title) && !ruleHits.has("review_agreement")) {
     ruleHits.set("review_agreement", {
-      id: "",
-      fieldKind: "other",
-      fieldName: "",
-      status: "proposed",
+      rule: RULES.find((r) => r.kind === "review_agreement")!,
+      proposalId: null,
     });
   }
 
   const created: string[] = [];
-  for (const [kind, proposal] of ruleHits) {
+  for (const [kind, { rule, proposalId }] of ruleHits) {
     const obligation = await proposeObligation(auth, {
       documentId: input.documentId,
-      fieldProposalId: proposal.id || undefined,
+      fieldProposalId: proposalId ?? undefined,
       kind,
-      note: RULES.find((r) => r.kind === kind)?.note,
-      dedupeKey: obligationDedupeKey(kind, input.documentId, proposal.id || undefined),
+      note: rule.note,
+      dedupeKey: obligationDedupeKey(kind, input.documentId, proposalId ?? undefined),
     });
     if (obligation) created.push(obligation.id);
   }

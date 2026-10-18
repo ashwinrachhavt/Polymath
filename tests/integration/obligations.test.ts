@@ -16,7 +16,7 @@ import { taskLinks, tasks } from "@/domains/work/schema";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 
-const db = handle!.db;
+let db: NonNullable<typeof handle>["db"];
 let obligations: typeof import("@/domains/knowledge/obligations");
 
 afterAll(async () => {
@@ -31,6 +31,7 @@ suite("document obligations", () => {
 
   beforeAll(async () => {
     if (!handle) return;
+    db = handle.db;
     obligations = await import("@/domains/knowledge/obligations");
     const [user] = await db.insert(users).values({ clerkUserId: `clerk_obligations_${Date.now()}` }).returning();
     const [workspace] = await db
