@@ -23,6 +23,7 @@ import {
 import { getAuthContext } from "@/lib/auth";
 import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions } from "./decision-buttons";
 import { RetryExtractionButton } from "./retry-extraction-button";
+import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
 import { CaptureUrlForm } from "./capture-url-form";
@@ -244,7 +245,20 @@ export default async function KnowledgePage({
                           {doc.partyNames.length > 0 ? ` · ${doc.partyNames.join(", ")}` : ""}
                         </p>
                       </div>
-                      <StatusBadge label={status.label} tone={status.tone} />
+                      <div className="flex items-center gap-2">
+                        {/* A row that never got read heals from the inbox: a
+                            page re-fetches on the same document, a file re-runs
+                            the idempotent extraction route. */}
+                        {doc.kind === "web_page" && !doc.fetchedAt ? (
+                          <RetryCaptureButton url={doc.sourceUrl!} />
+                        ) : doc.extractionStatus === null || doc.extractionStatus === "failed" ? (
+                          <RetryExtractionButton
+                            documentId={doc.id}
+                            label={doc.extractionStatus === null ? "Read now" : "Retry"}
+                          />
+                        ) : null}
+                        <StatusBadge label={status.label} tone={status.tone} />
+                      </div>
                     </div>
                   </li>
                 );
