@@ -37,6 +37,11 @@ export class ForbiddenError extends Error {
 }
 
 export const getAuthContext = cache(async (): Promise<AuthContext> => {
+  // Same dev fallback as getAnyAuthContext below: without Clerk keys the
+  // proxy is a no-op and auth() throws. See the longer note there.
+  if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+    return resolveAuthContext("dev-user");
+  }
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
   return resolveAuthContext(userId);

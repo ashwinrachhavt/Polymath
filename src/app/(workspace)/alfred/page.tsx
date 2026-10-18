@@ -7,7 +7,6 @@ import { listRecentRuns } from "@/domains/agents/queries";
 import { StartRunForm } from "./start-run-form";
 
 export const metadata = { title: "Alfred · Axiom" };
-export const dynamic = "force-dynamic";
 
 /*
  * Conversation, delegation, and the run timeline. Reads the workspace's real

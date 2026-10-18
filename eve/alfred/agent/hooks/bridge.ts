@@ -225,6 +225,24 @@ export default defineHook({
       );
     },
 
+    async "turn.completed"(event, ctx) {
+      const workspaceId = workspaceIdOf(ctx);
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
+      // A completed turn does NOT close the run: a session waits for its next
+      // message rather than ending, so session.completed never fires for an
+      // open session. The turn boundary is what the timeline shows, and the
+      // run's waiting state stays honest until cancel or session end.
+      await guarded("turn.completed", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "turn.completed",
+          data: { turnId: event.data.turnId },
+        }),
+      );
+    },
+
     async "turn.cancelled"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
       const runId = await runIdOf(ctx);

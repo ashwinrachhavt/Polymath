@@ -40,17 +40,18 @@ function eveBaseUrl(): string {
 
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
-    async start({ sessionId, auth, objective }) {
+    async start({ sessionId, objective }) {
       const base = eveBaseUrl();
       const mount = base ? `${base}/eve/v1` : `/eve/${agentName}/v1`;
       const response = await fetch(`${mount}/session`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          // The spike channel's AuthFn maps this header to a session with our
-          // workspace id; replaced by real Clerk session auth when the channel
-          // grows a proper verifier.
-          "x-spike-clerk-user-id": auth.userId,
+          // The spike channel's AuthFn resolves this through resolveAuthContext,
+          // which expects a CLERK user id, not the internal one. One owner in
+          // v1, so a fixed key is correct and stable across requests; the
+          // channel grows a real Clerk verifier when keys land.
+          "x-spike-clerk-user-id": "dev-user",
         },
         body: JSON.stringify({
           // The objective IS the first message: eve only starts a turn when
@@ -82,7 +83,7 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       const mount = base ? `${base}/eve/v1` : `/eve/${agentName}/v1`;
       await fetch(`${mount}/session/${ref}/cancel`, {
         method: "POST",
-        headers: { "x-spike-clerk-user-id": "engine" },
+        headers: { "x-spike-clerk-user-id": "dev-user" },
       }).catch(() => undefined);
     },
   };
