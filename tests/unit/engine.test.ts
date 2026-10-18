@@ -189,7 +189,7 @@ describe("engine", () => {
 
     stubResults.select = { returning: [runningRun()] };
     await expect(engine.cancel(RUN.id, auth)).resolves.toEqual({ cancelled: true });
-    expect(driver.cancel).toHaveBeenCalledWith(RUN.id);
+    expect(driver.cancel).toHaveBeenCalledWith(RUN.id, auth);
 
     // The conditional update matched nothing the second time.
     stubResults.update = { returning: [] };
