@@ -36,6 +36,13 @@
       "when": 1792285481458,
       "tag": "0004_rare_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792291707265,
+      "tag": "0005_confused_tigra",
+      "breakpoints": true
     }
   ]
 }

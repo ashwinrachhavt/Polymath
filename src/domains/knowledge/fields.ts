@@ -1,0 +1,207 @@
+import { createHash } from "node:crypto";
+import type { AuthContext } from "@/domains/identity/resolve";
+import type { ExtractedField } from "@/integrations/extraction/provider";
+import { db } from "@/lib/db";
+import { fieldProposals } from "./schema";
+
+/*
+ * Field proposals: the machine's reading of a document, stored as rows a human
+ * decides about. rawValue is always the provider's verbatim output — user
+ * corrections land in acceptedValue on the row, never as edits to machine
+ * output. Normalization is conservative: an ambiguous value stays unresolved
+ * with a note saying why, because a guessed number on an invoice is worse than
+ * a blank one.
+ */
+
+export type FieldProposalInput = {
+  documentId: string;
+  extractionId: string;
+  fields: ExtractedField[];
+  /** Optional currency hint applied only when the raw value carries no currency of its own. */
+  currencyHint?: string;
+};
+
+/**
+ * Persist one extraction's structured fields as proposals. Idempotent per
+ * document on (documentId, dedupeKey): a re-run finds its twin and skips it.
+ * Lost inserts are success — the other writer proposed the same field.
+ */
+export async function proposeFields(
+  auth: AuthContext,
+  input: FieldProposalInput,
+): Promise<{ proposed: number; skipped: number }> {
+  const rows = input.fields.map((field) => {
+    const normalized = normalizeFieldValue(field, input.currencyHint);
+    return {
+      workspaceId: auth.workspaceId,
+      documentId: input.documentId,
+      extractionId: input.extractionId,
+      fieldKind: field.fieldKind,
+      fieldName: field.fieldName,
+      rawValue: field.rawValue,
+      normalizedValue: normalized.normalizedValue,
+      normalizationNote: normalized.note,
+      confidence: field.confidence ?? null,
+      dedupeKey: fieldDedupeKey(field),
+      evidenceSpans: field.evidenceSpans,
+    };
+  });
+  if (rows.length === 0) return { proposed: 0, skipped: 0 };
+
+  const inserted = await db
+    .insert(fieldProposals)
+    .values(rows)
+    // The (documentId, dedupeKey) unique index is the idempotency; a re-run of
+    // the same extraction must not duplicate proposals or revive rejected ones.
+    .onConflictDoNothing({
+      target: [fieldProposals.documentId, fieldProposals.dedupeKey],
+    })
+    .returning({ id: fieldProposals.id });
+
+  return { proposed: inserted.length, skipped: rows.length - inserted.length };
+}
+
+/** Stable per document: same kind+name+value always maps to the same key. */
+export function fieldDedupeKey(field: Pick<ExtractedField, "fieldKind" | "fieldName" | "rawValue">) {
+  return createHash("sha256")
+    .update(`${field.fieldKind}:${field.fieldName}:${field.rawValue}`)
+    .digest("hex");
+}
+
+/*
+ * Normalization — pure functions, exported for tests. Never guesses from
+ * document context in v1: an ambiguous date stays null with a note.
+ */
+
+export type NormalizedField = {
+  normalizedValue: unknown;
+  note: string | null;
+};
+
+export function normalizeFieldValue(
+  field: ExtractedField,
+  currencyHint?: string,
+): NormalizedField {
+  switch (field.fieldKind) {
+    case "date":
+      return normalizeDate(field.rawValue);
+    case "money":
+      return normalizeMoney(field.rawValue, currencyHint);
+    default:
+      // Identifier/text: trimmed raw is the normalized value when unambiguous
+      // (single line, no stray interior whitespace runs).
+      const trimmed = field.rawValue.trim();
+      if (/[\n\r]|\s{2,}/.test(trimmed)) {
+        return { normalizedValue: null, note: "raw value not a clean single-line value" };
+      }
+      return { normalizedValue: trimmed, note: null };
+  }
+}
+
+export function normalizeDate(raw: string): NormalizedField {
+  const value = raw.trim();
+
+  // Unambiguous first: ISO and long-form month names.
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (iso) return { normalizedValue: value, note: null };
+  const longForm = /^(\d{1,2}) ([A-Za-z]+) (\d{4})$/.exec(value);
+  if (longForm && !Number.isNaN(Date.parse(`1 ${longForm[2]} 2000`))) {
+    const month = String(new Date(`1 ${longForm[2]} 2000`).getMonth() + 1).padStart(2, "0");
+    return { normalizedValue: `${longForm[3]}-${month}-${longForm[1].padStart(2, "0")}`, note: null };
+  }
+  const monthFirst = /^([A-Za-z]+) (\d{1,2}),? (\d{4})$/.exec(value);
+  if (monthFirst && !Number.isNaN(Date.parse(`1 ${monthFirst[1]} 2000`))) {
+    const month = String(new Date(`1 ${monthFirst[1]} 2000`).getMonth() + 1).padStart(2, "0");
+    return { normalizedValue: `${monthFirst[3]}-${month}-${monthFirst[2].padStart(2, "0")}`, note: null };
+  }
+
+  // Numeric d/m/y: ambiguous unless the month part is > 12. Never guess.
+  const numeric = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(value);
+  if (numeric) {
+    const a = Number(numeric[1]);
+    const b = Number(numeric[2]);
+    if (a > 12 && b <= 12) {
+      return { normalizedValue: `${numeric[3]}-${pad2(b)}-${pad2(a)}`, note: null };
+    }
+    if (b > 12 && a <= 12) {
+      return { normalizedValue: `${numeric[3]}-${pad2(a)}-${pad2(b)}`, note: null };
+    }
+    return {
+      normalizedValue: null,
+      note: "date format ambiguous (dd/mm vs mm/dd)",
+    };
+  }
+
+  return { normalizedValue: null, note: "unrecognized date format" };
+}
+
+export function normalizeMoney(raw: string, currencyHint?: string): NormalizedField {
+  const value = raw.trim();
+
+  // Currency only from explicit evidence in the raw text or a supplied hint —
+  // never defaulted to USD.
+  let currency: string | null = null;
+  const symbol = /^([£€$¥])/.exec(value) ?? /([£€$¥])$/.exec(value);
+  if (symbol) currency = { "£": "GBP", "€": "EUR", $: "USD", "¥": "JPY" }[symbol[1]] ?? null;
+  const code = /\b([A-Z]{3})\b/.exec(value);
+  if (!currency && code && KNOWN_CURRENCIES.has(code[1])) currency = code[1];
+  if (!currency && currencyHint) currency = currencyHint;
+
+  // Numeric amount: first number in the text, stripping separators. Negative
+  // and parenthesised negatives both honored.
+  const negative = /^\(.*\)$/.test(value) || value.includes("-");
+  const match = /[\d][\d.,]*\d|[\d]/.exec(value.replace(/[()]/g, ""));
+  if (!match) return { normalizedValue: null, note: "no numeric amount found" };
+  const amount = Number(match[0].replace(/,/g, ""));
+  if (Number.isNaN(amount)) return { normalizedValue: null, note: "unparseable amount" };
+
+  return {
+    normalizedValue: { amount: negative ? -Math.abs(amount) : amount, currency },
+    note: null,
+  };
+}
+
+const KNOWN_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK",
+  "INR", "CNY", "SGD", "HKD", "ZAR",
+]);
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Cross-field validation, never repair: where the numbers disagree with each
+ * other, the note records it and both values are left untouched.
+ */
+export function flagConflicts(fields: ExtractedField[]): ExtractedField[] {
+  const money = fields.filter((f) => f.fieldKind === "money");
+  const lineItems = money.filter((f) => f.fieldName.toLowerCase() !== "total");
+  const total = money.find((f) => f.fieldName.toLowerCase() === "total");
+  if (!total || lineItems.length < 2) return fields;
+
+  const sum = lineItems.reduce((acc, f) => {
+    const m = /[\d][\d.,]*\d|[\d]/.exec(f.rawValue.replace(/[()]/g, ""));
+    return m ? acc + Number(m[0].replace(/,/g, "")) : acc;
+  }, 0);
+  const totalMatch = /[\d][\d.,]*\d|[\d]/.exec(total.rawValue.replace(/[()]/g, ""));
+  if (!totalMatch) return fields;
+  const totalValue = Number(totalMatch[0].replace(/,/g, ""));
+
+  if (Math.abs(sum - totalValue) > 0.005) {
+    return fields.map((f) =>
+      f.fieldKind === "money" && (f === total || lineItems.includes(f))
+        ? {
+            ...f,
+            normalizationNote: [
+              f.normalizationNote,
+              `line items sum to ${sum} but stated total is ${totalValue}`,
+            ]
+              .filter(Boolean)
+              .join("; "),
+          }
+        : f,
+    );
+  }
+  return fields;
+}

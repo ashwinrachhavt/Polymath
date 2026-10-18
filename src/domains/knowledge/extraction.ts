@@ -5,6 +5,7 @@ import { createDoclingDockerProvider } from "@/integrations/extraction/docling-d
 import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
 import type { ExtractionProvider } from "@/integrations/extraction/provider";
 import { blobObjects } from "../audit/schema";
+import { flagConflicts, proposeFields } from "./fields";
 import { documentExtractions, documents, files } from "./schema";
 
 /*
@@ -104,6 +105,24 @@ export async function extractDocument(
 
   if (row) {
     if (!result.ok) return { ok: false, error: result.error, extractionId: row.id };
+
+    // Field proposals ride on top of a successful extraction but must never
+    // sink it: plain text is the floor a document search depends on, structured
+    // fields are an enhancement. A failed proposal batch leaves the extraction
+    // row intact and logs; the next extraction run re-proposes (idempotent).
+    if (result.fields?.length) {
+      try {
+        await proposeFields(auth, {
+          documentId: input.documentId,
+          extractionId: row.id,
+          fields: flagConflicts(result.fields),
+        });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        console.error(`field proposal failed for document ${input.documentId}: ${message}`);
+      }
+    }
+
     return { ok: true, extractionId: row.id, text: result.text, deduplicated: false };
   }
 
