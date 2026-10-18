@@ -26,18 +26,18 @@ schema decisions, not UI decisions, until the owner asks otherwise.
    (spec § The suite). The boundary is a product boundary, never a deployment
    or data boundary: a second task table, a second note universe, or a second
    approval pipeline is a bug, however clean the app split looks.
-2. **Objects before pages.** Tasks, projects, people, documents, events,
+3. **Objects before pages.** Tasks, projects, people, documents, events,
    messages, and runs are canonical records. Screens are views over them.
-3. **One record, many views.** List, board, calendar, and focus read one task
+4. **One record, many views.** List, board, calendar, and focus read one task
    model. Never fork a second task universe to get a nicer screen.
-4. **AI proposes; policy disposes.** Model output never overrides deterministic
+5. **AI proposes; policy disposes.** Model output never overrides deterministic
    authorization. The risk table in the spec is law.
-5. **No invisible work.** Long jobs expose progress, cost, questions,
+6. **No invisible work.** Long jobs expose progress, cost, questions,
    cancellation, and artifacts. If the owner cannot see it, it did not happen.
-6. **Reversible by default.** External writes go through proposals with a
+7. **Reversible by default.** External writes go through proposals with a
    preview, a risk class, a dedupe key, and an expiry. Uncertain provider
    outcomes become `UNKNOWN` and reconcile before any retry.
-7. **Learning follows completion.** Reflection enriches finished work; it never
+8. **Learning follows completion.** Reflection enriches finished work; it never
    blocks it.
 
 ## Decisions already made — do not re-propose

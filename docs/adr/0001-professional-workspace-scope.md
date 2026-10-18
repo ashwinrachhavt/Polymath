@@ -134,8 +134,13 @@ A professional-workspace release ships only when:
 ### Authorization matrix (ASH-120 F03)
 
 Roles are hierarchical: owner > admin > member > viewer. Membership is the only
-grant; Customer and Subscriber records confer nothing. Enforcement lives in
-`src/lib/auth/` (`resolveAuthContext`, `requireRole`, `assertWorkspaceScope`).
+grant; Customer and Subscriber records confer nothing. Resolution lives in
+`src/domains/identity/resolve.ts` (`resolveAuthContext`, wired through
+`src/lib/auth.ts`); the guards (`requireRole`, `assertWorkspaceScope`) live in
+`src/lib/auth/guards.ts`. The matrix below is the target state the guards
+express — wiring every route through them is the F04+ enforcement work, so
+today the resolution spine is enforced but the per-capability checks are not
+yet called at each surface.
 
 | Capability        | owner | admin | member | viewer |
 |-------------------|:-----:|:-----:|:------:|:------:|

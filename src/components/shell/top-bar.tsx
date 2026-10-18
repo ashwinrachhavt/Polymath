@@ -26,7 +26,7 @@ export function TopBar() {
 
       <div className="ml-auto flex items-center gap-1">
         <Link
-          href="/command-center/reviews"
+          href="/reviews"
           aria-label="Open shared reviews"
           title="Shared reviews"
           className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center rounded-md"

@@ -76,23 +76,30 @@ function getSnapshot() {
   }
   return snapshot;
 }
-function commit(next: WorkspaceState, title: string, detail = "Browser preview only") {
+/*
+ * `ok` is false when the write was refused (another tab moved first), so an
+ * in-memory change that never reached storage is not reported as saved.
+ * `persisted` is false when storage itself failed; the caller must say so
+ * rather than announce a save.
+ */
+function commit(next: WorkspaceState, title: string, detail = "Browser preview only"): { ok: boolean; persisted: boolean } {
   const expectedRaw = observedRaw;
   getSnapshot();
   if (expectedRaw !== observedRaw) {
     storageWarning = "Another tab changed this workspace. This change was not saved; inspect the latest record and try again.";
     publish();
-    return false;
+    return { ok: false, persisted: false };
   }
   snapshot = { ...next, activity: [{ id: crypto.randomUUID(), title, detail, at: new Date().toISOString() }, ...next.activity].slice(0, 200) };
   const store = resolveStorage(storage);
+  let persisted = true;
   try {
     const raw = JSON.stringify(snapshot);
     if (store) { store.setItem(key, raw); observedRaw = raw; }
     storageWarning = "";
-  } catch { storageWarning = "Browser storage could not save this change. Keep this tab open or export your work; refreshing will lose unsaved changes."; }
+  } catch { persisted = false; storageWarning = "Browser storage could not save this change. Keep this tab open or export your work; refreshing will lose unsaved changes."; }
   publish();
-  return true;
+  return { ok: true, persisted };
 }
 function notify(message: string) { notice = message; publish(); }
 function addTask(title: string, extras: Partial<Omit<Task, "id" | "title" | "version" | "rank">> = {}) {
@@ -145,11 +152,11 @@ function addArtifact(title: string, kind: ArtifactKind, body = "") {
 }
 function updateArtifact(id: string, patch: Partial<Artifact>) {
   const current = getSnapshot().artifacts.find((a) => a.id === id);
-  if (!current) return;
+  if (!current) return { ok: false, persisted: false };
   const record = { ...current, ...patch, id: current.id, version: current.version + 1, updatedAt: new Date().toISOString() };
   const baseline = snapshot.artifactVersions.some((v) => v.artifactId === id && v.version === current.version) ? [] : [{ id: crypto.randomUUID(), artifactId: id, version: current.version, title: current.title, body: current.body, links: [...current.links], tags: [...current.tags], createdAt: current.updatedAt }];
   const version = { id: crypto.randomUUID(), artifactId: id, version: record.version, title: record.title, body: record.body, links: [...record.links], tags: [...record.tags], createdAt: record.updatedAt };
-  commit({ ...snapshot, artifacts: snapshot.artifacts.map((a) => a.id === id ? record : a), artifactVersions: [...snapshot.artifactVersions, ...baseline, version] }, "Artifact checkpoint saved");
+  return commit({ ...snapshot, artifacts: snapshot.artifacts.map((a) => a.id === id ? record : a), artifactVersions: [...snapshot.artifactVersions, ...baseline, version] }, "Artifact checkpoint saved");
 }
 function addCapture(text: string, kind: Capture["kind"] = "text") {
   const record: Capture = { id: crypto.randomUUID(), text: text.trim(), kind, status: "UNPROCESSED", createdAt: new Date().toISOString() };

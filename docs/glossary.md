@@ -45,8 +45,10 @@ workspace.
 The Account↔Workspace access grant. The only source of authorization; the role
 lives here.
 
-- **Example:** Meera's Account has a Membership with role `client`, granting
-  read access to one matter.
+- **Example:** Meera's Account has a Membership with role `viewer` in the
+  chambers workspace, so she can read what matters expose to clients. (A
+  per-matter `client` role is post-v1; today the enum is owner, admin,
+  member, viewer.)
 - **Counterexample:** "she's the customer, let her in" — no Membership, zero
   access, however important the relationship.
 
