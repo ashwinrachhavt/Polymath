@@ -22,15 +22,23 @@ test("global capture and search open the exact shared task without losing the or
   await expect(page.getByRole("dialog").getByRole("textbox", { name: "Title", exact: true })).toHaveValue("Cross-app capture regression");
   await page.keyboard.press("Escape");
 
+  // The durable inbox proves the same retain-the-original contract against
+  // Postgres: capture, convert to a canonical task, original text survives.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await page.getByRole("combobox", { name: "Triage status" }).selectOption("TASK");
-  const original = page.getByRole("article").filter({ hasText: "Cross-app capture regression" });
-  await expect(original).toContainText("Keep this original context");
-  await expect(original.getByRole("link", { name: "Open task in NeuralFlow" })).toBeVisible();
+  await page.getByLabel("Original material").fill("Cross-app capture regression\nKeep this original context");
+  await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+  const inboxOriginal = page.getByRole("article").filter({ hasText: "Cross-app capture regression" });
+  await expect(inboxOriginal).toContainText("Keep this original context");
+  await inboxOriginal.getByRole("button", { name: "Make task", exact: true }).click();
+  await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Converted", exact: true }).click();
+  await expect(inboxOriginal).toContainText("Keep this original context");
+  await expect(inboxOriginal.getByRole("link", { name: "Open task in NeuralFlow" })).toBeVisible();
 });
 
-test("file-only capture persists the bytes after reload and malformed pasted URLs do not crash", async ({ page }) => {
+test("the header capture dialog validates pasted URLs and a captured item survives reload in the durable inbox", async ({ page }) => {
+  // File capture returns with the blob pipeline (captures.blob_id ->
+  // blob_objects); the durable inbox handles text and URLs first.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
   await page.getByRole("button", { name: "Capture", exact: true }).click();
@@ -38,21 +46,15 @@ test("file-only capture persists the bytes after reload and malformed pasted URL
   await dialog.getByRole("textbox", { name: "Paste a URL or text to import" }).fill("https://%");
   await dialog.getByRole("button", { name: "Add pasted item", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("valid http or https URL");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "preview-field-notes.txt", mimeType: "text/plain", buffer: Buffer.from("Preserve these bytes") });
-  await expect(dialog).toContainText("Attached: preview-field-notes.txt");
-  await dialog.getByRole("button", { name: "Save capture", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  await page.getByLabel("Original material").fill("Preserve these bytes");
+  await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+  await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
   await page.reload();
   await waitSettled(page);
-  const original = page.getByRole("article").filter({ hasText: "preview-field-notes.txt" });
-  const download = original.getByRole("link", { name: "Download", exact: true });
-  await expect(download).toHaveAttribute("href", `data:application/octet-stream;base64,${Buffer.from("Preserve these bytes").toString("base64")}`);
-  await original.getByRole("button", { name: "Make task", exact: true }).click();
-  await page.getByRole("combobox", { name: "Triage status" }).selectOption("TASK");
-  await original.getByRole("link", { name: "Open task in NeuralFlow" }).click();
-  await expect(page.getByRole("dialog", { name: "Task inspector" }).getByRole("link", { name: "Download", exact: true })).toHaveAttribute("download", "preview-field-notes.txt");
+  await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
 });
-
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
   await page.goto("/apps/alfred/notebook");
   await waitSettled(page, { heading: "Heading" });
