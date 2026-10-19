@@ -3,7 +3,7 @@ import { waitSettled } from "./helpers/settled";
 
 // Exercise both header systems at narrow and wide widths. Geometry checks
 // protect the shared gutters; visual inspection still owns design quality.
-for (const width of [390, 1440]) {
+for (const width of [390, 1440, 1920]) {
   test(`shared page edges and controls align at ${width}px`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width, height: 960 });

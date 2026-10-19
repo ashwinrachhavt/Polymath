@@ -410,6 +410,9 @@ background: var(--card);
 }
 }
 @media (max-width: 767px) {
+.page-header {
+padding-top: 20px;
+}
 .suite-screen {
 padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
 }
