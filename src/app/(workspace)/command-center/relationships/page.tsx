@@ -151,7 +151,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
             {!list.items.length ? (
               <Empty
                 title="No matching contacts"
-                description="Change the filters or create a contact. Imported LinkedIn connections live in the identity domain until the two records merge (ASH-135)."
+                description="Change the filters or create a contact. Imported LinkedIn connections live in the identity domain until the two records merge."
               />
             ) : null}
           </Panel>
@@ -365,8 +365,8 @@ export default function RelationshipsPage({ searchParams }: { searchParams: Sear
     <>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
         <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
-          Importing writes people and organizations to the identity domain.
-          Merging them with CRM contacts is tracked as ASH-135.
+          Importing writes people and organizations to the identity domain;
+          merging them with CRM contacts is still open work.
         </p>
         <ImportButton />
       </div>

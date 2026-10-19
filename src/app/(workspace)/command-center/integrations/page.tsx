@@ -25,7 +25,7 @@ async function Connectors() {
       title="Connectors"
       description="What Axiom can talk to, and which accounts are wired. External writes always require an explicit account and your approval; nothing connects or sends by default."
     >
-      <Panel title="Register an account" description="Creates the bookkeeping row in a connecting state. The OAuth handshake itself is scaffolding until the provider work lands.">
+      <Panel title="Register an account" description="Creates the bookkeeping row in a connecting state. The OAuth handshake arrives with the provider connection work; until then the row is bookkeeping only.">
         <RegisterForm providers={connectors.map((c) => ({ provider: c.provider, displayName: c.displayName }))} />
       </Panel>
 

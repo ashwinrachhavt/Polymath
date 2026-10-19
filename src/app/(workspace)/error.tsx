@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 /*
@@ -7,7 +8,12 @@ import { Button } from "@/components/ui/button";
  * their more specific boundaries; this one catches every other destination so
  * a broken screen never falls through to the root error and loses the shell.
  */
-export default function WorkspaceError({ reset }: { reset: () => void }) {
+export default function WorkspaceError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  // The boundary is where a render crash becomes visible; log the real error
+  // here or it is swallowed behind the generic copy (ASH-163).
+  useEffect(() => {
+    console.error("Workspace screen failed", error);
+  }, [error]);
   return (
     <div role="alert" className="flex flex-1 flex-col justify-center p-6">
       <h1 className="text-lg font-medium">This screen could not open</h1>
