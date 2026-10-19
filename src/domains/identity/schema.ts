@@ -11,6 +11,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -61,6 +62,58 @@ export const memberships = pgTable(
     // Serves the per-request authorization query (resolve.ts), which filters
     // by user_id + status; the workspace-leading unique index cannot.
     index("memberships_user_active_idx").on(t.userId).where(sql`status = 'active'`),
+  ],
+);
+
+/*
+ * ASH-121 AC03: custom role definitions. The key is immutable (there is no
+ * update path for it), the label and description are editable, and every edit
+ * appends an immutable revision pinned to a capability-catalog version, so a
+ * stored assignment can always be read against the catalog it was defined
+ * under. Archiving preserves history. Enforcement does not read these yet -
+ * guards.ts RANK remains the authorization surface.
+ */
+export const roleDefinitions = pgTable(
+  "role_definitions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Stable machine key, e.g. "billing_clerk". Immutable once created. */
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("role_definitions_workspace_key_key").on(t.workspaceId, t.key),
+    // Composite reference target: a revision can only point at a definition
+    // in the same workspace.
+    unique("role_definitions_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
+);
+
+/** Append-only: a role edit makes a new revision; an existing one never changes (DB-trigger enforced). */
+export const roleDefinitionRevisions = pgTable(
+  "role_definition_revisions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    revision: integer("revision").notNull(),
+    /** The capability-catalog version these capabilities were validated against. */
+    catalogVersion: integer("catalog_version").notNull(),
+    /** string[] of capability keys from the catalog; validated in the domain layer. */
+    capabilities: jsonb("capabilities").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    foreignKey({
+      name: "role_definition_revisions_definition_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    unique("role_definition_revisions_workspace_id_id_key").on(t.workspaceId, t.id),
+    unique("role_definition_revisions_definition_revision_key").on(t.roleDefinitionId, t.revision),
   ],
 );
 
