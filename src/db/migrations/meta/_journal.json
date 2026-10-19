@@ -239,6 +239,13 @@
       "tag": "0170_agent_principals",
       "when": 1792480200000,
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "tag": "0171_agent_delegation_grants",
+      "when": 1792480210000,
+      "breakpoints": true
     }
   ]
 }
