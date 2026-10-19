@@ -41,7 +41,7 @@ async function setup(slug: string, opts: { approve: boolean }) {
       provider: "gmail",
       alias: `a-${Date.now()}`,
       status: "active",
-      composioConnectedAccountId: "ca_test",
+      composioConnectedAccountId: `ca_${crypto.randomUUID()}`,
       createdBy: userId,
       updatedBy: userId,
     })
