@@ -6,11 +6,14 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 import {
   FileImage,
   FileText,
+  Folder,
+  FolderPlus,
   Globe,
   LayoutGrid,
   List,
   Search,
   Share2,
+  Tag,
   Upload,
   X,
 } from "lucide-react";
@@ -26,11 +29,20 @@ import {
   matchesQuery,
   rangeIds,
   sortRows,
+  tagCounts,
   statusLabel,
   type BrowserRow,
   type FolderId,
   type SortKey,
 } from "@/domains/knowledge/file-browser";
+import {
+  addTagAction,
+  createFolderAction,
+  moveDocumentsAction,
+  removeFolderAction,
+  removeTagAction,
+  renameFolderAction,
+} from "./actions";
 import { PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 
@@ -65,7 +77,19 @@ function StatusBadge({ row }: { row: BrowserRow }) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserRow[]; truncated: boolean }) {
+export type FolderItem = { id: string; name: string; version: number };
+
+const DRAG_TYPE = "application/x-axiom-documents";
+
+export function FileExplorer({
+  initialRows,
+  folders,
+  truncated,
+}: {
+  initialRows: BrowserRow[];
+  folders: FolderItem[];
+  truncated: boolean;
+}) {
   const router = useRouter();
   // The server re-renders after an upload or re-read; its rows are the truth.
   const rows = initialRows;
@@ -80,6 +104,10 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [tagDraft, setTagDraft] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -90,6 +118,8 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
   };
 
   const counts = useMemo(() => folderCounts(rows), [rows]);
+  const tags = useMemo(() => tagCounts(rows), [rows]);
+  const activeFolder = folder.startsWith("folder:") ? folders.find((f) => `folder:${f.id}` === folder) ?? null : null;
   const visible = useMemo(
     () => sortRows(rows.filter((r) => inFolder(r, folder) && matchesQuery(r, query)), sort),
     [rows, folder, query, sort],
@@ -166,6 +196,35 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
     setNotice(`Copied ${selectedRows.length} title${selectedRows.length === 1 ? "" : "s"}.`);
   }
 
+  async function organise(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
+    const result = await fn();
+    setNotice(result.ok ? done : result.error);
+    if (result.ok) router.refresh();
+    return result.ok;
+  }
+
+  const move = (documentIds: string[], folderId: string | null) =>
+    organise(() => moveDocumentsAction(documentIds, folderId), folderId ? "Moved." : "Moved to Unfiled.");
+
+  async function submitNewFolder() {
+    const name = newFolder?.trim();
+    if (!name) return setNewFolder(null);
+    const result = await createFolderAction(name);
+    if (result.ok) {
+      setNewFolder(null);
+      setFolder(`folder:${result.folderId}`);
+      router.refresh();
+    } else {
+      setNotice(result.error);
+    }
+  }
+
+  function startDrag(event: React.DragEvent, id: string) {
+    const ids = selected.includes(id) ? selected : [id];
+    event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(ids));
+    event.dataTransfer.effectAllowed = "move";
+  }
+
   function onKeyDown(event: React.KeyboardEvent) {
     const target = event.target as HTMLElement;
     if (target.matches("input, select, textarea")) {
@@ -231,7 +290,7 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
         </div>
       ) : null}
 
-      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 md:w-56 md:flex-col md:border-r md:border-b-0 md:p-3">
+      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 md:w-56 md:flex-col md:overflow-y-auto md:border-r md:border-b-0 md:p-3">
         {FOLDERS.map((f) => (
           <button
             key={f.id}
@@ -245,8 +304,87 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
             <Readout className="text-xs text-muted-foreground">{counts[f.id]}</Readout>
           </button>
         ))}
+        <div className="text-muted-foreground mt-3 hidden items-center justify-between px-2.5 text-xs md:flex">
+          <span>My folders</span>
+          <button type="button" aria-label="New folder" onClick={() => setNewFolder("")} className="hover:bg-muted rounded p-0.5">
+            <FolderPlus aria-hidden className="size-3.5" />
+          </button>
+        </div>
+        <button type="button" onClick={() => setNewFolder("")} className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] whitespace-nowrap md:hidden">
+          <FolderPlus aria-hidden className="size-3.5" /> New folder
+        </button>
+        {newFolder !== null ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitNewFolder();
+            }}
+          >
+            <input
+              autoFocus
+              value={newFolder}
+              onChange={(e) => setNewFolder(e.target.value)}
+              onBlur={() => !newFolder.trim() && setNewFolder(null)}
+              onKeyDown={(e) => e.key === "Escape" && setNewFolder(null)}
+              maxLength={80}
+              aria-label="Folder name"
+              placeholder="Folder name"
+              className="border-input bg-background focus-visible:ring-ring h-8 w-full min-w-32 rounded-md border px-2 text-[13px] outline-none focus-visible:ring-2"
+            />
+          </form>
+        ) : null}
+        {folders.map((f) => {
+          const id = `folder:${f.id}`;
+          const n = rows.filter((r) => r.folderId === f.id).length;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              aria-current={folder === id ? "page" : undefined}
+              onClick={() => setFolder(id)}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+                  e.preventDefault();
+                  setDropTarget(f.id);
+                }
+              }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(e) => {
+                const raw = e.dataTransfer.getData(DRAG_TYPE);
+                if (!raw) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDropTarget(null);
+                dragDepth.current = 0;
+                setDragging(false);
+                void move(JSON.parse(raw) as string[], f.id);
+              }}
+              className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
+            >
+              <span className="flex min-w-0 items-center gap-1.5"><Folder aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{f.name}</span></span>
+              <Readout className="text-xs text-muted-foreground">{n}</Readout>
+            </button>
+          );
+        })}
+        {tags.length > 0 ? (
+          <>
+            <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs md:block">Tags</p>
+            {tags.map((t) => (
+              <button
+                key={t.tag}
+                type="button"
+                aria-current={folder === `tag:${t.tag}` ? "page" : undefined}
+                onClick={() => setFolder(`tag:${t.tag}`)}
+                className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === `tag:${t.tag}` ? "bg-muted font-medium" : "text-muted-foreground"}`}
+              >
+                <span className="flex min-w-0 items-center gap-1.5"><Tag aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{t.tag}</span></span>
+                <Readout className="text-xs text-muted-foreground">{t.count}</Readout>
+              </button>
+            ))}
+          </>
+        ) : null}
         <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs leading-relaxed md:block">
-          Folders are views. A document sits in every folder that describes it, so nothing is ever filed twice.
+          Drag documents onto a folder to file them. Built-in views are never filed; they describe what a document is.
         </p>
       </nav>
 
@@ -294,11 +432,72 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
           </Button>
         </div>
 
+        {activeFolder ? (
+          <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
+            {renaming === activeFolder.id ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const name = new FormData(e.currentTarget).get("name");
+                  void organise(() => renameFolderAction(activeFolder.id, String(name), activeFolder.version), "Renamed.").then(() => setRenaming(null));
+                }}
+              >
+                <input name="name" autoFocus defaultValue={activeFolder.name} maxLength={80} aria-label="Folder name" className="border-input bg-background h-8 rounded-md border px-2 text-[13px]" />
+                <Button type="submit" size="sm">Save</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+              </form>
+            ) : (
+              <>
+                <span className="font-medium">{activeFolder.name}</span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(activeFolder.id)}>Rename</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (!window.confirm(`Remove the folder "${activeFolder.name}"? Its documents are kept and become Unfiled.`)) return;
+                    void organise(() => removeFolderAction(activeFolder.id, activeFolder.version), "Folder removed.").then((ok) => ok && setFolder("all"));
+                  }}
+                >
+                  Remove folder
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
+
         {selected.length > 0 ? (
           <div role="toolbar" aria-label="Bulk actions" className="bg-muted/60 border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
             <Readout>{selected.length} selected</Readout>
             <Button type="button" variant="outline" size="sm" onClick={() => void rereadSelected()}>Read again</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => void copyTitles()}>Copy titles</Button>
+            <Select
+              aria-label="Move to folder"
+              value=""
+              className="w-36"
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value) void move(selected, value === "__unfiled" ? null : value);
+              }}
+            >
+              <option value="">Move to…</option>
+              <option value="__unfiled">Unfiled</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </Select>
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!tagDraft.trim()) return;
+                void organise(() => addTagAction(selected, tagDraft), "Tagged.").then((ok) => ok && setTagDraft(""));
+              }}
+            >
+              <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-8 w-24 rounded-md border px-2 text-[13px]" />
+              <Button type="submit" variant="outline" size="sm">Tag</Button>
+            </form>
             <Button type="button" variant="outline" size="sm" onClick={() => setShareOpen(true)}>
               <Share2 aria-hidden className="size-3.5" /> Share
             </Button>
@@ -355,6 +554,8 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
               {visible.map((row) => (
                 <tr
                   key={row.id}
+                  draggable
+                  onDragStart={(e) => startDrag(e, row.id)}
                   aria-selected={selected.includes(row.id)}
                   onClick={() => setActive(row.id)}
                   onDoubleClick={() => router.push(`/alfred/library/${row.id}`)}
@@ -390,6 +591,8 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
                 <div
                   role="button"
                   tabIndex={0}
+                  draggable
+                  onDragStart={(e) => startDrag(e, row.id)}
                   aria-pressed={selected.includes(row.id)}
                   onClick={() => setActive(row.id)}
                   onDoubleClick={() => router.push(`/alfred/library/${row.id}`)}
@@ -427,7 +630,7 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
         </p>
       </section>
 
-      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} /> : null}
+      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} folders={folders} onMove={(id) => void move([activeRow.id], id)} onTag={(tag) => organise(() => addTagAction([activeRow.id], tag), "Tagged.")} onUntag={(tag) => void organise(() => removeTagAction([activeRow.id], tag), "Tag removed.")} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} /> : null}
       <ShareDialog open={shareOpen} onOpenChange={setShareOpen} rows={selectedRows.length > 0 ? selectedRows : activeRow ? [activeRow] : []} />
     </div>
   );

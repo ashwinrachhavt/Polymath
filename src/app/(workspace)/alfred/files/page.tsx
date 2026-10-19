@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { getDocumentInbox } from "@/domains/knowledge/queries";
+import { getOrganisation, listFolders } from "@/domains/knowledge/folders";
 import type { BrowserRow } from "@/domains/knowledge/file-browser";
 import { FileExplorer } from "./file-explorer";
 
@@ -22,6 +23,7 @@ async function FilesSurface() {
   await connection();
   const auth = await getAuthContext();
   const rows = await getDocumentInbox(auth, { limit: LIMIT });
+  const [folders, organisation] = await Promise.all([listFolders(auth), getOrganisation(auth, rows.map((r) => r.id))]);
   const initial: BrowserRow[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -33,8 +35,10 @@ async function FilesSurface() {
     extractionStatus: r.extractionStatus,
     undecidedProposals: r.undecidedProposals,
     partyNames: r.partyNames,
+    folderId: organisation.folderByDocument.get(r.id) ?? null,
+    tags: organisation.tagsByDocument.get(r.id) ?? [],
   }));
-  return <FileExplorer initialRows={initial} truncated={rows.length >= LIMIT} />;
+  return <FileExplorer initialRows={initial} folders={folders.map((f) => ({ id: f.id, name: f.name, version: f.version }))} truncated={rows.length >= LIMIT} />;
 }
 
 export default function FilesPage() {

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import { kindLabel, type BrowserRow } from "@/domains/knowledge/file-browser";
 import type { DocumentPreview } from "@/domains/knowledge/file-preview";
@@ -21,7 +22,24 @@ const stamp = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", ho
  * line each value came from, and what has happened to it. Fetched on
  * selection and cached for the session, so moving back to a row is instant.
  */
-export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClose: () => void; onShare: () => void }) {
+export function PreviewPane({
+  row,
+  folders,
+  onMove,
+  onTag,
+  onUntag,
+  onClose,
+  onShare,
+}: {
+  row: BrowserRow;
+  folders: Array<{ id: string; name: string }>;
+  onMove: (folderId: string | null) => void;
+  onTag: (tag: string) => Promise<boolean>;
+  onUntag: (tag: string) => void;
+  onClose: () => void;
+  onShare: () => void;
+}) {
+  const [tagDraft, setTagDraft] = useState("");
   const [tab, setTab] = useState<Tab>("details");
   const [load, setLoad] = useState<Load>(() => {
     const hit = cache.get(row.id);
@@ -103,6 +121,34 @@ export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClos
           </p>
         ) : tab === "details" ? (
           <>
+            <section className="flex flex-col gap-2">
+              <label className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Folder</span>
+                <Select value={row.folderId ?? ""} onChange={(e) => onMove(e.target.value || null)} aria-label="Folder" className="w-44">
+                  <option value="">Unfiled</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </Select>
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {row.tags.map((t) => (
+                  <Badge key={t} variant="secondary" className="gap-1">
+                    {t}
+                    <button type="button" aria-label={`Remove tag ${t}`} onClick={() => onUntag(t)}><X aria-hidden className="size-3" /></button>
+                  </Badge>
+                ))}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!tagDraft.trim()) return;
+                    void onTag(tagDraft).then((ok) => ok && setTagDraft(""));
+                  }}
+                >
+                  <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-7 w-24 rounded-md border px-2 text-xs" />
+                </form>
+              </div>
+            </section>
             <PartyBlocks parties={data.review.parties} />
             <section>
               <h3 className="text-muted-foreground mb-1 text-xs">Excerpt</h3>

@@ -5,6 +5,7 @@ import {
   kindLabel,
   matchesQuery,
   rangeIds,
+  tagCounts,
   sortRows,
   statusLabel,
   type BrowserRow,
@@ -21,6 +22,8 @@ const row = (over: Partial<BrowserRow>): BrowserRow => ({
   extractionStatus: "succeeded",
   undecidedProposals: 0,
   partyNames: [],
+  folderId: null,
+  tags: [],
   ...over,
 });
 
@@ -36,7 +39,22 @@ describe("file browser", () => {
     expect(inFolder(rows[1]!, "pages")).toBe(true);
     expect(inFolder(rows[1]!, "unread")).toBe(true);
     expect(inFolder(rows[2]!, "failed")).toBe(true);
-    expect(folderCounts(rows)).toEqual({ all: 3, files: 2, pages: 1, review: 1, unread: 1, failed: 1 });
+    expect(folderCounts(rows)).toEqual({ all: 3, files: 2, pages: 1, review: 1, unread: 1, failed: 1, unfiled: 3 });
+  });
+
+  it("derives owner folders, tags and unfiled from placement", () => {
+    const filed = row({ id: "9", folderId: "f1", tags: ["tax", "2026"] });
+    expect(inFolder(filed, "folder:f1")).toBe(true);
+    expect(inFolder(filed, "folder:f2")).toBe(false);
+    expect(inFolder(filed, "unfiled")).toBe(false);
+    expect(inFolder(filed, "tag:tax")).toBe(true);
+    expect(inFolder(filed, "tag:other")).toBe(false);
+    expect(inFolder(filed, "folder:")).toBe(false);
+    expect(matchesQuery(filed, "tax")).toBe(true);
+    expect(tagCounts([filed, row({ id: "8", tags: ["tax"] })])).toEqual([
+      { tag: "tax", count: 2 },
+      { tag: "2026", count: 1 },
+    ]);
   });
 
   it("searches title, filename, url and parties with every term", () => {

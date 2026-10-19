@@ -992,3 +992,64 @@ export const documentRenameEvents = pgTable(
   },
   (t) => [index("document_rename_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt)],
 );
+
+/*
+ * Folders and tags for the Files surface. A folder is a flat, named bucket the
+ * owner makes; a document sits in at most one (the placement row), and no
+ * placement means "Unfiled". Tags are free labels, many per document. Both are
+ * organisation only: they never touch the document, its file, or its
+ * extraction. Archiving a folder hides it and its placements; the documents
+ * stay exactly where they were in every other view.
+ */
+export const documentFolders = pgTable(
+  "document_folders",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    name: text("name").notNull(),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("document_folders_name_key")
+      .on(t.workspaceId, sql`lower(${t.name})`)
+      .where(sql`archived_at is null`),
+    check("document_folders_name_check", sql`length(btrim(name)) between 1 and 80`),
+  ],
+);
+
+export const documentPlacements = pgTable(
+  "document_placements",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    folderId: uuid("folder_id")
+      .notNull()
+      .references(() => documentFolders.id, { onDelete: "cascade" }),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_placements_document_key").on(t.documentId),
+    index("document_placements_folder_idx").on(t.workspaceId, t.folderId),
+  ],
+);
+
+export const documentTags = pgTable(
+  "document_tags",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    tag: text("tag").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_tags_document_tag_key").on(t.documentId, t.tag),
+    index("document_tags_workspace_tag_idx").on(t.workspaceId, t.tag),
+    check("document_tags_tag_check", sql`tag = lower(btrim(tag)) and length(tag) between 1 and 40`),
+  ],
+);

@@ -17,21 +17,29 @@ export type BrowserRow = {
   extractionStatus: string | null;
   undecidedProposals: number;
   partyNames: string[];
+  /** The owner-made folder the document sits in; null means Unfiled. */
+  folderId: string | null;
+  tags: string[];
 };
 
-export type FolderId = "all" | "files" | "pages" | "review" | "unread" | "failed";
+/** A built-in view id, or `folder:<uuid>` / `tag:<name>` for the owner's own. */
+export type FolderId = string;
+export type BuiltinFolderId = "all" | "files" | "pages" | "review" | "unread" | "failed" | "unfiled";
 
-export const FOLDERS: Array<{ id: FolderId; label: string; hint: string }> = [
+export const FOLDERS: Array<{ id: BuiltinFolderId; label: string; hint: string }> = [
   { id: "all", label: "All documents", hint: "Everything in the workspace" },
   { id: "files", label: "Uploaded files", hint: "PDFs and images you added" },
   { id: "pages", label: "Saved pages", hint: "Captured from the web" },
   { id: "review", label: "Needs review", hint: "Proposals waiting for a decision" },
   { id: "unread", label: "Not read yet", hint: "No extraction has run" },
   { id: "failed", label: "Failed to read", hint: "Extraction failed" },
+  { id: "unfiled", label: "Unfiled", hint: "Not in any folder" },
 ];
 
 export function inFolder(row: BrowserRow, folder: FolderId): boolean {
-  switch (folder) {
+  if (folder.startsWith("folder:")) return row.folderId === folder.slice(7);
+  if (folder.startsWith("tag:")) return row.tags.includes(folder.slice(4));
+  switch (folder as BuiltinFolderId) {
     case "all":
       return true;
     case "files":
@@ -44,19 +52,30 @@ export function inFolder(row: BrowserRow, folder: FolderId): boolean {
       return row.extractionStatus === null;
     case "failed":
       return row.extractionStatus === "failed";
+    case "unfiled":
+      return row.folderId === null;
+    default:
+      return false;
   }
 }
 
-export function folderCounts(rows: BrowserRow[]): Record<FolderId, number> {
-  const counts = {} as Record<FolderId, number>;
+export function folderCounts(rows: BrowserRow[]): Record<BuiltinFolderId, number> {
+  const counts = {} as Record<BuiltinFolderId, number>;
   for (const folder of FOLDERS) counts[folder.id] = rows.filter((r) => inFolder(r, folder.id)).length;
   return counts;
+}
+
+/** Distinct tags across the rows with how many documents carry each, most used first. */
+export function tagCounts(rows: BrowserRow[]): Array<{ tag: string; count: number }> {
+  const by = new Map<string, number>();
+  for (const row of rows) for (const tag of row.tags) by.set(tag, (by.get(tag) ?? 0) + 1);
+  return [...by].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
 export function matchesQuery(row: BrowserRow, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const hay = [row.title, row.filename ?? "", row.sourceUrl ?? "", ...row.partyNames].join("\n").toLowerCase();
+  const hay = [row.title, row.filename ?? "", row.sourceUrl ?? "", ...row.partyNames, ...row.tags].join("\n").toLowerCase();
   return q.split(/\s+/).every((term) => hay.includes(term));
 }
 
