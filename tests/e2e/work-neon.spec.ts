@@ -98,12 +98,13 @@ test("board lanes and the calendar show the same saved rows", async ({ page }) =
   const lane = page.getByRole("heading", { name: "In progress", exact: true }).locator("..").locator("..").locator("..");
   await expect(lane.getByText(a, { exact: true })).toBeVisible();
   await page.getByLabel(`Move ${a} to status`).selectOption("waiting");
-  await expect
-    .poll(async () => {
-      await page.reload();
-      return await page.getByRole("heading", { name: "Waiting", exact: true }).locator("..").locator("..").locator("..").getByText(a, { exact: true }).count();
-    })
-    .toBe(1);
+  // The board refreshes in place when the save lands. Reloading before that
+  // aborts the in-flight action, so wait for the move first, then confirm the
+  // saved row survives a reload.
+  const waitingLane = page.getByRole("heading", { name: "Waiting", exact: true }).locator("..").locator("..").locator("..");
+  await expect(waitingLane.getByText(a, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(waitingLane.getByText(a, { exact: true })).toBeVisible();
 
   // The calendar places it on its due day.
   await page.goto(`/neuralflow/work?view=calendar&date=${due}`);

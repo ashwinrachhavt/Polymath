@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ function useIntent() {
 type Outcome = { ok: true } | { ok: false; error: string };
 
 function useRun() {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   function run(intent: ReturnType<typeof useIntent>, fn: () => Promise<Outcome>, onOk?: () => void) {
@@ -44,6 +46,9 @@ function useRun() {
         if (res.ok) {
           intent.reset();
           onOk?.();
+          // These islands sit on server-rendered views: refresh so a saved
+          // change shows where it landed without a manual reload.
+          router.refresh();
         } else {
           intent.reset();
           setError(res.error);
