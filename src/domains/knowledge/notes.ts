@@ -1,10 +1,10 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import { artifactVersions, artifacts, recoveryCopies, workingDrafts } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, recoveryCopies, workingDrafts } from "./schema";
 
 /*
  * The notes core (ASH-138 / B04): user-written rich notes on the artifact
@@ -36,6 +36,68 @@ export class VersionConflictError extends Error {
 
 /** Tiptap/ProseMirror document JSON, or a structured payload. */
 export type NoteContent = Record<string, unknown>;
+
+/*
+ * Wiki links (ASH-142 / D11): `[[Title]]` inside the markdown body resolves
+ * against this workspace's notes by title, case-insensitively, mirroring the
+ * preview's semantics — a title matching nothing stays in the text as written
+ * and creates no edge, and a note never links to itself. Edges are
+ * artifact_links rows with targetType "note"; backlinks are the reverse read
+ * of the same row, so there is one graph, not two stores.
+ */
+const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
+
+export function extractWikiLinkTitles(markdown: string): string[] {
+  const titles = new Set<string>();
+  for (const match of markdown.matchAll(WIKI_LINK)) {
+    const title = match[1].trim();
+    if (title) titles.add(title);
+  }
+  return [...titles];
+}
+
+function markdownOf(content: NoteContent, plainText?: string): string {
+  if (typeof plainText === "string") return plainText;
+  return typeof content.text === "string" ? content.text : "";
+}
+
+/** Reconcile this note's outgoing wiki edges with the body just saved. */
+async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId: string, markdown: string) {
+  const titles = extractWikiLinkTitles(markdown);
+  const candidates = titles.length
+    ? await tx
+        .select({ id: artifacts.id, title: artifacts.title })
+        .from(artifacts)
+        .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)))
+    : [];
+  const byTitle = new Map(candidates.map((c) => [c.title.toLowerCase(), c.id]));
+  const wanted = new Map<string, string>();
+  for (const title of titles) {
+    const id = byTitle.get(title.toLowerCase());
+    if (id && id !== artifactId && !wanted.has(id)) wanted.set(id, title);
+  }
+  const existing = await tx
+    .select({ id: artifactLinks.id, targetId: artifactLinks.targetId })
+    .from(artifactLinks)
+    .where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, artifactId), eq(artifactLinks.targetType, "note")));
+  const stale = existing.filter((row) => !wanted.has(row.targetId)).map((row) => row.id);
+  if (stale.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, stale));
+  const kept = new Set(existing.filter((row) => wanted.has(row.targetId)).map((row) => row.targetId));
+  const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id));
+  if (fresh.length) {
+    await tx.insert(artifactLinks).values(
+      fresh.map(([targetId, label]) => ({
+        workspaceId: auth.workspaceId,
+        artifactId,
+        targetType: "note" as const,
+        targetId,
+        label,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })),
+    );
+  }
+}
 
 type Keyed = { idempotencyKey?: string };
 
@@ -138,6 +200,7 @@ export async function autosaveNoteDraft(
       if (!latestCopy || Date.now() - latestCopy.createdAt.getTime() > 5 * 60 * 1000) {
         await tx.insert(recoveryCopies).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, content: input.content });
       }
+      await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
       await emit(tx, auth, "note.autosaved", { artifactId: artifact.id, version: artifact.version });
       return { version: artifact.version };
     });
@@ -183,6 +246,7 @@ export async function commitNoteSnapshot(
         .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
       await tx.update(artifacts).set({ currentVersionId: snapshot.id }).where(eq(artifacts.id, artifact.id));
       await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
+      await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
       await recordAudit(
         auth,
         {
@@ -351,5 +415,47 @@ export async function listNoteVersions(auth: AuthContext, artifactId: string, li
       .where(and(eq(artifactVersions.artifactId, artifactId), eq(artifactVersions.workspaceId, auth.workspaceId)))
       .orderBy(desc(artifactVersions.versionNumber))
       .limit(limit);
+  });
+}
+
+export type NoteLinkItem = { id: string; title: string };
+
+/** Where this note points: resolved [[Title]] targets, newest link first. */
+export async function listNoteOutlinks(auth: AuthContext, artifactId: string): Promise<NoteLinkItem[]> {
+  return withTransaction(async (tx) => {
+    const rows = await tx
+      .select({ id: artifacts.id, title: artifacts.title })
+      .from(artifactLinks)
+      .innerJoin(artifacts, eq(artifacts.id, artifactLinks.targetId))
+      .where(
+        and(
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          eq(artifactLinks.artifactId, artifactId),
+          eq(artifactLinks.targetType, "note"),
+          isNull(artifacts.archivedAt),
+        ),
+      )
+      .orderBy(desc(artifactLinks.createdAt));
+    return rows;
+  });
+}
+
+/** What points here: notes whose body resolves a [[Title]] to this one. */
+export async function listNoteBacklinks(auth: AuthContext, artifactId: string): Promise<NoteLinkItem[]> {
+  return withTransaction(async (tx) => {
+    const rows = await tx
+      .select({ id: artifacts.id, title: artifacts.title })
+      .from(artifactLinks)
+      .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
+      .where(
+        and(
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          eq(artifactLinks.targetType, "note"),
+          eq(artifactLinks.targetId, artifactId),
+          isNull(artifacts.archivedAt),
+        ),
+      )
+      .orderBy(desc(artifactLinks.createdAt));
+    return rows;
   });
 }

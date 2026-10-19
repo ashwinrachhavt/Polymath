@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
-import { artifactVersions, workingDrafts } from "@/domains/knowledge/schema";
+import { artifactLinks, artifactVersions, workingDrafts } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -109,4 +109,63 @@ suite("notes core", () => {
       notes.autosaveNoteDraft(b, { artifactId: created.id, expectedVersion: 1, content: doc("intruder"), idempotencyKey: crypto.randomUUID() }),
     ).rejects.toMatchObject({ code: "note_not_found" });
   });
+
+  it("resolves [[wiki links]] into edges and reads them back both ways", async () => {
+    const auth = await seed("notes-links");
+    const target = await notes.createNote(auth, { title: "Venue Shortlist", idempotencyKey: crypto.randomUUID() });
+    const source = await notes.createNote(auth, { title: "Launch plan", idempotencyKey: crypto.randomUUID() });
+    await notes.autosaveNoteDraft(auth, {
+      artifactId: source.id,
+      expectedVersion: 1,
+      content: { format: "markdown", text: "Book from [[Venue Shortlist]] and keep [[Missing Note]] as text" },
+      plainText: "Book from [[Venue Shortlist]] and keep [[Missing Note]] as text",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    // The resolved target becomes the only edge; the unmatched title stays prose.
+    expect(await notes.listNoteOutlinks(auth, source.id)).toEqual([{ id: target.id, title: "Venue Shortlist" }]);
+    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([{ id: source.id, title: "Launch plan" }]);
+    // Titles match case-insensitively; the edge survives an unrelated edit.
+    await notes.autosaveNoteDraft(auth, {
+      artifactId: source.id,
+      expectedVersion: 2,
+      content: { format: "markdown", text: "still see [[venue shortlist]]" },
+      plainText: "still see [[venue shortlist]]",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(await notes.listNoteOutlinks(auth, source.id)).toEqual([{ id: target.id, title: "Venue Shortlist" }]);
+    const rows = await db.select().from(artifactLinks).where(and(eq(artifactLinks.artifactId, source.id), eq(artifactLinks.targetType, "note")));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("drops the edge when the reference leaves the body, and never self-links", async () => {
+    const auth = await seed("notes-unlink");
+    const target = await notes.createNote(auth, { title: "Glossary", idempotencyKey: crypto.randomUUID() });
+    await notes.autosaveNoteDraft(auth, {
+      artifactId: target.id,
+      expectedVersion: 1,
+      content: { format: "markdown", text: "see [[Glossary]]" },
+      plainText: "see [[Glossary]]",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    // Self-reference is prose, not an edge.
+    expect(await notes.listNoteOutlinks(auth, target.id)).toEqual([]);
+    const source = await notes.createNote(auth, { title: "Reader", idempotencyKey: crypto.randomUUID() });
+    await notes.commitNoteSnapshot(auth, {
+      artifactId: source.id,
+      expectedVersion: 1,
+      content: { format: "markdown", text: "points at [[Glossary]]" },
+      plainText: "points at [[Glossary]]",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([{ id: source.id, title: "Reader" }]);
+    await notes.commitNoteSnapshot(auth, {
+      artifactId: source.id,
+      expectedVersion: 2,
+      content: { format: "markdown", text: "no links anymore" },
+      plainText: "no links anymore",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([]);
+  });
 });
+

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
-import { getNote, listNoteVersions, listNotes, type NoteContent } from "@/domains/knowledge/notes";
+import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteVersions, listNotes, type NoteContent } from "@/domains/knowledge/notes";
 import { getAuthContext } from "@/lib/auth";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 
@@ -27,6 +27,8 @@ export default async function NotebookPage({ searchParams }: { searchParams: Pro
   const notes = await listNotes(auth);
   const selected = id ? await getNote(auth, id) : null;
   const versions = selected ? await listNoteVersions(auth, selected.id) : [];
+  const outlinks = selected ? await listNoteOutlinks(auth, selected.id) : [];
+  const backlinks = selected ? await listNoteBacklinks(auth, selected.id) : [];
 
   return (
     <Screen
@@ -66,6 +68,8 @@ export default async function NotebookPage({ searchParams }: { searchParams: Pro
             initialMarkdown={noteMarkdown(selected.content)}
             draft={selected.draft ? { markdown: noteMarkdown(selected.draft.content), updatedAt: selected.draft.updatedAt.toISOString() } : null}
             versions={versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
+            outlinks={outlinks}
+            backlinks={backlinks}
           />
         ) : (
           <Panel>
