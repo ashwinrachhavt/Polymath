@@ -64,10 +64,11 @@ export function CommandLayer() {
   // people, and inbox items - the rows every other surface reads.
   const search = query.trim();
   useEffect(() => {
-    if (search.length < 2) { setRecords([]); setSearched(false); return; }
-    setSearched(false);
     const timer = setTimeout(() => {
-      void searchWorkspace(search).then((found) => { setRecords(found); setSearched(true); }).catch(() => { setRecords([]); setSearched(true); });
+      if (search.length < 2) { setRecords([]); setSearched(false); return; }
+      void searchWorkspace(search)
+        .then((found) => { setRecords(found); setSearched(true); })
+        .catch(() => { setRecords([]); setSearched(true); });
     }, 250);
     return () => clearTimeout(timer);
   }, [search]);

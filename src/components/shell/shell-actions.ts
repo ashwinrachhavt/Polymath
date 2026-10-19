@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createCapture, convertCaptureToTask } from "@/domains/capture/commands";
 import { captures } from "@/domains/capture/schema";
@@ -89,6 +89,8 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       .where(
         and(
           eq(captures.workspaceId, auth.workspaceId),
+          // A converted capture's canonical record is what it became.
+          ne(captures.processingState, "converted"),
           or(ilike(captures.text, pattern), ilike(captures.url, pattern)),
         ),
       )
