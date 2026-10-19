@@ -9,7 +9,9 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
+import { getTaskProvenance } from "@/domains/knowledge/queries";
 import { QuickAdd, RowActions, TaskCard } from "./task-controls";
+import { TaskEvidence } from "./task-evidence";
 
 /*
  * The Work list on Neon. Server component: reads through the work domain's
@@ -67,6 +69,7 @@ export async function NeonTasks({
   const canMove = scope !== "done" && !filtered;
   const detail = selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? await getTaskDetail(auth, selectedTask) : null;
   const focusHistory = detail ? await listFocusHistory(auth, 10, detail.task.id) : [];
+  const provenance = detail ? await getTaskProvenance(auth, detail.task.id) : [];
   const openRows = detail ? await listWorkRows(auth, "open") : [];
   const candidates = detail ? openRows.filter((r) => r.id !== detail.task.id).map((r) => ({ id: r.id, title: r.title })) : [];
   const tab = (value: Scope, label: string) => (
@@ -196,6 +199,7 @@ export async function NeonTasks({
               )}
             </div>
           ) : null}
+          {detail ? <TaskEvidence items={provenance} /> : null}
         </Panel>
       </div>
     </Screen>
