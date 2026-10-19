@@ -52,13 +52,21 @@ suite("role definitions", () => {
     await expect(roles.defineRole({ ...auth, role: "member" }, { key: "nope", label: "Nope", capabilities: ["audit.read"] })).rejects.toThrow("Requires owner");
 
     // Capability revision appends and bumps the version.
-    const revised = await roles.reviseRole(auth, {
+    const reviseKey = crypto.randomUUID();
+    const reviseInput = {
       roleDefinitionId: a.roleDefinitionId,
       expectedVersion: 1,
       capabilities: ["audit.read", "billing.read"],
-      idempotencyKey: crypto.randomUUID(),
-    });
+      idempotencyKey: reviseKey,
+    };
+    const revised = await roles.reviseRole(auth, reviseInput);
     expect(revised.version).toBe(2);
+
+    // Replaying the revision after it landed returns the stored result; it
+    // must not re-check the version the first attempt itself bumped.
+    const reviseReplay = await roles.reviseRole(auth, reviseInput);
+    expect(reviseReplay.replayed).toBe(true);
+    expect(reviseReplay.version).toBe(2);
 
     // Stale writers lose.
     await expect(
@@ -77,8 +85,12 @@ suite("role definitions", () => {
     ).rejects.toThrow(/immutable/);
 
     // Archiving preserves history and blocks further edits.
-    const archived = await roles.archiveRole(auth, { roleDefinitionId: a.roleDefinitionId, expectedVersion: 2, idempotencyKey: crypto.randomUUID() });
+    const archiveKey = crypto.randomUUID();
+    const archiveInput = { roleDefinitionId: a.roleDefinitionId, expectedVersion: 2, idempotencyKey: archiveKey };
+    const archived = await roles.archiveRole(auth, archiveInput);
     expect(archived.version).toBe(3);
+    const archiveReplay = await roles.archiveRole(auth, archiveInput);
+    expect(archiveReplay.replayed).toBe(true);
     await expect(
       roles.reviseRole(auth, { roleDefinitionId: a.roleDefinitionId, expectedVersion: 3, label: "Too late", idempotencyKey: crypto.randomUUID() }),
     ).rejects.toThrow("archived");

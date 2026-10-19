@@ -76,14 +76,16 @@ export async function defineRole(
   const capabilities = validateCaps(input.capabilities);
 
   return withTransaction(async (tx) => {
-    const [taken] = await tx
-      .select({ id: roleDefinitions.id })
-      .from(roleDefinitions)
-      .where(and(eq(roleDefinitions.workspaceId, auth.workspaceId), eq(roleDefinitions.key, key)))
-      .limit(1);
-    if (taken) throw new RoleDefinitionError("role_key_taken", `The key "${key}" is already used in this workspace.`);
-
+    // State guards live INSIDE the receipt callback: a replayed receipt must
+    // return the stored result without re-checking state the first attempt
+    // itself changed (key taken, version bumped, archived).
     const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, { op: "defineRole", ...input }, async () => {
+      const [taken] = await tx
+        .select({ id: roleDefinitions.id })
+        .from(roleDefinitions)
+        .where(and(eq(roleDefinitions.workspaceId, auth.workspaceId), eq(roleDefinitions.key, key)))
+        .limit(1);
+      if (taken) throw new RoleDefinitionError("role_key_taken", `The key "${key}" is already used in this workspace.`);
       const [definition] = await tx
         .insert(roleDefinitions)
         .values({ workspaceId: auth.workspaceId, key, label, description: input.description?.trim() || null, createdBy: auth.userId, updatedBy: auth.userId })
@@ -121,10 +123,9 @@ export async function reviseRole(
   if (input.label !== undefined && !label) throw new RoleDefinitionError("role_definition_input", "A role needs a label.");
 
   return withTransaction(async (tx) => {
-    const current = await loadDefinition(tx, auth, input.roleDefinitionId);
-    assertFresh(current, input.expectedVersion);
-
     const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, { op: "reviseRole", ...input }, async () => {
+      const current = await loadDefinition(tx, auth, input.roleDefinitionId);
+      assertFresh(current, input.expectedVersion);
       let revisionId: string | null = null;
       if (capabilities) {
         const [{ latest }] = await tx
@@ -169,9 +170,9 @@ export async function reviseRole(
 export async function archiveRole(auth: AuthContext, input: { roleDefinitionId: string; expectedVersion: number; idempotencyKey?: string }) {
   requireRole(auth, "owner");
   return withTransaction(async (tx) => {
-    const current = await loadDefinition(tx, auth, input.roleDefinitionId);
-    assertFresh(current, input.expectedVersion);
     const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, { op: "archiveRole", ...input }, async () => {
+      const current = await loadDefinition(tx, auth, input.roleDefinitionId);
+      assertFresh(current, input.expectedVersion);
       await tx
         .update(roleDefinitions)
         .set({ archivedAt: new Date(), version: current.version + 1, updatedBy: auth.userId, updatedAt: new Date() })
