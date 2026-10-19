@@ -16,25 +16,23 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   const date = typeof query.date === "string" ? query.date : undefined;
   let surface;
 
+  // Every Work view reads the same canonical Neon tasks. The browser-only
+  // preview survives only on the standalone /apps/neuralflow route.
   if (view === "board") {
     surface = <NeonBoard />;
   } else if (view === "calendar") {
     surface = <NeonCalendar key={date || "current"} date={date} />;
-  } else if (view === "saved") {
-    const show = typeof query.show === "string" ? query.show : undefined;
-    surface = <NeonTasks show={show} selectedTask={task} />;
   } else {
-    const { TasksScreen } = await import("@/components/products/neuralflow/work-screens");
-    surface = <TasksScreen key={view} title="Work" view={view} selectedTask={task} />;
+    const show = typeof query.show === "string" ? query.show : undefined;
+    surface = <NeonTasks show={view === "today" ? "today" : show} selectedTask={task} />;
   }
-  const saved = view === "saved" || view === "board" || view === "calendar";
 
   return (
     <>
       <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <WorkViewLinks active={view} />
-          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">{saved ? "Saved to your workspace." : "Browser-only preview. Sample records and edits stay in this browser, not Neon; no production persistence or provider sync."}</p>
+          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Saved to your workspace.</p>
         </div>
         <NeuralFlowFeatureLinks />
       </div>
