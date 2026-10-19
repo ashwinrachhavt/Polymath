@@ -154,4 +154,13 @@ The read model behind the document library UI: `library.ts` for reads,
   honest null. The read side reports drift (`isCurrent: false`) after a
   re-extraction or a restore rather than silently upgrading, and reports
   current again when a restore returns the document to the pinned version.
-  Full packets remain deferred per ASH-130.
+- Packets (`packets.ts`, ASH-130 full packets): `assembleExportPacket` turns a
+  manifest into an immutable zip - each item's pinned bytes under an ordered,
+  titled, hash-stamped filename, plus an enclosed `manifest.json` naming
+  purpose, recipient, pinned versions, drift flags, and the missing. An item
+  whose stored bytes no longer match the pinned hash ships nothing (the
+  packet contains the pinned version or says why it cannot); a drifted pin
+  still ships its pinned bytes, flagged. The zip is stored as a blob row with
+  a `document_export_packets` record (append-only; manifest edits do not
+  mutate past packets). POST `/api/v1/exports/manifests/:id/packet`
+  assembles (member), GET `/api/v1/exports/packets/:id` downloads (viewer).
