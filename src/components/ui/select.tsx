@@ -14,14 +14,19 @@ import type { ComponentProps } from "react";
 export function Select({ className = "", children, ...props }: ComponentProps<"select">) {
   // Width and flex utilities belong on the wrapper so the arrow stays inside
   // the visible control. Keep colour, border and text overrides on the select.
-  const layout = className.split(/\s+/).filter((token) => /^(?:(?:sm|md|lg|xl|2xl):)*(?:(?:min-|max-)?w-|flex-)/.test(token)).join(" ");
+  const isLayout = (token: string) => /^(?:(?:sm|md|lg|xl|2xl):)*(?:(?:min-|max-)?w-|flex-)/.test(token);
+  const tokens = className.split(/\s+/).filter(Boolean);
+  const layout = tokens.filter(isLayout).join(" ");
+  // The select always fills its wrapper; repeating width utilities on it made
+  // `w-auto`/`flex-1` shrink the control inside a wider wrapper.
+  const selectClass = tokens.filter((token) => !isLayout(token)).join(" ");
   const hasWidth = /(?:^|\s)w-/.test(layout);
   return (
     <span data-slot="select-wrapper" className={`relative inline-flex min-w-0 ${hasWidth ? "" : "w-full"} ${layout}`}>
       <select
         {...props}
         data-slot="select"
-        className={`h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${className}`}
+        className={`h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${selectClass}`}
       >
         {children}
       </select>
