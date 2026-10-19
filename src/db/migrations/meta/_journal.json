@@ -211,6 +211,13 @@
       "when": 1792480160000,
       "tag": "0142_context_manifests",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1792480170000,
+      "tag": "0160_role_definitions",
+      "breakpoints": true
     }
   ]
 }
