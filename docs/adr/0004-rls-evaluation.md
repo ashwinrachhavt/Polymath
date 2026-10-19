@@ -33,12 +33,11 @@ fails CI rather than letting this ADR go stale:
    tenant claim and exactly its tenant's rows with one. This is the property
    that makes RLS meaningful as defense-in-depth against a bug in
    application-level scoping.
-5. The application connection itself is not bound, even by FORCE: the first
-   run asserted owner-sees-nothing under FORCE and got every row back. The
-   connection role is superuser or BYPASSRLS (the probe records which on
-   every run), and such roles ignore RLS entirely. RLS on the app's current
-   connection is inert - it is meaningful only under a dedicated runtime
-   role.
+5. The application connection itself is not bound, even by FORCE. The CI
+   role `axiom` is both superuser and BYPASSRLS (recorded by the probe on
+   every run), and such roles ignore RLS entirely: under FORCE with no
+   tenant claim it still saw every row. RLS on the app's current connection
+   is inert - it is meaningful only under a dedicated runtime role.
 
 ## Decision
 
