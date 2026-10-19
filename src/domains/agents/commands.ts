@@ -12,8 +12,8 @@ import { agentProfiles } from "./schema";
  * ponytail: model id and budget defaults live here, not in a settings screen,
  * until profile management lands.
  */
-/** The first-party profile's capabilities. documents.search is read-only. */
-export const DEFAULT_ALLOWED_TOOLS = ["tasks.read", "documents.search", "gmail.send"];
+/** The first-party profile's capabilities. documents.search and the wiki tools are reads or internal writes. */
+export const DEFAULT_ALLOWED_TOOLS = ["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.send"];
 
 export async function ensureProfile(workspaceId: string, name = "alfred") {
   const [existing] = await db
@@ -26,8 +26,12 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
     // capability. Nothing else is added, and runs already started keep their
     // frozen snapshot.
     const tools = Array.isArray(existing.allowedTools) ? (existing.allowedTools as string[]) : [];
-    if (!tools.includes("documents.search")) {
-      await db.update(agentProfiles).set({ allowedTools: [...tools, "documents.search"] }).where(eq(agentProfiles.id, existing.id));
+    // Reads and internal wiki writes gained after early profiles were made.
+    // Nothing else is added, and runs already started keep their frozen snapshot.
+    const gained = ["documents.search", "wiki.read", "wiki.ingest", "wiki.lint"];
+    const missing = gained.filter((t) => !tools.includes(t));
+    if (missing.length) {
+      await db.update(agentProfiles).set({ allowedTools: [...tools, ...missing] }).where(eq(agentProfiles.id, existing.id));
     }
     return existing.id;
   }

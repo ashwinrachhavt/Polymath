@@ -92,3 +92,20 @@ The owner then calls `saveDraft` (status `reviewed`) or `discardDraft`
 (`archived`); a decided draft is never rewritten. No code path sets `published`.
 API: POST /api/v1/dossiers/:id/generate, POST /api/v1/drafts, POST
 /api/v1/drafts/:artifactId/save|discard.
+
+## Wiki (second brain)
+
+The maintained layer over documents (`wiki.ts`, registry table `wiki_pages`).
+Documents stay immutable raw sources; the wiki holds one master index, one hub
+per topic, one article per ingested document, and an append-only log. Every
+page is an artifact, so each refresh is a new append-only version — nothing is
+edited in place. Hubs and the index are derived from the registry and
+regenerated on every ingest, so they cannot drift; only article bodies come
+from the summarizer (`src/integrations/wiki/summarizer.ts`, default OpenRouter,
+`WIKI_MODEL`, needs `OPENROUTER_API_KEY`). `ingestDocument(auth, {documentId})`
+is the one write path: re-ingesting after a re-extraction appends a new
+article version; re-ingesting unchanged text writes nothing. `lintWiki` is
+read-only: it reports archived-but-registered pages, articles whose source was
+archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
+runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
+capabilities; the surface is /alfred/wiki.

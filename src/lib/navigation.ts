@@ -8,6 +8,7 @@ import {
   Compass,
   Inbox,
   LayoutList,
+  Library,
   MessagesSquare,
   NotebookPen,
   Settings,
@@ -233,6 +234,13 @@ export const destinations: Destination[] = [
     label: "Knowledge",
     purpose: "Write, retrieve, and connect.",
     icon: BookOpen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/wiki",
+    label: "Wiki",
+    purpose: "The maintained layer over your documents.",
+    icon: Library,
     group: "alfred",
   },
   {

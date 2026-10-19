@@ -106,6 +106,13 @@
       "tag": "0030_drift_catch_up",
       "breakpoints": true,
       "when": 1792369620787
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792370978489,
+      "tag": "0040_wiki_pages",
+      "breakpoints": true
     }
   ]
 }
