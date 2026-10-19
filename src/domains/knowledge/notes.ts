@@ -321,3 +321,35 @@ export async function recoverNoteDraft(
     return { content: copy.content as NoteContent, source: "recovery", baseVersionId: null };
   });
 }
+
+export type NoteVersionItem = {
+  id: string;
+  versionNumber: number;
+  reason: string;
+  note: string | null;
+  createdAt: Date;
+};
+
+/** Immutable history for the editor's history dialog — newest first. */
+export async function listNoteVersions(auth: AuthContext, artifactId: string, limit = 50): Promise<NoteVersionItem[]> {
+  return withTransaction(async (tx) => {
+    const [owned] = await tx
+      .select({ id: artifacts.id })
+      .from(artifacts)
+      .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
+      .limit(1);
+    if (!owned) return [];
+    return tx
+      .select({
+        id: artifactVersions.id,
+        versionNumber: artifactVersions.versionNumber,
+        reason: artifactVersions.reason,
+        note: artifactVersions.note,
+        createdAt: artifactVersions.createdAt,
+      })
+      .from(artifactVersions)
+      .where(and(eq(artifactVersions.artifactId, artifactId), eq(artifactVersions.workspaceId, auth.workspaceId)))
+      .orderBy(desc(artifactVersions.versionNumber))
+      .limit(limit);
+  });
+}

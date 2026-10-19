@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import AlfredScreen from "@/components/products/alfred/alfred-screen";
 import { products } from "@/lib/products";
 
@@ -16,6 +16,10 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
   const query = await searchParams;
   const initialId = Array.isArray(query.id) ? query.id[0] : query.id;
+  // B04 (ASH-141): the notebook merged onto the canonical artifact rows at
+  // /alfred/notebook; the preview screen hands off instead of holding a
+  // second, browser-local copy of the same notes.
+  if (screen === "notebook") redirect(initialId ? `/alfred/notebook?id=${encodeURIComponent(initialId)}` : "/alfred/notebook");
   return <AlfredScreen key={`${screen}-${initialId || ""}`} screen={screen} initialId={initialId}/>;
 }
 
