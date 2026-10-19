@@ -13,6 +13,7 @@ import {
   NotebookPen,
   Settings,
   ShieldCheck,
+  Bot,
   Sparkles,
   SquareCheckBig,
   Target,
@@ -248,6 +249,13 @@ export const destinations: Destination[] = [
     label: "Dossiers",
     purpose: "Research with a bounded set of sources.",
     icon: NotebookPen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/specialists",
+    label: "Specialists",
+    purpose: "Hire an agent for the job.",
+    icon: Bot,
     group: "alfred",
   },
 

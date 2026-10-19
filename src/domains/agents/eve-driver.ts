@@ -87,7 +87,7 @@ function bridgeHeaders(auth: AuthContext): Record<string, string> {
 
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
-    async start({ sessionId, objective, auth }) {
+    async start({ sessionId, objective, auth, instructions }) {
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
         headers: { "content-type": "application/json", ...bridgeHeaders(auth) },
@@ -97,6 +97,14 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
           // session waiting for its first message, and no run would ever do
           // work).
           message: objective,
+          // A specialist's role brief travels as eve client context, prepended
+          // to the first turn. The REST surface has no per-session instructions
+          // field, and resolving the brief from the run row inside the agent at
+          // session.started would race this driver's session_ref write — the
+          // brief arrives with the create call instead, so ordering is
+          // guaranteed. The specialist agent's own instructions.md pins the
+          // brief as the session's authoritative role.
+          ...(instructions ? { context: [`axiom-specialist-brief v1\n${instructions}`] } : {}),
           // Create-once: a retried start of this run cannot fork a second session.
           operationId: `axiom-run-${sessionId}`,
         }),
@@ -145,4 +153,16 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       }).catch(() => undefined);
     },
   };
+}
+
+/*
+ * Which eve agent serves a profile. Alfred keeps his own agent; every other
+ * profile name (specialist:<slug>, specialist:custom:<name>) runs on the
+ * shared specialist agent, which takes its role from the brief the driver
+ * sends with the create call. This convention is the routing table — it needs
+ * no column, and a profile cannot name itself onto the wrong agent because
+ * "alfred" is only ever ensured by ensureProfile.
+ */
+export function eveAgentForProfile(profileName: string): string {
+  return profileName === "alfred" ? "alfred" : "specialist";
 }

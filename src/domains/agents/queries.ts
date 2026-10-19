@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { agentRuns, toolCalls } from "./schema";
+import { agentProfiles, agentRuns, toolCalls } from "./schema";
 
 /*
  * A run's frozen policy snapshot, read back for the tools that must honour it.
@@ -104,4 +104,54 @@ export async function listDocumentSearchResults(workspaceId: string, runIds: str
   const byRun = new Map<string, unknown[]>();
   for (const row of rows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row.result]);
   return byRun;
+}
+
+/** The workspace's specialist bench: every non-default profile, for the specialists page. */
+export async function listSpecialistProfiles(workspaceId: string) {
+  return db
+    .select({
+      id: agentProfiles.id,
+      name: agentProfiles.name,
+      description: agentProfiles.description,
+      allowedTools: agentProfiles.allowedTools,
+      createdAt: agentProfiles.createdAt,
+    })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.isDefault, false)))
+    .orderBy(agentProfiles.name);
+}
+
+/** One profile by name, workspace-scoped; foreign and missing names return the same null. */
+export async function getProfileByName(workspaceId: string, name: string) {
+  const [profile] = await db
+    .select({ id: agentProfiles.id, name: agentProfiles.name, description: agentProfiles.description })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
+    .limit(1);
+  return profile ?? null;
+}
+
+/**
+ * Recent runs with their profile's display name, for the specialists page's
+ * "who did what" list. Runs whose profile row is gone keep no name — the join
+ * is a left join so a deleted profile cannot erase the run's record.
+ */
+export async function listRecentRunsWithProfile(workspaceId: string, limit = 10) {
+  return db
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      model: agentRuns.model,
+      summary: agentRuns.summary,
+      error: agentRuns.error,
+      createdAt: agentRuns.createdAt,
+      profileName: agentProfiles.name,
+      profileDescription: agentProfiles.description,
+    })
+    .from(agentRuns)
+    .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
+    .where(eq(agentRuns.workspaceId, workspaceId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(limit);
 }

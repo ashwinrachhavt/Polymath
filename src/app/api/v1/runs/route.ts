@@ -6,10 +6,10 @@ import { db } from "@/lib/db";
 import { sha256Hex } from "@/lib/hash";
 import { requestReceipts } from "@/domains/audit/schema";
 import { problemResponse } from "@/lib/problems";
-import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
-import { listRecentRuns } from "@/domains/agents/queries";
+import { getProfileByName, listRecentRuns } from "@/domains/agents/queries";
 import { dossierDocumentIds } from "@/domains/knowledge/dossiers";
 
 /*
@@ -91,8 +91,17 @@ export const POST = authedHandler(async (auth, request) => {
   }
 
   try {
-    const engine = createEngine(createEveDriver());
-    await ensureProfile(auth.workspaceId, parsed.data.profileName);
+    // The profile decides the agent: alfred runs on the alfred agent, every
+    // specialist profile on the shared specialist agent. ensureProfile only
+    // ever CREATES the alfred default - a specialist profile must already
+    // exist (installed from the roster or defined by the owner), or the hire
+    // is a 404 rather than a silently mis-scoped run.
+    if (parsed.data.profileName === "alfred") {
+      await ensureProfile(auth.workspaceId, parsed.data.profileName);
+    } else if ((await getProfileByName(auth.workspaceId, parsed.data.profileName)) === null) {
+      return problemResponse(404, "not_found", "No such agent profile. Install the specialist first.");
+    }
+    const engine = createEngine(createEveDriver(eveAgentForProfile(parsed.data.profileName)));
     const { runId } = await engine.start({
       auth,
       profileName: parsed.data.profileName,
@@ -115,6 +124,9 @@ export const POST = authedHandler(async (auth, request) => {
         .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, receipt.key)));
     }
     // A failed start is a problem response, never a bare 500 with no body.
+    if (cause instanceof Error && cause.message.startsWith("Unknown agent profile")) {
+      return problemResponse(404, "not_found", "No such agent profile. Install the specialist first.");
+    }
     console.error("run start failed", cause);
     return problemResponse(502, "agent_start_failed", "The run could not be started. Try again.");
   }
