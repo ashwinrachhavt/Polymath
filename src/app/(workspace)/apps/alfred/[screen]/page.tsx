@@ -24,6 +24,8 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   // /alfred/library; the preview screen's browser-local sources hand off the
   // same way the notebook's notes did.
   if (screen === "library") redirect("/alfred/library");
+  // Files: the document engine as a file manager, a canonical route like the library.
+  if (screen === "files") redirect("/alfred/files");
   return <AlfredScreen key={`${screen}-${initialId || ""}`} screen={screen} initialId={initialId}/>;
 }
 
