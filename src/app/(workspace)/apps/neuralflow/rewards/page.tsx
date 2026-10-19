@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
 import { getRewardsOverview } from "@/domains/gamification/queries";
@@ -20,6 +21,7 @@ function when(iso: Date): string {
 }
 
 async function Rewards() {
+  await connection();
   const auth = await getAuthContext();
   const overview = await getRewardsOverview(auth);
 

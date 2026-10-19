@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ function first(value: string | string[] | undefined): string | undefined {
 
 async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
+  await connection();
   const auth = await getAuthContext();
   const q = first(query.q)?.trim() || undefined;
   const rawStage = first(query.stage);

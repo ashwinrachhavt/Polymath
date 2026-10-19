@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listConnectors } from "@/domains/integrations/queries";
@@ -15,6 +16,7 @@ export const metadata = { title: "Connectors · Axiom" };
  */
 
 async function Connectors() {
+  await connection();
   const auth = await getAuthContext();
   const connectors = await listConnectors(auth);
 

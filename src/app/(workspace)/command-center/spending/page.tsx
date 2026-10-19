@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
 import { getSpendingOverview } from "@/domains/spending/queries";
@@ -22,6 +23,7 @@ function usd(value: string | null): string {
 }
 
 async function Spending() {
+  await connection();
   const auth = await getAuthContext();
   const overview = await getSpendingOverview(auth);
 

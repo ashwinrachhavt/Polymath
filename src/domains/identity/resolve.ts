@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { memberships, users, workspaces } from "./schema";
 
@@ -26,7 +26,7 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
   const [user] = await db
     .insert(users)
     .values({ clerkUserId })
-    .onConflictDoUpdate({ target: users.clerkUserId, set: { updatedAt: new Date() } })
+    .onConflictDoUpdate({ target: users.clerkUserId, set: { updatedAt: sql`now()` } })
     .returning();
 
   const existing = await db
@@ -52,7 +52,7 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
   const [workspace] = await db
     .insert(workspaces)
     .values({ name: "Personal", slug: `personal-${user.id}`, isPersonal: true })
-    .onConflictDoUpdate({ target: workspaces.slug, set: { updatedAt: new Date() } })
+    .onConflictDoUpdate({ target: workspaces.slug, set: { updatedAt: sql`now()` } })
     .returning();
   await db
     .insert(memberships)
