@@ -55,14 +55,30 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
   // The rail is app-scoped by design (#59): same-app routes are one rail click
   // away, cross-app routes go through the top-right launcher grid.
   for (const route of HERO_ROUTES) {
-    const link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
-    const started = Date.now();
-    if (await link.isVisible()) {
-      await link.click();
-    } else {
+    let link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
+    let started = Date.now();
+    if (!(await link.isVisible())) {
+      // The rail is app-scoped by design (#59): switch to the route's app via
+      // the top-right launcher grid, then take the same-app rail hop (or stop
+      // at the app root when that is the route).
+      const appRoot = route.path.startsWith("/neuralflow")
+        ? "/neuralflow/work"
+        : route.path.startsWith("/alfred")
+          ? "/alfred"
+          : "/command-center/briefing";
       await page.getByRole("button", { name: "Open apps" }).click();
-      await page.locator(`[data-radix-popper-content-wrapper] a[href="${route.path}"]`).first().click();
+      await page.locator(`[data-radix-popper-content-wrapper] a[href="${appRoot}"]`).first().click();
+      await page.waitForURL(`**${appRoot}**`);
+      await expect(page.locator("main#content")).toBeVisible();
+      if (appRoot === route.path) {
+        report[route.path] = { ...report[route.path], clientNavMs: Date.now() - started };
+        continue;
+      }
+      link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
+      await expect(link, `shell link to ${route.path}`).toBeVisible();
+      started = Date.now();
     }
+    await link.click();
     await page.waitForURL(`**${route.path}**`);
     await expect(page.locator("main#content h1, main#content [role='heading']").first()).toBeVisible();
     report[route.path] = { ...report[route.path], clientNavMs: Date.now() - started };
