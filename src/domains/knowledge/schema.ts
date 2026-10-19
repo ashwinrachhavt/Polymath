@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -24,6 +25,7 @@ import {
   tenantId,
 } from "../../db/columns";
 import { blobObjects } from "../audit/schema";
+import { users } from "../identity/tables";
 import { companies, contacts } from "../crm/schema";
 
 /*
@@ -851,5 +853,73 @@ export const wikiPages = pgTable(
       .on(t.workspaceId, t.documentId)
       .where(sql`role = 'article'`),
     index("wiki_pages_workspace_role_idx").on(t.workspaceId, t.role),
+  ],
+);
+
+/*
+ * D18 (ASH-144): reading history and engagement on canonical documents. The
+ * events are append-only truth - one sitting is a visitId, and progress
+ * events carry the active-seconds delta since the last one so a lost close
+ * never loses the time. The state row is the folded "where you are", updated
+ * in the same transaction; furthest_progress never walks back.
+ */
+/** Event kinds, mirrored by the check constraint in 0070 (text + check, per house style). */
+export const readingEventKinds = ["opened", "progress", "closed"] as const;
+export type ReadingEventKind = (typeof readingEventKinds)[number];
+
+export const documentReadingEvents = pgTable(
+  "document_reading_events",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** One browser sitting. Regenerated per reader mount, carried by every event of the sitting. */
+    visitId: uuid("visit_id").notNull(),
+    kind: text("kind").notNull().$type<ReadingEventKind>(),
+    /** 0..1 of the extraction text scrolled into view; null on opened. */
+    progress: real("progress"),
+    page: integer("page"),
+    /** Active (visible) seconds since the previous event of this sitting; capped server-side. */
+    activeSeconds: integer("active_seconds"),
+    /** Client-generated idempotency key; unique when present so a retried send folds once. */
+    clientEventId: text("client_event_id"),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_reading_events_client_event_key")
+      .on(t.workspaceId, t.documentId, t.userId, t.clientEventId)
+      .where(sql`client_event_id is not null`),
+    index("document_reading_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt),
+    index("document_reading_events_user_history_idx").on(t.workspaceId, t.userId, t.createdAt),
+  ],
+);
+
+export const documentReadingState = pgTable(
+  "document_reading_state",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }).notNull().defaultNow(),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openCount: integer("open_count").notNull().default(0),
+    totalActiveSeconds: integer("total_active_seconds").notNull().default(0),
+    furthestProgress: real("furthest_progress").notNull().default(0),
+    lastPage: integer("last_page"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("document_reading_state_document_user_key").on(t.workspaceId, t.documentId, t.userId),
+    index("document_reading_state_user_recent_idx").on(t.workspaceId, t.userId, t.lastOpenedAt),
   ],
 );
