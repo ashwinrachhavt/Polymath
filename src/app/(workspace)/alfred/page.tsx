@@ -41,6 +41,27 @@ const stateLabel: Record<string, string> = {
 
 const BASE = "/alfred";
 
+/*
+ * Runs older than a day that never reached a terminal state are almost
+ * certainly dead (bridge restart, lost follow-up). They stay listed - the
+ * record is the truth - but they are labelled so they do not read as live.
+ */
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+const LIVE_STATES = new Set(["queued", "running", "waiting_input", "waiting_approval"]);
+
+function isStaleRun(run: { state: string; createdAt: Date }) {
+  return LIVE_STATES.has(run.state) && Date.now() - run.createdAt.getTime() > STALE_AFTER_MS;
+}
+
+/*
+ * The stored model id is a provider routing string ("claude-hive-glm-5.3-flash").
+ * Show the readable tail; the full id stays on the title attribute.
+ */
+function friendlyModelName(model: string) {
+  const tail = model.replace(/^[a-z0-9-]*hive-/i, "").replaceAll("-", " ");
+  return tail.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
 export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<RawSearchParams> } = {}) {
   // Per-request data (auth upserts touch now()); streams inside the Suspense boundary below.
   await connection();
@@ -128,12 +149,19 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
                 <li key={run.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <p className="text-[13px]">{run.objective}</p>
-                    <Badge variant="secondary" className="font-normal">
-                      {stateLabel[run.state] ?? run.state}
-                    </Badge>
+                    <span className="flex items-center gap-1.5">
+                      {isStaleRun(run) ? (
+                        <Badge variant="outline" className="font-normal">
+                          Stale
+                        </Badge>
+                      ) : null}
+                      <Badge variant="secondary" className="font-normal">
+                        {stateLabel[run.state] ?? run.state}
+                      </Badge>
+                    </span>
                   </div>
                   <p className="text-muted-foreground text-xs">
-                    <Readout className="text-xs">{run.model ?? "model unset"}</Readout>
+                    <Readout className="text-xs" title={run.model ?? undefined}>{run.model ? friendlyModelName(run.model) : "model unset"}</Readout>
                     {" · "}
                     {run.summary ?? run.error ?? "in progress"}
                   </p>
