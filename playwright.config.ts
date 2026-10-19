@@ -5,8 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
  * one smoke test that catches "the app does not boot, and it boots accessibly",
  * which is the class of failure a green `pnpm check` cannot see.
  *
- * Tests run against a production build, not `next dev` — a scaffold that only
- * works in dev is not scaffolded.
+ * The keyless local harness runs `next dev`; CI separately checks the production
+ * build. See webServer below for the development-auth constraint.
  */
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -25,7 +25,7 @@ export default defineConfig({
       : undefined,
   },
   projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
-  // Reuse a server already listening; otherwise start one from the build.
+  // Reuse a server already listening; otherwise start the keyless dev harness.
   //
   // `next start` runs with NODE_ENV=production, where the keyless dev-auth
   // fallback in lib/auth.ts stands down and Clerk's auth() throws for want of
