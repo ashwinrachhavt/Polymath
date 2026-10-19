@@ -32,6 +32,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Spike (Task 1): mounts the throwaway eve agent at /eve/alfred/v1/*.
 // Verified API shape: withEve(config, { agents: { <name>: { root } } }).
-export default withEve(nextConfig, { agents: { alfred: "./eve/alfred" } });
+// alfred is the first-party chief-of-staff agent; specialist serves every
+// hired specialist profile (the run's role brief arrives as client context).
+export default withEve(nextConfig, {
+  agents: { alfred: "./eve/alfred", specialist: "./eve/specialist" },
+});
