@@ -16,7 +16,8 @@ import {
   removeDependency,
   updateTask,
 } from "@/domains/work/task-commands";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 
 /*
  * Work mutations. Both write the canonical `tasks` row — the same one
@@ -26,6 +27,16 @@ import { getAuthContext } from "@/lib/auth";
  */
 
 const revalidate = () => revalidatePath("/neuralflow/work");
+
+/*
+ * Every action below writes the canonical tasks row, so each requires member
+ * or above - a viewer's quick complete is still a write (ASH-121 AC05).
+ */
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  return auth;
+}
 
 const createInput = z.object({
   title: z.string().trim().min(1).max(300),
@@ -45,7 +56,7 @@ export async function createTaskAction(input: {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the task a title." };
 
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const { id } = await createOwnerTask(auth, parsed.data);
   revalidate();
   return { ok: true, taskId: id };
@@ -57,7 +68,7 @@ export async function completeTaskAction(
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) return { ok: false, error: "That task no longer exists." };
 
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data });
   revalidate();
   // Already done leaves the row alone and says so, rather than pretending the
@@ -119,7 +130,7 @@ const patchInput = z.object({
 export async function updateTaskAction(input: z.input<typeof patchInput>): Promise<Result<{ version: number }>> {
   const parsed = patchInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the task fields and try again." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ version: (await updateTask(auth, parsed.data)).version }));
 }
 
@@ -128,7 +139,7 @@ const subtaskInput = z.object({ parentTaskId: id, title: z.string().trim().min(1
 export async function createSubtaskAction(input: z.input<typeof subtaskInput>): Promise<Result<{ taskId: string }>> {
   const parsed = subtaskInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the subtask a title." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
 }
 
@@ -143,7 +154,7 @@ const moveInput = z.object({
 export async function moveTaskAction(input: z.input<typeof moveInput>): Promise<Result<{ rank: string; version: number }>> {
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That move is not valid." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => {
     const { rank, version } = await moveTask(auth, parsed.data);
     return { rank, version };
@@ -161,14 +172,14 @@ const dependencyInput = z.object({
 export async function addDependencyAction(input: z.input<typeof dependencyInput>): Promise<Result<{ dependencyId: string }>> {
   const parsed = dependencyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency is not valid." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
 }
 
 export async function removeDependencyAction(input: { dependencyId: string; idempotencyKey: string }): Promise<Result> {
   const parsed = z.object({ dependencyId: id, idempotencyKey: key }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency no longer exists." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => {
     await removeDependency(auth, parsed.data);
     return {};

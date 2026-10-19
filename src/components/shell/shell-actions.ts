@@ -9,6 +9,7 @@ import { createNote } from "@/domains/knowledge/notes";
 import { artifacts } from "@/domains/knowledge/schema";
 import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 
 /*
@@ -26,7 +27,9 @@ export async function quickCreate(
   text: string,
   idempotencyKey: string,
 ): Promise<QuickCreateResult> {
+  // Writes the canonical capture/task/note rows, so member or above (ASH-121 AC05).
   const auth = await getAuthContext();
+  requireRole(auth, "member");
   const value = text.trim();
   if (!value) return { ok: false, error: "Nothing to save." };
   try {
