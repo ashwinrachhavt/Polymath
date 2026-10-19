@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     rules: {
       "*.css": {
+        // ASH-135 s8: without the condition the glob also claims *.module.css,
+        // compiling it as global CSS and silently dropping the module scoping.
+        // Module files fall through to Turbopack's native CSS Modules handling.
+        condition: { not: { path: /\.module\.css$/ } },
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },
