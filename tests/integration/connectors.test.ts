@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
@@ -19,6 +20,9 @@ let queries: typeof import("@/domains/integrations/queries");
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  // The catalog is global seeded reference data, and the reliability suite
+  // truncates every table: re-apply the idempotent seed before reading it.
+  await handle.client.unsafe(readFileSync("src/db/migrations/0031_seed_integration_catalog.sql", "utf8"));
   commands = await import("@/domains/integrations/commands");
   queries = await import("@/domains/integrations/queries");
 });
