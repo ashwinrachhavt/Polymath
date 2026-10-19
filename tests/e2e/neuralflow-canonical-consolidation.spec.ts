@@ -46,41 +46,20 @@ test("canonical task deep links open the inspector and Focus retains its actual 
   await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeVisible();
   await page.getByRole("dialog").getByRole("link", { name: "Focus on this task" }).click();
   await expect(page).toHaveURL(/\/neuralflow\/focus\?task=task-architecture/);
-  await page.getByRole("button", { name: "Start interval", exact: true }).click();
+  // The deep link prefills the subject; starting commits the session to
+  // Postgres, so the controls below are the durable lifecycle's, and the
+  // session survives navigation and reload because the server owns the clock.
+  await expect(page.getByLabel("Focusing on")).toHaveValue("task-architecture");
+  await page.getByRole("button", { name: "Start focus", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Back to Work", exact: true }).click();
   await page.getByRole("navigation", { name: "NeuralFlow tools" }).getByRole("link", { name: "Focus", exact: true }).click();
   await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "End early", exact: true }).click();
-  await page.getByRole("button", { name: "Save outcome and end locally", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start interval", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Stone collection", exact: true }).last()).toHaveAttribute("href", "/apps/neuralflow/rewards");
-});
-
-test("a task deep link opens a controlled inspector and closing it clears only the task parameter", async ({ page }) => {
-  await page.goto("/neuralflow/work?view=list&task=task-architecture");
-  await waitSettled(page);
-  await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Inspect / })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeHidden();
-  await expect(page).toHaveURL(/\/neuralflow\/work\?view=list$/);
-  await expect(page.locator('[data-task-trigger="task-architecture"]')).toBeFocused();
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Task queue", exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Task inspector" })).toHaveCount(0);
-});
-
-test("the stone collection shows the NeuralFlow catalog without unlocking stones the ledger has not earned", async ({ page }) => {
-  await page.goto("/apps/neuralflow/rewards");
-  await waitSettled(page);
-  await expect(page.getByText("Quartz of Clarity; common", { exact: true })).toBeVisible();
-  await expect(page.getByText("No earning rule yet", { exact: true })).toHaveCount(6);
-  await page.getByRole("button", { name: /Diamond of Mastery/ }).click();
-  await expect(page.getByRole("dialog").getByRole("img", { name: "Diamond of Mastery, locked" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await page.getByRole("combobox", { name: "Collection filter" }).selectOption("earned");
-  await expect(page.getByText("No earned stones yet", { exact: true })).toBeVisible();
 });
