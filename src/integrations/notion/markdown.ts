@@ -42,6 +42,7 @@ export function blocksToMarkdown(
   const lines: string[] = [];
   let listIndex = 0;
   let lastWasNumbered = false;
+  let lastWasListItem = false;
 
   const push = (line: string) => {
     lines.push(line);
@@ -49,8 +50,14 @@ export function blocksToMarkdown(
 
   for (const block of blocks) {
     const numbered = block.type === "numbered_list_item";
+    const listItem = numbered || block.type === "bulleted_list_item" || block.type === "to_do" || block.type === "toggle";
     listIndex = numbered ? (lastWasNumbered ? listIndex + 1 : 1) : 0;
     lastWasNumbered = numbered;
+    // A list after a heading or paragraph gets a blank line before it, so the
+    // markdown parses as a list everywhere rather than leaning on the
+    // "a 1. may interrupt a paragraph" rule.
+    if (listItem && !lastWasListItem && lines.length > 0) push("");
+    lastWasListItem = listItem;
     const { text, checked, language } = blockContent(block);
     const indent = (depth: number) => "  ".repeat(depth);
 
@@ -58,7 +65,7 @@ export function blocksToMarkdown(
       const children = childrenOf(block);
       if (children?.length) {
         const inner = blocksToMarkdown(children, childrenOf);
-        for (const line of inner.split("\n")) push(line ? `${indent(depth)}${line}` : line);
+        for (const line of inner.replace(/\n+$/, "").split("\n")) push(line ? `${indent(depth)}${line}` : line);
       }
     };
 
