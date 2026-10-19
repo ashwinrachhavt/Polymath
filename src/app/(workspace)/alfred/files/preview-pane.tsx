@@ -5,15 +5,21 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import { kindLabel, type BrowserRow } from "@/domains/knowledge/file-browser";
 import type { DocumentPreview } from "@/domains/knowledge/file-preview";
 import { PartyBlocks } from "./party-blocks";
 
-type Tab = "details" | "evidence" | "activity";
+type Tab = "details" | "evidence" | "versions" | "activity";
 type Load = { id: string; state: "loading" } | { id: string; state: "error" } | { id: string; state: "ready"; data: DocumentPreview };
 
 const cache = new Map<string, DocumentPreview>();
+
+/** Drop a cached preview so the next open re-reads (a move adds an activity row). */
+export function invalidatePreview(id: string) {
+  cache.delete(id);
+}
 const stamp = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /*
@@ -21,8 +27,25 @@ const stamp = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", ho
  * line each value came from, and what has happened to it. Fetched on
  * selection and cached for the session, so moving back to a row is instant.
  */
-export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClose: () => void; onShare: () => void }) {
+export function PreviewPane({
+  row,
+  folders,
+  onMove,
+  onTag,
+  onUntag,
+  onClose,
+  onShare,
+}: {
+  row: BrowserRow;
+  folders: Array<{ id: string; name: string; depth: number }>;
+  onMove: (folderId: string | null) => void;
+  onTag: (tag: string) => Promise<boolean>;
+  onUntag: (tag: string) => void;
+  onClose: () => void;
+  onShare: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("details");
+  const [tagDraft, setTagDraft] = useState("");
   const [load, setLoad] = useState<Load>(() => {
     const hit = cache.get(row.id);
     return hit ? { id: row.id, state: "ready", data: hit } : { id: row.id, state: "loading" };
@@ -48,6 +71,7 @@ export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClos
   const tabs: Array<[Tab, string]> = [
     ["details", "Details"],
     ["evidence", "Evidence"],
+    ["versions", "Versions"],
     ["activity", "Activity"],
   ];
 
@@ -103,6 +127,32 @@ export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClos
           </p>
         ) : tab === "details" ? (
           <>
+            <label className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground text-xs">Folder</span>
+              <Select value={row.folderId ?? ""} onChange={(e) => onMove(e.target.value || null)} aria-label="Folder" className="w-48">
+                <option value="">Unfiled</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>{`${"\u00a0\u00a0".repeat(f.depth)}${f.name}`}</option>
+                ))}
+              </Select>
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {row.tags.map((t) => (
+                <Badge key={t} variant="secondary" className="gap-1">
+                  {t}
+                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => onUntag(t)}><X aria-hidden className="size-3" /></button>
+                </Badge>
+              ))}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!tagDraft.trim()) return;
+                  void onTag(tagDraft).then((ok) => ok && setTagDraft(""));
+                }}
+              >
+                <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-7 w-24 rounded-md border px-2 text-xs" />
+              </form>
+            </div>
             <PartyBlocks parties={data.review.parties} />
             <section>
               <h3 className="text-muted-foreground mb-1 text-xs">Excerpt</h3>
@@ -147,12 +197,36 @@ export function PreviewPane({ row, onClose, onShare }: { row: BrowserRow; onClos
               ))}
             </ul>
           )
+        ) : tab === "versions" ? (
+          data.versions.length === 0 ? (
+            <p className="text-muted-foreground">Nothing has been read from this document yet.</p>
+          ) : (
+            <ol className="flex flex-col gap-3">
+              {data.versions.map((v) => (
+                <li key={v.extractionId} className="flex flex-col gap-0.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <Readout className="text-muted-foreground text-xs">{stamp.format(new Date(v.at))}</Readout>
+                    <span className="flex gap-1.5">
+                      {v.current ? <Badge variant="default">Current</Badge> : null}
+                      <Badge variant={v.status === "failed" ? "destructive" : "outline"}>{v.status}</Badge>
+                    </span>
+                  </div>
+                  <span className="text-muted-foreground text-xs">
+                    <Readout>{v.hash}</Readout>
+                    {v.reader ? ` · ${v.reader}` : ""}
+                    {v.error ? ` · ${v.error}` : ""}
+                  </span>
+                </li>
+              ))}
+              <li className="text-muted-foreground text-xs">Re-reading adds a version; none is edited or overwritten. Restoring an older version is not available yet.</li>
+            </ol>
+          )
         ) : data.activity.length === 0 ? (
           <p className="text-muted-foreground">No activity recorded yet.</p>
         ) : (
           <ol className="flex flex-col gap-2.5">
             {data.activity.map((a) => (
-              <li key={`${a.kind}-${a.id}`} className="flex gap-3">
+              <li key={a.key} className="flex gap-3">
                 <Readout className="text-muted-foreground w-28 shrink-0 text-xs">{stamp.format(new Date(a.at))}</Readout>
                 <span>{a.summary}</span>
               </li>
