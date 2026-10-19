@@ -126,5 +126,6 @@ jobs:
       # playwright.config.ts builds and starts the server itself.
       - run: pnpm e2e
 
-  # Vercel deploys each branch as a preview through its own GitHub integration.
-  # Nothing is deployed from CI — this job exists so the fact is visible here.
+  # Vercel deploys `main` through its own GitHub integration; every other branch
+  # is disabled in vercel.json, so a merged PR is the only thing that ships.
+  # Nothing is deployed from CI.

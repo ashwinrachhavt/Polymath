@@ -6,7 +6,8 @@ opencode.json
 .env.axiom
 
 # gstack local artifacts
-.gstack/
+.gstack/*
+!.gstack/pregate.json
 
 # private — personal job/outreach tracking, never public
 outreach/

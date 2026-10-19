@@ -1,0 +1,16 @@
+{
+  "runner": "pnpm exec vitest run {files}",
+  "dependencies": {
+    ".claude/**": [],
+    ".serena/**": [],
+    ".mcp.json": [],
+    "extensions/**": [],
+    "eslint.config.mjs": [],
+    "vercel.json": [],
+    ".github/workflows/ci.yml": [],
+    "src/db/migrations/meta/_journal.json": [],
+    "package.json": [],
+    "pnpm-lock.yaml": [],
+    "scripts/pair-companion.ts": ["tests/integration/companion-token.test.ts"]
+  }
+}
