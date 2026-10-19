@@ -80,9 +80,14 @@ suite("role definitions", () => {
     // Revisions are immutable at the database, not by convention.
     const { roleDefinitionRevisions } = await import("@/domains/identity/schema");
     const { eq } = await import("drizzle-orm");
-    await expect(
-      db.update(roleDefinitionRevisions).set({ capabilities: ["ownership.transfer"] }).where(eq(roleDefinitionRevisions.id, detail!.revisions[1].id)),
-    ).rejects.toThrow(/immutable/);
+    const immutabilityError = await db
+      .update(roleDefinitionRevisions)
+      .set({ capabilities: ["ownership.transfer"] })
+      .where(eq(roleDefinitionRevisions.id, detail!.revisions[1].id))
+      .then(() => null)
+      .catch((error: unknown) => error);
+    // Drizzle wraps the driver error; the trigger's message sits on the cause chain.
+    expect(String(immutabilityError) + String((immutabilityError as { cause?: unknown })?.cause ?? "")).toMatch(/immutable/);
 
     // Archiving preserves history and blocks further edits.
     const archiveKey = crypto.randomUUID();
