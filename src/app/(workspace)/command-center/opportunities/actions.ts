@@ -12,7 +12,9 @@ import {
   StaleWriteError,
   updateOpportunity,
 } from "@/domains/opportunities/commands";
-import { OPPORTUNITY_STAGES } from "@/domains/opportunities/queries";
+import { getOpportunityDetail, OPPORTUNITY_STAGES } from "@/domains/opportunities/queries";
+import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
+import { linkDraftToRecord } from "@/app/(workspace)/alfred/dossiers/links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -154,4 +156,31 @@ export async function markDeadlineMetAction(input: unknown): Promise<Result> {
   }
   revalidate();
   return { ok: true };
+}
+
+/*
+ * ASH-114 opportunity entry point: a public-mode case study on the
+ * opportunity's company, persisted as a Studio draft linked to the
+ * opportunity record.
+ */
+export async function researchOpportunityCompanyAction(input: { opportunityId: string; idempotencyKey: string }) {
+  const auth = await authorize();
+  const parsed = z.object({ opportunityId: z.string().uuid(), idempotencyKey: z.string().uuid() }).parse(input);
+  const detail = await getOpportunityDetail(auth, { opportunityId: parsed.opportunityId });
+  if (!detail) return { ok: false as const, error: "No such opportunity." };
+  if (!detail.companyName) return { ok: false as const, error: "Record a company on this opportunity to research it." };
+  try {
+    const result = await runCompanyResearch(auth, {
+      companyName: detail.companyName,
+      mode: "public",
+      depth: "standard",
+      idempotencyKey: parsed.idempotencyKey,
+    });
+    await linkDraftToRecord(auth, { artifactId: result.artifactId, targetType: "opportunity", targetId: parsed.opportunityId });
+    revalidate();
+    return { ok: true as const, artifactId: result.artifactId, title: result.title, manifestSize: result.manifestSize, gapSections: result.gapSections };
+  } catch (error) {
+    if (error instanceof CompanyResearchError) return { ok: false as const, error: error.message };
+    throw error;
+  }
 }
