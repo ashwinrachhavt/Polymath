@@ -13,6 +13,9 @@ env:
   # The build reads .node-version too; this keeps the runner honest if that
   # file is ever renamed.
   NODE_VERSION: "24"
+  # Date math in tests and builds resolves against one zone everywhere, not
+  # whichever zone a runner image happens to ship with.
+  TZ: "UTC"
 
 jobs:
   check:
@@ -44,6 +47,14 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      # Incremental Next build state; the full build below and the one inside
+      # the e2e job both reuse it, so CI stops paying for two cold builds.
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm install --frozen-lockfile
       # Applied directly, in journal order: drizzle-kit migrate has a
       # pre-existing identifier-truncation issue on the early migrations.
@@ -84,6 +95,18 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-
+      # The chromium download is ~20s of every run; the OS deps step below is
+      # a fast no-op once the image has them, and install skips what is cached.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
       # Canonical schema before the server starts: drizzle-kit migrate has a
       # pre-existing identifier-truncation issue on 0000-0002, so the SQL
