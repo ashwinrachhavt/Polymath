@@ -20,6 +20,10 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   // /alfred/notebook; the preview screen hands off instead of holding a
   // second, browser-local copy of the same notes.
   if (screen === "notebook") redirect(initialId ? `/alfred/notebook?id=${encodeURIComponent(initialId)}` : "/alfred/notebook");
+  // D18 (ASH-144): the source library merged onto canonical documents at
+  // /alfred/library; the preview screen's browser-local sources hand off the
+  // same way the notebook's notes did.
+  if (screen === "library") redirect("/alfred/library");
   return <AlfredScreen key={`${screen}-${initialId || ""}`} screen={screen} initialId={initialId}/>;
 }
 
