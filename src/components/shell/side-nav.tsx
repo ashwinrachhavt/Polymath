@@ -132,7 +132,7 @@ export function SideNav() {
           {collapsed ? null : (
             <>
               <span className="flex-1 text-left">Search</span>
-              <kbd className="readout text-[10px]">⌘K</kbd>
+              <kbd className="readout text-[11px]">⌘K</kbd>
             </>
           )}
         </button>

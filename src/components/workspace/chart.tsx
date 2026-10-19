@@ -26,11 +26,11 @@ export function BarChart({ points, unit, emptyLabel, className }: { points: Char
       <div className="flex items-end gap-1" role="img" aria-labelledby={titleId}>
         {points.map((point) => (
           <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <span className="readout text-[10px] text-muted-foreground">{point.value || ""}</span>
+            <span className="readout text-[11px] text-muted-foreground">{point.value || ""}</span>
             <div className="flex h-24 w-full items-end rounded-sm bg-muted" title={`${point.label}: ${point.value} ${unit}`}>
               <div className="w-full rounded-sm bg-primary/70" style={{ height: `${point.value ? Math.max(4, (point.value / peak) * 100) : 0}%` }} />
             </div>
-            <span className="readout text-[10px] text-muted-foreground">{point.label.slice(5)}</span>
+            <span className="readout text-[11px] text-muted-foreground">{point.label.slice(5)}</span>
           </div>
         ))}
       </div>

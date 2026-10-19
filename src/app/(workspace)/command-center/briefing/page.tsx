@@ -63,7 +63,11 @@ async function Briefing() {
           {briefing.suggested.map((task) => <TaskRow key={task.id} task={task} outcomeTag={outcomeTag} mode="accept" />)}
         </div>
         {!briefing.outcomes.length && !briefing.suggested.length ? (
-          <Empty title="No open outcome candidates" description="Create work in NeuralFlow, then accept it as an outcome." />
+          <Empty
+            title="No open outcome candidates"
+            description="Create work in NeuralFlow, then accept it as an outcome."
+            action={<Button size="sm" asChild><Link href="/neuralflow/work">Create work in NeuralFlow</Link></Button>}
+          />
         ) : null}
       </Panel>
 
