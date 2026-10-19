@@ -80,17 +80,17 @@ export function CommandLayer() {
   }
 
   return <>
-    <button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" className="global-search disabled:opacity-50">
+    <span className="contents md:hidden"><button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" data-search-trigger className="global-search disabled:opacity-50">
       <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd className="readout ml-auto hidden text-[10px] lg:block">⌘ K</kbd>
-    </button>
+    </button></span>
     <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
     <span className="hidden md:inline-flex"><ShortcutsDialog /></span>
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); (returnTo.current === "search" ? searchTrigger : captureTrigger).current?.focus(); }}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); if (returnTo.current === "capture") { captureTrigger.current?.focus(); return; } const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")); (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus(); }}>
         <DialogTitle>{mode === "search" ? "Search and commands" : "Capture without switching context"}</DialogTitle>
         <DialogDescription>{mode === "search" ? "Navigate every app or find browser-preview records. Live documents use the search in Alfred Knowledge." : "Add to the shared browser-preview inbox, task list or notebook. Nothing is sent to a provider or saved to the production database."}</DialogDescription>
         {mode === "search" ? <>
-          <Input key="search" autoFocus role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
+          <Input key="search" autoFocus className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setSelected(Math.min(active + 1, results.length - 1)); }
             if (event.key === "ArrowUp") { event.preventDefault(); setSelected(Math.max(active - 1, 0)); }
             if (event.key === "Enter" && results[active]) { event.preventDefault(); navigate(results[active].href); }

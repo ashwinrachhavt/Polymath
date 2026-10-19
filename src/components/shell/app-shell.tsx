@@ -3,7 +3,7 @@
 import { Suspense, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
-import { AppNav } from "@/components/shell/app-nav";
+import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
 import { PreviewBanner } from "@/components/shell/preview-banner";
@@ -36,11 +36,10 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
-      <div data-app={app?.slug} className="flex min-h-dvh flex-1 flex-col">
-        <TopBar clerkConfigured={clerkConfigured} />
-        {app?.nav === "bar" ? <AppNav app={app} /> : null}
-        <div className="flex min-h-0 flex-1">
-          {app?.nav === "rail" ? <AppNav app={app} /> : null}
+      <div data-app={app?.slug} className="flex min-h-dvh flex-1">
+        <SideNav />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar clerkConfigured={clerkConfigured} />
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
             <Suspense fallback={null}><PreviewBanner /></Suspense>
             {isBrowserPreviewPath(pathname) ? <PreviewStorageWarning /> : null}
@@ -49,8 +48,8 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
             <div hidden={waitingForStorage} className="flex min-w-0 flex-1 flex-col">{children}</div>
             <FocusDock />
           </main>
+          <MobileNav />
         </div>
-        <MobileNav />
       </div>
     </WorkspaceProvider>
   );

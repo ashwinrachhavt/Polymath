@@ -233,7 +233,7 @@ export default async function KnowledgePage({
                   doc.undecidedProposals,
                 );
                 return (
-                  <li key={doc.id} className="panel rounded-lg px-3.5 py-3">
+                  <li key={doc.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <a
@@ -315,7 +315,7 @@ function ReviewWorkbench({
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.5fr)]">
         {/* Left: document info */}
         <div className="flex flex-col gap-3">
-          <div className="panel rounded-lg px-3.5 py-3">
+          <div className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
             <h3 className="text-[13px] font-medium">{doc.title}</h3>
             <p className="text-muted-foreground mt-1 text-xs">
               {doc.sourceUrl ? (
@@ -391,7 +391,7 @@ function ReviewWorkbench({
             ) : (
               <ul className="flex flex-col gap-2">
                 {fieldProposals.map((proposal) => (
-                  <li key={proposal.id} className="panel rounded-lg px-3.5 py-3">
+                  <li key={proposal.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
                     <p className="text-[13px] font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
                     {proposal.evidenceQuote ? (
                       <p className="text-muted-foreground mt-0.5 text-xs">
@@ -444,7 +444,7 @@ function ReviewWorkbench({
           ) : (
             <ul className="flex flex-col gap-2">
               {obligations.map((obligation) => (
-                <li key={obligation.id} className="panel rounded-lg px-3.5 py-3">
+                <li key={obligation.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
                   <p className="text-[13px]">{obligation.note ?? obligation.kind}</p>
                   {obligation.status === "proposed" ? (
                     <div className="mt-2">
@@ -471,7 +471,7 @@ function ReviewWorkbench({
           ) : (
             <ul className="flex flex-col gap-2">
               {zettels.map((z) => (
-                <li key={z.id} className="panel rounded-lg px-3.5 py-3">
+                <li key={z.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
                   <p className="text-[13px] font-medium">{z.title}</p>
                   <p className="text-[13px]">{z.claim}</p>
                   <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
@@ -534,7 +534,7 @@ function Parties({
       <h3 className="text-[13px] font-medium">People and companies</h3>
       <ul className="flex flex-col gap-2">
         {parties.map((party) => (
-          <li key={party.id} className="panel rounded-lg px-3.5 py-3">
+          <li key={party.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
             <p className="text-[13px] font-medium">
               {party.displayName}{" "}
               <span className="text-muted-foreground font-normal">

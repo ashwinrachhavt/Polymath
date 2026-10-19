@@ -5,133 +5,100 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Single source of truth for tokens (agents/design.md). Semantic names only,
- * in oklch so lightness can move without shifting hue.
+ * Owner direction (2026-10-18): look and feel of Notion AI and Linear.
+ * Minimal, calm, fast, keyboard-first. This supersedes the earlier
+ * "machined instrument" register: no engraving, no milled edges, no
+ * per-app accent colours in chrome.
  *
- * The direction is **machined**: a precision instrument, not a document. Two
- * consequences run through every value below.
- *
- * 1. Chroma is near zero and the hue is cool (~252). The earlier warm-paper
- *    neutrals are gone; a warm ground is the most recognisable generated
- *    palette of the moment, and this product is a control surface.
- * 2. Surfaces carry an edge, not a glow. A 1px highlight inset at the top and
- *    a hairline shade inset at the bottom is what makes a panel read as a
- *    milled plate catching light from above. Depth comes from that edge and
- *    from one soft shadow, never from an accent wash.
- *
- * Two upstream token sets are reconciled here. shadcn owns the structure —
- * card, popover, primary, secondary, input, ring, chart, sidebar. Axiom owns
- * the values.
- *
- * One naming collision is worth knowing about. shadcn's --accent is a subtle
- * *hover surface* used by menu and list components, not a brand colour. The
- * spec's cyan accent therefore lives on --primary and --ring; --accent stays a
- * neutral. Re-pointing --accent at the cyan would flood every hover state in
- * the product.
- *
- * .dark is the explicit theme; see ThemeProvider. Until it is wired there is
- * no OS-preference fallback — a page in light mode stays light.
+ * What that means in values:
+ * 1. Near-neutral cool greys at very low chroma. Surfaces are white /
+ *    near-white (dark: Linear's near-black); separation comes from hairline
+ *    borders and whitespace, not from shadows or texture.
+ * 2. One accent for the whole product: Linear's indigo. It marks the primary
+ *    action, the focus ring, and links, and appears nowhere else. Apps no
+ *    longer carry their own hue; --app-accent is kept as an alias so
+ *    components do not change.
+ * 3. Flat panels. A card is a 1px border and a fill, nothing pressed or
+ *    bevelled. Floating layers (menus, dialogs) get one soft shadow.
  */
 
 :root {
-  /* Sharp by default. 6px controls, 8px cards, 10px major surfaces. A large
-     radius is the single fastest way to make this look like every other
-     dashboard, so the ladder tops out low. */
   --radius: 0.375rem;
 
-  --background: oklch(0.984 0.002 252);
-  --foreground: oklch(0.195 0.008 255);
+  --background: oklch(0.99 0.002 260);
+  --foreground: oklch(0.25 0.01 265);
 
-  --card: oklch(0.997 0.001 252);
-  --card-foreground: oklch(0.195 0.008 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.01 265);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.195 0.008 255);
+  --popover-foreground: oklch(0.25 0.01 265);
 
-  /* The product's one accent: instrument cyan/teal, never clay. */
-  --primary: oklch(0.44 0.085 214);
-  --primary-foreground: oklch(0.995 0.002 215);
+  /* The product's one accent: Linear indigo. */
+  --primary: oklch(0.55 0.19 277);
+  --primary-foreground: oklch(0.985 0.002 277);
 
-  --secondary: oklch(0.955 0.003 252);
-  --secondary-foreground: oklch(0.195 0.008 255);
+  --secondary: oklch(0.965 0.003 260);
+  --secondary-foreground: oklch(0.25 0.01 265);
 
-  --muted: oklch(0.955 0.003 252);
-  --muted-foreground: oklch(0.492 0.008 255);
+  --muted: oklch(0.965 0.003 260);
+  --muted-foreground: oklch(0.425 0.012 265);
 
-  --accent: oklch(0.945 0.004 252);
-  --accent-foreground: oklch(0.195 0.008 255);
+  --accent: oklch(0.955 0.004 260);
+  --accent-foreground: oklch(0.25 0.01 265);
 
-  --destructive: oklch(0.52 0.2 27);
+  --destructive: oklch(0.55 0.19 25);
 
-  --border: oklch(0.898 0.004 252);
-  --input: oklch(0.898 0.004 252);
-  --ring: oklch(0.55 0.09 215);
+  --border: oklch(0.925 0.004 260);
+  --input: oklch(0.925 0.004 260);
+  --ring: oklch(0.55 0.19 277);
 
-  /* Reserved for charts, where a text label always accompanies the colour. */
-  --chart-1: oklch(0.55 0.09 215);
+  --chart-1: oklch(0.55 0.19 277);
   --chart-2: oklch(0.58 0.08 168);
   --chart-3: oklch(0.5 0.09 268);
   --chart-4: oklch(0.62 0.1 96);
   --chart-5: oklch(0.55 0.09 330);
 
-  --sidebar: oklch(0.968 0.003 252);
-  --sidebar-foreground: oklch(0.195 0.008 255);
-  --sidebar-primary: oklch(0.49 0.082 214);
-  --sidebar-primary-foreground: oklch(0.995 0.002 215);
-  --sidebar-accent: oklch(0.945 0.004 252);
-  --sidebar-accent-foreground: oklch(0.195 0.008 255);
-  --sidebar-border: oklch(0.898 0.004 252);
-  --sidebar-ring: oklch(0.55 0.09 215);
+  --sidebar: oklch(0.977 0.003 260);
+  --sidebar-foreground: oklch(0.25 0.01 265);
+  --sidebar-primary: oklch(0.55 0.19 277);
+  --sidebar-primary-foreground: oklch(0.985 0.002 277);
+  --sidebar-accent: oklch(0.95 0.004 260);
+  --sidebar-accent-foreground: oklch(0.25 0.01 265);
+  --sidebar-border: oklch(0.925 0.004 260);
+  --sidebar-ring: oklch(0.55 0.19 277);
 
-  /* The machined edge. --edge-light is the 1px sheen along a panel's top
-     inside edge; --edge-shade is the hairline in its bottom inside edge.
-     Both live outside the shadcn set because shadcn has no vocabulary for
-     the inside of a border. */
-  --edge-light: oklch(1 0 0 / 70%);
-  --edge-shade: oklch(0.6 0.006 255 / 9%);
+  /* Kept defined for any straggler referencing them; the flat panel no
+     longer uses inset edges. */
+  --edge-light: oklch(1 0 0 / 0%);
+  --edge-shade: oklch(0 0 0 / 0%);
 
-  /* One elevation. It is used on things that genuinely float and nowhere
-     else; a shadow per card makes a grid of cards look like a contact sheet. */
-  --shadow: 0 1px 1px oklch(0.5 0.01 255 / 4%), 0 8px 24px oklch(0.5 0.01 255 / 6%);
+  /* One soft shadow, reserved for layers that genuinely float (menus,
+     dialogs, popovers). Cards and panels cast none. */
+  --shadow: 0 1px 2px oklch(0.3 0.02 265 / 5%), 0 8px 24px oklch(0.3 0.02 265 / 8%);
 
-  /* The engraving: a 1px line every 3px at a whisper. Applied only to the
-     shell chrome, never to a reading surface. */
-  --engrave: oklch(0.5 0.01 255 / 4%);
-
-  /* Each app carries its own accent, and that is most of what "different
-     personality" means in this direction — the ground, the type, the radii,
-     and the edge stay identical across all three, so the apps read as one
-     instrument with three modes rather than three products.
-
-     Same lightness (~0.5) and chroma (0.09) across the three; only the hue
-     moves. A per-app accent that also changed weight or saturation would make
-     the suite look assembled from parts. Command Center holds the product's own
-     cyan because it is the app whose question you ask first.
-
-     Scoped by a `data-app` attribute on the app's shell, so a component never
-     hard-codes which app it is in. */
+  /* All apps share the single accent. The [data-app] scoping stays so
+     components keep reading --app-accent, but every app resolves to the
+     same indigo: one product, not three. */
   --app-accent: var(--primary);
-  --app-accent-foreground: oklch(0.995 0.002 215);
-
-  /* Per-app accent variables, readable outside any [data-app] scope (the
-     launcher). The [data-app] rules below point --app-accent at these. */
-  --accent-command-center: oklch(0.44 0.085 215);
-  --accent-neuralflow: oklch(0.45 0.085 155);
-  --accent-alfred: oklch(0.45 0.09 285);
+  --app-accent-foreground: var(--primary-foreground);
+  --accent-command-center: var(--primary);
+  --accent-neuralflow: var(--primary);
+  --accent-alfred: var(--primary);
 }
 
 [data-app="command-center"] {
   --app-accent: var(--accent-command-center);
-  --app-accent-foreground: oklch(0.995 0.002 215);
+  --app-accent-foreground: var(--primary-foreground);
 }
 
 [data-app="neuralflow"] {
   --app-accent: var(--accent-neuralflow);
-  --app-accent-foreground: oklch(0.995 0.002 155);
+  --app-accent-foreground: var(--primary-foreground);
 }
 
 [data-app="alfred"] {
   --app-accent: var(--accent-alfred);
-  --app-accent-foreground: oklch(0.995 0.002 285);
+  --app-accent-foreground: var(--primary-foreground);
 }
 
 @theme inline {
@@ -167,23 +134,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* App-scoped accent. Components use `text-app-accent` / `bg-app-accent` and
-     inherit whichever app's shell they are inside; nothing hard-codes a hue. */
   --color-app-accent: var(--app-accent);
   --color-app-accent-foreground: var(--app-accent-foreground);
 
-  /* Geist is the sans until the recorded typeface decision replaces it.
-     Geist is a low-contrast grotesque — flat terminals, closed apertures —
-     which is exactly the register a precision instrument wants, so the open
-     question in design.md is about *licence and pairing*, not about whether
-     this reads correctly. Do not point --font-sans at itself; that resolves
-     to nothing. */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Inter is the Notion/Linear register: a neutral grotesque that stays
+     quiet at 13px. Geist Mono stays for readouts and keyboard hints. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  /* Half of a font-size unit: the one tracking value warm display type does
-     not want. Applied to every heading so the type reads machined rather than
-     kerned by a browser default. */
   --tracking-tight: -0.011em;
 
   --radius-sm: calc(var(--radius) * 0.5);
@@ -195,103 +153,77 @@
 }
 
 .dark {
-  --background: oklch(0.185 0.005 255);
-  --foreground: oklch(0.94 0.003 255);
+  /* Linear's dark register: near-black ground, panels a breath lighter,
+     hairlines at low alpha, indigo accent kept identical to light mode. */
+  --background: oklch(0.165 0.005 265);
+  --foreground: oklch(0.94 0.004 260);
 
-  --card: oklch(0.215 0.005 255);
-  --card-foreground: oklch(0.94 0.003 255);
-  --popover: oklch(0.228 0.005 255);
-  --popover-foreground: oklch(0.94 0.003 255);
+  --card: oklch(0.19 0.005 265);
+  --card-foreground: oklch(0.94 0.004 260);
+  --popover: oklch(0.2 0.005 265);
+  --popover-foreground: oklch(0.94 0.004 260);
 
-  --primary: oklch(0.74 0.1 215);
-  /* The app accents are declared once in :root; lift them for the dark
-     ground or accent-coloured text drops below 4.5:1 on it. */
-  --accent-command-center: oklch(0.74 0.095 215);
-  --accent-neuralflow: oklch(0.76 0.095 155);
-  --accent-alfred: oklch(0.75 0.1 285);
-  --primary-foreground: oklch(0.18 0.005 255);
+  --primary: oklch(0.55 0.19 277);
+  --accent-command-center: var(--primary);
+  --accent-neuralflow: var(--primary);
+  --accent-alfred: var(--primary);
+  --primary-foreground: oklch(0.985 0.002 277);
 
-  --secondary: oklch(0.245 0.005 255);
-  --secondary-foreground: oklch(0.94 0.003 255);
+  --secondary: oklch(0.225 0.006 265);
+  --secondary-foreground: oklch(0.94 0.004 260);
 
-  --muted: oklch(0.245 0.005 255);
-  --muted-foreground: oklch(0.705 0.006 255);
+  --muted: oklch(0.225 0.006 265);
+  --muted-foreground: oklch(0.68 0.01 262);
 
-  --accent: oklch(0.262 0.006 255);
-  --accent-foreground: oklch(0.94 0.003 255);
+  --accent: oklch(0.24 0.006 265);
+  --accent-foreground: oklch(0.94 0.004 260);
 
-  --destructive: oklch(0.68 0.17 25);
+  --destructive: oklch(0.65 0.17 25);
 
-  --border: oklch(0.3 0.006 255);
-  --input: oklch(0.3 0.006 255);
-  --ring: oklch(0.74 0.1 215);
+  --border: oklch(0.265 0.006 265);
+  --input: oklch(0.265 0.006 265);
+  --ring: oklch(0.62 0.17 279);
 
-  --chart-1: oklch(0.74 0.1 215);
+  --chart-1: oklch(0.62 0.17 279);
   --chart-2: oklch(0.76 0.08 168);
   --chart-3: oklch(0.7 0.09 268);
   --chart-4: oklch(0.8 0.1 96);
   --chart-5: oklch(0.74 0.09 330);
 
-  --sidebar: oklch(0.205 0.005 255);
-  --sidebar-foreground: oklch(0.94 0.003 255);
-  --sidebar-primary: oklch(0.74 0.1 215);
-  --sidebar-primary-foreground: oklch(0.18 0.005 255);
-  --sidebar-accent: oklch(0.262 0.006 255);
-  --sidebar-accent-foreground: oklch(0.94 0.003 255);
-  --sidebar-border: oklch(0.3 0.006 255);
-  --sidebar-ring: oklch(0.74 0.1 215);
+  --sidebar: oklch(0.18 0.005 265);
+  --sidebar-foreground: oklch(0.94 0.004 260);
+  --sidebar-primary: oklch(0.55 0.19 277);
+  --sidebar-primary-foreground: oklch(0.985 0.002 277);
+  --sidebar-accent: oklch(0.24 0.006 265);
+  --sidebar-accent-foreground: oklch(0.94 0.004 260);
+  --sidebar-border: oklch(0.265 0.006 265);
+  --sidebar-ring: oklch(0.62 0.17 279);
 
-  /* Dark metal reflects far less. A light-mode edge at this opacity would
-     read as a glow, which is the SaaS tell this direction exists to avoid. */
-  --edge-light: oklch(1 0 0 / 7%);
-  --edge-shade: oklch(0 0 0 / 25%);
+  --edge-light: oklch(1 0 0 / 0%);
+  --edge-shade: oklch(0 0 0 / 0%);
 
-  --shadow: 0 1px 1px oklch(0 0 0 / 30%), 0 12px 32px oklch(0 0 0 / 35%);
-
-  --engrave: oklch(1 0 0 / 3%);
+  --shadow: 0 1px 2px oklch(0 0 0 / 40%), 0 12px 32px oklch(0 0 0 / 45%);
 }
 
 @layer components {
   /*
-   * The panel. One surface primitive, and the only thing in Axiom that reads
-   * as a physical object: a hairline border, a sheen along the top inside
-   * edge, a shade along the bottom inside edge, and one soft shadow. A card,
-   * an empty state, a stat tile, and a settings row are all the same object at
-   * different sizes — which is why this is a class and not four components.
+   * The panel. Flat and quiet: a hairline border and a fill. Depth is
+   * reserved for layers that float above content, which carry --shadow.
    */
   .panel {
     border: 1px solid var(--border);
     background-color: var(--card);
-    box-shadow:
-      inset 0 1px 0 0 var(--edge-light),
-      inset 0 -1px 0 0 var(--edge-shade),
-      var(--shadow);
   }
 
-  /* A panel that holds nothing yet: the same edge, dashed and quieter. It is
-     an invitation, not a container that failed to load. */
+  /* An empty panel: the same hairline, dashed and quieter. An invitation,
+     not a container that failed to load. */
   .panel-empty {
     border: 1px dashed var(--border);
     background-color: color-mix(in oklab, var(--card) 50%, transparent);
-    box-shadow: inset 0 1px 0 0 var(--edge-light);
   }
 
-  /*
-   * The engraving. A 1px line every 3px at ~4% — visible as a faint vertical
-   * tooth on the rail and the header, invisible as a pattern. Restricted to
-   * shell chrome: on a reading surface it would be noise under the text.
-   */
-  .engraved {
-    background-image: repeating-linear-gradient(
-      to bottom,
-      var(--engrave) 0 1px,
-      transparent 1px 3px
-    );
-  }
-
-  /* Numbers the owner reads as instrument output — counts, timers, spend,
-     run ids, state labels. Monospace plus tabular figures stops a live value
-     from reflowing as it changes, which is the whole point of a readout. */
+  /* Numbers the owner reads as instrument output — counts, timers, run ids.
+     Tabular figures stop a live value from reflowing as it changes. */
   .readout {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
@@ -299,18 +231,11 @@
   }
 }
 
-:root {
-  --product-command: oklch(0.5 0.09 215);
-  --product-neural: oklch(0.5 0.13 292);
-  --product-alfred: oklch(0.44 0.08 164);
-}
-.dark {
-  --product-command: oklch(0.76 0.09 215);
-  --product-neural: oklch(0.78 0.1 292);
-  --product-alfred: oklch(0.76 0.08 164);
-}
+/*
+ * App icons in the launcher and suite nav: plain monochrome tiles. The old
+ * per-product tints are gone with the one-accent rule.
+ */
 .product-mark {
-  --product-color: var(--product-command);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -318,16 +243,13 @@
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  color: var(--product-color);
-  background: color-mix(in oklab, var(--product-color) 9%, var(--card));
-  border: 1px solid color-mix(in oklab, var(--product-color) 20%, var(--border));
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
 }
-[data-product="neuralflow"] { --product-color: var(--product-neural); }
-[data-product="alfred"] { --product-color: var(--product-alfred); }
-[data-product="command-center"] { --product-color: var(--product-command); }
-.suite-nav-link { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 9px; border-radius: 5px; font-size: 12px; color: var(--muted-foreground); }
+.suite-nav-link { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 9px; border-radius: 6px; font-size: 13px; color: var(--muted-foreground); }
 .suite-nav-link:hover { background: var(--muted); color: var(--foreground); }
-.suite-nav-active { background: color-mix(in oklab, var(--product-color) 8%, var(--card)); color: var(--foreground); box-shadow: inset 2px 0 var(--product-color); font-weight: 500; }
+.suite-nav-active { background: var(--muted); color: var(--foreground); font-weight: 500; }
 .suite-screen {
 min-width: 0;
 padding: 24px clamp(16px, 2.5vw, 32px) 40px;
@@ -335,7 +257,7 @@ font-size: 13px;
 }
 .suite-screen > div {
 width: 100%;
-max-width: 1500px;
+max-width: 1200px;
 margin-inline: auto;
 }
 .axiom-mark {
@@ -357,7 +279,7 @@ height: 32px;
 align-items: center;
 gap: 10px;
 border: 1px solid var(--border);
-border-radius: 5px;
+border-radius: 6px;
 padding-inline: 10px;
 background: var(--card);
 color: var(--muted-foreground);
@@ -374,7 +296,7 @@ width: 100%;
 min-height: 44px;
 align-items: center;
 gap: 12px;
-border-radius: 5px;
+border-radius: 6px;
 padding: 8px 10px;
 text-align: left;
 font-size: 13px;
@@ -418,7 +340,7 @@ textarea {
 accent-color: var(--primary);
 }
 ::selection {
-background: color-mix(in oklab, var(--primary) 24%, transparent);
+background: color-mix(in oklab, var(--primary) 22%, transparent);
 color: var(--foreground);
 }
 @media (max-width: 1023px) {
@@ -461,15 +383,11 @@ transition-duration: 0.01ms !important;
   html {
     @apply font-sans;
   }
-  /* Headings take the tight tracking by default; body text keeps normal
-     tracking so long-form reading is unaffected. */
   h1,
   h2,
   h3 {
     @apply tracking-tight;
   }
-  /* The live indicator on anything currently running. Reduced motion stops it
-     rather than hiding it, so the state stays legible without the movement. */
   @media (prefers-reduced-motion: no-preference) {
     .pulse-dot {
       animation: pulse-dot 2s ease-in-out infinite;

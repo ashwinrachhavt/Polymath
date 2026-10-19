@@ -23,7 +23,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Apps"
-      className="border-border bg-background engraved sticky bottom-0 z-20 flex border-t md:hidden"
+      className="border-border bg-background sticky bottom-0 z-20 flex border-t md:hidden"
     >
       {items.map(({ href, label, icon: Icon, ...rest }) => {
         const active = "slug" in rest ? appForPath(pathname)?.slug === rest.slug : pathname === href;

@@ -19,10 +19,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="border-border bg-background/95 sticky top-12 z-10 border-b px-4 pt-6 pb-4 backdrop-blur md:px-6">
+    <header className="border-border bg-background/95 sticky top-12 z-10 border-b px-4 pt-7 pb-5 backdrop-blur md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="text-[15px] leading-none font-medium">{title}</h1>
+          <h1 className="text-[20px] leading-tight font-semibold tracking-tight">{title}</h1>
           <p className="text-muted-foreground text-[13px]">{purpose}</p>
         </div>
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
