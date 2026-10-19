@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { contacts } from "@/domains/crm/schema";
+import { companies, contacts } from "@/domains/crm/schema";
 import { artifactLinks, artifacts, artifactVersions, documents } from "@/domains/knowledge/schema";
 import { opportunities } from "@/domains/opportunities/schema";
 import { tasks } from "@/domains/work/schema";
@@ -26,6 +26,7 @@ suite("draft workbench (Neon)", () => {
   let artifactId: string;
   let documentId: string;
   let taskId: string;
+let companyId: string;
   let contactId: string;
 
   beforeAll(async () => {
@@ -67,18 +68,26 @@ suite("draft workbench (Neon)", () => {
     await handle.db
       .insert(opportunities)
       .values({ workspaceId: seed.workspaceId, title: "Acme expansion", createdBy: seed.userId, updatedBy: seed.userId });
+    const [company] = await handle.db
+      .insert(companies)
+      .values({ workspaceId: seed.workspaceId, name: "Acme Corp", createdBy: seed.userId, updatedBy: seed.userId })
+      .returning();
+    companyId = company.id;
   });
 
   it("getDraftDetail returns the text, the pinned source, and record links", async () => {
     if (!handle) return;
     await linkDraftToRecord(auth, { artifactId, targetType: "task", targetId: taskId });
+    await linkDraftToRecord(auth, { artifactId, targetType: "company", targetId: companyId });
     const detail = await getDraftDetail(auth, artifactId);
     expect(detail.artifact.title).toBe("Market brief");
     expect(detail.text).toBe("First pass.");
     expect(detail.sources).toEqual([{ documentId, title: "Source paper", pinnedHash: "deadbeef1234" }]);
-    expect(detail.links).toHaveLength(1);
+    expect(detail.links).toHaveLength(2);
     const titles = await resolveLinkTitles(auth, detail.links);
-    expect(titles[detail.links[0].id]).toBe("Follow up on the brief");
+    const byType = Object.fromEntries(detail.links.map((l) => [l.targetType, l.id]));
+    expect(titles[byType.task]).toBe("Follow up on the brief");
+    expect(titles[byType.company]).toBe("Acme Corp");
   });
 
   it("linkDraftToRecord rejects a record outside the workspace, and unlink removes the row", async () => {
