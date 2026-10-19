@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
+import { connection } from "next/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveMachineClient } from "@/domains/identity/machine";
 import { clerkConfigured } from "@/lib/clerk";
@@ -38,6 +39,11 @@ export class ForbiddenError extends Error {
 }
 
 export const getAuthContext = cache(async (): Promise<AuthContext> => {
+  // Session identity is per-request and the identity upsert stamps
+  // updatedAt with a wall-clock Date, so auth can never take part in a
+  // prerender. cacheComponents pages call connection() here once instead of
+  // each page remembering to opt itself out of prerendering.
+  await connection();
   // Same dev fallback as getAnyAuthContext below: without Clerk keys the
   // proxy is a no-op and auth() throws. See the longer note there.
   if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {

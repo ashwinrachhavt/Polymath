@@ -10,6 +10,11 @@ vi.mock("@/domains/identity/machine", () => ({
       : { ok: false as const, reason: subject === "mch_rate" ? "rate_limited" : "not_found" },
   ),
 }));
+// getAuthContext opts out of prerendering via connection(); unit tests run
+// outside a request scope, where that call throws.
+vi.mock("next/server", () => ({
+  connection: vi.fn(async () => {}),
+}));
 
 /*
  * auth({acceptsToken: [...]}) returns the session auth object in this app's
