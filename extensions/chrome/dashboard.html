@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Axiom Capture</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div class="sidebar-header">
+          <span class="logo-icon">A</span>
+          <span class="logo-text">Axiom</span>
+          <div id="sidebar-status" class="status-dot" title="Checking..."></div>
+        </div>
+        <ul class="nav-links">
+          <li>
+            <button class="nav-btn active" data-panel="notes">Inbox</button>
+          </li>
+          <li>
+            <button class="nav-btn" data-panel="library">Captured</button>
+          </li>
+          <li>
+            <button class="nav-btn" data-panel="history">
+              Capture History
+            </button>
+          </li>
+          <li>
+            <button class="nav-btn" data-panel="settings">Settings</button>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- Main content -->
+      <main id="main">
+        <!-- Notes panel -->
+        <div id="panel-notes" class="panel active">
+          <div class="panel-header">
+            <h1>Inbox</h1>
+            <div class="panel-actions">
+              <input
+                type="text"
+                id="notes-search"
+                class="search-input"
+                placeholder="Search captures..."
+              />
+              <button id="btn-new-note" class="btn btn-primary">
+                + New Capture
+              </button>
+              <button id="btn-refresh-notes" class="btn btn-secondary">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div id="notes-list" class="card-list">
+            <p class="empty-state">Loading notes...</p>
+          </div>
+        </div>
+
+        <!-- Library panel -->
+        <div id="panel-library" class="panel">
+          <div class="panel-header">
+            <h1>Captured</h1>
+            <div class="panel-actions">
+              <input
+                type="text"
+                id="library-search"
+                class="search-input"
+                placeholder="Search captured pages..."
+              />
+              <button id="btn-refresh-library" class="btn btn-secondary">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div id="library-list" class="card-list">
+            <p class="empty-state">Loading documents...</p>
+          </div>
+        </div>
+
+        <!-- Capture History panel -->
+        <div id="panel-history" class="panel">
+          <div class="panel-header">
+            <h1>Capture History</h1>
+            <div class="panel-actions">
+              <button id="btn-clear-history" class="btn btn-secondary">
+                Clear All
+              </button>
+            </div>
+          </div>
+          <div id="history-list" class="card-list">
+            <p class="empty-state">Loading history...</p>
+          </div>
+        </div>
+
+        <!-- Settings panel -->
+        <div id="panel-settings" class="panel">
+          <div class="panel-header">
+            <h1>Settings</h1>
+          </div>
+          <div class="settings-form">
+            <div class="form-group">
+              <label for="setting-api-url">API Base URL</label>
+              <input
+                type="text"
+                id="setting-api-url"
+                placeholder="http://localhost:3000"
+              />
+              <p class="form-hint">
+                The URL of your Axiom instance. Default is
+                http://localhost:3000.
+              </p>
+            </div>
+            <div class="form-group">
+              <label for="setting-api-token">Access token</label>
+              <input
+                type="password"
+                id="setting-api-token"
+                placeholder="From pnpm companion:pair"
+              />
+              <p class="form-hint">
+                Mint one with <code>pnpm companion:pair -- --clerk-user user_…</code>.
+                It is shown once.
+              </p>
+            </div>
+            <div class="form-group">
+              <label>Keyboard Shortcuts</label>
+              <div class="shortcut-list">
+                <div class="shortcut-row">
+                  <span class="shortcut-label">Toggle Dock</span>
+                  <span class="kbd">Alt + N</span>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-label">Save Selection / Note</span>
+                  <span class="kbd">Alt + S</span>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-label">Capture Page</span>
+                  <span class="kbd">Alt + P</span>
+                </div>
+              </div>
+            </div>
+            <button id="btn-save-settings" class="btn btn-primary">
+              Save Settings
+            </button>
+            <div id="settings-status"></div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Note detail / editor modal -->
+      <div id="note-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <input
+              type="text"
+              id="modal-note-title"
+              class="modal-title-input"
+              placeholder="Note title..."
+            />
+            <button id="modal-close" class="btn-icon">&times;</button>
+          </div>
+          <textarea
+            id="modal-note-content"
+            class="modal-textarea"
+            placeholder="Write your note..."
+          ></textarea>
+          <div class="modal-footer">
+            <button id="modal-save" class="btn btn-primary">Save</button>
+            <button id="modal-delete" class="btn btn-danger">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="dashboard.js"></script>
+  </body>
+</html>

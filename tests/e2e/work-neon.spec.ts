@@ -31,6 +31,11 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
       return text.indexOf(b) < text.indexOf(a);
     })
     .toBe(true);
+  // The poll above sees the optimistic order, which applies before the server
+  // action resolves. Every row control is disabled while that transition is
+  // pending, so waiting for one to re-enable means the write has committed;
+  // reloading sooner aborts the request and reads the pre-move rows back.
+  await expect(page.getByRole("button", { name: `Done: complete ${b}` })).toBeEnabled();
   await page.reload();
   const after = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
   expect(after.indexOf(b)).toBeLessThan(after.indexOf(a));
@@ -67,7 +72,7 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   await expect(page.getByText("That dependency would make the tasks wait on each other.")).toBeVisible();
 
   // Finishing the blocker releases the other task.
-  await page.getByRole("button", { name: `Complete ${b}` }).click();
+  await page.getByRole("button", { name: `Done: complete ${b}` }).click();
   await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
   await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("Blocked by 1")).toHaveCount(0);
   await page.goto("/neuralflow/work?view=saved&show=done");

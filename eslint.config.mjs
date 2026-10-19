@@ -31,6 +31,9 @@ const eslintConfig = defineConfig([
     "**/.eve/**",
     // Vendored agent skills: third-party scripts, not our source.
     ".claude/skills/**",
+    // The Chrome companion is browser code, not part of the Next build. Its
+    // libs/ are vendored (Readability, Turndown) and fail rules they predate.
+    "extensions/**",
   ]),
 ]);
 

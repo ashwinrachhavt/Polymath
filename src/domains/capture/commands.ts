@@ -1,9 +1,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { createTask } from "@/domains/work/commands";
 import { withTransaction } from "@/lib/db-transaction";
-import { captures } from "./schema";
+import { captures, captureSource } from "./schema";
 
 /*
  * Inbox commands (ASH-137 A02). Clarify-before-commit: conversion is a
@@ -24,31 +25,53 @@ function isUniqueViolation(cause: unknown): boolean {
   return (cause as { cause?: { code?: string } })?.cause?.code === "23505";
 }
 
-export async function createCapture(auth: AuthContext, input: { text: string }) {
+export async function createCapture(
+  auth: AuthContext,
+  input: {
+    text: string;
+    /**
+     * A URL-only capture is the inbox's paste path; a page grab from the
+     * companion carries the article text too, so the URL is provenance, not
+     * the capture itself. Only url-only captures dedupe on URL.
+     */
+    url?: string;
+    title?: string;
+    source?: (typeof captureSource.enumValues)[number];
+    idempotencyKey?: string;
+  },
+) {
   const trimmed = input.text.trim();
   if (!trimmed) throw new ConflictError("Nothing to capture.");
-  const isUrl = /^https?:\/\/\S+$/i.test(trimmed);
+  const isUrl = !input.url && /^https?:\/\/\S+$/i.test(trimmed);
+  const url = isUrl ? trimmed : (input.url?.trim() || null);
   try {
     return await withTransaction(async (tx) => {
-      const [capture] = await tx
-        .insert(captures)
-        .values({
-          workspaceId: auth.workspaceId,
-          kind: isUrl ? "url" : "text",
-          source: "quick_capture",
-          rawPayload: isUrl ? { url: trimmed } : { text: trimmed },
-          text: isUrl ? null : trimmed,
-          url: isUrl ? trimmed : null,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning();
-      await recordAudit(
-        auth,
-        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind}` },
-        tx,
-      );
-      return capture;
+      const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createCapture", ...input }, async () => {
+        const [capture] = await tx
+          .insert(captures)
+          .values({
+            workspaceId: auth.workspaceId,
+            kind: isUrl ? "url" : "text",
+            source: input.source ?? "quick_capture",
+            rawPayload: {
+              ...(url ? { url } : {}),
+              ...(isUrl ? {} : { text: trimmed }),
+              ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+            },
+            text: isUrl ? null : trimmed,
+            url,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning();
+        await recordAudit(
+          auth,
+          { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind}` },
+          tx,
+        );
+        return capture;
+      });
+      return value;
     });
   } catch (cause) {
     if (isUniqueViolation(cause)) {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
 import { getTaskDetailForPage, listFocusHistoryForPage, listWorkPageForPage, listWorkRowsForPage } from "./data";

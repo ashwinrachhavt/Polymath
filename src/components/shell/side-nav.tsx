@@ -100,7 +100,6 @@ export function SideNav() {
             top-right launcher, so the rail only names the current app. */}
         <Link
           href={activeApp?.href ?? homeHref}
-          aria-label={activeApp ? `${activeApp.label} home` : "Axiom home"}
           className={cn(
             "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
             "focus-visible:ring-ring focus-visible:ring-3",
@@ -117,6 +116,7 @@ export function SideNav() {
           )}
         </Link>
 
+        <span className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={openCommand}
@@ -125,7 +125,7 @@ export function SideNav() {
           data-search-trigger
           aria-keyshortcuts="Meta+K Control+K"
           className={cn(
-            "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 items-center gap-2.5 rounded-md border text-[13px] transition-colors",
+            "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 flex-1 items-center gap-2.5 rounded-md border text-[13px] transition-colors",
             collapsed ? "justify-center border-transparent bg-transparent px-0 hover:bg-sidebar-accent" : "px-2.5",
           )}
         >
@@ -133,10 +133,11 @@ export function SideNav() {
           {collapsed ? null : (
             <>
               <span className="flex-1 text-left">Search</span>
-              <kbd className="readout text-[11px]">⌘K</kbd>
             </>
           )}
         </button>
+        {collapsed ? null : <kbd aria-hidden className="readout text-[11px]">⌘K</kbd>}
+        </span>
 
         {/* The active product's features. */}
         <div className="mt-2 flex flex-1 flex-col gap-0.5">

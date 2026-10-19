@@ -206,7 +206,7 @@ export function WorkList({
                       size="sm"
                       variant="outline"
                       disabled={pending}
-                      aria-label={`Complete ${row.title}`}
+                      aria-label={`Done: complete ${row.title}`}
                       onClick={() => run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id })}
                     >
                       Done

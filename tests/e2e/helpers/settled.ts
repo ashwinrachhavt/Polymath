@@ -27,4 +27,15 @@ export async function waitSettled(page: Page, landmarks: { capture?: boolean; he
       return opacity !== "" && Number(opacity) > 0.99;
     }),
   );
+  // Colors animate too: a button can hold full opacity while its background
+  // and foreground are still interpolating, and axe samples those intermediate
+  // values (a Capture button caught mid-transition reads at 2.8:1). Wait for
+  // every finite CSS transition to finish. Looping animations (loading pulses)
+  // never finish, so they are excluded rather than waited on forever.
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => {
+      const timing = (animation.effect as KeyframeEffect | null)?.getTiming();
+      return timing?.iterations === Infinity || animation.playState !== "running";
+    }),
+  );
 }

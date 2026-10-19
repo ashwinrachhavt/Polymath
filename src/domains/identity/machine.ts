@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { sha256Hex } from "@/lib/hash";
 import { apiClientUsage, apiClients } from "./schema";
 
 /*
@@ -27,13 +28,23 @@ type MachineResolveResult =
   | { ok: false; reason: "not_found" | "not_active" | "expired" | "rate_limited" };
 
 /**
+ * Resolve a companion's own bearer secret. The secret is stored only as a
+ * SHA-256 digest, so the presented token is hashed and the digest compared.
+ * Clerk keeps issuing session tokens; this path exists because Clerk's
+ * API-key product is not enabled on every instance.
+ */
+export async function resolveCompanionToken(secret: string): Promise<MachineResolveResult> {
+  return resolveMachineClient(await sha256Hex(secret));
+}
+
+/**
  * The pairing flow stores the Clerk machine subject in token_hash; a plain
  * equality lookup is the whole resolution — no fuzzy matching, no
  * client-supplied id. A revoked, expired, or unknown client is the same
  * "not allowed" on purpose.
  */
 export async function resolveMachineClient(
-  clerkSubject: string,
+  tokenHash: string,
 ): Promise<MachineResolveResult> {
   const [client] = await db
     .select({
@@ -43,7 +54,7 @@ export async function resolveMachineClient(
       expiresAt: apiClients.expiresAt,
     })
     .from(apiClients)
-    .where(and(eq(apiClients.tokenHash, clerkSubject), isNull(apiClients.archivedAt)))
+    .where(and(eq(apiClients.tokenHash, tokenHash), isNull(apiClients.archivedAt)))
     .limit(1);
 
   if (!client) return { ok: false, reason: "not_found" };
