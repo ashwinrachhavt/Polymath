@@ -169,3 +169,100 @@ export function ResolveFollowUpButton({
     </span>
   );
 }
+
+/* C03 correspondence islands: compose a draft, gate its send, cancel it. */
+import { cancelCorrespondenceAction, draftCorrespondenceAction, requestSendApprovalAction } from "./actions";
+
+export function CorrespondenceForm({ contactId }: { contactId: string }) {
+  const { error, setError, pending, startTransition } = useActionError();
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        setError(null);
+        startTransition(async () => {
+          const result = await draftCorrespondenceAction({
+            contactId,
+            subject: String(data.get("subject") || ""),
+            body: String(data.get("body") || ""),
+          });
+          if (result.ok) {
+            event.currentTarget.reset();
+          } else {
+            setError(result.error);
+          }
+        });
+      }}
+    >
+      <Field label="Subject">
+        <Input name="subject" placeholder="Thursday works" />
+      </Field>
+      <Field label="Draft">
+        <Textarea name="body" required rows={3} placeholder="What you'd send, once you approve the send in Reviews." />
+      </Field>
+      <div className="flex items-center gap-3">
+        <Button type="submit" size="sm" disabled={pending}>Save draft</Button>
+        {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+      </div>
+    </form>
+  );
+}
+
+export function RequestSendApprovalButton({
+  correspondenceId,
+  version,
+  hasProposal,
+}: {
+  correspondenceId: string;
+  version: number;
+  hasProposal: boolean;
+}) {
+  const { error, setError, pending, startTransition } = useActionError();
+  if (hasProposal) return <span className="text-xs text-muted-foreground">Approval requested - open Reviews to decide.</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await requestSendApprovalAction({ correspondenceId, expectedVersion: version });
+            if (!result.ok) setError(result.error);
+          });
+        }}
+      >
+        Request send approval
+      </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
+}
+
+export function CancelCorrespondenceButton({ correspondenceId, version }: { correspondenceId: string; version: number }) {
+  const { error, setError, pending, startTransition } = useActionError();
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await cancelCorrespondenceAction({ correspondenceId, expectedVersion: version });
+            if (!result.ok) setError(result.error);
+          });
+        }}
+      >
+        Cancel draft
+      </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
+}

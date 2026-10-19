@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { listCorrespondence } from "@/domains/crm/correspondence";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
@@ -13,6 +14,9 @@ import { getAuthContext } from "@/lib/auth";
 import { ContactForm } from "./contact-form";
 import {
   ArchiveContactButton,
+  CancelCorrespondenceButton,
+  CorrespondenceForm,
+  RequestSendApprovalButton,
   FollowUpForm,
   ObservationForm,
   ResolveFollowUpButton,
@@ -64,6 +68,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
     listCompanies(auth),
     selectedId ? getContactDetail(auth, { contactId: selectedId }) : Promise.resolve(null),
   ]);
+  const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
 
   const companyOptions = companies.map((company) => ({ id: company.id, name: company.name }));
 
@@ -194,7 +199,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
               }
             />
           ) : detail ? (
-            <ContactDetailPanel detail={detail} companies={companyOptions} />
+            <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} />
           ) : (
             <Empty
               title="Choose a contact"
@@ -210,9 +215,11 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
 function ContactDetailPanel({
   detail,
   companies,
+  correspondence,
 }: {
   detail: NonNullable<Awaited<ReturnType<typeof getContactDetail>>>;
   companies: Array<{ id: string; name: string }>;
+  correspondence: Awaited<ReturnType<typeof listCorrespondence>>;
 }) {
   const { contact } = detail;
   const currentCompany = detail.companies.find((company) => company.isCurrent);
@@ -301,6 +308,34 @@ function ContactDetailPanel({
           ))}
         </div>
         <FollowUpForm contactId={contact.id} />
+      </Panel>
+
+      <Panel
+        title="Correspondence"
+        description="Outreach is drafted here, sent nowhere: the send path is an approval you give in Reviews, and the provider send lands with connector OAuth. Every row carries its state."
+      >
+        <div className="mb-4 divide-y divide-border">
+          {correspondence.map((item) => (
+            <div key={item.id} className="py-3 first:pt-0">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <p className="text-[13px] font-medium">{item.subject ?? "(no subject)"}</p>
+                <Status>{item.state}</Status>
+                <span className="text-xs text-muted-foreground">{item.channel}</span>
+              </div>
+              <p className="mb-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">{item.body}</p>
+              {item.state === "drafted" || item.state === "planned" ? (
+                <span className="flex flex-wrap gap-1">
+                  <RequestSendApprovalButton correspondenceId={item.id} version={item.version} hasProposal={!!item.actionProposalId} />
+                  <CancelCorrespondenceButton correspondenceId={item.id} version={item.version} />
+                </span>
+              ) : null}
+            </div>
+          ))}
+          {!correspondence.length ? (
+            <p className="py-1 text-xs text-muted-foreground">Nothing drafted yet.</p>
+          ) : null}
+        </div>
+        <CorrespondenceForm contactId={contact.id} />
       </Panel>
 
       <Panel title="Observations" description="Everything asserted about this contact carries where it came from.">
