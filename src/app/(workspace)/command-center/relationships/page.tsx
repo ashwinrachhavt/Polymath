@@ -1,4 +1,3 @@
-import { Select } from "@/components/ui/select";
 import { connection } from "next/server";
 import Link from "next/link";
 import { listCorrespondence } from "@/domains/crm/correspondence";
@@ -8,11 +7,17 @@ import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import {
   getContactDetail,
   listCompanies,
+  pageCompanies,
   listContacts,
   RELATIONSHIP_STATUSES,
   type RelationshipStatus,
 } from "@/domains/crm/queries";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, offsetFor, parseListParams, parsePageNumber } from "@/lib/list-params";
 import { ContactForm } from "./contact-form";
 import {
   ArchiveContactButton,
@@ -57,23 +62,26 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
   await connection();
   const auth = await getAuthContext();
-  const q = first(query.q)?.trim() || undefined;
-  const rawStatus = first(query.status);
-  const status = (RELATIONSHIP_STATUSES as readonly string[]).includes(rawStatus ?? "")
-    ? (rawStatus as RelationshipStatus)
-    : undefined;
+  const list = parseListParams(query, { filters: { status: RELATIONSHIP_STATUSES } });
+  const q = list.q || undefined;
+  const status = list.filters.status as RelationshipStatus | undefined;
+  const companyPage = parsePageNumber(query.cpage);
   const rawId = first(query.id);
   const selectedId = rawId && /^[0-9a-fA-F-]{36}$/.test(rawId) ? rawId : undefined;
   const invalidSelection = !!rawId && !selectedId;
 
-  const [list, companies, detail] = await Promise.all([
-    listContacts(auth, { query: q, status }),
+  const [contactsPage, companyPageData, allCompanies, detail] = await Promise.all([
+    listContacts(auth, { query: q, status, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
+    pageCompanies(auth, { limit: list.pageSize, offset: offsetFor(companyPage, list.pageSize) }),
+    // The pickers in the forms need every company, not just the visible page.
     listCompanies(auth),
     selectedId ? getContactDetail(auth, { contactId: selectedId }) : Promise.resolve(null),
   ]);
+  redirectPastEnd("/command-center/relationships", query, list.page, list.pageSize, contactsPage.total);
+  redirectPastEnd("/command-center/relationships", query, companyPage, list.pageSize, companyPageData.total, "cpage");
   const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
 
-  const companyOptions = companies.map((company) => ({ id: company.id, name: company.name }));
+  const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
 
   return (
     <Screen
@@ -81,36 +89,21 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
       description="Contacts and companies on canonical records. Research, enrichment and delivery still need configured adapters."
       actions={<ImportButton />}
     >
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[13px]">
-          <span className="font-medium">Search</span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="Name or email"
-            className="border-input bg-background h-9 w-full max-w-sm rounded-md border px-3 text-[13px]"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-[13px]">
-          <span className="font-medium">Status</span>
-          <Select name="status" defaultValue={status ?? ""} >
-            <option value="">All</option>
-            {RELATIONSHIP_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {STATUS_LABELS[value]}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Button type="submit" variant="outline">
-          Apply
-        </Button>
-      </form>
+      <ListToolbar
+        searchPlaceholder="Search name or email"
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            allLabel: "All statuses",
+            options: RELATIONSHIP_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] })),
+          },
+        ]}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Panel title={`${list.total} contacts`}>
+          <Panel title={`${contactsPage.total} ${contactsPage.total === 1 ? "contact" : "contacts"}`}>
             <details className="mb-4">
               <summary className="cursor-pointer text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-ring">
                 New contact
@@ -120,7 +113,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
               </div>
             </details>
             <div className="divide-y divide-border">
-              {list.items.map((contact) => (
+              {contactsPage.items.map((contact) => (
                 <div key={contact.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
                   <div>
                     <Link
@@ -146,20 +139,29 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                 </div>
               ))}
             </div>
-            {!list.items.length ? (
-              <Empty
-                title="No matching contacts"
-                description="Change the filters or create a contact. Imported LinkedIn connections live in the identity domain until the two records merge."
+            {!contactsPage.items.length ? (
+              <NoResults
+                filtered={Boolean(q || status)}
+                clearHref={listHref("/command-center/relationships", query, { q: undefined, status: undefined, page: undefined })}
+                emptyTitle="No contacts yet"
+                emptyDescription="Create a contact above. Imported LinkedIn connections live in the identity domain until the two records merge."
               />
             ) : null}
+            <Pagination
+              basePath="/command-center/relationships"
+              raw={query}
+              page={list.page}
+              pageSize={list.pageSize}
+              total={contactsPage.total}
+            />
           </Panel>
 
-          <Panel title={`${companies.length} companies`}>
+          <Panel title={`${companyPageData.total} ${companyPageData.total === 1 ? "company" : "companies"}`}>
             <div className="mb-4">
               <CompanyForm />
             </div>
             <div className="divide-y divide-border">
-              {companies.map((company) => (
+              {companyPageData.items.map((company) => (
                 <div key={company.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
                   <div>
                     <p className="text-[13px] font-medium">{company.name}</p>
@@ -171,9 +173,17 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                 </div>
               ))}
             </div>
-            {!companies.length ? (
+            {!companyPageData.items.length ? (
               <Empty title="No companies yet" description="Add a company above, then link contacts to it." />
             ) : null}
+            <Pagination
+              basePath="/command-center/relationships"
+              raw={query}
+              page={companyPage}
+              pageSize={list.pageSize}
+              total={companyPageData.total}
+              pageParam="cpage"
+            />
           </Panel>
         </div>
 

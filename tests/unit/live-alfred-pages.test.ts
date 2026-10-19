@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAuthContext } from "@/lib/auth";
-import { getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
+import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
@@ -10,9 +10,20 @@ import { AlfredSurface } from "@/app/(workspace)/alfred/page";
 import { DossiersSurface } from "@/app/(workspace)/alfred/dossiers/page";
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn() }));
-vi.mock("@/domains/knowledge/queries", () => ({ getDocumentInbox: vi.fn(), getDocumentReview: vi.fn() }));
+vi.mock("@/domains/knowledge/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/domains/knowledge/queries")>()),
+  getDocumentInbox: vi.fn(),
+  getDocumentReview: vi.fn(),
+  countDocumentInbox: vi.fn(),
+}));
+// The list toolbar and pager read router state; static markup has no app router.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/alfred/knowledge",
+  useSearchParams: () => new URLSearchParams(),
+  redirect: vi.fn(),
+}));
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
@@ -32,6 +43,7 @@ beforeEach(() => {
   vi.stubEnv("DATABASE_URL", "postgres://fixture-unused");
   vi.mocked(getAuthContext).mockResolvedValue({ userId: "owner", workspaceId: "workspace", role: "owner" });
   vi.mocked(getDocumentInbox).mockResolvedValue([]);
+  vi.mocked(countDocumentInbox).mockResolvedValue(0);
   vi.mocked(getDocumentReview).mockResolvedValue(null);
   vi.mocked(listRecentRuns).mockResolvedValue([]);
   vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);

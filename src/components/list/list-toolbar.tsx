@@ -29,18 +29,21 @@ export function ListToolbar({
   filters = [],
   total,
   noun,
+  qKey = "q",
 }: {
   searchPlaceholder?: string;
   filters?: ToolbarFilter[];
   /** When given, a live "N noun" count sits at the end of the bar. */
   total?: number;
   noun?: string;
+  /** Query key for the search text; must match the page's parseListParams qKey. */
+  qKey?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const [pending, startTransition] = useTransition();
-  const urlQuery = params.get("q") ?? "";
+  const urlQuery = params.get(qKey) ?? "";
   const [draft, setDraft] = useState(urlQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastPushed = useRef(urlQuery);
@@ -51,7 +54,8 @@ export function ListToolbar({
       if (value) next.set(key, value);
       else next.delete(key);
     }
-    next.delete("page");
+    // Any pager on the screen (page, cpage, ...) restarts at its first page.
+    for (const key of [...next.keys()]) if (/^[a-z]*page$/.test(key)) next.delete(key);
     const qs = next.toString();
     startTransition(() => router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   }
@@ -68,7 +72,7 @@ export function ListToolbar({
     if (draft.trim() === urlQuery) return;
     const id = setTimeout(() => {
       lastPushed.current = draft.trim();
-      push({ q: draft.trim() || undefined });
+      push({ [qKey]: draft.trim() || undefined });
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(id);
     // push closes over params; the debounce only needs to restart on typing.
@@ -137,7 +141,7 @@ export function ListToolbar({
       </div>
       {anyActive ? (
         <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
-          {urlQuery ? <Chip label={`Search: ${urlQuery}`} onRemove={() => push({ q: undefined })} /> : null}
+          {urlQuery ? <Chip label={`Search: ${urlQuery}`} onRemove={() => push({ [qKey]: undefined })} /> : null}
           {active.map(({ f, value }) => (
             <Chip
               key={f.key}
@@ -147,7 +151,7 @@ export function ListToolbar({
           ))}
           <button
             type="button"
-            onClick={() => push({ q: undefined, ...Object.fromEntries(filters.map((f) => [f.key, undefined])) })}
+            onClick={() => push({ [qKey]: undefined, ...Object.fromEntries(filters.map((f) => [f.key, undefined])) })}
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded px-1 text-xs underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
             Clear all

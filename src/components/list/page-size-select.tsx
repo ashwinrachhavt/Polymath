@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Select } from "@/components/ui/select";
 import { PAGE_SIZES } from "@/lib/list-params";
 
-export function PageSizeSelect({ value }: { value: number }) {
+export function PageSizeSelect({ value, pageParam = "page" }: { value: number; pageParam?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -18,7 +18,7 @@ export function PageSizeSelect({ value }: { value: number }) {
         onChange={(e) => {
           const next = new URLSearchParams(params.toString());
           next.set("size", e.target.value);
-          next.delete("page");
+          next.delete(pageParam);
           router.replace(`${pathname}?${next.toString()}`, { scroll: false });
         }}
       >

@@ -3,8 +3,13 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
-import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteVersions, listNotes, type NoteContent } from "@/domains/knowledge/notes";
+import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 
 export const metadata = { title: "Notebook · Axiom" };
@@ -23,11 +28,23 @@ export function noteMarkdown(content: NoteContent | null): string {
 }
 
 // Per-request data; streams inside the Suspense boundary in the default export.
-export async function NotebookSurface({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+const BASE = "/alfred/notebook";
+
+export async function NotebookSurface({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   await connection();
   const auth = await getAuthContext();
-  const { id } = await searchParams;
-  const notes = await listNotes(auth);
+  const raw = await searchParams;
+  const id = typeof raw.id === "string" ? raw.id : undefined;
+  // The list is a narrow sidebar: a short page keeps it scannable.
+  const list = parseListParams(raw, { filters: { view: ["drafts"] }, defaultPageSize: 10 });
+  const found = await pageNotes(auth, {
+    query: list.q,
+    draftsOnly: list.filters.view === "drafts",
+    limit: list.pageSize,
+    offset: offsetFor(list.page, list.pageSize),
+  });
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
+  const notes = found.items;
   const selected = id ? await getNote(auth, id) : null;
   const versions = selected ? await listNoteVersions(auth, selected.id) : [];
   const outlinks = selected ? await listNoteOutlinks(auth, selected.id) : [];
@@ -40,15 +57,26 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
       actions={<NewNoteButton />}
     >
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <Panel title="Notes" description={`${notes.length} in this workspace`}>
+        <Panel title="Notes" description={`${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}>
+          <div className="mb-3">
+            <ListToolbar
+              searchPlaceholder="Search notes"
+              filters={[{ key: "view", label: "Show", allLabel: "All notes", options: [{ value: "drafts", label: "With unsaved draft" }] }]}
+            />
+          </div>
           {notes.length === 0 ? (
-            <Empty title="No notes yet" description="Create the first note — it autosaves as you type, and every checkpoint becomes an immutable version." />
+            <NoResults
+              filtered={Boolean(list.q || list.filters.view)}
+              clearHref={listHref(BASE, raw, { q: undefined, view: undefined, page: undefined })}
+              emptyTitle="No notes yet"
+              emptyDescription="Create the first note — it autosaves as you type, and every checkpoint becomes an immutable version."
+            />
           ) : (
             <ul className="flex flex-col gap-1">
               {notes.map((note) => (
                 <li key={note.id}>
                   <Link
-                    href={`/alfred/notebook?id=${note.id}`}
+                    href={listHref(BASE, raw, { id: note.id })}
                     className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
                   >
                     <span className="flex items-center justify-between gap-2">
@@ -61,6 +89,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
               ))}
             </ul>
           )}
+          <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />
         </Panel>
         {selected ? (
           <NoteEditor
@@ -84,7 +113,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
   );
 }
 
-export default function NotebookPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+export default function NotebookPage(props: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<NotebookSkeleton />}>
       <NotebookSurface {...props} />

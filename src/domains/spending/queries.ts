@@ -1,6 +1,7 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 import {
   modelRateCards,
   spendingPolicies,
@@ -105,4 +106,39 @@ export async function getSpendingOverview(auth: AuthContext): Promise<SpendingOv
     recentSettlements,
     rateCards,
   };
+}
+
+export const SETTLEMENT_RANGES = { "7d": 7, "30d": 30, "90d": 90 } as const;
+export type SettlementRange = keyof typeof SETTLEMENT_RANGES;
+
+/** The settlement ledger, one page at a time, newest first. Total honours the filters. */
+export async function pageSettlements(
+  auth: AuthContext,
+  input: { query?: string; range?: SettlementRange; limit: number; offset: number },
+) {
+  const filters = [eq(spendSettlements.workspaceId, auth.workspaceId)];
+  if (input.query?.trim()) filters.push(ilike(spendSettlements.model, `%${escapeLike(input.query.trim())}%`));
+  if (input.range) {
+    filters.push(gte(spendSettlements.createdAt, new Date(Date.now() - SETTLEMENT_RANGES[input.range] * 86_400_000)));
+  }
+  const where = and(...filters);
+  const [items, [totalRow]] = await Promise.all([
+    db.select().from(spendSettlements).where(where).orderBy(desc(spendSettlements.createdAt), desc(spendSettlements.id)).limit(input.limit).offset(input.offset),
+    db.select({ total: count() }).from(spendSettlements).where(where),
+  ]);
+  return { items, total: totalRow?.total ?? 0 };
+}
+
+export async function pageRateCards(auth: AuthContext, input: { query?: string; limit: number; offset: number }) {
+  const filters = [eq(modelRateCards.workspaceId, auth.workspaceId)];
+  if (input.query?.trim()) {
+    const like = `%${escapeLike(input.query.trim())}%`;
+    filters.push(or(ilike(modelRateCards.model, like), ilike(modelRateCards.provider, like))!);
+  }
+  const where = and(...filters);
+  const [items, [totalRow]] = await Promise.all([
+    db.select().from(modelRateCards).where(where).orderBy(desc(modelRateCards.effectiveFrom), desc(modelRateCards.id)).limit(input.limit).offset(input.offset),
+    db.select({ total: count() }).from(modelRateCards).where(where),
+  ]);
+  return { items, total: totalRow?.total ?? 0 };
 }

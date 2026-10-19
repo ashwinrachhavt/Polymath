@@ -2,7 +2,6 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listCompanies, listContacts } from "@/domains/crm/queries";
 import {
@@ -14,6 +13,11 @@ import {
   type OpportunityStage,
 } from "@/domains/opportunities/queries";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, paginate, parseListParams, parsePageNumber } from "@/lib/list-params";
 import { OpportunityForm } from "./opportunity-form";
 import {
   ArchiveOpportunityButton,
@@ -42,11 +46,10 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
   await connection();
   const auth = await getAuthContext();
-  const q = first(query.q)?.trim() || undefined;
-  const rawStage = first(query.stage);
-  const stage = (OPPORTUNITY_STAGES as readonly string[]).includes(rawStage ?? "")
-    ? (rawStage as OpportunityStage)
-    : undefined;
+  const list = parseListParams(query, { filters: { stage: OPPORTUNITY_STAGES } });
+  const q = list.q || undefined;
+  const stage = list.filters.stage as OpportunityStage | undefined;
+  const closedPage = parsePageNumber(query.cpage);
   const rawId = first(query.id);
   const selectedId = rawId && /^[0-9a-fA-F-]{36}$/.test(rawId) ? rawId : undefined;
   const invalidSelection = !!rawId && !selectedId;
@@ -61,7 +64,11 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
   const companyOptions = companies.map((company) => ({ id: company.id, name: company.name }));
   const contactOptions = contacts.items.map((contact) => ({ id: contact.id, name: contact.fullName }));
   const open = records.filter((record) => (PIPELINE_STAGES as readonly string[]).includes(record.stage));
-  const closed = records.filter((record) => !(PIPELINE_STAGES as readonly string[]).includes(record.stage));
+  const closedAll = records.filter((record) => !(PIPELINE_STAGES as readonly string[]).includes(record.stage));
+  // The board shows every open card; only the long tail of closed ones is paged.
+  redirectPastEnd("/command-center/opportunities", query, closedPage, list.pageSize, closedAll.length, "cpage");
+  const closedPaged = paginate(closedAll, closedPage, list.pageSize);
+  const closed = closedPaged.items;
 
   function card(record: (typeof records)[number]) {
     return (
@@ -92,36 +99,19 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
       title="Opportunities"
       description="A human-controlled pipeline for roles, leads and partnerships. Stage changes are recorded, never executed: nothing here submits an application or sends a message."
     >
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[13px]">
-          <span className="font-medium">Search</span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="Title or company"
-            className="border-input bg-background h-9 w-full max-w-sm rounded-md border px-3 text-[13px]"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-[13px]">
-          <span className="font-medium">Stage</span>
-          <Select
-            name="stage"
-            defaultValue={stage ?? ""}
-           
-          >
-            <option value="">All</option>
-            {OPPORTUNITY_STAGES.map((value) => (
-              <option key={value} value={value}>
-                {STAGE_LABELS[value]}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Button type="submit" variant="outline">
-          Apply
-        </Button>
-      </form>
+      <ListToolbar
+        searchPlaceholder="Search title or company"
+        filters={[
+          {
+            key: "stage",
+            label: "Stage",
+            allLabel: "All stages",
+            options: OPPORTUNITY_STAGES.map((value) => ({ value, label: STAGE_LABELS[value] })),
+          },
+        ]}
+        total={records.length}
+        noun={records.length === 1 ? "opportunity" : "opportunities"}
+      />
 
       <details className="panel rounded-xl p-4">
         <summary className="cursor-pointer text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-ring">
@@ -147,8 +137,8 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
         ))}
       </div>
 
-      {closed.length ? (
-        <Panel title={`Closed (${closed.length})`}>
+      {closedAll.length ? (
+        <Panel title={`Closed (${closedAll.length})`}>
           <div className="divide-y divide-border">
             {closed.map((record) => (
               <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
@@ -165,13 +155,23 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
               </div>
             ))}
           </div>
+          <Pagination
+            basePath="/command-center/opportunities"
+            raw={query}
+            page={closedPaged.page}
+            pageSize={list.pageSize}
+            total={closedAll.length}
+            pageParam="cpage"
+          />
         </Panel>
       ) : null}
 
       {!records.length ? (
-        <Empty
-          title="No matching opportunities"
-          description="Change the filters or create an opportunity above."
+        <NoResults
+          filtered={Boolean(q || stage)}
+          clearHref={listHref("/command-center/opportunities", query, { q: undefined, stage: undefined, cpage: undefined })}
+          emptyTitle="No opportunities yet"
+          emptyDescription="Create an opportunity above to start the pipeline."
         />
       ) : null}
 

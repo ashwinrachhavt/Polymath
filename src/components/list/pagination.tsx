@@ -19,23 +19,29 @@ export function Pagination({
   page,
   pageSize,
   total,
+  pageParam = "page",
+  compact = false,
 }: {
   basePath: string;
   raw: RawSearchParams;
   page: number;
   pageSize: number;
   total: number;
+  /** Query key for the page number; a second list on one screen uses its own. */
+  pageParam?: string;
+  /** Narrow columns: prev/next and "n / m" only, no number strip or page size. */
+  compact?: boolean;
 }) {
   const pages = pageCount(total, pageSize);
-  if (pages === 1 && total <= 10) return null;
-  const href = (p: number) => listHref(basePath, raw, { page: p });
+  if (pages === 1 && (compact || total <= 10)) return null;
+  const href = (p: number) => listHref(basePath, raw, { [pageParam]: p === 1 ? undefined : p });
   return (
     <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 pt-3">
       <p className="text-muted-foreground readout text-xs" aria-live="polite">
         {rangeLabel(page, pageSize, total)}
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <PageSizeSelect value={pageSize} />
+        {compact ? null : <PageSizeSelect value={pageSize} pageParam={pageParam} />}
         {pages > 1 ? (
           <ul className="flex items-center gap-1">
             <li>
@@ -50,7 +56,7 @@ export function Pagination({
               )}
             </li>
             {pageWindow(page, pages).map((p, i) => (
-              <li key={p ?? `gap-${i}`} className="hidden sm:block">
+              <li key={p ?? `gap-${i}`} className={compact ? "hidden" : "hidden sm:block"}>
                 {p === null ? (
                   <span aria-hidden className="text-muted-foreground px-1 text-xs">…</span>
                 ) : (
@@ -66,7 +72,7 @@ export function Pagination({
                 )}
               </li>
             ))}
-            <li className="text-muted-foreground px-1 text-xs sm:hidden">
+            <li className={`text-muted-foreground px-1 text-xs ${compact ? "" : "sm:hidden"}`}>
               {page} / {pages}
             </li>
             <li>
