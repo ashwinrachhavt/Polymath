@@ -1,7 +1,7 @@
 import type { Appearance } from "@clerk/types";
 
 /*
- * Clerk UI follows Axiom tokens (globals.css) so sign-in, sign-up, and the
+ * Clerk UI follows Polymath tokens (globals.css) so sign-in, sign-up, and the
  * UserButton match the machined shell instead of Clerk's default marketing
  * palette. CSS variables keep light/dark in sync with ThemeProvider.
  */

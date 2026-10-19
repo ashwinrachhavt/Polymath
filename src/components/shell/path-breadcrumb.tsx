@@ -19,7 +19,7 @@ export function PathBreadcrumb() {
 
   if (!destination) {
     return (
-      <span className="text-[13px] font-medium tracking-tight">{app?.label ?? "Axiom"}</span>
+      <span className="text-[13px] font-medium tracking-tight">{app?.label ?? "Polymath"}</span>
     );
   }
 
@@ -28,7 +28,7 @@ export function PathBreadcrumb() {
       <ol className="flex items-center gap-1.5 text-[13px]">
         <li className="hidden sm:block">
           <Link href={homeHref} className="text-muted-foreground hover:text-foreground">
-            Axiom
+            Polymath
           </Link>
         </li>
         {app ? (

@@ -1,4 +1,4 @@
-# Axiom Design System
+# Polymath Design System
 
 **Status:** Target. `src/app/globals.css` currently implements a narrower
 register; § 15 lists the exact delta. Where this file and the code disagree,
@@ -35,7 +35,7 @@ one screen's feel; state the override in the task instead.
 
 ## 3. Three apps, one instrument
 
-Axiom is three micro-app experiences over one record set.
+Polymath is three micro-app experiences over one record set.
 
 | App | Accent | Nav shape | Why |
 |---|---|---|---|

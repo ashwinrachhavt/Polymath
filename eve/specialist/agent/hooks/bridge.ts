@@ -13,7 +13,7 @@ import {
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
- * The Axiom side of eve: this is the only file that imports eve, and its only
+ * The Polymath side of eve: this is the only file that imports eve, and its only
  * job is to forward eve's runtime stream events into the event bridge. Hooks
  * are observe-only (they cannot steer the model), which is exactly the seam the
  * bridge wants.
@@ -26,7 +26,7 @@ import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
  * eve allocates its own session ids (`wrun_…`), so the run id the bridge needs
  * comes from the run row whose `session_ref` is `ctx.session.id` — the driver
  * recorded it at start. An unknown session is skipped, not an error: schedule
- * and TUI sessions have no Axiom run to mirror into.
+ * and TUI sessions have no Polymath run to mirror into.
  */
 
 /** The workspace the session belongs to, captured by the channel's AuthFn. */
@@ -35,7 +35,7 @@ function workspaceIdOf(ctx: HookContext): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** The Axiom run a session mirrors into, or null when the session has none. */
+/** The Polymath run a session mirrors into, or null when the session has none. */
 async function runIdOf(ctx: HookContext): Promise<string | null> {
   const workspaceId = workspaceIdOf(ctx);
   if (!workspaceId) return null;

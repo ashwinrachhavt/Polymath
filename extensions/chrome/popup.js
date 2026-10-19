@@ -25,7 +25,7 @@
     const online = await AlfredAPI.health();
     const dot = $("#status-dot");
     dot.classList.toggle("online", online);
-    dot.title = online ? "Axiom connected" : "Axiom offline";
+    dot.title = online ? "Polymath connected" : "Polymath offline";
   }
   checkStatus();
 
@@ -86,7 +86,7 @@
     }
   });
 
-  // ── Open Axiom's inbox ─────────────────────────────────────────────
+  // ── Open Polymath's inbox ─────────────────────────────────────────────
 
   $("#btn-open-alfred").addEventListener("click", async () => {
     const base = await AlfredAPI.base();

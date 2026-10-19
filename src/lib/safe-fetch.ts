@@ -101,7 +101,7 @@ function once(url: URL, options: Required<SafeFetchOptions>): Promise<
       url,
       {
         method: "GET",
-        headers: { accept: "application/pdf,image/png,image/jpeg;q=0.9,*/*;q=0.1", "user-agent": "AxiomCapture/1.0" },
+        headers: { accept: "application/pdf,image/png,image/jpeg;q=0.9,*/*;q=0.1", "user-agent": "PolymathCapture/1.0" },
         timeout: options.timeoutMs,
         lookup: (hostname, lookupOptions, callback) => {
           dnsLookup(hostname, { ...lookupOptions, all: true }, (error, addresses) => {

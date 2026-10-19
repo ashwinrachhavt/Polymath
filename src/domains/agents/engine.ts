@@ -32,7 +32,7 @@ export type PolicySnapshot = {
 };
 
 /**
- * `sessionId` is the Axiom run UUID. A driver may allocate its own session ID;
+ * `sessionId` is the Polymath run UUID. A driver may allocate its own session ID;
  * Eve persists that binding in session_ref before tools can resolve the run.
  */
 export interface SessionDriver {

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { afterAuthUrl, clerkAppearance } from "@/lib/clerk-appearance";
 import { clerkConfigured } from "@/lib/clerk";
 
-export const metadata = { title: "Sign in · Axiom" };
+export const metadata = { title: "Sign in · Polymath" };
 
 /*
  * Identity is opt-in on configuration, so this route only exists when Clerk

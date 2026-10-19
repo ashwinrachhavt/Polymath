@@ -83,7 +83,7 @@ test("the app launcher is keyboard reachable and closes on escape", async ({ pag
   await expect(trigger).toBeFocused();
 });
 
-test("old Axiom paths redirect and unknown screens render a noindex not-found state", async ({ page }) => {
+test("old Polymath paths redirect and unknown screens render a noindex not-found state", async ({ page }) => {
   await page.goto("/work");
   await expect(page).toHaveURL("/apps/neuralflow/tasks");
   const response = await page.goto("/apps/alfred/not-a-screen");

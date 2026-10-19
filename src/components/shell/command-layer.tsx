@@ -57,7 +57,7 @@ export function CommandLayer() {
 
   const navigation = [...destinations, ...apps.flatMap((app) => additionalDestinationsIn(app.slug))].map((destination) => ({
     key: destination.href, label: destination.label,
-    context: destination.href.startsWith("/apps/") ? `${apps.find((app) => app.slug === destination.group)?.label} preview tool` : destination.group === "shared" ? "Shared workspace" : apps.find((app) => app.slug === destination.group)?.label ?? "Axiom",
+    context: destination.href.startsWith("/apps/") ? `${apps.find((app) => app.slug === destination.group)?.label} preview tool` : destination.group === "shared" ? "Shared workspace" : apps.find((app) => app.slug === destination.group)?.label ?? "Polymath",
     icon: destination.icon, href: destination.href,
   }));
   // Canonical record search: debounced server query over saved tasks, notes,

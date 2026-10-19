@@ -1,5 +1,5 @@
 /*
- * The Axiom risk table (docs/axiom-product-spec.md, "Reviews and approvals"),
+ * The Polymath risk table (docs/axiom-product-spec.md, "Reviews and approvals"),
  * as data the evals read. This file is a fixture, not runtime agent code: the
  * evals import it so the assertion and the policy text cannot drift apart.
  *
@@ -13,10 +13,10 @@
  * All five are members of `risk_class` in src/domains/actions/schema.ts; this
  * fixture restates them so the evals never drift from the enum without a diff.
  */
-export type AxiomRiskClass = "read" | "prepare" | "external_write" | "sensitive_write" | "prohibited";
+export type PolymathRiskClass = "read" | "prepare" | "external_write" | "sensitive_write" | "prohibited";
 
 /** The status an eve approval policy is allowed to return for a risk class. */
-export type AxiomApproval = "not-applicable" | "approved" | "denied" | "user-approval";
+export type PolymathApproval = "not-applicable" | "approved" | "denied" | "user-approval";
 
 /*
  * The sentence the approval classifier is driven by, passed to `auto()` as its
@@ -24,7 +24,7 @@ export type AxiomApproval = "not-applicable" | "approved" | "denied" | "user-app
  * eval asserts the two agree.
  */
 export const AXIOM_APPROVAL_POLICY_TEXT =
-  "Axiom risk: read actions execute automatically; prepare actions run locally; " +
+  "Polymath risk: read actions execute automatically; prepare actions run locally; " +
   "external writes always require human approval; sensitive writes require " +
   "approval plus confirmation; prohibited actions are denied.";
 
@@ -33,7 +33,7 @@ export const AXIOM_APPROVAL_POLICY_TEXT =
  * `agent/tools/` check against the frozen policy snapshot, so an unrouted
  * capability is a gap the eval can see.
  */
-export const CAPABILITY_RISK: Readonly<Record<string, AxiomRiskClass>> = {
+export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "tasks.read": "read",
   "gmail.read": "read",
   "calendar.read": "read",
@@ -53,7 +53,7 @@ export const CAPABILITY_RISK: Readonly<Record<string, AxiomRiskClass>> = {
  * disposes" rule — the model never reaches this function, and an external or
  * sensitive write cannot be auto-approved by any decider output.
  */
-export function approvalForRisk(risk: AxiomRiskClass): AxiomApproval {
+export function approvalForRisk(risk: PolymathRiskClass): PolymathApproval {
   switch (risk) {
     case "read":
     case "prepare":
@@ -66,8 +66,8 @@ export function approvalForRisk(risk: AxiomRiskClass): AxiomApproval {
   }
 }
 
-/** Fail closed: a capability with no risk class is not a capability Axiom granted. */
-export function approvalForCapability(capability: string): AxiomApproval {
+/** Fail closed: a capability with no risk class is not a capability Polymath granted. */
+export function approvalForCapability(capability: string): PolymathApproval {
   // hasOwn keeps inherited keys like "toString" falling through to denial.
   const risk = Object.hasOwn(CAPABILITY_RISK, capability) ? CAPABILITY_RISK[capability] : undefined;
   return risk === undefined ? "denied" : approvalForRisk(risk);

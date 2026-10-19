@@ -33,7 +33,7 @@ export default clerkConfigured
           // a 401 problem, not a sign-in redirect: a redirect carries no CORS
           // headers and surfaces to a fetch as an opaque network failure.
           //
-          // An Axiom-issued companion bearer is verified by the route itself
+          // An Polymath-issued companion bearer is verified by the route itself
           // (src/lib/auth.ts), not by Clerk, so the edge lets it through and
           // the route is the one that decides.
           const companionBearer = /^Bearer\s+\S+$/.test(request.headers.get("authorization") ?? "");

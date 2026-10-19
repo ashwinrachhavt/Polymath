@@ -50,7 +50,7 @@ export function StartRunForm({ dossiers = [] }: { dossiers?: Array<{ id: string;
         rows={3}
         value={objective}
         onChange={(event) => setObjective(event.target.value)}
-        placeholder="Describe an objective. Alfred proposes; you approve anything that leaves Axiom."
+        placeholder="Describe an objective. Alfred proposes; you approve anything that leaves Polymath."
         className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3"
       />
       {dossiers.length > 0 ? (

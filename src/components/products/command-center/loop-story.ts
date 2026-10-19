@@ -25,7 +25,7 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
       reason: focus ? `Return to ${focusTask?.title ?? "your session"}.` : ready ? "Pick one, start an interval, earn a stone." : "Move a task to Ready when you choose to work on it.",
       href: focus ? "/neuralflow/focus" : "/neuralflow/work?view=today", action: focus ? "Return to focus" : "Start focus", needsYou: !!focus || ready > 0 },
     { key: "review", label: "Review", app: "command-center", count: pending, unit: "awaiting you",
-      reason: pending ? "Nothing leaves Axiom until you approve the exact revision." : "No proposals are waiting for a decision.", href: "/reviews", action: pending ? "Review proposals" : "Open reviews", needsYou: pending > 0 },
+      reason: pending ? "Nothing leaves Polymath until you approve the exact revision." : "No proposals are waiting for a decision.", href: "/reviews", action: pending ? "Review proposals" : "Open reviews", needsYou: pending > 0 },
     { key: "learn", label: "Learn", app: "alfred", count: state.rewards.length, unit: state.rewards.length === 1 ? "stone earned" : "stones earned",
       reason: `${notes} notes and ideas you can think with. Stones remember the work that earned them.`, href: "/apps/neuralflow/rewards", action: "See your stones", needsYou: false },
   ];

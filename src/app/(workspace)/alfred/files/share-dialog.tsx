@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { BrowserRow } from "@/domains/knowledge/file-browser";
 
 /*
- * Share and permissions, as a surface only. Axiom has no sharing backend and
+ * Share and permissions, as a surface only. Polymath has no sharing backend and
  * sends nothing, so every control here is disabled and the dialog says so
  * plainly. What is real: who can open these documents today (the workspace
  * members, by their role) and a copy of the in-app link, which only works for

@@ -16,7 +16,7 @@ import { listHref, offsetFor, parseListParams, parsePageNumber, type RawSearchPa
 import { getAuthContext } from "@/lib/auth";
 import { PolicyForm, RateCardForm } from "./spending-forms";
 
-export const metadata = { title: "Spending · Axiom" };
+export const metadata = { title: "Spending · Polymath" };
 
 /*
  * Canonical spending surface (ASH-139 C06): the reserve/settle engine state

@@ -81,7 +81,7 @@ export async function AgentPanels() {
         {pendingCount === 0 ? (
           <Empty
             title="Nothing needs your judgment"
-            description="When an agent wants to change something outside Axiom, it proposes the exact payload in Reviews first."
+            description="When an agent wants to change something outside Polymath, it proposes the exact payload in Reviews first."
           />
         ) : null}
       </Panel>

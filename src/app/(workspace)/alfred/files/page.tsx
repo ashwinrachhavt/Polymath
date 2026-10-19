@@ -7,7 +7,7 @@ import { getExplorerPage } from "@/domains/knowledge/file-rows";
 import { listFolders } from "@/domains/knowledge/library";
 import { FileExplorer } from "./file-explorer";
 
-export const metadata = { title: "Files · Axiom" };
+export const metadata = { title: "Files · Polymath" };
 
 /*
  * The document engine as a file manager: smart folders, list and grid, instant

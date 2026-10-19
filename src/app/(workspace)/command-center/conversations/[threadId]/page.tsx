@@ -6,7 +6,7 @@ import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getConversation } from "@/domains/conversations/queries";
 import { getAuthContext } from "@/lib/auth";
 
-export const metadata = { title: "Conversation · Axiom" };
+export const metadata = { title: "Conversation · Polymath" };
 
 /* One thread's message timeline, read from Postgres at render (ASH-140 D04).
  * Replay, cancel and checkpoints land in later slices. */

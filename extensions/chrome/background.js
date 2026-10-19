@@ -19,7 +19,7 @@ chrome.runtime.onStartup.addListener(function () {
 });
 
 /*
- * Content scripts cannot reach Axiom directly: a page-origin fetch is subject
+ * Content scripts cannot reach Polymath directly: a page-origin fetch is subject
  * to that page's CORS, which no allowlist can cover. host_permissions exempts
  * the worker, so content scripts relay their captures here. Only the origins
  * listed in manifest.json are reachable — the URL is checked, not trusted.
@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 
   var allowed = /^http:\/\/localhost:3000\//;
   if (typeof msg.url !== "string" || !allowed.test(msg.url)) {
-    sendResponse({ ok: false, error: "Blocked: not an Axiom origin." });
+    sendResponse({ ok: false, error: "Blocked: not an Polymath origin." });
     return true;
   }
 

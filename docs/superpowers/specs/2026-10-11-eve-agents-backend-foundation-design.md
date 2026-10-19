@@ -32,11 +32,11 @@ Apache-2.0, beta). Facts that shape this design, verified against eve.dev today:
 
 ## Decision
 
-**Eve-native, Neon-mirrored.** Eve runs the durable conversation loop inside Axiom's
-Next.js app. Axiom's Neon tables stay the system of record for the UI: run timelines,
+**Eve-native, Neon-mirrored.** Eve runs the durable conversation loop inside Polymath's
+Next.js app. Polymath's Neon tables stay the system of record for the UI: run timelines,
 tool calls, spend, approvals, and memory are mirrored from eve's event stream into
 `agent_runs`, `run_events`, `tool_calls`, `agent_questions`, and `memory_items`. No
-duplicate task/artifact/approval universes. Axiom's `AgentEngine` contract is the only
+duplicate task/artifact/approval universes. Polymath's `AgentEngine` contract is the only
 seam domain code sees; domain code never imports `eve` directly. The seam is real at the engine boundary;
 tools, agents, and evals are eve-file-authored, so the framework choice is a
 **strategic lock to eve** (a beta) owned by this spec — revisit if eve stalls.
@@ -45,7 +45,7 @@ Rejected: `@workflow/world-postgres` for session state (protocol lock against ev
 vendored `@workflow/*` line for no gain — Vercel's dashboard covers loop state), and a
 long-running sidecar eve service process (violates the consolidation decision). Note:
 `withEve()` itself starts a local `eve dev` service in development — that is the
-framework's own dev tooling, not an Axiom-managed sidecar. Event bridge lives in
+framework's own dev tooling, not an Polymath-managed sidecar. Event bridge lives in
 `src/domains/agents/` (D1, decided 2026-10-11): one file does not justify moving
 `src/workflows/` (the empty directory from the plan layout, already present); non-agent
 durable workflow definitions land there when they arrive.
@@ -62,7 +62,7 @@ Browser → Next.js app
   └─ Neon Postgres + pgvector (system of record)
 ```
 
-One run = one addressed eve session. Axiom generates the delegation session id and
+One run = one addressed eve session. Polymath generates the delegation session id and
 keeps it in `agent_runs`; the event bridge keeps the mirror current.
 
 ## Work order
@@ -116,7 +116,7 @@ keeps it in `agent_runs`; the event bridge keeps the mirror current.
    with `runId` populated (D4, decided 2026-10-11) — the Alfred chat UI reads these.
    **Idempotency (D3, decided 2026-10-11):** sequence numbers are assigned in one Neon
    transaction keyed on the `(runId, sequence)` conflict target, so workflow retries
-   and resumed steps that re-fire hooks dedupe instead of double-writing. Axiom run
+   and resumed steps that re-fire hooks dedupe instead of double-writing. Polymath run
    timeline reload reconstructs from these rows.
 8. **Spending commands (`src/domains/spending/`)** — reserve before session start
    against the frozen budget (`spending_reservations`), settle on terminal event,
@@ -127,9 +127,9 @@ keeps it in `agent_runs`; the event bridge keeps the mirror current.
    the reservation insert, so two concurrent `start()` calls cannot both spend the
    last dollar. Release on cancel happens before the lock is held across any wait —
    reserve/settle are short transactions.
-9. **Tool layer (`agent/tools/`)** — domain read tools call Axiom queries with the run's
+9. **Tool layer (`agent/tools/`)** — domain read tools call Polymath queries with the run's
    frozen `AuthContext`. Direct external writes never exist: tools either gate through
-   eve approval (`always()`/`auto()` with Axiom policy text) or append a proposal to
+   eve approval (`always()`/`auto()` with Polymath policy text) or append a proposal to
    `action_proposals` for Reviews and the later ActionExecutor (A09).
 
 ### Phase C — Evals
@@ -142,7 +142,7 @@ keeps it in `agent_runs`; the event bridge keeps the mirror current.
     budget and approval races (two runs cannot both spend the last dollar; approving
     one of several pending prompts does not authorize the others).
 11. **Routing/classifier evals (eve harness)** — `evaluate()` for model routing
-    choices; `auto()` with Axiom policy text as the approval classifier. Evals start
+    choices; `auto()` with Polymath policy text as the approval classifier. Evals start
     with the first policy implementation, per the acceptance criteria.
 
 ## Schema
@@ -240,7 +240,7 @@ a string value is shorthand for `{ root }`.
 eve project root (`dist/src/internal/eve-project-root.js`). Consequences, both
 hit during the spike:
 
-1. `eve/alfred/` with no `package.json` walks up to the Axiom repo root. Axiom's
+1. `eve/alfred/` with no `package.json` walks up to the Polymath repo root. Polymath's
    repo root has an `agents/` directory (the agent-facing context docs), which
    eve reads as an **eve workspace**. It contains zero members, so every eve
    command fails with:
@@ -255,7 +255,7 @@ hit during the spike:
    `pnpm-workspace.yaml`, no lockfile impact).
 
 Alternative when the agent must stay inside an `agents/` workspace: name the
-workspace so it does not collide with Axiom's `agents/` docs directory, or use
+workspace so it does not collide with Polymath's `agents/` docs directory, or use
 `eveRoot` to point at a root that is unambiguous. Task 5 must pick one
 deliberately; the collision is silent otherwise.
 
@@ -379,7 +379,7 @@ function auto<TInput = unknown>(options?: AutoApprovalOptions): ApprovalPolicy<T
 caution, fails, or is unavailable. `AutoApprovalOptions` is
 `{ model?: Experimental_DecisionModel; instructions?: string; criteria?: { clear?: string; caution?: string } }`.
 
-The policy function shape is the real extension point — T5's Axiom risk table
+The policy function shape is the real extension point — T5's Polymath risk table
 becomes one of these rather than any of the helpers:
 
 ```ts
@@ -535,7 +535,7 @@ the per-message hook.
    the auth walk, and hook delivery, but **not** a completed turn or a
    `turn.completed` hook. T8's evals need a real credential (an
    `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` plus a direct-provider model such as
-   `anthropic()` from `eve/models/anthropic`) before they can run. Axiom
+   `anthropic()` from `eve/models/anthropic`) before they can run. Polymath
    currently has no model key in env at all.
 2. **Repo-root `agents/` collides with eve workspace discovery** — see
    Project-root discovery above. Silent, and it breaks `withEve` entirely. Task 5
@@ -584,7 +584,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Files: `tests/integration/`;
   - Verify: `pnpm vitest tests/integration` against Neon branch
 - [ ] **T7 (P3, human: ~4h / CC: ~20min)** — routing/classifier evals (eve harness)
-  - Surfaced by: Phase C item 11 — `evaluate()` + `auto()` with Axiom policy text
+  - Surfaced by: Phase C item 11 — `evaluate()` + `auto()` with Polymath policy text
   - Files: `eve/alfred/evals/`
   - Verify: eve eval run produces pass/fail report
 

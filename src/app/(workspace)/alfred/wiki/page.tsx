@@ -15,7 +15,7 @@ import { listHref, matchesQuery, paginate, parseListParams, type RawSearchParams
 import { IngestForm } from "./ingest-form";
 import { LintButton } from "./lint-button";
 
-export const metadata = { title: "Wiki · Axiom" };
+export const metadata = { title: "Wiki · Polymath" };
 
 /*
  * The second brain: documents are the raw sources, this is the maintained

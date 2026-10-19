@@ -7,7 +7,7 @@ import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
  * An external-write capability. The handler does the one thing a consequential
- * action is allowed to do under Axiom policy: it writes an action_proposals row
+ * action is allowed to do under Polymath policy: it writes an action_proposals row
  * with a preview and a dedupe key. It never calls Gmail — the send happens
  * later, from the approved attempt, outside this process. A model instruction
  * cannot escalate past that: there is no provider client here to call.
@@ -31,7 +31,7 @@ export default defineTool({
 
     const run = await getRunBySessionRef(ctx.session.id, workspaceId);
     if (!run || run.state !== "running") {
-      return { ok: false as const, error: "no active Axiom run bound to this session" };
+      return { ok: false as const, error: "no active Polymath run bound to this session" };
     }
     if (!toolAllowed(run.policySnapshot, "gmail.send")) {
       return { ok: false as const, error: "gmail.send is not in this run's policy snapshot" };

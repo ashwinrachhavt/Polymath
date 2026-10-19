@@ -9,7 +9,7 @@ import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
 import { OutcomeButton } from "./briefing-client";
 
-export const metadata = { title: "Briefing · Axiom" };
+export const metadata = { title: "Briefing · Polymath" };
 
 /*
  * The durable Briefing (ASH-137 A01): three outcomes, today's queue and the

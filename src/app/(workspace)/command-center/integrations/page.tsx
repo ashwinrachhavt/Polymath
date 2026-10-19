@@ -6,12 +6,12 @@ import { getAuthContext } from "@/lib/auth";
 import { ConnectorCatalog, type CatalogConnector } from "./connector-catalog";
 import { RegisterForm } from "./connector-controls";
 
-export const metadata = { title: "Connectors · Axiom" };
+export const metadata = { title: "Connectors · Polymath" };
 
 /*
  * The durable connectors surface (ASH D09 foundation): the seeded catalog
  * with each provider's capability risks, plus the workspace's account rows
- * and their states. Tokens stay with Composio; these rows are Axiom's
+ * and their states. Tokens stay with Composio; these rows are Polymath's
  * bookkeeping. Layout follows the dark catalog reference: search, an
  * All / Connected / Available filter, and category groups of quiet cards.
  */
@@ -41,7 +41,7 @@ async function Connectors() {
   return (
     <Screen
       title="Connectors"
-      description="What Axiom can talk to, and which accounts are wired. External writes always require an explicit account and your approval; nothing connects or sends by default."
+      description="What Polymath can talk to, and which accounts are wired. External writes always require an explicit account and your approval; nothing connects or sends by default."
     >
       <ConnectorCatalog connectors={catalog} />
 

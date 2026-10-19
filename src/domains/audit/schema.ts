@@ -127,7 +127,7 @@ export const webhookInbox = pgTable(
 );
 
 /*
- * Binaries live in object storage; this table is the only place Axiom records
+ * Binaries live in object storage; this table is the only place Polymath records
  * that one exists. `retentionClass` is what the retention job reads — raw mail
  * and webhook bodies are kept on a shorter clock than owned documents.
  */

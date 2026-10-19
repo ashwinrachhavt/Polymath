@@ -6,7 +6,7 @@ and what is out of scope. Behaviour is owned by
 
 ## Thesis
 
-Axiom converts everything entering one person's world — mail, files, issues,
+Polymath converts everything entering one person's world — mail, files, issues,
 pages, ideas — into an ordered, trustworthy plan; keeps knowledge connected; and
 lets supervised agents do useful work without quietly taking control.
 
@@ -21,7 +21,7 @@ schema decisions, not UI decisions, until the owner asks otherwise.
 
 1. **Briefing before browsing.** Home answers "what should I do now" without an
    LLM call on load. A dashboard that only reports is not a briefing.
-2. **Three apps, one record.** Axiom presents three micro-app experiences —
+2. **Three apps, one record.** Polymath presents three micro-app experiences —
    Command Center, NeuralFlow, Alfred — over one canonical system of record
    (spec § The suite). The boundary is a product boundary, never a deployment
    or data boundary: a second task table, a second note universe, or a second
@@ -42,7 +42,7 @@ schema decisions, not UI decisions, until the owner asks otherwise.
 
 ## Decisions already made — do not re-propose
 
-- **Consolidation, not federation.** Axiom is one product with one Postgres
+- **Consolidation, not federation.** Polymath is one product with one Postgres
   system of record. No permanent proxy layer over donor backends, no iframe shell
   as the end state. *(The `docs/superpowers/.../consolidation-design.md` iframe
   plan was an earlier approach that the Next.js/Neon plan supersedes — follow the

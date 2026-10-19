@@ -254,7 +254,7 @@ export function PreviewStorageWarning() {
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = "axiom-browser-preview.json";
+    anchor.download = "polymath-browser-preview.json";
     anchor.click();
     URL.revokeObjectURL(href);
   }

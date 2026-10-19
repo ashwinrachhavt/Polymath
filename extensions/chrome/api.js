@@ -25,7 +25,7 @@ async function relayThroughWorker(url, options) {
     signalTimeoutMs: 15000,
   });
   if (!reply || reply.ok !== true) {
-    throw new Error(reply && reply.error ? `Axiom API: ${reply.error}` : "Axiom API: the companion worker did not answer.");
+    throw new Error(reply && reply.error ? `Polymath API: ${reply.error}` : "Polymath API: the companion worker did not answer.");
   }
   return new Response(reply.body, {
     status: reply.status,
@@ -57,8 +57,8 @@ const AlfredAPI = {
       // Otherwise fall back to default to avoid stale cached URLs.
       if (stored && stored !== this._defaultUrl) {
         try {
-          // Verify the stored URL is actually Axiom (not another service on
-          // that port) by checking /api/v1/captures, which only Axiom serves.
+          // Verify the stored URL is actually Polymath (not another service on
+          // that port) by checking /api/v1/captures, which only Polymath serves.
           const resp = await fetch(`${stored}/api/v1/captures`, {
             signal: AbortSignal.timeout(1500),
             headers: { "Content-Type": "application/json" },
@@ -68,7 +68,7 @@ const AlfredAPI = {
             return this._baseUrl;
           }
         } catch {
-          // Stored URL unreachable or not Axiom — fall through to default
+          // Stored URL unreachable or not Polymath — fall through to default
         }
       }
       this._baseUrl = this._defaultUrl;
@@ -113,11 +113,11 @@ const AlfredAPI = {
     if (bearer) merged.headers = { ...merged.headers, Authorization: `Bearer ${bearer}` };
     // A content script fetches with the *page's* origin, which no server-side
     // allowlist can enumerate. The service worker holds host_permissions for
-    // Axiom and is exempt from page CORS, so content-script calls hop there.
+    // Polymath and is exempt from page CORS, so content-script calls hop there.
     const resp = isContentScript() ? await relayThroughWorker(url, merged) : await fetch(url, merged);
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
-      throw new Error(`Axiom API ${resp.status}: ${text}`);
+      throw new Error(`Polymath API ${resp.status}: ${text}`);
     }
     const ct = resp.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
@@ -129,7 +129,7 @@ const AlfredAPI = {
   // ── Capture helpers ────────────────────────────────────────────────
 
   /**
-   * One capture into the Axiom inbox. Text and URL travel together when the
+   * One capture into the Polymath inbox. Text and URL travel together when the
    * page was grabbed; the inbox keeps both and treats the URL as provenance.
    * Server-side dedupe answers 409 for a repeated URL-only capture.
    */
@@ -161,7 +161,7 @@ const AlfredAPI = {
 
   // ── Health ─────────────────────────────────────────────────────────
 
-  /** Check that Axiom is reachable and this companion is paired. */
+  /** Check that Polymath is reachable and this companion is paired. */
   async health() {
     try {
       const base = await this.base();

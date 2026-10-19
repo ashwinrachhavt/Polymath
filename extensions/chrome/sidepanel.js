@@ -235,7 +235,7 @@
     wrapper.appendChild(createElement('p', { className: 'cold-start-title', textContent: 'Building your knowledge graph' }));
     wrapper.appendChild(createElement('p', {
       className: 'cold-start-text',
-      textContent: 'Keep reading \u2014 Axiom learns your knowledge graph as you go. After ~10 captured articles, connections will start appearing here.',
+      textContent: 'Keep reading \u2014 Polymath learns your knowledge graph as you go. After ~10 captured articles, connections will start appearing here.',
     }));
     container.appendChild(wrapper);
   }
@@ -483,7 +483,7 @@
 
     const indicator = createElement('div', {
       className: 'typing-indicator',
-      'aria-label': 'Axiom is thinking',
+      'aria-label': 'Polymath is thinking',
     }, [
       createElement('span'),
       createElement('span'),

@@ -35,7 +35,7 @@ describe("Clerk proxy token boundary", () => {
     },
   );
 
-  it("lets an Axiom companion bearer reach the route, which verifies it", async () => {
+  it("lets an Polymath companion bearer reach the route, which verifies it", async () => {
     const check = vi.fn();
     const response = await runProxy(
       Object.assign(check, { protect: vi.fn() }),

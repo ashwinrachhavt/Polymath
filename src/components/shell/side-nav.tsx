@@ -109,10 +109,10 @@ export function SideNav() {
           {PickerIcon ? (
             <span className="product-mark !size-6 !rounded-[5px]"><PickerIcon aria-hidden className="size-3.5" /></span>
           ) : (
-            <span aria-hidden className="axiom-mark !size-6 !text-[15px]">A</span>
+            <span aria-hidden className="polymath-mark !size-6 !text-[15px]">P</span>
           )}
           {collapsed ? null : (
-            <span className="min-w-0 flex-1 truncate text-left">{activeApp?.label ?? "Axiom"}</span>
+            <span className="min-w-0 flex-1 truncate text-left">{activeApp?.label ?? "Polymath"}</span>
           )}
         </Link>
 

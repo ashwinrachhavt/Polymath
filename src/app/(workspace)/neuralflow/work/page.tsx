@@ -5,7 +5,7 @@ import { NeonCalendar } from "./neon-calendar";
 import { NeonTasks } from "./neon-tasks";
 import { NeuralFlowFeatureLinks, WorkViewLinks } from "./work-today";
 
-export const metadata = { title: "Work · Axiom" };
+export const metadata = { title: "Work · Polymath" };
 
 type WorkQuery = Promise<Record<string, string | string[] | undefined>>;
 

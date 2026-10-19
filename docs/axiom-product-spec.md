@@ -1,15 +1,15 @@
-# Axiom Product Specification
+# Polymath Product Specification
 
 **Status:** Proposed for implementation  
 **Date:** 2026-10-10  
-**Product:** Axiom — personal command center and knowledge operating system  
+**Product:** Polymath — personal command center and knowledge operating system  
 **Primary user:** A single owner in v1; tenant-ready by design
 
 ## Product decision
 
-Axiom is a coherent new product, not an iframe shell or permanent federation of donor backends. It consolidates Command Center's operational safety with NeuralFlow's planning, focus, learning, and gamification into one Next.js 16 application and one Neon Postgres system of record.
+Polymath is a coherent new product, not an iframe shell or permanent federation of donor backends. It consolidates Command Center's operational safety with NeuralFlow's planning, focus, learning, and gamification into one Next.js 16 application and one Neon Postgres system of record.
 
-> **Axiom converts everything entering a person's world into an ordered, trustworthy plan; keeps knowledge connected; and lets supervised AI agents do useful work without quietly taking control.**
+> **Polymath converts everything entering a person's world into an ordered, trustworthy plan; keeps knowledge connected; and lets supervised AI agents do useful work without quietly taking control.**
 
 The primary loop is **Capture → Clarify → Commit → Focus → Review → Learn**.
 
@@ -19,7 +19,7 @@ The primary loop is **Capture → Clarify → Commit → Focus → Review → Le
 - Reduce executive-function load by identifying what deserves attention, explaining why, and exposing the safest next action.
 - Preserve provenance and reversibility for agent output, external actions, imports, derived knowledge, and edits.
 - Turn completed work into learning through notes, retrieval, flashcards, reflection, and weekly review.
-- Make Gmail, Google Calendar, Drive, Notion, GitHub, Linear, Vercel, Composio, and Firecrawl feel like native Axiom capabilities.
+- Make Gmail, Google Calendar, Drive, Notion, GitHub, Linear, Vercel, Composio, and Firecrawl feel like native Polymath capabilities.
 - Remain viable on free plans for personal use while defining explicit paid-upgrade thresholds.
 
 ## Non-goals
@@ -35,7 +35,7 @@ The primary loop is **Capture → Clarify → Commit → Focus → Review → Le
 
 ### The Commander
 
-The owner needs Axiom to answer:
+The owner needs Polymath to answer:
 
 1. What matters now?
 2. What am I waiting for or at risk of dropping?
@@ -59,7 +59,7 @@ Alfred is a supervised chief-of-staff agent with an identity, instructions, mode
 
 ## The suite
 
-Axiom is a unified platform with **three micro-app experiences** over one
+Polymath is a unified platform with **three micro-app experiences** over one
 canonical system of record. Each app has its own contextual navigation and
 feature ownership; all three read and write the same records and share the same
 platform services.
@@ -255,7 +255,7 @@ Run invariants:
 
 ### Knowledge loop
 
-- Notes and documents link to any Axiom object.
+- Notes and documents link to any Polymath object.
 - Imports preserve original blobs, extracted text, source metadata, classification, and immutable versions.
 - Search combines exact, full-text, and semantic retrieval.
 - Alfred suggests summaries, claims, flashcards, and links for review.
@@ -295,7 +295,7 @@ Acceptance criteria:
 ### Alfred and agents
 
 - Profiles, threads, messages, checkpoints, runs, steps, questions, tools, artifacts, memory links, model routing, spending, cancellation, retries, and event streaming.
-- First-party Alfred profile with constrained Axiom and external tools.
+- First-party Alfred profile with constrained Polymath and external tools.
 - Durable research, import, classification, correspondence, and application workflows.
 - Reviewed memory; no automatic durable memory from raw model output.
 

@@ -24,7 +24,7 @@
     const online = await AlfredAPI.health();
     const dot = $("#sidebar-status");
     dot.classList.toggle("online", online);
-    dot.title = online ? "Connected to Axiom" : "Axiom offline";
+    dot.title = online ? "Connected to Polymath" : "Polymath offline";
     return online;
   }
   const isOnline = await checkStatus();
@@ -87,7 +87,7 @@
       allNotes = data.captures || [];
       renderNotes(allNotes);
     } catch (err) {
-      container.innerHTML = `<p class="empty-state">Could not load the inbox. Is Axiom running, and is this companion paired?</p>`;
+      container.innerHTML = `<p class="empty-state">Could not load the inbox. Is Polymath running, and is this companion paired?</p>`;
     }
   }
 
@@ -149,7 +149,7 @@
   // ── Note modal ─────────────────────────────────────────────────────
 
   function openNoteModal(note) {
-    // Captures are immutable originals in Axiom: this modal composes a new
+    // Captures are immutable originals in Polymath: this modal composes a new
     // capture, it never edits one in place.
     editingNoteId = null;
     $("#modal-note-title").value = "";
@@ -198,7 +198,7 @@
       allDocs = (data.captures || []).filter((capture) => capture.url);
       renderLibrary(allDocs);
     } catch {
-      container.innerHTML = '<p class="empty-state">Could not load captures. Is Axiom running, and is this companion paired?</p>';
+      container.innerHTML = '<p class="empty-state">Could not load captures. Is Polymath running, and is this companion paired?</p>';
     }
   }
 
@@ -295,8 +295,8 @@
     loadNotes();
     loadLibrary();
   } else {
-    $("#notes-list").innerHTML = '<p class="empty-state">Axiom is offline. Start the dev server and refresh.</p>';
-    $("#library-list").innerHTML = '<p class="empty-state">Axiom is offline. Start the dev server and refresh.</p>';
+    $("#notes-list").innerHTML = '<p class="empty-state">Polymath is offline. Start the dev server and refresh.</p>';
+    $("#library-list").innerHTML = '<p class="empty-state">Polymath is offline. Start the dev server and refresh.</p>';
   }
   loadHistory();
 })();

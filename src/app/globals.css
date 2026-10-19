@@ -315,7 +315,7 @@ padding: 24px var(--page-gutter);
 @media (min-width: 768px) {
 :root { --page-gutter: 24px; }
 }
-.axiom-mark {
+.polymath-mark {
 display: flex;
 width: 28px;
 height: 28px;

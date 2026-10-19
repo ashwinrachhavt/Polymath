@@ -10,7 +10,7 @@ it short enough to stay in context and correct enough to be worth the tokens.
 
 | File | Governs | Read it when |
 |---|---|---|
-| [product.md](product.md) | What Axiom is, what is already decided, what is out of scope | proposing a feature, a screen, or copy |
+| [product.md](product.md) | What Polymath is, what is already decided, what is out of scope | proposing a feature, a screen, or copy |
 | [engineering.md](engineering.md) | How code, schema, and tests are written | writing or reviewing any code |
 | [design.md](design.md) | Visual and interaction language | touching UI, tokens, or user-facing text |
 

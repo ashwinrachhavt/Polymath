@@ -80,7 +80,7 @@ export function useAlfredPreview() {
       const url = URL.createObjectURL(new Blob([JSON.stringify(store.getSnapshot(), null, 2)], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "axiom-alfred-feature-history.json";
+      anchor.download = "polymath-alfred-feature-history.json";
       anchor.click();
       URL.revokeObjectURL(url);
     } catch { notify("Alfred feature history could not be exported. Keep this tab open and copy important evidence and annotations manually."); }

@@ -63,7 +63,7 @@ export function IngestForm({ documents }: { documents: { id: string; title: stri
           id={topicsId}
           name="topics"
           type="text"
-          placeholder="topics, optional (e.g. job-search, axiom)"
+          placeholder="topics, optional (e.g. job-search, polymath)"
           disabled={pending}
           className="border-input bg-background h-9 w-64 rounded-md border px-3 text-sm"
         />

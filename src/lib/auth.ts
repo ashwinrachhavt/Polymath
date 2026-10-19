@@ -71,7 +71,7 @@ export function withAuth<A extends unknown[]>(
  * go through this; webhooks keep their HMAC auth instead.
  */
 /*
- * Axiom-issued companion tokens. Clerk's API-key product is not enabled on
+ * Polymath-issued companion tokens. Clerk's API-key product is not enabled on
  * every instance, so the companion's own bearer is verified here: an exact
  * lookup of its digest in api_clients. This sits before Clerk so a companion
  * call never depends on Clerk being reachable or configured.

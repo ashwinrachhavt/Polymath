@@ -27,7 +27,7 @@ export default function CanvasEditor({ record }: { record: Artifact }) {
     if (!current) return;
     const elements = template === "architecture" ? convertToExcalidrawElements([
       { type: "rectangle", x: 100, y: 120, width: 140, height: 80, label: { text: "Browser" } },
-      { type: "rectangle", x: 340, y: 120, width: 180, height: 80, label: { text: "Axiom domain" } },
+      { type: "rectangle", x: 340, y: 120, width: 180, height: 80, label: { text: "Polymath domain" } },
       { type: "rectangle", x: 620, y: 120, width: 160, height: 80, label: { text: "Canonical store" } },
       { type: "arrow", x: 240, y: 160, points: [[0, 0], [100, 0]] },
       { type: "arrow", x: 520, y: 160, points: [[0, 0], [100, 0]] },

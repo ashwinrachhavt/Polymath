@@ -14,7 +14,7 @@ import {
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 
 /*
- * The internal mirror of what is connected. Axiom stores the Composio
+ * The internal mirror of what is connected. Polymath stores the Composio
  * connected-account id, the alias the owner chose, a scope summary, and health
  * — never an OAuth token. The browser sees aliases and status, nothing else.
  */
@@ -64,14 +64,14 @@ export const triggerStatus = pgEnum("trigger_status", [
 ]);
 export const syncState = pgEnum("sync_state", ["idle", "running", "partial", "failed"]);
 
-/** Static catalog of what Axiom can talk to, seeded by migration. */
+/** Static catalog of what Polymath can talk to, seeded by migration. */
 export const integrationCatalog = pgTable(
   "integration_catalog",
   {
     id: primaryId(),
     provider: text("provider").notNull(),
     displayName: text("display_name").notNull(),
-    /** What the provider can do, and which of those Axiom actually exposes. */
+    /** What the provider can do, and which of those Polymath actually exposes. */
     capabilities: jsonb("capabilities").notNull().default([]),
     /** Read | prepare | external_write | sensitive_write per capability. */
     riskByCapability: jsonb("risk_by_capability").notNull().default({}),

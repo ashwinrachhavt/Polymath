@@ -2,7 +2,7 @@ import { SignUp } from "@clerk/nextjs";
 import { notFound } from "next/navigation";
 import { clerkConfigured } from "@/lib/clerk";
 
-export const metadata = { title: "Create account · Axiom" };
+export const metadata = { title: "Create account · Polymath" };
 
 /* Mirrors src/app/sign-in: the route exists only when Clerk is configured. */
 export default function SignUpPage() {

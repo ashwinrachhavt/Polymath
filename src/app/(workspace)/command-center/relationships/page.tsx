@@ -32,7 +32,7 @@ import { CompanyForm } from "./company-form";
 import { ResearchCompanyButton } from "./research-button";
 import { ImportButton } from "./import-button";
 
-export const metadata = { title: "Relationships · Axiom" };
+export const metadata = { title: "Relationships · Polymath" };
 
 /*
  * Canonical relationships surface (ASH-139 C01): contacts, companies,

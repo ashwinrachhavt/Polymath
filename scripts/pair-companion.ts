@@ -6,9 +6,9 @@ import { db } from "@/lib/db";
 import { sha256Hex } from "@/lib/hash";
 
 /*
- * Pairs the Chrome companion with this Axiom workspace.
+ * Pairs the Chrome companion with this Polymath workspace.
  *
- * Axiom resolves a machine token by looking its digest up in
+ * Polymath resolves a machine token by looking its digest up in
  * api_clients.token_hash, but nothing ever created those rows. This is that
  * missing step: mint a secret, store only its SHA-256 digest, and print the
  * secret once. No third-party API-key product is involved, so it works on any
@@ -46,7 +46,7 @@ async function main() {
 
   if (!args.clerkUser) throw new Error("Pass --clerk-user user_xxx (the owner's Clerk id).");
   const owner = await resolveSeedOwner(args.clerkUser);
-  if (!owner) throw new Error(`No active workspace for ${args.clerkUser}. Sign in to Axiom once first.`);
+  if (!owner) throw new Error(`No active workspace for ${args.clerkUser}. Sign in to Polymath once first.`);
 
   const secret = `axm_${randomBytes(32).toString("base64url")}`;
   const [client] = await db

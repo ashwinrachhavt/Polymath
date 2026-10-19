@@ -1,6 +1,6 @@
 /*
  * The Notion read surface the importer needs, behind one interface. The real
- * adapter reaches Notion through Composio's proxy endpoint — Axiom stores the
+ * adapter reaches Notion through Composio's proxy endpoint — Polymath stores the
  * Composio connected-account id, never an OAuth token (integrations domain
  * design). Tests plug in a fake.
  */
@@ -29,7 +29,7 @@ const COMPOSIO_PROXY_URL = "https://backend.composio.dev/api/v3/tools/execute/pr
 
 type ProxyFetch = typeof fetch;
 
-/** One call to the Notion API through Composio's proxy: the token never touches Axiom. */
+/** One call to the Notion API through Composio's proxy: the token never touches Polymath. */
 async function notionViaProxy(
   fetchImpl: ProxyFetch,
   apiKey: string,

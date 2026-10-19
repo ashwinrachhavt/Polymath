@@ -6,7 +6,7 @@ import { GripVertical } from "lucide-react";
 
 /*
  * One ordered list, two ways to move a row: pointer drag and the keyboard.
- * Every list in Axiom that has an order uses this, so ranking behaves the same
+ * Every list in Polymath that has an order uses this, so ranking behaves the same
  * in a board lane, a task queue and a saved view, and so the keyboard
  * alternative required by WCAG 2.2 cannot be forgotten in one of them.
  *

@@ -65,7 +65,7 @@ describe("blocksToMarkdown", () => {
 
 describe("pageHeader", () => {
   it("lists database-row properties and skips empty ones", () => {
-    const md = pageHeader("Axiom", { Name: "Axiom", Status: "Doing", Points: "1", Priority: "" });
-    expect(md).toBe("# Axiom\n\n- Name: Axiom\n- Status: Doing\n- Points: 1\n");
+    const md = pageHeader("Polymath", { Name: "Polymath", Status: "Doing", Points: "1", Priority: "" });
+    expect(md).toBe("# Polymath\n\n- Name: Polymath\n- Status: Doing\n- Points: 1\n");
   });
 });

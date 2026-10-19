@@ -1,4 +1,4 @@
-# Axiom Next.js and Neon Consolidation Plan
+# Polymath Next.js and Neon Consolidation Plan
 
 **Status:** Proposed implementation architecture  
 **Date:** 2026-10-10  
@@ -8,7 +8,7 @@
 
 Build a TypeScript modular monolith. Use Next.js App Router for UI, Server Components for reads, Server Actions for first-party mutations, Route Handlers for APIs/webhooks/SSE/files, Drizzle plus SQL migrations for Neon, pgvector for semantic retrieval, object storage for binaries, and durable workflows for long-running jobs.
 
-Do not retain Axiom as a proxy over donor backends. Do not translate FastAPI endpoints one-for-one. Consolidate by domain, preserve proven invariants, and retire duplicate concepts.
+Do not retain Polymath as a proxy over donor backends. Do not translate FastAPI endpoints one-for-one. Consolidate by domain, preserve proven invariants, and retire duplicate concepts.
 
 ## Reviewed implementation
 
@@ -29,7 +29,7 @@ Do not retain Axiom as a proxy over donor backends. Do not translate FastAPI end
 
 ### Consolidation conclusion
 
-Command Center supplies safety and operational invariants. NeuralFlow supplies productivity interactions, focus, learning, and rewards. Axiom combines both in one canonical model and simpler deployment topology.
+Command Center supplies safety and operational invariants. NeuralFlow supplies productivity interactions, focus, learning, and rewards. Polymath combines both in one canonical model and simpler deployment topology.
 
 ## Target topology
 
@@ -93,7 +93,7 @@ Each domain owns schema declarations, commands, queries, policies, and events. U
 
 ### Server Components
 
-Use for authenticated initial reads and composed view models. Briefing executes bounded domain reads in parallel. Never call internal Axiom HTTP endpoints from the same server process.
+Use for authenticated initial reads and composed view models. Briefing executes bounded domain reads in parallel. Never call internal Polymath HTTP endpoints from the same server process.
 
 ### Server Actions
 
@@ -224,7 +224,7 @@ Inventory derives from the ledger; avoid one table per collectible class unless 
 
 ## Capability mapping
 
-| Donor capability | Axiom module | Mapping | Disposition |
+| Donor capability | Polymath module | Mapping | Disposition |
 |---|---|---|---|
 | CC Briefing/dashboard/work queue | `briefing`, `work` | RSC composition and deterministic priority | Rebuild/simplify |
 | CC companies/contacts | `crm` | Drizzle records and inspector UI | Port behavior |
@@ -419,7 +419,7 @@ Importers are rerunnable and key on source identity, not fuzzy matching.
 - Companies: normalized domain first; reviewed name match second.
 - NeuralFlow boards become view configuration while tasks migrate independently.
 - Notes/documents/outputs become typed artifacts with immutable versions.
-- Recompute mixed-model embeddings in Axiom.
+- Recompute mixed-model embeddings in Polymath.
 - Import action/run history without re-execution.
 
 ### Cutover
@@ -488,7 +488,7 @@ Golden donor fixtures, counts, checksums, referential checks, duplicate reports,
 
 A donor domain is consolidated only when:
 
-- Axiom owns canonical schema and mutation behavior.
+- Polymath owns canonical schema and mutation behavior.
 - Imports are idempotent and reconciled.
 - Core journeys meet acceptance criteria.
 - Safety and tenancy tests pass.

@@ -22,7 +22,7 @@ export default defineTool({
 
     const run = await getRunBySessionRef(ctx.session.id, workspaceId);
     if (!run || run.state !== "running") {
-      return { ok: false as const, error: "no active Axiom run bound to this session" };
+      return { ok: false as const, error: "no active Polymath run bound to this session" };
     }
     if (!toolAllowed(run.policySnapshot, "tasks.read")) {
       return { ok: false as const, error: "tasks.read is not in this run's policy snapshot" };

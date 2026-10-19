@@ -72,7 +72,7 @@
     const dot = qs("#alfred-dock-status");
     if (dot) {
       dot.classList.toggle("alfred-status-online", isOnline);
-      dot.title = isOnline ? "Axiom connected" : "Axiom offline";
+      dot.title = isOnline ? "Polymath connected" : "Polymath offline";
     }
   }
 
@@ -90,7 +90,7 @@
       el("div", { id: "alfred-dock-header" }, [
         el("div", { class: "alfred-logo" }, [
           el("span", { class: "alfred-logo-icon" }, "P"),
-          "Axiom",
+          "Polymath",
           el("div", { id: "alfred-dock-status", title: "Checking..." }),
         ]),
         el("div", { class: "alfred-dock-actions" }, [
@@ -291,7 +291,7 @@
         textarea.value = "";
         try { localStorage.removeItem(DOMAIN_KEY); } catch {}
       }
-      showToast(isFullPage ? "Page captured to Axiom!" : "Note saved to Axiom!", "success");
+      showToast(isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!", "success");
       AlfredAPI.addCaptureHistory({
         title: isFullPage ? `[Page] ${document.title}` : text.slice(0, 80),
         url: location.href,
@@ -317,7 +317,7 @@
         capture_quality: extracted.quality,
       });
       const qualityLabel = extracted.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
-      showToast(`Page captured to Axiom! (${qualityLabel})`, "success");
+      showToast(`Page captured to Polymath! (${qualityLabel})`, "success");
       AlfredAPI.addCaptureHistory({
         title: `[Page] ${document.title}`,
         url: location.href,
@@ -344,7 +344,7 @@
         selectedText: selText,
         raw_markdown: extracted.raw_markdown,
       });
-      showToast("Selection saved to Axiom!", "success");
+      showToast("Selection saved to Polymath!", "success");
       AlfredAPI.addCaptureHistory({
         title: selText.slice(0, 80),
         url: location.href,
@@ -355,7 +355,7 @@
     }
   }
 
-  // Summarize needs an AI endpoint Axiom does not expose to the companion yet.
+  // Summarize needs an AI endpoint Polymath does not expose to the companion yet.
   // Say so plainly instead of letting the button hit a 404.
   function summarizeSelection() {
     showToast("Summarize is not available yet. Capture the selection instead.", "info");

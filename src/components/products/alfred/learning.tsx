@@ -10,7 +10,7 @@ import { ArtifactLink } from "./artifact-controls";
 import { useAlfredPreview } from "./preview-state";
 
 const cards = [
-  { id: "card-views", front: "Does a board own its tasks in Axiom?", back: "No. A board is a view over independently existing canonical tasks.", sourceId: "zettel-canonical" },
+  { id: "card-views", front: "Does a board own its tasks in Polymath?", back: "No. A board is a view over independently existing canonical tasks.", sourceId: "zettel-canonical" },
   { id: "card-approval", front: "What does an approval apply to?", back: "The exact reviewed payload revision. Editing a payload invalidates prior approval.", sourceId: "zettel-review" },
   { id: "card-links", front: "Can a note link to more than one workspace record?", back: "Yes. A canonical note can link to multiple tasks, projects, dossiers and other records.", sourceId: "note-axiom" },
 ];

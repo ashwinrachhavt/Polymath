@@ -15,7 +15,7 @@ import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/col
 
 /*
  * The unified proposal → review → attempt → observation machine. Every
- * external write in Axiom goes through here, whatever the provider: the model
+ * external write in Polymath goes through here, whatever the provider: the model
  * proposes, deterministic policy classifies the risk, and a human approves an
  * exact revision. An approval binds to that revision, so editing the payload
  * requires approving again.
@@ -191,7 +191,7 @@ export const actionAttempts = pgTable(
 );
 
 /*
- * What the provider actually shows. Observations are how Axiom closes an
+ * What the provider actually shows. Observations are how Polymath closes an
  * UNKNOWN: a later read of the provider proves whether the effect landed.
  */
 export const providerObservations = pgTable(

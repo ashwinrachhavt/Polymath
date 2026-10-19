@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /*
- * RT02 (ASH-116): the Axiom-owned AgentRuntime contracts. These types are the
+ * RT02 (ASH-116): the Polymath-owned AgentRuntime contracts. These types are the
  * ONLY shape domain code uses to talk to an execution runtime; the Eve
  * adapter and the fake both implement them, and neither leaks its own types
  * upward. Everything crossing the boundary is zod-validated - a TypeScript

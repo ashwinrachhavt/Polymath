@@ -5,7 +5,7 @@ import type { Task, WorkspaceState } from "@/components/workspace/types";
  * The NeuralFlow stone catalog: names, themes and art come from the frozen
  * NeuralFlow donor (`src/lib/gamification/catalog.ts`, `public/*.png`), resized
  * into `public/neuralflow/stones`. Only stones with a `rewardTitle` are awarded
- * in Axiom; the rest are shown locked so the collection keeps its shape without
+ * in Polymath; the rest are shown locked so the collection keeps its shape without
  * implying a rule that does not exist yet.
  */
 export type StoneSlug = "quartz" | "garnet" | "topaz" | "emerald" | "sapphire" | "ruby" | "diamond";
@@ -13,12 +13,12 @@ export type Stone = { slug: StoneSlug; name: string; theme: string; rarity: "Com
 
 export const stoneCatalog: Stone[] = [
   { slug: "quartz", name: "Quartz of Clarity", theme: "Clarity and starting", rarity: "Common", image: "/neuralflow/stones/quartz.webp", rewardTitle: "Clarity stone", rule: "Finish a task-linked focus interval and record its outcome." },
-  { slug: "garnet", name: "Garnet of Recovery", theme: "Recovery and reflection", rarity: "Common", image: "/neuralflow/stones/garnet.webp", rule: "No earning rule in Axiom yet." },
-  { slug: "topaz", name: "Topaz of Consistency", theme: "Consistency", rarity: "Rare", image: "/neuralflow/stones/topaz.webp", rule: "No earning rule in Axiom yet." },
-  { slug: "emerald", name: "Emerald of Learning", theme: "Learning and growth", rarity: "Rare", image: "/neuralflow/stones/emerald.webp", rule: "No earning rule in Axiom yet." },
-  { slug: "sapphire", name: "Sapphire of Deep Focus", theme: "Deep focus", rarity: "Epic", image: "/neuralflow/stones/sapphire.webp", rule: "No earning rule in Axiom yet." },
-  { slug: "ruby", name: "Ruby of Courage", theme: "Courage and shipping", rarity: "Epic", image: "/neuralflow/stones/ruby.webp", rule: "No earning rule in Axiom yet." },
-  { slug: "diamond", name: "Diamond of Mastery", theme: "Mastery", rarity: "Legendary", image: "/neuralflow/stones/diamond.webp", rule: "No earning rule in Axiom yet." },
+  { slug: "garnet", name: "Garnet of Recovery", theme: "Recovery and reflection", rarity: "Common", image: "/neuralflow/stones/garnet.webp", rule: "No earning rule in Polymath yet." },
+  { slug: "topaz", name: "Topaz of Consistency", theme: "Consistency", rarity: "Rare", image: "/neuralflow/stones/topaz.webp", rule: "No earning rule in Polymath yet." },
+  { slug: "emerald", name: "Emerald of Learning", theme: "Learning and growth", rarity: "Rare", image: "/neuralflow/stones/emerald.webp", rule: "No earning rule in Polymath yet." },
+  { slug: "sapphire", name: "Sapphire of Deep Focus", theme: "Deep focus", rarity: "Epic", image: "/neuralflow/stones/sapphire.webp", rule: "No earning rule in Polymath yet." },
+  { slug: "ruby", name: "Ruby of Courage", theme: "Courage and shipping", rarity: "Epic", image: "/neuralflow/stones/ruby.webp", rule: "No earning rule in Polymath yet." },
+  { slug: "diamond", name: "Diamond of Mastery", theme: "Mastery", rarity: "Legendary", image: "/neuralflow/stones/diamond.webp", rule: "No earning rule in Polymath yet." },
 ];
 
 export function stoneForReward(title: string): Stone | undefined {

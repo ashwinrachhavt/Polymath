@@ -30,7 +30,7 @@ const bridgeAuth: AuthFn<Request> = async (request) => {
 };
 
 // localDev() is the Eve TUI's own loopback identity; it never carries a
-// workspace, so it cannot start an Axiom run, and it is never mounted in production.
+// workspace, so it cannot start an Polymath run, and it is never mounted in production.
 export default eveChannel({
   auth: [bridgeAuth, ...(process.env.NODE_ENV !== "production" ? [localDev()] : [])],
 });

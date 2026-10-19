@@ -8,7 +8,7 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
- * Connector actions (D09 foundation). These manage Axiom's bookkeeping rows
+ * Connector actions (D09 foundation). These manage Polymath's bookkeeping rows
  * only. The OAuth handshake itself is scaffolding for now: registering an
  * account opens a `connecting` row, and the Composio hosted-auth redirect +
  * callback that would flip it to `active` lands with the provider work. No
