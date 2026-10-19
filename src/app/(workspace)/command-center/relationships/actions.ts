@@ -16,7 +16,11 @@ import {
   StaleWriteError,
   updateContact,
 } from "@/domains/crm/commands";
-import { relationshipStatus } from "@/domains/crm/schema";
+import { and, eq } from "drizzle-orm";
+import { companies, relationshipStatus } from "@/domains/crm/schema";
+import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
+import { db } from "@/lib/db";
+import { linkDraftToRecord } from "@/app/(workspace)/alfred/dossiers/links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -246,4 +250,34 @@ export async function requestSendApprovalAction(input: { correspondenceId: strin
   }
   revalidate();
   return { ok: true };
+}
+
+/*
+ * ASH-114 company-record entry point: a public-mode case study on this
+ * company, persisted as a Studio draft and linked back to the company record
+ * so the workbench shows where it belongs.
+ */
+export async function researchCompanyRecordAction(input: { companyId: string; idempotencyKey: string }) {
+  const auth = await authorize();
+  const parsed = z.object({ companyId: z.uuid(), idempotencyKey: z.uuid() }).parse(input);
+  const [company] = await db
+    .select({ id: companies.id, name: companies.name })
+    .from(companies)
+    .where(and(eq(companies.id, parsed.companyId), eq(companies.workspaceId, auth.workspaceId)))
+    .limit(1);
+  if (!company) return { ok: false as const, error: "No such company." };
+  try {
+    const result = await runCompanyResearch(auth, {
+      companyName: company.name,
+      mode: "public",
+      depth: "standard",
+      idempotencyKey: parsed.idempotencyKey,
+    });
+    await linkDraftToRecord(auth, { artifactId: result.artifactId, targetType: "company", targetId: company.id });
+    revalidate();
+    return { ok: true as const, artifactId: result.artifactId, title: result.title, manifestSize: result.manifestSize, gapSections: result.gapSections };
+  } catch (error) {
+    if (error instanceof CompanyResearchError) return { ok: false as const, error: error.message };
+    throw error;
+  }
 }

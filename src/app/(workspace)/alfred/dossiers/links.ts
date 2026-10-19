@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditEvents } from "@/domains/audit/schema";
-import { contacts } from "@/domains/crm/schema";
+import { companies, contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { artifactLinks, artifacts } from "@/domains/knowledge/schema";
 import { StudioError, type DraftLinkRow } from "@/domains/knowledge/studio";
@@ -15,12 +15,12 @@ import { withTransaction } from "@/lib/db-transaction";
  * targets are work tasks, CRM contacts, and opportunities.
  */
 
-export const DRAFT_LINK_TARGETS = ["task", "contact", "opportunity"] as const;
+export const DRAFT_LINK_TARGETS = ["task", "contact", "company", "opportunity"] as const;
 export type DraftLinkTarget = (typeof DRAFT_LINK_TARGETS)[number];
 
 /** The picklist for the attach control: a few recent records of each kind. */
 export async function listLinkableRecords(auth: AuthContext) {
-  const [taskRows, contactRows, opportunityRows] = await Promise.all([
+  const [taskRows, contactRows, companyRows, opportunityRows] = await Promise.all([
     db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId)).orderBy(desc(tasks.updatedAt)).limit(12),
     db
       .select({ id: contacts.id, title: contacts.fullName })
@@ -29,13 +29,19 @@ export async function listLinkableRecords(auth: AuthContext) {
       .orderBy(desc(contacts.updatedAt))
       .limit(12),
     db
+      .select({ id: companies.id, title: companies.name })
+      .from(companies)
+      .where(eq(companies.workspaceId, auth.workspaceId))
+      .orderBy(desc(companies.updatedAt))
+      .limit(12),
+    db
       .select({ id: opportunities.id, title: opportunities.title })
       .from(opportunities)
       .where(eq(opportunities.workspaceId, auth.workspaceId))
       .orderBy(desc(opportunities.updatedAt))
       .limit(12),
   ]);
-  return { task: taskRows, contact: contactRows, opportunity: opportunityRows };
+  return { task: taskRows, contact: contactRows, company: companyRows, opportunity: opportunityRows };
 }
 
 async function targetExists(workspaceId: string, targetType: DraftLinkTarget, targetId: string): Promise<boolean> {
@@ -45,6 +51,10 @@ async function targetExists(workspaceId: string, targetType: DraftLinkTarget, ta
   }
   if (targetType === "contact") {
     const [row] = await db.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.id, targetId), eq(contacts.workspaceId, workspaceId))).limit(1);
+    return !!row;
+  }
+  if (targetType === "company") {
+    const [row] = await db.select({ id: companies.id }).from(companies).where(and(eq(companies.id, targetId), eq(companies.workspaceId, workspaceId))).limit(1);
     return !!row;
   }
   const [row] = await db.select({ id: opportunities.id }).from(opportunities).where(and(eq(opportunities.id, targetId), eq(opportunities.workspaceId, workspaceId))).limit(1);
@@ -107,6 +117,11 @@ export async function resolveLinkTitles(auth: AuthContext, links: DraftLinkRow[]
   if (taskIds.length) {
     const rows = await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId));
     for (const r of rows) if (taskIds.includes(r.id)) titles.set(r.id, r.title);
+  }
+  const companyIds = byType.get("company") ?? [];
+  if (companyIds.length) {
+    const rows = await db.select({ id: companies.id, title: companies.name }).from(companies).where(eq(companies.workspaceId, auth.workspaceId));
+    for (const r of rows) if (companyIds.includes(r.id)) titles.set(r.id, r.title);
   }
   const contactIds = byType.get("contact") ?? [];
   if (contactIds.length) {

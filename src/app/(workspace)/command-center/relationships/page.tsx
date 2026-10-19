@@ -29,6 +29,7 @@ import {
   ResolveFollowUpButton,
 } from "./contact-detail-controls";
 import { CompanyForm } from "./company-form";
+import { ResearchCompanyButton } from "./research-button";
 import { ImportButton } from "./import-button";
 
 export const metadata = { title: "Relationships · Axiom" };
@@ -167,9 +168,12 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                     <p className="text-[13px] font-medium">{company.name}</p>
                     <p className="text-xs text-muted-foreground">{company.domain || "No domain recorded"}</p>
                   </div>
-                  <Status>
-                    {company.contactCount} current contact{company.contactCount === 1 ? "" : "s"}
-                  </Status>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Status>
+                      {company.contactCount} current contact{company.contactCount === 1 ? "" : "s"}
+                    </Status>
+                    <ResearchCompanyButton companyId={company.id} />
+                  </div>
                 </div>
               ))}
             </div>
