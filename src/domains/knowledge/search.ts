@@ -40,7 +40,7 @@ const textMatch = (query: string): SQL =>
   sql`exists (
     select 1 from ${documentExtractions}
     where ${documentExtractions.documentId} = ${documents.id}
-      and to_tsvector('english', ${documentExtractions.text}) @@ plainto_tsquery('english', ${query})
+      and to_tsvector('english', coalesce(${documentExtractions.text}, '')) @@ plainto_tsquery('english', ${query})
   )`;
 
 const partyMatch = (column: SQL): SQL =>
@@ -84,7 +84,7 @@ export async function searchDocuments(auth: AuthContext, input: DocumentSearchIn
         from document_extractions de
         where de.document_id = ${documents.id} and de.status = 'succeeded'
           and de.id::text = ${currentExtractionSql("id")}
-          and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${query})
+          and to_tsvector('english', coalesce(de.text, '')) @@ plainto_tsquery('english', ${query})
         limit 1
       )`
     : sql<string | null>`null`;

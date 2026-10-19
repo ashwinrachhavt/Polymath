@@ -235,7 +235,7 @@ function libraryWhere(auth: AuthContext, filters: LibraryFilters): SQL[] {
         sql`exists (
           select 1 from document_extractions de
           where de.document_id = ${documents.id}
-            and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${q})
+            and to_tsvector('english', coalesce(de.text, '')) @@ plainto_tsquery('english', ${q})
         )`,
         ilike(documents.title, like),
         ilike(files.filename, like),
@@ -322,7 +322,7 @@ export async function listDocuments(auth: AuthContext, input: LibraryPageInput =
         from document_extractions de
         where de.document_id = ${documents.id} and de.status = 'succeeded'
           and de.id::text = ${currentExtractionSql("id")}
-          and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${q})
+          and to_tsvector('english', coalesce(de.text, '')) @@ plainto_tsquery('english', ${q})
         limit 1
       )`
     : sql<string | null>`null`;
