@@ -1,106 +1,115 @@
 # product.md — Direction, decisions, and boundaries
 
-**Purpose:** what to build, what is already decided (so it is not re-litigated),
-and what is out of scope. Behaviour is owned by
-[axiom-product-spec.md](../docs/axiom-product-spec.md); this file owns stance.
+**Purpose:** what to build, what is already decided, and what is out of scope.
+Behaviour is owned by [axiom-product-spec.md](../docs/axiom-product-spec.md) and
+the Notion Product Spec; this file owns stance.
+
+**Naming:** the product is **Polymath**. The repository, package, and docs were
+renamed from Axiom in `d9bd844`.
+
+Process and the agent org are in [agent.md](agent.md). System map in
+[architecture.md](architecture.md). Commands in [reference.md](reference.md).
 
 ## Thesis
 
-Polymath converts everything entering one person's world — mail, files, issues,
-pages, ideas — into an ordered, trustworthy plan; keeps knowledge connected; and
-lets supervised agents do useful work without quietly taking control.
+Polymath is a workspace for people whose work is thinking. It converts
+everything entering one person's world — mail, files, pages, ideas, roles — into
+an ordered, trustworthy plan; keeps knowledge connected and retrievable; and lets
+supervised agents do the work without quietly taking control.
 
-The loop: **Capture → Clarify → Commit → Focus → Review → Learn.** Every feature
-must serve a step in that loop. A feature that serves none of them is a
-non-feature, however good the demo looks.
+The product exists because knowledge work fails in four specific ways: menial
+work crowds out creative work, notes are written and never revisited, focus
+drifts, and effort is invisible.
 
-One owner in v1. Tenant-ready schema, single-user behaviour. "Team features" are
-schema decisions, not UI decisions, until the owner asks otherwise.
+**The library is the asset.** A person's accumulated knowledge, stored well and
+retrievable, is the most valuable thing the product holds. Every feature either
+enriches the library or helps use it.
+
+## Three pillars
+
+1. **The library** — sources, notes, claims, cards, links, retrieval.
+2. **The work** — tasks, sessions, stones, areas, effort and confidence reported
+   separately.
+3. **The agents** — a supervisor, sub-agents invoked as tools, durable runs,
+   authority that narrows on delegation.
+
+The loop (Capture → Clarify → Commit → Focus → Review → Learn) is the mechanism
+inside the pillars, not a fourth structure.
 
 ## First principles
 
-1. **Briefing before browsing.** Home answers "what should I do now" without an
-   LLM call on load. A dashboard that only reports is not a briefing.
-2. **Three apps, one record.** Polymath presents three micro-app experiences —
-   Command Center, NeuralFlow, Alfred — over one canonical system of record
-   (spec § The suite). The boundary is a product boundary, never a deployment
-   or data boundary: a second task table, a second note universe, or a second
-   approval pipeline is a bug, however clean the app split looks.
-3. **Objects before pages.** Tasks, projects, people, documents, events,
-   messages, and runs are canonical records. Screens are views over them.
-4. **One record, many views.** List, board, calendar, and focus read one task
-   model. Never fork a second task universe to get a nicer screen.
-5. **AI proposes; policy disposes.** Model output never overrides deterministic
-   authorization. The risk table in the spec is law.
-6. **No invisible work.** Long jobs expose progress, cost, questions,
-   cancellation, and artifacts. If the owner cannot see it, it did not happen.
-7. **Reversible by default.** External writes go through proposals with a
-   preview, a risk class, a dedupe key, and an expiry. Uncertain provider
-   outcomes become `UNKNOWN` and reconcile before any retry.
-8. **Learning follows completion.** Reflection enriches finished work; it never
-   blocks it.
+1. **Capture never blocks.** Entry speed outranks enrichment completeness. A
+   capture is recorded before anything tries to understand it.
+2. **Objects before pages.** Sources, notes, claims, cards, links, tasks,
+   sessions, areas, runs are canonical. Screens are views.
+3. **One record, many views.** A second task store to get a nicer screen is a
+   bug.
+4. **Evidence before confidence.** A number never hides what produced it.
+5. **Agents propose; policy disposes.** Model output never overrides
+   deterministic authorisation.
+6. **Delegation narrows authority.** A sub-agent can never hold more power than
+   the agent that invoked it. Enforced in code, tested as an invariant.
+7. **No invisible work.** Long jobs expose progress, cost, questions,
+   cancellation, and artifacts.
+8. **Reward completion, never punish loss.** Stones cannot be taken away. No
+   streak can be broken.
+9. **Reversible by default.** Uncertain external outcomes become unknown and
+   reconcile before any retry.
 
 ## Decisions already made — do not re-propose
 
-- **Consolidation, not federation.** Polymath is one product with one Postgres
-  system of record. No permanent proxy layer over donor backends, no iframe shell
-  as the end state. *(The `docs/superpowers/.../consolidation-design.md` iframe
-  plan was an earlier approach that the Next.js/Neon plan supersedes — follow the
-  newer document.)*
-- **Three micro-app experiences, one system of record.** Command Center,
-  NeuralFlow, and Alfred are product surfaces with their own navigation and
-  feature ownership; they are not three systems and not a federation of donors
-  behind one shell. This **supersedes the earlier flat ten-destination model** in
-  the product spec (2026-10-11); it does not supersede the modular-monolith or
-  single-system-of-record decisions. A shared record is never copied to cross an
-  app boundary.
-- **Next.js 16 modular monolith on Vercel.** App Router, RSC reads, Server
-  Actions for first-party mutations, Route Handlers for webhooks/SSE/files.
-  Not microservices; not FastAPI/Celery retained after parity.
-- **Neon Postgres + pgvector** is the system of record. Object storage holds
-  binaries; Neon holds metadata, extracted text, hashes, lineage.
-- **Clerk** is the only identity provider. Owner resolves server-side from Clerk;
-  clients never select owner IDs.
-- **Composio** is the integration layer; **Firecrawl** is the research layer.
-  Providers are reached through adapters, never called from components.
+- **Multi-tenant, multi-person.** A user belongs to one or more workspaces.
+  Every record carries `workspace_id`. Roles are owner, editor, viewer.
+- **Generic ICP, not one person's habits.** The product is designed for the
+  class described in the spec, not modelled on the owner.
+- **Twelve core resources.** `workspaces`, `users`, `memberships`, `sources`,
+  `notes`, `claims`, `cards`, `links`, `tasks`, `sessions`, `areas`, `runs`.
+  Everything else is a capability over these.
+- **Source and Document are the same thing.** One immutable captured artifact.
+- **Pursuit replaces Opportunity** as the frame for anything driven toward an
+  external outcome.
+- **Stones are gemstone records**, three intensity tiers, never revoked, never
+  points or streaks.
+- **Effort and knowledge confidence are separate measures**, never a composite.
+- **Phase 0 spine before parallel phases.** Identity, tenancy, receipts, audit,
+  a queue that drains — then phases 1 to 4 in parallel.
+- **Next.js 16 modular monolith on Neon Postgres.** Not FastAPI, not SQLite, not
+  microservices.
+- **Alfred is one first-party agent** plus a fixed sub-agent roster. Not a
+  persona zoo.
 - **Donor repos are frozen.** `~/Projects/{command-center,alfred,neuralflow}` are
-  read-only references. Never edit them; migrate from them.
-- **No autonomous consequential action.** Sending, publishing, deploying,
-  submitting, merging, and deleting require policy **and** approval in v1.
-- **Alfred is one first-party agent**, not a persona zoo. Profiles exist in
-  schema; v1 ships one.
+  read-only references. Never edit them.
 
 ## Feature boundaries
 
-**In v1:** Briefing, Inbox/capture, Work (tasks/projects/spaces/board/calendar),
-Focus, Alfred threads and durable runs, Reviews/approvals, Knowledge (notes,
-documents, search, flashcards), Relationships, Opportunities, Activity, Settings.
+**In v1:** capture and queue, library and search, notes and claims and cards,
+links, tasks, sessions, stones, areas and progress, agents and runs, proposals
+for external action, tenancy and membership.
 
-**Deferred — say so in one line instead of building it:** multi-user
-collaboration, user-authored code execution, unbounded browser automation,
-donor-look unification for long-tail screens, a second agent persona, real-time
-multiplexed cursors, mobile-native clients.
+**Roadmap, not v1:** financial reconciliation, legal citation, mobile, MCP
+server, public API, per-resource sharing, org hierarchies, custom roles.
 
-**Never:** a feature whose only safety story is "the model will be careful."
+**Never:** a feature whose only safety story is "the model will be careful"; a
+fabricated personal claim; name-only person merging; credential harvesting;
+CAPTCHA or access-control bypass.
 
 ## Voice
 
-Interface text is written from the owner's side of the screen and named by what
-the owner controls — "Notifications", not "Webhook config". Active voice; a
-button says exactly what happens ("Send email"), and the toast repeats that word
-("Email sent"). Sentence case, plain verbs, no filler, no exclamation marks.
-Errors state what happened and how to fix it; they never apologise and never
-guess. An empty screen is an invitation to act, never a mood.
+Interface text is written from the person's side of the screen and named by what
+they control. Active voice. A button says exactly what happens and the
+confirmation repeats that word. Sentence case, plain verbs, no filler, no
+exclamation marks. Errors state what happened and how to fix it; they never
+apologise and never guess. An empty screen is an invitation to act.
 
-Vocabulary is consistent across the product: *capture*, *clarify*, *outcome*,
-*review*, *proposal*, *attempt*, *focus session*, *run*. If a synonym appears in
-a mock, rename it.
+Vocabulary is consistent across the product: *source*, *note*, *claim*, *card*,
+*link*, *task*, *session*, *stone*, *area*, *run*, *proposal*. A synonym is a
+bug.
 
 ## Success
 
-Activation: connect calendar and inbox, capture five items, accept one outcome,
-complete one focus session, decide one Alfred proposal.
+Activation: capture five items, approve one proposal, complete one session, earn
+one stone.
 
-Guardrails that are never traded away: zero duplicate external effects, zero
-cross-workspace leaks, zero writes without valid policy or approval, zero spend
-above a captured budget, zero `UNKNOWN` actions older than 24 hours.
+Guardrails never traded away: zero cross-workspace leaks, zero duplicate
+external effects, zero writes without policy or approval, zero spend above
+budget, zero unresolved external outcomes older than 24 hours.
