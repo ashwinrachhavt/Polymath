@@ -80,6 +80,11 @@ export function NoteEditor({
   const [pending, setPending] = useState(false);
   const versionRef = useRef(initialVersion);
   const savedRef = useRef(initialMarkdown);
+  const markdownRef = useRef(initialMarkdown);
+  const updateMarkdown = (next: string) => {
+    markdownRef.current = next;
+    setMarkdown(next);
+  };
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mutations serialize: a rename on blur must claim its version before the
   // autosave it raced past fires, or one of them loses the CAS check. The
@@ -131,6 +136,10 @@ export function NoteEditor({
       const result = await renameNoteAction({ artifactId: noteId, expectedVersion: versionRef.current, title: next, idempotencyKey: crypto.randomUUID() });
       if (!result.ok) return setError(result.error);
       versionRef.current = result.version;
+      // A rename is a save, and the status gives the owner (and tests) a
+      // deterministic point where the new title has landed before they
+      // navigate or reload — but it must not paper over a dirty body.
+      if (markdownRef.current === savedRef.current) setSaveState("saved");
       router.refresh();
     });
   };
@@ -199,7 +208,7 @@ export function NoteEditor({
         {offer && (
           <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
             <span>A draft from {stamp(offer.updatedAt)} was left unsaved.</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => { setMarkdown(offer.markdown); setOffer(null); }}>
+            <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(offer.markdown); setOffer(null); }}>
               Restore draft
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setOffer(null)}>
@@ -208,7 +217,7 @@ export function NoteEditor({
           </div>
         )}
         <Input aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={rename} />
-        <RichEditor content={markdown} onChange={setMarkdown} />
+        <RichEditor content={markdown} onChange={updateMarkdown} />
         {(outlinks.length > 0 || backlinks.length > 0) && (
           <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
             <div>

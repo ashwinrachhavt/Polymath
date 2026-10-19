@@ -23,6 +23,9 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await page.getByRole("button", { name: "Markdown source" }).click();
   await page.getByLabel("Markdown source").fill(body);
   // Autosave is debounced — wait for the confirmation, never reload mid-save.
+  // The rename's own "Saved" badge must not satisfy this: the dirty badge has
+  // to show first, proving this Saved belongs to the body autosave.
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
   // Reload: the committed version is still empty, so the draft is offered.
@@ -66,6 +69,7 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   const targetUrl = page.url();
   await page.getByLabel("Note title").fill(targetTitle);
   await page.getByLabel("Note title").blur();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Note title")).toHaveValue(targetTitle);
 
@@ -75,6 +79,7 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   await expect(page).toHaveURL(/\/alfred\/notebook\?id=[0-9a-f-]{36}/);
   await page.getByLabel("Note title").fill(sourceTitle);
   await page.getByLabel("Note title").blur();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Note title")).toHaveValue(sourceTitle);
   await page.getByRole("button", { name: "Markdown source" }).click();
