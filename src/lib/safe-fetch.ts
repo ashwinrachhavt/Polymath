@@ -91,6 +91,24 @@ export function parseCaptureUrl(raw: string, allowPrivate = false): { ok: true; 
   return { ok: true, url };
 }
 
+const TRACKING_PARAMS = /^(utm_[a-z0-9_]+|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid|ref_src)$/i;
+
+/**
+ * The one form a captured address is stored and matched in, so the same page
+ * pasted twice never becomes two Knowledge rows: no fragment, no tracking
+ * parameters, sorted query, no trailing slash on a path, default port dropped.
+ */
+export function canonicalCaptureUrl(input: URL): string {
+  const url = new URL(input.href);
+  url.hash = "";
+  const kept = [...url.searchParams.entries()].filter(([key]) => !TRACKING_PARAMS.test(key));
+  kept.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  url.search = "";
+  for (const [key, value] of kept) url.searchParams.append(key, value);
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return url.href;
+}
+
 function once(url: URL, options: Required<SafeFetchOptions>): Promise<
   | { kind: "body"; bytes: Uint8Array; contentType: string | null }
   | { kind: "redirect"; location: string }

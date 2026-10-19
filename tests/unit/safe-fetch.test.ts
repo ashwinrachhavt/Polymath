@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { isPrivateAddress, parseCaptureUrl, safeFetch } from "@/lib/safe-fetch";
+import { isPrivateAddress, parseCaptureUrl, safeFetch, canonicalCaptureUrl } from "@/lib/safe-fetch";
 
 let server: Server;
 let base: string;
@@ -80,5 +80,21 @@ describe("safeFetch", () => {
     expect(await safeFetch(`${base}/slow`, { allowPrivateAddresses: true, timeoutMs: 200 })).toEqual({
       ok: false, error: "The site took too long to answer.",
     });
+  });
+});
+
+describe("canonicalCaptureUrl", () => {
+  const canon = (raw: string) => canonicalCaptureUrl(new URL(raw));
+  it("treats the same page pasted in different shapes as one address", () => {
+    const base = canon("https://Example.com/post");
+    expect(canon("https://example.com/post/")).toBe(base);
+    expect(canon("https://example.com/post#section")).toBe(base);
+    expect(canon("https://example.com:443/post?utm_source=x&fbclid=y")).toBe(base);
+  });
+  it("keeps real query parameters, sorted", () => {
+    expect(canon("https://example.com/a?b=2&a=1")).toBe("https://example.com/a?a=1&b=2");
+  });
+  it("keeps the root path", () => {
+    expect(canon("https://example.com")).toBe("https://example.com/");
   });
 });
