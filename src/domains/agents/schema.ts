@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -65,7 +66,11 @@ export const agentProfiles = pgTable(
     isDefault: boolean("is_default").notNull().default(false),
     ...mutable,
   },
-  (t) => [uniqueIndex("agent_profiles_workspace_name_key").on(t.workspaceId, t.name)],
+  (t) => [
+    uniqueIndex("agent_profiles_workspace_name_key").on(t.workspaceId, t.name),
+    // Target for composite same-workspace foreign keys (migration 0150).
+    unique("agent_profiles_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
 );
 
 export const threads = pgTable(
@@ -86,6 +91,7 @@ export const threads = pgTable(
     index("threads_workspace_updated_idx").on(t.workspaceId, t.updatedAt),
     index("threads_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId),
     index("threads_agent_profile_idx").on(t.agentProfileId),
+    unique("threads_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
 );
 
@@ -139,6 +145,12 @@ export const agentRuns = pgTable(
     /** Record references the objective may touch. */
     subjects: jsonb("subjects").notNull().default([]),
     state: runState("state").notNull().default("queued"),
+    /**
+     * The immutable agent_profile_revisions row captured at admission (ASH-117).
+     * NULL only for runs that predate revisions. Fixed once set by a trigger; the
+     * workspace-scoped composite foreign key lives in migration 0150.
+     */
+    profileRevisionId: uuid("profile_revision_id"),
     /** Frozen at start: profile, model, tools, accounts, budget, policy. */
     policySnapshot: jsonb("policy_snapshot").notNull(),
     model: text("model"),
@@ -162,6 +174,7 @@ export const agentRuns = pgTable(
     // Partial index: the live queue is the non-terminal rows.
     index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
     index("agent_runs_thread_idx").on(t.threadId),
+    unique("agent_runs_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
 );
 
