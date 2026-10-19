@@ -69,7 +69,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
     return (
       <>
         <PageHeader title="Alfred" purpose="Delegate and inspect what it did." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Agent storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
@@ -108,7 +108,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
         }
       />
 
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-6 page-content">
         <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
           {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm dossiers={dossierList} />}
         </Section>

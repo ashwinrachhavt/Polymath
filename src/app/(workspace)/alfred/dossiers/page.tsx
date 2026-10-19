@@ -39,7 +39,7 @@ export async function DossiersSurface({
     return (
       <>
         <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Dossier storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to create dossiers and generate from them."
@@ -80,7 +80,7 @@ export async function DossiersSurface({
   return (
     <>
       <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
-      <div className="flex flex-col gap-8 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-8 page-content">
         <Section title="Your dossiers" description="A dossier scopes search and generation to the documents pinned inside it.">
           {dossiers.length === 0 ? (
             <EmptyState

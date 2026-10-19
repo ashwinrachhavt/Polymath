@@ -59,7 +59,7 @@ export async function WikiSurface({
         purpose="The maintained layer over your documents: index, topics, articles, log."
         actions={<LintButton />}
       />
-      <div className="flex flex-col gap-8 px-4 py-6 md:px-6">
+      <div className="flex flex-col gap-8 page-content">
         {!overview ? (
           <EmptyState
             title="No wiki yet"

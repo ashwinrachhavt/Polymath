@@ -88,7 +88,7 @@ export default function Settings() {
   const active = useActiveSection();
   return <Screen title="Settings" description="Preferences affect this shared browser preview. They are not server policy, provider credentials or production account settings." actions={<Destination screen="integrations">Connection catalog</Destination>}>
     <div className="grid gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 md:sticky md:top-6 md:h-fit md:flex-col md:overflow-visible md:pb-0">
+      <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 md:sticky md:top-16 md:h-fit md:flex-col md:overflow-visible md:pb-0">
         {SECTION_GROUPS.map((group) => (
           <div key={group.label} className="contents md:block">
             <p className="hidden px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0 md:block">{group.label}</p>

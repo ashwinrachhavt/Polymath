@@ -22,7 +22,7 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="More" purpose="Every destination, by app." />
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-6 page-content">
         {sections.map(({ key, label, items }) => (
           <Section key={key} title={label}>
             <ul className="flex flex-col">

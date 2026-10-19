@@ -72,7 +72,7 @@ async function LibrarySurface() {
 
   if (rows.length === 0) {
     return (
-      <div className="px-4 py-6 md:px-6">
+      <div className="page-content">
         <EmptyState
           title="Nothing to read yet"
           description="Documents you add in Knowledge land here once they are readable: saved pages, uploaded files, captured sources. Open one and your place, time and history are kept here."
@@ -85,7 +85,7 @@ async function LibrarySurface() {
   for (const row of rows) groups[libraryGroup(row)].push(row);
 
   return (
-    <div className="flex flex-col gap-8 px-4 py-6 md:px-6">
+    <div className="flex flex-col gap-8 page-content">
       {groups.continue.length > 0 && (
         <Section title={`Continue reading (${groups.continue.length})`}>
           <LibraryList rows={groups.continue} />
@@ -135,7 +135,7 @@ export default function LibraryPage() {
       />
       <Suspense
         fallback={
-          <div className="flex flex-col gap-3 px-4 py-6 md:px-6">
+          <div className="flex flex-col gap-3 page-content">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-5 w-1/2" />
             <Skeleton className="h-5 w-3/5" />
