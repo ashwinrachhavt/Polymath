@@ -2,7 +2,9 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Readout } from "@/components/readout";
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { listDocumentSearchResults, listRecentRuns } from "@/domains/agents/queries";
 import { collectCitations } from "@/domains/knowledge/agent-search";
@@ -32,8 +34,8 @@ const stateLabel: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export default async function AlfredPage() {
-  // Per-request data (auth upserts touch now()); opt this route out of prerender.
+async function AlfredSurface() {
+  // Per-request data (auth upserts touch now()); streams inside the Suspense boundary below.
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
@@ -147,5 +149,23 @@ function Citations({ citations }: { citations: ReturnType<typeof collectCitation
         ))}
       </ol>
     </details>
+  );
+}
+
+export default function AlfredPage() {
+  return (
+    <Suspense fallback={<AlfredSkeleton />}>
+      <AlfredSurface />
+    </Suspense>
+  );
+}
+
+function AlfredSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Alfred" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-24 w-full" />
+    </div>
   );
 }

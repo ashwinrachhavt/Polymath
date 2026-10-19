@@ -12,7 +12,9 @@ import {
 } from "@/domains/knowledge/queries";
 import { resolvePartyCandidates } from "@/domains/knowledge/parties";
 import { searchDocuments } from "@/domains/knowledge/search";
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   CheckCircle2,
   Circle,
@@ -94,12 +96,12 @@ function mimeTypeLabel(mimeType: string | null): string {
   return known[mimeType] ?? mimeType;
 }
 
-export default async function KnowledgePage({
+async function KnowledgeSurface({
   searchParams,
 }: {
   searchParams: Promise<{ doc?: string; q?: string }>;
 }) {
-  // Per-request data; opt this route out of prerender.
+  // Per-request data; streams inside the Suspense boundary below.
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
@@ -560,6 +562,31 @@ function Parties({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+export default function KnowledgePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ doc?: string; q?: string }>;
+}) {
+  return (
+    <Suspense fallback={<KnowledgeSkeleton />}>
+      <KnowledgeSurface searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+function KnowledgeSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Knowledge" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <div className="grid gap-3 md:grid-cols-2">
+        <Skeleton className="h-40" />
+        <Skeleton className="h-40" />
+      </div>
     </div>
   );
 }
