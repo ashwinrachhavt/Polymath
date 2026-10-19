@@ -4,6 +4,7 @@
     ".claude/**": [],
     ".serena/**": [],
     ".mcp.json": [],
+    ".gitignore": [],
     "extensions/**": [],
     "eslint.config.mjs": [],
     "vercel.json": [],
