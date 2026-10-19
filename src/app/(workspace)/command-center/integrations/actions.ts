@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { registerAccount, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
+import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
+import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -63,4 +65,41 @@ export async function setWriteDefaultAction(input: { accountId: string; expected
   }
   revalidate();
   return { ok: true };
+}
+
+/*
+ * The OAuth handshake: begin the attempt, ask Composio for the hosted link,
+ * store it, hand the browser the hosted URL. Without Composio env this
+ * returns a plain-language "not configured" and the account stays
+ * `connecting` - nothing half-opens.
+ */
+export async function startConnectionAction(input: { provider: string; alias: string }): Promise<
+  { ok: true; redirectUrl: string } | { ok: false; error: string }
+> {
+  const auth = await authorize();
+  if (!input.alias.trim()) return { ok: false, error: "An alias is required - models choose accounts by alias." };
+  try {
+    const { attempt } = await beginConnection(auth, {
+      provider: input.provider,
+      alias: input.alias.trim(),
+    });
+    const callbackUrl = new URL(
+      "/api/integrations/callback",
+      process.env.APP_ORIGIN ?? "http://localhost:3000",
+    ).toString();
+    const link = await createHostedConnectLink({
+      provider: input.provider,
+      userId: auth.workspaceId,
+      alias: input.alias.trim(),
+      callbackUrl,
+    });
+    await attachProviderLink(auth, {
+      attemptId: attempt.id,
+      redirectUrl: link.redirectUrl,
+      connectedAccountId: link.connectedAccountId,
+    });
+    return { ok: true, redirectUrl: link.redirectUrl };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The connection could not start." };
+  }
 }
