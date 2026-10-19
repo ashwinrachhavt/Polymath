@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { archiveFolder, createFolder, FolderError, renameFolder, setDocumentFolder } from "@/domains/knowledge/folders";
 import { addTag, removeTag, TagError } from "@/domains/knowledge/tags";
+import { createExportManifest, ExportManifestError } from "@/domains/knowledge/exports";
+import { assembleExportPacket, ExportPacketError } from "@/domains/knowledge/packets";
 import { getExplorerPage, type ExplorerPage } from "@/domains/knowledge/file-rows";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -111,4 +113,22 @@ export async function loadPageAction(input: { sort: "added" | "recent" | "title"
   if (!parsed.success) return { ok: false, error: "That request was not valid." };
   const page = await getExplorerPage(auth, parsed.data);
   return { ok: true, page };
+}
+
+/**
+ * Build a zip packet of a document's pinned versions and hand back its download
+ * path. The manifest is the packet's source of truth, so one is created for the
+ * file; nothing leaves the workspace.
+ */
+export async function downloadPacketAction(documentId: string, title: string): Promise<ActionResult<{ downloadPath: string }>> {
+  const auth = await authorize();
+  try {
+    const manifest = await createExportManifest(auth, { name: `${z.string().max(160).parse(title).trim() || "Document"} packet`, items: [{ documentId: id.parse(documentId) }] });
+    const packet = await assembleExportPacket(auth, { manifestId: manifest.id });
+    return { ok: true, downloadPath: `/api/v1/exports/packets/${packet.packetId}` };
+  } catch (cause) {
+    if (cause instanceof ExportManifestError || cause instanceof ExportPacketError) return { ok: false, error: cause.message };
+    if (cause instanceof z.ZodError) return { ok: false, error: "That request was not valid." };
+    throw cause;
+  }
 }
