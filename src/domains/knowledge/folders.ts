@@ -37,8 +37,13 @@ export function normalizeTag(tag: string): string {
   return clean;
 }
 
-const isUniqueViolation = (cause: unknown) =>
-  typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "23505";
+/** Drizzle wraps the driver error as `cause`; walk the chain to find the Postgres code. */
+function isUniqueViolation(cause: unknown): boolean {
+  for (let e: unknown = cause, i = 0; e && typeof e === "object" && i < 4; e = (e as { cause?: unknown }).cause, i++) {
+    if ((e as { code?: string }).code === "23505") return true;
+  }
+  return false;
+}
 
 export type FolderRow = { id: string; name: string; version: number; documentCount: number };
 
