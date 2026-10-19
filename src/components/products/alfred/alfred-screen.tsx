@@ -10,7 +10,8 @@ const screens: Record<string, ComponentType<{ initialId?: string }>> = {
   library: dynamic(() => import("./library"), { loading }),
   zettels: dynamic(() => import("./zettels"), { loading }),
   dossiers: dynamic(() => import("./dossiers"), { loading }),
-  notebook: dynamic(() => import("./notebook"), { loading }),
+  // notebook has no entry: /apps/alfred/notebook redirects to the canonical
+  // /alfred/notebook surface before this map is ever consulted.
   graph: dynamic(() => import("./graph"), { loading }),
   studio: dynamic(() => import("./studio"), { loading }),
   research: dynamic(() => import("./research"), { loading }),
