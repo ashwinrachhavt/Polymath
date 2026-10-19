@@ -98,6 +98,8 @@ suite("outbox dispatcher (Q03)", () => {
       outbox.dispatchPendingOutbox(client, { "test.ping": handler }, { workerId: "worker-b" }),
     ).resolves.toMatchObject({ claimed: 1, failed: 1 });
     await outbox.recoverStrandedOutbox(client);
+    // The failure's backoff leaves the row not-yet-due; the test fast-forwards it.
+    await client`update outbox_events set available_at = now() - interval '1 second' where id = ${id}`;
     const second = await outbox.dispatchPendingOutbox(client, { "test.ping": handler }, { workerId: "worker-c" });
     expect(second).toMatchObject({ claimed: 1, dispatched: 1 });
     expect(calls).toHaveLength(2); // delivered twice
