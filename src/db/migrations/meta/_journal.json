@@ -260,6 +260,13 @@
       "tag": "0190_invitations",
       "when": 1792480300000,
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "tag": "0191_jobs",
+      "when": 1792480310000,
+      "breakpoints": true
     }
   ]
 }
