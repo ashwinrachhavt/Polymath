@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
+import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
 
 /*
@@ -38,6 +39,14 @@ export async function startFocusSession(
 ) {
   try {
     return await withTransaction(async (tx) => {
+      if (input.taskId) {
+        const [task] = await tx
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+          .limit(1);
+        if (!task) throw new ConflictError("That task does not exist in this workspace.");
+      }
       const [session] = await tx
         .insert(focusSessions)
         .values({
@@ -77,6 +86,8 @@ type LiveTransition = {
   expectedVersion: number;
   reason?: string | null;
   outcome?: string | null;
+  whatChanged?: string | null;
+  nextStep?: string | null;
 };
 
 /*
@@ -164,6 +175,8 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
       state: "finished",
       endedAt: now,
       outcome: input.outcome?.trim() || null,
+      whatChanged: input.whatChanged?.trim() || null,
+      nextStep: input.nextStep?.trim() || null,
       // A finish from running banks the open stretch; from paused, nothing is open.
       accumulatedSeconds: sql`${focusSessions.accumulatedSeconds} + case when ${focusSessions.state} = 'running' then floor(extract(epoch from (${now.toISOString()}::timestamptz - coalesce(${focusSessions.lastResumedAt}, ${focusSessions.startedAt}))))::int else 0 end`,
     }),

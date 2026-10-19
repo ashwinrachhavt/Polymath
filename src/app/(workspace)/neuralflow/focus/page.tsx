@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getActiveFocusSession, listFocusHistory } from "@/domains/focus/queries";
+import { getTaskDetail } from "@/domains/work/queries";
 import { getAuthContext } from "@/lib/auth";
 import { NeuralFlowFeatureLinks } from "../work/work-today";
 import { ActiveSessionControls, StartSessionForm } from "./focus-controls";
@@ -28,10 +29,14 @@ type FocusQuery = Promise<Record<string, string | string[] | undefined>>;
 
 async function Focus({ searchParams }: { searchParams: FocusQuery }) {
   const query = await searchParams;
-  const initialTask = typeof query.task === "string" ? query.task : undefined;
+  const rawTask = typeof query.task === "string" ? query.task : undefined;
   await connection();
   const auth = await getAuthContext();
+  // ?task= names a canonical task id (from the Work surface); anything that
+  // is not a real workspace task falls back to the plain subject flow.
+  const taskDetail = rawTask && /^[0-9a-f-]{36}$/i.test(rawTask) ? await getTaskDetail(auth, rawTask) : null;
   const [active, history] = await Promise.all([getActiveFocusSession(auth), listFocusHistory(auth)]);
+  const activeTask = active?.taskId ? await getTaskDetail(auth, active.taskId) : null;
 
   return (
     <Screen
@@ -40,8 +45,11 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
     >
       {active ? (
         <Panel
-          title={active.subject || "Focus session"}
-          description={`Started ${active.startedAt.toISOString().slice(0, 16).replace("T", " ")}Z`}
+          title={activeTask ? activeTask.task.title : active.subject || "Focus session"}
+          description={
+            (activeTask ? `Task-linked session · status ${activeTask.task.status} · ` : "") +
+            `Started ${active.startedAt.toISOString().slice(0, 16).replace("T", " ")}Z`
+          }
         >
           <ActiveSessionControls
             key={`${active.id}:${active.version}`}
@@ -52,12 +60,16 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
               plannedMinutes: active.plannedMinutes,
               elapsedSeconds: active.elapsedSeconds,
               version: active.version,
+              hasTask: !!active.taskId,
             }}
           />
         </Panel>
       ) : (
         <Panel title="Start a session" description="A second start while one is live conflicts instead of splitting the clock.">
-          <StartSessionForm defaultSubject={initialTask} />
+          <StartSessionForm
+            defaultSubject={rawTask && !taskDetail ? rawTask : undefined}
+            task={taskDetail ? { id: taskDetail.task.id, title: taskDetail.task.title, status: taskDetail.task.status } : undefined}
+          />
         </Panel>
       )}
 
