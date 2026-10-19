@@ -1,9 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { companies, contacts } from "@/domains/crm/schema";
-import { seedPersonalData, zonedToUtc, type PersonalSeed } from "@/domains/crm/seed";
+import type { PersonalSeed } from "@/domains/crm/seed";
 import { events, eventLinks } from "@/domains/calendar/schema";
-import { opportunities } from "@/domains/opportunities/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -15,10 +14,16 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
+// Imported after makeTestDb points DATABASE_URL at the scratch database, because
+// db-transaction.ts captures the URL at module load (same reason party-import
+// imports dynamically).
+let seedPersonalData: typeof import("@/domains/crm/seed").seedPersonalData;
+let zonedToUtc: typeof import("@/domains/crm/seed").zonedToUtc;
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  ({ seedPersonalData, zonedToUtc } = await import("@/domains/crm/seed"));
 });
 
 afterAll(async () => {
