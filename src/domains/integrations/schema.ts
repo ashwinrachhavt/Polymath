@@ -26,6 +26,36 @@ export const accountStatus = pgEnum("account_status", [
   "revoked",
   "error",
 ]);
+/*
+ * One row per hosted-auth attempt (D09 OAuth scaffolding). The state token is
+ * the only value the browser round-trips; the provider redirect URL and, on
+ * success, the Composio connected-account id land here before the account
+ * row flips to active.
+ */
+export const connectionAttempts = pgTable(
+  "connection_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    externalAccountId: uuid("external_account_id")
+      .notNull()
+      .references(() => externalAccounts.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    stateToken: text("state_token").notNull(),
+    status: text("status").notNull().default("pending"),
+    providerRedirectUrl: text("provider_redirect_url"),
+    providerConnectedAccountId: text("provider_connected_account_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("connection_attempts_state_key").on(t.stateToken),
+    index("connection_attempts_account_idx").on(t.workspaceId, t.externalAccountId),
+  ],
+);
+
 export const triggerStatus = pgEnum("trigger_status", [
   "enabled",
   "paused",
