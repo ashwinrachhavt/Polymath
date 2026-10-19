@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { clerkConfigured } from "@/lib/clerk";
@@ -59,6 +60,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
           </ThemeProvider>
         </AuthProvider>
+        {/*
+          Real-user Web Vitals (INP/LCP/CLS per route) in the Vercel dashboard.
+          The trace work (Oct 19) showed hero-route clicks fire zero network
+          requests - prefetch hits the edge cache - so the residual navigation
+          time is client render, which only real hardware can measure
+          truthfully. No-op outside Vercel; free on the hobby tier.
+        */}
+        <SpeedInsights />
       </body>
     </html>
   );
