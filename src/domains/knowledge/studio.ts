@@ -177,7 +177,7 @@ export type DraftDetail = {
   links: DraftLinkRow[];
 };
 
-const RECORD_LINK_TARGETS = ["task", "contact", "opportunity"] as const;
+const RECORD_LINK_TARGETS = ["task", "contact", "company", "opportunity"] as const;
 
 export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail> {
   const [artifact] = await db
