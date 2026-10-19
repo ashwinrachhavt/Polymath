@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { artifacts, documents, dossiers, dossierSources, files, sources } from "@/domains/knowledge/schema";
+import { artifacts, artifactVersions, documents, dossiers, dossierSources, files, sources } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -104,5 +104,32 @@ suite("runCompanyResearch", () => {
     );
     expect(result.gapSections).toBe(SECTION_COUNT - 1);
     expect(result.groundedSections).toBe(0);
+  });
+
+  it("renders the financial trend table from validated KPI rows and drops ungrounded ones", async () => {
+    const seeded = await seedWorkspace(db, `research-kpi-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const kpiJson = JSON.stringify([
+      { metric: "Revenue", period: "FY2025", value: "12.4B", currency: "USD", basis: "GAAP", source: "S1" },
+      { metric: "free cash flow", period: "FY2025", value: "1.2B", source: "S2" },
+      { metric: "revenue", period: "FY2025", value: "99B", source: "S9" }, // outside the manifest: dropped
+    ]);
+    const complete = async (section: string) => (section === "Financial trend table" ? kpiJson : "The evidence supports this section [S1].");
+    const result = await research.runCompanyResearch(
+      auth,
+      { companyName: "Acme Corp", depth: "quick", idempotencyKey: crypto.randomUUID() },
+      { search: fakeSearch(["https://example.com/a", "https://example.com/b"]), complete },
+    );
+    expect(result.gapSections).toBe(0);
+    expect(result.groundedSections).toBe(SECTION_COUNT - 1);
+
+    const [artifact] = await db.select().from(artifacts).where(eq(artifacts.id, result.artifactId));
+    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    const text = String(version.plainText);
+    expect(text).toContain("| Metric | Period | Value | Currency | Basis | Source |");
+    expect(text).toContain("| revenue | FY2025 | 12.4B | USD | GAAP | [S1] |");
+    expect(text).toContain("| free cash flow | FY2025 | 1.2B | unspecified | unspecified | [S2] |");
+    expect(text).not.toContain("99B"); // the ungrounded figure never reaches the report
+    expect(text).toContain("1 reported figure could not be grounded");
   });
 });
