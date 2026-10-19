@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 import { agentProfiles, agentRuns, toolCalls } from "./schema";
 
 /*
@@ -154,4 +155,78 @@ export async function listRecentRunsWithProfile(workspaceId: string, limit = 10)
     .where(eq(agentRuns.workspaceId, workspaceId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
+}
+
+export const RUN_STATES = [
+  "queued",
+  "running",
+  "waiting_input",
+  "waiting_approval",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+export type RunStateFilter = (typeof RUN_STATES)[number];
+
+export type RunPageInput = { query?: string; state?: RunStateFilter; limit: number; offset: number };
+
+function runWhere(workspaceId: string, input: Pick<RunPageInput, "query" | "state">): SQL {
+  const parts: SQL[] = [eq(agentRuns.workspaceId, workspaceId)];
+  if (input.state) parts.push(eq(agentRuns.state, input.state));
+  if (input.query?.trim()) {
+    const like = `%${escapeLike(input.query.trim())}%`;
+    parts.push(or(ilike(agentRuns.objective, like), ilike(agentRuns.summary, like))!);
+  }
+  return and(...parts)!;
+}
+
+/** One page of runs, newest first, with the filtered total for the pager. */
+export async function pageRuns(workspaceId: string, input: RunPageInput) {
+  const where = runWhere(workspaceId, input);
+  const [items, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: agentRuns.id,
+        state: agentRuns.state,
+        objective: agentRuns.objective,
+        model: agentRuns.model,
+        summary: agentRuns.summary,
+        error: agentRuns.error,
+        createdAt: agentRuns.createdAt,
+      })
+      .from(agentRuns)
+      .where(where)
+      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+      .limit(input.limit)
+      .offset(input.offset),
+    db.select({ total: count() }).from(agentRuns).where(where),
+  ]);
+  return { items, total: totalRow?.total ?? 0 };
+}
+
+/** Same page, with each run's specialist name, for the "who did what" list. */
+export async function pageRunsWithProfile(workspaceId: string, input: RunPageInput) {
+  const where = runWhere(workspaceId, input);
+  const [items, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: agentRuns.id,
+        state: agentRuns.state,
+        objective: agentRuns.objective,
+        model: agentRuns.model,
+        summary: agentRuns.summary,
+        error: agentRuns.error,
+        createdAt: agentRuns.createdAt,
+        profileName: agentProfiles.name,
+        profileDescription: agentProfiles.description,
+      })
+      .from(agentRuns)
+      .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
+      .where(where)
+      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+      .limit(input.limit)
+      .offset(input.offset),
+    db.select({ total: count() }).from(agentRuns).where(where),
+  ]);
+  return { items, total: totalRow?.total ?? 0 };
 }

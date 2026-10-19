@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 import { tasks } from "./schema";
 
 /** A bounded projection of canonical tasks, shared with the agent read tool. */
@@ -104,12 +105,63 @@ export async function listWorkRows(
   view: "today" | "open" | "done",
   limit = 100,
 ): Promise<WorkRow[]> {
+  return selectWorkRows(auth, view, { limit, offset: 0 });
+}
+
+export const WORK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const WORK_OPEN_STATUSES = ["inbox", "backlog", "ready", "in_progress", "waiting"] as const;
+
+export type WorkFilter = {
+  query?: string;
+  priority?: (typeof WORK_PRIORITIES)[number];
+  status?: (typeof WORK_OPEN_STATUSES)[number];
+};
+
+/**
+ * One page of the Work list plus the rows just outside it. The list's move
+ * controls need the two neighbours on each side to compute a rank between
+ * them, so a page boundary must not make "move up" impossible: `window`
+ * carries up to two extra rows before and after, and `lead` says how many of
+ * the window's leading rows are not part of the page.
+ */
+export async function listWorkPage(
+  auth: Pick<AuthContext, "workspaceId">,
+  view: "today" | "open" | "done",
+  input: { limit: number; offset: number } & WorkFilter,
+): Promise<{ rows: WorkRow[]; window: WorkRow[]; lead: number; total: number }> {
+  const lead = Math.min(input.offset, 2);
+  const window = await selectWorkRows(auth, view, { ...input, offset: input.offset - lead, limit: input.limit + lead + 2 });
+  const total = await countWorkRows(auth, view, input);
+  return { rows: window.slice(lead, lead + input.limit), window, lead, total };
+}
+
+function viewWhere(auth: Pick<AuthContext, "workspaceId">, view: "today" | "open" | "done", filter: WorkFilter) {
   const statusFilter =
     view === "today"
       ? sql`t.status in ('ready', 'in_progress')`
       : view === "open"
         ? sql`t.status not in ('done', 'cancelled')`
         : sql`t.status in ('done', 'cancelled')`;
+  const priority = filter.priority ? sql`and t.priority = ${filter.priority}` : sql``;
+  const status = filter.status ? sql`and t.status = ${filter.status}` : sql``;
+  const query = filter.query?.trim() ? sql`and t.title ilike ${`%${escapeLike(filter.query.trim())}%`}` : sql``;
+  return sql`t.workspace_id = ${auth.workspaceId} and t.archived_at is null and t.parent_task_id is null and ${statusFilter} ${priority} ${status} ${query}`;
+}
+
+async function countWorkRows(
+  auth: Pick<AuthContext, "workspaceId">,
+  view: "today" | "open" | "done",
+  filter: WorkFilter,
+): Promise<number> {
+  const rows = await db.execute(sql`select count(*)::int as n from tasks t where ${viewWhere(auth, view, filter)}`);
+  return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
+}
+
+async function selectWorkRows(
+  auth: Pick<AuthContext, "workspaceId">,
+  view: "today" | "open" | "done",
+  input: { limit: number; offset: number } & WorkFilter,
+): Promise<WorkRow[]> {
   const order =
     view === "done" ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id` : sql`t.rank collate "C", t.id`;
   const rows = await db.execute(sql`
@@ -120,9 +172,9 @@ export async function listWorkRows(
          where d.workspace_id = t.workspace_id and d.resolved_at is null
            and ((d.kind = 'blocked_by' and d.task_id = t.id) or (d.kind = 'blocks' and d.depends_on_task_id = t.id)))::int as blocked_by
     from tasks t
-    where t.workspace_id = ${auth.workspaceId} and t.archived_at is null and t.parent_task_id is null and ${statusFilter}
+    where ${viewWhere(auth, view, input)}
     order by ${order}
-    limit ${limit}`);
+    limit ${input.limit} offset ${input.offset}`);
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     title: r.title as string,

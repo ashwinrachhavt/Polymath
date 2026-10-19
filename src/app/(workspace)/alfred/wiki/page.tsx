@@ -7,6 +7,11 @@ import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { getWikiOverview, getWikiPageText, listIngestableDocuments } from "@/domains/knowledge/wiki";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, matchesQuery, paginate, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { IngestForm } from "./ingest-form";
 import { LintButton } from "./lint-button";
 
@@ -19,17 +24,33 @@ export const metadata = { title: "Wiki · Axiom" };
  * version, so the page always shows the current one.
  */
 
+const BASE = "/alfred/wiki";
+
 // Per-request data; streams inside the Suspense boundary in the default export.
 export async function WikiSurface({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   await connection();
   const auth = await getAuthContext();
-  const params = await searchParams;
+  const raw = await searchParams;
+  // `page` already names the selected wiki page on this screen, so the article
+  // pager uses `apage`; the list helpers read their page number from there.
+  const selectedId = typeof raw.page === "string" ? raw.page : undefined;
   const [overview, ingestable] = await Promise.all([getWikiOverview(auth), listIngestableDocuments(auth)]);
-  const selected = params.page ? await getWikiPageText(auth, params.page) : null;
+  const selected = selectedId ? await getWikiPageText(auth, selectedId) : null;
+  const topicSlugs = overview ? overview.topics.map((t) => t.slug) : [];
+  const list = parseListParams({ ...raw, page: raw.apage }, { filters: { topic: topicSlugs } });
+  const matching = overview
+    ? overview.articles.filter(
+        (a) =>
+          (!list.filters.topic || a.topics.includes(list.filters.topic)) &&
+          matchesQuery(list.q, a.title, a.summary, a.topics.join(" ")),
+      )
+    : [];
+  const articlePage = paginate(matching, list.page, list.pageSize);
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, matching.length, "apage");
 
   return (
     <div className="flex flex-col">
@@ -61,12 +82,19 @@ export async function WikiSurface({
                 ))}
               </ul>
             </Section>
-            <Section title={`Articles (${overview.articles.length})`}>
+            <Section title={`Articles (${matching.length}${matching.length === overview.articles.length ? "" : ` of ${overview.articles.length}`})`}>
+              {overview.articles.length > 0 ? (
+                <ListToolbar
+                  pageKeys={["apage"]}
+                  searchPlaceholder="Search articles"
+                  filters={[{ key: "topic", label: "Topic", allLabel: "All topics", options: topicSlugs.map((t) => ({ value: t, label: t })) }]}
+                />
+              ) : null}
               <ul className="flex flex-col gap-2">
-                {overview.articles.map((a) => (
+                {articlePage.items.map((a) => (
                   <li key={a.artifactId} className="flex flex-col gap-0.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/alfred/wiki?page=${a.artifactId}`} className="text-[13px] font-medium underline-offset-4 hover:underline">
+                      <Link href={listHref(BASE, raw, { page: a.artifactId })} className="text-[13px] font-medium underline-offset-4 hover:underline">
                         {a.title}
                       </Link>
                       {a.topics.map((t) => (
@@ -79,6 +107,15 @@ export async function WikiSurface({
                   </li>
                 ))}
               </ul>
+              {matching.length === 0 ? (
+                <NoResults
+                  filtered={Boolean(list.q || list.filters.topic)}
+                  clearHref={listHref(BASE, raw, { q: undefined, topic: undefined, apage: undefined })}
+                  emptyTitle="No articles yet"
+                  emptyDescription="Ingest a document below and its article appears here."
+                />
+              ) : null}
+              <Pagination basePath={BASE} raw={raw} page={articlePage.page} pageSize={list.pageSize} total={matching.length} pageParam="apage" />
             </Section>
             {overview.logTail.length ? (
               <Section title="Recent log">
@@ -107,7 +144,7 @@ export async function WikiSurface({
   );
 }
 
-export default function WikiPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+export default function WikiPage(props: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<WikiSkeleton />}>
       <WikiSurface {...props} />

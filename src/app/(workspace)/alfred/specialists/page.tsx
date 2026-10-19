@@ -6,7 +6,12 @@ import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { getAuthContext } from "@/lib/auth";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import { listRecentRunsWithProfile, listSpecialistProfiles } from "@/domains/agents/queries";
+import { pageRunsWithProfile, listSpecialistProfiles, RUN_STATES, type RunStateFilter } from "@/domains/agents/queries";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, matchesQuery, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { SPECIALIST_ROSTER, SPECIALIST_TEAMS, specialistProfileName } from "@/domains/agents/roster";
 import { CreateSpecialistForm, HireForm, InstallButton } from "./specialist-controls";
 
@@ -30,7 +35,9 @@ const stateLabel: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export async function SpecialistsSurface() {
+const BASE = "/alfred/specialists";
+
+export async function SpecialistsSurface({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<RawSearchParams> } = {}) {
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
@@ -47,7 +54,22 @@ export async function SpecialistsSurface() {
   }
   const auth = await getAuthContext();
   const bench = await listSpecialistProfiles(auth.workspaceId);
-  const runs = await listRecentRunsWithProfile(auth.workspaceId, 8);
+  const raw = await searchParams;
+  const roster = parseListParams(raw, { filters: { team: SPECIALIST_TEAMS } });
+  const hires = parseListParams({ ...raw, page: raw.rpage }, { filters: { state: RUN_STATES }, qKey: "rq", defaultPageSize: 10 });
+  const found = await pageRunsWithProfile(auth.workspaceId, {
+    query: hires.q,
+    state: hires.filters.state as RunStateFilter | undefined,
+    limit: hires.pageSize,
+    offset: offsetFor(hires.page, hires.pageSize),
+  });
+  redirectPastEnd(BASE, raw, hires.page, hires.pageSize, found.total, "rpage");
+  const runs = found.items;
+  const hiresFiltered = Boolean(hires.q || hires.filters.state);
+  const visibleTeams = SPECIALIST_TEAMS.filter((team) => !roster.filters.team || roster.filters.team === team);
+  const rosterMatches = (team: string) =>
+    SPECIALIST_ROSTER.filter((sp) => sp.team === team && matchesQuery(roster.q, sp.name, sp.mission));
+  const rosterTotal = visibleTeams.reduce((n, team) => n + rosterMatches(team).length, 0);
   const installed = new Set(bench.map((p) => p.name));
   const unavailable = eveBridgeUnavailableReason();
 
@@ -91,12 +113,27 @@ export async function SpecialistsSurface() {
           title="Roster"
           description="Thirty specialists across seven teams. Adding one puts it on your bench with its stated tool scope."
         >
+          <ListToolbar
+            pageKeys={[]}
+            searchPlaceholder="Search the roster"
+            filters={[{ key: "team", label: "Team", allLabel: "All teams", options: SPECIALIST_TEAMS.map((t) => ({ value: t, label: t })) }]}
+            total={rosterTotal}
+            noun={rosterTotal === 1 ? "specialist" : "specialists"}
+          />
+          {rosterTotal === 0 ? (
+            <NoResults
+              filtered
+              clearHref={listHref(BASE, raw, { q: undefined, team: undefined })}
+              emptyTitle=""
+              emptyDescription=""
+            />
+          ) : null}
           <div className="flex flex-col gap-5">
-            {SPECIALIST_TEAMS.map((team) => (
+            {visibleTeams.filter((team) => rosterMatches(team).length > 0).map((team) => (
               <div key={team} className="flex flex-col gap-2">
                 <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{team}</h3>
                 <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-                  {SPECIALIST_ROSTER.filter((s) => s.team === team).map((specialist) => (
+                  {rosterMatches(team).map((specialist) => (
                     <li key={specialist.slug} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                       <div className="flex min-w-0 flex-col">
                         <p className="text-[13px] font-medium">{specialist.name}</p>
@@ -116,8 +153,23 @@ export async function SpecialistsSurface() {
         </Section>
 
         <Section title="Recent hires" description="Every run shows who ran it and how it ended.">
+          {found.total > 0 || hiresFiltered ? (
+            <ListToolbar
+              qKey="rq"
+              pageKeys={["rpage"]}
+              searchPlaceholder="Search hires"
+              filters={[{ key: "state", label: "State", allLabel: "All states", options: RUN_STATES.map((v) => ({ value: v, label: stateLabel[v] ?? v })) }]}
+              total={found.total}
+              noun={found.total === 1 ? "run" : "runs"}
+            />
+          ) : null}
           {runs.length === 0 ? (
-            <EmptyState title="No runs yet" description="Hire a specialist above to start the first run." />
+            <NoResults
+              filtered={hiresFiltered}
+              clearHref={listHref(BASE, raw, { rq: undefined, state: undefined, rpage: undefined })}
+              emptyTitle="No runs yet"
+              emptyDescription="Hire a specialist above to start the first run."
+            />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {runs.map((run) => (
@@ -135,16 +187,17 @@ export async function SpecialistsSurface() {
               ))}
             </ul>
           )}
+          <Pagination basePath={BASE} raw={raw} page={hires.page} pageSize={hires.pageSize} total={found.total} pageParam="rpage" />
         </Section>
       </div>
     </>
   );
 }
 
-export default function SpecialistsPage() {
+export default function SpecialistsPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<SpecialistsSkeleton />}>
-      <SpecialistsSurface />
+      <SpecialistsSurface searchParams={searchParams} />
     </Suspense>
   );
 }

@@ -6,7 +6,12 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
-import { listDocumentSearchResults, listRecentRuns } from "@/domains/agents/queries";
+import { listDocumentSearchResults, pageRuns, RUN_STATES, type RunStateFilter } from "@/domains/agents/queries";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { collectCitations } from "@/domains/knowledge/agent-search";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { listThreads, isFinished } from "@/domains/agents/thread";
@@ -34,7 +39,9 @@ const stateLabel: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export async function AlfredSurface() {
+const BASE = "/alfred";
+
+export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<RawSearchParams> } = {}) {
   // Per-request data (auth upserts touch now()); streams inside the Suspense boundary below.
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
@@ -51,7 +58,17 @@ export async function AlfredSurface() {
     );
   }
   const auth = await getAuthContext();
-  const runs = await listRecentRuns(auth.workspaceId, 8);
+  const raw = await searchParams;
+  const list = parseListParams(raw, { filters: { state: RUN_STATES }, defaultPageSize: 10 });
+  const found = await pageRuns(auth.workspaceId, {
+    query: list.q,
+    state: list.filters.state as RunStateFilter | undefined,
+    limit: list.pageSize,
+    offset: offsetFor(list.page, list.pageSize),
+  });
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
+  const runs = found.items;
+  const runsFiltered = Boolean(list.q || list.filters.state);
   const dossierList = await listDossiers(auth);
   const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
@@ -83,10 +100,27 @@ export async function AlfredSurface() {
         </Section>
 
         <Section title="Recent runs" description="Every run shows its steps, questions, artifacts, and spend.">
+          {found.total > 0 || runsFiltered ? (
+            <ListToolbar
+              searchPlaceholder="Search runs by objective or result"
+              filters={[
+                {
+                  key: "state",
+                  label: "State",
+                  allLabel: "All states",
+                  options: RUN_STATES.map((v) => ({ value: v, label: stateLabel[v] ?? v })),
+                },
+              ]}
+              total={found.total}
+              noun={found.total === 1 ? "run" : "runs"}
+            />
+          ) : null}
           {runs.length === 0 ? (
-            <EmptyState
-              title="No runs yet"
-              description={unavailable ? "Recorded runs appear here once agent execution is connected." : "Describe an objective above to start a development run."}
+            <NoResults
+              filtered={runsFiltered}
+              clearHref={listHref(BASE, raw, { q: undefined, state: undefined, page: undefined })}
+              emptyTitle="No runs yet"
+              emptyDescription={unavailable ? "Recorded runs appear here once agent execution is connected." : "Describe an objective above to start a development run."}
             />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
@@ -123,6 +157,7 @@ export async function AlfredSurface() {
               ))}
             </ul>
           )}
+          <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
         </Section>
       </div>
     </>
@@ -150,10 +185,10 @@ function Citations({ citations }: { citations: ReturnType<typeof collectCitation
   );
 }
 
-export default function AlfredPage() {
+export default function AlfredPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<AlfredSkeleton />}>
-      <AlfredSurface />
+      <AlfredSurface searchParams={searchParams} />
     </Suspense>
   );
 }

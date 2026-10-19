@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAuthContext } from "@/lib/auth";
 import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
-import { listRecentRuns } from "@/domains/agents/queries";
+import { pageRuns } from "@/domains/agents/queries";
 import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
@@ -20,7 +20,7 @@ vi.mock("@/domains/knowledge/queries", async (importOriginal) => ({
 // The list toolbar and pager read router state; static markup has no app router.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
-  usePathname: () => "/alfred/knowledge",
+  usePathname: () => "/alfred",
   useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn(),
 }));
@@ -29,7 +29,11 @@ vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () =>
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
-vi.mock("@/domains/agents/queries", () => ({ listRecentRuns: vi.fn(), listDocumentSearchResults: vi.fn(async () => new Map()) }));
+vi.mock("@/domains/agents/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
+  pageRuns: vi.fn(),
+  listDocumentSearchResults: vi.fn(async () => new Map()),
+}));
 vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
 
@@ -45,7 +49,7 @@ beforeEach(() => {
   vi.mocked(getDocumentInbox).mockResolvedValue([]);
   vi.mocked(countDocumentInbox).mockResolvedValue(0);
   vi.mocked(getDocumentReview).mockResolvedValue(null);
-  vi.mocked(listRecentRuns).mockResolvedValue([]);
+  vi.mocked(pageRuns).mockResolvedValue({ items: [], total: 0 });
   vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -103,7 +107,7 @@ describe("live Alfred route functionality", () => {
     expect(agents).not.toContain("Start a run");
     expect(getAuthContext).not.toHaveBeenCalled();
     expect(getDocumentInbox).not.toHaveBeenCalled();
-    expect(listRecentRuns).not.toHaveBeenCalled();
+    expect(pageRuns).not.toHaveBeenCalled();
   });
 
   it("keeps recorded runs viewable but exposes no start control when verified Eve identity is unavailable", async () => {
@@ -111,7 +115,7 @@ describe("live Alfred route functionality", () => {
     const html = renderToStaticMarkup(await AlfredSurface());
     expect(html).toContain("verified Clerk identity");
     expect(html).not.toContain("Start a run");
-    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 8);
+    expect(pageRuns).toHaveBeenCalledWith("workspace", expect.objectContaining({ limit: 10, offset: 0 }));
   });
 });
 

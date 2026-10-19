@@ -30,6 +30,7 @@ export function ListToolbar({
   total,
   noun,
   qKey = "q",
+  pageKeys = ["page", "cpage", "rpage"],
 }: {
   searchPlaceholder?: string;
   filters?: ToolbarFilter[];
@@ -38,6 +39,8 @@ export function ListToolbar({
   noun?: string;
   /** Query key for the search text; must match the page's parseListParams qKey. */
   qKey?: string;
+  /** Pager keys that restart at page 1 when search or a filter changes. */
+  pageKeys?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,7 +58,7 @@ export function ListToolbar({
       else next.delete(key);
     }
     // Any pager on the screen (page, cpage, ...) restarts at its first page.
-    for (const key of [...next.keys()]) if (/^[a-z]*page$/.test(key)) next.delete(key);
+    for (const key of pageKeys) next.delete(key);
     const qs = next.toString();
     startTransition(() => router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   }
