@@ -1,16 +1,86 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { FocusScreen } from "@/components/products/neuralflow/focus-screen";
+import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { getActiveFocusSession, listFocusHistory } from "@/domains/focus/queries";
+import { getAuthContext } from "@/lib/auth";
 import { NeuralFlowFeatureLinks } from "../work/work-today";
+import { ActiveSessionControls, StartSessionForm } from "./focus-controls";
 
 export const metadata = { title: "Focus · Axiom" };
 
+/*
+ * Durable focus (ASH-137 A09): the session lives in Postgres, not the
+ * browser. A refresh, a navigation, or another tab resumes the same running
+ * clock; history is the closed-session record. The ticking display is a
+ * projection of the server's timestamps - every transition re-derives the
+ * truth server-side.
+ */
+
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.round(totalSeconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h ${minutes % 60} min`;
+}
+
 type FocusQuery = Promise<Record<string, string | string[] | undefined>>;
 
-async function FocusSession({ searchParams }: { searchParams: FocusQuery }) {
+async function Focus({ searchParams }: { searchParams: FocusQuery }) {
   const query = await searchParams;
-  const task = typeof query.task === "string" ? query.task : undefined;
-  return <FocusScreen key={task || "active"} initialTask={task} />;
+  const initialTask = typeof query.task === "string" ? query.task : undefined;
+  const auth = await getAuthContext();
+  const [active, history] = await Promise.all([getActiveFocusSession(auth), listFocusHistory(auth)]);
+
+  return (
+    <Screen
+      title="Focus"
+      description="One durable session at a time. The clock survives reloads because it lives on the server, not in this tab."
+    >
+      {active ? (
+        <Panel
+          title={active.subject || "Focus session"}
+          description={`Started ${active.startedAt.toISOString().slice(0, 16).replace("T", " ")}Z`}
+        >
+          <ActiveSessionControls
+            key={`${active.id}:${active.version}`}
+            session={{
+              id: active.id,
+              subject: active.subject,
+              state: active.state as "running" | "paused",
+              plannedMinutes: active.plannedMinutes,
+              elapsedSeconds: active.elapsedSeconds,
+              version: active.version,
+            }}
+          />
+        </Panel>
+      ) : (
+        <Panel title="Start a session" description="A second start while one is live conflicts instead of splitting the clock.">
+          <StartSessionForm defaultSubject={initialTask} />
+        </Panel>
+      )}
+
+      <Panel title="Recent sessions" description="Finished, interrupted and abandoned sessions, newest first.">
+        <div className="divide-y divide-border">
+          {history.map((session) => (
+            <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+              <div>
+                <p className="text-[13px] font-medium">{session.subject || "Focus session"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatDuration(session.elapsedSeconds)}
+                  {session.plannedMinutes != null ? ` of ${session.plannedMinutes} planned` : ""}
+                  {session.outcome ? ` · ${session.outcome}` : ""} · {session.startedAt.toISOString().slice(0, 16).replace("T", " ")}Z
+                </p>
+              </div>
+              <Status>{session.state}</Status>
+            </div>
+          ))}
+        </div>
+        {!history.length ? (
+          <Empty title="No sessions yet" description="Finished sessions land here with their real durations." />
+        ) : null}
+      </Panel>
+    </Screen>
+  );
 }
 
 export default function FocusPage({ searchParams }: { searchParams: FocusQuery }) {
@@ -20,7 +90,9 @@ export default function FocusPage({ searchParams }: { searchParams: FocusQuery }
         <Link href="/neuralflow/work" className="w-fit py-1 text-[13px] font-medium hover:underline">Back to Work</Link>
         <NeuralFlowFeatureLinks />
       </div>
-      <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening focus session…</p>}><FocusSession searchParams={searchParams} /></Suspense>
+      <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening focus session…</p>}>
+        <Focus searchParams={searchParams} />
+      </Suspense>
     </>
   );
 }
