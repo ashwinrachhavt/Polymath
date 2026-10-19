@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createRewardDefinition } from "@/domains/gamification/commands";
+import { claimShard, createRewardDefinition } from "@/domains/gamification/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -35,6 +35,19 @@ export async function createDefinitionAction(input: {
     });
   } catch (cause) {
     return { ok: false, error: cause instanceof Error ? cause.message : "Could not save the reward definition." };
+  }
+  revalidatePath("/apps/neuralflow/rewards");
+  return { ok: true };
+}
+
+/* Five stones, one shard - claimed by hand, never auto-converted (A10). */
+export async function claimShardAction(): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  try {
+    await claimShard(auth);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The shard could not be claimed." };
   }
   revalidatePath("/apps/neuralflow/rewards");
   return { ok: true };

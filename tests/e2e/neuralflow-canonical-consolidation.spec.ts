@@ -79,7 +79,7 @@ test("a task deep link opens a controlled inspector and closing it clears only t
   await expect(page.getByRole("dialog", { name: "Task inspector" })).toHaveCount(0);
 });
 
-test("the stone collection is the durable catalog: definitions are saved, but the ledger awards nothing while earning rules are off", async ({ page }) => {
+test("the stone collection is the durable catalog: definitions are saved, and the ledger stays empty until a task completes", async ({ page }) => {
   await page.goto("/apps/neuralflow/rewards");
   await waitSettled(page);
   await expect(page.getByRole("heading", { name: "Stone collection", exact: true })).toBeVisible();

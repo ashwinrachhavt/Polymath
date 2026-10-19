@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
 import { getRewardsOverview } from "@/domains/gamification/queries";
 import { getAuthContext } from "@/lib/auth";
+import { ClaimShardButton } from "./claim-button";
 import { DefinitionForm } from "./definition-form";
 
 export const metadata = { title: "Stones & rewards · Axiom" };
@@ -10,10 +11,10 @@ export const metadata = { title: "Stones & rewards · Axiom" };
 /*
  * The stone collection, durable (ASH-137 A10): totals are derived from the
  * append-only ledger at render, the catalog is workspace reward definitions,
- * and history is the newest ledger entries. The earning rules are
- * deliberately absent - they wait on the owner's ASH-135 section 7 decisions
- * (the Quartz rule, shard conversion), so this page shows and defines but
- * never awards.
+ * and history is the newest ledger entries. The earning rules are the
+ * owner's (decided 2026-10-18): the daily Quartz lands on the first
+ * completed task of the day, and shards are claimed by hand - five stones,
+ * one shard, never auto-converted.
  */
 
 function when(iso: Date): string {
@@ -28,13 +29,20 @@ async function Rewards() {
   return (
     <Screen
       title="Stone collection"
-      description="The ledger is the truth: every stone, streak and badge is a row, and the totals below are derived from it at render. Earning rules are off until their design decisions land."
+      description="The ledger is the truth: every stone, streak and badge is a row, and the totals below are derived from it at render. The first task you finish each day earns the Quartz; five stones fuse into a shard you claim by hand."
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Points earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
         <Stat label="Active days" value={overview.activeDays} hint="Days with at least one entry" />
-        <Stat label="Reward definitions" value={overview.definitions.length} hint="The catalog earning rules will reference" />
+        <Stat label="Reward definitions" value={overview.definitions.length} hint="The catalog earning rules reference" />
       </div>
+
+      <Panel
+        title="Shards"
+        description={`${overview.shards.stones} stone(s) recorded, ${overview.shards.claimed} shard(s) claimed. Five stones fuse into one shard - claimed by hand, never auto-converted.`}
+      >
+        <ClaimShardButton claimable={overview.shards.claimable} />
+      </Panel>
 
       <Panel title="Definitions" description="What a reward is. Defining one changes no balances and awards nothing.">
         <div className="divide-y divide-border">
@@ -76,7 +84,7 @@ async function Rewards() {
             </div>
           ))}
           {!overview.ledger.length ? (
-            <Empty title="Nothing earned yet" description="Entries appear here once earning rules are switched on." />
+            <Empty title="Nothing earned yet" description="Finish your first task of the day and the Quartz lands here." />
           ) : null}
         </div>
       </Panel>

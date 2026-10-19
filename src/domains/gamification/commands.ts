@@ -165,3 +165,163 @@ export async function awardReward(
     throw cause;
   }
 }
+
+/*
+ * The owner's earning rules (ASH-150 follow-up, decided 2026-10-18):
+ *
+ * QUARTZ - one per day, on the first completed task. The day boundary is the
+ * workspace timezone (user_preferences); the idempotency key `quartz:<day>`
+ * plus the unique index makes "first of the day" a database fact, and a
+ * replayed or second completion is a silent skip, not an error. The
+ * definition is created lazily with the donor's value (10 points) so the
+ * rule works before anyone opens the definition form.
+ *
+ * SHARD - explicit claim, never auto-convert. Five recorded stones fuse into
+ * one claimable shard (the donor's stonesPerShard = 5); claiming records a
+ * ledger row against the lazily-created "shard" definition. The claim count
+ * itself is the claimed marker, and the key `shard-claim:<n>` serializes a
+ * racing double-claim into a ConflictError.
+ */
+
+export const STONES_PER_SHARD = 5;
+
+const QUARTZ = { key: "quartz", label: "Quartz", points: 10 };
+const SHARD = { key: "shard", label: "Shard", points: 0 };
+
+type TxDrizzle = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+async function ensureDefinition(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { key: string; kind: "points" | "collectible"; label: string; points: number; description: string },
+) {
+  const [definition] = await tx
+    .insert(rewardDefinitions)
+    .values({
+      workspaceId: auth.workspaceId,
+      key: input.key,
+      kind: input.kind,
+      label: input.label,
+      description: input.description,
+      points: input.points,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoNothing({ target: [rewardDefinitions.workspaceId, rewardDefinitions.key] })
+    .returning();
+  if (definition) return definition;
+  const [existing] = await tx
+    .select()
+    .from(rewardDefinitions)
+    .where(and(eq(rewardDefinitions.workspaceId, auth.workspaceId), eq(rewardDefinitions.key, input.key)))
+    .limit(1);
+  return existing;
+}
+
+/**
+ * Called from task completion, inside the same transaction. Never throws for
+ * game reasons: a disabled definition or an already-awarded day simply skips.
+ */
+export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId: string): Promise<boolean> {
+  const rows = await tx.execute(sql`
+    select to_char(timezone(coalesce(
+      (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
+      'UTC'), now()), 'YYYY-MM-DD') as day
+  `);
+  const day = (rows as unknown as Array<{ day: string }>)[0].day;
+
+  const definition = await ensureDefinition(tx, auth, {
+    ...QUARTZ,
+    kind: "points",
+    description: "First completed task of the day.",
+  });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: "task_completed",
+      subjectType: "task",
+      subjectId: taskId,
+      points: definition.points,
+      idempotencyKey: `quartz:${day}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Quartz earned (${day})` },
+    tx,
+  );
+  return true;
+}
+
+/** Stones and claims, derived from the ledger at read time. */
+export async function shardState(auth: AuthContext): Promise<{ stones: number; claimed: number; claimable: number }> {
+  const { db } = await import("@/lib/db");
+  const rows = await db.execute(sql`
+    select
+      count(*) filter (where d.key <> ${SHARD.key})::int as stones,
+      count(*) filter (where d.key = ${SHARD.key})::int as claimed
+    from reward_ledger l
+    join reward_definitions d on d.id = l.reward_definition_id
+    where l.workspace_id = ${auth.workspaceId}
+  `);
+  const row = (rows as unknown as Array<{ stones: number; claimed: number }>)[0] ?? { stones: 0, claimed: 0 };
+  const claimable = Math.floor(row.stones / STONES_PER_SHARD) - row.claimed;
+  return { stones: row.stones, claimed: row.claimed, claimable: Math.max(0, claimable) };
+}
+
+export async function claimShard(auth: AuthContext) {
+  return withTransaction(async (tx) => {
+    const definition = await ensureDefinition(tx, auth, {
+      ...SHARD,
+      kind: "collectible",
+      description: "Five stones fuse into one shard. Claimed, never auto-converted.",
+    });
+    if (!definition) throw new ConflictError("The shard definition could not be created.");
+
+    const rows = await tx.execute(sql`
+      select
+        count(*) filter (where d.key <> ${SHARD.key})::int as stones,
+        count(*) filter (where d.key = ${SHARD.key})::int as claimed
+      from reward_ledger l
+      join reward_definitions d on d.id = l.reward_definition_id
+      where l.workspace_id = ${auth.workspaceId}
+    `);
+    const row = (rows as unknown as Array<{ stones: number; claimed: number }>)[0] ?? { stones: 0, claimed: 0 };
+    const claimable = Math.floor(row.stones / STONES_PER_SHARD) - row.claimed;
+    if (claimable < 1) {
+      throw new ConflictError(`No shard to claim yet - ${STONES_PER_SHARD - (row.stones % STONES_PER_SHARD)} more stone(s) to the next one.`);
+    }
+
+    try {
+      const [entry] = await tx
+        .insert(rewardLedger)
+        .values({
+          workspaceId: auth.workspaceId,
+          rewardDefinitionId: definition.id,
+          userId: auth.userId,
+          reason: "adjustment",
+          subjectType: "shard_claim",
+          subjectId: null,
+          points: 0,
+          idempotencyKey: `shard-claim:${row.claimed + 1}`,
+        })
+        .returning();
+      await recordAudit(
+        auth,
+        { action: "reward.shard_claimed", subjectType: "reward_ledger", subjectId: entry.id, summary: `Shard claimed (${row.claimed + 1})` },
+        tx,
+      );
+      return entry;
+    } catch (cause) {
+      if (isUniqueViolation(cause)) throw new ConflictError("That shard was already claimed.");
+      throw cause;
+    }
+  });
+}

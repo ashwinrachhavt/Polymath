@@ -61,7 +61,7 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect((await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12")).toHaveLength(accepted.length);
 });
 
-test("focus finishing records the durable session and awards no stone while earning rules are off", async ({ page }) => {
+test("focus finishing records the durable session and awards no stone: the Quartz rule fires on task completion, not focus", async ({ page }) => {
   await page.goto("/neuralflow/focus?task=task-architecture");
   await expect(page.getByLabel("Focusing on")).toHaveValue("task-architecture");
   await page.getByRole("button", { name: "Start focus", exact: true }).click();
@@ -74,8 +74,8 @@ test("focus finishing records the durable session and awards no stone while earn
   await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Finish", exact: true }).click();
   await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
-  // Earning rules wait on the owner's ASH-135 section 7 decisions: finishing
-  // a session records history but awards no stone.
+  // The Quartz rule is task completion, not focus: finishing a session
+  // records history but awards no stone.
   await page.goto("/apps/neuralflow/rewards");
   await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
 });
