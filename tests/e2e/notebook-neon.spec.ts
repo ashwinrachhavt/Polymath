@@ -96,3 +96,28 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   await expect(page.getByRole("link", { name: targetTitle, exact: true })).toBeVisible();
 });
 
+
+test("Ask AI stages a request and reports honestly when the agent bridge is unconfigured", async ({ page }) => {
+  const tag = Date.now().toString(36);
+
+  await page.goto("/alfred/notebook");
+  await page.getByRole("button", { name: "New note" }).click();
+  await expect(page).toHaveURL(/\/alfred\/notebook\?id=[0-9a-f-]{36}/);
+  await page.getByLabel("Note title").fill(`AI staging ${tag}`);
+  await page.getByLabel("Note title").blur();
+
+  await page.getByRole("button", { name: "Markdown source" }).click();
+  await page.getByLabel("Markdown source").fill(`a rough draft ${tag} with too many words in it`);
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  // The menu names the passage it will act on; no selection means the whole note.
+  await page.getByRole("button", { name: "Ask AI" }).click();
+  await expect(page.getByText(/Acts on the whole note/)).toBeVisible();
+  await page.getByRole("button", { name: "Improve writing" }).click();
+
+  // CI has no Eve bridge, so the request refuses honestly instead of faking a run.
+  await expect(page.getByText(/Agent execution is unavailable/)).toBeVisible();
+  // Nothing was written into the note.
+  await expect(page.getByLabel("Markdown source")).toHaveValue(`a rough draft ${tag} with too many words in it`);
+});

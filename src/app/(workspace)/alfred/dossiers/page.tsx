@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
@@ -18,7 +20,8 @@ export const metadata = { title: "Dossiers · Axiom" };
  * and Studio Generate bound to a dossier. All of it reads Neon; nothing here
  * is the browser preview.
  */
-export default async function DossiersPage({
+// Per-request data; streams inside the Suspense boundary in the default export.
+export async function DossiersSurface({
   searchParams,
 }: {
   searchParams: Promise<{ dossier?: string; draft?: string }>;
@@ -139,5 +142,23 @@ export default async function DossiersPage({
         </Section>
       </div>
     </>
+  );
+}
+
+export default function DossiersPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  return (
+    <Suspense fallback={<DossiersSkeleton />}>
+      <DossiersSurface {...props} />
+    </Suspense>
+  );
+}
+
+function DossiersSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Dossiers" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-40" />
+    </div>
   );
 }

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +19,8 @@ export const metadata = { title: "Wiki · Axiom" };
  * version, so the page always shows the current one.
  */
 
-export default async function WikiPage({
+// Per-request data; streams inside the Suspense boundary in the default export.
+export async function WikiSurface({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string }>;
@@ -100,6 +103,24 @@ export default async function WikiPage({
           <IngestForm documents={ingestable} />
         </Section>
       </div>
+    </div>
+  );
+}
+
+export default function WikiPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  return (
+    <Suspense fallback={<WikiSkeleton />}>
+      <WikiSurface {...props} />
+    </Suspense>
+  );
+}
+
+function WikiSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Wiki" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-40" />
     </div>
   );
 }
