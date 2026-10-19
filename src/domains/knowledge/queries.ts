@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { auditEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { companies, contacts } from "../crm/schema";
@@ -318,5 +319,58 @@ export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<D
     kind: d.sourceUrl ? ("web_page" as const) : ("file" as const),
     undecidedProposals: undecidedBy.get(d.id) ?? 0,
     partyNames: namesBy.get(d.id) ?? [],
+  }));
+}
+
+/*
+ * Assessment item D: "why this task exists". One accepted obligation can
+ * create a canonical task; this reads the chain back - the obligation, its
+ * document, the field proposal passage it rests on, and the decision rows
+ * the audit kept. Read-only; the panel in the Work surface renders it.
+ */
+export async function getTaskProvenance(auth: AuthContext, taskId: string) {
+  const rows = await db
+    .select({
+      obligationId: documentObligations.id,
+      kind: documentObligations.kind,
+      note: documentObligations.note,
+      dueFromDocument: documentObligations.dueFromDocument,
+      status: documentObligations.status,
+      decidedAt: documentObligations.decidedAt,
+      documentId: documents.id,
+      documentTitle: documents.title,
+      sourceUrl: documents.sourceUrl,
+      fieldName: fieldProposals.fieldName,
+      passage: fieldProposals.rawValue,
+    })
+    .from(documentObligations)
+    .innerJoin(documents, eq(documents.id, documentObligations.documentId))
+    .leftJoin(fieldProposals, eq(fieldProposals.id, documentObligations.fieldProposalId))
+    .where(and(eq(documentObligations.workspaceId, auth.workspaceId), eq(documentObligations.taskId, taskId)))
+    .orderBy(desc(documentObligations.decidedAt))
+    .limit(10);
+
+  if (!rows.length) return [];
+  const audits = await db
+    .select({
+      subjectId: auditEvents.subjectId,
+      action: auditEvents.action,
+      summary: auditEvents.summary,
+      createdAt: auditEvents.createdAt,
+    })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.subjectType, "document_obligation"),
+        inArray(auditEvents.subjectId, rows.map((row) => row.obligationId)),
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(50);
+
+  return rows.map((row) => ({
+    ...row,
+    history: audits.filter((event) => event.subjectId === row.obligationId),
   }));
 }
