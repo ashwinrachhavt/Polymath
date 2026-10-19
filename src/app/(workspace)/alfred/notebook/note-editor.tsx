@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,8 @@ export function NoteEditor({
   initialMarkdown,
   draft,
   versions,
+  outlinks,
+  backlinks,
 }: {
   noteId: string;
   initialTitle: string;
@@ -65,6 +68,8 @@ export function NoteEditor({
   initialMarkdown: string;
   draft: { markdown: string; updatedAt: string } | null;
   versions: VersionItem[];
+  outlinks: { id: string; title: string }[];
+  backlinks: { id: string; title: string }[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
@@ -204,6 +209,32 @@ export function NoteEditor({
         )}
         <Input aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={rename} />
         <RichEditor content={markdown} onChange={setMarkdown} />
+        {(outlinks.length > 0 || backlinks.length > 0) && (
+          <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Links to</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {outlinks.map((link) => (
+                  <li key={link.id}>
+                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>{link.title}</Link>
+                  </li>
+                ))}
+                {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Linked from</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {backlinks.map((link) => (
+                  <li key={link.id}>
+                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>{link.title}</Link>
+                  </li>
+                ))}
+                {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
+              </ul>
+            </div>
+          </div>
+        )}
         {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
       </div>
     </Panel>

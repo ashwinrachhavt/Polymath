@@ -51,3 +51,43 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await page.getByRole("link", { name: title }).click();
   await expect(page).toHaveURL(/\/alfred\/notebook\?id=/);
 });
+
+test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
+  test.setTimeout(60_000);
+  const tag = Date.now().toString(36);
+  const targetTitle = `Link target ${tag}`;
+  const sourceTitle = `Link source ${tag}`;
+
+  // The target note, renamed and confirmed server-side (link resolution
+  // matches the current title at autosave time).
+  await page.goto("/alfred/notebook");
+  await page.getByRole("button", { name: "New note" }).click();
+  await expect(page).toHaveURL(/\/alfred\/notebook\?id=[0-9a-f-]{36}/);
+  const targetUrl = page.url();
+  await page.getByLabel("Note title").fill(targetTitle);
+  await page.getByLabel("Note title").blur();
+  await page.reload();
+  await expect(page.getByLabel("Note title")).toHaveValue(targetTitle);
+
+  // The source note points at it by title.
+  await page.goto("/alfred/notebook");
+  await page.getByRole("button", { name: "New note" }).click();
+  await expect(page).toHaveURL(/\/alfred\/notebook\?id=[0-9a-f-]{36}/);
+  await page.getByLabel("Note title").fill(sourceTitle);
+  await page.getByLabel("Note title").blur();
+  await page.reload();
+  await expect(page.getByLabel("Note title")).toHaveValue(sourceTitle);
+  await page.getByRole("button", { name: "Markdown source" }).click();
+  await page.getByLabel("Markdown source").fill(`see [[${targetTitle}]]`);
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  // The target reads the reverse edge; following it lands on the source,
+  // whose own panel shows the forward edge.
+  await page.goto(targetUrl);
+  await expect(page.getByText("Linked from", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: sourceTitle, exact: true }).click();
+  await expect(page).toHaveURL(/\/alfred\/notebook\?id=/);
+  await expect(page.getByText("Links to", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: targetTitle, exact: true })).toBeVisible();
+});
+
