@@ -2,7 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { listTasksDueBetween, type DatedTask } from "@/domains/work/queries";
+import { type DatedTask } from "@/domains/work/queries";
+import { listTasksDueBetweenForPage } from "./data";
 
 /*
  * The Work calendar on Neon: saved tasks laid out by due date, one week at a
@@ -26,7 +27,7 @@ export async function NeonCalendar({ date }: { date?: string }) {
   // Weeks start Monday, matching the preview calendar's default preference.
   const start = new Date(anchorDate.getTime() - ((anchorDate.getUTCDay() + 6) % 7) * DAY);
   const days = Array.from({ length: 7 }, (_, i) => new Date(start.getTime() + i * DAY));
-  const rows = await listTasksDueBetween(auth, iso(days[0]), iso(days[6]));
+  const rows = await listTasksDueBetweenForPage(auth, iso(days[0]), iso(days[6]));
   const byDay = new Map<string, DatedTask[]>();
   for (const row of rows) {
     const key = iso(row.dueAt);

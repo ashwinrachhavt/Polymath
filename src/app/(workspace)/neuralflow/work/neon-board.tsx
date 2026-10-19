@@ -2,7 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { listWorkRows, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { listWorkRowsForPage } from "./data";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { matchesQuery, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { BoardCard } from "./task-controls";
@@ -29,8 +30,9 @@ export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
   const filtered = Boolean(list.q || list.filters.priority);
   const keep = (row: WorkRow) =>
     (!list.filters.priority || row.priority === list.filters.priority) && matchesQuery(list.q, row.title);
-  const open = (await listWorkRows(auth, "open")).filter(keep);
-  const done = (await listWorkRows(auth, "done", 20)).filter(keep);
+  const [openRows, doneRows] = await Promise.all([listWorkRowsForPage(auth, "open"), listWorkRowsForPage(auth, "done", 20)]);
+  const open = openRows.filter(keep);
+  const done = doneRows.filter(keep);
   const rowsByStatus = new Map<WorkRow["status"], WorkRow[]>();
   for (const lane of lanes) rowsByStatus.set(lane.id, []);
   for (const row of open) rowsByStatus.get(row.status)?.push(row);

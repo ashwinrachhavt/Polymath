@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { updateTask } from "@/domains/work/task-commands";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
@@ -25,6 +26,7 @@ async function setOutcomeTag(auth: AuthContext, input: { taskId: string; expecte
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not update the outcome." };
   }
+  updateTag(tasksTag(auth));
   revalidatePath("/command-center/briefing");
   return { ok: true };
 }

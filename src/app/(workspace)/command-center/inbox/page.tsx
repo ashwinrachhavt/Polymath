@@ -7,7 +7,8 @@ import { Pagination } from "@/components/list/pagination";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { NoResults } from "@/components/list/no-results";
-import { CAPTURE_KINDS, countToClarify, type InboxFilter, searchCaptures } from "@/domains/capture/queries";
+import { CAPTURE_KINDS, type InboxFilter } from "@/domains/capture/queries";
+import { countToClarifyForPage, searchCapturesForPage } from "./data";
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { CaptureActions, CaptureForm } from "./inbox-client";
@@ -40,14 +41,14 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   await connection();
   const auth = await getAuthContext();
   const [found, pending] = await Promise.all([
-    searchCaptures(auth, {
+    searchCapturesForPage(auth, {
       filter,
       kind: list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined,
       query: list.q,
       limit: list.pageSize,
       offset: offsetFor(list.page, list.pageSize),
     }),
-    countToClarify(auth),
+    countToClarifyForPage(auth),
   ]);
   const rows = found.items;
   const pageSize = list.pageSize;
