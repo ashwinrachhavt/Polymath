@@ -35,6 +35,11 @@ type EveTarget =
 function eveTarget(): EveTarget | null {
   const explicit = process.env.EVE_BASE_URL;
   if (explicit && explicit.trim().length > 0) return { kind: "standalone", base: explicit.replace(/\/+$/, "") };
+  // A deployed environment routes to its own origin. The dev-server state file
+  // below is local-only, and a developer with `eve dev` running would otherwise
+  // shadow the deployment the app is actually serving from.
+  const vercelHost = process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL;
+  if (vercelHost) return { kind: "same-origin", base: `https://${vercelHost}` };
   // Dev: the eve dev server publishes its port here.
   try {
     // ponytail: sync fs read at call time; fine at run-start frequency.
@@ -46,10 +51,8 @@ function eveTarget(): EveTarget | null {
     const parsed = JSON.parse(state) as { url?: string };
     if (parsed.url) return { kind: "standalone", base: parsed.url.replace(/\/+$/, "") };
   } catch {
-    // No dev server; fall through to the deployed or local same-origin mount.
+    // No dev server; fall through to the local same-origin mount.
   }
-  const vercelHost = process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL;
-  if (vercelHost) return { kind: "same-origin", base: `https://${vercelHost}` };
   // Local `next start` serves the app and the built agent on one origin.
   if (process.env.NODE_ENV === "production") {
     return { kind: "same-origin", base: `http://127.0.0.1:${process.env.PORT ?? "3000"}` };
