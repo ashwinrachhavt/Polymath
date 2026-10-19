@@ -17,6 +17,8 @@ import { embedExtraction } from "./embedding";
 import { proposeFromText, RULES_PROPOSER } from "./field-rules";
 import { flagConflicts, proposeFields } from "./fields";
 import { proposeObligationsFromDocument } from "./obligations";
+import { proposeClassification } from "./classify";
+import { canonicalFieldName } from "./vocabulary";
 import { proposeParties } from "./parties";
 import { documentExtractionAttempts, documentExtractions, documents, files } from "./schema";
 
@@ -330,13 +332,26 @@ async function runProposalPass(
   // that emits fields is actually configured.
   const rules = proposeFromText(input.text, input.spans);
   const useProvider = Boolean(input.providerFields?.length);
-  const fields = useProvider ? input.providerFields ?? [] : rules.fields;
+  // ASH-133 item 2: provider field names alias to the canonical vocabulary at
+  // this boundary, so obligation rules and the totals check read the same
+  // names the rules proposer emits.
+  const fields = (useProvider ? input.providerFields ?? [] : rules.fields).map((field) => ({
+    ...field,
+    fieldName: canonicalFieldName(field.fieldName),
+  }));
   try {
     await proposeFields(auth, {
       documentId: input.documentId,
       extractionId: input.extractionId,
       fields: flagConflicts(fields),
       currencyHint: rules.currencyHint,
+    });
+    // B02 (ASH-143): classification joins the same review step as a proposal.
+    await proposeClassification(auth, {
+      documentId: input.documentId,
+      extractionId: input.extractionId,
+      text: input.text,
+      fieldNames: fields.map((f) => f.fieldName),
     });
     await proposeParties(auth, {
       documentId: input.documentId,

@@ -10,6 +10,7 @@ import { captureUrl } from "@/domains/knowledge/capture-url";
 import { acceptZettel, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { applyTitle } from "@/domains/knowledge/naming";
+import { acceptClassification, rejectClassification, StaleWriteError as ClassificationStaleWriteError } from "@/domains/knowledge/classify";
 import { documentParties, fieldProposals } from "@/domains/knowledge/schema";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -222,13 +223,51 @@ export async function applyTitleAction(
     .parse({ documentId, title, expectedVersion });
   const auth = await authorize();
   try {
-    await applyTitle(auth, parsed);
+    // "suggested": the workbench only ever applies the composed suggestion;
+    // basis fields ride on the manifest row for the "why" (ASH-143).
+    await applyTitle(auth, { ...parsed, source: "suggested" });
     revalidate();
     return { ok: true };
   } catch (cause) {
     if (cause instanceof Error && /stale version/.test(cause.message)) {
       throw alreadyDecided("This title");
     }
+    throw cause;
+  }
+}
+
+export async function acceptClassificationAction(
+  proposalId: string,
+  expectedVersion: number,
+): Promise<{ ok: true }> {
+  const parsed = z
+    .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
+    .parse({ proposalId, expectedVersion });
+  const auth = await authorize();
+  try {
+    await acceptClassification(auth, parsed);
+    revalidate();
+    return { ok: true };
+  } catch (cause) {
+    if (cause instanceof ClassificationStaleWriteError) throw alreadyDecided("This classification");
+    throw cause;
+  }
+}
+
+export async function rejectClassificationAction(
+  proposalId: string,
+  expectedVersion: number,
+): Promise<{ ok: true }> {
+  const parsed = z
+    .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
+    .parse({ proposalId, expectedVersion });
+  const auth = await authorize();
+  try {
+    await rejectClassification(auth, parsed);
+    revalidate();
+    return { ok: true };
+  } catch (cause) {
+    if (cause instanceof ClassificationStaleWriteError) throw alreadyDecided("This classification");
     throw cause;
   }
 }

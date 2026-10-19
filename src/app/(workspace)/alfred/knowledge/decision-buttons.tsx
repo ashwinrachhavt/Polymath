@@ -11,7 +11,9 @@ import {
   proposeZettelsAction,
   rejectZettelAction,
   acceptPartyDecision,
+  acceptClassificationAction,
   applyTitleAction,
+  rejectClassificationAction,
   deferField,
   rejectDocumentObligation,
   rejectField,
@@ -311,6 +313,54 @@ export function ProposeZettelsButton({ documentId }: { documentId: string }) {
       <Button type="button" size="xs" variant="outline" className="w-fit" disabled={pending !== null} onClick={() => run("propose", () => proposeZettelsAction(documentId))}>
         {pending === "propose" ? "Reading…" : "Propose zettels"}
       </Button>
+      <ErrorLine id={errorId} error={error} />
+    </div>
+  );
+}
+
+/** Accept / Reject the proposed document type (B02). Accept sets the one doc-type signal obligations and naming read. */
+export function ClassificationDecisions({
+  proposalId,
+  proposedType,
+  confidence,
+  signals,
+  expectedVersion,
+}: {
+  proposalId: string;
+  proposedType: string;
+  confidence: string;
+  signals: string[];
+  expectedVersion: number;
+}) {
+  const { pending, error, errorId, run } = useDecision();
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-xs">
+        Classified as <span className="font-medium text-foreground">{proposedType}</span>
+        {confidence ? ` (${confidence} confidence)` : ""}
+        {signals.length > 0 ? ` - basis: ${signals.join(", ")}` : ""}. Accept to use it for obligations and titles.
+      </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={pending !== null}
+          onClick={() => run("accept-classification", () => acceptClassificationAction(proposalId, expectedVersion))}
+        >
+          {pending === "accept-classification" ? "Accepting…" : "Accept type"}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={pending !== null}
+          onClick={() => run("reject-classification", () => rejectClassificationAction(proposalId, expectedVersion))}
+        >
+          {pending === "reject-classification" ? "Rejecting…" : "Not this type"}
+        </Button>
+      </div>
       <ErrorLine id={errorId} error={error} />
     </div>
   );

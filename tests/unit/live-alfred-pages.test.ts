@@ -29,6 +29,7 @@ vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () =>
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/classify", () => ({ getOpenClassification: vi.fn(async () => null) }));
 vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
   pageRuns: vi.fn(),
@@ -85,7 +86,7 @@ describe("live Alfred route functionality", () => {
   it("keeps upload available while reviewing an existing document", async () => {
     vi.mocked(getDocumentInbox).mockResolvedValue([document]);
     vi.mocked(getDocumentReview).mockResolvedValue({
-      document: { id: document.id, title: document.title, mimeType: document.mimeType, version: 1, sourceUrl: null },
+      document: { id: document.id, title: document.title, docType: null, mimeType: document.mimeType, version: 1, sourceUrl: null },
       extraction: { id: "extraction", status: "succeeded", contentHash: "fixture", error: null, proposalStatus: "succeeded", proposalError: null, proposer: "text-rules@1" },
       fieldProposals: [], parties: [], obligations: [],
     });

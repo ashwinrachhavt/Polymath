@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { db } from "@/lib/db";
-import { documents } from "./schema";
+import { withTransaction } from "@/lib/db-transaction";
+import { documentRenameEvents, documents } from "./schema";
 
 /*
  * Document titles. suggestTitle is pure and conservative: a field that is
@@ -73,27 +73,57 @@ export function suggestTitle(docType: string, fields: Fields): string {
   return join([join([partyA, partyB]), type, date, status]);
 }
 
-/** Version-checked rename of documents.title. The filename on files is untouched. */
+/**
+ * Version-checked rename of documents.title. The filename on files is
+ * untouched. Every rename writes the manifest row (old, new, basis, source)
+ * in the same transaction, so "why is this called that" is always answerable
+ * (ASH-143). Renaming never re-types the document - obligations read
+ * doc_type, not the title.
+ */
 export async function applyTitle(
   auth: AuthContext,
-  input: { documentId: string; title: string; expectedVersion: number },
+  input: {
+    documentId: string;
+    title: string;
+    expectedVersion: number;
+    source?: "suggested" | "manual" | "classification";
+    basis?: Record<string, string>;
+  },
 ) {
-  const [row] = await db
-    .update(documents)
-    .set({
-      title: input.title.trim(),
-      updatedAt: new Date(),
-      updatedBy: auth.userId,
-      version: sql`${documents.version} + 1`,
-    })
-    .where(
-      and(
-        eq(documents.id, input.documentId),
-        eq(documents.workspaceId, auth.workspaceId),
-        eq(documents.version, input.expectedVersion),
-      ),
-    )
-    .returning();
-  if (!row) throw new Error("document not found, stale version, or title unchanged");
-  return row;
+  return withTransaction(async (tx) => {
+    const [before] = await tx
+      .select({ title: documents.title })
+      .from(documents)
+      .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
+      .limit(1);
+    const [row] = await tx
+      .update(documents)
+      .set({
+        title: input.title.trim(),
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+        version: sql`${documents.version} + 1`,
+      })
+      .where(
+        and(
+          eq(documents.id, input.documentId),
+          eq(documents.workspaceId, auth.workspaceId),
+          eq(documents.version, input.expectedVersion),
+        ),
+      )
+      .returning();
+    if (!row || !before) throw new Error("document not found, stale version, or title unchanged");
+    if (before.title !== row.title) {
+      await tx.insert(documentRenameEvents).values({
+        workspaceId: auth.workspaceId,
+        documentId: input.documentId,
+        oldTitle: before.title,
+        newTitle: row.title,
+        basis: input.basis ?? {},
+        source: input.source ?? "manual",
+        createdBy: auth.userId,
+      });
+    }
+    return row;
+  });
 }

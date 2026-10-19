@@ -191,6 +191,12 @@ export const documents = pgTable(
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "set null" }),
     title: text("title").notNull(),
+    /**
+     * The one doc-type signal (ASH-143): set by an accepted classification
+     * proposal, consumed by obligations and title suggestions - never re-typed
+     * by editing the title string.
+     */
+    docType: text("doc_type").$type<import("./vocabulary").DocumentType | null>(),
     mimeType: text("mime_type"),
     pageCount: integer("page_count"),
     /** Where the bytes came from when the document was captured from a URL; null for an upload. */
@@ -922,4 +928,67 @@ export const documentReadingState = pgTable(
     uniqueIndex("document_reading_state_document_user_key").on(t.workspaceId, t.documentId, t.userId),
     index("document_reading_state_user_recent_idx").on(t.workspaceId, t.userId, t.lastOpenedAt),
   ],
+);
+
+/*
+ * B02 (ASH-143): classification proposals - the proposer (rules now, model
+ * later behind the same row) suggests a doc type; the owner accepts or
+ * rejects in the review workbench. One open proposal per (document,
+ * proposer); accepted rows set documents.doc_type in the same transaction.
+ */
+export const documentClassificationProposals = pgTable(
+  "document_classification_proposals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    /** The extraction the classification was read from; survives its pruning. */
+    extractionId: uuid("extraction_id").references((): AnyPgColumn => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    proposedType: text("proposed_type").notNull().$type<import("./vocabulary").DocumentType>(),
+    confidence: text("confidence").notNull().$type<"high" | "medium" | "low">(),
+    /** The matched rules, shown in review as the basis. */
+    signals: jsonb("signals").notNull().default([]).$type<string[]>(),
+    /** e.g. "rules@v1"; a model proposer records model id + prompt version. */
+    proposer: text("proposer").notNull(),
+    status: text("status").notNull().default("proposed").$type<"proposed" | "accepted" | "rejected">(),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex("document_classification_open_key")
+      .on(t.workspaceId, t.documentId, t.proposer)
+      .where(sql`status = 'proposed'`),
+    index("document_classification_document_idx").on(t.workspaceId, t.documentId),
+  ],
+);
+
+/*
+ * The rename manifest: every title change leaves who/what/why. Internal
+ * only - the original filename on files is the provenance record and a
+ * provider rename never happens (v1).
+ */
+export const documentRenameEvents = pgTable(
+  "document_rename_events",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    oldTitle: text("old_title").notNull(),
+    newTitle: text("new_title").notNull(),
+    /** The accepted field values the suggestion was composed from, if any. */
+    basis: jsonb("basis").notNull().default({}).$type<Record<string, string>>(),
+    source: text("source").notNull().$type<"suggested" | "manual" | "classification">(),
+    ...recordedBy,
+  },
+  (t) => [index("document_rename_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt)],
 );

@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { acceptAssertions } from "./parties";
 import { documentParties, fieldProposals } from "./schema";
+import { canonicalFieldName } from "./vocabulary";
 
 /*
  * Field proposals: the machine's reading of a document, stored as rows a human
@@ -378,9 +379,11 @@ function pad2(n: number) {
  * other, the note records it and both values are left untouched.
  */
 export function flagConflicts(fields: ExtractedField[]): ExtractedField[] {
+  // Names arrive canonical (aliased at the extraction boundary), so the total
+  // is the one invoice_total - never "Total" vs "invoice_total" disagreement.
   const money = fields.filter((f) => f.fieldKind === "money");
-  const lineItems = money.filter((f) => f.fieldName.toLowerCase() !== "total");
-  const total = money.find((f) => f.fieldName.toLowerCase() === "total");
+  const lineItems = money.filter((f) => canonicalFieldName(f.fieldName) !== "invoice_total");
+  const total = money.find((f) => canonicalFieldName(f.fieldName) === "invoice_total");
   if (!total || lineItems.length < 2) return fields;
 
   const sum = lineItems.reduce((acc, f) => acc + (parseAmount(f.rawValue) ?? 0), 0);
