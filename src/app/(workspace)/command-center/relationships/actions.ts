@@ -1,5 +1,6 @@
 "use server";
 
+import { cancelCorrespondence, draftCorrespondence, requestSendApproval } from "@/domains/crm/correspondence";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
@@ -198,6 +199,48 @@ export async function createCompanyAction(input: unknown): Promise<Result> {
   const auth = await authorize();
   try {
     await createCompany(auth, parsed.data);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/* C03 outreach: drafts and the approval gate. Nothing sends from here. */
+export async function draftCorrespondenceAction(input: { contactId: string; subject?: string; body: string }): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  if (!input.body.trim()) return { ok: false, error: "The draft needs a body." };
+  try {
+    await draftCorrespondence(auth, {
+      contactId: input.contactId,
+      subject: input.subject?.trim() || undefined,
+      body: input.body.trim(),
+    });
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+export async function cancelCorrespondenceAction(input: { correspondenceId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  try {
+    await cancelCorrespondence(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+export async function requestSendApprovalAction(input: { correspondenceId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  try {
+    await requestSendApproval(auth, input);
   } catch (error) {
     return fail(error);
   }
