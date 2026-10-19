@@ -119,7 +119,14 @@ export async function completeConnection(
       )
       .limit(1);
     if (!attempt) throw new ConflictError("Unknown connection attempt. Start the connection again.");
-    if (attempt.status === "completed") return { attempt, alreadyCompleted: true };
+    if (attempt.status === "completed") {
+      const [account] = await tx
+        .select()
+        .from(externalAccounts)
+        .where(and(eq(externalAccounts.id, attempt.externalAccountId), eq(externalAccounts.workspaceId, auth.workspaceId)))
+        .limit(1);
+      return { attempt, account, alreadyCompleted: true };
+    }
     if (attempt.status !== "pending") throw new ConflictError(`That connection attempt already ${attempt.status}. Start again.`);
     if (attempt.expiresAt.getTime() < Date.now()) {
       await tx
