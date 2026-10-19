@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { blobObjects } from "@/domains/audit/schema";
 import {
   documentExtractions,
@@ -35,6 +36,7 @@ let folders: typeof import("@/domains/knowledge/folders");
 let tags: typeof import("@/domains/knowledge/tags");
 let exports_: typeof import("@/domains/knowledge/exports");
 let library: typeof import("@/domains/knowledge/library");
+let versions: typeof import("@/domains/knowledge/versions");
 
 beforeAll(async () => {
   if (!handle) return;
@@ -42,6 +44,7 @@ beforeAll(async () => {
   folders = await import("@/domains/knowledge/folders");
   exports_ = await import("@/domains/knowledge/exports");
   library = await import("@/domains/knowledge/library");
+  versions = await import("@/domains/knowledge/versions");
   tags = await import("@/domains/knowledge/tags");
 });
 
@@ -277,6 +280,88 @@ suite("document library", () => {
     const byName = await library.listDocuments(auth, { filters: { q: "receipt-scan" } });
     expect(byName.rows.map((r) => r.title)).toEqual(["Scanned receipt"]);
     expect(byName.rows[0].state.key).toBe("could_not_read");
+  });
+
+  it("version restore: state follows the pin, refusals hold, a new read clears it", async () => {
+    const auth = await seedAuth("restore");
+    const doc = await seedDocument(auth, { title: "Lease", filename: "lease.pdf" });
+    const [v1] = await holder.db
+      .insert(documentExtractions)
+      .values({
+        workspaceId: auth.workspaceId,
+        documentId: doc.id,
+        contentHash: `ch-${crypto.randomUUID()}`,
+        status: "succeeded",
+        proposalStatus: "succeeded",
+        text: "monthly rent one thousand dollars",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      })
+      .returning();
+    const [v2] = await holder.db
+      .insert(documentExtractions)
+      .values({
+        workspaceId: auth.workspaceId,
+        documentId: doc.id,
+        contentHash: `ch-${crypto.randomUUID()}`,
+        status: "succeeded",
+        proposalStatus: "failed",
+        text: "monthly rent twelve hundred dollars amended",
+        createdAt: new Date("2026-02-01T00:00:00Z"),
+      })
+      .returning();
+
+    // Without a pin the newest row is current.
+    expect((await versions.getCurrentExtraction(auth, { documentId: doc.id }))?.id).toBe(v2.id);
+
+    // A manifest pinned at v2 drifts when the document is restored to v1, and
+    // reports current again when the restore moves back.
+    const manifest = await exports_.createExportManifest(auth, { name: "Packet", items: [{ documentId: doc.id }] });
+
+    const [fresh] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
+    const result = await versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v1.id, expectedVersion: fresh!.version });
+    expect(result.restored).toBe(true);
+
+    // The whole read surface follows the pin.
+    expect((await versions.getCurrentExtraction(auth, { documentId: doc.id }))?.id).toBe(v1.id);
+    const listed = await library.listDocuments(auth, { filters: { q: "thousand" } });
+    expect(listed.rows).toHaveLength(1);
+    expect(listed.rows[0].snippet).toContain("[[");
+    expect(listed.rows[0].state.key).toBe("filed"); // v1's succeeded proposal, not v2's failed one
+    const versionList = await library.getDocumentVersions(auth, { documentId: doc.id });
+    expect(versionList.find((v) => v.extractionId === v1.id)?.isCurrent).toBe(true);
+    expect(versionList.find((v) => v.extractionId === v2.id)?.isCurrent).toBe(false);
+    const activity = await library.getDocumentActivity(auth, { documentId: doc.id });
+    expect(activity.some((a) => a.kind === "restored")).toBe(true);
+
+    const drifted = await exports_.getExportManifest(auth, { manifestId: manifest.id });
+    expect(drifted?.items[0].isCurrent).toBe(false);
+    expect(drifted?.items[0].current?.extractionId).toBe(v1.id);
+
+    // Refusals: failed versions, foreign versions, stale writes.
+    const [bad] = await holder.db
+      .insert(documentExtractions)
+      .values({ workspaceId: auth.workspaceId, documentId: doc.id, contentHash: `ch-${crypto.randomUUID()}`, status: "failed", createdAt: new Date("2026-03-01T00:00:00Z") })
+      .returning();
+    const [now1] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
+    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: bad.id, expectedVersion: now1!.version })).rejects.toMatchObject({ code: "not_succeeded" });
+    const other = await seedAuth("restore-other");
+    const foreignDoc = await seedDocument(other, { title: "Foreign", extraction: { status: "succeeded", text: "not yours" } });
+    const [foreignV] = await holder.db.select({ id: documentExtractions.id }).from(documentExtractions).where(eq(documentExtractions.documentId, foreignDoc.id)).limit(1);
+    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: foreignV!.id, expectedVersion: now1!.version })).rejects.toMatchObject({ code: "not_found" });
+    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v2.id, expectedVersion: 99999 })).rejects.toMatchObject({ code: "stale_write" });
+
+    // Restoring back to v2 makes the manifest current again.
+    const [now2] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
+    await versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v2.id, expectedVersion: now2!.version });
+    expect((await exports_.getExportManifest(auth, { manifestId: manifest.id }))?.items[0].isCurrent).toBe(true);
+
+    // A fresh read clears the pin: the document is its newest bytes again.
+    await versions.clearRestoreOnNewExtraction(doc.id);
+    const [v3] = await holder.db
+      .insert(documentExtractions)
+      .values({ workspaceId: auth.workspaceId, documentId: doc.id, contentHash: `ch-${crypto.randomUUID()}`, status: "succeeded", text: "final text", createdAt: new Date("2026-04-01T00:00:00Z") })
+      .returning();
+    expect((await versions.getCurrentExtraction(auth, { documentId: doc.id }))?.id).toBe(v3.id);
   });
 
   it("tags: batch tagging is idempotent, the tag filter composes, untagging is exact", async () => {

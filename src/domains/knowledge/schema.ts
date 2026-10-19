@@ -209,6 +209,17 @@ export const documents = pgTable(
     folderId: uuid("folder_id").references((): AnyPgColumn => documentFolders.id, {
       onDelete: "set null",
     }),
+    /*
+     * The version the library, review and retrieval treat as current; null
+     * means the newest extraction (the default before restores existed). A
+     * restore only ever points this at a succeeded row, and a new extraction
+     * version clears it, so the pointer can never strand a document on a
+     * failed or stale read. Set null if the row is pruned.
+     */
+    activeExtractionId: uuid("active_extraction_id").references(
+      (): AnyPgColumn => documentExtractions.id,
+      { onDelete: "set null" },
+    ),
     ...mutable,
   },
   (t) => [

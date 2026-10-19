@@ -21,6 +21,7 @@ import { proposeClassification } from "./classify";
 import { canonicalFieldName } from "./vocabulary";
 import { proposeParties } from "./parties";
 import { documentExtractionAttempts, documentExtractions, documents, files } from "./schema";
+import { clearRestoreOnNewExtraction } from "./versions";
 
 /*
  * The extraction command: file bytes in provider, durable rows out. Extraction
@@ -118,6 +119,8 @@ export async function extractDocument(
       target: [documentExtractions.documentId, documentExtractions.contentHash],
     })
     .returning({ id: documentExtractions.id });
+  // A genuinely new version supersedes any restore pin (versions.ts).
+  if (created) await clearRestoreOnNewExtraction(input.documentId);
   const leaseExpired = lt(
     sql`coalesce(${documentExtractions.claimedAt}, ${documentExtractions.createdAt})`,
     sql`now() - make_interval(secs => ${leaseSeconds})`,

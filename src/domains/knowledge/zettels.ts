@@ -1,8 +1,9 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { currentExtractionIdSubquery } from "./versions";
 import { openRouterZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
 
@@ -46,15 +47,17 @@ export async function proposeZettels(
     .limit(1);
   if (!document) throw new Error("document not found in workspace");
 
+  // Restores change what the document reads as, so proposals follow the pin.
   const [extraction] = await db
     .select({ id: documentExtractions.id, text: documentExtractions.text })
     .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
     .where(and(
       eq(documentExtractions.documentId, input.documentId),
       eq(documentExtractions.workspaceId, auth.workspaceId),
       eq(documentExtractions.status, "succeeded"),
+      eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
     ))
-    .orderBy(desc(documentExtractions.createdAt))
     .limit(1);
   if (!extraction?.text) throw new Error("document has no succeeded extraction");
 

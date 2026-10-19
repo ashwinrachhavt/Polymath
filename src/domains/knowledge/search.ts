@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
+import { currentExtractionSql } from "./versions";
 import { documents, documentExtractions, embeddings, files, reviewedAssertions } from "./schema";
 
 /*
@@ -82,8 +83,9 @@ export async function searchDocuments(auth: AuthContext, input: DocumentSearchIn
           'StartSel=[[, StopSel=]], MaxWords=24, MinWords=8, MaxFragments=1')
         from document_extractions de
         where de.document_id = ${documents.id} and de.status = 'succeeded'
+          and de.id::text = ${currentExtractionSql("id")}
           and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${query})
-        order by de.created_at desc limit 1
+        limit 1
       )`
     : sql<string | null>`null`;
 
@@ -95,11 +97,7 @@ export async function searchDocuments(auth: AuthContext, input: DocumentSearchIn
       title: documents.title,
       snippet,
       filename: files.filename,
-      extractionStatus: sql<string | null>`(
-        select de.status::text from document_extractions de
-        where de.document_id = ${documents.id}
-        order by de.created_at desc limit 1
-      )`,
+      extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
       createdAt: documents.createdAt,
     })
     .from(documents)
@@ -207,11 +205,9 @@ export async function searchChunks(
       isNull(documents.archivedAt),
       input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
       eq(documentExtractions.status, "succeeded"),
-      sql`not exists (
-        select 1 from document_extractions newer
-        where newer.document_id = ${documents.id} and newer.status = 'succeeded'
-          and newer.created_at > ${documentExtractions.createdAt}
-      )`,
+      // The current version answers; a restored older version answers, and a
+      // superseded newer one stays silent (versions.ts owns "current").
+      sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
     ))
     .orderBy(distance)
     .limit(limit);

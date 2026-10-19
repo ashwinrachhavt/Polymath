@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
-import { blobObjects } from "@/domains/audit/schema";
+import { auditEvents, blobObjects } from "@/domains/audit/schema";
 import { companies, contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -20,6 +20,7 @@ import {
 } from "./schema";
 import { documentStatus, type DocumentStatus } from "./status";
 import { getDocumentTags } from "./tags";
+import { currentExtractionSql } from "./versions";
 
 /*
  * The library read model for the Box-feel document manager (ASH-108 §13A,
@@ -78,12 +79,13 @@ export type LibraryPageInput = {
   limit?: number;
 };
 
-/* The latest extraction of a document, as a correlated subquery column. */
-const latestExtraction = (column: "status" | "proposal_status") => sql<string | null>`(
-  select ${sql.raw(`de.${column}::text`)} from document_extractions de
-  where de.document_id = ${documents.id}
-  order by de.created_at desc limit 1
-)`;
+/*
+ * The current extraction of a document, as a correlated subquery column.
+ * "Current" is the restored version when one is pinned, else the newest row
+ * (versions.ts owns the definition).
+ */
+const latestExtraction = (column: "status" | "proposal_status") =>
+  sql<string | null>`${currentExtractionSql(column)}`;
 
 const undecidedCount = sql<number>`(
   select count(*)::int from field_proposals fp
@@ -319,8 +321,9 @@ export async function listDocuments(auth: AuthContext, input: LibraryPageInput =
           'StartSel=[[, StopSel=]], MaxWords=24, MinWords=8, MaxFragments=1')
         from document_extractions de
         where de.document_id = ${documents.id} and de.status = 'succeeded'
+          and de.id::text = ${currentExtractionSql("id")}
           and to_tsvector('english', de.text) @@ plainto_tsquery('english', ${q})
-        order by de.created_at desc limit 1
+        limit 1
       )`
     : sql<string | null>`null`;
 
@@ -382,11 +385,13 @@ export type DocumentVersionRow = {
   proposalStatus: string | null;
   createdAt: Date;
   error: string | null;
+  /** True for the version the document currently reads as (the restore pin, else the newest). */
+  isCurrent: boolean;
 };
 
 /** Every extraction version of a document, newest first - re-reading creates rows, never edits. */
 export async function getDocumentVersions(auth: AuthContext, input: { documentId: string }): Promise<DocumentVersionRow[]> {
-  return db
+  const rows = await db
     .select({
       extractionId: documentExtractions.id,
       contentHash: documentExtractions.contentHash,
@@ -395,12 +400,14 @@ export async function getDocumentVersions(auth: AuthContext, input: { documentId
       proposalStatus: documentExtractions.proposalStatus,
       createdAt: documentExtractions.createdAt,
       error: documentExtractions.error,
+      isCurrent: sql<boolean>`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
     })
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
     .where(and(eq(documentExtractions.documentId, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
     .orderBy(desc(documentExtractions.createdAt))
     .limit(50);
+  return rows;
 }
 
 export type DocumentActivityItem = {
@@ -412,7 +419,8 @@ export type DocumentActivityItem = {
     | "moved"
     | "field_decided"
     | "obligation_decided"
-    | "decision";
+    | "decision"
+    | "restored";
   at: Date;
   summary: string;
   /** Folder titles, old/new titles, error text - whatever the row honestly knows. */
@@ -438,7 +446,7 @@ export async function getDocumentActivity(
     .limit(1);
   if (!doc) return [];
 
-  const [attempts, renames, moves, classifications, decisions, fieldRows, obligationRows, folderRows] =
+  const [attempts, renames, moves, classifications, decisions, fieldRows, obligationRows, folderRows, restores] =
     await Promise.all([
       db
         .select({
@@ -492,6 +500,19 @@ export async function getDocumentActivity(
         .select({ id: documentFolders.id, name: documentFolders.name })
         .from(documentFolders)
         .where(eq(documentFolders.workspaceId, auth.workspaceId)),
+      db
+        .select({ at: auditEvents.createdAt, payload: auditEvents.metadata })
+        .from(auditEvents)
+        .where(
+          and(
+            eq(auditEvents.workspaceId, auth.workspaceId),
+            eq(auditEvents.subjectType, "document"),
+            eq(auditEvents.subjectId, doc.id),
+            eq(auditEvents.action, "document.version_restored"),
+          ),
+        )
+        .orderBy(desc(auditEvents.createdAt))
+        .limit(limit),
     ]);
 
   const folderName = new Map(folderRows.map((f) => [f.id, f.name]));
@@ -529,6 +550,12 @@ export async function getDocumentActivity(
   }
   for (const o of obligationRows) {
     if (o.at) items.push({ kind: "obligation_decided", at: o.at, summary: `Obligation ${o.kind} ${o.status}`, detail: { status: o.status } });
+  }
+
+  for (const r of restores) {
+    const payload = (r.payload ?? {}) as Record<string, unknown>;
+    const hash = typeof payload.contentHash === "string" ? payload.contentHash.slice(0, 12) : null;
+    items.push({ kind: "restored", at: r.at, summary: `Restored an earlier read${hash ? ` (${hash})` : ""}`, detail: { contentHash: hash } });
   }
 
   return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
