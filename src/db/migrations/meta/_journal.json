@@ -169,6 +169,13 @@
       "when": 1792430000000,
       "tag": "0071_classification_and_rename_manifest",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792440000000,
+      "tag": "0072_outbox_dispatch",
+      "breakpoints": true
     }
   ]
 }

@@ -78,10 +78,25 @@ export const outboxEvents = pgTable(
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     lastError: text("last_error"),
+    /** Stable publish identity (Q03): a retried enqueue with the same key is a no-op. */
+    dispatchKey: text("dispatch_key"),
+    /** Short lease, claimed without holding a transaction across provider I/O. */
+    leaseOwner: text("lease_owner"),
+    /** Generation fence: a completion naming an old token is a stale write. */
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     ...recorded,
   },
-  // Partial index: the queue is the pending rows, not the table.
-  (t) => [index("outbox_events_pending_idx").on(t.availableAt).where(sql`status = 'pending'`)],
+  (t) => [
+    // Partial index: the queue is the pending rows, not the table.
+    index("outbox_events_pending_idx").on(t.availableAt).where(sql`status = 'pending'`),
+    uniqueIndex("outbox_events_dispatch_key")
+      .on(t.workspaceId, t.topic, t.dispatchKey)
+      .where(sql`dispatch_key is not null`),
+    index("outbox_events_lease_expiry_idx")
+      .on(t.leaseExpiresAt)
+      .where(sql`lease_owner is not null and status = 'pending'`),
+  ],
 );
 
 /*
