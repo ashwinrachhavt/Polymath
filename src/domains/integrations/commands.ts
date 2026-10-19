@@ -6,7 +6,7 @@ import { externalAccounts, integrationCatalog } from "./schema";
 
 /*
  * Connector account bookkeeping (ASH D09 foundation). These commands manage
- * Axiom's own rows: registering an account alias, recording the state of an
+ * Polymath's own rows: registering an account alias, recording the state of an
  * OAuth flow, choosing the explicit write default, revoking. They never call
  * the provider - the token stays with Composio, and the connect flow
  * scaffolding hands the browser a link without writing anything upstream.

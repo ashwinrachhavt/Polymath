@@ -9,7 +9,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getReadableDocument } from "@/domains/knowledge/reading";
 import { ReadingShell } from "./reading-tracker";
 
-export const metadata = { title: "Read · Axiom" };
+export const metadata = { title: "Read · Polymath" };
 
 /*
  * The focused reader: the document's extracted text, the owner's folded

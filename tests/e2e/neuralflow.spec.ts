@@ -110,7 +110,7 @@ test("a canonical rich note saves an immutable local revision and shared task li
   await page.getByRole("button", { name: "Shared parity reflection", exact: true }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Rich note content" }).fill("Revised owner note.");
-  await dialog.getByRole("checkbox", { name: "Task: Review the canonical Axiom data model", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "Task: Review the canonical Polymath data model", exact: true }).check();
   await dialog.getByRole("button", { name: "Save note locally" }).click();
   const state = await preview(page);
   const note = state.artifacts.find((artifact: { title: string }) => artifact.title === "Shared parity reflection");

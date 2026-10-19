@@ -4,7 +4,7 @@
 
 **Goal:** Bounded multi-agent backend foundation per ASH-112 — Clerk-gated endpoints, EveAgentEngine behind the AgentEngine contract, an idempotent event bridge into Neon, spend reserve/settle, and the first policy/routing evals.
 
-**Architecture:** Eve-native, Neon-mirrored. Eve runs the durable conversation loop (mounted via `withEve()` in `next.config.ts`, agent routes at `/eve/<name>/v1/*`); Axiom's Neon tables stay the system of record — run timelines, tool calls, messages, spend, and approvals mirror from eve's event stream through a single bridge in `src/domains/agents/`. Domain code never imports `eve`; the engine seam is the `AgentEngine` contract with an injected session driver.
+**Architecture:** Eve-native, Neon-mirrored. Eve runs the durable conversation loop (mounted via `withEve()` in `next.config.ts`, agent routes at `/eve/<name>/v1/*`); Polymath's Neon tables stay the system of record — run timelines, tool calls, messages, spend, and approvals mirror from eve's event stream through a single bridge in `src/domains/agents/`. Domain code never imports `eve`; the engine seam is the `AgentEngine` contract with an injected session driver.
 
 **Tech Stack:** Next.js 16 (App Router, Server Actions, proxy.ts), Clerk, Drizzle + Neon Postgres (http driver for reads, postgres-js for transactions), eve (Vercel, Node >=24), AI SDK, Vitest (real Neon for invariant tests).
 
@@ -101,7 +101,7 @@ Expected: an HTTP response from the eve mount (200 or 404-with-body — record e
 
 - [ ] **Step 5: Get one real event through a hook** and confirm the auth extension point
 
-Read the installed `eve` dist types for: hooks (`onEvent`/`onStep` equivalent), HITL approval (`never()/once()/always()/auto()`), and the session auth/policy surface. Confirm a custom policy can resolve an arbitrary incoming credential (Axiom's Clerk session) rather than only Vercel OIDC. Record both as verified facts or gaps.
+Read the installed `eve` dist types for: hooks (`onEvent`/`onStep` equivalent), HITL approval (`never()/once()/always()/auto()`), and the session auth/policy surface. Confirm a custom policy can resolve an arbitrary incoming credential (Polymath's Clerk session) rather than only Vercel OIDC. Record both as verified facts or gaps.
 
 - [ ] **Step 6: Record spike findings in the spec**
 
@@ -1123,7 +1123,7 @@ export async function createProposal(
 }
 ```
 
-Then create `eve/alfred/tools/tasks-read.ts` and one external-write tool per the spike's tool-file convention; each external-write handler ends in `createProposal(...)`, never a provider call. This is where Axiom policy text gates eve's `auto()` classifiers.
+Then create `eve/alfred/tools/tasks-read.ts` and one external-write tool per the spike's tool-file convention; each external-write handler ends in `createProposal(...)`, never a provider call. This is where Polymath policy text gates eve's `auto()` classifiers.
 
 - [ ] **Step 4: Run the test, expect PASS, then unit test redaction shape**
 
@@ -1253,14 +1253,14 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: the spike-recorded `evaluate()` API and `auto()` classifier API; Task 3's spending policy text; Task 6's risk classes.
-- Produces: two runnable eve evals — model routing choices and the HITL approval classifier driven by Axiom policy text.
+- Produces: two runnable eve evals — model routing choices and the HITL approval classifier driven by Polymath policy text.
 
 - [ ] **Step 1: Read the spike findings for the evaluate/auto API** and draft both eval files using the real import paths (no guessing — same discipline as Task 5).
 
 - [ ] **Step 2: Run the evals**
 
 Run: `pnpm eve eval` (or the command the spike found).
-Expected: both evals run and print pass/fail; the classifier eval uses Axiom policy text ("read → auto; prepare → approve; external write → always require human approval; sensitive write → approval + confirmation").
+Expected: both evals run and print pass/fail; the classifier eval uses Polymath policy text ("read → auto; prepare → approve; external write → always require human approval; sensitive write → approval + confirmation").
 
 - [ ] **Step 3: Commit**
 

@@ -13,7 +13,7 @@ import { getAuthContext } from "@/lib/auth";
 import { CaptureForm } from "./inbox-client";
 import { InboxList } from "./inbox-list";
 
-export const metadata = { title: "Inbox · Axiom" };
+export const metadata = { title: "Inbox · Polymath" };
 
 /*
  * The durable inbox (ASH-137 A02): captures live in Postgres, the original

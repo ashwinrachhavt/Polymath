@@ -20,7 +20,7 @@ import { getAuthContext } from "@/lib/auth";
 import { offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { ReviewsQueue, type QueueCardData } from "./reviews-queue";
 
-export const metadata = { title: "Reviews · Axiom" };
+export const metadata = { title: "Reviews · Polymath" };
 
 /*
  * The canonical Reviews queue: every external effect an agent wants lands
@@ -142,7 +142,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
           filtered={filtered}
           clearHref={BASE}
           emptyTitle="Nothing needs your judgment"
-          emptyDescription="When an agent wants to change something outside Axiom - send, schedule, post - it proposes the exact payload here first. The queue is empty."
+          emptyDescription="When an agent wants to change something outside Polymath - send, schedule, post - it proposes the exact payload here first. The queue is empty."
         />
       )}
       <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />

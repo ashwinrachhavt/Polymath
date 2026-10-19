@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Axiom",
+  title: "Polymath",
   description: "Personal command center and knowledge operating system.",
 };
 

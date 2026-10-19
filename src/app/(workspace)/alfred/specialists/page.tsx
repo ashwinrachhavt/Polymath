@@ -15,7 +15,7 @@ import { listHref, matchesQuery, offsetFor, parseListParams, type RawSearchParam
 import { SPECIALIST_ROSTER, SPECIALIST_TEAMS, specialistProfileName } from "@/domains/agents/roster";
 import { CreateSpecialistForm, HireForm, InstallButton } from "./specialist-controls";
 
-export const metadata = { title: "Specialists · Axiom" };
+export const metadata = { title: "Specialists · Polymath" };
 
 /*
  * The bench: browse the roster, add specialists, hire them onto a run, and see

@@ -6,7 +6,7 @@ import { externalAccounts, integrationCatalog, syncCursors } from "./schema";
 /*
  * Connector reads (ASH D09 foundation). The catalog is global (seeded by
  * migration); accounts and cursors are workspace rows. No provider is ever
- * called from here - these rows are Axiom's own bookkeeping.
+ * called from here - these rows are Polymath's own bookkeeping.
  */
 
 export type ConnectorCard = {

@@ -6,7 +6,7 @@ import { cn } from "cn";
  * globals.css — so a live value does not reflow as it changes, and so a count
  * looks measured rather than written.
  *
- * This is also Axiom's inheritance from the design reference: the one motif
+ * This is also Polymath's inheritance from the design reference: the one motif
  * worth taking from it was monospace for machine facts against a quiet ground.
  */
 

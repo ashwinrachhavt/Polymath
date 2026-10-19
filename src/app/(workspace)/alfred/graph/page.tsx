@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader, Section } from "@/components/page-header";
 import { Empty } from "@/components/workspace/ui";
 
-export const metadata = { title: "Graph · Axiom" };
+export const metadata = { title: "Graph · Polymath" };
 
 /*
  * /alfred/graph has no canonical page yet - the graph is still a

@@ -11,7 +11,7 @@ import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/li
 import { getAuthContext } from "@/lib/auth";
 import { ConversationForm } from "./conversation-form";
 
-export const metadata = { title: "Conversations · Axiom" };
+export const metadata = { title: "Conversations · Polymath" };
 
 /*
  * Canonical conversations surface (ASH-140 D04): every thread renders from

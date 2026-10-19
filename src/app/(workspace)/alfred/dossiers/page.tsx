@@ -19,7 +19,7 @@ import { listLinkableRecords, resolveLinkTitles } from "./links";
 import { GenerateForm } from "./generate-form";
 import { ResearchCompanyForm } from "./research-form";
 
-export const metadata = { title: "Dossiers · Axiom" };
+export const metadata = { title: "Dossiers · Polymath" };
 
 /*
  * The dossier screen: the workspace's dossiers, the documents each one holds,

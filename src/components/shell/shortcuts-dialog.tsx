@@ -45,7 +45,7 @@ export function ShortcutsDialog({ trigger }: { trigger?: React.ReactNode }) {
     <DialogTrigger asChild>{trigger || <Button variant="ghost" size="sm"><Keyboard aria-hidden className="size-4" /><span className="sr-only">Keyboard shortcuts</span></Button>}</DialogTrigger>
     <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
       <DialogTitle>Keyboard shortcuts</DialogTitle>
-      <DialogDescription>Every action in Axiom is reachable without a pointer, including ranking and lane changes.</DialogDescription>
+      <DialogDescription>Every action in Polymath is reachable without a pointer, including ranking and lane changes.</DialogDescription>
       {groups.map((group) => <section key={group.name} className="mt-5">
         <h3 className="text-[13px] font-medium">{group.name}</h3>
         <dl className="mt-2 divide-y divide-border">

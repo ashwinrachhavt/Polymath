@@ -6,7 +6,7 @@
 
 ## Context
 
-Axiom has humans (Clerk sessions), machine clients (API tokens), and agent
+Polymath has humans (Clerk sessions), machine clients (API tokens), and agent
 runs acting on one workspace-scoped record set. Before this ADR the pieces
 existed but the architecture binding them lived in Linear tickets and code
 comments. This records what is built, what is decided, and what is open, so

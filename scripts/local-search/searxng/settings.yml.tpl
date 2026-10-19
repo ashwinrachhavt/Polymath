@@ -4,7 +4,7 @@
 use_default_settings: true
 
 general:
-  instance_name: "Axiom Search"
+  instance_name: "Polymath Search"
   privacypolicy_url: false
   donation_url: false
   contact_url: false

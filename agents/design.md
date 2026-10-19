@@ -1,12 +1,12 @@
 # design.md — Visual and interaction language
 
-**Purpose:** how Axiom looks, reads, and responds. Structure and component
+**Purpose:** how Polymath looks, reads, and responds. Structure and component
 inventory are owned by [axiom-product-spec.md](../docs/axiom-product-spec.md)
 (§ Frontend and design); this file owns the taste.
 
 ## Owner direction (2026-10-17) — takes precedence over the sections below
 
-The owner asked for Axiom to carry NeuralFlow's elegance, purposeful animation,
+The owner asked for Polymath to carry NeuralFlow's elegance, purposeful animation,
 and the NeuralFlow stones, and for the product to tell its own story. Where the
 rules below disagree, this section wins:
 
@@ -37,7 +37,7 @@ This file's job is now to do three things the skill cannot:
 
 1. **Read the brief for this product**, so the skill's contextual rules have
    something to fire against (§ Brief read below).
-2. **Record Axiom's dial values** and the decisions already made, so the
+2. **Record Polymath's dial values** and the decisions already made, so the
    direction is stable between sessions.
 3. **State the token and state discipline** the code is held to.
 
@@ -45,7 +45,7 @@ Skill map — which one governs which surface:
 
 | Skill | Governs | Note |
 |---|---|---|
-| `design-taste-frontend` | The default. Brief inference, dials, colour, typography, tells, pre-flight check. | Its own §13 excludes dashboards and dense product UI. Axiom is exactly that, so its marketing-page sections (§4.7 hero, §4.8 asset strategy, §4.9 landing density, §5 scroll/GSAP, §12 block library) **do not apply**. Everything else does, and §14's pre-flight still runs. |
+| `design-taste-frontend` | The default. Brief inference, dials, colour, typography, tells, pre-flight check. | Its own §13 excludes dashboards and dense product UI. Polymath is exactly that, so its marketing-page sections (§4.7 hero, §4.8 asset strategy, §4.9 landing density, §5 scroll/GSAP, §12 block library) **do not apply**. Everything else does, and §14's pre-flight still runs. |
 | `redesign-existing-projects` | Any pass over an existing screen. Scan → diagnose → fix with the audit list and fix-priority order. | The stack-agnostic audit. This is the one to run before touching a built surface. |
 | `minimalist-ui` | Palette and type register for reading surfaces. | Warm monochrome, editorial. Overrides the cool base where a surface is read rather than operated. |
 | `industrial-brutalist-ui` | Dense operational surfaces — tables, run timelines, telemetry. | Pick **one** of its two substrates per surface and commit; never mix. |
@@ -55,7 +55,7 @@ Two caveats, recorded rather than routed around:
 
 - **`gpt-taste` and the imagegen skills are out of scope.** Their own
   descriptions are AIDA landing pages, GSAP ScrollTrigger pinning, and generated
-  imagery. Axiom has no scroll narrative and no marketing page; it has tables
+  imagery. Polymath has no scroll narrative and no marketing page; it has tables
   that stay scannable at 13px. They stay installed but unused.
 - **`image-to-code` is Codex-oriented** (image-first, generate-then-implement).
   Use it only if a design task explicitly calls for generated references.
@@ -89,7 +89,7 @@ change a single screen's feel — raise it in the brief instead.
 
 Adopted from `minimalist-ui`, with the one deviation §11.C of the skill requires:
 extract the existing brand colour before applying the skill's own palette rules.
-Axiom's accent is already a considered single, desaturated, non-AI-purple cyan,
+Polymath's accent is already a considered single, desaturated, non-AI-purple cyan,
 so it is carried forward rather than replaced.
 
 - **Ground:** the skill's warm monochrome family. Warm bone/off-white
@@ -98,7 +98,7 @@ so it is carried forward rather than replaced.
   fights the tabular greys.
 - **Ink:** never `#000000`. Off-black/charcoal (`#111111`, `#2F3437`), body
   line-height 1.6.
-- **One accent, locked for the whole surface.** Axiom's cyan/teal. Saturation
+- **One accent, locked for the whole surface.** Polymath's cyan/teal. Saturation
   under 80%, used on primary actions, the focus ring, and the active-rail rule —
   nothing else. The skill's §4.2 Color Consistency Lock is absolute: a
   teal-accented screen does not sprout a blue CTA in one panel.
@@ -269,7 +269,7 @@ Components never carry raw hex and never a Tailwind palette class like
 `bg-slate-800`.
 
 One naming collision to know: shadcn's `--accent` is a subtle *hover surface*,
-not a brand colour. Axiom's cyan lives on `--primary` and `--ring`; re-pointing
+not a brand colour. Polymath's cyan lives on `--primary` and `--ring`; re-pointing
 `--accent` at the accent colour would flood every hover state in the product.
 
 New shadcn components are added with the CLI (`pnpm dlx shadcn@latest add x`) so

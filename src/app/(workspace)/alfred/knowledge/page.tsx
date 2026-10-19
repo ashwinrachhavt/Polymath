@@ -41,7 +41,7 @@ import { getOpenClassification } from "@/domains/knowledge/classify";
 import { CaptureUrlForm } from "./capture-url-form";
 import { UploadButton } from "./upload-button";
 
-export const metadata = { title: "Knowledge · Axiom" };
+export const metadata = { title: "Knowledge · Polymath" };
 
 /*
  * Notes, documents, sources, and flashcards. The document inbox is the live
@@ -250,7 +250,7 @@ export async function KnowledgeSurface({
               filtered={inboxFiltered}
               clearHref={listHref("/alfred/knowledge", raw, { dq: undefined, kind: undefined, read: undefined, page: undefined })}
               emptyTitle="No documents yet"
-              emptyDescription="Upload a PDF or image and it appears here. Axiom reads it, proposes the fields, and you decide each one."
+              emptyDescription="Upload a PDF or image and it appears here. Polymath reads it, proposes the fields, and you decide each one."
             />
           ) : selected ? (
             <ReviewWorkbench

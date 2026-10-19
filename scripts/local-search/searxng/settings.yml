@@ -1,4 +1,4 @@
-# SearXNG for Axiom's agents: a private metasearch instance, no key, no account.
+# SearXNG for Polymath's agents: a private metasearch instance, no key, no account.
 # It is the default `web.search` provider when SEARCH_PROVIDER=searxng, and the
 # backing index for Firecrawl's `search` endpoint (SEARXNG_ENDPOINT below).
 #
@@ -6,7 +6,7 @@
 use_default_settings: true
 
 general:
-  instance_name: "Axiom Search"
+  instance_name: "Polymath Search"
   privacypolicy_url: false
   donation_url: false
   contact_url: false
@@ -35,7 +35,7 @@ ui:
   infinite_scroll: false
 
 # Engines that need no key and work from a local instance. `json` results are
-# what the Axiom adapter and Firecrawl read; HTML is the human page.
+# what the Polymath adapter and Firecrawl read; HTML is the human page.
 engines:
   - name: google
     engine: google

@@ -1,4 +1,4 @@
-# Axiom Consolidation Design
+# Polymath Consolidation Design
 
 **Date:** 2026-10-10
 **Ticket:** ASH-101 (Linear, ashwinr workspace)
@@ -17,14 +17,14 @@ Unify three existing personal apps into one GSuite-like Personal OS experience:
 **Hard constraints (user-stated):**
 - No code changes to the three donor apps, ever.
 - Reuse code as much as possible; consolidation is in UX and branding feel.
-- Axiom frontend is Next.js 16.
+- Polymath frontend is Next.js 16.
 - Auth: shared Clerk.
 
 ## 2. Approach (decided)
 
-**Approach B — unified screens with reuse-first adaptation.** Axiom has its own
+**Approach B — unified screens with reuse-first adaptation.** Polymath has its own
 screens for the core loop, each adapted from a donor frontend's page component
-(copied into Axiom, restyled to the Axiom theme, backend client swapped). Long-tail
+(copied into Polymath, restyled to the Polymath theme, backend client swapped). Long-tail
 deep screens are iframed from the running donor apps. One shell, one brand, one nav.
 
 Not chosen:
@@ -34,7 +34,7 @@ Not chosen:
 ## 3. Architecture
 
 ```
-Browser ──> Axiom (Next.js 16, :3000)
+Browser ──> Polymath (Next.js 16, :3000)
               ├── src/lib/backend/{cc,alfred,neuralflow}.ts   (typed fetch clients)
               ├── /api/* routes        (Chat-forward proxy where needed)
               └── deep screens ── iframe ──> donor app web (:3001/:3010)
@@ -44,27 +44,27 @@ Browser ──> Axiom (Next.js 16, :3000)
         (untouched)                      (untouched)              (untouched)
 ```
 
-- Browser talks only to Axiom. Axiov calls backends server-side (Next API routes)
+- Browser talks only to Polymath. Axiov calls backends server-side (Next API routes)
   or client-side with the Clerk Bearer token forwarded.
-- command-center already generates its frontend types from its OpenAPI spec; Axiom
+- command-center already generates its frontend types from its OpenAPI spec; Polymath
   does the same (`make contracts` pattern against CC's :8001 spec).
 - Alfred API consumed as-is. Neuralflow's Next API routes called with the
-  incoming request's Clerk cookies forwarded by Axiom's proxy (verified:
+  incoming request's Clerk cookies forwarded by Polymath's proxy (verified:
   `neuralflow/src/middleware.ts` runs `clerkMiddleware` on `/api|trpc` and 401s
   without a session — the earlier "token-optional" claim was wrong; D4 review
   decision). Clerk session cookies are host-scoped, so localhost:3000 and
   localhost:3010 share `__session`.
 - Shared Clerk assumption: all three donors must point at the **same Clerk
-  instance** (same publishable key's frontend API) for Axiom's single sign-in
+  instance** (same publishable key's frontend API) for Polymath's single sign-in
   to work across the stack. Verified at build start — if donors were
   provisioned from different Clerk projects, the `__session` cookie would
-  authenticate only one of them and Axiom's auth story splits.
+  authenticate only one of them and Polymath's auth story splits.
 
 ### Screen map (v1)
 
-| Axiom screen | Adapted from | Backend |
+| Polymath screen | Adapted from | Backend |
 |---|---|---|
-| Today plane + Briefing | CC Briefing (composition: neuralflow scheduler queried by the same Axiom screen) | CC `tasks`, neuralflow `scheduler` |
+| Today plane + Briefing | CC Briefing (composition: neuralflow scheduler queried by the same Polymath screen) | CC `tasks`, neuralflow `scheduler` |
 | Inbox (captures/proposals) | Alfred inbox | alfred API |
 | Focus sessions | Neuralflow pomodoro / alfred focus | neuralflow API |
 | Boards & tasks | Neuralflow boards / CC tasks | CC + neuralflow |
@@ -72,9 +72,9 @@ Browser ──> Axiom (Next.js 16, :3000)
 | Jobs/Opportunities | CC jobs | CC API |
 | Canvas, reports, autofill, admin, dossiers, research | **iframed** from donor web | — |
 
-## 4. Deployment (Axiom owns it)
+## 4. Deployment (Polymath owns it)
 
-Axiom ships a `Makefile` and `.env.axiom` that orchestrate all four apps
+Polymath ships a `Makefile` and `.env.axiom` that orchestrate all four apps
 **without editing donor repos** (D5 review decision: env-file only, no override
 YAML — every donor port is already env-parameterized, verified at
 `alfred/docker-compose.yml:79/:293/:366` and `command-center/compose.yaml:156/:177/:207`):
@@ -89,16 +89,16 @@ YAML — every donor port is already env-parameterized, verified at
 - **CC Clerk authorized parties** — CC's FastAPI verifies Clerk session JWTs
   against `CC_CLERK_AUTHORIZED_PARTIES` (azp claim, per Clerk's manual-JWT
   verification guide), which defaults to `["http://localhost:3001"]`. Sessions
-  minted on Axiom at :3000 carry azp `http://localhost:3000` and would be
+  minted on Polymath at :3000 carry azp `http://localhost:3000` and would be
   rejected. `.env.axiom` sets
   `CC_CLERK_AUTHORIZED_PARTIES=["http://localhost:3001","http://localhost:3000"]`
   (env-parameterized at `compose.yaml:17`; donor repo untouched). The var is
   empty in CC's committed `.env`, so `.env.axiom` is the canonical source.
-- Final port map: Axiom :3000, neuralflow web :3010, CC web :3001, alfred web :3020,
+- Final port map: Polymath :3000, neuralflow web :3010, CC web :3001, alfred web :3020,
   alfred API :8000, CC API :8001, alfred PG :5433.
 - `make up` / `make up-alfred` / `make up-cc` / `make up-neuralflow` targets +
   one `make status` that pings all four health endpoints.
-- Bare `npm run dev` per-app fallback documented in Axiom README.
+- Bare `npm run dev` per-app fallback documented in Polymath README.
 
 ## 5. Branding/UX Consolidation
 
@@ -118,7 +118,7 @@ YAML — every donor port is already env-parameterized, verified at
   shape); per-app wrappers stay thin.
 - Iframe note (D2, review decision): iframed donor screens may hit Chrome
   third-party cookie partitioning (blank/logged-out frame). Accepted v1 risk for
-  local solo dev; fallback documented in Axiom README — open the donor origin
+  local solo dev; fallback documented in Polymath README — open the donor origin
   directly (first-party) once, then the iframe inherits a valid partitioned
   session; otherwise run `make up-<donor>` and open the screen at the donor origin.
 
@@ -131,7 +131,7 @@ YAML — every donor port is already env-parameterized, verified at
   and a live Clerk session, so it is unrunnable in CI even once git exists.
   Run it via
   `smoke/README` after `make up`.
-- Donor repos keep their own suites; Axiom adds only its own lint/typecheck.
+- Donor repos keep their own suites; Polymath adds only its own lint/typecheck.
 
 ## 8. Explicitly Skipped (YAGNI, v2 candidates)
 
@@ -145,16 +145,16 @@ YAML — every donor port is already env-parameterized, verified at
 
 ## Decision ledger
 
-### R1: File/directory arrangement of Axiom scope
+### R1: File/directory arrangement of Polymath scope
 Finding: complexity gate, 8+ proposed files (plan-eng-review Scope Challenge B)
 Plan baseline: §3–§7 as originally proposed (~18 files, single Next.js app)
 Runtime evidence: n/a (new project, no existing code)
 Comparison grid: A) original single-app arrangement ~18 files / B) smaller split (workspace route-group + per-domain clients) ~24 files; same feature set both
-Question D1: Axiom scope structure: original single-app arrangement or a smaller split?
+Question D1: Polymath scope structure: original single-app arrangement or a smaller split?
 Header: Structure
 Options:
 A) Original arrangement (recommended)
-Keep the single Next.js app: ~18 files (7 screens, 3 backend clients, shell, theme, compose, Makefile, health, smoke test). All donor repos untouched; everything in Axiom.
+Keep the single Next.js app: ~18 files (7 screens, 3 backend clients, shell, theme, compose, Makefile, health, smoke test). All donor repos untouched; everything in Polymath.
 B) Smaller arrangement
 Same feature set, but reorganize: split screens into a workspace/ dir separate from embed host and api proxy, and split backend clients per-domain. More files, marginal organization gain.
 
@@ -181,56 +181,56 @@ Drop iframes from v1; only adapt-screen approach. Smallest risk but loses access
 
 State: approved
 Actual answer: A — "Accept risk, document fallback (recommended)" (AskUserQuestion D2)
-Accepted scope: iframes kept; risk documented in Axiom README (§6 iframe note added to the spec).
+Accepted scope: iframes kept; risk documented in Polymath README (§6 iframe note added to the spec).
 History: raised as P1 finding with 9/10 confidence from web research (Chrome 2024+ cookie partitioning).
 
-### R3: Neuralflow API authentication from Axiom
+### R3: Neuralflow API authentication from Polymath
 Finding: P1, confidence 9/10 — spec line 52 claimed neuralflow API routes are
 token-optional; actually `neuralflow/src/middleware.ts` runs clerkMiddleware on
 `/(api|trpc)(.*)` and returns 401 JSON without a session (plan-eng-review Architecture)
 Plan baseline: spec's original "called directly, token-optional" claim
 Runtime evidence: read `neuralflow/src/middleware.ts` (clerkMiddleware, matcher `/(api|trpc)(.*)`, `NextResponse.json({message:"Unauthorized"},{status:401})` when `!userId`)
 Comparison grid: A) forward incoming request cookies in proxy / B) DEV_AUTH_BYPASS=1 env only (donor-defined dev loophole) / C) both
-Question D4: Neuralflow API 401s: how does Axiom authenticate to neuralflow?
+Question D4: Neuralflow API 401s: how does Polymath authenticate to neuralflow?
 Header: NF auth forward
 Options:
 A) Forward cookies in proxy (recommended)
-Axiom's /api proxy reads the incoming request's cookies and forwards them to neuralflow (~2 lines). Works in dev/production parity; donor untouched; matches shared-Clerk choice.
+Polymath's /api proxy reads the incoming request's cookies and forwards them to neuralflow (~2 lines). Works in dev/production parity; donor untouched; matches shared-Clerk choice.
 B) DEV_AUTH_BYPASS=1 env only
-Axiom's dev env sets the donor bypass flag. Zero code but dev-only and couples Axiom to a donor flag.
+Polymath's dev env sets the donor bypass flag. Zero code but dev-only and couples Polymath to a donor flag.
 C) Both, env as fallback
 Cookie forwarding plus documented DEV_AUTH_BYPASS=1 fallback for when Clerk keys aren't configured.
 
 State: approved
 Actual answer: A — "Forward cookies in proxy (recommended)" (AskUserQuestion D4)
-Accepted scope: spec §3 corrected — Axiom proxy forwards Clerk cookies to neuralflow; donor repos untouched.
+Accepted scope: spec §3 corrected — Polymath proxy forwards Clerk cookies to neuralflow; donor repos untouched.
 History: spec line 52 corrected per Architecture finding.
 
 ### R4: Deployment port overrides
-Finding: P2, confidence 8/10 — spec proposed Axiom-owned override YAML files;
+Finding: P2, confidence 8/10 — spec proposed Polymath-owned override YAML files;
 donor compose files already parameterize every port via env vars
 (alfred `ALFRED_POSTGRES_PORT`/`ALFRED_API_PORT`/`ALFRED_WEB_PORT` at
 docker-compose.yml:79/:293/:366, CC `API_PORT`/`WEB_PORT` at compose.yaml:177/:207)
 (plan-eng-review Architecture)
 Plan baseline: §4 as originally proposed (overrides/alfred.override.yml + compose merge)
 Runtime evidence: read both donor compose files; all needed ports are `${VAR:-default}` parameterized
-Comparison grid: A) one Axiom .env.axiom + --env-file (zero override files) / B) keep override YAML files (same coverage, more files)
-Question D5: Port overrides: env-file only, or Axiom-owned override YAML files too?
+Comparison grid: A) one Polymath .env.axiom + --env-file (zero override files) / B) keep override YAML files (same coverage, more files)
+Question D5: Port overrides: env-file only, or Polymath-owned override YAML files too?
 Header: Port overrides
 Options:
-A) One Axiom .env, no override files (recommended)
+A) One Polymath .env, no override files (recommended)
 One `.env.axiom` passed via `docker compose --env-file` per donor. Every needed port is verifiably env-parameterized in donor compose files.
 B) Keep override YAML files
-Keep `overrides/alfred.override.yml` merged via `-f` merge. Explicit in the Axiom repo but duplicates env-parameterized values.
+Keep `overrides/alfred.override.yml` merged via `-f` merge. Explicit in the Polymath repo but duplicates env-parameterized values.
 
 State: approved
-Actual answer: A — "One Axiom .env, no override files (recommended)" (AskUserQuestion D5)
-Accepted scope: §4 rewritten — .env.axiom + Makefile only, no override YAML, no compose.yaml in Axiom.
+Actual answer: A — "One Polymath .env, no override files (recommended)" (AskUserQuestion D5)
+Accepted scope: §4 rewritten — .env.axiom + Makefile only, no override YAML, no compose.yaml in Polymath.
 History: original §4 replaced per D5 answer.
 
 ### R5: Smoke test coverage expansion
 Finding: P2, confidence 7/10 — Test review coverage diagram shows cookie-forward
-(R3) and fetchWithStatus error paths are the two Axiom-only paths that would
+(R3) and fetchWithStatus error paths are the two Polymath-only paths that would
 silently regress; donor suites don't cover them (plan-eng-review Test review)
 Plan baseline: §7 smoke test = backends' health + Today/Inbox/Focus read paths
 Runtime evidence: n/a (new repo, no existing tests)
@@ -269,7 +269,7 @@ choice). Every accepted remedy cites its actual answer; no deferrals outstanding
 Synthesized from this review's findings. Each task derives from a specific
 finding above. Run with Claude Code or Codex; checkbox as you ship.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — Scaffold Axiom shell — init Next.js 16 app in `~/projects/axiom`, git-init, Axiom design tokens + sidebar shell with nav sections (Today, Inbox, Focus, Boards, Knowledge, Briefing, Jobs, Settings)
+- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — Scaffold Polymath shell — init Next.js 16 app in `~/projects/axiom`, git-init, Polymath design tokens + sidebar shell with nav sections (Today, Inbox, Focus, Boards, Knowledge, Briefing, Jobs, Settings)
   - Surfaced by: Architecture review / Scope Challenge B — original single-app arrangement approved (R1)
   - Files: `~/projects/axiom/{package.json,src/app/layout.tsx,src/app/globals.css,src/components/shell/*}`
   - Verify: `npm run build` passes; sidebar renders at :3000
@@ -278,14 +278,14 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Files: `src/lib/backend/{client,cc,alfred,neuralflow}.ts`, `Makefile` (contracts target)
   - Verify: typecheck passes; typecheck against generated CC types
 - [ ] **T3 (P1, human: ~1h / CC: ~5min)** — `.env.axiom` + Makefile — port map per §4 including `API_PORT=8001`, `ALFRED_POSTGRES_PORT=5433`, `CC_CLERK_AUTHORIZED_PARTIES=["http://localhost:3001","http://localhost:3000"]`
-  - Surfaced by: Architecture review (R4) + outside voice finding 1 — CC FastAPI azp allowlist rejects Axiom-minted sessions without the override
+  - Surfaced by: Architecture review (R4) + outside voice finding 1 — CC FastAPI azp allowlist rejects Polymath-minted sessions without the override
   - Files: `.env.axiom`, `Makefile` (up/up-*/status targets)
   - Verify: `make up` boots all four without port collisions; CC API reachable on :8001
-- [ ] **T4 (P1, human: ~4h / CC: ~45min)** — Clerk wiring — Axiom `src/proxy.ts` (clerkMiddleware), shared Clerk publishable key from one instance across Axiom, and verify all three donors point at that same instance; `/api/[...proxy]` forwards incoming cookies (R3)
+- [ ] **T4 (P1, human: ~4h / CC: ~45min)** — Clerk wiring — Polymath `src/proxy.ts` (clerkMiddleware), shared Clerk publishable key from one instance across Polymath, and verify all three donors point at that same instance; `/api/[...proxy]` forwards incoming cookies (R3)
   - Surfaced by: Architecture review (R3/D4) + outside voice finding 3 — unverified shared-instance assumption
   - Files: `src/proxy.ts`, `src/app/api/[...proxy]/route.ts`, `.env.axiom`
-  - Verify: sign in on Axiom → neuralflow API call returns 200 (not 401)
-- [ ] **T5 (P2, human: ~2h / CC: ~20min)** — Adapt core screens — Today, Inbox, Focus, Boards, Knowledge, Jobs from donor page components (one donor source each per §5 screen map), swapped to Axiom backend clients
+  - Verify: sign in on Polymath → neuralflow API call returns 200 (not 401)
+- [ ] **T5 (P2, human: ~2h / CC: ~20min)** — Adapt core screens — Today, Inbox, Focus, Boards, Knowledge, Jobs from donor page components (one donor source each per §5 screen map), swapped to Polymath backend clients
   - Surfaced by: Screen map (v1) — Approach B reuse-first adaptation
   - Files: `src/app/{today,boards,knowledge,jobs}/page.tsx` etc.
   - Verify: each screen renders real donor data through its backend client
@@ -298,10 +298,10 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Files: `src/app/embed/[app]/page.tsx`, README (fallback instructions)
   - Verify: donor frame renders; blank-frame fallback path documented
 - [ ] **T8 (P2, human: ~2h / CC: ~30min)** — Integration smoke test — health of all three backends + Today/Inbox/Focus reads + cookie-forward to neuralflow + backend-down status card; manual-only, run after `make up` (§7)
-  - Surfaced by: Test review (R5) — Axiom-only paths with no upstream coverage
+  - Surfaced by: Test review (R5) — Polymath-only paths with no upstream coverage
   - Files: `smoke/axiom-smoke.ts`, `smoke/README`
   - Verify: `make up` then run smoke — all checks pass including the CC azp path (T3)
-- [ ] **T9 (P3, follow-up TODO)** — Second donor composition for Today (neuralflow scheduler queried by the Axiom Today screen) once the CC-based path is live
+- [ ] **T9 (P3, follow-up TODO)** — Second donor composition for Today (neuralflow scheduler queried by the Polymath Today screen) once the CC-based path is live
   - Surfaced by: Outside voice finding 4 — one donor source per screen in v1; second source is composition
   - Files: `src/app/today/page.tsx`
   - Verify: Today renders both data sources
@@ -317,14 +317,14 @@ _No new tasks from Performance review — both P3 findings were no-action (unkno
 
 ## What already exists (reuse map)
 
-- **CC frontend types pipeline** (`make contracts` → OpenAPI types) — reused as-is by Axiom (T2). Code Quality decision: shared `fetchWithStatus()` helper is new in Axiom; per-app wrappers stay thin.
+- **CC frontend types pipeline** (`make contracts` → OpenAPI types) — reused as-is by Polymath (T2). Code Quality decision: shared `fetchWithStatus()` helper is new in Polymath; per-app wrappers stay thin.
 - **Donor page components** — copied + restyled per screen (T5); neuralflow and alfred already share shadcn/Tailwind vocabulary, so the theme transfer is mechanical.
-- **Donor compose env-parameterization** — verified at `alfred/docker-compose.yml:79/:293/:366` and `compose.yaml:156/:177/:207`; Axiom's `.env.axiom` overrides values rather than re-declaring services (R4/D5).
-- **Donor suites** — kept and run at their own pace (§7); Axiom adds only lint/typecheck + its own smoke test.
+- **Donor compose env-parameterization** — verified at `alfred/docker-compose.yml:79/:293/:366` and `compose.yaml:156/:177/:207`; Polymath's `.env.axiom` overrides values rather than re-declaring services (R4/D5).
+- **Donor suites** — kept and run at their own pace (§7); Polymath adds only lint/typecheck + its own smoke test.
 
 ## Failure modes (new paths)
 
-- **CC API 401 via azp mismatch** (T3): CC FastAPI rejects Axiom-minted JWTs when the authorized-parties allowlist omits :3000. Covered by T3's `.env.axiom` + T8 smoke test. Users see 401 card → clear, not silent.
+- **CC API 401 via azp mismatch** (T3): CC FastAPI rejects Polymath-minted JWTs when the authorized-parties allowlist omits :3000. Covered by T3's `.env.axiom` + T8 smoke test. Users see 401 card → clear, not silent.
 - **Neuralflow API 401 with cookies not forwarded** (T4/T8): proxy drops cookies. Covered by R3 design + smoke test. 401 card → clear.
 - **Backend-down crash** (T6): a fetch throw escapes `fetchWithStatus()`. Covered by try/catch shape + critical path 3 test. Status card → clear.
 - **Iframe blank from cookie partitioning** (T7): Chrome partitions third-party cookies, frame renders logged out. Accepted v1 risk (D2); README fallback documented. User sees blank frame — **flag: no test and no in-product error handling relies on it; silent to the app, mitigated by documentation.** Watch this in v1 dogfooding.

@@ -160,7 +160,7 @@ export async function captureUrl(
   const verdict = validateFile(fetched.bytes);
   if (!verdict.ok) {
     const error = verdict.reason === "unidentified"
-      ? "That address is not a PDF, an image, or a web page, which are the types Axiom can read today."
+      ? "That address is not a PDF, an image, or a web page, which are the types Polymath can read today."
       : verdict.reason === "empty_file" ? "The address returned an empty file." : "That file is larger than the 4 MB limit.";
     await recordFetchFailure(auth, documentId, sourceUrl, error);
     return { ok: false, documentId, error };

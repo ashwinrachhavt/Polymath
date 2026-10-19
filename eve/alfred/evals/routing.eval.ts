@@ -16,7 +16,7 @@ import { fixtureDecider } from "./harness";
  * directly with a fixture decision model. The framework pipeline is real; only
  * the decider is a fixture.
  *
- * What is under test is Axiom's half: the allowlist is closed, and a decider that
+ * What is under test is Polymath's half: the allowlist is closed, and a decider that
  * answers outside it does not get a model. Swapping the fixture for
  * `typesafe-ai/jev` in `harness.ts` changes nothing else.
  */
@@ -33,7 +33,7 @@ const ROUTING_QUESTION = {
 };
 
 /*
- * Axiom's routing guard, layered on the decision pipeline. `decide` already
+ * Polymath's routing guard, layered on the decision pipeline. `decide` already
  * rejects a choice the question never offered (verified: an off-allowlist answer
  * throws `Question "route" selected an unknown option.`). This adds the same
  * guarantee for the fallback path `auto()` takes on a decider error: the model

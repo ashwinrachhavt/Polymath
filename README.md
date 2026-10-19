@@ -1,4 +1,4 @@
-# Axiom
+# Polymath
 
 Personal command center and knowledge operating system. A Next.js 16 modular
 monolith on Vercel with Neon Postgres as the system of record.

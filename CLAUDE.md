@@ -1,4 +1,4 @@
-# Axiom
+# Polymath
 
 Personal OS consolidating command-center, alfred, and neuralflow. This repo is
 the consolidation itself — a Next.js 16 modular monolith on Vercel with Neon

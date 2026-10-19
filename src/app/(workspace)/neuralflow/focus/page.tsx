@@ -8,7 +8,7 @@ import { getAuthContext } from "@/lib/auth";
 import { NeuralFlowFeatureLinks } from "../work/work-today";
 import { ActiveSessionControls, StartSessionForm } from "./focus-controls";
 
-export const metadata = { title: "Focus · Axiom" };
+export const metadata = { title: "Focus · Polymath" };
 
 /*
  * Durable focus (ASH-137 A09): the session lives in Postgres, not the

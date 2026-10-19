@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PageHeader, Section } from "@/components/page-header";
 import { additionalDestinationsIn, apps, destinationsIn } from "@/lib/navigation";
 
-export const metadata = { title: "More · Axiom" };
+export const metadata = { title: "More · Polymath" };
 
 /*
  * The mobile overflow: the three apps, then every destination in each, read

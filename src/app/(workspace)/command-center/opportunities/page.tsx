@@ -27,7 +27,7 @@ import {
   StageSelect,
 } from "./opportunity-controls";
 
-export const metadata = { title: "Opportunities · Axiom" };
+export const metadata = { title: "Opportunities · Polymath" };
 
 /*
  * Canonical pipeline (ASH-139 C02): opportunities read from Postgres, stage

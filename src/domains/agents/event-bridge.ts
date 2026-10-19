@@ -13,7 +13,7 @@ import {
 
 /*
  * The event bridge: the one place eve's observe-only stream events become
- * durable Axiom rows. `run_events` is the timeline the UI reloads from and the
+ * durable Polymath rows. `run_events` is the timeline the UI reloads from and the
  * SSE cursor, so its sequence claim has to survive eve's at-least-once hook
  * delivery — a replayed event must not double-write, and two writers must not
  * pick the same number.

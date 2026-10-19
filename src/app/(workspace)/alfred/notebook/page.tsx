@@ -12,7 +12,7 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 
-export const metadata = { title: "Notebook · Axiom" };
+export const metadata = { title: "Notebook · Polymath" };
 
 /*
  * The notebook on the canonical artifact rows (ASH-141 / B04): the list,

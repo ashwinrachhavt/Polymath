@@ -7,7 +7,7 @@ import { CoachMark } from "@/components/shell/coach-mark";
 import { ClaimShardButton } from "./claim-button";
 import { DefinitionForm } from "./definition-form";
 
-export const metadata = { title: "Stones & rewards · Axiom" };
+export const metadata = { title: "Stones & rewards · Polymath" };
 
 /*
  * The stone collection, durable (ASH-137 A10): totals are derived from the

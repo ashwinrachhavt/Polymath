@@ -15,7 +15,7 @@ import {
   type LibraryRow,
 } from "@/domains/knowledge/reading";
 
-export const metadata = { title: "Library · Axiom" };
+export const metadata = { title: "Library · Polymath" };
 
 /*
  * D18 (ASH-144): the reading library over canonical documents - what to

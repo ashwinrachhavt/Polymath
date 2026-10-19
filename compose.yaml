@@ -64,7 +64,7 @@ services:
     networks:
       - search
 
-  # Firecrawl's own rate limiter cache. Separate from anything Axiom stores.
+  # Firecrawl's own rate limiter cache. Separate from anything Polymath stores.
   redis-search:
     image: redis:alpine
     container_name: axiom-redis-search

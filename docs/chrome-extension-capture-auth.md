@@ -1,4 +1,4 @@
-# Chrome extension → Axiom capture: how auth resolves, and what is missing
+# Chrome extension → Polymath capture: how auth resolves, and what is missing
 
 Status note, 2026-10-19. Source citations are `file:line` against the repo at
 `feat/ui-simplification-pass`.
@@ -74,7 +74,7 @@ atomic upsert into `api_client_usage` (`src/domains/identity/machine.ts:17`,
 4. **Wrong origin in the manifest.** The vendored extension only grants
    `http://localhost:8000/*` and `http://localhost:3001/*`
    (`extensions/chrome/manifest.json:8-9`) and defaults to `localhost:8000`
-   (`extensions/chrome/api.js:8`, `extensions/chrome/sidepanel.js:23`). Axiom's
+   (`extensions/chrome/api.js:8`, `extensions/chrome/sidepanel.js:23`). Polymath's
    dev server is Next on **3000**.
 
 ## (c) Smallest correct path, with tradeoffs
@@ -85,7 +85,7 @@ atomic upsert into `api_client_usage` (`src/domains/identity/machine.ts:17`,
 `clerkClient.apiKeys.create/get/revoke/verify`
 (`node_modules/.pnpm/@clerk+backend@3.23.2.../dist/api/endpoints/APIKeysApi.d.ts:53-99`;
 `APIKey` carries `subject`, `scopes`, `secret`
-`.../dist/api/resources/APIKey.d.ts:5-37`). Clerk verifies the token; Axiom
+`.../dist/api/resources/APIKey.d.ts:5-37`). Clerk verifies the token; Polymath
 then maps the subject onto an `api_clients` row as it already does
 (`src/lib/auth.ts:88-99`).
 
@@ -93,7 +93,7 @@ then maps the subject onto an `api_clients` row as it already does
 - Requires: a one-time create call (script or a Settings action) that mints a
   Clerk API key **and** inserts the matching `api_clients` row with
   `tokenHash = keyId`, `kind: "companion"`, `status: "active"`.
-- Tradeoff: two systems to keep in sync (Clerk key + Axiom row). The `tokenHash`
+- Tradeoff: two systems to keep in sync (Clerk key + Polymath row). The `tokenHash`
   column stores the Clerk *subject id*, not a hash of the secret
   (`src/domains/identity/machine.ts:29-33`, `:46`) — name is a misnomer worth
   documenting. Revocation must happen in both places.
@@ -138,6 +138,6 @@ header as in `files` (`src/app/api/v1/files/route.ts:54-57`). `createCapture`
 does **not** use it today; a companion retry needs either that or the URL
 uniqueness to prevent duplicates.
 
-Also required: add the Axiom origin to `host_permissions`, point
+Also required: add the Polymath origin to `host_permissions`, point
 `_defaultUrl` at it, and add a CORS/`OPTIONS` handler for the content-script
 fetches.
