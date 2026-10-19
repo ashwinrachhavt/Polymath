@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, Share2, X } from "lucide-react";
+import { Archive, Download, ExternalLink, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import { kindLabel, type BrowserRow } from "@/domains/knowledge/file-browser";
 import type { DocumentPreview } from "@/domains/knowledge/file-preview";
+import { archiveDocumentAction, restoreDocumentVersionAction } from "../library/actions";
+import { downloadPacketAction } from "./actions";
 import { PartyBlocks } from "./party-blocks";
 
 type Tab = "details" | "evidence" | "versions" | "activity";
@@ -35,6 +37,8 @@ export function PreviewPane({
   onUntag,
   onClose,
   onShare,
+  onChanged,
+  onArchived,
 }: {
   row: BrowserRow;
   folders: Array<{ id: string; name: string; depth: number }>;
@@ -43,7 +47,10 @@ export function PreviewPane({
   onUntag: (tag: string) => void;
   onClose: () => void;
   onShare: () => void;
+  onChanged: (message: string) => void;
+  onArchived: (message: string) => void;
 }) {
+  const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("details");
   const [tagDraft, setTagDraft] = useState("");
   const [load, setLoad] = useState<Load>(() => {
@@ -66,6 +73,31 @@ export function PreviewPane({
       });
     return () => controller.abort();
   }, [row.id]);
+
+  async function restore(extractionId: string, version: number) {
+    setBusy(true);
+    const result = await restoreDocumentVersionAction({ documentId: row.id, extractionId, expectedVersion: version });
+    setBusy(false);
+    if (result.ok) {
+      invalidatePreview(row.id);
+      onChanged("Version restored.");
+    } else onChanged(result.error);
+  }
+  async function packet() {
+    setBusy(true);
+    const result = await downloadPacketAction(row.id, row.title);
+    setBusy(false);
+    if (result.ok) window.location.assign(result.downloadPath);
+    else onChanged(result.error);
+  }
+  async function archive(version: number) {
+    if (!window.confirm(`Archive "${row.title}"? Its reviewed evidence is retracted; the rows are kept.`)) return;
+    setBusy(true);
+    const result = await archiveDocumentAction({ documentId: row.id, expectedVersion: version });
+    setBusy(false);
+    if (result.ok) onArchived("Archived.");
+    else onChanged(result.error);
+  }
 
   const data = load.id === row.id && load.state === "ready" ? load.data : null;
   const tabs: Array<[Tab, string]> = [
@@ -99,6 +131,12 @@ export function PreviewPane({
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onShare}>
           <Share2 aria-hidden className="size-3.5" /> Share
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void packet()}>
+          <Download aria-hidden className="size-3.5" /> Packet
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || !data} onClick={() => data && void archive(data.review.document.version)}>
+          <Archive aria-hidden className="size-3.5" /> Archive
         </Button>
         {row.sourceUrl ? (
           <a href={row.sourceUrl} target="_blank" rel="noreferrer noopener" aria-label="Open original page" className="hover:bg-muted ml-auto rounded p-1.5">
@@ -207,7 +245,9 @@ export function PreviewPane({
                   <div className="flex items-baseline justify-between gap-2">
                     <Readout className="text-muted-foreground text-xs">{stamp.format(new Date(v.at))}</Readout>
                     <span className="flex gap-1.5">
-                      {v.current ? <Badge variant="default">Current</Badge> : null}
+                      {v.current ? <Badge variant="default">Current</Badge> : v.status === "succeeded" ? (
+                        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void restore(v.extractionId, data.review.document.version)}>Restore</Button>
+                      ) : null}
                       <Badge variant={v.status === "failed" ? "destructive" : "outline"}>{v.status}</Badge>
                     </span>
                   </div>
@@ -218,7 +258,7 @@ export function PreviewPane({
                   </span>
                 </li>
               ))}
-              <li className="text-muted-foreground text-xs">Re-reading adds a version; none is edited or overwritten. Restoring an older version is not available yet.</li>
+              <li className="text-muted-foreground text-xs">Re-reading adds a version; none is edited or overwritten. Restoring an older version moves the current pointer and is logged.</li>
             </ol>
           )
         ) : data.activity.length === 0 ? (

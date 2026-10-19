@@ -704,7 +704,7 @@ export function FileExplorer({
         </p>
       </section>
 
-      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} folders={tree} onMove={(id) => void move([activeRow.id], id)} onTag={(t) => { invalidatePreview(activeRow.id); return organise(() => addTagAction([activeRow.id], t), "Tagged."); }} onUntag={(t) => { invalidatePreview(activeRow.id); void organise(() => removeTagAction([activeRow.id], t), "Tag removed."); }} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} /> : null}
+      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} folders={tree} onMove={(id) => void move([activeRow.id], id)} onTag={(t) => { invalidatePreview(activeRow.id); return organise(() => addTagAction([activeRow.id], t), "Tagged."); }} onUntag={(t) => { invalidatePreview(activeRow.id); void organise(() => removeTagAction([activeRow.id], t), "Tag removed."); }} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} onChanged={(m) => { setNotice(m); router.refresh(); }} onArchived={(m) => { const gone = activeRow.id; setRows((c) => c.filter((r) => r.id !== gone)); setActive(null); setNotice(m); router.refresh(); }} /> : null}
       <ShareDialog open={shareOpen} onOpenChange={setShareOpen} rows={selectedRows.length > 0 ? selectedRows : activeRow ? [activeRow] : []} />
     </div>
   );

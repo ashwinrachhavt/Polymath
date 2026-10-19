@@ -41,7 +41,6 @@ export async function getDocumentPreview(auth: AuthContext, documentId: string):
   ]);
 
   const text = readable[0]?.text?.trim();
-  const newestOk = versions.find((v) => v.status === "succeeded")?.extractionId;
   return {
     review,
     excerpt: text ? text.slice(0, EXCERPT_CHARS) : null,
@@ -53,7 +52,7 @@ export async function getDocumentPreview(auth: AuthContext, documentId: string):
       reader: v.proposer,
       hash: v.contentHash.slice(0, 8),
       error: v.error,
-      current: v.extractionId === newestOk,
+      current: v.isCurrent,
     })),
   };
 }
