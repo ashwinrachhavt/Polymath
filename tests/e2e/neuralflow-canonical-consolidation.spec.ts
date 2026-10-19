@@ -63,3 +63,32 @@ test("canonical task deep links open the inspector and Focus retains its actual 
   await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Stone collection", exact: true }).last()).toHaveAttribute("href", "/apps/neuralflow/rewards");
 });
+
+
+test("a task deep link opens a controlled inspector and closing it clears only the task parameter", async ({ page }) => {
+  await page.goto("/neuralflow/work?view=list&task=task-architecture");
+  await waitSettled(page);
+  await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Inspect / })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeHidden();
+  await expect(page).toHaveURL(/\/neuralflow\/work\?view=list$/);
+  await expect(page.locator('[data-task-trigger="task-architecture"]')).toBeFocused();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Task queue", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Task inspector" })).toHaveCount(0);
+});
+
+test("the stone collection is the durable catalog: definitions are saved, but the ledger awards nothing while earning rules are off", async ({ page }) => {
+  await page.goto("/apps/neuralflow/rewards");
+  await waitSettled(page);
+  await expect(page.getByRole("heading", { name: "Stone collection", exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
+  // Defining a catalog row changes no balances: the ledger stays empty.
+  await page.getByLabel("Key").fill("quartz");
+  await page.getByLabel("Label", { exact: true }).fill("Quartz");
+  await page.getByLabel("Points").fill("10");
+  await page.getByRole("button", { name: "Define reward", exact: true }).click();
+  await expect(page.getByText("quartz", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
+});
