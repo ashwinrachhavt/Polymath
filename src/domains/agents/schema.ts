@@ -14,6 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
+import { memberships } from "../identity/schema";
 import { artifacts } from "../knowledge/schema";
 
 /*
@@ -89,6 +90,62 @@ export const agentProfiles = pgTable(
     uniqueIndex("agent_profiles_workspace_name_key").on(t.workspaceId, t.name),
     // Target for composite same-workspace foreign keys (migration 0150).
     unique("agent_profiles_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
+);
+
+/*
+ * ASH-122 GA01: agent and service principals. An agent run acts under a
+ * principal, never as a person: principals are not memberships, hold no role
+ * and no implicit authority - every bit of authority arrives through a
+ * delegation grant (agent_delegation_grants) from a human membership. A
+ * service principal is the owned identity scheduled automation runs as
+ * (ADR 0002: never the last editor's ambient account); its accountable human
+ * is `ownerMembershipId`, required for every kind.
+ *
+ * The key is immutable (there is no update path for it). Status is a
+ * lifecycle: suspended pauses, revoked is a permanent kill switch - a
+ * revoked principal never comes back, so re-enabling automation is a new
+ * principal with its own grants.
+ *
+ * Default off: nothing in the request path resolves these rows yet. The Eve
+ * bridge and runtime admissions adopt them under ADR 0006 (PROPOSAL).
+ */
+export const agentPrincipalKind = pgEnum("agent_principal_kind", ["agent", "service_principal"]);
+export const agentPrincipalStatus = pgEnum("agent_principal_status", ["active", "suspended", "revoked"]);
+
+export const agentPrincipals = pgTable(
+  "agent_principals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Stable machine key, e.g. "alfred" or "nightly_briefing". Immutable once created. */
+    key: text("key").notNull(),
+    kind: agentPrincipalKind("kind").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    /** The profile whose revisions shape this principal's behavior, if any. */
+    agentProfileId: uuid("agent_profile_id"),
+    /** The accountable human. Every principal has one; scheduled work always has an active owner. */
+    ownerMembershipId: uuid("owner_membership_id").notNull(),
+    status: agentPrincipalStatus("status").notNull().default("active"),
+    ...mutable,
+  },
+  (t) => [
+    foreignKey({
+      name: "agent_principals_profile_fk",
+      columns: [t.workspaceId, t.agentProfileId],
+      foreignColumns: [agentProfiles.workspaceId, agentProfiles.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "agent_principals_owner_membership_fk",
+      columns: [t.workspaceId, t.ownerMembershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("restrict"),
+    uniqueIndex("agent_principals_workspace_key_key").on(t.workspaceId, t.key),
+    // Composite reference target: a delegation grant can only name a
+    // principal in its own workspace.
+    unique("agent_principals_workspace_id_id_key").on(t.workspaceId, t.id),
+    index("agent_principals_workspace_status_idx").on(t.workspaceId, t.status),
   ],
 );
 
