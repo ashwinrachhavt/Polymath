@@ -54,6 +54,7 @@ describe("ListToolbar", () => {
     search = "q=ada&status=open&page=2";
     const html = renderToStaticMarkup(h(ListToolbar, { searchPlaceholder: "Search people", filters: filters, total: 7, noun: "people" }));
     expect(html).toContain('value="ada"');
+    expect(html).toContain('aria-label="Filter by status"');
     expect(html).toContain('<option value="open" selected="">Open</option>');
     expect(html).toContain("Search: ada");
     expect(html).toContain("Status: Open");

@@ -123,7 +123,7 @@ export function ListToolbar({
         {filters.map((f) => (
           <Select
             key={f.key}
-            aria-label={f.label}
+            aria-label={`Filter by ${f.label.toLowerCase()}`}
             className="w-40"
             value={params.get(f.key) ?? ""}
             onChange={(e) => push({ [f.key]: e.target.value || undefined })}
