@@ -58,7 +58,12 @@ export function expandRecurrence(event: CalendarEvent, through: string): Calenda
   let date = event.date;
   for (let guard = 0; guard < 400 && date <= through; guard++) {
     if (!event.exceptionDates?.includes(date)) occurrences.push({ ...event, date, endDate: event.endDate ? shiftDate(date, length) : undefined });
-    const next = advanceRecurrence(date, event.recurrence);
+    // Expansion is pure: the series renders its past and future occurrences
+    // alike, so the "roll a stale schedule forward" rule inside
+    // advanceRecurrence must not see the real clock. Anchoring completedAt to
+    // the series start keeps every occurrence visible; the roll-forward is
+    // for completing tasks, not for drawing calendars.
+    const next = advanceRecurrence(date, event.recurrence, new Date(`${event.date}T12:00:00`));
     if (!next) break;
     date = next;
   }

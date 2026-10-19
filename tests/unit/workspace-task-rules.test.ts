@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CalendarEvent, Task, TaskStatus } from "@/components/workspace/types";
 import { advanceRecurrence, compareTasks, completionPatch, nextRank, recurrenceLabel, reorderTasks } from "@/components/workspace/tasks";
 import { createPreviewWorkspace } from "@/components/workspace/workspace-provider";
@@ -85,7 +85,17 @@ describe("preview workspace task mutations", () => {
     expect(moved?.rank).toBe(nextRank(waiting, "WAITING"));
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("advances a recurring task instead of closing it", () => {
+    // completeTask defaults completedAt to the real clock, and completing a
+    // stale weekly task correctly rolls forward past today - so the clock is
+    // pinned to the day after the due date, where 2026-10-18 is the next
+    // occurrence, or this test fails on every later date.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-12T12:00:00"));
     const workspace = createPreviewWorkspace("recurrence-owner", memoryStorage());
     const record = workspace.addTask("Weekly review", { status: "READY", dueDate: "2026-10-11", recurrence: { frequency: "weekly", interval: 1 } })!;
     workspace.completeTask(record.id);

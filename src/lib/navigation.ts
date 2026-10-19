@@ -15,6 +15,7 @@ import {
   SquareCheckBig,
   Target,
   Users,
+  Wallet,
 } from "lucide-react";
 
 /*
@@ -192,6 +193,14 @@ export const destinations: Destination[] = [
   },
 
   {
+    href: "/command-center/spending",
+    label: "Spending",
+    purpose: "See what paid work costs.",
+    icon: Wallet,
+    group: "command-center",
+  },
+
+  {
     href: "/neuralflow/work",
     label: "Work",
     purpose: "Execute your commitments.",
@@ -260,6 +269,7 @@ const featureRoutes: Record<string, string> = {
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships",
   "/apps/command-center/opportunities": "/command-center/opportunities",
+  "/apps/command-center/spending": "/command-center/spending",
   "/apps/command-center/reviews": "/reviews",
   "/apps/command-center/activity": "/activity",
   "/apps/command-center/settings": "/settings",
