@@ -175,6 +175,45 @@ export const resourceGrants = pgTable(
   ],
 );
 
+/*
+ * ASH-121 AC03: assignment of custom roles to memberships, workspace-wide
+ * (per-resource authority is resource_grants). Unassignment is a lifecycle
+ * event, not a delete: revoked rows stay for audit. NOTHING reads these rows
+ * for authorization yet - guards.ts RANK remains the only enforcement
+ * surface; the delegation limit in assignments.ts is the rule the future
+ * enforcement slice inherits.
+ */
+export const membershipRoleAssignments = pgTable(
+  "membership_role_assignments",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    membershipId: uuid("membership_id").notNull(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    ...mutable,
+  },
+  (t) => [
+    foreignKey({
+      name: "membership_role_assignments_membership_fk",
+      columns: [t.workspaceId, t.membershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "membership_role_assignments_role_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    // One active assignment of a role per membership; history accumulates as
+    // revoked rows, so re-assigning after a revoke is a fresh row.
+    uniqueIndex("membership_role_assignments_active_key")
+      .on(t.workspaceId, t.membershipId, t.roleDefinitionId)
+      .where(sql`revoked_at is null`),
+    index("membership_role_assignments_role_idx").on(t.workspaceId, t.roleDefinitionId).where(sql`revoked_at is null`),
+  ],
+);
+
 export const userPreferences = pgTable(
   "user_preferences",
   {
