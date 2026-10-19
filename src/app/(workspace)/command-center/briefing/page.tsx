@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { type BriefingTask, getBriefing } from "@/domains/work/briefing";
 import { getAuthContext } from "@/lib/auth";
+import { AgentPanels } from "./agent-panels";
 import { OutcomeButton } from "./briefing-client";
 
 export const metadata = { title: "Briefing · Axiom" };
@@ -70,6 +71,10 @@ async function Briefing() {
           />
         ) : null}
       </Panel>
+
+      <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the agents…</p>}>
+        <AgentPanels />
+      </Suspense>
 
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <Panel title="Today and overdue" description="Open work with a due date on or before today.">

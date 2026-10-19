@@ -111,6 +111,8 @@ export const actionProposals = pgTable(
     uniqueIndex("action_proposals_dedupe_key").on(t.workspaceId, t.dedupeKey),
     // Partial index: the Reviews queue is the pending rows.
     index("action_proposals_pending_idx").on(t.workspaceId, t.createdAt).where(sql`status = 'pending'`),
+    // The decided Reviews views filter on status and read newest first.
+    index("action_proposals_status_idx").on(t.workspaceId, t.status, t.createdAt),
   ],
 );
 
