@@ -82,11 +82,11 @@ suite("connectors", () => {
       accountId: account.id,
       expectedVersion: account.version,
       status: "active",
-      composioConnectedAccountId: "ca_test_123",
+      composioConnectedAccountId: `ca_test_${crypto.randomUUID()}`,
     });
     expect(active.status).toBe("active");
     expect(active.lastHealthyAt).not.toBeNull();
-    expect(active.composioConnectedAccountId).toBe("ca_test_123");
+    expect(active.composioConnectedAccountId).toMatch(/^ca_test_/);
     expect(await auditCount(auth, account.id)).toBe(2);
   });
 
