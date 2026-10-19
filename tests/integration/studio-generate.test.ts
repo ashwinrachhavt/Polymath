@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, embeddings, files } from "@/domains/knowledge/schema";
+import { documents, files } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -25,11 +25,9 @@ import { embedExtraction } from "@/domains/knowledge/embedding";
 import { saveGeneratedDraft, saveDraft, discardDraft, startStudioGenerate, StudioError } from "@/domains/knowledge/studio";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { recordRoundEvent } from "@/domains/agents/event-bridge";
-import { DossierError, attachDocuments, createDossier, dossierDocumentIds, listDossiers } from "@/domains/knowledge/dossiers";
-import { dossierSources } from "@/domains/knowledge/schema";
-import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
+import { createDossier } from "@/domains/knowledge/dossiers";
 import { ensureProfile } from "@/domains/agents/commands";
-import { agentProfiles, agentRuns, toolCalls } from "@/domains/agents/schema";
+import { agentRuns } from "@/domains/agents/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
 
 /** Deterministic embedder: words hash into buckets, so shared words mean closeness. */
@@ -64,7 +62,6 @@ beforeEach(() => {
 
 
 const LEASE = "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit. ".repeat(30);
-const PAYROLL = "Payroll runs on the fifteenth. Overtime is paid at one and a half times the hourly wage. ".repeat(30);
 
 async function seed(auth: { workspaceId: string; userId: string }, text: string, title: string, provider: EmbeddingProvider) {
   const db = holder.db!;

@@ -1,7 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { modelRateCards, spendingPolicies } from "./schema";
 
