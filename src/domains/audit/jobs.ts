@@ -37,7 +37,7 @@ export async function enqueueJob(
 ): Promise<{ enqueued: boolean; id: string }> {
   const [row] = await client<{ id: string }[]>`
     insert into jobs (workspace_id, kind, input, dedupe_key, priority, max_attempts, available_at, created_by, updated_by)
-    values (${input.workspaceId}, ${input.kind}, ${client.json(input.input as never)}, ${input.dedupeKey ?? null},
+    values (${input.workspaceId}, ${input.kind}, ${JSON.stringify(input.input)}::jsonb, ${input.dedupeKey ?? null},
             ${input.priority ?? 0}, ${input.maxAttempts ?? 5}, ${(input.availableAt ?? new Date()).toISOString()}::timestamptz,
             ${input.createdBy ?? null}, ${input.createdBy ?? null})
     on conflict (workspace_id, kind, dedupe_key) where dedupe_key is not null do nothing
@@ -118,12 +118,12 @@ async function finish(
 ): Promise<void> {
   const outcome = status === "queued" ? "failed" : status;
   const retryAt = extra.retryAt ? extra.retryAt.toISOString() : null;
-  const result = extra.result === undefined ? null : client.json(extra.result as never);
+  const result = extra.result === undefined ? null : JSON.stringify(extra.result);
   await client.begin(async (tx) => {
     const [row] = await tx<{ generation: number }[]>`
       update jobs
       set status = ${status},
-          result = ${result},
+          result = ${result}::jsonb,
           last_error = ${extra.error ?? null},
           available_at = coalesce(${retryAt}::timestamptz, available_at),
           finished_at = case when ${status} = 'queued' then null else now() end,
