@@ -6,19 +6,24 @@ Postgres + pgvector as the system of record, not a proxy layer over the donor
 backends. The donor repos (`~/Projects/{command-center,alfred,neuralflow}`) are
 frozen read-only references; never edit them.
 
-## The brain — loaded by default
+## The brain — read on demand
 
-These are the product, architecture, and stance documents. They are always in
-context, so treat them as binding rather than as background to search later.
-Where two disagree, the newer `docs/` document wins; where code and docs
+The product, architecture, and stance documents are binding, but they are **not**
+pre-loaded. Read the ones a task actually needs instead of expecting them in
+context. Where two disagree, the newer `docs/` document wins; where code and docs
 disagree, say so instead of silently following one.
 
-@docs/axiom-product-spec.md
-@docs/axiom-nextjs-neon-plan.md
+Pinned (small, always in context):
+
 @agents/README.md
 @agents/product.md
 @agents/engineering.md
-@agents/design.md
+
+Read on demand — pull in only when the task touches that area:
+
+- `docs/axiom-product-spec.md` — product behaviour, scope, user-facing contracts.
+- `docs/axiom-nextjs-neon-plan.md` — architecture, data model, Next.js/Neon plan.
+- `agents/design.md` — design language, components, visual stance.
 
 `docs/superpowers/specs/2026-10-10-axiom-consolidation-design.md` is an earlier
 iframe-over-donor-backends approach that the Next.js/Neon plan supersedes. It is
@@ -47,4 +52,43 @@ Key routing rules:
 
 ## Codebase Navigation — MANDATORY
 
-You MUST use codebase-index MCP tools FIRST when exploring or navigating the codebase. Only fall back to Read/Glob/Grep for non-code files (config, docs, frontmatter) or when codebase-index genuinely doesn't have what you need.
+You MUST use the Serena MCP tools for code navigation (symbol search, file
+outlines, finding references, symbol-level edits). They are token-efficient and
+exact. Fall back to Read/Glob/Grep only for non-code files (config, docs,
+frontmatter) or when Serena genuinely doesn't cover the case.
+
+## Token discipline — always on
+
+Context is the scarce resource. Every avoidable token is a token not spent on the
+task.
+
+- **Never read a whole file to find one thing.** Use Serena `find_symbol`,
+  `get_symbols_overview`, `find_referencing_symbols`, or a targeted Grep first.
+- **Do not re-read files you (or a previous tool) already read** in this session.
+  Reuse what is in context.
+- **Keep tool output small.** Prefer `head`/`--stat`/`git diff --stat`/counts over
+  full dumps. Pipe large command output through filters.
+- **Scope Bash.** Avoid `ls -R`, `cat` of large files, and recursive greps across
+  `node_modules`/`.next`; target paths explicitly.
+- **Batch edits.** Make one edit that changes several lines rather than many
+  single-line edits to the same file.
+- **Don't paste large blobs back.** Summarise; reference file paths.
+- **Sub-agents for breadth.** Delegate wide searches/reads to a sub-agent so their
+  intermediate output doesn't land in the main window.
+- **Loaded docs are opt-in.** See "The brain — read on demand" above; don't pull
+  in a long spec unless the task needs it.
+- **Bash output is auto-compressed.** A `rtk` PreToolUse hook rewrites shell
+  commands (e.g. `git status` → `rtk git status`) to filter output before it
+  reaches you. Use shell commands for their compact form; don't fight the hook.
+
+## Output style — terse
+
+Write like a senior engineer, not a blog post. Token discipline applies to *your*
+output too.
+
+- No preamble, no "Great question", no restating the request, no summary of what
+  you're about to do. Start with the answer or the action.
+- Full sentences only where they carry meaning; prefer short imperative bullets.
+- Code, commands, paths, and error text stay exact — never abbreviate those.
+- No closing pleasantries or offers to help further.
+- One-line status updates while working; expand only when asked.

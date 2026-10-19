@@ -23,11 +23,34 @@ const isPublicRoute = createRouteMatcher([
 
 export default clerkConfigured
   ? clerkMiddleware(async (auth, request) => {
+      // A CORS preflight carries no credentials by design (the browser has not
+      // sent the token yet), so protecting it makes every cross-origin call
+      // impossible. The route's own OPTIONS handler answers it.
+      if (request.method === "OPTIONS") return;
       if (!isPublicRoute(request)) {
         if (isApiRoute(request)) {
-          // Match getAnyAuthContext's supported identities. Browser routes
-          // remain session-only; API clients still need domain authorization.
-          await auth.protect({ token: ["session_token", "m2m_token", "api_key"] });
+          // Match getAnyAuthContext's supported identities. An API caller gets
+          // a 401 problem, not a sign-in redirect: a redirect carries no CORS
+          // headers and surfaces to a fetch as an opaque network failure.
+          //
+          // An Axiom-issued companion bearer is verified by the route itself
+          // (src/lib/auth.ts), not by Clerk, so the edge lets it through and
+          // the route is the one that decides.
+          const companionBearer = /^Bearer\s+\S+$/.test(request.headers.get("authorization") ?? "");
+          const session = companionBearer
+            ? { isAuthenticated: true }
+            : await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
+          if (!session.isAuthenticated) {
+            return NextResponse.json(
+              {
+                type: "https://axiom.dev/problems/unauthorized",
+                code: "unauthorized",
+                title: "Sign in to use this endpoint.",
+                status: 401,
+              },
+              { status: 401, headers: { "content-type": "application/problem+json" } },
+            );
+          }
         } else {
           await auth.protect();
         }

@@ -18,11 +18,12 @@ export default function Inbox() {
   const captures = state.captures.filter((capture) => filter === "All" || capture.status === filter);
   const pending = state.captures.filter((capture) => capture.status === "UNPROCESSED").length;
 
-  return <Screen title="Inbox" description="Clarify before committing. Original text and attachments stay here after conversion. This inbox is a browser preview, not a connected mailbox." actions={<Status>{pending} to clarify</Status>}>
+  return <Screen title="Inbox" description="Clarify before committing. Original text and attachments stay here after conversion. This inbox is a browser preview, not a connected mailbox." actions={<><Status>{pending} to clarify</Status><Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Open durable inbox</Link></Button></>}>
     <Panel title="Capture material" description="Paste text or a URL. Remote content is not fetched.">
       <form className="grid gap-3" onSubmit={(event) => {
         event.preventDefault();
         if (addCapture(text, /^https?:\/\//i.test(text.trim()) ? "url" : "text")) { setText(""); setFilter("UNPROCESSED"); notify("Item added to the preview inbox."); }
+        else notify("This capture was not saved. Another tab may have changed the workspace; your text is still in the form.");
       }}>
         <Field label="Original material"><Textarea required maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="Paste a thought, source excerpt, or URL" /></Field>
         <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Use Capture in the header to attach a local file.</p><Button type="submit" disabled={!text.trim()}>Capture to inbox</Button></div>

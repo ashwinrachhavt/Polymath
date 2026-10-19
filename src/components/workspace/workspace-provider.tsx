@@ -170,7 +170,10 @@ function updateArtifact(id: string, patch: Partial<Artifact>) {
 function addCapture(text: string, kind: Capture["kind"] = "text", attachment?: Capture["attachment"]) {
   const record: Capture = { id: crypto.randomUUID(), text: text.trim(), kind, status: "UNPROCESSED", createdAt: new Date().toISOString(), attachment };
   if (!record.text) return undefined;
-  const result = commit({ ...getSnapshot(), captures: [record, ...snapshot.captures] }, "Item captured", record.text);
+  getSnapshot();
+  // Expected raw is read before commit() refreshes it, so the stale-tab check
+  // compares against what this caller actually observed.
+  const result = commitWithExpected(observedRaw, { ...snapshot, captures: [record, ...snapshot.captures] }, "Item captured", record.text);
   return result.ok ? record : undefined;
 }
 function clarifyCapture(id: string, kind: "task" | "note") {

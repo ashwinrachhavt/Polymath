@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Axiom - Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div id="popup">
+      <header id="popup-header">
+        <div class="logo">
+          <span class="logo-icon">A</span>
+          <span class="logo-text">Axiom</span>
+        </div>
+        <div id="status-dot" title="Checking..."></div>
+      </header>
+
+      <section id="current-page">
+        <label class="section-label">Current Page</label>
+        <p id="page-url" class="page-url">Loading...</p>
+      </section>
+
+      <section id="quick-actions">
+        <button id="btn-capture" class="btn btn-primary btn-block">
+          Capture Page
+        </button>
+        <button id="btn-open-alfred" class="btn btn-secondary btn-block">
+          Open Axiom
+        </button>
+        <button id="btn-dashboard" class="btn btn-secondary btn-block">
+          Open Dashboard
+        </button>
+      </section>
+
+      <section id="quick-note">
+        <label class="section-label">Quick Note</label>
+        <textarea
+          id="note-input"
+          placeholder="Type a quick note..."
+          rows="4"
+        ></textarea>
+        <button id="btn-save-note" class="btn btn-primary btn-block">
+          Save Note
+        </button>
+      </section>
+
+      <section id="settings-section">
+        <label class="section-label">Settings</label>
+        <div class="setting-row">
+          <label for="api-url-input" class="setting-label">API Base URL</label>
+          <input
+            type="text"
+            id="api-url-input"
+            placeholder="http://localhost:3000"
+          />
+        </div>
+        <div class="setting-row">
+          <label for="api-token-input" class="setting-label">Access token</label>
+          <input
+            type="password"
+            id="api-token-input"
+            placeholder="From pnpm companion:pair"
+          />
+        </div>
+        <button id="btn-save-settings" class="btn btn-sm btn-secondary">
+          Save Settings
+        </button>
+      </section>
+
+      <footer id="popup-footer">
+        <span class="footer-hint">Alt+N to toggle dock on any page</span>
+      </footer>
+    </div>
+    <script src="api.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

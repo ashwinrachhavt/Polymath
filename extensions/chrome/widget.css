@@ -1,0 +1,570 @@
+/*
+ * Alfred Chrome Extension — Widget Styles
+ *
+ * All selectors are prefixed with #alfred- or .alfred- to avoid
+ * conflicts with host page styles.
+ */
+
+:root {
+  --alfred-bg: #0f172a;
+  --alfred-surface: #1e293b;
+  --alfred-surface-hover: #273548;
+  --alfred-accent: #6366f1;
+  --alfred-accent-hover: #818cf8;
+  --alfred-text: #e2e8f0;
+  --alfred-text-muted: #94a3b8;
+  --alfred-border: #334155;
+  --alfred-success: #22c55e;
+  --alfred-error: #ef4444;
+  --alfred-warning: #f59e0b;
+  --alfred-radius: 8px;
+  --alfred-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --alfred-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+}
+
+/* ── Dock (sidebar widget) ─────────────────────────────────────────── */
+
+#alfred-dock {
+  position: fixed;
+  top: 80px;
+  right: 0;
+  width: 340px;
+  max-height: calc(100vh - 120px);
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-right: none;
+  border-radius: var(--alfred-radius) 0 0 var(--alfred-radius);
+  box-shadow: var(--alfred-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  font-family: var(--alfred-font);
+  font-size: 14px;
+  color: var(--alfred-text);
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+#alfred-dock.alfred-dock-visible {
+  transform: translateX(0);
+}
+
+#alfred-dock.alfred-dock-left {
+  right: auto;
+  left: 0;
+  border-right: 1px solid var(--alfred-border);
+  border-left: none;
+  border-radius: 0 var(--alfred-radius) var(--alfred-radius) 0;
+  transform: translateX(-100%);
+}
+
+#alfred-dock.alfred-dock-left.alfred-dock-visible {
+  transform: translateX(0);
+}
+
+/* ── Dock header ───────────────────────────────────────────────────── */
+
+#alfred-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--alfred-bg);
+  border-bottom: 1px solid var(--alfred-border);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+#alfred-dock-header .alfred-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--alfred-accent-hover);
+}
+
+#alfred-dock-header .alfred-logo-icon {
+  width: 20px;
+  height: 20px;
+  background: var(--alfred-accent);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+#alfred-dock-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--alfred-error);
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+
+#alfred-dock-status.alfred-status-online {
+  background: var(--alfred-success);
+}
+
+.alfred-dock-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alfred-dock-btn-icon {
+  background: none;
+  border: none;
+  color: var(--alfred-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.alfred-dock-btn-icon:hover {
+  color: var(--alfred-text);
+  background: var(--alfred-surface-hover);
+}
+
+/* ── Dock body ─────────────────────────────────────────────────────── */
+
+#alfred-dock-body {
+  padding: 12px 16px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#alfred-dock-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+#alfred-dock-body::-webkit-scrollbar-thumb {
+  background: var(--alfred-border);
+  border-radius: 2px;
+}
+
+/* ── Textarea ──────────────────────────────────────────────────────── */
+
+#alfred-note-textarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 300px;
+  resize: vertical;
+  background: var(--alfred-bg);
+  color: var(--alfred-text);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  padding: 10px 12px;
+  font-family: var(--alfred-font);
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+#alfred-note-textarea::placeholder {
+  color: var(--alfred-text-muted);
+}
+
+#alfred-note-textarea:focus {
+  border-color: var(--alfred-accent);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────── */
+
+.alfred-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--alfred-radius);
+  font-family: var(--alfred-font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.alfred-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alfred-btn-primary {
+  background: var(--alfred-accent);
+  color: white;
+}
+
+.alfred-btn-primary:hover:not(:disabled) {
+  background: var(--alfred-accent-hover);
+}
+
+.alfred-btn-secondary {
+  background: var(--alfred-surface-hover);
+  color: var(--alfred-text);
+  border: 1px solid var(--alfred-border);
+}
+
+.alfred-btn-secondary:hover:not(:disabled) {
+  background: var(--alfred-border);
+}
+
+.alfred-btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.alfred-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Recent captures list ──────────────────────────────────────────── */
+
+.alfred-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--alfred-text-muted);
+  margin: 0;
+}
+
+.alfred-capture-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alfred-capture-item {
+  padding: 8px 10px;
+  background: var(--alfred-bg);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--alfred-text-muted);
+  cursor: default;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.alfred-capture-item:hover {
+  border-color: var(--alfred-border);
+}
+
+.alfred-capture-item-title {
+  color: var(--alfred-text);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-capture-item-meta {
+  font-size: 11px;
+  color: var(--alfred-text-muted);
+}
+
+/* ── Selection toolbar ─────────────────────────────────────────────── */
+
+#alfred-selection-toolbar {
+  position: absolute;
+  display: none;
+  background: var(--alfred-bg);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  box-shadow: var(--alfred-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 6px;
+  gap: 4px;
+  z-index: 2147483647;
+  font-family: var(--alfred-font);
+  animation: alfred-fade-in 0.15s ease;
+}
+
+#alfred-selection-toolbar.alfred-toolbar-visible {
+  display: flex;
+}
+
+#alfred-selection-toolbar .alfred-toolbar-btn {
+  background: var(--alfred-surface);
+  color: var(--alfred-text);
+  border: 1px solid var(--alfred-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--alfred-font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+#alfred-selection-toolbar .alfred-toolbar-btn:hover {
+  background: var(--alfred-accent);
+  border-color: var(--alfred-accent);
+  color: white;
+}
+
+/* ── Toast notifications ───────────────────────────────────────────── */
+
+#alfred-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--alfred-font);
+  pointer-events: none;
+}
+
+.alfred-toast {
+  background: var(--alfred-surface);
+  color: var(--alfred-text);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: var(--alfred-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  pointer-events: auto;
+  animation: alfred-toast-in 0.3s ease, alfred-toast-out 0.3s ease 2.7s forwards;
+  max-width: 320px;
+}
+
+.alfred-toast.alfred-toast-success {
+  border-left: 3px solid var(--alfred-success);
+}
+
+.alfred-toast.alfred-toast-error {
+  border-left: 3px solid var(--alfred-error);
+}
+
+.alfred-toast.alfred-toast-info {
+  border-left: 3px solid var(--alfred-accent);
+}
+
+/* ── Keyboard hint ─────────────────────────────────────────────────── */
+
+.alfred-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: var(--alfred-font);
+  background: var(--alfred-bg);
+  border: 1px solid var(--alfred-border);
+  border-radius: 3px;
+  color: var(--alfred-text-muted);
+}
+
+.alfred-shortcuts-hint {
+  font-size: 11px;
+  color: var(--alfred-text-muted);
+  line-height: 1.8;
+}
+
+/* ── Floating Action Button ────────────────────────────────────────── */
+
+#alfred-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  background: var(--alfred-accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2147483645;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+  user-select: none;
+}
+
+#alfred-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.55);
+}
+
+#alfred-fab:active {
+  transform: scale(0.95);
+}
+
+.alfred-fab-letter {
+  color: white;
+  font-family: var(--alfred-font);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* ── Animations ────────────────────────────────────────────────────── */
+
+@keyframes alfred-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes alfred-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes alfred-toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+
+/* ── Engagement Tracker — Progress Bar ───────────────────────────── */
+
+.alfred-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  animation: alfred-fade-in 0.5s ease forwards;
+}
+
+.alfred-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #E8590C;
+  border-radius: 0 2px 2px 0;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Engagement Tracker — Tracking Badge ─────────────────────────── */
+
+.alfred-tracking-badge {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(15, 14, 13, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 2147483644;
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  user-select: none;
+  pointer-events: none;
+  opacity: 0;
+  animation: alfred-fade-in 0.5s ease 0.2s forwards;
+}
+
+.alfred-tracking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: alfred-pulse-dot 2s ease-in-out infinite;
+}
+
+.alfred-tracking-time {
+  letter-spacing: 0.04em;
+}
+
+@keyframes alfred-pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
+  }
+}
+
+/* ── First-run onboarding tooltip ────────────────────────────────── */
+
+.alfred-first-run-tooltip {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  background: rgba(15, 14, 13, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(232, 89, 12, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  max-width: 240px;
+  z-index: 2147483646;
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.8);
+  animation: alfred-fade-in 0.4s ease;
+  pointer-events: auto;
+}
+
+.alfred-first-run-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  right: 20px;
+  width: 12px;
+  height: 12px;
+  background: rgba(15, 14, 13, 0.92);
+  border-right: 1px solid rgba(232, 89, 12, 0.3);
+  border-bottom: 1px solid rgba(232, 89, 12, 0.3);
+  transform: rotate(45deg);
+}

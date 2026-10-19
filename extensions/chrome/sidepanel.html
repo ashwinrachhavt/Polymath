@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Axiom Reading Mode</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- Header -->
+  <header id="panel-header">
+    <div class="header-left">
+      <span class="logo-icon">A</span>
+      <span class="header-label">READING MODE</span>
+    </div>
+    <button id="close-btn" class="icon-btn" aria-label="Close side panel" title="Close">&times;</button>
+  </header>
+
+  <!-- Article context card -->
+  <div id="article-context" hidden>
+    <span class="context-label">READING</span>
+    <p id="article-title" class="context-title"></p>
+    <span id="article-meta" class="context-meta"></span>
+  </div>
+
+  <!-- Tabs -->
+  <nav id="panel-tabs" role="tablist" aria-label="Reading mode tabs">
+    <button role="tab" class="tab-btn active" aria-selected="true" aria-controls="tab-connections" id="tab-btn-connections" data-tab="connections">Connections</button>
+    <button role="tab" class="tab-btn" aria-selected="false" aria-controls="tab-decompose" id="tab-btn-decompose" data-tab="decompose">Decompose</button>
+    <button role="tab" class="tab-btn" aria-selected="false" aria-controls="tab-chat" id="tab-btn-chat" data-tab="chat">Chat</button>
+  </nav>
+
+  <!-- Tab panels -->
+  <div id="tab-connections" role="tabpanel" aria-labelledby="tab-btn-connections" class="tab-panel active">
+    <div class="tab-content"></div>
+  </div>
+
+  <div id="tab-decompose" role="tabpanel" aria-labelledby="tab-btn-decompose" class="tab-panel" hidden>
+    <div class="tab-content"></div>
+  </div>
+
+  <div id="tab-chat" role="tabpanel" aria-labelledby="tab-btn-chat" class="tab-panel" hidden>
+    <div id="chat-messages" class="tab-content"></div>
+  </div>
+
+  <!-- Chat input (only visible on Chat tab) -->
+  <div id="chat-input-area" hidden>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Ask about this article..." aria-label="Ask about this article">
+      <button id="chat-send-btn" class="icon-btn send-btn" aria-label="Send message" title="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2L7 9M14 2L9.5 14L7 9M14 2L2 6.5L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error state overlay -->
+  <div id="error-overlay" hidden>
+    <div class="error-state">
+      <p class="error-icon">!</p>
+      <p id="error-message" class="error-text"></p>
+      <button id="error-retry-btn" class="retry-btn">Retry</button>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

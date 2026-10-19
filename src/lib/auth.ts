@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { connection } from "next/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveMachineClient } from "@/domains/identity/machine";
+import { sha256Hex } from "./hash";
 import { clerkConfigured } from "@/lib/clerk";
 import { ForbiddenRoleError } from "./auth/guards";
 import { problemResponse } from "./problems";
@@ -69,7 +70,33 @@ export function withAuth<A extends unknown[]>(
  * machine token is resolved against api_clients. Route handlers for /api/v1/**
  * go through this; webhooks keep their HMAC auth instead.
  */
-export const getAnyAuthContext = cache(async (): Promise<AuthContext> => {
+/*
+ * Axiom-issued companion tokens. Clerk's API-key product is not enabled on
+ * every instance, so the companion's own bearer is verified here: an exact
+ * lookup of its digest in api_clients. This sits before Clerk so a companion
+ * call never depends on Clerk being reachable or configured.
+ */
+async function companionFromBearer(request?: Request): Promise<AuthContext | null> {
+  const header = request?.headers.get("authorization");
+  const secret = header?.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!secret) return null;
+  const resolved = await resolveMachineClient(await sha256Hex(secret));
+  if (resolved.ok) {
+    return {
+      userId: resolved.client.clientId,
+      workspaceId: resolved.client.workspaceId,
+      role: resolved.client.role,
+    };
+  }
+  // A malformed-but-present bearer for an unknown client is a hard no, not a
+  // silent fall-through to the session path.
+  if (resolved.reason !== "not_found") throw new ForbiddenError(resolved.reason);
+  throw new UnauthorizedError();
+}
+
+export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthContext> => {
+  const companion = await companionFromBearer(request);
+  if (companion) return companion;
   // Dev fallback: without Clerk keys the proxy is a no-op, and Clerk's auth()
   // throws instead of returning "unauthenticated", which turned every authed
   // route into a 500. Resolve a fixed dev owner so a clone boots and serves.
@@ -107,7 +134,7 @@ export function authedHandler<C = unknown>(
 ) {
   return async (request: Request, ctx: C): Promise<Response> => {
     try {
-      const auth = await getAnyAuthContext();
+      const auth = await getAnyAuthContext(request);
       return await fn(auth, request, ctx);
     } catch (error) {
       if (error instanceof UnauthorizedError)

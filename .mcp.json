@@ -1,9 +1,16 @@
 {
   "mcpServers": {
-    "codebase-index": {
-      "command": "mcp-codebase-index",
+    "serena": {
+      "command": "/Users/ashwin/.local/bin/serena",
+      "args": [
+        "start-mcp-server",
+        "--context",
+        "claude-code",
+        "--project",
+        "/Users/ashwin/Projects/axiom"
+      ],
       "env": {
-        "PROJECT_ROOT": "."
+        "MCP_TIMEOUT": "60000"
       }
     }
   }

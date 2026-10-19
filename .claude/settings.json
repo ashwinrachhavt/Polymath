@@ -1,6 +1,68 @@
 {
-  "enabledMcpjsonServers": ["codebase-index"],
   "permissions": {
-    "allow": ["mcp__codebase-index"]
+    "allow": [
+      "mcp__serena"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "serena"
+  ],
+  "enabledPlugins": {
+    "superpowers@anthropic-plugin-directory": true,
+    "code-review-anthropics@anthropic-plugin-directory": true,
+    "context7@anthropic-plugin-directory": true,
+    "code-simplifier@anthropic-plugin-directory": true,
+    "feature-dev@anthropic-plugin-directory": true,
+    "playwright@anthropic-plugin-directory": true,
+    "vercel@anthropic-plugin-directory": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ashwin/.local/bin/serena-hooks remind --client=claude-code",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__serena__*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ashwin/.local/bin/serena-hooks auto-approve --client=claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ashwin/.local/bin/serena-hooks activate --client=claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ashwin/.local/bin/serena-hooks cleanup --client=claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

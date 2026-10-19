@@ -1,0 +1,655 @@
+/* ── Alfred Side Panel — Literary Terminal Design System ────────────── */
+
+/* Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────── */
+
+body {
+  background: #0F0E0D;
+  color: #FAF8F5;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #252321;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3734;
+}
+
+/* ── Header ────────────────────────────────────────────────────────── */
+
+#panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #252321;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #E8590C;
+  color: #0F0E0D;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.header-label {
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #A39E97;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 44px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: #7A756E;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.icon-btn:hover {
+  color: #FAF8F5;
+  background: #1A1918;
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid #E8590C;
+  outline-offset: 2px;
+}
+
+/* ── Article Context ───────────────────────────────────────────────── */
+
+#article-context {
+  padding: 12px 16px;
+  border-bottom: 1px solid #252321;
+  flex-shrink: 0;
+}
+
+.context-label {
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7A756E;
+}
+
+.context-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #FAF8F5;
+  margin-top: 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.context-meta {
+  font-family: monospace;
+  font-size: 10px;
+  color: #7A756E;
+  margin-top: 4px;
+  display: block;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────────── */
+
+#panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #252321;
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 8px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #7A756E;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: #A39E97;
+}
+
+.tab-btn.active {
+  color: #E8590C;
+  border-bottom-color: #E8590C;
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid #E8590C;
+  outline-offset: -2px;
+}
+
+/* ── Tab Panels ────────────────────────────────────────────────────── */
+
+.tab-panel {
+  flex: 1;
+  overflow-y: auto;
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.tab-content {
+  padding: 12px 16px;
+}
+
+/* ── Connection Cards ──────────────────────────────────────────────── */
+
+.connection-card {
+  background: #1A1918;
+  border: 1px solid #252321;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+
+.connection-card:hover {
+  border-color: #3A3734;
+}
+
+.connection-card:focus-visible {
+  outline: 2px solid #E8590C;
+  outline-offset: 2px;
+}
+
+.connection-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #FAF8F5;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.connection-relation {
+  font-size: 11px;
+  color: #E8590C;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.connection-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+  font-size: 10px;
+  color: #7A756E;
+}
+
+.bloom-badge {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #252321;
+  color: #A39E97;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* ── Decompose / Claim Cards ───────────────────────────────────────── */
+
+.decompose-summary {
+  font-size: 13px;
+  color: #A39E97;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.claims-label {
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7A756E;
+  margin-bottom: 10px;
+}
+
+.claim-card {
+  background: #1A1918;
+  border: 1px solid #252321;
+  border-left: 3px solid #E8590C;
+  border-radius: 0 6px 6px 0;
+  padding: 12px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.claim-text {
+  font-size: 13px;
+  color: #FAF8F5;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.claim-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.claim-tag {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #E8590C;
+  color: #0F0E0D;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.claim-save-btn {
+  display: none;
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: none;
+  border: 1px solid #252321;
+  color: #A39E97;
+  padding: 4px 10px;
+  min-height: 44px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.claim-card:hover .claim-save-btn {
+  display: inline-flex;
+  align-items: center;
+}
+
+.claim-save-btn:hover {
+  color: #E8590C;
+  border-color: #E8590C;
+}
+
+.claim-save-btn:focus-visible {
+  outline: 2px solid #E8590C;
+  outline-offset: 2px;
+}
+
+.claim-save-btn.saved {
+  color: #7A756E;
+  border-color: #252321;
+  pointer-events: none;
+}
+
+/* ── Chat ──────────────────────────────────────────────────────────── */
+
+#chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.chat-msg {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.chat-msg-user {
+  align-self: flex-end;
+  background: #1A1918;
+  border: 1px solid #252321;
+  color: #FAF8F5;
+}
+
+.chat-msg-assistant {
+  align-self: flex-start;
+  background: #141312;
+  border: 1px solid #1E1D1B;
+  color: #A39E97;
+}
+
+.chat-msg-error {
+  align-self: center;
+  background: none;
+  color: #E8590C;
+  font-family: monospace;
+  font-size: 11px;
+  text-align: center;
+}
+
+.interrupted-msg {
+  font-family: monospace;
+  font-size: 10px;
+  color: #7A756E;
+  text-align: center;
+  padding: 6px;
+}
+
+.typing-indicator {
+  align-self: flex-start;
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px;
+}
+
+.typing-indicator span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #7A756E;
+  border-radius: 50%;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ── Chat Input ────────────────────────────────────────────────────── */
+
+#chat-input-area {
+  padding: 12px 16px;
+  border-top: 1px solid #252321;
+  flex-shrink: 0;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#chat-input {
+  flex: 1;
+  background: #1A1918;
+  border: 1px solid #252321;
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 44px;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #FAF8F5;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#chat-input::placeholder {
+  color: #7A756E;
+}
+
+#chat-input:focus {
+  border-color: #E8590C;
+}
+
+.send-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  color: #7A756E;
+}
+
+.send-btn:hover {
+  color: #E8590C;
+  background: #1A1918;
+}
+
+/* ── Skeleton Loading ──────────────────────────────────────────────── */
+
+.skeleton-card {
+  background: #1A1918;
+  border: 1px solid #252321;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #252321 25%, #2E2C29 50%, #252321 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+
+.skeleton-line:last-child {
+  margin-bottom: 0;
+}
+
+.skeleton-line.w-full { width: 100%; }
+.skeleton-line.w-3-4 { width: 75%; }
+.skeleton-line.w-1-2 { width: 50%; }
+.skeleton-line.w-1-3 { width: 33%; }
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Cold Start ────────────────────────────────────────────────────── */
+
+.cold-start-message {
+  text-align: center;
+  padding: 32px 20px;
+}
+
+.cold-start-icon {
+  font-size: 28px;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.cold-start-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #FAF8F5;
+  margin-bottom: 8px;
+}
+
+.cold-start-text {
+  font-size: 12px;
+  color: #7A756E;
+  line-height: 1.6;
+  max-width: 260px;
+  margin: 0 auto;
+}
+
+/* ── Error States ──────────────────────────────────────────────────── */
+
+#error-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 14, 13, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.error-state {
+  text-align: center;
+  padding: 24px;
+}
+
+.error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 2px solid #E8590C;
+  border-radius: 50%;
+  color: #E8590C;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.error-text {
+  font-size: 13px;
+  color: #A39E97;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.tab-error {
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.tab-error-text {
+  font-size: 12px;
+  color: #7A756E;
+  margin-bottom: 12px;
+}
+
+.retry-btn {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: none;
+  border: 1px solid #252321;
+  color: #A39E97;
+  padding: 8px 16px;
+  min-height: 44px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.retry-btn:hover {
+  color: #E8590C;
+  border-color: #E8590C;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid #E8590C;
+  outline-offset: 2px;
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+
+#toast-container {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.toast {
+  background: #1A1918;
+  border: 1px solid #252321;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #FAF8F5;
+  animation: toast-in 0.2s ease-out;
+  pointer-events: auto;
+}
+
+.toast.toast-error {
+  border-color: #E8590C;
+  color: #E8590C;
+}
+
+.toast.toast-fade {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+@keyframes toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── Utility ───────────────────────────────────────────────────────── */
+
+[hidden] {
+  display: none !important;
+}
