@@ -19,12 +19,12 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   // Every Work view reads the same canonical Neon tasks. The browser-only
   // preview survives only on the standalone /apps/neuralflow route.
   if (view === "board") {
-    surface = <NeonBoard />;
+    surface = <NeonBoard raw={query} />;
   } else if (view === "calendar") {
     surface = <NeonCalendar key={date || "current"} date={date} />;
   } else {
     const show = typeof query.show === "string" ? query.show : undefined;
-    surface = <NeonTasks show={view === "today" ? "today" : show} selectedTask={task} />;
+    surface = <NeonTasks show={view === "today" ? "today" : show} selectedTask={task} raw={query} />;
   }
 
   return (

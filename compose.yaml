@@ -1,12 +1,43 @@
-# Local docling-serve: the extraction provider for development (D2 plan).
-# Start: docker compose up -d docling
-# Point the app at it: DOCLING_SERVE_URL="http://localhost:5001" in .env
+# Local mode: the same Postgres 17 engine and extension set as prod Neon
+# (vector, pg_trgm, citext, pgcrypto — see src/db/migrations/0000_extensions.sql),
+# plus docling-serve for document extraction. Plain TCP, which is what
+# src/lib/db.ts speaks; no Neon-specific protocol anywhere in the code.
 #
-# The deployed Vercel app cannot reach this container; there, LLAMAPARSE_API_KEY
-# picks the hosted adapter instead. First-run pulls ~2GB of models.
+#   docker compose up -d
+#   pnpm db:migrate
+#
+# The axiom_test database is created on first boot for the integration suites
+# (TEST_DATABASE_URL). The suite truncates it before running — never point
+# TEST_DATABASE_URL at the app database.
+#
+# Docling: the extraction provider for development (D2 plan). The deployed
+# Vercel app cannot reach this container; there, LLAMAPARSE_API_KEY picks the
+# hosted adapter instead. First-run pulls ~2GB of models.
+
 services:
+  db:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: axiom
+      POSTGRES_USER: axiom
+      POSTGRES_PASSWORD: axiom
+    volumes:
+      - axiom-pgdata:/var/lib/postgresql/data
+      - ./scripts/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axiom -d axiom"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   docling:
     image: quay.io/docling-project/docling-serve
     ports:
       - "127.0.0.1:5001:5001"
     restart: unless-stopped
+
+volumes:
+  axiom-pgdata:

@@ -1,7 +1,18 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
-import { getSpendingOverview } from "@/domains/spending/queries";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import {
+  getSpendingOverview,
+  pageRateCards,
+  pageSettlements,
+  SETTLEMENT_RANGES,
+  type SettlementRange,
+} from "@/domains/spending/queries";
+import { listHref, offsetFor, parseListParams, parsePageNumber, type RawSearchParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { PolicyForm, RateCardForm } from "./spending-forms";
 
@@ -22,10 +33,24 @@ function usd(value: string | null): string {
   return `$${asNumber.toFixed(2)}`;
 }
 
-async function Spending() {
+const BASE = "/command-center/spending";
+
+async function Spending({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
+  const raw = await searchParams;
   await connection();
   const auth = await getAuthContext();
-  const overview = await getSpendingOverview(auth);
+  const list = parseListParams(raw, { filters: { range: Object.keys(SETTLEMENT_RANGES) } });
+  const range = list.filters.range as SettlementRange | undefined;
+  const ratePage = parsePageNumber(raw.rpage);
+  const [overview, settlements, rateCards] = await Promise.all([
+    getSpendingOverview(auth),
+    pageSettlements(auth, { query: list.q, range, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
+    pageRateCards(auth, { query: list.q, limit: list.pageSize, offset: offsetFor(ratePage, list.pageSize) }),
+  ]);
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, settlements.total);
+  redirectPastEnd(BASE, raw, ratePage, list.pageSize, rateCards.total, "rpage");
+  const filtered = Boolean(list.q || range);
+  const clearHref = listHref(BASE, raw, { q: undefined, range: undefined, page: undefined, rpage: undefined });
 
   return (
     <Screen
@@ -62,6 +87,18 @@ async function Spending() {
         />
       </Panel>
 
+      <ListToolbar
+        searchPlaceholder="Search by model or provider"
+        filters={[
+          {
+            key: "range",
+            label: "Settled",
+            allLabel: "All time",
+            options: Object.keys(SETTLEMENT_RANGES).map((k) => ({ value: k, label: `Last ${k.replace("d", " days")}` })),
+          },
+        ]}
+      />
+
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel title="Open reservations" description="Money claimed by runs that have not settled.">
           <div className="divide-y divide-border">
@@ -84,7 +121,7 @@ async function Spending() {
 
         <Panel title="Recent settlements" description="The append-only ledger of actual spend.">
           <div className="divide-y divide-border">
-            {overview.recentSettlements.map((settlement) => (
+            {settlements.items.map((settlement) => (
               <div key={settlement.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
                 <p className="text-[13px] font-medium">{usd(settlement.amountUsd)}</p>
                 <p className="text-xs text-muted-foreground">
@@ -93,9 +130,15 @@ async function Spending() {
               </div>
             ))}
           </div>
-          {!overview.recentSettlements.length ? (
-            <Empty title="No settlements yet" description="A settlement lands when a run's provider usage is reconciled." />
+          {!settlements.items.length ? (
+            <NoResults
+              filtered={filtered}
+              clearHref={clearHref}
+              emptyTitle="No settlements yet"
+              emptyDescription="A settlement lands when a run's provider usage is reconciled."
+            />
           ) : null}
+          <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={settlements.total} />
         </Panel>
       </div>
 
@@ -104,7 +147,7 @@ async function Spending() {
         description="Each card prices one model; a price change is a new card with a later effective time, never an edit, so past runs keep the price that was active when they ran. A model with no card cannot be reserved - missing rates fail closed."
       >
         <div className="mb-4 divide-y divide-border">
-          {overview.rateCards.map((card) => (
+          {rateCards.items.map((card) => (
             <div key={card.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
               <div>
                 <p className="text-[13px] font-medium">
@@ -118,24 +161,29 @@ async function Spending() {
             </div>
           ))}
         </div>
-        {!overview.rateCards.length ? (
+        {!rateCards.items.length ? (
           <div className="mb-4">
-            <Empty
-              title="No rate cards"
-              description="Add the exact price from the provider's verified pricing page. Do not guess rates."
+            <NoResults
+              filtered={Boolean(list.q)}
+              clearHref={clearHref}
+              emptyTitle="No rate cards"
+              emptyDescription="Add the exact price from the provider's verified pricing page. Do not guess rates."
             />
           </div>
         ) : null}
+        <div className="mb-4">
+          <Pagination basePath={BASE} raw={raw} page={ratePage} pageSize={list.pageSize} total={rateCards.total} pageParam="rpage" />
+        </div>
         <RateCardForm />
       </Panel>
     </Screen>
   );
 }
 
-export default function SpendingPage() {
+export default function SpendingPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading spending…</p>}>
-      <Spending />
+      <Spending searchParams={searchParams} />
     </Suspense>
   );
 }

@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 
 /*
  * Read queries for the conversations surface (ASH-140 D04). Threads and
@@ -23,6 +24,33 @@ export type ConversationSummary = {
 };
 
 export async function listConversations(auth: AuthContext): Promise<ConversationSummary[]> {
+  return (await pageConversations(auth, { limit: 50, offset: 0 })).items;
+}
+
+/** Agent names that own at least one live thread, for the profile filter. */
+export async function listConversationProfiles(auth: AuthContext): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ name: agentProfiles.name })
+    .from(threads)
+    .innerJoin(agentProfiles, eq(agentProfiles.id, threads.agentProfileId))
+    .where(and(eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt)))
+    .orderBy(asc(agentProfiles.name));
+  return rows.map((r) => r.name);
+}
+
+export async function pageConversations(
+  auth: AuthContext,
+  input: { query?: string; profile?: string; limit: number; offset: number },
+): Promise<{ items: ConversationSummary[]; total: number }> {
+  const filters = [eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt)];
+  if (input.profile) filters.push(eq(agentProfiles.name, input.profile));
+  if (input.query?.trim()) filters.push(ilike(threads.title, `%${escapeLike(input.query.trim())}%`));
+  const where = and(...filters);
+  const [{ total } = { total: 0 }] = await db
+    .select({ total: count() })
+    .from(threads)
+    .innerJoin(agentProfiles, eq(agentProfiles.id, threads.agentProfileId))
+    .where(where);
   const rows = await db
     .select({
       id: threads.id,
@@ -34,10 +62,11 @@ export async function listConversations(auth: AuthContext): Promise<Conversation
     })
     .from(threads)
     .innerJoin(agentProfiles, eq(agentProfiles.id, threads.agentProfileId))
-    .where(and(eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt)))
-    .orderBy(desc(threads.updatedAt))
-    .limit(50);
-  if (rows.length === 0) return [];
+    .where(where)
+    .orderBy(desc(threads.updatedAt), desc(threads.id))
+    .limit(input.limit)
+    .offset(input.offset);
+  if (rows.length === 0) return { items: [], total };
 
   const stats = await db
     .select({
@@ -52,11 +81,14 @@ export async function listConversations(auth: AuthContext): Promise<Conversation
     .groupBy(messages.threadId);
   const byThread = new Map(stats.map((s) => [s.threadId, s]));
 
-  return rows.map((row) => ({
-    ...row,
-    messageCount: byThread.get(row.id)?.messageCount ?? 0,
-    lastMessageAt: byThread.get(row.id)?.lastMessageAt ?? null,
-  }));
+  return {
+    total,
+    items: rows.map((row) => ({
+      ...row,
+      messageCount: byThread.get(row.id)?.messageCount ?? 0,
+      lastMessageAt: byThread.get(row.id)?.lastMessageAt ?? null,
+    })),
+  };
 }
 
 export type ConversationTimeline = {

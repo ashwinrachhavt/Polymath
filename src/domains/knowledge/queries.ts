@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { auditEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 import { companies, contacts } from "../crm/schema";
 import {
   documentExtractions,
@@ -229,7 +230,44 @@ export type DocumentInboxRow = {
  * extraction status, its undecided-proposal count, and its party names. Three
  * queries total (documents, undecided counts, party names), never one per row.
  */
-export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<DocumentInboxRow[]> {
+export const INBOX_KINDS = ["file", "web_page"] as const;
+export const INBOX_READ_STATES = ["unread", "failed"] as const;
+
+export type DocumentInboxInput = {
+  limit?: number;
+  offset?: number;
+  query?: string;
+  kind?: (typeof INBOX_KINDS)[number];
+  /** unread: never extracted. failed: the latest extraction failed. */
+  readState?: (typeof INBOX_READ_STATES)[number];
+};
+
+function inboxWhere(auth: AuthContext, input: DocumentInboxInput): SQL {
+  const parts: SQL[] = [eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)];
+  if (input.kind === "web_page") parts.push(isNotNull(documents.sourceUrl));
+  if (input.kind === "file") parts.push(isNull(documents.sourceUrl));
+  const latest = sql`(select de.status::text from document_extractions de where de.document_id = ${documents.id} order by de.created_at desc limit 1)`;
+  if (input.readState === "unread") parts.push(sql`${latest} is null`);
+  if (input.readState === "failed") parts.push(sql`${latest} = 'failed'`);
+  if (input.query?.trim()) {
+    const like = `%${escapeLike(input.query.trim())}%`;
+    parts.push(or(ilike(documents.title, like), ilike(files.filename, like), ilike(documents.sourceUrl, like))!);
+  }
+  return and(...parts)!;
+}
+
+/** How many inbox documents match, for the pager. */
+export async function countDocumentInbox(auth: AuthContext, input: DocumentInboxInput = {}): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(documents)
+    .leftJoin(files, eq(files.id, documents.fileId))
+    .where(inboxWhere(auth, input));
+  return row?.total ?? 0;
+}
+
+export async function getDocumentInbox(auth: AuthContext, limitOrInput: number | DocumentInboxInput = 50): Promise<DocumentInboxRow[]> {
+  const input: DocumentInboxInput = typeof limitOrInput === "number" ? { limit: limitOrInput } : limitOrInput;
   const docRows = await db
     .select({
       id: documents.id,
@@ -252,9 +290,10 @@ export async function getDocumentInbox(auth: AuthContext, limit = 50): Promise<D
     })
     .from(documents)
     .leftJoin(files, eq(files.id, documents.fileId))
-    .where(and(eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)))
-    .orderBy(desc(documents.createdAt))
-    .limit(limit);
+    .where(inboxWhere(auth, input))
+    .orderBy(desc(documents.createdAt), desc(documents.id))
+    .limit(input.limit ?? 50)
+    .offset(input.offset ?? 0);
 
   if (docRows.length === 0) return [];
   const documentIds = docRows.map((d) => d.id);

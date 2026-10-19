@@ -45,7 +45,7 @@ export const CONTACT_PAGE_SIZE = 100;
 
 export async function listContacts(
   auth: AuthContext,
-  input: { query?: string; status?: RelationshipStatus; offset?: number } = {},
+  input: { query?: string; status?: RelationshipStatus; offset?: number; limit?: number } = {},
 ): Promise<{ items: ContactListItem[]; total: number }> {
   const filters = [eq(contacts.workspaceId, auth.workspaceId), isNull(contacts.archivedAt)];
   if (input.status) filters.push(eq(contacts.relationshipStatus, input.status));
@@ -78,8 +78,8 @@ export async function listContacts(
       })
       .from(contacts)
       .where(where)
-      .orderBy(asc(contacts.fullName))
-      .limit(CONTACT_PAGE_SIZE)
+      .orderBy(asc(contacts.fullName), asc(contacts.id))
+      .limit(input.limit ?? CONTACT_PAGE_SIZE)
       .offset(input.offset ?? 0),
     db.select({ total: count() }).from(contacts).where(where),
   ]);
@@ -195,4 +195,33 @@ export async function listCompanies(
     .where(and(...filters))
     .orderBy(asc(companies.name))
     .limit(CONTACT_PAGE_SIZE);
+}
+
+/** One page of companies for the list, with the unpaged total for the pager. */
+export async function pageCompanies(
+  auth: AuthContext,
+  input: { limit: number; offset: number },
+): Promise<{ items: CompanyListItem[]; total: number }> {
+  const where = and(eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt));
+  const [items, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: companies.id,
+        name: companies.name,
+        domain: companies.domain,
+        description: companies.description,
+        contactCount: sql<number>`(
+          select count(*)::int from ${contactCompanies} cc
+          where cc.company_id = "companies"."id" and cc.workspace_id = ${auth.workspaceId} and cc.is_current
+        )`.as("contact_count"),
+        version: companies.version,
+      })
+      .from(companies)
+      .where(where)
+      .orderBy(asc(companies.name), asc(companies.id))
+      .limit(input.limit)
+      .offset(input.offset),
+    db.select({ total: count() }).from(companies).where(where),
+  ]);
+  return { items, total: totalRow?.total ?? 0 };
 }

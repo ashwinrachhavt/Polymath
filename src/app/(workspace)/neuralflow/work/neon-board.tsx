@@ -2,7 +2,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { listWorkRows, type WorkRow } from "@/domains/work/queries";
+import { listWorkRows, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { matchesQuery, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { BoardCard } from "./task-controls";
 
 /*
@@ -20,11 +22,15 @@ const lanes: { id: WorkRow["status"]; label: string }[] = [
   { id: "done", label: "Done" },
 ];
 
-export async function NeonBoard() {
+export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
   await connection();
   const auth = await getAuthContext();
-  const open = await listWorkRows(auth, "open");
-  const done = await listWorkRows(auth, "done", 20);
+  const list = parseListParams(raw, { filters: { priority: WORK_PRIORITIES } });
+  const filtered = Boolean(list.q || list.filters.priority);
+  const keep = (row: WorkRow) =>
+    (!list.filters.priority || row.priority === list.filters.priority) && matchesQuery(list.q, row.title);
+  const open = (await listWorkRows(auth, "open")).filter(keep);
+  const done = (await listWorkRows(auth, "done", 20)).filter(keep);
   const rowsByStatus = new Map<WorkRow["status"], WorkRow[]>();
   for (const lane of lanes) rowsByStatus.set(lane.id, []);
   for (const row of open) rowsByStatus.get(row.status)?.push(row);
@@ -35,6 +41,12 @@ export async function NeonBoard() {
       title="Work board"
       description="One task model in status lanes. Moving a card changes its saved status; reordering a lane writes the same rank the list sorts by."
     >
+      <ListToolbar
+        searchPlaceholder="Search tasks"
+        filters={[
+          { key: "priority", label: "Priority", allLabel: "Any priority", options: WORK_PRIORITIES.map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1) })) },
+        ]}
+      />
       <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {lanes.map((lane) => {
           const rows = rowsByStatus.get(lane.id) ?? [];
@@ -58,8 +70,8 @@ export async function NeonBoard() {
                         version={row.version}
                         detailHref={`/neuralflow/work?view=saved&task=${row.id}`}
                         blockedBy={row.blockedBy}
-                        up={i > 0 ? { after: rows[i - 2]?.id, before: rows[i - 1].id } : null}
-                        down={i < rows.length - 1 ? { after: rows[i + 1].id, before: rows[i + 2]?.id } : null}
+                        up={!filtered && i > 0 ? { after: rows[i - 2]?.id, before: rows[i - 1].id } : null}
+                        down={!filtered && i < rows.length - 1 ? { after: rows[i + 1].id, before: rows[i + 2]?.id } : null}
                       />
                     </li>
                   ))}

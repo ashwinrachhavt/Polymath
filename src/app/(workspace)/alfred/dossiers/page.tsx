@@ -4,6 +4,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, matchesQuery, paginate, parseListParams, parsePageNumber, type RawSearchParams } from "@/lib/list-params";
 import { getDossierDetail, listAttachableDocuments, listDossierRuns, listDossiers } from "@/domains/knowledge/dossiers";
 import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
 import { DraftControls } from "../draft-controls";
@@ -21,10 +26,12 @@ export const metadata = { title: "Dossiers · Axiom" };
  * is the browser preview.
  */
 // Per-request data; streams inside the Suspense boundary in the default export.
+const BASE = "/alfred/dossiers";
+
 export async function DossiersSurface({
   searchParams,
 }: {
-  searchParams: Promise<{ dossier?: string; draft?: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
@@ -41,12 +48,27 @@ export async function DossiersSurface({
     );
   }
   const auth = await getAuthContext();
-  const params = await searchParams;
+  const raw = await searchParams;
+  const params = {
+    dossier: typeof raw.dossier === "string" ? raw.dossier : undefined,
+    draft: typeof raw.draft === "string" ? raw.draft : undefined,
+  };
+  const list = parseListParams(raw, { filters: { contents: ["with", "empty"] }, defaultPageSize: 10 });
   const [dossiers, attachable, detail] = await Promise.all([
     listDossiers(auth),
     listAttachableDocuments(auth),
     params.dossier ? getDossierDetail(auth, params.dossier) : Promise.resolve(null),
   ]);
+  const matching = dossiers.filter(
+    (d) =>
+      matchesQuery(list.q, d.title) &&
+      (!list.filters.contents || (list.filters.contents === "with" ? d.documentCount > 0 : d.documentCount === 0)),
+  );
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, matching.length);
+  const dossierPage = paginate(matching, list.page, list.pageSize);
+  const docsPageNumber = parsePageNumber(raw.dpage);
+  const docsPaged = detail ? paginate(detail.documents, docsPageNumber, 25) : null;
+  if (detail) redirectPastEnd(BASE, raw, docsPageNumber, 25, detail.documents.length, "dpage");
   const dossierRuns = detail ? await listDossierRuns(auth, detail.id) : [];
   const dossierRunDrafts = await draftsForRuns(auth, dossierRuns.map((run) => run.id));
   const draftDetail = params.draft ? await getDraftDetail(auth, params.draft) : null;
@@ -65,11 +87,31 @@ export async function DossiersSurface({
               description="Create one below, attach the documents it should cover, then generate a draft that stays inside those documents."
             />
           ) : (
+            <>
+            {dossiers.length > 4 || list.q || list.filters.contents ? (
+              <ListToolbar
+                pageKeys={["page"]}
+                searchPlaceholder="Search dossiers"
+                filters={[
+                  { key: "contents", label: "Contents", allLabel: "All dossiers", options: [{ value: "with", label: "Has documents" }, { value: "empty", label: "Empty" }] },
+                ]}
+                total={matching.length}
+                noun={matching.length === 1 ? "dossier" : "dossiers"}
+              />
+            ) : null}
+            {matching.length === 0 ? (
+              <NoResults
+                filtered
+                clearHref={listHref(BASE, raw, { q: undefined, contents: undefined, page: undefined })}
+                emptyTitle=""
+                emptyDescription=""
+              />
+            ) : null}
             <ul className="flex flex-col gap-1">
-              {dossiers.map((dossier) => (
+              {dossierPage.items.map((dossier) => (
                 <li key={dossier.id}>
                   <a
-                    href={`/alfred/dossiers?dossier=${dossier.id}`}
+                    href={listHref(BASE, raw, { dossier: dossier.id, dpage: undefined, draft: undefined })}
                     className={`flex items-baseline gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-accent ${detail?.id === dossier.id ? "bg-accent" : ""}`}
                   >
                     <span className="font-medium">{dossier.title}</span>
@@ -80,6 +122,8 @@ export async function DossiersSurface({
                 </li>
               ))}
             </ul>
+            <Pagination basePath={BASE} raw={raw} page={dossierPage.page} pageSize={list.pageSize} total={matching.length} />
+            </>
           )}
         </Section>
 
@@ -89,7 +133,7 @@ export async function DossiersSurface({
               <p className="text-muted-foreground text-[13px]">No documents yet. Create a dossier with documents, or ask Alfred to attach them.</p>
             ) : (
               <ul className="flex flex-col gap-1">
-                {detail.documents.map((doc) => (
+                {docsPaged!.items.map((doc) => (
                   <li key={doc.id} className="flex items-baseline gap-2 px-2 py-1 text-[13px]">
                     <span>{doc.title}</span>
                     <span className="text-muted-foreground">{doc.mimeType ?? "unfiled"}</span>
@@ -97,6 +141,7 @@ export async function DossiersSurface({
                 ))}
               </ul>
             )}
+            <Pagination basePath={BASE} raw={raw} page={docsPaged!.page} pageSize={25} total={detail.documents.length} pageParam="dpage" compact />
             <Section title="Generate a draft" description="Starts a run that reads only this dossier. The result is a draft you save or discard; nothing publishes.">
               <GenerateForm dossierId={detail.id} />
               {dossierRuns.length > 0 ? (
@@ -145,7 +190,7 @@ export async function DossiersSurface({
   );
 }
 
-export default function DossiersPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+export default function DossiersPage(props: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<DossiersSkeleton />}>
       <DossiersSurface {...props} />

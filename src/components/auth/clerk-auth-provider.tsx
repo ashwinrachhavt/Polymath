@@ -5,9 +5,10 @@ import type { ReactNode } from "react";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 
 /*
- * Loaded on demand by the root layout only when Clerk is configured, so the
- * keyless browser preview never downloads Clerk's client runtime.
+ * Mounted by the root layout only when Clerk is configured, so the keyless
+ * browser preview never downloads Clerk's client runtime. Imported statically:
+ * `next/dynamic` here broke instant validation (see src/app/layout.tsx).
  */
-export default function ClerkAuthProvider({ children }: { children: ReactNode }) {
+export function ClerkAuthProvider({ children }: { children: ReactNode }) {
   return <ClerkProvider appearance={clerkAppearance}>{children}</ClerkProvider>;
 }

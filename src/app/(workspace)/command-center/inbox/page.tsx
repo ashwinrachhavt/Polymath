@@ -2,8 +2,13 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
-import { countToClarify, type InboxFilter, listCaptures } from "@/domains/capture/queries";
+import { Panel, Screen, Status } from "@/components/workspace/ui";
+import { Pagination } from "@/components/list/pagination";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { NoResults } from "@/components/list/no-results";
+import { CAPTURE_KINDS, countToClarify, type InboxFilter, searchCaptures } from "@/domains/capture/queries";
+import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { CaptureActions, CaptureForm } from "./inbox-client";
 
@@ -29,11 +34,26 @@ function when(iso: Date): string {
 
 async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
+  const list = parseListParams(query, { filters: { kind: CAPTURE_KINDS } });
   const raw = typeof query.filter === "string" ? query.filter : "unprocessed";
   const filter: InboxFilter = filters.some((f) => f.value === raw) ? (raw as InboxFilter) : "unprocessed";
   await connection();
   const auth = await getAuthContext();
-  const [rows, pending] = await Promise.all([listCaptures(auth, filter), countToClarify(auth)]);
+  const [found, pending] = await Promise.all([
+    searchCaptures(auth, {
+      filter,
+      kind: list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined,
+      query: list.q,
+      limit: list.pageSize,
+      offset: offsetFor(list.page, list.pageSize),
+    }),
+    countToClarify(auth),
+  ]);
+  const rows = found.items;
+  const pageSize = list.pageSize;
+  redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
+  const page = list.page;
+  const filtered = Boolean(list.q || list.filters.kind);
 
   return (
     <Screen
@@ -49,7 +69,8 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
         {filters.map((f) => (
           <Link
             key={f.value}
-            href={f.value === "unprocessed" ? "/command-center/inbox" : `/command-center/inbox?filter=${f.value}`}
+            href={listHref("/command-center/inbox", query, { filter: f.value === "unprocessed" ? undefined : f.value, page: 1 })}
+            aria-current={f.value === filter ? "page" : undefined}
             className={f.value === filter ? "font-medium underline underline-offset-4" : "text-muted-foreground hover:underline"}
           >
             {f.label}
@@ -57,7 +78,19 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
         ))}
       </nav>
 
-      <Panel title={`${rows.length} ${rows.length === 1 ? "capture" : "captures"}`}>
+      <ListToolbar
+        searchPlaceholder="Search captures"
+        filters={[
+          {
+            key: "kind",
+            label: "Type",
+            allLabel: "All types",
+            options: CAPTURE_KINDS.map((k) => ({ value: k, label: k[0]!.toUpperCase() + k.slice(1) })),
+          },
+        ]}
+      />
+
+      <Panel title={`${found.total} ${found.total === 1 ? "capture" : "captures"}`}>
         <div className="divide-y divide-border">
           {rows.map((capture) => {
             const state =
@@ -82,7 +115,15 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
             );
           })}
         </div>
-        {!rows.length ? <Empty title="Nothing in this view" description="Capture material above or choose another filter." /> : null}
+        {!rows.length ? (
+          <NoResults
+            filtered={filtered}
+            clearHref={listHref("/command-center/inbox", query, { q: undefined, kind: undefined, page: 1 })}
+            emptyTitle="Nothing in this view"
+            emptyDescription="Capture material above or choose another filter."
+          />
+        ) : null}
+        <Pagination basePath="/command-center/inbox" raw={query} page={page} pageSize={pageSize} total={found.total} />
       </Panel>
     </Screen>
   );

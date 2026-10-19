@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { escapeLike } from "@/lib/list-params";
 import { artifactLinks, artifactVersions, artifacts, recoveryCopies, workingDrafts } from "./schema";
 
 /*
@@ -314,6 +315,49 @@ export async function listNotes(auth: AuthContext, limit = 50): Promise<NoteList
       .orderBy(desc(artifacts.updatedAt))
       .limit(limit);
     return rows.map((row) => ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem);
+  });
+}
+
+/** One page of notes for the sidebar list; the total honours search and the drafts filter. */
+export async function pageNotes(
+  auth: AuthContext,
+  input: { query?: string; draftsOnly?: boolean; limit: number; offset: number },
+): Promise<{ items: NoteListItem[]; total: number }> {
+  return withTransaction(async (tx) => {
+    const filters = [eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)];
+    if (input.draftsOnly) filters.push(isNotNull(workingDrafts.artifactId));
+    if (input.query?.trim()) {
+      const like = `%${escapeLike(input.query.trim())}%`;
+      filters.push(or(ilike(artifacts.title, like), ilike(artifactVersions.plainText, like))!);
+    }
+    const where = and(...filters);
+    const rows = await tx
+        .select({
+          id: artifacts.id,
+          title: artifacts.title,
+          status: artifacts.status,
+          version: artifacts.version,
+          updatedAt: artifacts.updatedAt,
+          excerpt: artifactVersions.plainText,
+          draftArtifactId: workingDrafts.artifactId,
+        })
+        .from(artifacts)
+        .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+        .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+        .where(where)
+        .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+        .limit(input.limit)
+        .offset(input.offset);
+    const [totalRow] = await tx
+      .select({ n: count() })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+      .where(where);
+    return {
+      total: totalRow?.n ?? 0,
+      items: rows.map(({ draftArtifactId, ...row }) => ({ ...row, hasDraft: draftArtifactId !== null })),
+    };
   });
 }
 

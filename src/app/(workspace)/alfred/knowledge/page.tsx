@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { sentenceCase, suggestTitle } from "@/domains/knowledge/naming";
 import {
+  countDocumentInbox,
   getDocumentInbox,
+  INBOX_KINDS,
+  INBOX_READ_STATES,
   getDocumentReview,
   type DocumentReviewParty,
 } from "@/domains/knowledge/queries";
@@ -23,6 +26,11 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { getAuthContext } from "@/lib/auth";
+import { redirectPastEnd } from "@/components/list/clamp";
+import { ListToolbar } from "@/components/list/list-toolbar";
+import { NoResults } from "@/components/list/no-results";
+import { Pagination } from "@/components/list/pagination";
+import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
 import { listZettelProposals } from "@/domains/knowledge/zettels";
 import { RetryExtractionButton } from "./retry-extraction-button";
@@ -99,7 +107,7 @@ function mimeTypeLabel(mimeType: string | null): string {
 export async function KnowledgeSurface({
   searchParams,
 }: {
-  searchParams: Promise<{ doc?: string; q?: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   // Per-request data; streams inside the Suspense boundary below.
   await connection();
@@ -117,10 +125,22 @@ export async function KnowledgeSurface({
     );
   }
   const auth = await getAuthContext();
-  const params = await searchParams;
-  const query = params.q?.trim();
+  const raw = await searchParams;
+  const params = { doc: typeof raw.doc === "string" ? raw.doc : undefined };
+  // The search box above queries content (full text + semantic); the toolbar
+  // below narrows the document list itself. Different keys so neither clobbers the other.
+  const query = typeof raw.q === "string" ? raw.q.trim() || undefined : undefined;
+  const list = parseListParams(raw, { filters: { kind: INBOX_KINDS, read: INBOX_READ_STATES }, qKey: "dq" });
+  const inboxInput = {
+    query: list.q || undefined,
+    kind: list.filters.kind as (typeof INBOX_KINDS)[number] | undefined,
+    readState: list.filters.read as (typeof INBOX_READ_STATES)[number] | undefined,
+  };
+  const inboxFiltered = Boolean(inboxInput.query || inboxInput.kind || inboxInput.readState);
+  const inboxTotal = await countDocumentInbox(auth, inboxInput);
+  redirectPastEnd("/alfred/knowledge", raw, list.page, list.pageSize, inboxTotal);
   const [inbox, review, partyOptions, searchHits] = await Promise.all([
-    getDocumentInbox(auth),
+    getDocumentInbox(auth, { ...inboxInput, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
     params.doc ? getDocumentReview(auth, { documentId: params.doc }) : Promise.resolve(null),
     params.doc
       ? resolvePartyCandidates(auth, { documentId: params.doc }).catch(() => [])
@@ -173,7 +193,7 @@ export async function KnowledgeSurface({
               id="search"
               name="q"
               type="search"
-              defaultValue={params.q ?? ""}
+              defaultValue={query ?? ""}
               placeholder="Search notes, documents, sources, and claims"
               className="border-input bg-background focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3"
             />
@@ -211,10 +231,24 @@ export async function KnowledgeSurface({
           title="Documents"
           description="Files arrive, get read, and wait for your per-item decisions. Nothing is filed until you file it."
         >
+          {!selected && (inboxTotal > 0 || inboxFiltered) ? (
+            <ListToolbar
+              qKey="dq"
+              searchPlaceholder="Filter documents by title or file"
+              filters={[
+                { key: "kind", label: "Type", allLabel: "All types", options: [{ value: "file", label: "Files" }, { value: "web_page", label: "Web pages" }] },
+                { key: "read", label: "Reading", allLabel: "Any state", options: [{ value: "unread", label: "Not read yet" }, { value: "failed", label: "Failed" }] },
+              ]}
+              total={inboxTotal}
+              noun={inboxTotal === 1 ? "document" : "documents"}
+            />
+          ) : null}
           {inbox.length === 0 ? (
-            <EmptyState
-              title="No documents yet"
-              description="Upload a PDF or image and it appears here. Axiom reads it, proposes the fields, and you decide each one."
+            <NoResults
+              filtered={inboxFiltered}
+              clearHref={listHref("/alfred/knowledge", raw, { dq: undefined, kind: undefined, read: undefined, page: undefined })}
+              emptyTitle="No documents yet"
+              emptyDescription="Upload a PDF or image and it appears here. Axiom reads it, proposes the fields, and you decide each one."
             />
           ) : selected ? (
             <ReviewWorkbench
@@ -269,6 +303,9 @@ export async function KnowledgeSurface({
               })}
             </ul>
           )}
+          {!selected ? (
+            <Pagination basePath="/alfred/knowledge" raw={raw} page={list.page} pageSize={list.pageSize} total={inboxTotal} />
+          ) : null}
         </Section>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -569,7 +606,7 @@ function Parties({
 export default function KnowledgePage({
   searchParams,
 }: {
-  searchParams: Promise<{ doc?: string; q?: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   return (
     <Suspense fallback={<KnowledgeSkeleton />}>
