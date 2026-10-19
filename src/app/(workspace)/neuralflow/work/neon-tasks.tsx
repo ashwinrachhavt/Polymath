@@ -9,7 +9,8 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
-import { QuickAdd, RowActions, TaskCard } from "./task-controls";
+import { TaskCard } from "./task-controls";
+import { WorkList } from "./work-list";
 
 /*
  * The Work list on Neon. Server component: reads through the work domain's
@@ -98,7 +99,6 @@ export async function NeonTasks({
             </nav>
           }
         >
-          {scope !== "done" && <div className="mb-4"><QuickAdd /></div>}
           <div className="mb-4">
             <ListToolbar
               searchPlaceholder="Search tasks"
@@ -112,41 +112,35 @@ export async function NeonTasks({
               noun={found.total === 1 ? "task" : "tasks"}
             />
           </div>
-          {rows.length === 0 ? (
-            <NoResults
-              filtered={filtered}
-              clearHref={listHref(BASE, raw, { q: undefined, status: undefined, priority: undefined, page: undefined })}
-              emptyTitle={scope === "today" ? "Nothing committed for today" : scope === "done" ? "No finished tasks yet" : "No open tasks"}
-              emptyDescription={scope === "today" ? "Open a task from the list and set it to Ready to put it here." : "Add a task above."}
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              {rows.map((row, i) => (
-                <li key={row.id} className="flex items-start justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <Link href={listHref(BASE, raw, { view: "saved", task: row.id })} className="text-[13px] font-medium hover:underline" aria-current={detail?.task.id === row.id ? "true" : undefined}>
-                      {row.title}
-                    </Link>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <Status>{statusLabel[row.status]}</Status>
-                      {row.priority !== "none" && <Status>{row.priority}</Status>}
-                      {row.dueAt && <span className="readout text-xs text-muted-foreground">Due {row.dueAt.toISOString().slice(0, 10)}</span>}
-                      {row.subtaskCount > 0 && <span className="text-xs text-muted-foreground">{row.subtasksDone}/{row.subtaskCount} subtasks</span>}
-                      {row.blockedBy > 0 && <Status>Blocked by {row.blockedBy}</Status>}
-                    </div>
-                  </div>
-                  <RowActions
-                    taskId={row.id}
-                    title={row.title}
-                    version={row.version}
-                    showMove={canMove}
-                    up={win[i + found.lead - 1] ? { after: win[i + found.lead - 2]?.id, before: win[i + found.lead - 1]!.id } : null}
-                    down={win[i + found.lead + 1] ? { after: win[i + found.lead + 1]!.id, before: win[i + found.lead + 2]?.id } : null}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
+          <WorkList
+            canMove={canMove}
+            showQuickAdd={scope !== "done"}
+            emptyState={
+              <NoResults
+                filtered={filtered}
+                clearHref={listHref(BASE, raw, { q: undefined, status: undefined, priority: undefined, page: undefined })}
+                emptyTitle={scope === "today" ? "Nothing committed for today" : scope === "done" ? "No finished tasks yet" : "No open tasks"}
+                emptyDescription={scope === "today" ? "Open a task from the list and set it to Ready to put it here." : "Add a task above."}
+              />
+            }
+            items={rows.map((row, i) => ({
+              row: {
+                id: row.id,
+                title: row.title,
+                status: row.status,
+                priority: row.priority,
+                dueAt: row.dueAt ? row.dueAt.toISOString() : null,
+                version: row.version,
+                subtaskCount: row.subtaskCount,
+                subtasksDone: row.subtasksDone,
+                blockedBy: row.blockedBy,
+              },
+              href: listHref(BASE, raw, { view: "saved", task: row.id }),
+              selected: detail?.task.id === row.id,
+              up: win[i + found.lead - 1] ? { after: win[i + found.lead - 2]?.id, before: win[i + found.lead - 1]!.id } : null,
+              down: win[i + found.lead + 1] ? { after: win[i + found.lead + 1]!.id, before: win[i + found.lead + 2]?.id } : null,
+            }))}
+          />
           <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
         </Panel>
 
