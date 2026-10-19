@@ -11,7 +11,7 @@ import { rewardDefinitions, rewardLedger } from "./schema";
 
 export type RewardsOverview = {
   definitions: Array<typeof rewardDefinitions.$inferSelect>;
-  ledger: Array<typeof rewardLedger.$inferSelect & { definitionKey: string; definitionLabel: string }>;
+  ledger: Array<typeof rewardLedger.$inferSelect & { definitionKey: string; definitionLabel: string; definitionKind: string; definitionThreshold: number }>;
   /** Sum of ledger points - the score is a derivation, not a record. */
   totalPoints: number;
   /** Distinct workspace-local days with at least one ledger entry. */
@@ -42,6 +42,8 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
         createdAt: rewardLedger.createdAt,
         definitionKey: rewardDefinitions.key,
         definitionLabel: rewardDefinitions.label,
+        definitionKind: rewardDefinitions.kind,
+        definitionThreshold: rewardDefinitions.threshold,
       })
       .from(rewardLedger)
       .innerJoin(rewardDefinitions, eq(rewardDefinitions.id, rewardLedger.rewardDefinitionId))
@@ -78,4 +80,23 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
     activeDays: row.active_days,
     shards: { stones: shardRow.stones, claimed: shardRow.claimed, claimable },
   };
+}
+
+/*
+ * The "Stone earned" announcement (ASH-135 s7): the newest real earning is
+ * surfaced once as a coach mark keyed by the ledger row id. Shard claims and
+ * adjustments are not earnings, and a stale row (a first visit months later)
+ * announces nothing - the toast answers "what just happened", not history.
+ */
+export const ANNOUNCEMENT_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+export function pickRewardAnnouncement(
+  ledger: RewardsOverview["ledger"],
+  now: Date,
+): (RewardsOverview["ledger"][number] & { milestone: boolean }) | null {
+  const entry = ledger.find(
+    (row) => row.points > 0 && row.reason !== "adjustment" && now.getTime() - row.createdAt.getTime() <= ANNOUNCEMENT_WINDOW_MS,
+  );
+  if (!entry) return null;
+  return { ...entry, milestone: entry.definitionKind === "badge" || entry.definitionThreshold > 1 };
 }

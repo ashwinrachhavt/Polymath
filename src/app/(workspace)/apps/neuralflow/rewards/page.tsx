@@ -1,8 +1,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
-import { getRewardsOverview } from "@/domains/gamification/queries";
+import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
 import { getAuthContext } from "@/lib/auth";
+import { CoachMark } from "@/components/shell/coach-mark";
 import { ClaimShardButton } from "./claim-button";
 import { DefinitionForm } from "./definition-form";
 
@@ -25,6 +26,7 @@ async function Rewards() {
   await connection();
   const auth = await getAuthContext();
   const overview = await getRewardsOverview(auth);
+  const announcement = pickRewardAnnouncement(overview.ledger, new Date());
 
   return (
     <Screen
@@ -32,7 +34,18 @@ async function Rewards() {
       description="The ledger is the truth: every stone, streak and badge is a row, and the totals below are derived from it at render. The first task you finish each day earns the Quartz; five stones fuse into a shard you claim by hand."
     >
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Points earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
+        <div className="relative">
+          <Stat label="Points earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
+          {announcement ? (
+            <CoachMark
+              id={`stone-${announcement.id}`}
+              title={announcement.milestone ? "Milestone reached" : "Stone earned"}
+              actionLabel="View"
+            >
+              {announcement.definitionLabel} · +{announcement.points} pts · {announcement.reason.replaceAll("_", " ")}. The collection is below.
+            </CoachMark>
+          ) : null}
+        </div>
         <Stat label="Active days" value={overview.activeDays} hint="Days with at least one entry" />
         <Stat label="Reward definitions" value={overview.definitions.length} hint="The catalog earning rules reference" />
       </div>
