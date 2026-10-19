@@ -3,24 +3,23 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Popover } from "radix-ui";
-import { ChevronsLeft, ChevronsRight, ChevronsUpDown, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import { cn } from "cn";
 import {
   additionalDestinationsIn,
   appForPath,
-  apps,
   destinationForPath,
   destinationsIn,
+  homeHref,
   type Destination,
 } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 /*
- * The shell's left rail, GSuite-style: a product picker anchored at the top
- * left (the active product's icon and name, opening a grid of all three
- * products), and under it the feature sidebar for the product you are in.
- * Shared workspace services (Reviews, Activity, Settings) sit at the bottom.
+ * The shell's left rail: a plain identity header naming the app you are in,
+ * and under it the feature sidebar for that app. App switching is global
+ * chrome, so it lives in the top-right launcher, not in this rail. Shared
+ * workspace services (Reviews, Activity, Settings) sit at the bottom.
  * Collapses to an icon rail; the choice persists in localStorage.
  *
  * Count badges come from the browser-preview workspace state, the only
@@ -35,7 +34,6 @@ export function SideNav() {
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const { state } = useWorkspace();
   const [collapsed, setCollapsed] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
@@ -104,61 +102,26 @@ export function SideNav() {
       )}
     >
       <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-2.5">
-        {/* The product picker: the top-left anchor. Shows the active product
-            and opens a grid of all three, GSuite-style. */}
-        <Popover.Root open={pickerOpen} onOpenChange={setPickerOpen}>
-          <Popover.Trigger
-            aria-label="Switch product"
-            className={cn(
-              "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
-              "focus-visible:ring-ring focus-visible:ring-3 data-[state=open]:bg-sidebar-accent",
-              collapsed ? "justify-center px-0" : "px-2",
-            )}
-          >
-            {PickerIcon ? (
-              <span className="product-mark !size-6 !rounded-[5px]"><PickerIcon aria-hidden className="size-3.5" /></span>
-            ) : (
-              <span aria-hidden className="axiom-mark !size-6 !text-[15px]">A</span>
-            )}
-            {collapsed ? null : (
-              <>
-                <span className="min-w-0 flex-1 truncate text-left">{activeApp?.label ?? "Axiom"}</span>
-                <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-              </>
-            )}
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Content
-              align="start"
-              sideOffset={6}
-              className="panel bg-popover text-popover-foreground z-50 w-[268px] rounded-xl p-2 shadow-raised outline-none"
-            >
-              <p className="text-muted-foreground px-2 pt-1 pb-2 text-[11px] font-medium uppercase tracking-wider">Products</p>
-              <div className="grid grid-cols-3 gap-1">
-                {apps.map(({ slug, label, question, href, icon: Icon }) => {
-                  const active = activeApp?.slug === slug;
-                  return (
-                    <Link
-                      key={slug}
-                      href={href}
-                      onClick={() => setPickerOpen(false)}
-                      aria-current={active ? "true" : undefined}
-                      title={question}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg px-1 py-2.5 text-center outline-none",
-                        "hover:bg-accent focus-visible:ring-ring focus-visible:ring-3",
-                        active ? "bg-accent text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      <span className="product-mark !size-8"><Icon aria-hidden className="size-4" /></span>
-                      <span className="text-[11px] leading-tight font-medium">{label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
+        {/* Where you are, not a switcher: app switching lives in the
+            top-right launcher, so the rail only names the current app. */}
+        <Link
+          href={activeApp?.href ?? homeHref}
+          aria-label={activeApp ? `${activeApp.label} home` : "Axiom home"}
+          className={cn(
+            "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
+            "focus-visible:ring-ring focus-visible:ring-3",
+            collapsed ? "justify-center px-0" : "px-2",
+          )}
+        >
+          {PickerIcon ? (
+            <span className="product-mark !size-6 !rounded-[5px]"><PickerIcon aria-hidden className="size-3.5" /></span>
+          ) : (
+            <span aria-hidden className="axiom-mark !size-6 !text-[15px]">A</span>
+          )}
+          {collapsed ? null : (
+            <span className="min-w-0 flex-1 truncate text-left">{activeApp?.label ?? "Axiom"}</span>
+          )}
+        </Link>
 
         <button
           type="button"

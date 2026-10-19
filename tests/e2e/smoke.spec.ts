@@ -57,7 +57,7 @@ for (const app of apps) {
 
 test("the launcher crosses apps and shared routes are reachable", async ({ page }) => {
   await page.goto("/command-center/briefing");
-  await page.getByRole("button", { name: "Switch product" }).click();
+  await page.getByRole("button", { name: "Open apps" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
   // Cross-app links out of Command Center target the other two apps.
@@ -74,7 +74,7 @@ test("the launcher crosses apps and shared routes are reachable", async ({ page 
 
 test("the app launcher is keyboard reachable and closes on escape", async ({ page }) => {
   await page.goto("/neuralflow/work");
-  const trigger = page.getByRole("button", { name: "Switch product" });
+  const trigger = page.getByRole("button", { name: "Open apps" });
   await expect(trigger).toBeEnabled();
   await trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();

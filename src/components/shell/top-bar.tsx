@@ -6,11 +6,15 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayer } from "@/components/shell/command-layer";
 
+/*
+ * The header. Where-you-are on the left (the breadcrumb names the app in
+ * words); what acts globally on the right: command, reviews, theme, the app
+ * launcher, and the account menu. The launcher sits next to the avatar,
+ * Google-apps-style, so all "leave this app" affordances live in one corner.
+ */
 export function TopBar({ clerkConfigured }: { clerkConfigured: boolean }) {
   return (
     <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 items-center gap-2 border-b px-3 backdrop-blur">
-      <span className="md:hidden"><AppLauncher /></span>
-
       <PathBreadcrumb />
 
       <div className="ml-auto flex min-w-0 items-center gap-1">
@@ -24,6 +28,7 @@ export function TopBar({ clerkConfigured }: { clerkConfigured: boolean }) {
           <ShieldCheck aria-hidden className="size-4" />
         </Link>
         <ThemeToggle />
+        <AppLauncher />
         <UserMenu configured={clerkConfigured} />
       </div>
     </header>
