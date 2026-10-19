@@ -1,6 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
+  foreignKey,
+  unique,
   boolean,
   index,
   integer,
@@ -146,5 +149,72 @@ export const blobObjects = pgTable(
   (t) => [
     uniqueIndex("blob_objects_storage_key").on(t.storageKey),
     index("blob_objects_workspace_hash_idx").on(t.workspaceId, t.contentHash),
+  ],
+);
+
+/*
+ * ASH-134 Q04: canonical jobs and attempts. Additive; no request path reads
+ * these yet. Claims set a lease and bump `generation`; every completion names
+ * the lease token, so a worker that outlived its lease cannot write a result.
+ */
+export const jobStatuses = ["queued", "running", "succeeded", "failed", "cancelled", "unknown"] as const;
+export type JobStatus = (typeof jobStatuses)[number];
+
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    kind: text("kind").notNull(),
+    input: jsonb("input").notNull(),
+    status: text("status").notNull().default("queued"),
+    priority: integer("priority").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    generation: integer("generation").notNull().default(0),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+    dedupeKey: text("dedupe_key"),
+    leaseOwner: text("lease_owner"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    result: jsonb("result"),
+    lastError: text("last_error"),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    unique("jobs_workspace_id_id_key").on(t.workspaceId, t.id),
+    check("jobs_status_check", sql.raw(`status in (${jobStatuses.map((s) => `'${s}'`).join(", ")})`)),
+    check("jobs_attempts_check", sql`attempts >= 0 and max_attempts >= 1`),
+    uniqueIndex("jobs_dedupe_key").on(t.workspaceId, t.kind, t.dedupeKey).where(sql`dedupe_key is not null`),
+    index("jobs_queue_idx").on(t.priority.desc(), t.availableAt).where(sql`status = 'queued'`),
+    index("jobs_lease_expiry_idx").on(t.leaseExpiresAt).where(sql`status = 'running'`),
+    index("jobs_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export const jobAttempts = pgTable(
+  "job_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    jobId: uuid("job_id").notNull(),
+    generation: integer("generation").notNull(),
+    worker: text("worker").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    outcome: text("outcome"),
+    error: text("error"),
+  },
+  (t) => [
+    foreignKey({
+      name: "job_attempts_job_fk",
+      columns: [t.workspaceId, t.jobId],
+      foreignColumns: [jobs.workspaceId, jobs.id],
+    }).onDelete("cascade"),
+    check("job_attempts_outcome_check", sql`outcome is null or outcome in ('succeeded', 'failed', 'lease_expired', 'cancelled', 'unknown')`),
+    uniqueIndex("job_attempts_generation_key").on(t.jobId, t.generation),
   ],
 );
