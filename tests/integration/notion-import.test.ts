@@ -82,7 +82,7 @@ suite("notion import", { timeout: 30_000 }, () => {
     // Extraction ran on the markdown: a succeeded row per document.
     const extractions = await db.select().from(documentExtractions).where(eq(documentExtractions.workspaceId, a.workspaceId));
     expect(extractions.filter((e) => e.status === "succeeded").length).toBe(2);
-    expect(extractions.some((e) => e.text.includes("Books to read."))).toBe(true);
+    expect(extractions.some((e) => e.text?.includes("Books to read."))).toBe(true);
 
     // The file names its provider object and account.
     const fileRows = await db.select().from(files).where(eq(files.workspaceId, a.workspaceId));
