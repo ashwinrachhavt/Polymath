@@ -3,7 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import { companies, contacts } from "../crm/schema";
+import { companies, contactCompanies, contacts } from "../crm/schema";
 import {
   documentParties,
   documents,
@@ -521,7 +521,7 @@ export async function acceptAssertions(
   auth: AuthContext,
   input: { documentId: string; assertions: AssertionInput[] },
   tx: typeof db | TxDrizzle = db,
-): Promise<{ written: number }> {
+): Promise<{ written: number; conflicts: AssertionConflict[] }> {
   const [document] = await tx
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
     .from(documents)
@@ -532,6 +532,8 @@ export async function acceptAssertions(
   const sourceAttribution = document.mimeType
     ? `${document.title} (${document.mimeType})`
     : document.title;
+
+  const conflicts: AssertionConflict[] = [];
 
   for (const assertion of input.assertions) {
     await tx.insert(reviewedAssertions).values({
@@ -562,9 +564,115 @@ export async function acceptAssertions(
             eq(reviewedAssertions.workspaceId, auth.workspaceId),
           ),
         );
+    } else {
+      // No supersede pointer and an active row already says something else:
+      // keep both, and surface the conflict rather than picking a winner.
+      const activeRows = await tx
+        .select({ id: reviewedAssertions.id, value: reviewedAssertions.value, sourceAttribution: reviewedAssertions.sourceAttribution })
+        .from(reviewedAssertions)
+        .where(
+          and(
+            eq(reviewedAssertions.workspaceId, auth.workspaceId),
+            eq(reviewedAssertions.subjectType, assertion.subjectType),
+            eq(reviewedAssertions.subjectId, assertion.subjectId),
+            eq(reviewedAssertions.attribute, assertion.attribute),
+            eq(reviewedAssertions.status, "active"),
+          ),
+        );
+      const acceptedValue = JSON.stringify(assertion.value);
+      for (const row of activeRows) {
+        if (JSON.stringify(row.value) === acceptedValue) continue;
+        conflicts.push({
+          subjectType: assertion.subjectType,
+          subjectId: assertion.subjectId,
+          attribute: assertion.attribute,
+          values: [
+            { value: row.value, sourceAttribution: row.sourceAttribution },
+            { value: assertion.value as Record<string, unknown>, sourceAttribution },
+          ],
+        });
+      }
+    }
+
+    // Attributed employment roles project to contactCompanies when the
+    // company is identifiable (id or exact name, case-insensitive) - never a
+    // silent company create, never a cross-workspace link.
+    if (assertion.subjectType === "contact" && assertion.attribute === "employment_role") {
+      await projectEmploymentRole(auth, assertion, tx);
     }
   }
-  return { written: input.assertions.length };
+  return { written: input.assertions.length, conflicts };
+}
+
+export type AssertionConflict = {
+  subjectType: "contact" | "company" | "project" | "document";
+  subjectId: string;
+  attribute: string;
+  /** The disagreeing active values, each with its provenance. */
+  values: Array<{ value: unknown; sourceAttribution: string }>;
+};
+
+/*
+ * An accepted employment-role assertion becomes a contact_companies row when
+ * the company is identifiable. Idempotent through the (contact, company,
+ * started_at) key: reprocessing never duplicates the role. A company the
+ * value cannot identify (no id, no exact name match) skips the projection -
+ * the assertion still stands on its own.
+ */
+async function projectEmploymentRole(
+  auth: AuthContext,
+  assertion: AssertionInput,
+  tx: typeof db | TxDrizzle,
+): Promise<void> {
+  const value = assertion.value as Record<string, unknown>;
+  let companyId: string | null = null;
+  if (typeof value.companyId === "string") {
+    const [company] = await tx
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.id, value.companyId), eq(companies.workspaceId, auth.workspaceId)))
+      .limit(1);
+    companyId = company?.id ?? null;
+  } else if (typeof value.companyName === "string" && value.companyName.trim()) {
+    const [company] = await tx
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.workspaceId, auth.workspaceId), ilike(companies.name, value.companyName.trim())))
+      .limit(1);
+    companyId = company?.id ?? null;
+  }
+  if (!companyId) return;
+
+  // The unique key treats null started_at as distinct, so an undated role
+  // needs an explicit dedupe check instead of relying on onConflict.
+  const startedAt = assertion.effectiveFrom ? new Date(`${assertion.effectiveFrom}T00:00:00Z`) : null;
+  if (!startedAt) {
+    const [existing] = await tx
+      .select({ id: contactCompanies.id })
+      .from(contactCompanies)
+      .where(
+        and(
+          eq(contactCompanies.contactId, assertion.subjectId),
+          eq(contactCompanies.companyId, companyId),
+          sql`${contactCompanies.startedAt} is null`,
+        ),
+      )
+      .limit(1);
+    if (existing) return;
+  }
+
+  await tx
+    .insert(contactCompanies)
+    .values({
+      workspaceId: auth.workspaceId,
+      contactId: assertion.subjectId,
+      companyId,
+      title: typeof value.title === "string" ? value.title : null,
+      startedAt,
+      endedAt: assertion.effectiveTo ? new Date(`${assertion.effectiveTo}T00:00:00Z`) : null,
+      isCurrent: !assertion.effectiveTo,
+    })
+    .onConflictDoNothing({ target: [contactCompanies.contactId, contactCompanies.companyId, contactCompanies.startedAt] });
 }
 
 export type AssertionHistoryEntry = {
@@ -586,6 +694,8 @@ export type AssertionProjection = {
   current: Record<string, AssertionHistoryEntry>;
   /** Every row in write order, including superseded and retracted. */
   history: AssertionHistoryEntry[];
+  /** Attributes with two disagreeing active values - both surface for review. */
+  conflicts: AssertionConflict[];
 };
 
 /**
@@ -628,7 +738,28 @@ export async function getAssertions(
     if (entry.status === "active" && !current[entry.attribute]) current[entry.attribute] = entry;
   }
 
-  return { current, history };
+  // Conflicts: an attribute with two active rows that disagree. Both values
+  // surface with their provenance; the projection never silently picks one.
+  const activeByAttribute = new Map<string, AssertionHistoryEntry[]>();
+  for (const entry of history) {
+    if (entry.status !== "active") continue;
+    const list = activeByAttribute.get(entry.attribute) ?? [];
+    list.push(entry);
+    activeByAttribute.set(entry.attribute, list);
+  }
+  const conflicts: AssertionConflict[] = [];
+  for (const [attribute, entries] of activeByAttribute) {
+    const seen = new Set(entries.map((e) => JSON.stringify(e.value)));
+    if (seen.size < 2) continue;
+    conflicts.push({
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      attribute,
+      values: entries.map((e) => ({ value: e.value, sourceAttribution: e.sourceAttribution })),
+    });
+  }
+
+  return { current, history, conflicts };
 }
 
 /**
@@ -639,8 +770,9 @@ export async function getAssertions(
 export async function retractEvidence(
   auth: AuthContext,
   input: { documentId: string },
+  executor: typeof db | TxDrizzle = db,
 ): Promise<{ retracted: number }> {
-  const rows = await db
+  const rows = await executor
     .update(reviewedAssertions)
     .set({ status: "retracted", updatedBy: auth.userId, updatedAt: new Date() })
     .where(
