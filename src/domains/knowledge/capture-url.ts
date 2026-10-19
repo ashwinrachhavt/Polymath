@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { validateFile } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, type FileValidationResult } from "@/lib/file-validation";
-import { parseCaptureUrl, safeFetch, type SafeFetchOptions } from "@/lib/safe-fetch";
+import { canonicalCaptureUrl, parseCaptureUrl, safeFetch, type SafeFetchOptions } from "@/lib/safe-fetch";
 import { extractDocument, type ExtractDocumentResult } from "./extraction";
 import { extractPageText, isHtmlDocument } from "./html-to-text";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
@@ -87,7 +87,7 @@ export async function captureUrl(
 ): Promise<CaptureUrlResult> {
   const parsed = parseCaptureUrl(input.url, input.fetchOptions?.allowPrivateAddresses);
   if (!parsed.ok) return { ok: false, documentId: null, error: parsed.error };
-  const sourceUrl = parsed.url.href;
+  const sourceUrl = canonicalCaptureUrl(parsed.url);
 
   const inWorkspace = and(eq(documents.workspaceId, auth.workspaceId), eq(documents.sourceUrl, sourceUrl));
   const find = async () => {
