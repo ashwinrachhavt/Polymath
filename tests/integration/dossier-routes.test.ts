@@ -66,7 +66,8 @@ beforeEach(() => {
   vi.stubEnv("EVE_BRIDGE_SECRET", "q".repeat(40));
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     eveCalls.push({ url, init });
-    return Response.json({ sessionId: `wrun_${eveCalls.length}` }, { status: 202 });
+    // Unique per call, like the real eve: two runs never share a session id.
+    return Response.json({ sessionId: `wrun_${crypto.randomUUID()}` }, { status: 202 });
   }));
 });
 

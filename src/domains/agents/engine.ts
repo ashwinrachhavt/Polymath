@@ -4,6 +4,13 @@ import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
+import {
+  bindExecution,
+  captureProfileRevision,
+  deliverSignal,
+  markExecutionUncertain,
+  openExecution,
+} from "./runtime-bindings";
 import { agentProfiles, agentRuns } from "./schema";
 
 /*
@@ -21,6 +28,12 @@ import { agentProfiles, agentRuns } from "./schema";
  *     a second cancel matches no row and is a no-op.
  */
 
+/** What the driver learned at start: the provider's own execution identity, when it has one. */
+export type SessionBinding = {
+  providerExecutionId?: string;
+  workflowVersion?: string;
+};
+
 export type PolicySnapshot = {
   profileId: string;
   model: string | null;
@@ -35,6 +48,8 @@ export type PolicySnapshot = {
  * Eve persists that binding in session_ref before tools can resolve the run.
  */
 export interface SessionDriver {
+  /** Which provider this driver dispatches to, for the execution record. */
+  readonly provider?: string;
   start(input: {
     sessionId: string;
     auth: AuthContext;
@@ -42,7 +57,7 @@ export interface SessionDriver {
     instructions: string | null;
     /** The objective becomes the session's first message: it starts the turn. */
     objective: string;
-  }): Promise<void>;
+  }): Promise<SessionBinding | void>;
   signal(sessionId: string, signal: string, auth: AuthContext): Promise<void>;
   cancel(sessionId: string, auth: AuthContext): Promise<void>;
 }
@@ -155,6 +170,10 @@ export function createEngine(
         .limit(1);
       if (!profile) throw new Error(`Unknown agent profile: ${input.profileName}`);
 
+      // The immutable revision is captured before the run exists, so the run
+      // can point at it from its first insert.
+      const profileRevisionId = await captureProfileRevision(input.auth.workspaceId, profile);
+
       const model = primaryModel(profile.modelPolicy);
       const policy: PolicySnapshot = {
         profileId: profile.id,
@@ -173,6 +192,7 @@ export function createEngine(
           workspaceId: input.auth.workspaceId,
           threadId: input.threadId ?? null,
           agentProfileId: profile.id,
+          profileRevisionId,
           objective: input.objective,
           retryOfRunId: input.retryOfRunId ?? null,
           subjects: input.subjects,
@@ -200,6 +220,16 @@ export function createEngine(
         .set({ state: "running", startedAt: now(), updatedAt: now() })
         .where(eq(agentRuns.id, run.id));
 
+      // The execution record opens before the driver sees anything: a crash
+      // or lost response between dispatch and bind leaves a `dispatched` row
+      // to reconcile rather than silent provider-side work.
+      const execution = await openExecution({
+        workspaceId: input.auth.workspaceId,
+        runId: run.id,
+        generation: 1,
+        provider: driver.provider ?? "unknown",
+      });
+
       // The objective is the thread's first message, written before Eve can
       // emit anything so a reload always reads it first.
       await writeEvent({
@@ -210,14 +240,26 @@ export function createEngine(
       });
 
       try {
-        await driver.start({
+        const binding = await driver.start({
           sessionId: run.id,
           auth: input.auth,
           policy,
           instructions: profile.instructions ?? null,
           objective: input.objective,
         });
+        if (binding?.providerExecutionId) {
+          await bindExecution({
+            workspaceId: input.auth.workspaceId,
+            runId: run.id,
+            executionId: execution.executionId,
+            providerExecutionId: binding.providerExecutionId,
+            workflowVersion: binding.workflowVersion ?? null,
+          });
+        }
       } catch (cause) {
+        // The dispatch may have landed provider-side: the execution is
+        // uncertain, not failed, until reconciliation answers it.
+        await markExecutionUncertain(execution.executionId);
         // A session that never started is not a running run: close it and give
         // the budget back, else the row stays live with money held forever.
         const message = cause instanceof Error ? cause.message : String(cause);
@@ -232,7 +274,14 @@ export function createEngine(
     async signal(runId, signal, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, signal, auth);
+      // Durable before delivery: a crashed caller retries against the row,
+      // and a lost response is `unknown` until reconciled, never "failed".
+      await deliverSignal({
+        workspaceId: auth.workspaceId,
+        runId: run.id,
+        payload: { signal },
+        deliver: () => driver.signal(run.id, signal, auth),
+      });
       // The follow-up is real work again: a parked run goes back to running.
       // Conditional, so a close that landed meanwhile is never rewritten.
       await db
@@ -259,7 +308,15 @@ export function createEngine(
         .returning({ id: agentRuns.id });
       if (ended.length === 0) return { cancelled: false };
 
-      await driver.cancel(runId, auth);
+      // "cancel" has a stable identity: a retried cancel of a delivered
+      // cancel is a no-op, so the provider is never told twice.
+      await deliverSignal({
+        workspaceId: auth.workspaceId,
+        runId,
+        signalKey: "cancel",
+        payload: { by: auth.userId },
+        deliver: () => driver.cancel(runId, auth),
+      });
       await writeEvent({ runId, workspaceId: auth.workspaceId, type: "cancelled", data: { by: auth.userId } });
 
       // The run is terminal before the budget is handed back; the release is

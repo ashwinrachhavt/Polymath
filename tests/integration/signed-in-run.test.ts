@@ -37,6 +37,10 @@ const post = (body: unknown, key?: string) =>
   }), undefined as never);
 const KEY = "5f0c9f4e-8b0e-4f3e-9a55-0c1d2e3f4a5b";
 let eveCalls: Array<{ url: string; init: RequestInit }> = [];
+// Provider execution ids are unique in reality (eve allocates wrun_… per
+// session), so the fixture's counter never resets between tests: resetting it
+// would hand two runs the same provider id, which run_executions rejects.
+let eveSessionCounter = 0;
 
 beforeAll(async () => {
   holder.db = handle?.db;
@@ -50,7 +54,8 @@ beforeEach(() => {
   vi.stubEnv("EVE_BRIDGE_SECRET", "q".repeat(40));
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     eveCalls.push({ url, init });
-    return Response.json({ sessionId: `wrun_${eveCalls.length}` }, { status: 202 });
+    eveSessionCounter += 1;
+    return Response.json({ sessionId: `wrun_${eveSessionCounter}` }, { status: 202 });
   }));
   as(a);
 });

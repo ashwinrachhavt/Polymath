@@ -51,7 +51,7 @@ vi.mock("@/lib/db", () => {
   const chain = (op: string) => {
     ops.push(op);
     const self: Record<string, unknown> = {};
-    for (const method of ["from", "where", "limit", "values"]) {
+    for (const method of ["from", "where", "limit", "values", "onConflictDoNothing"]) {
       self[method] = () => self;
     }
     self.set = (values: unknown) => {
@@ -129,8 +129,9 @@ describe("engine", () => {
 
     expect(runId).toBe(RUN.id);
     expect(reservationId).toBe("rsv_1");
-    // Run row, then spend, then the session: the order is the invariant.
-    expect(ops).toEqual(["select", "insert", "reserve", "update", "start"]);
+    // Profile, its immutable revision, run row, then spend, then the
+    // execution record, then the session: the order is the invariant.
+    expect(ops).toEqual(["select", "select", "insert", "insert", "reserve", "update", "insert", "start"]);
     expect(reserveSpend).toHaveBeenCalledWith(
       expect.anything(),
       { workspaceId: WS },

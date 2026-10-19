@@ -87,6 +87,7 @@ function bridgeHeaders(auth: AuthContext): Record<string, string> {
 
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
+    provider: "eve",
     async start({ sessionId, objective, auth, instructions }) {
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
@@ -115,6 +116,9 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       const { sessionId: ref } = z.object({ sessionId: z.string().min(1) }).parse(await response.json());
       await db.update(agentRuns).set({ sessionRef: ref })
         .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)));
+      // The eve session id is the provider execution identity: unique per
+      // provider+environment, so two runs can never claim one session.
+      return { providerExecutionId: ref };
     },
     async signal(sessionId, signal, auth) {
       const [run] = await db
