@@ -16,6 +16,9 @@ import { writeFileSync } from "node:fs";
  */
 
 test.skip(!process.env.DATABASE_URL, "Canonical routes read Postgres; skipping without DATABASE_URL.");
+// A timing spec gains nothing from a retry, and the re-run's extra route
+// loads multiply turbopack compile pressure on the shared dev server.
+test.describe.configure({ retries: 0 });
 
 const HERO_ROUTES = [
   { path: "/command-center/briefing", name: "Briefing" },
@@ -30,7 +33,7 @@ const CLIENT_NAV_MS = Number(process.env.PERF_BUDGET_CLIENT_NAV_MS ?? 4_000);
 const ENFORCE = process.env.PERF_BUDGET_ENFORCE === "1";
 
 test("hero route transitions stay inside the navigation budget", async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(120_000);
   const report: Record<string, { fullNavTtfbMs?: number; clientNavMs?: number }> = {};
 
   // Warm turbopack's on-demand compile for every route before timing anything.
@@ -39,8 +42,9 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
     await expect(page.locator("main#content")).toBeVisible();
   }
 
-  // Full navigation: how long until the server answers with first byte.
-  for (const route of HERO_ROUTES) {
+  // Full navigation TTFB: only measured against a production build
+  // (E2E_BASE_URL); under turbopack dev the number is compile noise.
+  for (const route of process.env.E2E_BASE_URL ? HERO_ROUTES : []) {
     const response = await page.goto(route.path, { waitUntil: "commit" });
     expect(response, `no response for ${route.path}`).not.toBeNull();
     const timing = await page.evaluate(() => {
@@ -91,7 +95,9 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
 
   if (ENFORCE) {
     for (const [path, timings] of Object.entries(report)) {
-      expect(timings.fullNavTtfbMs ?? 0, `${path} full-navigation TTFB`).toBeLessThan(FULL_NAV_TTFB_MS);
+      if (timings.fullNavTtfbMs !== undefined) {
+        expect(timings.fullNavTtfbMs, `${path} full-navigation TTFB`).toBeLessThan(FULL_NAV_TTFB_MS);
+      }
       expect(timings.clientNavMs ?? 0, `${path} client navigation`).toBeLessThan(CLIENT_NAV_MS);
     }
   }
