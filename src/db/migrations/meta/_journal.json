@@ -197,6 +197,13 @@
       "when": 1792480000000,
       "tag": "0121_export_packets",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1792480150000,
+      "tag": "0150_runtime_persistence",
+      "breakpoints": true
     }
   ]
 }

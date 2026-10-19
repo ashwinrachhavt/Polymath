@@ -4,6 +4,7 @@ import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
+import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
 
 /*
@@ -156,6 +157,8 @@ export function createEngine(
       if (!profile) throw new Error(`Unknown agent profile: ${input.profileName}`);
 
       const model = primaryModel(profile.modelPolicy);
+      // The run keeps this revision even if the profile is edited afterwards.
+      const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
       const policy: PolicySnapshot = {
         profileId: profile.id,
         model,
@@ -173,6 +176,7 @@ export function createEngine(
           workspaceId: input.auth.workspaceId,
           threadId: input.threadId ?? null,
           agentProfileId: profile.id,
+          profileRevisionId: revision.id,
           objective: input.objective,
           retryOfRunId: input.retryOfRunId ?? null,
           subjects: input.subjects,
