@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, embeddings, files } from "@/domains/knowledge/schema";
+import { documents, files } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -25,8 +25,6 @@ import { embedExtraction } from "@/domains/knowledge/embedding";
 import { DossierError, attachDocuments, createDossier, dossierDocumentIds, listDossiers } from "@/domains/knowledge/dossiers";
 import { dossierSources } from "@/domains/knowledge/schema";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
-import { ensureProfile } from "@/domains/agents/commands";
-import { agentProfiles, agentRuns, toolCalls } from "@/domains/agents/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
 
 /** Deterministic embedder: words hash into buckets, so shared words mean closeness. */
