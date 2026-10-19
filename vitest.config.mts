@@ -7,8 +7,25 @@ export default defineConfig({
   },
   test: {
     // The shape is declared now so a test lands in the right place rather than
-    // the root of the repo; see tests/README.md for what each one proves.
-    include: ["tests/{unit,integration,contract,migration}/**/*.test.ts"],
+    // the root of the repo; see tests/README.md for what each one proves. The
+    // unit project runs under the pinned clock in tests/unit/setup.clock.ts;
+    // the db project keeps the real clock because it compares against
+    // Postgres timestamps from the service container.
+    projects: [
+      {
+        test: {
+          name: "unit",
+          include: ["tests/unit/**/*.test.ts"],
+          setupFiles: ["tests/unit/setup.clock.ts"],
+        },
+      },
+      {
+        test: {
+          name: "db",
+          include: ["tests/{integration,contract,migration}/**/*.test.ts"],
+        },
+      },
+    ],
     // All integration files share one test database, and reliability.test.ts
     // truncates every table in its beforeAll. Parallel files race that truncate
     // against concurrent seeds and fail with FK violations and deadlocks, so
