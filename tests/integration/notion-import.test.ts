@@ -82,12 +82,12 @@ suite("notion import", { timeout: 30_000 }, () => {
     // Extraction ran on the markdown: a succeeded row per document.
     const extractions = await db.select().from(documentExtractions).where(eq(documentExtractions.workspaceId, a.workspaceId));
     expect(extractions.filter((e) => e.status === "succeeded").length).toBe(2);
-    expect(extractions[0]?.text).toContain("Books to read.");
+    expect(extractions.some((e) => e.text.includes("Books to read."))).toBe(true);
 
     // The file names its provider object and account.
     const fileRows = await db.select().from(files).where(eq(files.workspaceId, a.workspaceId));
     expect(fileRows).toHaveLength(2);
-    expect(fileRows[0]?.origin).toBe("notion");
+    expect(fileRows.every((f) => f.origin === "notion")).toBe(true);
     expect(fileRows[0]?.externalAccountId).toBe(account.id);
     expect(fileRows[0]?.providerObjectId).toMatch(/^p[12]:[0-9a-f]{64}$/);
 
