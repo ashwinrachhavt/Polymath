@@ -40,7 +40,7 @@ export type SpecialistDefinition = {
   allowedTools: string[];
 };
 
-const READ_ONLY = ["tasks.read", "documents.search", "web.search"];
+const READ_ONLY = ["tasks.read", "documents.search", "web.search", "web.fetch"];
 const WITH_DRAFTING = [...READ_ONLY, "gmail.send"];
 
 function role(

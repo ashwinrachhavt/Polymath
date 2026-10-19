@@ -47,17 +47,21 @@ export const WEB_SEARCH_TIMEOUT_MS = 10_000;
 import { braveProvider } from "./brave";
 import { duckDuckGoProvider } from "./duckduckgo";
 import { exaProvider } from "./exa";
+import { searxngProvider } from "./searxng";
 import { tavilyProvider } from "./tavily";
 
 /*
  * Pick the adapter from the environment. SEARCH_PROVIDER wins outright;
- * otherwise the first configured key in cost order of "has a real free tier"
- * (Brave 2k/mo, Tavily 1k/mo, Exa trial credit), and with no key at all the
- * zero-key DuckDuckGo adapter so the tool works with no setup and no spend.
+ * otherwise a configured local SearXNG instance (SEARXNG_URL) is preferred,
+ * then the first configured key in cost order of "has a real free tier"
+ * (Brave 2k/mo, Tavily 1k/mo, Exa trial credit), and with nothing configured
+ * the zero-key DuckDuckGo adapter so the tool works with no setup and no spend.
  */
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
   switch (choice) {
+    case "searxng":
+      return searxngProvider(env);
     case "brave":
       return braveProvider(env);
     case "tavily":
@@ -68,13 +72,14 @@ export function webSearchProvider(env: Record<string, string | undefined> = proc
       return duckDuckGoProvider();
     case undefined:
     case "":
+      if (env.SEARXNG_URL) return searxngProvider(env);
       if (env.BRAVE_SEARCH_API_KEY) return braveProvider(env);
       if (env.TAVILY_API_KEY) return tavilyProvider(env);
       if (env.EXA_API_KEY) return exaProvider(env);
       return duckDuckGoProvider();
     default:
       throw new WebSearchError(
-        `Unknown SEARCH_PROVIDER "${choice}". Expected brave, tavily, exa, or duckduckgo.`,
+        `Unknown SEARCH_PROVIDER "${choice}". Expected searxng, brave, tavily, exa, or duckduckgo.`,
         choice,
       );
   }

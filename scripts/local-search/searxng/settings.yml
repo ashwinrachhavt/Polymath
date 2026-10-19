@@ -1,0 +1,79 @@
+# SearXNG for Axiom's agents: a private metasearch instance, no key, no account.
+# It is the default `web.search` provider when SEARCH_PROVIDER=searxng, and the
+# backing index for Firecrawl's `search` endpoint (SEARXNG_ENDPOINT below).
+#
+# Generated file. Edit the template at scripts/local-search/searxng/settings.yml.tpl.
+use_default_settings: true
+
+general:
+  instance_name: "Axiom Search"
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: false
+
+server:
+  secret_key: "__SEARXNG_SECRET__"
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  bind_address: "0.0.0.0"
+  port: 8080
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+  default_locale: "en"
+  query_in_title: true
+  infinite_scroll: false
+
+# Engines that need no key and work from a local instance. `json` results are
+# what the Axiom adapter and Firecrawl read; HTML is the human page.
+engines:
+  - name: google
+    engine: google
+    categories: [general]
+    shortcut: g
+    disabled: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    categories: [general]
+    shortcut: ddg
+
+  - name: brave
+    engine: brave
+    categories: [general]
+    shortcut: br
+
+  - name: wikipedia
+    engine: wikipedia
+    categories: [general]
+    shortcut: wp
+
+  - name: github
+    engine: github
+    categories: [it]
+    shortcut: gh
+
+  - name: stackoverflow
+    engine: stackoverflow
+    categories: [it]
+    shortcut: so
+
+  - name: arxiv
+    engine: arxiv
+    categories: [science]
+    shortcut: ar
+
+  - name: pypi
+    engine: pypi
+    categories: [it]
+    shortcut: py

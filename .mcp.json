@@ -12,6 +12,32 @@
       "env": {
         "MCP_TIMEOUT": "60000"
       }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "linear": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp"
+    },
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "gmail": {
+      "type": "http",
+      "url": "https://gmailmcp.googleapis.com/mcp/v1"
+    },
+    "code-index": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "code-index-mcp",
+        "code-index-mcp"
+      ],
+      "env": {}
     }
   }
 }

@@ -98,7 +98,7 @@ suite("specialists (integration)", () => {
     const [run] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, runId)).limit(1);
     expect(run.state).toBe("running");
     const snapshot = run.policySnapshot as { allowedTools?: unknown };
-    expect(snapshot.allowedTools).toEqual(["tasks.read", "documents.search", "web.search"]);
+    expect(snapshot.allowedTools).toEqual(["tasks.read", "documents.search", "web.search", "web.fetch"]);
   });
 
   it("refuses to hire a profile that does not exist", async () => {

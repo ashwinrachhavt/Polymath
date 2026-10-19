@@ -39,5 +39,148 @@ services:
       - "127.0.0.1:5001:5001"
     restart: unless-stopped
 
+  # Private metasearch for the agents' web.search tool and Firecrawl. No key,
+  # no account, query leaves this machine only as the individual engines it
+  # fans out to. JSON results are what the adapter and Firecrawl read.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: axiom-searxng
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SEARXNG_BASE_URL: "http://127.0.0.1:8080/"
+    volumes:
+      - ./scripts/local-search/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    depends_on:
+      redis-search:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - search
+
+  # Firecrawl's own rate limiter cache. Separate from anything Axiom stores.
+  redis-search:
+    image: redis:alpine
+    container_name: axiom-redis-search
+    command: redis-server --bind 0.0.0.0 --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - search
+
+  # Self-hosted Firecrawl. Search is the local SearXNG above, not a hosted
+  # engine, so the whole research loop — search, crawl, extract markdown — runs
+  # on this machine. The API is unauthenticated locally and bound to loopback;
+  # that is the local-dev stance (same as the app's own DOCLING_SERVE_URL).
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    container_name: axiom-firecrawl
+    ports:
+      - "127.0.0.1:3002:3002"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3002"
+      ENV: local
+      REDIS_URL: redis://redis-search:6379
+      REDIS_RATE_LIMIT_URL: redis://redis-search:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://firecrawl-playwright:3000/scrape
+      POSTGRES_HOST: firecrawl-postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      USE_DB_AUTHENTICATION: "false"
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      SEARXNG_ENDPOINT: http://searxng:8080
+      SEARXNG_ENGINES: google,duckduckgo,brave
+      SEARXNG_CATEGORIES: general
+      NUM_WORKERS_PER_QUEUE: "4"
+      CRAWL_CONCURRENT_REQUESTS: "5"
+      MAX_CONCURRENT_JOBS: "3"
+      BROWSER_POOL_SIZE: "3"
+      LOGGING_LEVEL: info
+    depends_on:
+      redis-search:
+        condition: service_healthy
+      firecrawl-postgres:
+        condition: service_healthy
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+      firecrawl-playwright:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    container_name: axiom-firecrawl-playwright
+    environment:
+      PORT: "3000"
+      ALLOW_LOCAL_WEBHOOKS: "false"
+      BLOCK_MEDIA: "true"
+      MAX_CONCURRENT_PAGES: "5"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-postgres:
+    # The image's initdb script creates pg_cron, which Postgres only allows in a
+    # database named `postgres`; any other POSTGRES_DB aborts init before the
+    # nuq tables exist. Keep these at the image defaults.
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    container_name: axiom-firecrawl-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - axiom-firecrawl-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    container_name: axiom-firecrawl-rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - search
+
+networks:
+  search:
+    driver: bridge
+
 volumes:
   axiom-pgdata:
+  axiom-firecrawl-pgdata:

@@ -41,9 +41,9 @@ export async function createCustomSpecialistAction(input: {
       mission: z.string().trim().max(300).default(""),
       instructions: z.string().trim().min(1).max(8000),
       allowedTools: z
-        .array(z.enum(["tasks.read", "documents.search", "web.search", "gmail.send"]))
+        .array(z.enum(["tasks.read", "documents.search", "web.search", "web.fetch", "gmail.send"]))
         .max(10)
-        .default(["tasks.read", "documents.search", "web.search"]),
+        .default(["tasks.read", "documents.search", "web.search", "web.fetch"]),
     })
     .parse(input);
   const result = await createCustomSpecialist(auth, parsed);

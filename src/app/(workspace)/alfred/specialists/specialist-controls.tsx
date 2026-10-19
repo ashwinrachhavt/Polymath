@@ -99,14 +99,14 @@ export function HireForm({ profileName, disabled }: { profileName: string; disab
   );
 }
 
-const TOOL_CHOICES = ["tasks.read", "documents.search", "web.search", "gmail.send"] as const;
+const TOOL_CHOICES = ["tasks.read", "documents.search", "web.search", "web.fetch", "gmail.send"] as const;
 
 export function CreateSpecialistForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [mission, setMission] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [tools, setTools] = useState<string[]>(["tasks.read", "documents.search", "web.search"]);
+  const [tools, setTools] = useState<string[]>(["tasks.read", "documents.search", "web.search", "web.fetch"]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

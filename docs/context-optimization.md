@@ -49,9 +49,30 @@ Plain `claude` still works (uncompressed, straight to LiteLLM :4000).
 - Custom model limits live in `~/.headroom/models.json` (both Hive models → 1M).
 - Check health / savings: `headroom doctor`, `headroom perf`, `headroom dashboard`.
 
+## MCP servers, measured
+
+Added 2026-10-19. Each row is the `tools/list` payload the server contributes to
+every request, measured against the live endpoint:
+
+| Server | Tools | Schema |
+|---|---|---|
+| context7 (HTTP) | 2 | 5.3 KB |
+| code-index (uvx) | 14 | 8.7 KB |
+| gmail (HTTP) | 23 | 73 KB |
+| linear, figma (HTTP) | — | OAuth-gated; measured after sign-in |
+
+Gmail is now the largest single schema cost — roughly 18k tokens per request.
+If a session is not doing mail work, that is the first server to disable
+(`claude mcp remove gmail -s project`); `claude mcp add` restores it.
+
+Linear and Figma require an interactive `claude` session to complete OAuth once;
+they stay `Pending approval` until then. Context7 needs no key.
+
 ## Deliberately skipped
 
-The "index MCP" tools from the top-10 roundups (code-review-graph, Token Savior,
-claude-context, Graphify, Context Mode, token-optimizer\*) duplicate Serena. Each
-adds tool schemas — i.e. they would *increase* the exact cost we just cut. Keep
-Serena as the single code index.
+The other "index MCP" tools from the top-10 roundups (code-review-graph, Token
+Savior, claude-context, Graphify, Context Mode, token-optimizer\*) still
+duplicate Serena and were not added. `code-index-mcp` is the one exception the
+operator asked for — it supplements Serena with whole-repo regex search and
+file summaries, at 8.7 KB. Treat the pair as one index: prefer Serena symbols,
+fall back to code-index for cross-file text search.

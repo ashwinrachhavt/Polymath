@@ -13,7 +13,7 @@ import {
  * capability) is a test failure, not a runtime surprise in the bench UI.
  */
 
-const KNOWN_CAPABILITIES = new Set(["tasks.read", "documents.search", "web.search", "gmail.send"]);
+const KNOWN_CAPABILITIES = new Set(["tasks.read", "documents.search", "web.search", "web.fetch", "gmail.send"]);
 
 describe("specialist roster", () => {
   it("covers the seven teams from the owner's reference tree", () => {
