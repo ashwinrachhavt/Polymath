@@ -12,7 +12,16 @@ import { Screen, Panel, Field, Empty, Status, Unavailable } from "@/components/w
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import type { Artifact } from "@/components/workspace/types";
 import { ArtifactList, NewArtifact, RecordLinks } from "./artifact-controls";
-import RichEditor from "./rich-editor";
+import dynamic from "next/dynamic";
+
+const RichEditor = dynamic(() => import("./rich-editor"), {
+  ssr: false,
+  loading: () => (
+    <div role="status" aria-label="Loading the editor" className="min-h-48 animate-pulse rounded-md border border-border bg-muted/30 p-4 text-[13px] text-muted-foreground">
+      Loading the editor…
+    </div>
+  ),
+});
 
 function BlogDraft({ record }: { record: Artifact }) {
   const { state, updateArtifact, addReview, notify } = useWorkspace();
