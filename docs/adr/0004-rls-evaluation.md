@@ -28,19 +28,28 @@ fails CI rather than letting this ADR go stale:
    under the probe role: the scoped tenant's rows are visible, other tenants'
    are not, and - the fail-closed property - a connection with no tenant
    claim sees nothing.
-4. `FORCE ROW LEVEL SECURITY` binds the table owner too: the application
-   connection itself sees zero rows without a tenant claim and exactly its
-   tenant's rows with one. This is the property that makes RLS meaningful as
-   defense-in-depth against a bug in application-level scoping.
+4. `FORCE ROW LEVEL SECURITY` binds a non-privileged table owner: with the
+   probe role owning the table, an owner connection sees zero rows without a
+   tenant claim and exactly its tenant's rows with one. This is the property
+   that makes RLS meaningful as defense-in-depth against a bug in
+   application-level scoping.
+5. The application connection itself is not bound, even by FORCE: the first
+   run asserted owner-sees-nothing under FORCE and got every row back. The
+   connection role is superuser or BYPASSRLS (the probe records which on
+   every run), and such roles ignore RLS entirely. RLS on the app's current
+   connection is inert - it is meaningful only under a dedicated runtime
+   role.
 
 ## Decision
 
 Evaluation only; no schema adopts RLS in this change. The adoption criteria
 this evaluation feeds:
 
-- RLS is worth adopting on a table only with a dedicated, non-owner runtime
-  role; while the app connects as the table owner without FORCE, RLS adds
-  ceremony without a boundary.
+- RLS adoption is meaningless without a dedicated, non-privileged runtime
+  role: the app currently connects as a role RLS cannot bind (finding 5), so
+  enabling policies on the existing connection would add ceremony with no
+  boundary. The runtime role must be non-superuser, no BYPASSRLS, and not
+  the table owner (or the table must be under FORCE).
 - Adopting means: migration creates the runtime role and grants, the app's
   pooled connections run as it, `axiom.workspace_id` is set per transaction
   from the server-derived AuthContext (never client input), and FORCE is on.
