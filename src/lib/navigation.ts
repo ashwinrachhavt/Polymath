@@ -316,8 +316,9 @@ export function destinationForPath(pathname: string): Destination | undefined {
 }
 
 export function isBrowserPreviewPath(pathname: string) {
+  // /command-center/* routes all read the workspace's canonical records; the
+  // preview screens they replaced live under /apps/.
   return pathname.startsWith("/apps/")
-    || pathname.startsWith("/command-center/")
     || pathname.startsWith("/neuralflow/")
     || ["/reviews", "/activity", "/settings"].includes(pathname);
 }

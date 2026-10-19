@@ -18,6 +18,7 @@ export type BriefingTask = {
   status: string;
   priority: string;
   dueAt: Date | null;
+  tags: string[];
   version: number;
 };
 
@@ -34,14 +35,14 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
   const rows = await db.execute(sql`
     with ws as (
       select coalesce(
-        (select timezone from workspaces where id = ${auth.workspaceId}),
+        (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}),
         'UTC'
       ) as tz
     ),
     day as (
       select (now() at time zone (select tz from ws))::date as today
     )
-    select t.id, t.title, t.status, t.priority, t.due_at, t.version,
+    select t.id, t.title, t.status, t.priority, t.due_at, t.tags, t.version,
       (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome
     from tasks t
     where t.workspace_id = ${auth.workspaceId}
@@ -58,13 +59,14 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
     status: r.status as string,
     priority: r.priority as string,
     dueAt: r.due_at ? new Date(r.due_at as string) : null,
+    tags: (r.tags as string[]) ?? [],
     version: r.version as number,
     isOutcome: r.is_outcome as boolean,
   }));
 
   const todayRows = await db.execute(sql`
     select (now() at time zone coalesce(
-      (select timezone from workspaces where id = ${auth.workspaceId}), 'UTC'
+      (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}), 'UTC'
     ))::date::text as today
   `);
   const today = (todayRows as unknown as Array<{ today: string }>)[0].today;
@@ -80,6 +82,6 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
   return { today, outcomes: outcomes.map(strip), suggested, dueTodayOrOverdue, waiting };
 }
 
-function strip({ isOutcome: _isOutcome, ...task }: BriefingTask & { isOutcome: boolean }): BriefingTask {
-  return task;
+function strip(task: BriefingTask & { isOutcome: boolean }): BriefingTask {
+  return { id: task.id, title: task.title, status: task.status, priority: task.priority, dueAt: task.dueAt, tags: task.tags, version: task.version };
 }
