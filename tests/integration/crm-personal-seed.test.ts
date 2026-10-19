@@ -21,9 +21,10 @@ let seedPersonalData: typeof import("@/domains/crm/seed").seedPersonalData;
 let zonedToUtc: typeof import("@/domains/crm/seed").zonedToUtc;
 
 beforeAll(async () => {
-  if (!handle) return;
-  ({ db } = handle);
+  // The pure DST test runs even when the database suites skip. makeTestDb
+  // already selected the scratch URL above, before this module is loaded.
   ({ seedPersonalData, zonedToUtc } = await import("@/domains/crm/seed"));
+  if (handle) ({ db } = handle);
 });
 
 afterAll(async () => {
