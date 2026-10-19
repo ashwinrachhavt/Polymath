@@ -47,6 +47,7 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
 
   // The list entry links back to the same note.
   await page.goto("/alfred/notebook");
-  await page.getByRole("link", { name: title, exact: true }).click();
+  // No exact: the link's accessible name legitimately includes the excerpt.
+  await page.getByRole("link", { name: title }).click();
   await expect(page).toHaveURL(/\/alfred\/notebook\?id=/);
 });
