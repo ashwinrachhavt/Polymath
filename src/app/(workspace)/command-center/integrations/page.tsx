@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listConnectors } from "@/domains/integrations/queries";
 import { getAuthContext } from "@/lib/auth";
-import { AccountControls, RegisterForm } from "./connector-controls";
+import { AccountControls, ConnectButton, RegisterForm } from "./connector-controls";
 
 export const metadata = { title: "Connectors · Axiom" };
 
@@ -58,6 +58,11 @@ async function Connectors() {
                     status={account.status}
                     isDefault={account.isDefaultForWrites}
                   />
+                  {account.status === "connecting" ? (
+                    <div className="mt-2">
+                      <ConnectButton provider={connector.provider} defaultAlias={account.alias} />
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

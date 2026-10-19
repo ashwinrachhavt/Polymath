@@ -82,11 +82,14 @@ export async function beginConnection(
 }
 
 /** The route handler stores the hosted link Composio returned. */
-export async function attachProviderLink(auth: AuthContext, input: { attemptId: string; redirectUrl: string }) {
+export async function attachProviderLink(
+  auth: AuthContext,
+  input: { attemptId: string; redirectUrl: string; connectedAccountId: string },
+) {
   return withTransaction(async (tx) => {
     const [updated] = await tx
       .update(connectionAttempts)
-      .set({ providerRedirectUrl: input.redirectUrl })
+      .set({ providerRedirectUrl: input.redirectUrl, providerConnectedAccountId: input.connectedAccountId })
       .where(
         and(
           eq(connectionAttempts.workspaceId, auth.workspaceId),

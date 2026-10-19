@@ -42,6 +42,7 @@ suite("connection attempts", () => {
     const linked = await connect.attachProviderLink(auth, {
       attemptId: attempt.id,
       redirectUrl: "https://hosted.composio.dev/auth/abc",
+      connectedAccountId: happyCa,
     });
     expect(linked.providerRedirectUrl).toContain("composio");
 
@@ -84,7 +85,7 @@ suite("connection attempts", () => {
     const { attempt } = await connect.beginConnection(auth, { provider: "slack", alias: "team-slack" });
     await connect.completeConnection(auth, { stateToken: attempt.stateToken, providerConnectedAccountId: `ca_${crypto.randomUUID()}` });
     await expect(
-      connect.attachProviderLink(auth, { attemptId: attempt.id, redirectUrl: "https://late.example" }),
+      connect.attachProviderLink(auth, { attemptId: attempt.id, redirectUrl: "https://late.example", connectedAccountId: "ca_late" }),
     ).rejects.toMatchObject({ code: "stale_write" });
   });
 

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
-import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction } from "./actions";
+import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction } from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
 
@@ -105,5 +105,36 @@ export function AccountControls({
       ) : null}
       {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
     </div>
+  );
+}
+
+/* The hosted-auth entry point: begins the attempt and navigates to Composio. */
+
+export function ConnectButton({ provider, defaultAlias }: { provider: string; defaultAlias: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await startConnectionAction({ provider, alias: defaultAlias });
+            if (result.ok) {
+              window.location.assign(result.redirectUrl);
+            } else {
+              setError(result.error);
+            }
+          });
+        }}
+      >
+        {pending ? "Opening…" : "Connect"}
+      </Button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
   );
 }
