@@ -17,10 +17,12 @@ test("global capture and search open the exact shared task without losing the or
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Search workspace" }).fill("Cross-app capture regression");
   await page.keyboard.press("Enter");
+  // Work views are canonical now: a preview-store deep link opens the
+  // canonical list, and the preview inspector is gone. (The command layer
+  // itself goes canonical in the stacked PR.)
   await expect(page).toHaveURL(/\/neuralflow\/work\?view=list&task=/);
-  await expect(page.getByRole("dialog", { name: "Task inspector" })).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("textbox", { name: "Title", exact: true })).toHaveValue("Cross-app capture regression");
-  await page.keyboard.press("Escape");
+  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Task inspector" })).toHaveCount(0);
 
   // The durable inbox proves the same retain-the-original contract against
   // Postgres: capture, convert to a canonical task, original text survives.
