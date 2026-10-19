@@ -69,6 +69,7 @@ export function SideNav() {
       <Link
         key={destination.href}
         href={destination.href}
+        prefetch={true}
         aria-label={destination.label}
         title={collapsed ? destination.label : undefined}
         aria-current={active ? "page" : undefined}

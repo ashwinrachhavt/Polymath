@@ -33,6 +33,7 @@ export function MobileNav() {
           <Link
             key={href}
             href={href}
+            prefetch={true}
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
