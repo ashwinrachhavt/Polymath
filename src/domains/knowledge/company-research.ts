@@ -5,7 +5,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { searchWebForAgent } from "./web-search";
-import { artifactVersions, artifacts, dossierSources, sources } from "./schema";
+import { artifactVersions, artifacts, documents, dossierSources, sources } from "./schema";
 
 /*
  * Company research (ASH-114): an evidence-grounded business case study. The
@@ -177,15 +177,24 @@ export function sectionOrPlaceholder(section: string, body: string, manifestSize
 }
 
 async function loadDossierManifest(tx: TxDrizzle, auth: AuthContext, dossierId: string): Promise<SourceManifestEntry[]> {
+  // Dossiers pin sources rows; a source is a URL or a workspace document
+  // (sources.fileId). Document entries cite their document id as the locator -
+  // no URL is fabricated for a record that has none.
   const rows = await tx
-    .select({ title: sources.title, url: sources.url, note: dossierSources.note })
+    .select({ sourceId: sources.id, title: sources.title, url: sources.url, fileId: sources.fileId, documentTitle: documents.title, documentId: documents.id, note: dossierSources.note })
     .from(dossierSources)
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+    .leftJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
     .where(and(eq(dossierSources.workspaceId, auth.workspaceId), eq(dossierSources.dossierId, dossierId)));
   const now = new Date().toISOString();
-  return rows
-    .filter((r): r is typeof r & { url: string } => Boolean(r.url))
-    .map((r, i) => ({ ref: `S${i + 1}`, title: r.title ?? r.url!, url: r.url!, publishedAt: null, retrievedAt: now, query: null }));
+  return rows.map((r, i) => ({
+    ref: `S${i + 1}`,
+    title: r.title ?? r.documentTitle ?? r.url ?? "pinned source",
+    url: r.url ?? `document:${r.documentId ?? r.sourceId}`,
+    publishedAt: null,
+    retrievedAt: now,
+    query: null,
+  }));
 }
 
 function defaultAdapters(auth: AuthContext): ResearchAdapters {

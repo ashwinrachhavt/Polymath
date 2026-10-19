@@ -17,6 +17,7 @@ import { CreateDossierForm } from "./create-dossier-form";
 import { DraftWorkbench } from "./draft-workbench";
 import { listLinkableRecords, resolveLinkTitles } from "./links";
 import { GenerateForm } from "./generate-form";
+import { ResearchCompanyForm } from "./research-form";
 
 export const metadata = { title: "Dossiers · Axiom" };
 
@@ -142,6 +143,9 @@ export async function DossiersSurface({
               </ul>
             )}
             <Pagination basePath={BASE} raw={raw} page={docsPaged!.page} pageSize={25} total={detail.documents.length} pageParam="dpage" compact />
+            <Section title="Research a company" description="An evidence-grounded case study that reads only this dossier's pinned sources - no web search, gaps marked honestly.">
+              <ResearchCompanyForm dossierId={detail.id} />
+            </Section>
             <Section title="Generate a draft" description="Starts a run that reads only this dossier. The result is a draft you save or discard; nothing publishes.">
               <GenerateForm dossierId={detail.id} />
               {dossierRuns.length > 0 ? (

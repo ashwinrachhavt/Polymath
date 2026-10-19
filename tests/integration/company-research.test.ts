@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { artifacts, dossiers, dossierSources, sources } from "@/domains/knowledge/schema";
+import { blobObjects } from "@/domains/audit/schema";
+import { artifacts, documents, dossiers, dossierSources, files, sources } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -73,6 +74,13 @@ suite("runCompanyResearch", () => {
       .values({ workspaceId: auth.workspaceId, kind: "web", title: "Acme about page", url: "https://acme.example/about", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
     await db.insert(dossierSources).values({ workspaceId: auth.workspaceId, dossierId: dossier.id, sourceId: source.id });
+    // A document-backed source (the product dossier's primary shape): blob -> file -> document, pinned to the same dossier.
+    const [blob] = await db.insert(blobObjects).values({ workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(), sizeBytes: 4, mimeType: "application/pdf" }).returning();
+    const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "acme-10k.pdf" }).returning();
+    const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title: "Acme 10-K", fileId: file.id }).returning();
+    const [docSource] = await db.insert(sources).values({ workspaceId: auth.workspaceId, kind: "document", title: "Acme 10-K", fileId: file.id, createdBy: auth.userId, updatedBy: auth.userId }).returning();
+    await db.insert(dossierSources).values({ workspaceId: auth.workspaceId, dossierId: dossier.id, sourceId: docSource.id });
+    void doc;
 
     let searched = 0;
     const result = await research.runCompanyResearch(
@@ -81,7 +89,8 @@ suite("runCompanyResearch", () => {
       { search: async () => { searched += 1; return []; }, complete: groundedComplete },
     );
     expect(searched).toBe(0);
-    expect(result.manifestSize).toBe(1);
+    // Both the URL source and the document-backed source are in the manifest.
+    expect(result.manifestSize).toBe(2);
     expect(result.groundedSections).toBe(SECTION_COUNT - 1);
   });
 
