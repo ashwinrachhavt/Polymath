@@ -3,7 +3,6 @@ import { actionAttempts, actionProposals, actionReviews, actionRevisions } from 
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { externalAccounts } from "@/domains/integrations/schema";
-import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { contacts, correspondence } from "./schema";
 
@@ -83,7 +82,7 @@ async function prepare(auth: AuthContext, correspondenceId: string): Promise<Pre
       throw new SendNotAllowedError("The send has not been approved.");
     }
     const [latest] = await tx
-      .select({ id: actionRevisions.id })
+      .select({ id: actionRevisions.id, payload: actionRevisions.payload })
       .from(actionRevisions)
       .where(and(eq(actionRevisions.workspaceId, auth.workspaceId), eq(actionRevisions.proposalId, proposal.id)))
       .orderBy(desc(actionRevisions.revisionNumber))
@@ -98,7 +97,13 @@ async function prepare(auth: AuthContext, correspondenceId: string): Promise<Pre
     if (!review || review.decision !== "approved" || review.revisionId !== latest.id) {
       throw new SendNotAllowedError("The approval does not cover the current revision.");
     }
-    if (draft.updatedAt.getTime() > proposal.decidedAt.getTime()) {
+    const approved = latest.payload as { subject?: string | null; body?: string | null; contactId?: string | null; externalAccountId?: string | null };
+    if (
+      approved.subject !== draft.subject ||
+      approved.body !== draft.body ||
+      approved.contactId !== draft.contactId ||
+      approved.externalAccountId !== draft.externalAccountId
+    ) {
       throw new SendNotAllowedError("The draft changed after it was approved. Request approval again.");
     }
     if (!draft.externalAccountId) throw new SendNotAllowedError("Choose a connected account to send from.");
