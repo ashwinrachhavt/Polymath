@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import { completeTask, createOwnerTask } from "@/domains/work/commands";
@@ -18,6 +18,7 @@ import {
 } from "@/domains/work/task-commands";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { tasksTag } from "@/lib/cache-tags";
 
 /*
  * Work mutations. Both write the canonical `tasks` row — the same one
@@ -26,7 +27,10 @@ import { requireRole } from "@/lib/auth/guards";
  * other reader of that row.
  */
 
-const revalidate = () => revalidatePath("/neuralflow/work");
+const revalidate = (auth: AuthContext) => {
+  updateTag(tasksTag(auth));
+  revalidatePath("/neuralflow/work");
+};
 
 /*
  * Every action below writes the canonical tasks row, so each requires member
@@ -58,7 +62,7 @@ export async function createTaskAction(input: {
 
   const auth = await authorize();
   const { id } = await createOwnerTask(auth, parsed.data);
-  revalidate();
+  revalidate(auth);
   return { ok: true, taskId: id };
 }
 
@@ -70,7 +74,7 @@ export async function completeTaskAction(
 
   const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data });
-  revalidate();
+  revalidate(auth);
   // Already done leaves the row alone and says so, rather than pretending the
   // second click did something.
   return done
@@ -98,7 +102,7 @@ const domainErrors = [
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
     const value = await run();
-    revalidate();
+    revalidate(auth);
     return { ok: true, ...value };
   } catch (error) {
     if (domainErrors.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
