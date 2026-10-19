@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   check,
   date,
   index,
@@ -313,6 +314,37 @@ export const documentExportManifests = pgTable(
  * removes only the named tag. The shape matches what the Files surface UI
  * was built against.
  */
+/*
+ * An assembled packet: the immutable zip of one manifest's pinned versions,
+ * stored as a blob so a download serves exactly what was assembled, even
+ * after the manifest or documents change. `manifest_version` records what
+ * was assembled from; a later manifest edit does not mutate past packets.
+ */
+export const documentExportPackets = pgTable(
+  "document_export_packets",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    manifestId: uuid("manifest_id")
+      .notNull()
+      .references(() => documentExportManifests.id, { onDelete: "cascade" }),
+    manifestVersion: integer("manifest_version").notNull(),
+    blobId: uuid("blob_id")
+      .notNull()
+      .references(() => blobObjects.id, { onDelete: "restrict" }),
+    itemCount: integer("item_count").notNull(),
+    missingCount: integer("missing_count").notNull().default(0),
+    driftedCount: integer("drifted_count").notNull().default(0),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    index("document_export_packets_manifest_idx").on(t.manifestId, t.createdAt),
+    index("document_export_packets_workspace_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
 export const documentTags = pgTable(
   "document_tags",
   {
