@@ -9,7 +9,7 @@ import { invoicePdf, SAMPLE_INVOICE_LINES } from "./helpers/invoice-pdf";
  */
 test.skip(!process.env.DATABASE_URL, "Document review needs DATABASE_URL (server and test).");
 
-test("an invoice goes from upload to corrected fields, linked parties, a follow-up and search", async ({ page }) => {
+test("an invoice goes from upload to corrected fields, linked parties, a follow-up and search", async ({ page, request }) => {
   test.setTimeout(120_000);
   const run = crypto.randomUUID().slice(0, 8).toUpperCase();
   const invoiceNumber = `INV-${run}`;
@@ -17,9 +17,15 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
+  // Compile the upload route before the timed user journey, without writing a
+  // file: its GET rejects a missing documentId before querying any documents.
+  const warmup = await request.get("/api/v1/files");
+  expect(warmup.status()).toBe(400);
+
   await page.goto("/alfred/knowledge");
   await page.locator('input[type="file"]').first().setInputFiles({ name: `invoice-${run}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(invoicePdf(lines)) });
-  await expect(page.getByRole("status").filter({ hasText: "added to the inbox" })).toBeVisible();
+  // The upload toast is async server feedback; loaded CI runners take well over the 5s default.
+  await expect(page.getByRole("status").filter({ hasText: "added to the inbox" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("link", { name: `invoice-${run}`, exact: true }).click();
   // Uploading already starts the read in the background, so "Read now" only

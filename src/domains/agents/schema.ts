@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -8,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -43,6 +45,24 @@ export const stepKind = pgEnum("step_kind", [
 export const questionState = pgEnum("question_state", ["open", "answered", "dismissed"]);
 export const messageRole = pgEnum("message_role", ["user", "assistant", "system", "tool"]);
 export const memoryStatus = pgEnum("memory_status", ["proposed", "accepted", "rejected", "retired"]);
+/*
+ * Context manifest item kinds keep conversation, canonical records, evidence
+ * and reviewed memory distinct: a `message` is never evidence, and retrieved
+ * content is data, not instructions.
+ */
+export const manifestItemKind = pgEnum("manifest_item_kind", [
+  "record",
+  "artifact_version",
+  "source_span",
+  "memory_revision",
+  "message",
+]);
+export const manifestItemStaleness = pgEnum("manifest_item_staleness", [
+  "current",
+  "superseded",
+  "stale",
+  "conflicting",
+]);
 
 export const agentProfiles = pgTable(
   "agent_profiles",
@@ -65,7 +85,11 @@ export const agentProfiles = pgTable(
     isDefault: boolean("is_default").notNull().default(false),
     ...mutable,
   },
-  (t) => [uniqueIndex("agent_profiles_workspace_name_key").on(t.workspaceId, t.name)],
+  (t) => [
+    uniqueIndex("agent_profiles_workspace_name_key").on(t.workspaceId, t.name),
+    // Target for composite same-workspace foreign keys (migration 0150).
+    unique("agent_profiles_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
 );
 
 export const threads = pgTable(
@@ -86,6 +110,7 @@ export const threads = pgTable(
     index("threads_workspace_updated_idx").on(t.workspaceId, t.updatedAt),
     index("threads_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId),
     index("threads_agent_profile_idx").on(t.agentProfileId),
+    unique("threads_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
 );
 
@@ -139,6 +164,12 @@ export const agentRuns = pgTable(
     /** Record references the objective may touch. */
     subjects: jsonb("subjects").notNull().default([]),
     state: runState("state").notNull().default("queued"),
+    /**
+     * The immutable agent_profile_revisions row captured at admission (ASH-117).
+     * NULL only for runs that predate revisions. Fixed once set by a trigger; the
+     * workspace-scoped composite foreign key lives in migration 0150.
+     */
+    profileRevisionId: uuid("profile_revision_id"),
     /** Frozen at start: profile, model, tools, accounts, budget, policy. */
     policySnapshot: jsonb("policy_snapshot").notNull(),
     model: text("model"),
@@ -162,6 +193,7 @@ export const agentRuns = pgTable(
     // Partial index: the live queue is the non-terminal rows.
     index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
     index("agent_runs_thread_idx").on(t.threadId),
+    unique("agent_runs_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
 );
 
@@ -263,6 +295,80 @@ export const runArtifacts = pgTable(
   (t) => [
     uniqueIndex("run_artifacts_key").on(t.runId, t.artifactId),
     index("run_artifacts_artifact_idx").on(t.artifactId),
+  ],
+);
+
+/*
+ * A context manifest is the inspectable record of exactly what a run's
+ * context contained: which record versions, artifact versions, source spans,
+ * memory revisions and messages were selected, why, and under what budget.
+ * Manifests and items are append-only; an intentional refresh builds a new
+ * manifest rather than mutating an old one.
+ */
+export const contextManifests = pgTable(
+  "context_manifests",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "set null" }),
+    /**
+     * The profile revision the context was built against. A plain column, not
+     * a foreign key: this migration predates the runtime-bindings table in
+     * apply order, and the reference is validated by the domain instead.
+     */
+    profileRevisionId: uuid("profile_revision_id"),
+    purpose: text("purpose").notNull(),
+    /** The policy that chose the items: record types, scopes, ordering. */
+    selectionPolicy: jsonb("selection_policy").notNull().default({}),
+    /** The retrieval filters actually applied, so a reader can replay the query. */
+    retrievalScope: jsonb("retrieval_scope").notNull().default({}),
+    /** { maxTokens, usedTokens, truncated }: the budget and what it did. */
+    budget: jsonb("budget").notNull().default({}),
+    itemCount: integer("item_count").notNull().default(0),
+    /** Items excluded with a recorded reason (budget, staleness, revocation). */
+    gapCount: integer("gap_count").notNull().default(0),
+    ...recordedBy,
+  },
+  (t) => [
+    index("context_manifests_workspace_idx").on(t.workspaceId, t.createdAt),
+    index("context_manifests_run_idx").on(t.runId),
+    // Tenant-composite key for items: an item can never reference a manifest
+    // outside its own workspace.
+    uniqueIndex("context_manifests_workspace_id_key").on(t.workspaceId, t.id),
+  ],
+);
+
+export const contextManifestItems = pgTable(
+  "context_manifest_items",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    manifestId: uuid("manifest_id")
+      .notNull()
+      .references(() => contextManifests.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    kind: manifestItemKind("kind").notNull(),
+    /** The referenced row: artifact version, source, memory revision, or message id. */
+    refId: uuid("ref_id").notNull(),
+    /** The owning record when one exists (artifact id, claim id, thread id). */
+    refParentId: uuid("ref_parent_id"),
+    /** The version actually used (artifact version number, memory revision). */
+    refVersion: integer("ref_version"),
+    contentHash: text("content_hash"),
+    tokenEstimate: integer("token_estimate").notNull().default(0),
+    selectionReason: text("selection_reason"),
+    staleness: manifestItemStaleness("staleness").notNull().default("current"),
+    /** False when the budget or access rules excluded the item; the gap stays inspectable. */
+    included: boolean("included").notNull().default(true),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("context_manifest_items_ordinal_key").on(t.manifestId, t.ordinal),
+    index("context_manifest_items_ref_idx").on(t.workspaceId, t.kind, t.refId),
+    foreignKey({
+      columns: [t.workspaceId, t.manifestId],
+      foreignColumns: [contextManifests.workspaceId, contextManifests.id],
+    }),
   ],
 );
 

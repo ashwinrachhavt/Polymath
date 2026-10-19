@@ -148,6 +148,90 @@
       "when": 1792400000002,
       "tag": "0042_focus_task_outcome_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792410000000,
+      "tag": "0070_reading_engagement",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1792420000000,
+      "tag": "0090_reviews_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792430000000,
+      "tag": "0071_classification_and_rename_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792440000000,
+      "tag": "0072_outbox_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1792460000000,
+      "tag": "0110_document_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1792470000000,
+      "tag": "0120_document_version_restore",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1792480000000,
+      "tag": "0121_export_packets",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1792480150000,
+      "tag": "0150_runtime_persistence",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1792480160000,
+      "tag": "0142_context_manifests",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1792480170000,
+      "tag": "0160_role_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "tag": "0161_resource_grants",
+      "when": 1792480180000,
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "tag": "0162_membership_role_assignments",
+      "when": 1792480190000,
+      "breakpoints": true
     }
   ]
 }

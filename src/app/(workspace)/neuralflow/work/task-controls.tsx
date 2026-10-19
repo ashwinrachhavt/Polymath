@@ -8,9 +8,7 @@ import { Field } from "@/components/workspace/ui";
 import { Select } from "@/components/ui/select";
 import {
   addDependencyAction,
-  completeTaskAction,
   createSubtaskAction,
-  createTaskAction,
   moveTaskAction,
   removeDependencyAction,
   updateTaskAction,
@@ -68,80 +66,6 @@ function ErrorLine({ error }: { error: string | null }) {
       {error}
     </p>
   ) : null;
-}
-
-export function QuickAdd() {
-  const [title, setTitle] = useState("");
-  const intent = useIntent();
-  const { pending, error, run } = useRun();
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const value = title.trim();
-    if (!value) return;
-    run(intent, () => createTaskAction({ title: value, idempotencyKey: intent.key() }), () => setTitle(""));
-  }
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-1.5">
-      <div className="flex gap-2">
-        <Input aria-label="New task title" placeholder="Add a task" value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} />
-        <Button type="submit" disabled={pending || !title.trim()}>
-          Add task
-        </Button>
-      </div>
-      <ErrorLine error={error} />
-    </form>
-  );
-}
-
-export function RowActions({
-  taskId,
-  title,
-  version,
-  showMove,
-  up,
-  down,
-}: {
-  taskId: string;
-  title: string;
-  version: number;
-  showMove: boolean;
-  up: { after?: string; before?: string } | null;
-  down: { after?: string; before?: string } | null;
-}) {
-  const intent = useIntent();
-  const { pending, error, run } = useRun();
-  const move = (neighbours: { after?: string; before?: string }) =>
-    run(intent, () =>
-      moveTaskAction({
-        taskId,
-        expectedVersion: version,
-        afterTaskId: neighbours.after,
-        beforeTaskId: neighbours.before,
-        idempotencyKey: intent.key(),
-      }),
-    );
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-1">
-        {showMove && (
-          <>
-            <Button size="sm" variant="ghost" disabled={pending || !up} aria-label={`Move ${title} up`} onClick={() => up && move(up)}>
-              Up
-            </Button>
-            <Button size="sm" variant="ghost" disabled={pending || !down} aria-label={`Move ${title} down`} onClick={() => down && move(down)}>
-              Down
-            </Button>
-          </>
-        )}
-        {showMove && (
-          <Button size="sm" variant="outline" disabled={pending} aria-label={`Complete ${title}`} onClick={() => run(intent, () => completeTaskAction(taskId))}>
-            Done
-          </Button>
-        )}
-      </div>
-      <ErrorLine error={error} />
-    </div>
-  );
 }
 
 const statuses = [

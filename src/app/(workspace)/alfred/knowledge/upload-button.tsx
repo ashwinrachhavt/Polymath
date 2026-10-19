@@ -67,6 +67,7 @@ export function UploadButton() {
       <input
         ref={inputRef}
         type="file"
+        aria-label="Choose a document to upload"
         accept=".pdf,.png,.jpeg,.jpg"
         className="sr-only"
         onChange={(event) => {

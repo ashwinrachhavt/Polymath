@@ -15,7 +15,8 @@ import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 
 /*
  * Notebook mutations on the canonical artifact rows (ASH-141 / B04). A note
@@ -24,6 +25,17 @@ import { getAuthContext } from "@/lib/auth";
  */
 
 const revalidate = () => revalidatePath("/alfred/notebook");
+
+/*
+ * Notebook writes (create/autosave/commit/rename and the AI pass that spends
+ * a run) require member or above; reading a run's output stays membership-
+ * only so a viewer can watch progress (ASH-121 AC05).
+ */
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  return auth;
+}
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
 const domainErrors = [NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError];
@@ -52,7 +64,7 @@ const createInput = z.object({
 export async function createNoteAction(input: z.input<typeof createInput>): Promise<Result<{ artifactId: string }>> {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ artifactId: (await createNote(auth, parsed.data)).id }));
 }
 
@@ -67,7 +79,7 @@ const autosaveInput = z.object({
 export async function autosaveNoteAction(input: z.input<typeof autosaveInput>): Promise<Result<{ version: number }>> {
   const parsed = autosaveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That autosave is not valid." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ version: (await autosaveNoteDraft(auth, parsed.data)).version }));
 }
 
@@ -83,7 +95,7 @@ const commitInput = z.object({
 export async function commitNoteAction(input: z.input<typeof commitInput>): Promise<Result<{ version: number; versionNumber: number }>> {
   const parsed = commitInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That checkpoint is not valid." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => {
     const { version, versionNumber } = await commitNoteSnapshot(auth, parsed.data);
     return { version, versionNumber };
@@ -100,7 +112,7 @@ const renameInput = z.object({
 export async function renameNoteAction(input: z.input<typeof renameInput>): Promise<Result<{ version: number }>> {
   const parsed = renameInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
 }
 
@@ -123,7 +135,7 @@ export async function startNoteAIAction(input: z.input<typeof aiStartInput>): Pr
   if (!parsed.success) return { ok: false, error: "That AI request is not valid." };
   const unavailable = eveBridgeUnavailableReason();
   if (unavailable) return { ok: false, error: unavailable };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => {
     await ensureProfile(auth.workspaceId);
     return startNoteAIRun(auth, parsed.data, createEngine(createEveDriver()));
@@ -158,6 +170,6 @@ const aiApplyInput = z.object({
 export async function applyNoteAIResultAction(input: z.input<typeof aiApplyInput>): Promise<Result<{ version: number; versionNumber: number }>> {
   const parsed = aiApplyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That apply request is not valid." };
-  const auth = await getAuthContext();
+  const auth = await authorize();
   return guarded(async () => applyNoteAIResult(auth, parsed.data));
 }

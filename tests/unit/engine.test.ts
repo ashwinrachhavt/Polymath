@@ -81,6 +81,10 @@ vi.mock("@/domains/spending/commands", () => ({
   }),
 }));
 
+vi.mock("@/domains/agents/runtime-persistence", () => ({
+  captureProfileRevision: vi.fn(async () => ({ id: "rev_1" })),
+}));
+
 vi.mock("@/lib/db-transaction", () => ({
   withTransaction: (fn: (tx: unknown) => Promise<unknown>) =>
     fn({ execute: async () => stubResults.execute?.rows ?? [] }),

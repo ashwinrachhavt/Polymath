@@ -1,6 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { actionProposals } from "./schema";
+import { recordAudit } from "@/domains/audit/record";
+import { withReceipt } from "@/domains/audit/receipt";
+import { outboxEvents } from "@/domains/audit/schema";
+import type { AuthContext } from "@/domains/identity/resolve";
+import { withTransaction } from "@/lib/db-transaction";
+import { actionReviews, actionRevisions } from "./schema";
+
 
 /*
  * The only write path that turns model intent into an external effect. A tool
@@ -62,4 +69,223 @@ export async function createProposal(
   // retryable failure, not a TypeError, when the contract next changes.
   if (!existing) throw new Error("proposal vanished during dedupe resolve");
   return { proposalId: existing.id, deduplicated: true };
+}
+
+
+/*
+ * Human decisions on proposals (Reviews v2). A decision is one transaction:
+ * idempotency receipt → compare-and-set on (version, still pending) → status
+ * flip + review row → audit + outbox, committed together or not at all.
+ *
+ * Nothing here executes. Approving marks the proposal approved and binds the
+ * decision to the exact revision seen; the attempt step is a separate gate
+ * (execution settings, executor) that this command never opens.
+ */
+
+export class ProposalNotFoundError extends Error {
+  readonly code = "proposal_not_found";
+  constructor() {
+    super("That proposal does not exist in this workspace.");
+    this.name = "ProposalNotFoundError";
+  }
+}
+
+export class ProposalConflictError extends Error {
+  readonly code = "proposal_conflict";
+  constructor() {
+    super("This proposal changed since you loaded it. Reload and try again.");
+    this.name = "ProposalConflictError";
+  }
+}
+
+export class StaleRevisionError extends Error {
+  readonly code = "stale_revision";
+  constructor() {
+    super("The payload changed since you loaded it. Inspect the new revision before deciding.");
+    this.name = "StaleRevisionError";
+  }
+}
+
+async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Record<string, unknown>) {
+  await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic, payload });
+}
+
+/** The revision a fresh decision must name: the newest one on the proposal. */
+async function latestRevisionId(tx: TxDrizzle, workspaceId: string, proposalId: string) {
+  const [latest] = await tx
+    .select({ id: actionRevisions.id, revisionNumber: actionRevisions.revisionNumber })
+    .from(actionRevisions)
+    .where(and(eq(actionRevisions.workspaceId, workspaceId), eq(actionRevisions.proposalId, proposalId)))
+    .orderBy(desc(actionRevisions.revisionNumber))
+    .limit(1);
+  return latest ?? null;
+}
+
+export async function decideProposal(
+  auth: AuthContext,
+  input: {
+    idempotencyKey?: string;
+    proposalId: string;
+    expectedVersion: number;
+    revisionId: string;
+    decision: "approved" | "rejected";
+    note?: string;
+  },
+): Promise<{ id: string; version: number; replayed: boolean }> {
+  return withTransaction(async (tx) => {
+    const { value, replayed } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "decideProposal", ...input },
+      async () => {
+        const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
+        if (!latest) throw new ProposalNotFoundError();
+        if (latest.id !== input.revisionId) throw new StaleRevisionError();
+
+        const [row] = await tx
+          .update(actionProposals)
+          .set({
+            status: input.decision,
+            decidedAt: new Date(),
+            decidedBy: auth.userId,
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+            version: sql`${actionProposals.version} + 1`,
+          })
+          .where(
+            and(
+              eq(actionProposals.id, input.proposalId),
+              eq(actionProposals.workspaceId, auth.workspaceId),
+              eq(actionProposals.version, input.expectedVersion),
+              eq(actionProposals.status, "pending"),
+            ),
+          )
+          .returning({ id: actionProposals.id, version: actionProposals.version, title: actionProposals.title });
+        if (!row) {
+          const [exists] = await tx
+            .select({ id: actionProposals.id })
+            .from(actionProposals)
+            .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+            .limit(1);
+          if (!exists) throw new ProposalNotFoundError();
+          throw new ProposalConflictError();
+        }
+
+        await tx.insert(actionReviews).values({
+          workspaceId: auth.workspaceId,
+          proposalId: input.proposalId,
+          revisionId: input.revisionId,
+          decision: input.decision,
+          note: input.note?.trim() || null,
+          reviewedBy: auth.userId,
+        });
+        await recordAudit(
+          auth,
+          {
+            action: "actions.proposal_decided",
+            subjectType: "action_proposal",
+            subjectId: row.id,
+            summary: `${input.decision === "approved" ? "Approved" : "Rejected"} proposal: ${row.title}`,
+            metadata: { decision: input.decision, revisionId: input.revisionId },
+          },
+          tx,
+        );
+        await emit(tx, auth, "actions.proposal.decided", {
+          proposalId: row.id,
+          decision: input.decision,
+          revisionId: input.revisionId,
+        });
+        return { id: row.id, version: row.version };
+      },
+    );
+    return { ...value, replayed };
+  });
+}
+
+/*
+ * Editing the payload appends an immutable revision and bumps the proposal's
+ * version, which is what invalidates every decision rendered against the old
+ * revision: their expectedVersion and revisionId no longer match. Only a
+ * pending proposal can be revised — a decided one is history, and a changed
+ * intent is a new proposal (revisionOf) from its agent, not an edit.
+ */
+export async function reviseProposal(
+  auth: AuthContext,
+  input: {
+    idempotencyKey?: string;
+    proposalId: string;
+    expectedVersion: number;
+    payload: unknown;
+    preview?: unknown;
+  },
+): Promise<{ id: string; version: number; revisionId: string; revisionNumber: number; replayed: boolean }> {
+  return withTransaction(async (tx) => {
+    const { value, replayed } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "reviseProposal", ...input },
+      async () => {
+        const [proposal] = await tx
+          .select({ id: actionProposals.id, status: actionProposals.status, title: actionProposals.title })
+          .from(actionProposals)
+          .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!proposal) throw new ProposalNotFoundError();
+        if (proposal.status !== "pending") throw new ProposalConflictError();
+
+        const [row] = await tx
+          .update(actionProposals)
+          .set({
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+            version: sql`${actionProposals.version} + 1`,
+          })
+          .where(
+            and(
+              eq(actionProposals.id, input.proposalId),
+              eq(actionProposals.workspaceId, auth.workspaceId),
+              eq(actionProposals.version, input.expectedVersion),
+              eq(actionProposals.status, "pending"),
+            ),
+          )
+          .returning({ id: actionProposals.id, version: actionProposals.version });
+        if (!row) throw new ProposalConflictError();
+
+        const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
+        const revisionNumber = (latest?.revisionNumber ?? 0) + 1;
+        const [revision] = await tx
+          .insert(actionRevisions)
+          .values({
+            workspaceId: auth.workspaceId,
+            proposalId: input.proposalId,
+            revisionNumber,
+            payload: input.payload as Record<string, unknown>,
+            preview: (input.preview ?? null) as Record<string, unknown> | null,
+            createdBy: auth.userId,
+          })
+          .returning({ id: actionRevisions.id });
+
+        await recordAudit(
+          auth,
+          {
+            action: "actions.proposal_revised",
+            subjectType: "action_proposal",
+            subjectId: row.id,
+            summary: `New payload revision ${revisionNumber} on proposal: ${proposal.title}`,
+            metadata: { revisionId: revision.id, revisionNumber },
+          },
+          tx,
+        );
+        await emit(tx, auth, "actions.proposal.revised", {
+          proposalId: row.id,
+          revisionId: revision.id,
+          revisionNumber,
+        });
+        return { id: row.id, version: row.version, revisionId: revision.id, revisionNumber };
+      },
+    );
+    return { ...value, replayed };
+  });
 }

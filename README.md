@@ -78,3 +78,22 @@ never queries another domain's tables directly. Flows point one way:
 `docs/` owns product and architecture; `agents/` owns stance. Both are loaded by
 default through `CLAUDE.md`. Where they disagree, `agents/*` wins, then
 `CLAUDE.md`, then skill defaults.
+
+### Adding migrations in parallel
+
+Reserve a four-digit SQL prefix with the other active lanes before generating.
+A prefix is a name, not execution order: append to `meta/_journal.json` in merge
+order and choose `when` greater than **every** existing entry. Rebase on current
+main immediately before merge and re-check. Never renumber published timestamps
+or change applied SQL to fix a collision; use a new repair migration instead.
+
+Run `pnpm check:migrations origin/main` after fetching. CI compares against the
+PR target (or the previous main commit), rejects changed history, duplicate
+prefixes/tags, missing/orphan SQL, and new checkpoints that Drizzle would skip.
+Legacy out-of-order history is intentionally preserved, not silently repaired.
+
+Drizzle snapshots are a schema-generation baseline, not the migration ledger.
+The existing snapshot chain is incomplete. Do not resolve parallel snapshot
+collisions by blindly unioning JSON: generate serially on current main, review
+the SQL against existing migrations, and append one journal entry. The guard
+does not prove snapshot/schema equivalence or apply anything to a database.

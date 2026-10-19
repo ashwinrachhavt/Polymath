@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { currentExtractionIdSubquery } from "./versions";
 import { cleanTopics, openRouterWikiSummarizer, TOPIC_SLUG, type WikiSummarizer } from "@/integrations/wiki/summarizer";
 import { artifactLinks, artifacts, artifactVersions, documentExtractions, documents, wikiPages } from "./schema";
 
@@ -260,17 +261,19 @@ export async function ingestDocument(
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`))
     .limit(1);
   if (!doc) throw new WikiError("document_not_found", "No such document in this workspace.");
+  // The restored version is what the document reads as, so wiki reads it too.
   const [extraction] = await db
     .select({ text: documentExtractions.text, contentHash: documentExtractions.contentHash })
     .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
     .where(
       and(
         eq(documentExtractions.documentId, doc.id),
         eq(documentExtractions.workspaceId, auth.workspaceId),
         eq(documentExtractions.status, "succeeded"),
+        eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
       ),
     )
-    .orderBy(desc(documentExtractions.createdAt))
     .limit(1);
   if (!extraction?.text) {
     throw new WikiError("no_extraction", "This document has no succeeded extraction to read yet.");

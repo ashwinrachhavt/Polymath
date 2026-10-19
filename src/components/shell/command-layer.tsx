@@ -101,7 +101,7 @@ export function CommandLayer() {
 
   return <>
     <span className="contents md:hidden"><button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" data-search-trigger className="global-search disabled:opacity-50">
-      <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd className="readout ml-auto hidden text-[10px] lg:block">⌘ K</kbd>
+      <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd className="readout ml-auto hidden text-[11px] lg:block">⌘ K</kbd>
     </button></span>
     <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
@@ -115,11 +115,11 @@ export function CommandLayer() {
             if (event.key === "Enter" && results[active]) { event.preventDefault(); navigate(results[active].href); }
           }} aria-controls="command-results" aria-activedescendant={results[active] ? `command-${active}` : undefined} />
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}><Plus aria-hidden />Capture something<span className="readout ml-auto text-[10px]">Ctrl/⌘ Shift C</span></Button>
+            <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}><Plus aria-hidden />Capture something<span className="readout ml-auto text-[11px]">Ctrl/⌘ Shift C</span></Button>
             {/* The header stays quiet: the shortcuts list lives here, on the
                 keyboard surface, instead of a sixth header control. Shift+?
                 still opens it from anywhere. */}
-            <ShortcutsDialog trigger={<Button variant="outline" aria-label="Keyboard shortcuts"><Keyboard aria-hidden /><span className="hidden sm:inline">Shortcuts</span><span className="readout ml-auto hidden text-[10px] sm:inline">Shift ?</span></Button>} />
+            <ShortcutsDialog trigger={<Button variant="outline" aria-label="Keyboard shortcuts"><Keyboard aria-hidden /><span className="hidden sm:inline">Shortcuts</span><span className="readout ml-auto hidden text-[11px] sm:inline">Shift ?</span></Button>} />
           </div>
           <div id="command-results" role="listbox" aria-label="Search results" className="max-h-[45dvh] overflow-y-auto">
             {results.map((result, index) => <button key={result.key} id={`command-${index}`} role="option" aria-selected={active === index} type="button" onClick={() => navigate(result.href)} onMouseEnter={() => setSelected(index)} className="command-result">

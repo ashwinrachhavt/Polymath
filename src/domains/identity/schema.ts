@@ -11,6 +11,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -58,9 +59,158 @@ export const memberships = pgTable(
   },
   (t) => [
     uniqueIndex("memberships_workspace_user_key").on(t.workspaceId, t.userId),
+    // Composite reference target: a resource grant can only name a membership
+    // in its own workspace.
+    unique("memberships_workspace_id_id_key").on(t.workspaceId, t.id),
     // Serves the per-request authorization query (resolve.ts), which filters
     // by user_id + status; the workspace-leading unique index cannot.
     index("memberships_user_active_idx").on(t.userId).where(sql`status = 'active'`),
+  ],
+);
+
+/*
+ * ASH-121 AC03: custom role definitions. The key is immutable (there is no
+ * update path for it), the label and description are editable, and every edit
+ * appends an immutable revision pinned to a capability-catalog version, so a
+ * stored assignment can always be read against the catalog it was defined
+ * under. Archiving preserves history. Enforcement does not read these yet -
+ * guards.ts RANK remains the authorization surface.
+ */
+export const roleDefinitions = pgTable(
+  "role_definitions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Stable machine key, e.g. "billing_clerk". Immutable once created. */
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("role_definitions_workspace_key_key").on(t.workspaceId, t.key),
+    // Composite reference target: a revision can only point at a definition
+    // in the same workspace.
+    unique("role_definitions_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
+);
+
+/** Append-only: a role edit makes a new revision; an existing one never changes (DB-trigger enforced). */
+export const roleDefinitionRevisions = pgTable(
+  "role_definition_revisions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    revision: integer("revision").notNull(),
+    /** The capability-catalog version these capabilities were validated against. */
+    catalogVersion: integer("catalog_version").notNull(),
+    /** string[] of capability keys from the catalog; validated in the domain layer. */
+    capabilities: jsonb("capabilities").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    foreignKey({
+      name: "role_definition_revisions_definition_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    unique("role_definition_revisions_workspace_id_id_key").on(t.workspaceId, t.id),
+    unique("role_definition_revisions_definition_revision_key").on(t.roleDefinitionId, t.revision),
+  ],
+);
+
+/*
+ * ASH-121 AC04: resource grants. A grant binds one membership to one custom
+ * role definition on one resource row, with optional expiry. Revocation is a
+ * lifecycle event, not a delete: revoked rows stay for audit. The target is
+ * polymorphic (target_kind + target_id), so it carries no FK - the kind list
+ * plus the check constraint stop a typo inventing a kind, and the domain
+ * layer validates the target's existence inside the workspace, the same
+ * contract linkTargetKinds documents. Guests and team subjects are later
+ * work; inheritance is deliberately absent.
+ *
+ * NOTHING reads these rows for authorization yet: guards.ts RANK remains the
+ * only enforcement surface (ADR 0002), so this table changes no existing
+ * behavior. Adoption is a later, explicitly flagged slice.
+ */
+export const resourceGrantTargetKinds = ["person", "organization"] as const;
+export type ResourceGrantTargetKind = (typeof resourceGrantTargetKinds)[number];
+
+export const resourceGrants = pgTable(
+  "resource_grants",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    membershipId: uuid("membership_id").notNull(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    targetKind: text("target_kind").notNull(),
+    targetId: uuid("target_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    ...mutable,
+  },
+  (t) => [
+    foreignKey({
+      name: "resource_grants_membership_fk",
+      columns: [t.workspaceId, t.membershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "resource_grants_role_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    check(
+      "resource_grants_target_kind_check",
+      sql.raw(`target_kind in (${resourceGrantTargetKinds.map((k) => `'${k}'`).join(", ")})`),
+    ),
+    // One active grant per subject/role/target; history accumulates as
+    // revoked rows, so re-granting after a revoke is a fresh row.
+    uniqueIndex("resource_grants_active_key")
+      .on(t.workspaceId, t.membershipId, t.targetKind, t.targetId, t.roleDefinitionId)
+      .where(sql`revoked_at is null`),
+    index("resource_grants_target_idx").on(t.workspaceId, t.targetKind, t.targetId),
+  ],
+);
+
+/*
+ * ASH-121 AC03: assignment of custom roles to memberships, workspace-wide
+ * (per-resource authority is resource_grants). Unassignment is a lifecycle
+ * event, not a delete: revoked rows stay for audit. NOTHING reads these rows
+ * for authorization yet - guards.ts RANK remains the only enforcement
+ * surface; the delegation limit in assignments.ts is the rule the future
+ * enforcement slice inherits.
+ */
+export const membershipRoleAssignments = pgTable(
+  "membership_role_assignments",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    membershipId: uuid("membership_id").notNull(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    ...mutable,
+  },
+  (t) => [
+    foreignKey({
+      name: "membership_role_assignments_membership_fk",
+      columns: [t.workspaceId, t.membershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "membership_role_assignments_role_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    // One active assignment of a role per membership; history accumulates as
+    // revoked rows, so re-assigning after a revoke is a fresh row.
+    uniqueIndex("membership_role_assignments_active_key")
+      .on(t.workspaceId, t.membershipId, t.roleDefinitionId)
+      .where(sql`revoked_at is null`),
+    index("membership_role_assignments_role_idx").on(t.workspaceId, t.roleDefinitionId).where(sql`revoked_at is null`),
   ],
 );
 

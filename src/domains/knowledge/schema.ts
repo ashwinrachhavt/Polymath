@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   check,
   date,
   index,
@@ -8,6 +9,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -24,6 +26,7 @@ import {
   tenantId,
 } from "../../db/columns";
 import { blobObjects } from "../audit/schema";
+import { users } from "../identity/tables";
 import { companies, contacts } from "../crm/schema";
 
 /*
@@ -189,10 +192,35 @@ export const documents = pgTable(
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "set null" }),
     title: text("title").notNull(),
+    /**
+     * The one doc-type signal (ASH-143): set by an accepted classification
+     * proposal, consumed by obligations and title suggestions - never re-typed
+     * by editing the title string.
+     */
+    docType: text("doc_type").$type<import("./vocabulary").DocumentType | null>(),
     mimeType: text("mime_type"),
     pageCount: integer("page_count"),
     /** Where the bytes came from when the document was captured from a URL; null for an upload. */
     sourceUrl: text("source_url"),
+    /*
+     * The folder this document is filed in; null is the library root. A
+     * document's identity never depends on where it is filed - moving is a
+     * folder event, not a new document.
+     */
+    folderId: uuid("folder_id").references((): AnyPgColumn => documentFolders.id, {
+      onDelete: "set null",
+    }),
+    /*
+     * The version the library, review and retrieval treat as current; null
+     * means the newest extraction (the default before restores existed). A
+     * restore only ever points this at a succeeded row, and a new extraction
+     * version clears it, so the pointer can never strand a document on a
+     * failed or stale read. Set null if the row is pruned.
+     */
+    activeExtractionId: uuid("active_extraction_id").references(
+      (): AnyPgColumn => documentExtractions.id,
+      { onDelete: "set null" },
+    ),
     ...mutable,
   },
   (t) => [
@@ -203,6 +231,166 @@ export const documents = pgTable(
     index("documents_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("documents_file_idx").on(t.fileId),
     index("documents_artifact_idx").on(t.artifactId),
+    index("documents_folder_idx").on(t.workspaceId, t.folderId),
+  ],
+);
+
+/*
+ * The file-manager tree (Box-feel library). A folder is a name plus a parent;
+ * the root is "no folder". Names are unique per folder, case-insensitively,
+ * among live folders - the same rule Box applies. Archiving a folder is
+ * blocked by the domain while it still holds live documents or subfolders,
+ * so nothing is ever silently unfiled.
+ */
+export const documentFolders = pgTable(
+  "document_folders",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Null is a top-level folder. Restrict: a folder with subfolders cannot vanish. */
+    parentId: uuid("parent_id").references((): AnyPgColumn => documentFolders.id, {
+      onDelete: "restrict",
+    }),
+    name: text("name").notNull(),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("document_folders_name_key")
+      .on(t.workspaceId, sql`coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid)`, sql`lower(name)`)
+      .where(sql`archived_at is null`),
+    index("document_folders_parent_idx").on(t.workspaceId, t.parentId),
+  ],
+);
+
+/*
+ * Append-only filing history: which folder a document left and which it
+ * entered. The activity feed reads this so "when did this move" is
+ * answerable, and a move is never a silent edit.
+ */
+export const documentFolderEvents = pgTable(
+  "document_folder_events",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    fromFolderId: uuid("from_folder_id").references((): AnyPgColumn => documentFolders.id, {
+      onDelete: "set null",
+    }),
+    toFolderId: uuid("to_folder_id").references((): AnyPgColumn => documentFolders.id, {
+      onDelete: "set null",
+    }),
+    ...recordedBy,
+  },
+  (t) => [index("document_folder_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt)],
+);
+
+/*
+ * Export manifest (ASH-130): a named selection of documents for a party or
+ * purpose, each item pinned to the exact extraction version chosen at the
+ * time. The pin is the honest core: re-extracting a document later never
+ * changes what the manifest says it exported, and the read side reports
+ * drift ("a newer version exists") instead of silently upgrading.
+ */
+export const documentExportManifests = pgTable(
+  "document_export_manifests",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    name: text("name").notNull(),
+    /** What this packet is for, in the owner's words. */
+    purpose: text("purpose"),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
+    ...mutable,
+  },
+  (t) => [index("document_export_manifests_workspace_idx").on(t.workspaceId, t.updatedAt)],
+);
+
+/*
+ * Free tags on documents (Box-feel organization). Normalized lowercase, one
+ * row per (document, tag); tagging is additive and idempotent, untagging
+ * removes only the named tag. The shape matches what the Files surface UI
+ * was built against.
+ */
+/*
+ * An assembled packet: the immutable zip of one manifest's pinned versions,
+ * stored as a blob so a download serves exactly what was assembled, even
+ * after the manifest or documents change. `manifest_version` records what
+ * was assembled from; a later manifest edit does not mutate past packets.
+ */
+export const documentExportPackets = pgTable(
+  "document_export_packets",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    manifestId: uuid("manifest_id")
+      .notNull()
+      .references(() => documentExportManifests.id, { onDelete: "cascade" }),
+    manifestVersion: integer("manifest_version").notNull(),
+    blobId: uuid("blob_id")
+      .notNull()
+      .references(() => blobObjects.id, { onDelete: "restrict" }),
+    itemCount: integer("item_count").notNull(),
+    missingCount: integer("missing_count").notNull().default(0),
+    driftedCount: integer("drifted_count").notNull().default(0),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    index("document_export_packets_manifest_idx").on(t.manifestId, t.createdAt),
+    index("document_export_packets_workspace_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export const documentTags = pgTable(
+  "document_tags",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    tag: text("tag").notNull(),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_tags_document_tag_key").on(t.documentId, t.tag),
+    check("document_tags_tag_check", sql`tag = lower(btrim(tag)) and length(tag) between 1 and 40`),
+    index("document_tags_workspace_tag_idx").on(t.workspaceId, t.tag),
+  ],
+);
+
+export const documentExportManifestItems = pgTable(
+  "document_export_manifest_items",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    manifestId: uuid("manifest_id")
+      .notNull()
+      .references(() => documentExportManifests.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    /*
+     * The pinned version: the latest succeeded extraction when the item was
+     * added. The hash is denormalized so the pin survives the extraction
+     * row's pruning; null when the document had no succeeded extraction,
+     * which the manifest says out loud rather than pretending a version.
+     */
+    extractionId: uuid("extraction_id").references((): AnyPgColumn => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    extractionContentHash: text("extraction_content_hash"),
+    note: text("note"),
+    position: integer("position").notNull().default(0),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_export_manifest_items_document_key").on(t.manifestId, t.documentId),
+    index("document_export_manifest_items_manifest_idx").on(t.workspaceId, t.manifestId, t.position),
   ],
 );
 
@@ -852,4 +1040,135 @@ export const wikiPages = pgTable(
       .where(sql`role = 'article'`),
     index("wiki_pages_workspace_role_idx").on(t.workspaceId, t.role),
   ],
+);
+
+/*
+ * D18 (ASH-144): reading history and engagement on canonical documents. The
+ * events are append-only truth - one sitting is a visitId, and progress
+ * events carry the active-seconds delta since the last one so a lost close
+ * never loses the time. The state row is the folded "where you are", updated
+ * in the same transaction; furthest_progress never walks back.
+ */
+/** Event kinds, mirrored by the check constraint in 0070 (text + check, per house style). */
+export const readingEventKinds = ["opened", "progress", "closed"] as const;
+export type ReadingEventKind = (typeof readingEventKinds)[number];
+
+export const documentReadingEvents = pgTable(
+  "document_reading_events",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** One browser sitting. Regenerated per reader mount, carried by every event of the sitting. */
+    visitId: uuid("visit_id").notNull(),
+    kind: text("kind").notNull().$type<ReadingEventKind>(),
+    /** 0..1 of the extraction text scrolled into view; null on opened. */
+    progress: real("progress"),
+    page: integer("page"),
+    /** Active (visible) seconds since the previous event of this sitting; capped server-side. */
+    activeSeconds: integer("active_seconds"),
+    /** Client-generated idempotency key; unique when present so a retried send folds once. */
+    clientEventId: text("client_event_id"),
+    ...recordedBy,
+  },
+  (t) => [
+    uniqueIndex("document_reading_events_client_event_key")
+      .on(t.workspaceId, t.documentId, t.userId, t.clientEventId)
+      .where(sql`client_event_id is not null`),
+    index("document_reading_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt),
+    index("document_reading_events_user_history_idx").on(t.workspaceId, t.userId, t.createdAt),
+  ],
+);
+
+export const documentReadingState = pgTable(
+  "document_reading_state",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }).notNull().defaultNow(),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openCount: integer("open_count").notNull().default(0),
+    totalActiveSeconds: integer("total_active_seconds").notNull().default(0),
+    furthestProgress: real("furthest_progress").notNull().default(0),
+    lastPage: integer("last_page"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("document_reading_state_document_user_key").on(t.workspaceId, t.documentId, t.userId),
+    index("document_reading_state_user_recent_idx").on(t.workspaceId, t.userId, t.lastOpenedAt),
+  ],
+);
+
+/*
+ * B02 (ASH-143): classification proposals - the proposer (rules now, model
+ * later behind the same row) suggests a doc type; the owner accepts or
+ * rejects in the review workbench. One open proposal per (document,
+ * proposer); accepted rows set documents.doc_type in the same transaction.
+ */
+export const documentClassificationProposals = pgTable(
+  "document_classification_proposals",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    /** The extraction the classification was read from; survives its pruning. */
+    extractionId: uuid("extraction_id").references((): AnyPgColumn => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    proposedType: text("proposed_type").notNull().$type<import("./vocabulary").DocumentType>(),
+    confidence: text("confidence").notNull().$type<"high" | "medium" | "low">(),
+    /** The matched rules, shown in review as the basis. */
+    signals: jsonb("signals").notNull().default([]).$type<string[]>(),
+    /** e.g. "rules@v1"; a model proposer records model id + prompt version. */
+    proposer: text("proposer").notNull(),
+    status: text("status").notNull().default("proposed").$type<"proposed" | "accepted" | "rejected">(),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex("document_classification_open_key")
+      .on(t.workspaceId, t.documentId, t.proposer)
+      .where(sql`status = 'proposed'`),
+    index("document_classification_document_idx").on(t.workspaceId, t.documentId),
+  ],
+);
+
+/*
+ * The rename manifest: every title change leaves who/what/why. Internal
+ * only - the original filename on files is the provenance record and a
+ * provider rename never happens (v1).
+ */
+export const documentRenameEvents = pgTable(
+  "document_rename_events",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    oldTitle: text("old_title").notNull(),
+    newTitle: text("new_title").notNull(),
+    /** The accepted field values the suggestion was composed from, if any. */
+    basis: jsonb("basis").notNull().default({}).$type<Record<string, string>>(),
+    source: text("source").notNull().$type<"suggested" | "manual" | "classification">(),
+    ...recordedBy,
+  },
+  (t) => [index("document_rename_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt)],
 );

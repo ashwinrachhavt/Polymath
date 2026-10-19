@@ -31,12 +31,13 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
-import { ApplyTitleButton, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
+import { ApplyTitleButton, ClassificationDecisions, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
 import { listZettelProposals } from "@/domains/knowledge/zettels";
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
+import { getOpenClassification } from "@/domains/knowledge/classify";
 import { CaptureUrlForm } from "./capture-url-form";
 import { UploadButton } from "./upload-button";
 
@@ -115,7 +116,7 @@ export async function KnowledgeSurface({
     return (
       <>
         <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Knowledge storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and DOCLING_SERVE_URL or LLAMAPARSE_API_KEY."
@@ -150,9 +151,10 @@ export async function KnowledgeSurface({
 
   const selected = review;
   const optionsByParty = new Map(partyOptions.map((o) => [o.partyId, o.options]));
+  const classification = selected ? await getOpenClassification(auth, selected.document.id) : null;
   const suggestedTitle = selected
     ? suggestTitle(
-        "",
+        selected.document.docType ?? classification?.proposedType ?? "",
         Object.fromEntries(
           selected.fieldProposals
             .filter((p) => p.status === "accepted" && (p.acceptedValue ?? p.normalizedValue) != null)
@@ -183,7 +185,7 @@ export async function KnowledgeSurface({
         }
       />
 
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-6 page-content">
         <Section title="Search" description="Exact, full text, and semantic — one box.">
           <form action="/alfred/knowledge" method="get" className="flex gap-2">
             <label htmlFor="search" className="sr-only">
@@ -258,6 +260,7 @@ export async function KnowledgeSurface({
               suggestedTitle={
                 suggestedTitle && suggestedTitle !== selected.document.title ? suggestedTitle : null
               }
+              classification={classification}
             />
           ) : (
             <ul className="flex flex-col gap-2">
@@ -334,12 +337,14 @@ function ReviewWorkbench({
   review,
   partyOptions,
   suggestedTitle,
+  classification,
   zettels,
 }: {
   zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
   partyOptions: Map<string, { kind: "contact" | "company"; id: string; name: string; via: string }[]>;
   suggestedTitle: string | null;
+  classification: Awaited<ReturnType<typeof getOpenClassification>> | null;
 }) {
   const { document: doc, extraction, fieldProposals, parties, obligations } = review;
   const status = documentStatus(extraction, fieldProposals.filter((p) => p.status === "proposed").length);
@@ -401,6 +406,19 @@ function ReviewWorkbench({
             <RetryExtractionButton
               documentId={doc.id}
               label={extraction.proposalStatus === null ? "Propose fields" : "Retry proposing fields"}
+            />
+          ) : null}
+          {doc.docType ? (
+            <p className="text-muted-foreground text-xs">
+              Classified as <span className="font-medium text-foreground">{doc.docType}</span>.
+            </p>
+          ) : classification ? (
+            <ClassificationDecisions
+              proposalId={classification.id}
+              proposedType={classification.proposedType}
+              confidence={classification.confidence}
+              signals={classification.signals}
+              expectedVersion={classification.version}
             />
           ) : null}
           {suggestedTitle ? (

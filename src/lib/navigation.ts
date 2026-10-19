@@ -345,12 +345,12 @@ export function destinationForPath(pathname: string): Destination | undefined {
 }
 
 export function isBrowserPreviewPath(pathname: string) {
-  // The browser preview lives under /apps/ plus the three shared screens
-  // still rendered from the preview store. Everything under an app's own
-  // prefix (/command-center, /neuralflow, /alfred) reads canonical records,
-  // so it never carries the preview banner (ASH-165).
+  // The browser preview lives under /apps/ plus the shared screens still
+  // rendered from the preview store. Everything under an app's own prefix
+  // (/command-center, /neuralflow, /alfred) and /reviews read canonical
+  // records, so they never carry the preview banner (ASH-165).
   return pathname.startsWith("/apps/")
-    || ["/reviews", "/activity", "/settings"].includes(pathname);
+    || ["/activity", "/settings"].includes(pathname);
 }
 
 export const moreDestination = {

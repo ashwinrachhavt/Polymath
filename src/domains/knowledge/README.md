@@ -109,3 +109,78 @@ read-only: it reports archived-but-registered pages, articles whose source was
 archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
 capabilities; the surface is /alfred/wiki.
+
+## Party resolution and assertions (ASH-128)
+
+Extracted people/organizations become `document_parties` rows; only a human
+decision (match / create / reject) links them to CRM records, and verified
+identity (email, domain) proposes but never forces a match. Accepted facts
+land in the `reviewed_assertions` ledger, never on the record itself.
+
+- Conflicts surface, never settle silently: a non-superseding accept that
+  disagrees with an active value is reported in `acceptAssertions`' return
+  and in the `getAssertions` projection (`conflicts`), both values with
+  provenance. A superseding accept closes the conflict explicitly.
+- Accepted `employment_role` assertions project to `contact_companies`
+  (title, started/ended, current flag) when the company is identifiable by
+  id or exact name; an unidentifiable or foreign company projects nothing
+  and the assertion still stands. Projection is idempotent.
+- `archiveDocument` (`documents.ts`) archives the document and retracts its
+  assertions in one transaction - evidence never silently survives removal,
+  and reviewed rows are marked, never erased. The UI calls
+  `archiveDocumentAction` (member role).
+
+## Library backend (Box-feel file manager)
+
+The read model behind the document library UI: `library.ts` for reads,
+`folders.ts` for the tree, `exports.ts` for export manifests (ASH-130).
+
+- Folders (`folders.ts`): a name plus a parent; the root is "no folder".
+  Names are unique per folder, case-insensitively, among live folders. Every
+  mutation is version-checked and audited. Moving a document is a
+  `document_folder_events` row in the same transaction, never a silent edit;
+  archiving a folder is refused while it holds live documents or subfolders.
+- Pages (`listDocuments`): keyset pagination (opaque cursor: sort key plus
+  id), sorts recent/added/title/size, filters folder ("root" for unfiled),
+  doc type, state, party, date range, and q (full-text over extraction text
+  plus title/original-filename trigram match, so a failed extraction is
+  still findable by name). The state filter uses the same vocabulary as
+  `status.ts` - one SQL expression mirrors it, and the integration suite
+  asserts parity combination by combination. `listFolders` returns the flat
+  live folder list with direct document counts; the tree is composed
+  client-side.
+- Detail: `getDocumentVersions` (every extraction version, newest first;
+  each row carries `isCurrent`),
+  `getDocumentActivity` (added, read attempts, classification, renames,
+  moves, restores, field and obligation decisions, newest first, bounded),
+  `getDocumentParties` (roles with resolved CRM names).
+- Version restore (`versions.ts`): "current" is `documents.active_extraction_id`
+  when pinned, else the newest extraction. `restoreDocumentVersion` moves the
+  pin to any succeeded version of the document (version-checked, audited as
+  `document.version_restored`); failed or pending reads are never restore
+  targets. Every read surface - inbox, library rows and snippets, search
+  (document and chunk), review, reading state, wiki ingest, zettel
+  proposals, and export-manifest drift - follows the pin through
+  `currentExtractionSql` / `currentExtractionIdSubquery`. A newly created
+  extraction clears the pin (fresh bytes are newer truth). The UI calls the
+  `restoreDocumentVersionAction` server action (member role).
+- Tags (`tags.ts`): free tags, normalized lowercase, one row per (document,
+  tag); batch add/remove with idempotent re-tags. `listDocuments` takes a tag
+  filter and returns each row's tags; `listTags` is the filter rail.
+- Export manifests (`exports.ts`): a named selection for a party or purpose.
+  Each item pins the current succeeded extraction at add time (id plus
+  content hash, so the pin survives extraction pruning; a restore pin wins
+  over recency); a document with no succeeded extraction is pinned as an
+  honest null. The read side reports drift (`isCurrent: false`) after a
+  re-extraction or a restore rather than silently upgrading, and reports
+  current again when a restore returns the document to the pinned version.
+- Packets (`packets.ts`, ASH-130 full packets): `assembleExportPacket` turns a
+  manifest into an immutable zip - each item's pinned bytes under an ordered,
+  titled, hash-stamped filename, plus an enclosed `manifest.json` naming
+  purpose, recipient, pinned versions, drift flags, and the missing. An item
+  whose stored bytes no longer match the pinned hash ships nothing (the
+  packet contains the pinned version or says why it cannot); a drifted pin
+  still ships its pinned bytes, flagged. The zip is stored as a blob row with
+  a `document_export_packets` record (append-only; manifest edits do not
+  mutate past packets). POST `/api/v1/exports/manifests/:id/packet`
+  assembles (member), GET `/api/v1/exports/packets/:id` downloads (viewer).

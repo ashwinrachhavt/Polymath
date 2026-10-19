@@ -19,13 +19,13 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="border-border bg-background/95 sticky top-12 z-10 border-b px-4 pt-7 pb-5 backdrop-blur md:px-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="font-display text-[26px] leading-tight font-normal tracking-normal">{title}</h1>
-          <p className="text-muted-foreground text-[13px]">{purpose}</p>
+    <header className="page-header border-border bg-background/95 sticky top-12 z-10 border-b backdrop-blur">
+      <div className="screen-heading">
+        <div className="min-w-0 flex-1">
+          <h1 className="screen-title">{title}</h1>
+          <p className="screen-description">{purpose}</p>
         </div>
-        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="screen-actions">{actions}</div> : null}
       </div>
     </header>
   );
@@ -50,7 +50,7 @@ export function Section({
       <div className="flex flex-col gap-0.5">
         <h2 className="text-[13px] leading-tight font-medium">{title}</h2>
         {description ? (
-          <p className="text-muted-foreground text-[13px]">{description}</p>
+          <p className="screen-description">{description}</p>
         ) : null}
       </div>
       {children}

@@ -94,7 +94,7 @@ test("old Axiom paths redirect and unknown screens render a noindex not-found st
 
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/apps/command-center/briefing", "/apps/command-center/reviews", "/apps/command-center/settings", "/apps/neuralflow/tasks", "/apps/neuralflow/focus", "/apps/alfred/library", "/alfred/notebook"]) {
+  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/neuralflow/focus", "/alfred/knowledge", "/alfred/notebook"]) {
     await page.goto(path);
     // Axe must evaluate the settled page: the topbar buttons sit at
     // disabled:opacity-50 until hydration and transition to full opacity,

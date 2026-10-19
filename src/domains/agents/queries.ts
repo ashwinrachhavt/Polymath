@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 import { agentProfiles, agentRuns, toolCalls } from "./schema";
@@ -229,4 +229,51 @@ export async function pageRunsWithProfile(workspaceId: string, input: RunPageInp
     db.select({ total: count() }).from(agentRuns).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
+}
+
+/*
+ * The Briefing's "Agents overnight" log: recent runs with their profile name
+ * plus the totals the panel header reports ("N runs · nothing failed"). Runs
+ * stay inside the workspace; the window is the caller's (the Briefing passes
+ * the last 24 hours).
+ */
+export async function overnightRuns(workspaceId: string, since: Date, limit = 12) {
+  const where = and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since));
+  const [items, totals] = await Promise.all([
+    db
+      .select({
+        id: agentRuns.id,
+        state: agentRuns.state,
+        objective: agentRuns.objective,
+        summary: agentRuns.summary,
+        error: agentRuns.error,
+        createdAt: agentRuns.createdAt,
+        endedAt: agentRuns.endedAt,
+        profileName: agentProfiles.name,
+      })
+      .from(agentRuns)
+      .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
+      .where(where)
+      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+      .limit(limit),
+    db
+      .select({
+        total: count(),
+        failed: count(sql`case when ${agentRuns.state} = 'failed' then 1 end`),
+      })
+      .from(agentRuns)
+      .where(where),
+  ]);
+  return { items, total: totals[0]?.total ?? 0, failed: totals[0]?.failed ?? 0 };
+}
+
+/** Who proposed it: run objectives and profile names for a page of proposals. */
+export async function listRunAttributions(workspaceId: string, runIds: string[]) {
+  if (runIds.length === 0) return new Map<string, { objective: string; profileName: string | null }>();
+  const rows = await db
+    .select({ id: agentRuns.id, objective: agentRuns.objective, profileName: agentProfiles.name })
+    .from(agentRuns)
+    .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
+    .where(and(eq(agentRuns.workspaceId, workspaceId), inArray(agentRuns.id, runIds)));
+  return new Map(rows.map((row) => [row.id, { objective: row.objective, profileName: row.profileName }]));
 }

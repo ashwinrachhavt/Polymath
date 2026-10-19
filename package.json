@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "seed:personal": "tsx --env-file=.env scripts/seed/companies.ts",
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
+    "check:migrations": "tsx scripts/check-migrations.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "prepare": "git config core.hooksPath scripts/hooks"
   },
@@ -23,7 +24,6 @@
     "@ai-sdk/openai": "^4.0.96",
     "@clerk/nextjs": "7.9.14",
     "@excalidraw/excalidraw": "^0.18.1",
-    "@neondatabase/serverless": "1.2.0",
     "@tiptap/extension-link": "^3.31.4",
     "@tiptap/extension-placeholder": "^3.31.4",
     "@tiptap/markdown": "^3.31.4",

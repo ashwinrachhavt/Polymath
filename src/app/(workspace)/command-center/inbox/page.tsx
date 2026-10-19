@@ -1,16 +1,17 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Button } from "@/components/ui/button";
 import { Panel, Screen, Status } from "@/components/workspace/ui";
 import { Pagination } from "@/components/list/pagination";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { NoResults } from "@/components/list/no-results";
-import { CAPTURE_KINDS, countToClarify, type InboxFilter, searchCaptures } from "@/domains/capture/queries";
+import { CAPTURE_KINDS, type InboxFilter } from "@/domains/capture/queries";
+import { countToClarifyForPage, searchCapturesForPage } from "./data";
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
-import { CaptureActions, CaptureForm } from "./inbox-client";
+import { CaptureForm } from "./inbox-client";
+import { InboxList } from "./inbox-list";
 
 export const metadata = { title: "Inbox · Axiom" };
 
@@ -28,10 +29,6 @@ const filters: Array<{ value: InboxFilter; label: string }> = [
   { value: "all", label: "All captures" },
 ];
 
-function when(iso: Date): string {
-  return iso.toISOString().slice(0, 16).replace("T", " ") + "Z";
-}
-
 async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const list = parseListParams(query, { filters: { kind: CAPTURE_KINDS } });
@@ -40,14 +37,14 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   await connection();
   const auth = await getAuthContext();
   const [found, pending] = await Promise.all([
-    searchCaptures(auth, {
+    searchCapturesForPage(auth, {
       filter,
       kind: list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined,
       query: list.q,
       limit: list.pageSize,
       offset: offsetFor(list.page, list.pageSize),
     }),
-    countToClarify(auth),
+    countToClarifyForPage(auth),
   ]);
   const rows = found.items;
   const pageSize = list.pageSize;
@@ -91,30 +88,20 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
       />
 
       <Panel title={`${found.total} ${found.total === 1 ? "capture" : "captures"}`}>
-        <div className="divide-y divide-border">
-          {rows.map((capture) => {
-            const state =
-              capture.processingState === "converted" ? "converted" : capture.processingState === "discarded" ? "discarded" : "open";
-            return (
-              <article key={capture.id} className="py-4 first:pt-0">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Status>{capture.processingState}</Status>
-                  <span className="text-xs text-muted-foreground">{capture.kind}</span>
-                  <time className="readout text-xs text-muted-foreground" dateTime={capture.createdAt.toISOString()}>
-                    {when(capture.createdAt)}
-                  </time>
-                </div>
-                <p className="whitespace-pre-wrap break-words text-[13px]">{capture.text ?? capture.url}</p>
-                <CaptureActions captureId={capture.id} version={capture.version} state={state} />
-                {capture.processingState === "converted" && capture.convertedType === "task" && capture.convertedId ? (
-                  <Button asChild className="mt-3" size="sm" variant="outline">
-                    <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in NeuralFlow</Link>
-                  </Button>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
+        <InboxList
+          view={filter}
+          rows={rows.map((capture) => ({
+            id: capture.id,
+            processingState: capture.processingState,
+            kind: capture.kind,
+            createdAt: capture.createdAt.toISOString(),
+            text: capture.text,
+            url: capture.url,
+            version: capture.version,
+            convertedType: capture.convertedType,
+            convertedId: capture.convertedId,
+          }))}
+        />
         {!rows.length ? (
           <NoResults
             filtered={filtered}

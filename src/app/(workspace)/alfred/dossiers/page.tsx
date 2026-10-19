@@ -17,6 +17,7 @@ import { CreateDossierForm } from "./create-dossier-form";
 import { DraftWorkbench } from "./draft-workbench";
 import { listLinkableRecords, resolveLinkTitles } from "./links";
 import { GenerateForm } from "./generate-form";
+import { ResearchCompanyForm } from "./research-form";
 
 export const metadata = { title: "Dossiers · Axiom" };
 
@@ -38,7 +39,7 @@ export async function DossiersSurface({
     return (
       <>
         <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Dossier storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to create dossiers and generate from them."
@@ -79,7 +80,7 @@ export async function DossiersSurface({
   return (
     <>
       <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
-      <div className="flex flex-col gap-8 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-8 page-content">
         <Section title="Your dossiers" description="A dossier scopes search and generation to the documents pinned inside it.">
           {dossiers.length === 0 ? (
             <EmptyState
@@ -142,6 +143,9 @@ export async function DossiersSurface({
               </ul>
             )}
             <Pagination basePath={BASE} raw={raw} page={docsPaged!.page} pageSize={25} total={detail.documents.length} pageParam="dpage" compact />
+            <Section title="Research a company" description="An evidence-grounded case study that reads only this dossier's pinned sources - no web search, gaps marked honestly.">
+              <ResearchCompanyForm dossierId={detail.id} />
+            </Section>
             <Section title="Generate a draft" description="Starts a run that reads only this dossier. The result is a draft you save or discard; nothing publishes.">
               <GenerateForm dossierId={detail.id} />
               {dossierRuns.length > 0 ? (

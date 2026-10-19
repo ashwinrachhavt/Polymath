@@ -12,11 +12,16 @@ import type { ComponentProps } from "react";
  * is fixed here.
  */
 export function Select({ className = "", children, ...props }: ComponentProps<"select">) {
+  // Width and flex utilities belong on the wrapper so the arrow stays inside
+  // the visible control. Keep colour, border and text overrides on the select.
+  const layout = className.split(/\s+/).filter((token) => /^(?:(?:sm|md|lg|xl|2xl):)*(?:(?:min-|max-)?w-|flex-)/.test(token)).join(" ");
+  const hasWidth = /(?:^|\s)w-/.test(layout);
   return (
-    <span className={`relative inline-flex ${className.includes("w-") ? "" : "w-full"}`}>
+    <span data-slot="select-wrapper" className={`relative inline-flex min-w-0 ${hasWidth ? "" : "w-full"} ${layout}`}>
       <select
         {...props}
-        className={`h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${className}`}
+        data-slot="select"
+        className={`h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${className}`}
       >
         {children}
       </select>

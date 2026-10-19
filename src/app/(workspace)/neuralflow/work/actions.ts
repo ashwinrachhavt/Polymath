@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import { completeTask, createOwnerTask } from "@/domains/work/commands";
@@ -16,7 +16,9 @@ import {
   removeDependency,
   updateTask,
 } from "@/domains/work/task-commands";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
+import { tasksTag } from "@/lib/cache-tags";
 
 /*
  * Work mutations. Both write the canonical `tasks` row — the same one
@@ -25,7 +27,20 @@ import { getAuthContext } from "@/lib/auth";
  * other reader of that row.
  */
 
-const revalidate = () => revalidatePath("/neuralflow/work");
+const revalidate = (auth: AuthContext) => {
+  updateTag(tasksTag(auth));
+  revalidatePath("/neuralflow/work");
+};
+
+/*
+ * Every action below writes the canonical tasks row, so each requires member
+ * or above - a viewer's quick complete is still a write (ASH-121 AC05).
+ */
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  return auth;
+}
 
 const createInput = z.object({
   title: z.string().trim().min(1).max(300),
@@ -45,9 +60,9 @@ export async function createTaskAction(input: {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the task a title." };
 
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const { id } = await createOwnerTask(auth, parsed.data);
-  revalidate();
+  revalidate(auth);
   return { ok: true, taskId: id };
 }
 
@@ -57,9 +72,9 @@ export async function completeTaskAction(
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) return { ok: false, error: "That task no longer exists." };
 
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data });
-  revalidate();
+  revalidate(auth);
   // Already done leaves the row alone and says so, rather than pretending the
   // second click did something.
   return done
@@ -84,10 +99,10 @@ const domainErrors = [
   IdempotencyConflictError,
 ];
 
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
+async function guarded<T extends object>(auth: AuthContext, run: () => Promise<T>): Promise<Result<T>> {
   try {
     const value = await run();
-    revalidate();
+    revalidate(auth);
     return { ok: true, ...value };
   } catch (error) {
     if (domainErrors.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
@@ -119,8 +134,9 @@ const patchInput = z.object({
 export async function updateTaskAction(input: z.input<typeof patchInput>): Promise<Result<{ version: number }>> {
   const parsed = patchInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the task fields and try again." };
-  const auth = await getAuthContext();
-  return guarded(async () => ({ version: (await updateTask(auth, parsed.data)).version }));
+  const auth = await authorize();
+  return guarded(auth, async () => ({ version: (await updateTask(auth, parsed.data)).version }));
+
 }
 
 const subtaskInput = z.object({ parentTaskId: id, title: z.string().trim().min(1).max(300), idempotencyKey: key });
@@ -128,8 +144,9 @@ const subtaskInput = z.object({ parentTaskId: id, title: z.string().trim().min(1
 export async function createSubtaskAction(input: z.input<typeof subtaskInput>): Promise<Result<{ taskId: string }>> {
   const parsed = subtaskInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the subtask a title." };
-  const auth = await getAuthContext();
-  return guarded(async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
+  const auth = await authorize();
+  return guarded(auth, async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
+
 }
 
 const moveInput = z.object({
@@ -143,8 +160,9 @@ const moveInput = z.object({
 export async function moveTaskAction(input: z.input<typeof moveInput>): Promise<Result<{ rank: string; version: number }>> {
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That move is not valid." };
-  const auth = await getAuthContext();
-  return guarded(async () => {
+  const auth = await authorize();
+  return guarded(auth, async () => {
+
     const { rank, version } = await moveTask(auth, parsed.data);
     return { rank, version };
   });
@@ -161,15 +179,17 @@ const dependencyInput = z.object({
 export async function addDependencyAction(input: z.input<typeof dependencyInput>): Promise<Result<{ dependencyId: string }>> {
   const parsed = dependencyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency is not valid." };
-  const auth = await getAuthContext();
-  return guarded(async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
+  const auth = await authorize();
+  return guarded(auth, async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
+
 }
 
 export async function removeDependencyAction(input: { dependencyId: string; idempotencyKey: string }): Promise<Result> {
   const parsed = z.object({ dependencyId: id, idempotencyKey: key }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency no longer exists." };
-  const auth = await getAuthContext();
-  return guarded(async () => {
+  const auth = await authorize();
+  return guarded(auth, async () => {
+
     await removeDependency(auth, parsed.data);
     return {};
   });

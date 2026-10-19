@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, 
 import { auditEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { currentExtractionSql } from "./versions";
 import { escapeLike } from "@/lib/list-params";
 import { companies, contacts } from "../crm/schema";
 import {
@@ -34,7 +35,7 @@ export type DocumentReviewParty = {
 };
 
 export type DocumentReview = {
-  document: { id: string; title: string; mimeType: string | null; version: number; sourceUrl: string | null };
+  document: { id: string; title: string; docType: string | null; mimeType: string | null; version: number; sourceUrl: string | null };
   extraction: {
     id: string;
     status: string;
@@ -59,6 +60,7 @@ export async function getDocumentReview(
     .select({
       id: documents.id,
       title: documents.title,
+      docType: documents.docType,
       mimeType: documents.mimeType,
       version: documents.version,
       sourceUrl: documents.sourceUrl,
@@ -83,8 +85,8 @@ export async function getDocumentReview(
         text: documentExtractions.text,
       })
       .from(documentExtractions)
-      .where(eq(documentExtractions.documentId, input.documentId))
-      .orderBy(desc(documentExtractions.createdAt))
+      .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+      .where(and(eq(documentExtractions.documentId, input.documentId), sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`))
       .limit(1),
     getFieldProposals(auth, input.documentId),
     db
@@ -246,7 +248,7 @@ function inboxWhere(auth: AuthContext, input: DocumentInboxInput): SQL {
   const parts: SQL[] = [eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)];
   if (input.kind === "web_page") parts.push(isNotNull(documents.sourceUrl));
   if (input.kind === "file") parts.push(isNull(documents.sourceUrl));
-  const latest = sql`(select de.status::text from document_extractions de where de.document_id = ${documents.id} order by de.created_at desc limit 1)`;
+  const latest = sql`${currentExtractionSql("status")}`;
   if (input.readState === "unread") parts.push(sql`${latest} is null`);
   if (input.readState === "failed") parts.push(sql`${latest} = 'failed'`);
   if (input.query?.trim()) {
@@ -277,16 +279,8 @@ export async function getDocumentInbox(auth: AuthContext, limitOrInput: number |
       createdAt: documents.createdAt,
       sourceUrl: documents.sourceUrl,
       fetchedAt: files.createdAt,
-      extractionStatus: sql<string | null>`(
-        select de.status::text from document_extractions de
-        where de.document_id = ${documents.id}
-        order by de.created_at desc limit 1
-      )`,
-      proposalStatus: sql<string | null>`(
-        select de.proposal_status::text from document_extractions de
-        where de.document_id = ${documents.id}
-        order by de.created_at desc limit 1
-      )`,
+      extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
+      proposalStatus: sql<string | null>`${currentExtractionSql("proposal_status")}`,
     })
     .from(documents)
     .leftJoin(files, eq(files.id, documents.fileId))

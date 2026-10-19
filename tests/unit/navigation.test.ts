@@ -60,7 +60,9 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/neuralflow/focus")).toBe(false);
     expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
-    expect(isBrowserPreviewPath("/reviews")).toBe(true);
+    // /reviews is the canonical proposal queue (Postgres-backed); the
+    // browser-only rehearsal survives under /apps/command-center (Reviews v2).
+    expect(isBrowserPreviewPath("/reviews")).toBe(false);
     // The dossiers screen is backed by Neon, not browser samples, so no preview banner.
     expect(isBrowserPreviewPath("/alfred/dossiers")).toBe(false);
   });

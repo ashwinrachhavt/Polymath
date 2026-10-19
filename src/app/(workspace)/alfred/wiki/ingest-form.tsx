@@ -47,7 +47,10 @@ export function IngestForm({ documents }: { documents: { id: string; title: stri
     >
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor={selectId} className="sr-only">Document to ingest</label>
-        <Select id={selectId} name="documentId" required disabled={pending} className="border-input bg-background h-9 max-w-72 rounded-md border px-2 text-sm" >
+        <Select id={selectId} name="documentId" required defaultValue="" disabled={pending} className="border-input bg-background h-9 max-w-72 rounded-md border px-2 text-sm" >
+          <option value="" disabled>
+            Choose a document
+          </option>
           {documents.map((d) => (
             <option key={d.id} value={d.id}>
               {d.title}

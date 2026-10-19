@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Popover } from "radix-ui";
 import { Grip } from "lucide-react";
 import { cn } from "cn";
+import { CoachMark } from "@/components/shell/coach-mark";
 import { apps, appForPath, crossAppLinksFrom } from "@/lib/navigation";
 
 /*
@@ -35,6 +36,7 @@ export function AppLauncher() {
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
+      <span className="relative inline-flex">
       <Popover.Trigger
         aria-label="Open apps"
         title="Apps"
@@ -46,6 +48,10 @@ export function AppLauncher() {
       >
         <Grip aria-hidden className="size-4" />
       </Popover.Trigger>
+      <CoachMark id="launcher-top-right" title="Products have a new home">
+        Switch between Command Center, NeuralFlow and Alfred right here.
+      </CoachMark>
+      </span>
 
       <Popover.Portal>
         <Popover.Content

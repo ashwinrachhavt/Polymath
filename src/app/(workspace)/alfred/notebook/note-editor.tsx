@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
-import RichEditor from "@/components/products/alfred/rich-editor";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, renameNoteAction, startNoteAIAction } from "./actions";
 
@@ -19,6 +19,21 @@ import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNo
  * immutable artifact version. A draft left behind by a crash is offered on
  * load — never applied silently.
  */
+
+/*
+ * Tiptap (StarterKit + ProseMirror) is the heaviest client dependency in the
+ * app, so the editor loads as its own chunk after the note's title, history
+ * and AI panels are interactive. The fallback keeps the layout stable while
+ * the chunk streams in.
+ */
+const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), {
+  ssr: false,
+  loading: () => (
+    <div role="status" aria-label="Loading the editor" className="min-h-48 animate-pulse rounded-md border border-border bg-muted/30 p-4 text-[13px] text-muted-foreground">
+      Loading the editor…
+    </div>
+  ),
+});
 
 const body = (text: string) => ({ format: "markdown", text });
 
