@@ -52,11 +52,17 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
   }
 
   // Client-side transitions: click the in-shell link, time to new content.
+  // The rail is app-scoped by design (#59): same-app routes are one rail click
+  // away, cross-app routes go through the top-right launcher grid.
   for (const route of HERO_ROUTES) {
     const link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
-    await expect(link, `shell link to ${route.path}`).toBeVisible();
     const started = Date.now();
-    await link.click();
+    if (await link.isVisible()) {
+      await link.click();
+    } else {
+      await page.getByRole("button", { name: "Open apps" }).click();
+      await page.locator(`[data-radix-popper-content-wrapper] a[href="${route.path}"]`).first().click();
+    }
     await page.waitForURL(`**${route.path}**`);
     await expect(page.locator("main#content h1, main#content [role='heading']").first()).toBeVisible();
     report[route.path] = { ...report[route.path], clientNavMs: Date.now() - started };
