@@ -5,8 +5,8 @@ import { getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries
 import { listRecentRuns } from "@/domains/agents/queries";
 import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import KnowledgePage from "@/app/(workspace)/alfred/knowledge/page";
-import AlfredPage from "@/app/(workspace)/alfred/page";
+import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
+import { AlfredSurface } from "@/app/(workspace)/alfred/page";
 import DossiersPage from "@/app/(workspace)/alfred/dossiers/page";
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
@@ -39,7 +39,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 async function knowledge(doc?: string) {
-  return renderToStaticMarkup(await KnowledgePage({ searchParams: Promise.resolve({ doc }) }));
+  return renderToStaticMarkup(await KnowledgeSurface({ searchParams: Promise.resolve({ doc }) }));
 }
 
 describe("live Alfred route functionality", () => {
@@ -81,7 +81,7 @@ describe("live Alfred route functionality", () => {
   it("renders explicit configuration states, not crashes or fictitious empty data, without DATABASE_URL", async () => {
     vi.stubEnv("DATABASE_URL", "");
     const documents = await knowledge();
-    const agents = renderToStaticMarkup(await AlfredPage());
+    const agents = renderToStaticMarkup(await AlfredSurface());
     expect(documents).toContain("Knowledge storage is not configured");
     expect(documents).toContain("DATABASE_URL");
     expect(documents).toContain("BLOB_READ_WRITE_TOKEN");
@@ -96,7 +96,7 @@ describe("live Alfred route functionality", () => {
 
   it("keeps recorded runs viewable but exposes no start control when verified Eve identity is unavailable", async () => {
     vi.mocked(eveBridgeUnavailableReason).mockReturnValue("Eve does not support verified Clerk identity yet.");
-    const html = renderToStaticMarkup(await AlfredPage());
+    const html = renderToStaticMarkup(await AlfredSurface());
     expect(html).toContain("verified Clerk identity");
     expect(html).not.toContain("Start a run");
     expect(listRecentRuns).toHaveBeenCalledWith("workspace", 8);

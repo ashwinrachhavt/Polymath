@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 
 export function Screen({ title, description, actions, children }: { title: string; description: string; actions?: ReactNode; children: ReactNode }) {
-  return <div className="suite-screen"><header className="flex flex-wrap items-start justify-between gap-4 pb-6"><div><h1 className="text-xl font-medium tracking-tight">{title}</h1><p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">{description}</p></div>{actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}</header><div className="flex flex-col gap-6">{children}</div></div>;
+  return <div className="suite-screen"><header className="flex flex-wrap items-start justify-between gap-4 pb-6"><div><h1 className="font-display text-[26px] font-normal tracking-normal">{title}</h1><p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">{description}</p></div>{actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}</header><div className="flex flex-col gap-6">{children}</div></div>;
 }
 export function Panel({ title, description, actions, children, className }: { title?: string; description?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={cn("panel rounded-xl p-4", className)}>{(title || actions) && <div className="mb-4 flex items-start justify-between gap-3"><div>{title && <h2 className="text-[13px] font-medium">{title}</h2>}{description && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>}</div>{actions}</div>}{children}</section>;

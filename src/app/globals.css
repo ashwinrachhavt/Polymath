@@ -141,6 +141,9 @@
      quiet at 13px. Geist Mono stays for readouts and keyboard hints. */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Page headings only, never UI text. A system serif stack: no download,
+     no shift, renders instantly. */
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 
   --tracking-tight: -0.011em;
 
