@@ -253,6 +253,13 @@
       "tag": "0172_agent_authorization_decisions",
       "when": 1792480220000,
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "tag": "0190_invitations",
+      "when": 1792480300000,
+      "breakpoints": true
     }
   ]
 }
