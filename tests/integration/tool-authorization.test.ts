@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentAuthorizationDecisions } from "@/domains/agents/schema";
-import { withTransaction } from "@/lib/db-transaction";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -15,6 +14,7 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
+let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
 let authorization: typeof import("@/domains/agents/authorization");
 let delegation: typeof import("@/domains/agents/delegation");
 let principals: typeof import("@/domains/agents/principals");
@@ -22,6 +22,7 @@ let principals: typeof import("@/domains/agents/principals");
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  ({ withTransaction } = await import("@/lib/db-transaction"));
   authorization = await import("@/domains/agents/authorization");
   delegation = await import("@/domains/agents/delegation");
   principals = await import("@/domains/agents/principals");
@@ -91,10 +92,14 @@ suite("tool authorization decisions", () => {
     expect(byInvocation["inv-deny-account"].reasons).toEqual(["account_not_granted"]);
     expect(byInvocation["inv-deny-tampered"].decision).toBe("denied");
 
-    // Verdicts are history: the immutable trigger rejects edits.
-    await expect(
-      db.update(agentAuthorizationDecisions).set({ decision: "allowed" }).where(eq(agentAuthorizationDecisions.invocationId, "inv-deny-account")),
-    ).rejects.toThrow(/immutable/);
+    // Verdicts are history: the immutable trigger rejects edits. Drizzle
+    // wraps the driver error ("Failed query: ..."), so assert on the cause.
+    const freezeError = await db
+      .update(agentAuthorizationDecisions)
+      .set({ decision: "allowed" })
+      .where(eq(agentAuthorizationDecisions.invocationId, "inv-deny-account"))
+      .then(() => null, (e: unknown) => e);
+    expect(String((freezeError as { cause?: unknown })?.cause ?? freezeError)).toMatch(/immutable/);
   });
 
   it("an approval-gated operation authorizes only as requires_approval", async () => {
