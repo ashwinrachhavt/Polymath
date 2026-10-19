@@ -13,7 +13,6 @@ import {
   homeHref,
   type Destination,
 } from "@/lib/navigation";
-import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 /*
  * The shell's left rail: a plain identity header naming the app you are in,
@@ -22,8 +21,10 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
  * workspace services (Reviews, Activity, Settings) sit at the bottom.
  * Collapses to an icon rail; the choice persists in localStorage.
  *
- * Count badges come from the browser-preview workspace state, the only
- * counts available to chrome without a server round-trip.
+ * No count badges: the only counts chrome can read without a server
+ * round-trip come from the browser-preview store, and the rail's pages read
+ * canonical Postgres records - a badge from one source over a page fed by
+ * another is a number that lies (ASH-164).
  */
 
 const COLLAPSED_KEY = "axiom-sidenav-collapsed";
@@ -32,7 +33,6 @@ const subscribeToHydration = () => () => {};
 export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  const { state } = useWorkspace();
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -54,19 +54,11 @@ export function SideNav() {
 
   const activeApp = appForPath(pathname);
   const activeHref = destinationForPath(pathname)?.href;
-  const badges: Partial<Record<string, number>> = {
-    "/command-center/inbox": state.captures.filter((capture) => capture.status === "UNPROCESSED").length,
-    "/command-center/relationships": state.contacts.length,
-    "/command-center/opportunities": state.opportunities.length,
-    "/neuralflow/work": state.tasks.length,
-    "/alfred/knowledge": state.artifacts.length,
-  };
 
   const PickerIcon = activeApp?.icon;
 
   function itemLink(destination: Destination) {
     const active = activeHref === destination.href;
-    const count = badges[destination.href] ?? 0;
     return (
       <Link
         key={destination.href}
@@ -84,11 +76,6 @@ export function SideNav() {
       >
         <destination.icon aria-hidden className={cn("size-4 shrink-0", !active && "opacity-75")} />
         {collapsed ? null : <span className="min-w-0 flex-1 truncate">{destination.label}</span>}
-        {collapsed || count === 0 ? null : (
-          <span className="readout rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-            {count}
-          </span>
-        )}
       </Link>
     );
   }

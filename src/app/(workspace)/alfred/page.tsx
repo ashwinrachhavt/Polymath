@@ -141,9 +141,7 @@ function Citations({ citations }: { citations: ReturnType<typeof collectCitation
         {citations.map((c) => (
           <li key={`${c.documentId}:${c.span.start}`}>
             <span className="text-[13px]">{c.title}</span>
-            <span className="text-muted-foreground">
-              {c.span.page ? ` · page ${c.span.page}` : ""} · chars {c.span.start}-{c.span.end}
-            </span>
+            {c.span.page ? <span className="text-muted-foreground"> · page {c.span.page}</span> : null}
             <p className="text-muted-foreground line-clamp-2">{c.text}</p>
           </li>
         ))}

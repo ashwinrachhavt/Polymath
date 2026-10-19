@@ -54,7 +54,11 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/alfred")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge/document-id")).toBe(false);
-    expect(isBrowserPreviewPath("/neuralflow/work")).toBe(true);
+    // Every /neuralflow view reads canonical Neon tasks; its browser-only
+    // preview survives only on the standalone /apps/neuralflow route (ASH-165).
+    expect(isBrowserPreviewPath("/neuralflow/work")).toBe(false);
+    expect(isBrowserPreviewPath("/neuralflow/focus")).toBe(false);
+    expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
     expect(isBrowserPreviewPath("/reviews")).toBe(true);
     // The dossiers screen is backed by Neon, not browser samples, so no preview banner.

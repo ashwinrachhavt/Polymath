@@ -341,10 +341,11 @@ export function destinationForPath(pathname: string): Destination | undefined {
 }
 
 export function isBrowserPreviewPath(pathname: string) {
-  // /command-center/* routes all read the workspace's canonical records; the
-  // preview screens they replaced live under /apps/.
+  // The browser preview lives under /apps/ plus the three shared screens
+  // still rendered from the preview store. Everything under an app's own
+  // prefix (/command-center, /neuralflow, /alfred) reads canonical records,
+  // so it never carries the preview banner (ASH-165).
   return pathname.startsWith("/apps/")
-    || pathname.startsWith("/neuralflow/")
     || ["/reviews", "/activity", "/settings"].includes(pathname);
 }
 
