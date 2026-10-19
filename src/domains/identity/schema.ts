@@ -59,6 +59,9 @@ export const memberships = pgTable(
   },
   (t) => [
     uniqueIndex("memberships_workspace_user_key").on(t.workspaceId, t.userId),
+    // Composite reference target: a resource grant can only name a membership
+    // in its own workspace.
+    unique("memberships_workspace_id_id_key").on(t.workspaceId, t.id),
     // Serves the per-request authorization query (resolve.ts), which filters
     // by user_id + status; the workspace-leading unique index cannot.
     index("memberships_user_active_idx").on(t.userId).where(sql`status = 'active'`),
@@ -114,6 +117,61 @@ export const roleDefinitionRevisions = pgTable(
     }).onDelete("cascade"),
     unique("role_definition_revisions_workspace_id_id_key").on(t.workspaceId, t.id),
     unique("role_definition_revisions_definition_revision_key").on(t.roleDefinitionId, t.revision),
+  ],
+);
+
+/*
+ * ASH-121 AC04: resource grants. A grant binds one membership to one custom
+ * role definition on one resource row, with optional expiry. Revocation is a
+ * lifecycle event, not a delete: revoked rows stay for audit. The target is
+ * polymorphic (target_kind + target_id), so it carries no FK - the kind list
+ * plus the check constraint stop a typo inventing a kind, and the domain
+ * layer validates the target's existence inside the workspace, the same
+ * contract linkTargetKinds documents. Guests and team subjects are later
+ * work; inheritance is deliberately absent.
+ *
+ * NOTHING reads these rows for authorization yet: guards.ts RANK remains the
+ * only enforcement surface (ADR 0002), so this table changes no existing
+ * behavior. Adoption is a later, explicitly flagged slice.
+ */
+export const resourceGrantTargetKinds = ["person", "organization"] as const;
+export type ResourceGrantTargetKind = (typeof resourceGrantTargetKinds)[number];
+
+export const resourceGrants = pgTable(
+  "resource_grants",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    membershipId: uuid("membership_id").notNull(),
+    roleDefinitionId: uuid("role_definition_id").notNull(),
+    targetKind: text("target_kind").notNull(),
+    targetId: uuid("target_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    ...mutable,
+  },
+  (t) => [
+    foreignKey({
+      name: "resource_grants_membership_fk",
+      columns: [t.workspaceId, t.membershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "resource_grants_role_fk",
+      columns: [t.workspaceId, t.roleDefinitionId],
+      foreignColumns: [roleDefinitions.workspaceId, roleDefinitions.id],
+    }).onDelete("cascade"),
+    check(
+      "resource_grants_target_kind_check",
+      sql.raw(`target_kind in (${resourceGrantTargetKinds.map((k) => `'${k}'`).join(", ")})`),
+    ),
+    // One active grant per subject/role/target; history accumulates as
+    // revoked rows, so re-granting after a revoke is a fresh row.
+    uniqueIndex("resource_grants_active_key")
+      .on(t.workspaceId, t.membershipId, t.targetKind, t.targetId, t.roleDefinitionId)
+      .where(sql`revoked_at is null`),
+    index("resource_grants_target_idx").on(t.workspaceId, t.targetKind, t.targetId),
   ],
 );
 
