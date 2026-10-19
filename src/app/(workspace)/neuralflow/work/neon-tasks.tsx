@@ -101,7 +101,7 @@ export async function NeonTasks({
               searchPlaceholder="Search tasks"
               filters={[
                 ...(statusChoices.length
-                  ? [{ key: "status", label: "Status", allLabel: "Any status", options: statusChoices.map((v) => ({ value: v, label: statusLabel[v] })) }]
+                  ? [{ key: "status", label: "State", allLabel: "Any state", options: statusChoices.map((v) => ({ value: v, label: statusLabel[v] })) }]
                   : []),
                 { key: "priority", label: "Priority", allLabel: "Any priority", options: WORK_PRIORITIES.map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1) })) },
               ]}
