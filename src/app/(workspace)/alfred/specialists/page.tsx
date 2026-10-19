@@ -43,7 +43,7 @@ export async function SpecialistsSurface({ searchParams = Promise.resolve({}) }:
     return (
       <>
         <PageHeader title="Specialists" purpose="Hire an agent for the job." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Agent storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to build a bench and hire specialists."
@@ -76,7 +76,7 @@ export async function SpecialistsSurface({ searchParams = Promise.resolve({}) }:
   return (
     <>
       <PageHeader title="Specialists" purpose="Hire an agent for the job." />
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-6 page-content">
         <Section
           title="Your bench"
           description="Specialists you can hire. A hire is a run: it starts with the specialist's stated tools, model, and budget, and it cannot exceed them."

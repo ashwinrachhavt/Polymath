@@ -29,7 +29,7 @@ export default function FilesPage() {
       <PageHeader title="Files" purpose="Every document you have added, organised for finding, reading and reviewing." />
       <Suspense
         fallback={
-          <div className="flex flex-col gap-3 px-4 py-6 md:px-6">
+          <div className="flex flex-col gap-3 page-content">
             <Skeleton className="h-8 w-1/2" />
             <Skeleton className="h-5 w-full" />
             <Skeleton className="h-5 w-full" />

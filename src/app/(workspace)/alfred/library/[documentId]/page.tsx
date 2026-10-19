@@ -44,7 +44,7 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
           </Link>
         }
       />
-      <div className="flex flex-col gap-5 px-4 py-6 md:px-6">
+      <div className="flex flex-col gap-5 page-content">
         <div className="flex flex-wrap items-center gap-3">
           <div
             role="progressbar"
@@ -82,7 +82,7 @@ export default function ReaderPage({ params }: { params: Promise<{ documentId: s
   return (
     <Suspense
       fallback={
-        <div className="flex flex-col gap-3 px-4 py-6 md:px-6">
+        <div className="flex flex-col gap-3 page-content">
           <Skeleton className="h-6 w-1/2" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-full" />

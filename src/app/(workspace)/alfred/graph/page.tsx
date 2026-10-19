@@ -15,7 +15,7 @@ export default function AlfredGraphPage() {
   return (
     <>
       <PageHeader title="Graph" purpose="Connect your thinking." />
-      <Section title="Preview tool" description="Explicit links between your artifacts, not an inferred semantic map.">
+      <div className="page-content"><Section title="Preview tool" description="Explicit links between your artifacts, not an inferred semantic map.">
         <Empty
           title="The graph lives in the preview tools for now"
           description="The canonical graph page has not landed yet. The preview version explores the same explicit artifact links and is marked as a preview."
@@ -25,7 +25,7 @@ export default function AlfredGraphPage() {
             </Button>
           }
         />
-      </Section>
+      </Section></div>
     </>
   );
 }

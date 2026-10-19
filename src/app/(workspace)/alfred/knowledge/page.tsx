@@ -116,7 +116,7 @@ export async function KnowledgeSurface({
     return (
       <>
         <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
-        <div className="px-4 py-5 md:px-6">
+        <div className="page-content">
           <EmptyState
             title="Knowledge storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and DOCLING_SERVE_URL or LLAMAPARSE_API_KEY."
@@ -185,7 +185,7 @@ export async function KnowledgeSurface({
         }
       />
 
-      <div className="flex flex-col gap-6 px-4 py-5 md:px-6">
+      <div className="flex flex-col gap-6 page-content">
         <Section title="Search" description="Exact, full text, and semantic — one box.">
           <form action="/alfred/knowledge" method="get" className="flex gap-2">
             <label htmlFor="search" className="sr-only">
