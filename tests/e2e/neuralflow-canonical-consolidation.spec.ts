@@ -91,6 +91,6 @@ test("the stone collection is the durable catalog: definitions are saved, but th
   await page.getByRole("textbox", { name: "Label", exact: true }).fill("Quartz");
   await page.getByRole("textbox", { name: "Points", exact: true }).fill("10");
   await page.getByRole("button", { name: "Define reward", exact: true }).click();
-  await expect(page.getByText("quartz", { exact: true })).toBeVisible();
+  await expect(page.getByText("Quartz", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
 });
