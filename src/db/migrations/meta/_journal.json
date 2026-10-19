@@ -73,17 +73,17 @@
       "breakpoints": true
     },
     {
-      "idx": 9,
-      "version": "7",
-      "when": 1792349640841,
-      "tag": "0009_document_source_url",
-      "breakpoints": true
-    },
-    {
       "idx": 10,
       "version": "7",
       "when": 1792349904944,
       "tag": "0010_embedding_pass",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792349640841,
+      "tag": "0011_document_source_url",
       "breakpoints": true
     },
     {
@@ -99,6 +99,13 @@
       "when": 1792400000000,
       "tag": "0020_task_core_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "tag": "0030_drift_catch_up",
+      "breakpoints": true,
+      "when": 1792369620787
     }
   ]
 }
