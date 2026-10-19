@@ -109,3 +109,36 @@ read-only: it reports archived-but-registered pages, articles whose source was
 archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
 capabilities; the surface is /alfred/wiki.
+
+## Library backend (Box-feel file manager)
+
+The read model behind the document library UI: `library.ts` for reads,
+`folders.ts` for the tree, `exports.ts` for export manifests (ASH-130).
+
+- Folders (`folders.ts`): a name plus a parent; the root is "no folder".
+  Names are unique per folder, case-insensitively, among live folders. Every
+  mutation is version-checked and audited. Moving a document is a
+  `document_folder_events` row in the same transaction, never a silent edit;
+  archiving a folder is refused while it holds live documents or subfolders.
+- Pages (`listDocuments`): keyset pagination (opaque cursor: sort key plus
+  id), sorts recent/added/title/size, filters folder ("root" for unfiled),
+  doc type, state, party, date range, and q (full-text over extraction text
+  plus title/original-filename trigram match, so a failed extraction is
+  still findable by name). The state filter uses the same vocabulary as
+  `status.ts` - one SQL expression mirrors it, and the integration suite
+  asserts parity combination by combination. `listFolders` returns the flat
+  live folder list with direct document counts; the tree is composed
+  client-side.
+- Detail: `getDocumentVersions` (every extraction version, newest first),
+  `getDocumentActivity` (added, read attempts, classification, renames,
+  moves, field and obligation decisions, newest first, bounded),
+  `getDocumentParties` (roles with resolved CRM names).
+- Tags (`tags.ts`): free tags, normalized lowercase, one row per (document,
+  tag); batch add/remove with idempotent re-tags. `listDocuments` takes a tag
+  filter and returns each row's tags; `listTags` is the filter rail.
+- Export manifests (`exports.ts`): a named selection for a party or purpose.
+  Each item pins the latest succeeded extraction at add time (id plus
+  content hash, so the pin survives extraction pruning); a document with no
+  succeeded extraction is pinned as an honest null. The read side reports
+  drift (`isCurrent: false`) after a re-extraction rather than silently
+  upgrading. Full packets remain deferred per ASH-130.
