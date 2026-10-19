@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileText, Inbox, ListTodo, Plus, Search, Users } from "lucide-react";
+import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Plus, Search, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,7 +104,6 @@ export function CommandLayer() {
       <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd className="readout ml-auto hidden text-[10px] lg:block">⌘ K</kbd>
     </button></span>
     <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
-    <span className="hidden md:inline-flex"><ShortcutsDialog /></span>
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); if (returnTo.current === "capture") { captureTrigger.current?.focus(); return; } const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")); (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus(); }}>
         <DialogTitle>{mode === "search" ? "Search and commands" : "Capture without switching context"}</DialogTitle>
@@ -115,7 +114,13 @@ export function CommandLayer() {
             if (event.key === "ArrowUp") { event.preventDefault(); setSelected(Math.max(active - 1, 0)); }
             if (event.key === "Enter" && results[active]) { event.preventDefault(); navigate(results[active].href); }
           }} aria-controls="command-results" aria-activedescendant={results[active] ? `command-${active}` : undefined} />
-          <Button variant="outline" className="justify-start" onClick={() => setMode("capture")}><Plus aria-hidden />Capture something<span className="readout ml-auto text-[10px]">Ctrl/⌘ Shift C</span></Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}><Plus aria-hidden />Capture something<span className="readout ml-auto text-[10px]">Ctrl/⌘ Shift C</span></Button>
+            {/* The header stays quiet: the shortcuts list lives here, on the
+                keyboard surface, instead of a sixth header control. Shift+?
+                still opens it from anywhere. */}
+            <ShortcutsDialog trigger={<Button variant="outline" aria-label="Keyboard shortcuts"><Keyboard aria-hidden /><span className="hidden sm:inline">Shortcuts</span><span className="readout ml-auto hidden text-[10px] sm:inline">Shift ?</span></Button>} />
+          </div>
           <div id="command-results" role="listbox" aria-label="Search results" className="max-h-[45dvh] overflow-y-auto">
             {results.map((result, index) => <button key={result.key} id={`command-${index}`} role="option" aria-selected={active === index} type="button" onClick={() => navigate(result.href)} onMouseEnter={() => setSelected(index)} className="command-result">
               <result.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" /><span className="flex min-w-0 flex-1 flex-col items-start"><span className="max-w-full truncate">{result.label}</span><span className="text-[11px] text-muted-foreground">{result.context}</span></span><ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
