@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -25,6 +25,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await handle?.client.end();
+});
+
+beforeEach(async () => {
+  // Each scenario owns the whole queue: a prior test's pending row would be
+  // claimed by the next dispatch pass and muddy the claimed/failed counts.
+  await db.execute(sql`delete from outbox_events`);
 });
 
 async function enqueue(slug: string, dispatchKey?: string) {
