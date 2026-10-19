@@ -201,9 +201,14 @@ suite("delegation grants", () => {
     });
 
     // The freeze trigger: mutating the granted ceiling is a database error.
-    await expect(
-      db.update(agentDelegationGrants).set({ allowedOperations: ["ownership.transfer"] }).where(eq(agentDelegationGrants.id, issued.grantId)),
-    ).rejects.toThrow(/immutable/);
+    // Drizzle wraps the driver error ("Failed query: ..."), so assert on the
+    // cause chain, not the wrapper.
+    const freezeError = await db
+      .update(agentDelegationGrants)
+      .set({ allowedOperations: ["ownership.transfer"] })
+      .where(eq(agentDelegationGrants.id, issued.grantId))
+      .then(() => null, (e: unknown) => e);
+    expect(String((freezeError as { cause?: unknown })?.cause ?? freezeError)).toMatch(/immutable/);
 
     // Cross-tenant: a foreign grant id is "not found".
     await expect(
