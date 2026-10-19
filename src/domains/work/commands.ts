@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
 import { organizations, people } from "@/domains/identity/schema";
@@ -219,6 +220,9 @@ export async function completeTask(
       },
       tx,
     );
+    // A10 Quartz rule: first completed task of the day earns the daily
+    // Quartz. Same transaction, skip-silent when the day already has one.
+    await recordDailyQuartz(tx, auth, task.id);
     return { id: task.id };
   });
 }

@@ -16,6 +16,8 @@ export type RewardsOverview = {
   totalPoints: number;
   /** Distinct workspace-local days with at least one ledger entry. */
   activeDays: number;
+  /** Stones earned, shards claimed, and the explicit-claim remainder. */
+  shards: { stones: number; claimed: number; claimable: number };
 };
 
 export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOverview> {
@@ -59,5 +61,21 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
     total_points: 0,
     active_days: 0,
   };
-  return { definitions, ledger, totalPoints: row.total_points, activeDays: row.active_days };
+  const shardRows = await db.execute(sql`
+    select
+      count(*) filter (where d.key <> 'shard')::int as stones,
+      count(*) filter (where d.key = 'shard')::int as claimed
+    from reward_ledger l
+    join reward_definitions d on d.id = l.reward_definition_id
+    where l.workspace_id = ${auth.workspaceId}
+  `);
+  const shardRow = (shardRows as unknown as Array<{ stones: number; claimed: number }>)[0] ?? { stones: 0, claimed: 0 };
+  const claimable = Math.max(0, Math.floor(shardRow.stones / 5) - shardRow.claimed);
+  return {
+    definitions,
+    ledger,
+    totalPoints: row.total_points,
+    activeDays: row.active_days,
+    shards: { stones: shardRow.stones, claimed: shardRow.claimed, claimable },
+  };
 }
