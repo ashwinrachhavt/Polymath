@@ -124,7 +124,12 @@ jobs:
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself.
+      # PERF_BUDGET_ENFORCE turns the hero-route navigation budget from
+      # reporting into a tripwire; the dev ceilings stay deliberately generous
+      # (compile noise) and only catastrophic regressions fail.
       - run: pnpm e2e
+        env:
+          PERF_BUDGET_ENFORCE: "1"
 
   # Vercel deploys `main` through its own GitHub integration; every other branch
   # is disabled in vercel.json, so a merged PR is the only thing that ships.
