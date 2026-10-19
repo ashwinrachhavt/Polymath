@@ -52,6 +52,8 @@ export type CompanyResearchInput = {
   mode?: ResearchMode;
   /** Required for dossier-only mode. */
   dossierId?: string;
+  /** Optional peer companies the competitive analysis is compared against. */
+  peers?: string[];
   idempotencyKey?: string;
 };
 
@@ -97,11 +99,22 @@ const money = (s: string) => s.replace(/"/g, "'");
  * plans zero web queries - that is the "never silently web-search" guarantee,
  * and it is structural (no query text exists to run), not a runtime flag.
  */
+/** Trim, dedupe and cap the peer list; blank entries are a caller error, not a silent drop. */
+export function normalizePeers(peers?: string[]): string[] {
+  if (!peers?.length) return [];
+  if (peers.some((p) => !p.trim())) throw new CompanyResearchError("Peer names cannot be blank.");
+  const out = [...new Set(peers.map((p) => p.trim()))];
+  if (out.length > 5) throw new CompanyResearchError("Compare at most 5 peers in one research pass.");
+  if (out.some((p) => p.length > 200)) throw new CompanyResearchError("Peer names are limited to 200 characters.");
+  return out;
+}
+
 export function planResearch(input: CompanyResearchInput): ResearchPlanStep[] {
   const mode = input.mode ?? "public";
   const depth = input.depth ?? "standard";
   const name = input.companyName.trim();
   if (!name) throw new CompanyResearchError("Name the company to research.");
+  const peers = normalizePeers(input.peers);
   if (mode === "dossier-only") {
     if (!input.dossierId) throw new CompanyResearchError("Dossier-only research needs a dossierId.");
     return [
@@ -117,6 +130,13 @@ export function planResearch(input: CompanyResearchInput): ResearchPlanStep[] {
     { key: "competition", purpose: "Competitive position and risks", queries: [`"${money(name)}" competitors market share${cutoff}`, `"${money(name)}" risk factors customer concentration${cutoff}`] },
     { key: "scenarios", purpose: "Bull/base/bear inputs and counterarguments", queries: [`"${money(name)}" analyst bull bear case${cutoff}`, `"${money(name)}" criticism downside risk${cutoff}`] },
   ];
+  if (peers.length) {
+    const competition = pool[4];
+    competition.queries = [
+      `"${money(name)}" vs ${peers.map((p) => `"${money(p)}"`).join(" ")}${cutoff}`,
+      ...competition.queries,
+    ];
+  }
   if (mode === "private") {
     // Private companies: search what exists (news, funding, site) but plan
     // marks financials as expected-missing rather than implying coverage.
@@ -249,6 +269,7 @@ function buildSectionPrompt(input: CompanyResearchInput, section: string, manife
     `Write the "${section}" section of an evidence-grounded business case study on ${input.companyName.trim()}.`,
     input.question ? `Central question: ${input.question}` : "",
     input.audience ? `Audience: ${input.audience}.` : "",
+    normalizePeers(input.peers).length ? `Peer companies for the competitive comparison: ${normalizePeers(input.peers).join(", ")}.` : "",
     `Cite sources inline as [S#] exactly matching this manifest. Use only these sources; invent nothing. If the sources cannot support the section, say so in one sentence instead of writing around the gap. Scenarios are hypotheses, never predictions or investment advice.`,
     "",
     ...lines,

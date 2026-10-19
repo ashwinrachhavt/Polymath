@@ -20,6 +20,7 @@ const body = z.object({
   asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   mode: z.enum(["public", "private", "dossier-only"]).default("public"),
   dossierId: z.string().uuid().optional(),
+  peers: z.array(z.string().trim().min(1).max(200)).max(5).optional(),
 });
 
 export const POST = authedHandler(async (auth, request) => {

@@ -4,6 +4,7 @@ import {
   REPORT_SECTIONS,
   cutoffDate,
   filterByCutoff,
+  normalizePeers,
   planResearch,
   sectionOrPlaceholder,
   type ResearchAdapters,
@@ -33,6 +34,21 @@ describe("planResearch", () => {
     expect(quick[0].key).toBe("identity");
     const deep = planResearch({ companyName: "Acme", depth: "deep" });
     expect(deep.reduce((n, s) => n + s.queries.length, 0)).toBeGreaterThan(4);
+  });
+
+  it("adds a peer comparison query to the competition step, in private mode too", () => {
+    const peers = ["Globex", "Initech"];
+    const pub = planResearch({ companyName: "Acme", depth: "deep", peers });
+    const pubComp = pub.find((s) => s.key === "competition")!;
+    expect(pubComp.queries[0]).toContain('"Acme" vs "Globex" "Initech"');
+    const priv = planResearch({ companyName: "Acme", mode: "private", peers });
+    const privComp = priv.find((s) => s.key === "competition")!;
+    expect(privComp.queries[0]).toContain('"Acme" vs "Globex" "Initech"');
+  });
+
+  it("plans no peer query without peers", () => {
+    const plan = planResearch({ companyName: "Acme", depth: "deep" });
+    expect(plan.find((s) => s.key === "competition")!.queries.every((q) => !q.includes(" vs "))).toBe(true);
   });
 
   it("marks financials as expected-missing for a private company", () => {
@@ -93,3 +109,16 @@ export const dossierOnlyGuardAdapters: ResearchAdapters = {
   complete: async () => "Grounded sentence [S1].",
 };
 void dossierOnlyGuardAdapters;
+
+describe("normalizePeers", () => {
+  it("trims and dedupes, keeping order", () => {
+    expect(normalizePeers([" Globex ", "Initech", "Globex"])).toEqual(["Globex", "Initech"]);
+    expect(normalizePeers(undefined)).toEqual([]);
+    expect(normalizePeers([])).toEqual([]);
+  });
+
+  it("rejects blank names and oversized lists instead of silently dropping", () => {
+    expect(() => normalizePeers(["Globex", "  "])).toThrow(CompanyResearchError);
+    expect(() => normalizePeers(["a", "b", "c", "d", "e", "f"])).toThrow(CompanyResearchError);
+  });
+});
