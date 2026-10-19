@@ -19,6 +19,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, paginate, parseListParams, parsePageNumber } from "@/lib/list-params";
 import { OpportunityForm } from "./opportunity-form";
+import { ResearchOpportunityButton } from "./research-button";
 import {
   ArchiveOpportunityButton,
   DeadlineForm,
@@ -224,6 +225,12 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
                 </dd>
               </div>
             </dl>
+            <div className="mb-4">
+              <ResearchOpportunityButton opportunityId={detail.opportunity.id} disabled={!detail.companyName} />
+              {!detail.companyName ? (
+                <p className="mt-1 text-xs text-muted-foreground">Record a company on this opportunity to research it.</p>
+              ) : null}
+            </div>
             {detail.opportunity.whyItMatters ? (
               <p className="mb-4 whitespace-pre-wrap text-[13px] leading-relaxed">
                 {detail.opportunity.whyItMatters}
