@@ -99,7 +99,7 @@ const domainErrors = [
   IdempotencyConflictError,
 ];
 
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
+async function guarded<T extends object>(auth: AuthContext, run: () => Promise<T>): Promise<Result<T>> {
   try {
     const value = await run();
     revalidate(auth);
@@ -135,7 +135,8 @@ export async function updateTaskAction(input: z.input<typeof patchInput>): Promi
   const parsed = patchInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the task fields and try again." };
   const auth = await authorize();
-  return guarded(async () => ({ version: (await updateTask(auth, parsed.data)).version }));
+  return guarded(auth, async () => ({ version: (await updateTask(auth, parsed.data)).version }));
+
 }
 
 const subtaskInput = z.object({ parentTaskId: id, title: z.string().trim().min(1).max(300), idempotencyKey: key });
@@ -144,7 +145,8 @@ export async function createSubtaskAction(input: z.input<typeof subtaskInput>): 
   const parsed = subtaskInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the subtask a title." };
   const auth = await authorize();
-  return guarded(async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
+  return guarded(auth, async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
+
 }
 
 const moveInput = z.object({
@@ -159,7 +161,8 @@ export async function moveTaskAction(input: z.input<typeof moveInput>): Promise<
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That move is not valid." };
   const auth = await authorize();
-  return guarded(async () => {
+  return guarded(auth, async () => {
+
     const { rank, version } = await moveTask(auth, parsed.data);
     return { rank, version };
   });
@@ -177,14 +180,16 @@ export async function addDependencyAction(input: z.input<typeof dependencyInput>
   const parsed = dependencyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency is not valid." };
   const auth = await authorize();
-  return guarded(async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
+  return guarded(auth, async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
+
 }
 
 export async function removeDependencyAction(input: { dependencyId: string; idempotencyKey: string }): Promise<Result> {
   const parsed = z.object({ dependencyId: id, idempotencyKey: key }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency no longer exists." };
   const auth = await authorize();
-  return guarded(async () => {
+  return guarded(auth, async () => {
+
     await removeDependency(auth, parsed.data);
     return {};
   });
