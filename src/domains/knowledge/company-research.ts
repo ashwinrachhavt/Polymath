@@ -4,6 +4,7 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { buildKpiPrompt, parseKpiRows, renderKpiTable, validateKpiRows } from "./research-kpis";
 import { searchWebForAgent } from "./web-search";
 import { artifactVersions, artifacts, documents, dossierSources, sources } from "./schema";
 
@@ -315,9 +316,24 @@ export async function runCompanyResearch(
     let gaps = 0;
     for (const section of REPORT_SECTIONS) {
       if (section === "Source manifest") continue;
-      const body = manifest.length
-        ? sectionOrPlaceholder(section, await io.complete(section, buildSectionPrompt(input, section, manifest)), manifest.length)
-        : sectionOrPlaceholder(section, "", 0);
+      let body: string;
+      if (!manifest.length) {
+        body = sectionOrPlaceholder(section, "", 0);
+      } else if (section === "Financial trend table") {
+        // Step 5: structured KPI extraction. A JSON answer is validated and
+        // rendered as the trend table; a prose answer (older fakes, a model
+        // that ignores the format) takes the ordinary citation-checked path.
+        const answer = await io.complete(section, buildKpiPrompt(input, manifest));
+        const parsed = parseKpiRows(answer);
+        if (parsed === null) {
+          body = sectionOrPlaceholder(section, answer, manifest.length);
+        } else {
+          const { rows, dropped } = validateKpiRows(parsed, manifest.length);
+          body = rows.length ? renderKpiTable(rows, dropped) : sectionOrPlaceholder(section, "", manifest.length);
+        }
+      } else {
+        body = sectionOrPlaceholder(section, await io.complete(section, buildSectionPrompt(input, section, manifest)), manifest.length);
+      }
       if (body.startsWith("> [!NOTE]")) gaps += 1;
       else grounded += 1;
       written.push(`## ${section}\n\n${body}`);
