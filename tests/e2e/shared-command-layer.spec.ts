@@ -56,9 +56,13 @@ test("the header capture dialog validates pasted URLs and a captured item surviv
   await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
 });
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
-  await page.goto("/apps/alfred/notebook");
-  await waitSettled(page, { heading: "Heading" });
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Notebook");
+  // The representative preview route: notebook handed off to the canonical
+  // /alfred/notebook surface (B04), so this leg uses the dictionary preview.
+  await page.goto("/apps/alfred/dictionary");
+  // No notebook-toolbar landmark here: the breadcrumb assertion retries
+  // until the dynamic screen mounts, and this test runs no axe sweep.
+  await waitSettled(page);
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Dictionary");
   await expect(page.locator("[data-app]")).toHaveAttribute("data-app", "alfred");
   await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: "Learning", exact: true })).toBeVisible();
 

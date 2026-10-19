@@ -94,12 +94,14 @@ test("old Axiom paths redirect and unknown screens render a noindex not-found st
 
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/apps/command-center/briefing", "/apps/command-center/reviews", "/apps/command-center/settings", "/apps/neuralflow/tasks", "/apps/neuralflow/focus", "/apps/alfred/library", "/apps/alfred/notebook"]) {
+  for (const path of ["/apps/command-center/briefing", "/apps/command-center/reviews", "/apps/command-center/settings", "/apps/neuralflow/tasks", "/apps/neuralflow/focus", "/apps/alfred/library", "/alfred/notebook"]) {
     await page.goto(path);
     // Axe must evaluate the settled page: the topbar buttons sit at
     // disabled:opacity-50 until hydration and transition to full opacity,
     // and axe composites whatever it samples through in-flight opacity.
-    await waitSettled(page, path === "/apps/alfred/notebook" ? { heading: "Heading" } : {});
+    await waitSettled(page);
+    // The notebook leg scans the canonical surface (B04); its rich-editor
+    // toolbar only mounts with a note open, so no editor landmark here.
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
   }
