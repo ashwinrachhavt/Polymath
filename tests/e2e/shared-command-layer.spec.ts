@@ -59,7 +59,9 @@ test("preview routes retain app context and all tools are reachable on a phone",
   // The representative preview route: notebook handed off to the canonical
   // /alfred/notebook surface (B04), so this leg uses the dictionary preview.
   await page.goto("/apps/alfred/dictionary");
-  await waitSettled(page, { heading: "Heading" });
+  // No notebook-toolbar landmark here: the breadcrumb assertion retries
+  // until the dynamic screen mounts, and this test runs no axe sweep.
+  await waitSettled(page);
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Dictionary");
   await expect(page.locator("[data-app]")).toHaveAttribute("data-app", "alfred");
   await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: "Learning", exact: true })).toBeVisible();
