@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
+import { withReceipt } from "@/domains/audit/receipt";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -16,7 +17,10 @@ import { documents } from "./schema";
  */
 
 export class StudioError extends Error {
-  constructor(public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft", message: string) {
+  constructor(
+    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked",
+    message: string,
+  ) {
     super(message);
     this.name = "StudioError";
   }
@@ -153,4 +157,139 @@ export async function listDrafts(auth: AuthContext) {
     .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.status, "draft"), sql`${artifacts.archivedAt} is null`))
     .orderBy(desc(artifacts.createdAt))
     .limit(100);
+}
+
+/* ---------------------------------------------------------------------------
+ * Draft workbench: open a saved draft with the pinned sources it stands on,
+ * and edit it as a new version under the notebook's optimistic-concurrency
+ * guard. Record links (task/contact/opportunity) live in the dossiers app
+ * module, which owns those cross-domain imports.
+ * ------------------------------------------------------------------------- */
+
+export type DraftLinkRow = { id: string; targetType: string; targetId: string; label: string | null };
+
+export type DraftDetail = {
+  artifact: { id: string; title: string; status: string; version: number };
+  text: string;
+  /** The documents this draft was generated from, each at the hash it was pinned at. */
+  sources: { documentId: string; title: string; pinnedHash: string | null }[];
+  /** Raw record links; the app layer resolves their titles. */
+  links: DraftLinkRow[];
+};
+
+const RECORD_LINK_TARGETS = ["task", "contact", "opportunity"] as const;
+
+export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail> {
+  const [artifact] = await db
+    .select({
+      id: artifacts.id,
+      kind: artifacts.kind,
+      title: artifacts.title,
+      status: artifacts.status,
+      version: artifacts.version,
+      currentVersionId: artifacts.currentVersionId,
+    })
+    .from(artifacts)
+    .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+    .limit(1);
+  if (!artifact || artifact.kind !== "report") throw new StudioError("draft_not_found", "No such draft.");
+
+  const [version] = artifact.currentVersionId
+    ? await db
+        .select({ plainText: artifactVersions.plainText })
+        .from(artifactVersions)
+        .where(and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)))
+        .limit(1)
+    : [null];
+
+  const linkRows = await db
+    .select({ id: artifactLinks.id, targetType: artifactLinks.targetType, targetId: artifactLinks.targetId, label: artifactLinks.label })
+    .from(artifactLinks)
+    .where(and(eq(artifactLinks.artifactId, artifact.id), eq(artifactLinks.workspaceId, auth.workspaceId)));
+
+  const documentIds = linkRows.filter((l) => l.targetType === "document").map((l) => l.targetId);
+  const docs = documentIds.length
+    ? await db
+        .select({ id: documents.id, title: documents.title })
+        .from(documents)
+        .where(and(inArray(documents.id, documentIds), eq(documents.workspaceId, auth.workspaceId)))
+    : [];
+  const docTitles = new Map(docs.map((d) => [d.id, d.title]));
+
+  return {
+    artifact: { id: artifact.id, title: artifact.title, status: artifact.status, version: artifact.version },
+    text: version?.plainText ?? "",
+    sources: linkRows
+      .filter((l) => l.targetType === "document" && docTitles.has(l.targetId))
+      .map((l) => ({
+        documentId: l.targetId,
+        title: docTitles.get(l.targetId) as string,
+        pinnedHash: l.label?.startsWith("pinned:") ? l.label.slice("pinned:".length) : null,
+      })),
+    links: linkRows.filter((l) => (RECORD_LINK_TARGETS as readonly string[]).includes(l.targetType)),
+  };
+}
+
+/**
+ * Appends an edited version and moves the pointer, guarded by the caller's
+ * last-seen version. Drafts and reviewed drafts are editable; an archived one
+ * is not. Idempotent under the receipt, and a stale expectedVersion loses.
+ */
+export async function editGeneratedDraft(
+  auth: AuthContext,
+  input: { artifactId: string; expectedVersion: number; text: string; note?: string; idempotencyKey: string },
+) {
+  const text = input.text.trim();
+  if (!text) throw new StudioError("empty_text", "The draft needs some text.");
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "editGeneratedDraft", ...input }, async () => {
+      const [updated] = await tx
+        .update(artifacts)
+        .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
+        .where(
+          and(
+            eq(artifacts.id, input.artifactId),
+            eq(artifacts.workspaceId, auth.workspaceId),
+            eq(artifacts.version, input.expectedVersion),
+            eq(artifacts.kind, "report"),
+            inArray(artifacts.status, ["draft", "reviewed"]),
+          ),
+        )
+        .returning({ id: artifacts.id });
+      if (!updated) throw new StudioError("stale_or_locked", "This draft changed elsewhere or was archived. Reload and try again.");
+      const [last] = await tx
+        .select({ n: artifactVersions.versionNumber })
+        .from(artifactVersions)
+        .where(and(eq(artifactVersions.artifactId, input.artifactId), eq(artifactVersions.workspaceId, auth.workspaceId)))
+        .orderBy(desc(artifactVersions.versionNumber))
+        .limit(1);
+      const [version] = await tx
+        .insert(artifactVersions)
+        .values({
+          workspaceId: auth.workspaceId,
+          artifactId: input.artifactId,
+          versionNumber: (last?.n ?? 0) + 1,
+          content: { text },
+          plainText: text,
+          reason: "edited",
+          createdBy: auth.userId,
+        })
+        .returning({ id: artifactVersions.id });
+      await tx
+        .update(artifacts)
+        .set({ currentVersionId: version.id })
+        .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
+      await tx.insert(auditEvents).values({
+        workspaceId: auth.workspaceId,
+        actorId: auth.userId,
+        actorKind: "user",
+        action: "draft.edited",
+        subjectType: "artifact",
+        subjectId: input.artifactId,
+        summary: "Edited Studio draft",
+      });
+      return { artifactId: input.artifactId, version: input.expectedVersion + 1 };
+    });
+    return value;
+  });
 }

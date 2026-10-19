@@ -3,10 +3,12 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { getDossierDetail, listAttachableDocuments, listDossierRuns, listDossiers } from "@/domains/knowledge/dossiers";
-import { draftsForRuns } from "@/domains/knowledge/studio";
+import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
 import { DraftControls } from "../draft-controls";
 import { Badge } from "@/components/ui/badge";
 import { CreateDossierForm } from "./create-dossier-form";
+import { DraftWorkbench } from "./draft-workbench";
+import { listLinkableRecords, resolveLinkTitles } from "./links";
 import { GenerateForm } from "./generate-form";
 
 export const metadata = { title: "Dossiers · Axiom" };
@@ -19,7 +21,7 @@ export const metadata = { title: "Dossiers · Axiom" };
 export default async function DossiersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dossier?: string }>;
+  searchParams: Promise<{ dossier?: string; draft?: string }>;
 }) {
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
@@ -44,6 +46,10 @@ export default async function DossiersPage({
   ]);
   const dossierRuns = detail ? await listDossierRuns(auth, detail.id) : [];
   const dossierRunDrafts = await draftsForRuns(auth, dossierRuns.map((run) => run.id));
+  const draftDetail = params.draft ? await getDraftDetail(auth, params.draft) : null;
+  const [linkTitles, linkable] = draftDetail
+    ? await Promise.all([resolveLinkTitles(auth, draftDetail.links), listLinkableRecords(auth)])
+    : [null, null];
 
   return (
     <>
@@ -99,11 +105,32 @@ export default async function DossiersPage({
                         <Badge variant="secondary" className="font-normal">{run.state === "waiting_input" ? "Answered" : run.state}</Badge>
                       </div>
                       <DraftControls runId={run.id} draft={dossierRunDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
+                      {dossierRunDrafts.get(run.id) ? (
+                        <a
+                          href={`/alfred/dossiers?dossier=${detail.id}&draft=${dossierRunDrafts.get(run.id)?.artifactId}`}
+                          className="w-fit text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
+                        >
+                          Open the workbench
+                        </a>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
               ) : null}
             </Section>
+          </Section>
+        ) : null}
+
+        {draftDetail && linkTitles && linkable ? (
+          <Section title="Draft workbench" description="Read the draft with the documents it stands on, edit it into a new version, and attach it to the record it informs.">
+            <DraftWorkbench
+              artifact={draftDetail.artifact}
+              text={draftDetail.text}
+              sources={draftDetail.sources}
+              links={draftDetail.links}
+              linkTitles={linkTitles}
+              linkable={linkable}
+            />
           </Section>
         ) : null}
 
