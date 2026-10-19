@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteVersions, listNotes, type NoteContent } from "@/domains/knowledge/notes";
 import { getAuthContext } from "@/lib/auth";
@@ -20,7 +22,8 @@ export function noteMarkdown(content: NoteContent | null): string {
   return "";
 }
 
-export default async function NotebookPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+// Per-request data; streams inside the Suspense boundary in the default export.
+export async function NotebookSurface({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   await connection();
   const auth = await getAuthContext();
   const { id } = await searchParams;
@@ -78,5 +81,23 @@ export default async function NotebookPage({ searchParams }: { searchParams: Pro
         )}
       </div>
     </Screen>
+  );
+}
+
+export default function NotebookPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  return (
+    <Suspense fallback={<NotebookSkeleton />}>
+      <NotebookSurface {...props} />
+    </Suspense>
+  );
+}
+
+function NotebookSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Notebook" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-40" />
+    </div>
   );
 }

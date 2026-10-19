@@ -11,6 +11,10 @@ import {
   createNote,
   renameNote,
 } from "@/domains/knowledge/notes";
+import { createEngine } from "@/domains/agents/engine";
+import { ensureProfile } from "@/domains/agents/commands";
+import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
 import { getAuthContext } from "@/lib/auth";
 
 /*
@@ -22,7 +26,7 @@ import { getAuthContext } from "@/lib/auth";
 const revalidate = () => revalidatePath("/alfred/notebook");
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-const domainErrors = [NoteNotFoundError, VersionConflictError, IdempotencyConflictError];
+const domainErrors = [NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -98,4 +102,62 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
   const auth = await getAuthContext();
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
+}
+
+/* ---------------------------------------------------------------------------
+ * Notebook AI. Starts a run bound to the note, polls its output, and applies
+ * an accepted draft as a checkpoint with run lineage. The run is the spend
+ * and audit unit; the panel only ever stages the result for acceptance.
+ * ------------------------------------------------------------------------- */
+
+const aiStartInput = z.object({
+  artifactId: z.string().uuid(),
+  action: z.enum(NOTE_AI_ACTIONS),
+  selection: z.string().max(20_000).optional(),
+  question: z.string().max(2000).optional(),
+  language: z.string().trim().max(60).optional(),
+});
+
+export async function startNoteAIAction(input: z.input<typeof aiStartInput>): Promise<Result<{ runId: string }>> {
+  const parsed = aiStartInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That AI request is not valid." };
+  const unavailable = eveBridgeUnavailableReason();
+  if (unavailable) return { ok: false, error: unavailable };
+  const auth = await getAuthContext();
+  return guarded(async () => {
+    await ensureProfile(auth.workspaceId);
+    return startNoteAIRun(auth, parsed.data, createEngine(createEveDriver()));
+  });
+}
+
+const aiPollInput = z.object({ runId: z.string().uuid() });
+
+/** A read, polled by the editor while a run is live — deliberately no revalidate. */
+export async function getNoteAIRunOutputAction(input: z.input<typeof aiPollInput>): Promise<Result<{ state: string; output: string | null }>> {
+  const parsed = aiPollInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That run reference is not valid." };
+  const auth = await getAuthContext();
+  try {
+    const run = await getNoteAIRunOutput(auth, parsed.data.runId);
+    return { ok: true, state: run.state, output: run.output };
+  } catch (error) {
+    if (domainErrors.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
+    throw error;
+  }
+}
+
+const aiApplyInput = z.object({
+  artifactId: z.string().uuid(),
+  runId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  content,
+  plainText: z.string().max(200_000).optional(),
+  idempotencyKey: key,
+});
+
+export async function applyNoteAIResultAction(input: z.input<typeof aiApplyInput>): Promise<Result<{ version: number; versionNumber: number }>> {
+  const parsed = aiApplyInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That apply request is not valid." };
+  const auth = await getAuthContext();
+  return guarded(async () => applyNoteAIResult(auth, parsed.data));
 }

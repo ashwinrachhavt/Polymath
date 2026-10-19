@@ -7,7 +7,7 @@ import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domai
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
 import { AlfredSurface } from "@/app/(workspace)/alfred/page";
-import DossiersPage from "@/app/(workspace)/alfred/dossiers/page";
+import { DossiersSurface } from "@/app/(workspace)/alfred/dossiers/page";
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -15,7 +15,7 @@ vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn() }));
 vi.mock("@/domains/knowledge/queries", () => ({ getDocumentInbox: vi.fn(), getDocumentReview: vi.fn() }));
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
-vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()) }));
+vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/agents/queries", () => ({ listRecentRuns: vi.fn(), listDocumentSearchResults: vi.fn(async () => new Map()) }));
@@ -104,7 +104,7 @@ describe("live Alfred route functionality", () => {
 });
 
 async function dossiers(dossier?: string) {
-  return renderToStaticMarkup(await DossiersPage({ searchParams: Promise.resolve({ dossier }) }));
+  return renderToStaticMarkup(await DossiersSurface({ searchParams: Promise.resolve({ dossier }) }));
 }
 
 describe("live dossiers screen", () => {

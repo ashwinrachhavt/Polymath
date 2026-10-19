@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +30,7 @@ const stateLabel: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export default async function SpecialistsPage() {
+export async function SpecialistsSurface() {
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
@@ -136,5 +138,23 @@ export default async function SpecialistsPage() {
         </Section>
       </div>
     </>
+  );
+}
+
+export default function SpecialistsPage() {
+  return (
+    <Suspense fallback={<SpecialistsSkeleton />}>
+      <SpecialistsSurface />
+    </Suspense>
+  );
+}
+
+function SpecialistsSkeleton() {
+  return (
+    <div role="status" aria-label="Loading Specialists" className="flex flex-1 flex-col gap-4 p-6">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-40" />
+    </div>
   );
 }

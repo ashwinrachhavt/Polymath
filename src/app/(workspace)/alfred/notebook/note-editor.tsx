@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
 import RichEditor from "@/components/products/alfred/rich-editor";
-import { autosaveNoteAction, commitNoteAction, createNoteAction, renameNoteAction } from "./actions";
+import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, renameNoteAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for the canonical notebook. The body is Markdown inside
@@ -25,6 +26,32 @@ type VersionItem = { id: string; versionNumber: number; reason: string; note: st
 
 const stamp = (iso: string) =>
   new Date(iso).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/*
+ * One in-flight AI run against the note. The run's result is staged here as
+ * a proposal; accepting it applies the text to the editor and commits a
+ * checkpoint with the run's lineage, and discarding just closes the panel —
+ * the run itself stays in the history either way.
+ */
+type AIProposal = {
+  runId: string;
+  heading: string;
+  selection: string;
+  state: string;
+  output: string | null;
+  failed?: boolean;
+  notice?: string;
+};
+
+const AI_HEADINGS: Record<NoteAIRequest["action"], string> = {
+  improve: "Improve writing",
+  shorten: "Make shorter",
+  summarize: "Summarize",
+  translate: "Translate",
+  ask: "Answer",
+};
+
+const AI_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
 export function NewNoteButton() {
   const router = useRouter();
@@ -164,6 +191,74 @@ export function NoteEditor({
     router.refresh();
   };
 
+  const [ai, setAi] = useState<AIProposal | null>(null);
+  const aiBusy = !!ai && !AI_TERMINAL.has(ai.state);
+
+  const startAI = async (request: NoteAIRequest) => {
+    if (aiBusy) return;
+    setError("");
+    const result = await startNoteAIAction({ artifactId: noteId, action: request.action, selection: request.selection || undefined, question: request.question, language: request.language });
+    if (!result.ok) return setError(result.error);
+    setAi({ runId: result.runId, heading: AI_HEADINGS[request.action], selection: request.selection, state: "queued", output: null });
+  };
+
+  // Poll while the run is live; stop at a terminal state, keeping whatever
+  // output the run produced for review.
+  useEffect(() => {
+    if (!ai || AI_TERMINAL.has(ai.state)) return;
+    const timer = setTimeout(async () => {
+      const result = await getNoteAIRunOutputAction({ runId: ai.runId });
+      if (!result.ok) return setAi((current) => (current ? { ...current, failed: true, notice: result.error } : current));
+      setAi((current) => (current ? { ...current, state: result.state, output: result.output ?? current.output } : current));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [ai]);
+
+  const acceptAI = async (mode: "replace" | "append" | "replaceNote") => {
+    if (!ai?.output) return;
+    const output = ai.output.trim();
+    const current = markdownRef.current;
+    let next: string;
+    let notice = "";
+    if (mode === "replaceNote") {
+      next = output;
+    } else if (mode === "append") {
+      next = `${current.trimEnd()}\n\n${output}`;
+    } else {
+      const first = current.indexOf(ai.selection);
+      const unique = first >= 0 && current.indexOf(ai.selection, first + 1) === -1;
+      if (ai.selection && unique) {
+        next = current.slice(0, first) + output + current.slice(first + ai.selection.length);
+      } else {
+        next = `${current.trimEnd()}\n\n${output}`;
+        notice = ai.selection
+          ? "The passage could not be matched exactly in the Markdown, so the draft was added at the end."
+          : "There was no selection, so the draft was added at the end.";
+      }
+    }
+    setPending(true);
+    setError("");
+    const result = await enqueue(async () =>
+      applyNoteAIResultAction({
+        artifactId: noteId,
+        runId: ai.runId,
+        expectedVersion: versionRef.current,
+        content: body(next),
+        plainText: next,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    );
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    versionRef.current = result.version;
+    savedRef.current = next;
+    updateMarkdown(next);
+    setSaveState("saved");
+    setAi(null);
+    if (notice) setError(notice);
+    router.refresh();
+  };
+
   return (
     <Panel
       title={initialTitle}
@@ -217,7 +312,46 @@ export function NoteEditor({
           </div>
         )}
         <Input aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={rename} />
-        <RichEditor content={markdown} onChange={updateMarkdown} />
+        <RichEditor content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI }} />
+        {ai && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex items-center gap-2">
+              <Status>AI · {ai.heading}</Status>
+              <span className="text-xs text-muted-foreground">
+                {ai.failed ? "Something went wrong" : AI_TERMINAL.has(ai.state) ? (ai.output ? "Draft ready — review it before anything is written" : "Finished without output") : "Working — the draft appears here when the run finishes"}
+              </span>
+            </div>
+            {ai.output && !ai.failed && (
+              <>
+                <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[13px] leading-6">{ai.output}</div>
+                <div className="flex flex-wrap gap-2">
+                  {ai.selection && (
+                    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replace")}>
+                      Replace the selection
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("append")}>
+                    {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
+                  </Button>
+                  {ai.heading !== "Answer" && (
+                    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replaceNote")}>
+                      Replace the note
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAi(null)}>
+                    Discard
+                  </Button>
+                </div>
+              </>
+            )}
+            {ai.notice && <p role="alert" className="text-xs text-destructive">{ai.notice}</p>}
+            {ai.failed && (
+              <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => setAi(null)}>
+                Dismiss
+              </Button>
+            )}
+          </div>
+        )}
         {(outlinks.length > 0 || backlinks.length > 0) && (
           <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
             <div>
