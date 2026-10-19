@@ -129,18 +129,18 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     expect(res).toEqual({ ok: false, error: "document search failed, try again" });
   });
 
-  it("the default profile grants documents.search, and an older profile gains only that", async () => {
+  it("the default profile grants the read and internal tools, and an older profile gains only those", async () => {
     const a = await workspace();
     await ensureProfile(a.workspaceId);
     const [p] = await holder.db!.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, a.workspaceId));
-    expect(p.allowedTools).toEqual(["tasks.read", "documents.search", "gmail.send"]);
+    expect(p.allowedTools).toEqual(["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.send"]);
     const b = await workspace();
     await ensureProfile(b.workspaceId);
     await holder.db!.update(agentProfiles).set({ allowedTools: ["tasks.read"] }).where(eq(agentProfiles.workspaceId, b.workspaceId));
     await ensureProfile(b.workspaceId);
     await ensureProfile(b.workspaceId);
     const [old] = await holder.db!.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, b.workspaceId));
-    expect(old.allowedTools).toEqual(["tasks.read", "documents.search"]);
+    expect(old.allowedTools).toEqual(["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint"]);
   });
 
   it("recorded search results come back per run, inside the workspace", async () => {

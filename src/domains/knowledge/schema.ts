@@ -806,3 +806,50 @@ export const zettelProposals = pgTable(
     check("zettel_proposals_span_check", sql`span_start >= 0 AND span_end > span_start`),
   ],
 );
+
+/*
+ * The wiki layer (second brain). Documents stay the immutable raw sources;
+ * the wiki is the maintained layer above them: one master index, one hub per
+ * topic, one article per ingested document, and an append-only log. Each wiki
+ * page is an artifact, so its content history lives in artifact_versions like
+ * everything else; this table is the registry that says which artifact plays
+ * which role, so the index and hubs are derived views that can be regenerated
+ * instead of hand-edited, and re-ingesting a document lands on its existing
+ * article rather than writing a second one.
+ */
+export const wikiPageRole = pgEnum("wiki_page_role", ["index", "topic", "article", "log"]);
+
+export const wikiPages = pgTable(
+  "wiki_pages",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    role: wikiPageRole("role").notNull(),
+    /** Topic hubs: the slug they collect. Null on every other role. */
+    topicSlug: text("topic_slug"),
+    /** Articles: the document they summarize. Null on every other role. */
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
+    artifactId: uuid("artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    /** Topics an article belongs to (slugs). Empty only between failed writes. */
+    topicSlugs: jsonb("topic_slugs").notNull().default([]),
+    /** The one-liner hubs and the index quote. */
+    summary: text("summary"),
+    /** The extraction the article was written from, like dossier_sources pins. */
+    pinnedContentHash: text("pinned_content_hash"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("wiki_pages_singleton_key")
+      .on(t.workspaceId, t.role)
+      .where(sql`role in ('index', 'log')`),
+    uniqueIndex("wiki_pages_topic_key")
+      .on(t.workspaceId, t.topicSlug)
+      .where(sql`role = 'topic'`),
+    uniqueIndex("wiki_pages_article_key")
+      .on(t.workspaceId, t.documentId)
+      .where(sql`role = 'article'`),
+    index("wiki_pages_workspace_role_idx").on(t.workspaceId, t.role),
+  ],
+);
