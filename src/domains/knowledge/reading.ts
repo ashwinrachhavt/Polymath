@@ -98,7 +98,7 @@ export async function recordReadingEvent(
   },
 ) {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(
+    const { value, replayed } = await withReceipt(
       tx,
       auth,
       input.clientEventId,
@@ -220,7 +220,9 @@ export async function recordReadingEvent(
         return { eventId: event.id, replayed: false, state };
       },
     );
-    return value;
+    // A retried send returns the stored first response; the receipt's own
+    // flag is the one that says this call folded nothing new.
+    return replayed ? { ...value, replayed: true } : value;
   });
 }
 
