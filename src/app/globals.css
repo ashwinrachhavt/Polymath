@@ -250,9 +250,6 @@
   background: var(--muted);
   border: 1px solid var(--border);
 }
-.suite-nav-link { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 9px; border-radius: 6px; font-size: 13px; color: var(--muted-foreground); }
-.suite-nav-link:hover { background: var(--muted); color: var(--foreground); }
-.suite-nav-active { background: var(--muted); color: var(--foreground); font-weight: 500; }
 .suite-screen {
 min-width: 0;
 padding: 24px clamp(16px, 2.5vw, 32px) 40px;
