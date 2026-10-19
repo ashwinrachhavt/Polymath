@@ -230,6 +230,55 @@ export const agentDelegationGrants = pgTable(
   ],
 );
 
+/*
+ * ASH-122 GA03 + GA10: the append-only authorization decision log. Every
+ * gateway verdict - allow AND deny - lands here with the grant it cited,
+ * the redacted invocation shape, and the reasons, so an inspector can answer
+ * "who delegated what, why was this admitted, and what changed" (GA10)
+ * without trusting logs that only record success. Immutable via the shared
+ * axiom_reject_update trigger (migration 0172). No secrets and no payloads:
+ * arguments live redacted in tool_invocations; this row is the verdict.
+ */
+export const agentAuthorizationDecisions = pgTable(
+  "agent_authorization_decisions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    grantId: uuid("grant_id").notNull(),
+    agentPrincipalId: uuid("agent_principal_id").notNull(),
+    runId: uuid("run_id"),
+    /** Caller-stable invocation identity, correlating to tool_invocations. */
+    invocationId: text("invocation_id"),
+    operation: text("operation").notNull(),
+    accountAlias: text("account_alias"),
+    resourceRef: text("resource_ref"),
+    destination: text("destination"),
+    decision: text("decision").notNull(),
+    /** Why: empty on allow, the full reason list on deny. */
+    reasons: jsonb("reasons").notNull().default([]),
+    requiresApproval: boolean("requires_approval").notNull().default(false),
+    /** The hash the grant row pinned at decision time, for later audit against issuance. */
+    grantContentHash: text("grant_content_hash").notNull(),
+    ...recorded,
+  },
+  (t) => [
+    foreignKey({
+      name: "agent_authorization_decisions_grant_fk",
+      columns: [t.workspaceId, t.grantId],
+      foreignColumns: [agentDelegationGrants.workspaceId, agentDelegationGrants.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "agent_authorization_decisions_principal_fk",
+      columns: [t.workspaceId, t.agentPrincipalId],
+      foreignColumns: [agentPrincipals.workspaceId, agentPrincipals.id],
+    }).onDelete("restrict"),
+    check("agent_authorization_decisions_decision_check", sql`"decision" in ('allowed', 'denied')`),
+    index("agent_authorization_decisions_principal_idx").on(t.workspaceId, t.agentPrincipalId, t.createdAt),
+    index("agent_authorization_decisions_grant_idx").on(t.grantId),
+    index("agent_authorization_decisions_denied_idx").on(t.workspaceId, t.createdAt).where(sql`decision = 'denied'`),
+  ],
+);
+
 export const threads = pgTable(
   "threads",
   {

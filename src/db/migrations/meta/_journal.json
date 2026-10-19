@@ -246,6 +246,13 @@
       "tag": "0171_agent_delegation_grants",
       "when": 1792480210000,
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "tag": "0172_agent_authorization_decisions",
+      "when": 1792480220000,
+      "breakpoints": true
     }
   ]
 }

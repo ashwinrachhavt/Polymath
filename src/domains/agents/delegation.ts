@@ -373,3 +373,26 @@ export async function getDelegationGrant(tx: TxDrizzle, workspaceId: string, gra
     .limit(1);
   return grant ?? null;
 }
+
+/** The gateway's tamper check: recompute the issuance-time hash from the stored row. */
+export async function hashDelegationGrant(grant: GrantRow): Promise<string> {
+  return sha256Hex(
+    canonicalGrantContent({
+      workspaceId: grant.workspaceId,
+      delegatorMembershipId: grant.delegatorMembershipId,
+      agentPrincipalId: grant.agentPrincipalId,
+      parentGrantId: grant.parentGrantId,
+      delegationDepth: grant.delegationDepth,
+      profileRevisionId: grant.profileRevisionId,
+      contextManifestId: grant.contextManifestId,
+      scope: {
+        operations: grant.allowedOperations as string[],
+        resources: (grant.allowedResources as string[] | null) ?? undefined,
+        accounts: (grant.allowedAccounts as string[] | null) ?? undefined,
+        destinations: (grant.allowedDestinations as string[] | null) ?? undefined,
+      },
+      catalogVersion: grant.catalogVersion,
+      expiresAt: grant.expiresAt.toISOString(),
+    }),
+  );
+}
