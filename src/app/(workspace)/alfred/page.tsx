@@ -34,7 +34,7 @@ const stateLabel: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-async function AlfredSurface() {
+export async function AlfredSurface() {
   // Per-request data (auth upserts touch now()); streams inside the Suspense boundary below.
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {

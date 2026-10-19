@@ -96,7 +96,7 @@ function mimeTypeLabel(mimeType: string | null): string {
   return known[mimeType] ?? mimeType;
 }
 
-async function KnowledgeSurface({
+export async function KnowledgeSurface({
   searchParams,
 }: {
   searchParams: Promise<{ doc?: string; q?: string }>;
