@@ -76,29 +76,43 @@ export function NoteEditor({
   const versionRef = useRef(initialVersion);
   const savedRef = useRef(initialMarkdown);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mutations serialize: a rename on blur must claim its version before the
+  // autosave it raced past fires, or one of them loses the CAS check. The
+  // queue keeps the order the owner acted in.
+  const chainRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = <T,>(step: () => Promise<T>): Promise<T> => {
+    const next = chainRef.current.then(step);
+    chainRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  };
 
   useEffect(() => {
     if (markdown === savedRef.current) return;
     setSaveState("dirty");
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(async () => {
-      setSaveState("saving");
-      const result = await autosaveNoteAction({
-        artifactId: noteId,
-        expectedVersion: versionRef.current,
-        content: body(markdown),
-        plainText: markdown,
-        idempotencyKey: crypto.randomUUID(),
+    timerRef.current = setTimeout(() => {
+      void enqueue(async () => {
+        setSaveState("saving");
+        const result = await autosaveNoteAction({
+          artifactId: noteId,
+          expectedVersion: versionRef.current,
+          content: body(markdown),
+          plainText: markdown,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        if (!result.ok) {
+          setSaveState("error");
+          setError(result.error);
+          return;
+        }
+        versionRef.current = result.version;
+        savedRef.current = markdown;
+        setSaveState("saved");
+        setError("");
       });
-      if (!result.ok) {
-        setSaveState("error");
-        setError(result.error);
-        return;
-      }
-      versionRef.current = result.version;
-      savedRef.current = markdown;
-      setSaveState("saved");
-      setError("");
     }, 1200);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -108,22 +122,26 @@ export function NoteEditor({
   const rename = async () => {
     const next = title.trim();
     if (!next || next === initialTitle) return;
-    const result = await renameNoteAction({ artifactId: noteId, expectedVersion: versionRef.current, title: next, idempotencyKey: crypto.randomUUID() });
-    if (!result.ok) return setError(result.error);
-    versionRef.current = result.version;
-    router.refresh();
+    await enqueue(async () => {
+      const result = await renameNoteAction({ artifactId: noteId, expectedVersion: versionRef.current, title: next, idempotencyKey: crypto.randomUUID() });
+      if (!result.ok) return setError(result.error);
+      versionRef.current = result.version;
+      router.refresh();
+    });
   };
 
   const checkpoint = async () => {
     setPending(true);
     setError("");
-    const result = await commitNoteAction({
-      artifactId: noteId,
-      expectedVersion: versionRef.current,
-      content: body(markdown),
-      plainText: markdown,
-      idempotencyKey: crypto.randomUUID(),
-    });
+    const result = await enqueue(async () =>
+      commitNoteAction({
+        artifactId: noteId,
+        expectedVersion: versionRef.current,
+        content: body(markdown),
+        plainText: markdown,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    );
     setPending(false);
     if (!result.ok) return setError(result.error);
     versionRef.current = result.version;
