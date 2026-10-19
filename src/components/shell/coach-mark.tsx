@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { cn } from "cn";
 
 /*
@@ -40,8 +40,6 @@ export function CoachMark({
     () => true,
   );
 
-  if (hidden || storedDismissed) return null;
-
   const dismiss = () => {
     try {
       window.localStorage.setItem(key, "1");
@@ -51,22 +49,39 @@ export function CoachMark({
     setHidden(true);
   };
 
+  // The callout never blocks the page: only its dismiss button takes
+  // pointer events, and any click outside it dismisses it (capture phase,
+  // so the click still reaches its real target).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (hidden || storedDismissed) return;
+    const onDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) dismiss();
+    };
+    window.addEventListener("mousedown", onDown, true);
+    return () => window.removeEventListener("mousedown", onDown, true);
+  });
+
+  if (hidden || storedDismissed) return null;
+
+
   return (
     <div
       role="status"
       onKeyDown={(event) => {
         if (event.key === "Escape") dismiss();
       }}
-      className={cn("absolute top-full z-40 mt-2 w-64", align === "end" ? "right-0" : "left-0")}
+      ref={rootRef}
+      className={cn("pointer-events-none absolute top-full z-40 mt-2 w-64", align === "end" ? "right-0" : "left-0")}
     >
       <div aria-hidden className={cn("bg-primary absolute -top-1 size-2 rotate-45", align === "end" ? "right-3" : "left-3")} />
-      <div className="bg-primary text-primary-foreground shadow-raised rounded-lg p-3">
+      <div className="bg-primary text-primary-foreground shadow-raised pointer-events-none rounded-lg p-3">
         <p className="text-[13px] font-medium">{title}</p>
         <div className="mt-1 text-[13px] leading-relaxed opacity-90">{children}</div>
         <button
           type="button"
           onClick={dismiss}
-          className="bg-primary-foreground/15 hover:bg-primary-foreground/25 focus-visible:outline-primary-foreground mt-2 min-h-7 rounded-md px-2.5 py-1 text-[13px] font-medium focus-visible:outline-2"
+          className="bg-primary-foreground/15 hover:bg-primary-foreground/25 focus-visible:outline-primary-foreground pointer-events-auto mt-2 min-h-7 rounded-md px-2.5 py-1 text-[13px] font-medium focus-visible:outline-2"
         >
           {actionLabel}
         </button>
