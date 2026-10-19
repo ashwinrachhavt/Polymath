@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -159,9 +161,7 @@ export function DraftWorkbench({
           </ul>
         )}
         <div className="flex items-center gap-2">
-          <select
-            value={targetType}
-            onChange={(event) => {
+          <Select value={targetType} onChange={(event) => {
               setTargetType(event.target.value as "task" | "contact" | "opportunity");
               setTargetId("");
             }}
@@ -170,15 +170,15 @@ export function DraftWorkbench({
             <option value="task">Task</option>
             <option value="contact">Contact</option>
             <option value="opportunity">Opportunity</option>
-          </select>
-          <select value={targetId} onChange={(event) => setTargetId(event.target.value)} className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]">
+          </Select>
+          <Select value={targetId} onChange={(event) => setTargetId(event.target.value)} className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]">
             <option value="">Pick a record…</option>
             {picks.map((pick) => (
               <option key={pick.id} value={pick.id}>
                 {pick.title}
               </option>
             ))}
-          </select>
+          </Select>
           <Button size="sm" variant="outline" disabled={pending || !targetId} onClick={attach}>
             Attach
           </Button>

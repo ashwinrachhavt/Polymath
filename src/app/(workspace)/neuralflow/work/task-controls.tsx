@@ -5,7 +5,7 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
-import { selectClass } from "@/components/products/neuralflow/task-components";
+import { Select } from "@/components/ui/select";
 import {
   addDependencyAction,
   completeTaskAction,
@@ -218,22 +218,22 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Status">
-            <select name="status" defaultValue={data.status} className={selectClass}>
+            <Select name="status" defaultValue={data.status}>
               {statuses.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Priority">
-            <select name="priority" defaultValue={data.priority} className={selectClass}>
+            <Select name="priority" defaultValue={data.priority}>
               {priorities.map((p) => (
                 <option key={p} value={p}>
                   {p[0].toUpperCase() + p.slice(1)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Due">
             <Input name="due" type="date" defaultValue={data.dueDate ?? ""} />
@@ -330,18 +330,18 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
               depRun.run(dep, () => addDependencyAction({ taskId: data.id, otherTaskId: otherId, kind, idempotencyKey: dep.key() }), () => setOtherId(""));
             }}
           >
-            <select aria-label="Dependency kind" className={`${selectClass} w-auto`} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <Select aria-label="Dependency kind" className="w-auto" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
               <option value="blocked_by">Is blocked by</option>
               <option value="blocks">Blocks</option>
-            </select>
-            <select aria-label="Other task" className={`${selectClass} w-auto min-w-40 flex-1`} value={otherId} onChange={(e) => setOtherId(e.target.value)}>
+            </Select>
+            <Select aria-label="Other task" className="w-auto min-w-40 flex-1" value={otherId} onChange={(e) => setOtherId(e.target.value)}>
               <option value="">Choose a task</option>
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.title}
                 </option>
               ))}
-            </select>
+            </Select>
             <Button type="submit" variant="outline" disabled={depRun.pending || !otherId}>
               Add dependency
             </Button>
@@ -411,9 +411,8 @@ export function BoardCard({
         {priority !== "none" && <span>{priority}</span>}
         {blockedBy > 0 && <span>Blocked by {blockedBy}</span>}
       </div>
-      <select
+      <Select
         aria-label={`Move ${title} to status`}
-        className={selectClass}
         value={status}
         disabled={pending}
         onChange={(event) =>
@@ -425,7 +424,7 @@ export function BoardCard({
             {label}
           </option>
         ))}
-      </select>
+      </Select>
       <ErrorLine error={error} />
     </div>
   );

@@ -295,6 +295,10 @@ export function destinationsIn(group: AppSlug | "shared") {
 }
 
 const featureRoutes: Record<string, string> = {
+  // The notebook has no nav entry of its own; it is a Knowledge surface
+  // (same artifact tables), so the nav and breadcrumb name Knowledge, not
+  // the prefix-matched Threads (ASH-167).
+  "/alfred/notebook": "/alfred/knowledge",
   "/apps/command-center/briefing": "/command-center/briefing",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships",

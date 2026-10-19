@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Field } from "@/components/workspace/ui";
 import { createDefinitionAction } from "./actions";
 
@@ -42,16 +43,16 @@ export function DefinitionForm() {
         <Input name="label" required maxLength={120} placeholder="Quartz" />
       </Field>
       <Field label="Kind">
-        <select
+        <Select
           name="kind"
           defaultValue="points"
-          className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+         
         >
           <option value="points">points</option>
           <option value="streak_day">streak day</option>
           <option value="badge">badge</option>
           <option value="collectible">collectible</option>
-        </select>
+        </Select>
       </Field>
       <Field label="Points">
         <Input name="points" inputMode="numeric" placeholder="10" />

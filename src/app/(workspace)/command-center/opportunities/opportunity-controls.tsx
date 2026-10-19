@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,12 +38,7 @@ export function StageSelect({
   const { error, setError, pending, startTransition } = useActionError();
   return (
     <span className="inline-flex flex-col gap-1">
-      <select
-        aria-label="Stage"
-        className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-        value={stage}
-        disabled={pending}
-        onChange={(event) => {
+      <Select aria-label="Stage" value={stage} disabled={pending} onChange={(event) => {
           const toStage = event.target.value as OpportunityStage;
           setError(null);
           startTransition(async () => {
@@ -55,7 +52,7 @@ export function StageSelect({
             {STAGE_LABELS[value]}
           </option>
         ))}
-      </select>
+      </Select>
       {error ? <span className="text-destructive text-[13px]" role="alert">{error}</span> : null}
     </span>
   );

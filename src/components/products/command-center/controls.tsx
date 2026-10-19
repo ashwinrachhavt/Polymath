@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+export { Select } from "@/components/ui/select";
 
-export function Select(props: ComponentProps<"select">) {
-  return <select {...props} className={`h-9 min-w-0 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${props.className || ""}`} />;
-}
 export function Destination({ screen, children }: { screen: string; children: ReactNode }) {
   return <Button variant="outline" size="sm" asChild><Link href={`/apps/command-center/${screen}`}>{children}</Link></Button>;
 }
