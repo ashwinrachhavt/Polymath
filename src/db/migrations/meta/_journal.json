@@ -113,6 +113,20 @@
       "tag": "0031_seed_integration_catalog",
       "breakpoints": true,
       "when": 1792371558592
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792370978489,
+      "tag": "0040_wiki_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792400000001,
+      "tag": "0041_notion_catalog",
+      "breakpoints": true
     }
   ]
 }
