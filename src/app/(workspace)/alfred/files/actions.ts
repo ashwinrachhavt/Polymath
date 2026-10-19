@@ -24,9 +24,9 @@ async function authorize(): Promise<AuthContext> {
   return auth;
 }
 
-async function run<T extends object>(fn: (auth: AuthContext) => Promise<T>): Promise<ActionResult<T>> {
+async function run<T extends object>(auth: AuthContext, fn: () => Promise<T>): Promise<ActionResult<T>> {
   try {
-    const result = await fn(await authorize());
+    const result = await fn();
     revalidatePath("/alfred/files");
     return { ok: true, ...result };
   } catch (cause) {
@@ -37,36 +37,42 @@ async function run<T extends object>(fn: (auth: AuthContext) => Promise<T>): Pro
 }
 
 export async function createFolderAction(name: string) {
-  return run(async (auth) => {
+  const auth = await authorize();
+  return run(auth, async () => {
     const folder = await createFolder(auth, { name: z.string().max(200).parse(name) });
     return { folderId: folder.id };
   });
 }
 
 export async function renameFolderAction(folderId: string, name: string, expectedVersion: number) {
-  return run(async (auth) => {
+  const auth = await authorize();
+  return run(auth, async () => {
     await renameFolder(auth, { folderId: id.parse(folderId), name: z.string().max(200).parse(name), expectedVersion: z.number().int().parse(expectedVersion) });
     return {};
   });
 }
 
 export async function removeFolderAction(folderId: string, expectedVersion: number) {
-  return run(async (auth) => {
+  const auth = await authorize();
+  return run(auth, async () => {
     await archiveFolder(auth, { folderId: id.parse(folderId), expectedVersion: z.number().int().parse(expectedVersion) });
     return {};
   });
 }
 
 export async function moveDocumentsAction(documentIds: string[], folderId: string | null) {
-  return run(async (auth) =>
+  const auth = await authorize();
+  return run(auth, async () =>
     moveDocuments(auth, { documentIds: ids.parse(documentIds), folderId: folderId === null ? null : id.parse(folderId) }),
   );
 }
 
 export async function addTagAction(documentIds: string[], tag: string) {
-  return run(async (auth) => addTag(auth, { documentIds: ids.parse(documentIds), tag: z.string().max(200).parse(tag) }));
+  const auth = await authorize();
+  return run(auth, async () => addTag(auth, { documentIds: ids.parse(documentIds), tag: z.string().max(200).parse(tag) }));
 }
 
 export async function removeTagAction(documentIds: string[], tag: string) {
-  return run(async (auth) => removeTag(auth, { documentIds: ids.parse(documentIds), tag: z.string().max(200).parse(tag) }));
+  const auth = await authorize();
+  return run(auth, async () => removeTag(auth, { documentIds: ids.parse(documentIds), tag: z.string().max(200).parse(tag) }));
 }
