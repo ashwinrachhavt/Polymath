@@ -16,6 +16,7 @@ import {
   StaleWriteError,
   updateContact,
 } from "@/domains/crm/commands";
+import { mergeCompanies, mergeContacts } from "@/domains/crm/dedupe";
 import { and, eq } from "drizzle-orm";
 import { companies, relationshipStatus } from "@/domains/crm/schema";
 import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
@@ -279,5 +280,37 @@ export async function researchCompanyRecordAction(input: { companyId: string; id
   } catch (error) {
     if (error instanceof CompanyResearchError) return { ok: false as const, error: error.message };
     throw error;
+  }
+}
+
+const mergeFields = {
+  sourceId: uuid,
+  targetId: uuid,
+  expectedTargetVersion: z.number().int().min(1),
+};
+
+export async function mergeContactsAction(input: unknown): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
+  const parsed = z.object(mergeFields).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
+  const auth = await authorize();
+  try {
+    const result = await mergeContacts(auth, parsed.data);
+    revalidate();
+    return { ok: true, merged: result.merged, into: result.into };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The merge failed." };
+  }
+}
+
+export async function mergeCompaniesAction(input: unknown): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
+  const parsed = z.object(mergeFields).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
+  const auth = await authorize();
+  try {
+    const result = await mergeCompanies(auth, parsed.data);
+    revalidate();
+    return { ok: true, merged: result.merged, into: result.into };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The merge failed." };
   }
 }
