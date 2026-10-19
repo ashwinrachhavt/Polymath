@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   flattenFolders,
   folderCounts,
+  mergeRows,
   inFolder,
   kindLabel,
   matchesQuery,
@@ -62,6 +63,15 @@ describe("file browser", () => {
       { tag: "tax", count: 2 },
       { tag: "2026", count: 1 },
     ]);
+  });
+
+  it("merges a fresh first page into loaded rows without losing later pages", () => {
+    const a = row({ id: "a", title: "A" });
+    const b = row({ id: "b", title: "B" });
+    const c = row({ id: "c", title: "C" });
+    const merged = mergeRows([a, b], [row({ id: "c", title: "New" }), row({ id: "a", title: "A2" })]);
+    expect(merged.map((r) => `${r.id}:${r.title}`)).toEqual(["c:New", "a:A2", "b:B"]);
+    expect(mergeRows([c], [])).toEqual([c]);
   });
 
   it("flattens the folder tree depth-first by name and surfaces orphans at the root", () => {

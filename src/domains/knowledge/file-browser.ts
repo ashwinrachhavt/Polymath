@@ -146,3 +146,19 @@ export function tagCounts(rows: BrowserRow[]): Array<{ tag: string; count: numbe
   for (const row of rows) for (const tag of row.tags) by.set(tag, (by.get(tag) ?? 0) + 1);
   return [...by].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
+
+/** The orders the library backend pages in; the keyset cursor is only valid for the order it came from. */
+export type ServerSort = "added" | "recent" | "title" | "size";
+export const SERVER_SORTS: Array<{ id: ServerSort; label: string }> = [
+  { id: "added", label: "Newest added" },
+  { id: "recent", label: "Recently changed" },
+  { id: "title", label: "Name" },
+  { id: "size", label: "Largest" },
+];
+
+/** Fold a freshly read first page into the rows already loaded: fresh values win, loaded pages stay. */
+export function mergeRows(current: BrowserRow[], fresh: BrowserRow[]): BrowserRow[] {
+  const byId = new Map(fresh.map((r) => [r.id, r]));
+  const have = new Set(current.map((r) => r.id));
+  return [...fresh.filter((r) => !have.has(r.id)), ...current.map((r) => byId.get(r.id) ?? r)];
+}

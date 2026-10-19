@@ -29,15 +29,16 @@ import {
   kindLabel,
   matchesQuery,
   rangeIds,
-  sortRows,
+  mergeRows,
+  SERVER_SORTS,
   tagCounts,
   statusLabel,
   type BrowserRow,
   type FolderId,
   type FolderNode,
-  type SortKey,
+  type ServerSort,
 } from "@/domains/knowledge/file-browser";
-import { addTagAction, createFolderAction, moveDocumentsAction, removeTagAction, removeFolderAction, renameFolderAction } from "./actions";
+import { loadPageAction, addTagAction, createFolderAction, moveDocumentsAction, removeTagAction, removeFolderAction, renameFolderAction } from "./actions";
 import { invalidatePreview, PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 
@@ -76,19 +77,31 @@ const DRAG_TYPE = "application/x-axiom-documents";
 
 export function FileExplorer({
   initialRows,
+  initialCursor,
+  total,
   folders,
-  truncated,
 }: {
   initialRows: BrowserRow[];
+  initialCursor: string | null;
+  total: number;
   folders: FolderNode[];
-  truncated: boolean;
 }) {
   const router = useRouter();
   // The server re-renders after an upload or re-read; its rows are the truth.
-  const rows = initialRows;
+  const [rows, setRows] = useState(initialRows);
+  const [cursor, setCursor] = useState(initialCursor);
+  const [seen, setSeen] = useState(initialRows);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState<string | null>(null);
+  // A server refresh (after a move, tag or upload) folds its fresh first page into
+  // what is already loaded, so later pages are not thrown away.
+  if (seen !== initialRows) {
+    setSeen(initialRows);
+    if (searched === null) setRows((current) => mergeRows(current, initialRows));
+  }
   const [folder, setFolder] = useState<FolderId>("all");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("recent");
+  const [sort, setSort] = useState<ServerSort>("added");
   const view = useSyncExternalStore(subscribeView, readView, () => "list" as ViewMode);
   const [rawSelected, setSelected] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -115,8 +128,8 @@ export function FileExplorer({
   const tags = useMemo(() => tagCounts(rows), [rows]);
   const activeFolder = folder.startsWith("folder:") ? (folders.find((f) => `folder:${f.id}` === folder) ?? null) : null;
   const visible = useMemo(
-    () => sortRows(rows.filter((r) => inFolder(r, folder) && matchesQuery(r, query)), sort),
-    [rows, folder, query, sort],
+    () => rows.filter((r) => inFolder(r, folder) && matchesQuery(r, query)),
+    [rows, folder, query],
   );
   const visibleIds = useMemo(() => visible.map((r) => r.id), [visible]);
   const activeRow = visible.find((r) => r.id === active) ?? null;
@@ -189,6 +202,36 @@ export function FileExplorer({
     await navigator.clipboard.writeText(selectedRows.map((r) => r.title).join("\n")).catch(() => undefined);
     setNotice(`Copied ${selectedRows.length} title${selectedRows.length === 1 ? "" : "s"}.`);
   }
+
+  async function fetchPage(next: { sort: ServerSort; cursor?: string; q?: string }, replace: boolean) {
+    setLoading(true);
+    const result = await loadPageAction(next);
+    setLoading(false);
+    if (!result.ok) return setNotice(result.error);
+    setRows((current) => (replace ? result.page.rows : [...current, ...result.page.rows.filter((r) => !current.some((c) => c.id === r.id))]));
+    setCursor(result.page.nextCursor);
+  }
+
+  const changeSort = (next: ServerSort) => {
+    setSort(next);
+    void fetchPage({ sort: next, q: searched ?? undefined }, true);
+  };
+
+  const searchAll = () => {
+    const q = query.trim();
+    if (!q) return;
+    setSearched(q);
+    setFolder("all");
+    void fetchPage({ sort, q }, true);
+  };
+
+  const clearSearch = () => {
+    setSearched(null);
+    setQuery("");
+    setRows(initialRows);
+    setCursor(initialCursor);
+    setSort("added");
+  };
 
   async function organise(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
     const result = await fn();
@@ -413,14 +456,15 @@ export function FileExplorer({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search titles, files, people  ( / )"
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchAll())}
+              placeholder="Filter loaded, Enter searches everything  ( / )"
               className="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border pr-2 pl-8 text-[13px] outline-none focus-visible:ring-2"
             />
           </label>
-          <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort by" className="w-36">
-            <option value="recent">Newest first</option>
-            <option value="name">Name</option>
-            <option value="status">Needs review first</option>
+          <Select value={sort} onChange={(e) => changeSort(e.target.value as ServerSort)} aria-label="Sort by" className="w-40">
+            {SERVER_SORTS.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
           </Select>
           <div role="group" aria-label="View" className="border-input flex overflow-hidden rounded-md border">
             <button type="button" aria-pressed={view === "list"} aria-label="List view" onClick={() => chooseView("list")} className={`grid size-9 place-items-center ${view === "list" ? "bg-muted" : "hover:bg-muted"}`}>
@@ -639,9 +683,22 @@ export function FileExplorer({
             ))}
           </ul>
         )}
-        {truncated ? (
-          <p className="text-muted-foreground px-5 py-3 text-xs">Showing the newest 300. Search the Knowledge inbox for older documents.</p>
-        ) : null}
+        <div className="text-muted-foreground flex flex-wrap items-center gap-3 px-5 py-3 text-xs">
+          <Readout>{rows.length} of {total} {searched ? "matches" : "loaded"}</Readout>
+          {searched ? (
+            <>
+              <span>Results for &quot;{searched}&quot; across names and extracted text.</span>
+              <button type="button" onClick={clearSearch} className="underline-offset-4 hover:underline">Back to all documents</button>
+            </>
+          ) : query.trim() && cursor ? (
+            <button type="button" onClick={searchAll} className="underline-offset-4 hover:underline">Search all {total} documents for &quot;{query.trim()}&quot;</button>
+          ) : null}
+          {cursor ? (
+            <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void fetchPage({ sort, cursor: cursor ?? undefined, q: searched ?? undefined }, false)}>
+              {loading ? "Loading…" : "Load more"}
+            </Button>
+          ) : null}
+        </div>
         <p className="text-muted-foreground px-5 py-3 text-xs">
           Keys: / search, arrows move, space selects, enter opens. <Link href="/alfred/knowledge" className="underline-offset-4 hover:underline">Open the review inbox</Link>
         </p>

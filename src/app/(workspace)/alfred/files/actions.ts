@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { archiveFolder, createFolder, FolderError, renameFolder, setDocumentFolder } from "@/domains/knowledge/folders";
 import { addTag, removeTag, TagError } from "@/domains/knowledge/tags";
+import { getExplorerPage, type ExplorerPage } from "@/domains/knowledge/file-rows";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -100,4 +101,14 @@ export async function removeTagAction(documentIds: string[], tag: string) {
     await removeTag(auth, { documentIds: z.array(id).min(1).max(200).parse(documentIds), tag: name.parse(tag) });
     return {};
   });
+}
+
+/** Next page (or a re-sorted / searched first page) of the library, read by the explorer. Viewers may read. */
+export async function loadPageAction(input: { sort: "added" | "recent" | "title" | "size"; cursor?: string; q?: string }): Promise<ActionResult<{ page: ExplorerPage }>> {
+  const auth = await getAuthContext();
+  requireRole(auth, "viewer");
+  const parsed = z.object({ sort: z.enum(["added", "recent", "title", "size"]), cursor: z.string().max(500).optional(), q: z.string().max(200).optional() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That request was not valid." };
+  const page = await getExplorerPage(auth, parsed.data);
+  return { ok: true, page };
 }
