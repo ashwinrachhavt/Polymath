@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -146,6 +147,86 @@ export const agentPrincipals = pgTable(
     // principal in its own workspace.
     unique("agent_principals_workspace_id_id_key").on(t.workspaceId, t.id),
     index("agent_principals_workspace_status_idx").on(t.workspaceId, t.status),
+  ],
+);
+
+/*
+ * ASH-122 GA02 + GA07: immutable bounded delegation grants. A grant is how
+ * authority reaches a principal: a human membership delegates a bounded,
+ * expiring ceiling (operations from the capability catalog, resources,
+ * account aliases, destinations, context boundary) and the row never changes
+ * after issuance - the DB trigger below freezes every column except the
+ * revocation bookkeeping. Revocation is a lifecycle event, not a delete:
+ * revoked rows stay for audit.
+ *
+ * `parentGrantId` + `delegationDepth` are the GA07 sub-agent chain: a child
+ * grant must be an attenuation of its parent (the domain layer enforces the
+ * subset rule), and depth is capped so a delegation chain cannot fan out
+ * unboundedly. `contentHash` pins the canonical content so a tampered row is
+ * detectable at authorization time.
+ *
+ * Default off: nothing in the request path verifies grants yet. guards.ts
+ * RANK remains the only enforcement surface; the gateway slice (GA03) is the
+ * first reader.
+ */
+export const agentDelegationGrants = pgTable(
+  "agent_delegation_grants",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** The human membership delegating authority. Never a principal: agents cannot mint grants. */
+    delegatorMembershipId: uuid("delegator_membership_id").notNull(),
+    agentPrincipalId: uuid("agent_principal_id").notNull(),
+    /** GA07: the grant this one attenuates, if any. */
+    parentGrantId: uuid("parent_grant_id"),
+    delegationDepth: integer("delegation_depth").notNull().default(0),
+    /** The profile revision ceiling this grant binds, if pinned at issuance. */
+    profileRevisionId: uuid("profile_revision_id"),
+    /** The context manifest bounding what the run may read, if bound. */
+    contextManifestId: uuid("context_manifest_id"),
+    /** Capability-catalog keys; validated against catalogVersion at issuance. */
+    allowedOperations: jsonb("allowed_operations").notNull(),
+    /** Optional bounds: "kind:uuid" resource refs, account aliases, egress destinations. Null = not delegated. */
+    allowedResources: jsonb("allowed_resources"),
+    allowedAccounts: jsonb("allowed_accounts"),
+    allowedDestinations: jsonb("allowed_destinations"),
+    catalogVersion: integer("catalog_version").notNull(),
+    /** sha256 of the canonical grant content at issuance; the gateway re-checks it. */
+    contentHash: text("content_hash").notNull(),
+    /** Every grant expires; bounded authority has no "forever" shape. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    createdBy: uuid("created_by"),
+    updatedBy: uuid("updated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    foreignKey({
+      name: "agent_delegation_grants_delegator_fk",
+      columns: [t.workspaceId, t.delegatorMembershipId],
+      foreignColumns: [memberships.workspaceId, memberships.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "agent_delegation_grants_principal_fk",
+      columns: [t.workspaceId, t.agentPrincipalId],
+      foreignColumns: [agentPrincipals.workspaceId, agentPrincipals.id],
+    }).onDelete("restrict"),
+    // Self-reference, so it points at the callback's own columns: the outer
+    // const is still in its temporal dead zone while pgTable() runs.
+    foreignKey({
+      name: "agent_delegation_grants_parent_fk",
+      columns: [t.workspaceId, t.parentGrantId],
+      foreignColumns: [t.workspaceId, t.id],
+    }).onDelete("restrict"),
+    check("agent_delegation_grants_depth_check", sql`"delegation_depth" between 0 and 3`),
+    unique("agent_delegation_grants_workspace_id_id_key").on(t.workspaceId, t.id),
+    index("agent_delegation_grants_principal_idx")
+      .on(t.workspaceId, t.agentPrincipalId)
+      .where(sql`revoked_at is null`),
+    index("agent_delegation_grants_parent_idx").on(t.parentGrantId).where(sql`parent_grant_id is not null`),
   ],
 );
 
