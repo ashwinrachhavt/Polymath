@@ -53,7 +53,7 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
 
   // Client-side transitions: click the in-shell link, time to new content.
   for (const route of HERO_ROUTES) {
-    const link = page.locator(`nav a[href="${route.path}"]`).first();
+    const link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
     await expect(link, `shell link to ${route.path}`).toBeVisible();
     const started = Date.now();
     await link.click();
