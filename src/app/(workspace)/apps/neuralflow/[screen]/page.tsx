@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
-const screens = ["dashboard", "tasks", "boards", "calendar", "scheduler", "focus", "projects", "notes", "meetings", "brain-dump", "reports", "rewards"];
+const screens = ["dashboard", "tasks", "boards", "calendar", "scheduler", "focus", "projects", "notes", "meetings", "brain-dump", "reports"];
 
 /*
  * Both params and searchParams are awaited inside the boundary: Next 16 warns
@@ -59,10 +59,6 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
     case "reports": {
       const { ReportsScreen } = await import("@/components/products/neuralflow/reflection-screens");
       return <ReportsScreen />;
-    }
-    case "rewards": {
-      const { RewardsScreen } = await import("@/components/products/neuralflow/reflection-screens");
-      return <RewardsScreen />;
     }
   }
 }

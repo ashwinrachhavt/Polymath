@@ -61,37 +61,24 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect((await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12")).toHaveLength(accepted.length);
 });
 
-test("focus survives navigation and pause, then records one outcome and one idempotent stone", async ({ page }) => {
-  await page.clock.install({ time: new Date("2026-10-11T12:00:00") });
-  await page.goto("/apps/neuralflow/focus?task=task-architecture");
-  await page.getByLabel("Duration (minutes)").fill("1");
-  await page.getByRole("button", { name: "Start interval", exact: true }).click();
-  await page.clock.fastForward(10000);
+test("focus finishing records the durable session and awards no stone while earning rules are off", async ({ page }) => {
+  await page.goto("/neuralflow/focus?task=task-architecture");
+  await expect(page.getByLabel("Focusing on")).toHaveValue("task-architecture");
+  await page.getByRole("button", { name: "Start focus", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
-  const paused = (await preview(page)).focus.remaining;
-  await page.goto("/apps/neuralflow/tasks");
-  await page.clock.fastForward(120000);
-  await page.goto("/apps/neuralflow/focus");
-  expect((await preview(page)).focus.remaining).toBe(paused);
-  await page.getByRole("button", { name: "Resume", exact: true }).click();
-  await page.clock.fastForward(61000);
-  await expect.poll(async () => (await preview(page)).focus.remaining).toBe(0);
-  await page.getByRole("button", { name: "Review outcome", exact: true }).click();
-  await page.getByLabel("What changed? (optional)").fill("Recorded an explicit decision.");
-  await page.getByRole("button", { name: "Save outcome and end locally" }).click();
-  await expect.poll(async () => (await preview(page)).rewards.length).toBe(1);
-  await expect(page.getByRole("heading", { name: "The session is complete. The task is not.", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Clarity stone earned", exact: true })).toBeVisible();
-  await expect(page.getByText('Completed a focus interval on "Review the canonical Axiom data model".', { exact: false })).toBeVisible();
-  const state = await preview(page);
-  expect(state.focus).toBeNull();
-  expect(state.artifacts.some((note: { body: string; links: string[] }) => note.body.includes("Recorded an explicit decision") && note.links.includes("task-architecture"))).toBe(true);
-  await page.reload();
-  expect((await preview(page)).rewards).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  // The session survives navigation because the server owns it.
+  await page.goto("/neuralflow/work");
+  await page.goto("/neuralflow/focus");
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
+  // Earning rules wait on the owner's ASH-135 section 7 decisions: finishing
+  // a session records history but awards no stone.
   await page.goto("/apps/neuralflow/rewards");
-  await expect(page.getByText("Earned: 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
 });
-
 test("a local overnight meeting retains full metadata and uses canonical event notes", async ({ page }) => {
   await page.goto("/apps/neuralflow/meetings");
   await page.getByRole("button", { name: "New local meeting", exact: true }).click();
