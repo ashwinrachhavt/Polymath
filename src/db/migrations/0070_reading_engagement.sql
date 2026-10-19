@@ -32,6 +32,7 @@ CREATE TABLE "document_reading_state" (
 	"updated_by" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"archived_at" timestamp with time zone,
 	"version" integer DEFAULT 1 NOT NULL
 );--> statement-breakpoint
 ALTER TABLE "document_reading_events" ADD CONSTRAINT "document_reading_events_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
