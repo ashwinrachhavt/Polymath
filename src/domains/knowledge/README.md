@@ -110,6 +110,26 @@ archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
 capabilities; the surface is /alfred/wiki.
 
+## Party resolution and assertions (ASH-128)
+
+Extracted people/organizations become `document_parties` rows; only a human
+decision (match / create / reject) links them to CRM records, and verified
+identity (email, domain) proposes but never forces a match. Accepted facts
+land in the `reviewed_assertions` ledger, never on the record itself.
+
+- Conflicts surface, never settle silently: a non-superseding accept that
+  disagrees with an active value is reported in `acceptAssertions`' return
+  and in the `getAssertions` projection (`conflicts`), both values with
+  provenance. A superseding accept closes the conflict explicitly.
+- Accepted `employment_role` assertions project to `contact_companies`
+  (title, started/ended, current flag) when the company is identifiable by
+  id or exact name; an unidentifiable or foreign company projects nothing
+  and the assertion still stands. Projection is idempotent.
+- `archiveDocument` (`documents.ts`) archives the document and retracts its
+  assertions in one transaction - evidence never silently survives removal,
+  and reviewed rows are marked, never erased. The UI calls
+  `archiveDocumentAction` (member role).
+
 ## Library backend (Box-feel file manager)
 
 The read model behind the document library UI: `library.ts` for reads,

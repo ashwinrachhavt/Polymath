@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { recordReadingEvent, ReadingDocumentMissingError } from "@/domains/knowledge/reading";
 import { restoreDocumentVersion, VersionRestoreError } from "@/domains/knowledge/versions";
+import { archiveDocument, DocumentLifecycleError } from "@/domains/knowledge/documents";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -66,6 +67,34 @@ export async function restoreDocumentVersionAction(raw: z.infer<typeof restoreSc
     if (cause instanceof VersionRestoreError) {
       if (cause.code === "not_found") return { ok: false as const, error: "That version is not available." };
       if (cause.code === "not_succeeded") return { ok: false as const, error: "Only a successfully read version can be restored." };
+      if (cause.code === "stale_write") return { ok: false as const, error: "That document changed. Reload to see the current state." };
+    }
+    throw cause;
+  }
+}
+
+/*
+ * Archive a document. Its reviewed assertions retract in the same
+ * transaction - the ledger never shows evidence standing behind a document
+ * the library no longer shows. The rows stay, marked retracted.
+ */
+
+const archiveSchema = z.object({
+  documentId: z.string().uuid(),
+  expectedVersion: z.number().int().min(0),
+});
+
+export async function archiveDocumentAction(raw: z.infer<typeof archiveSchema>) {
+  const auth = await authorize();
+  requireRole(auth, "member");
+  const input = archiveSchema.parse(raw);
+  try {
+    const result = await archiveDocument(auth, input);
+    return { ok: true as const, ...result };
+  } catch (cause) {
+    if (cause instanceof DocumentLifecycleError) {
+      if (cause.code === "not_found") return { ok: false as const, error: "That document is not available." };
+      if (cause.code === "already_archived") return { ok: false as const, error: "That document is already archived." };
       if (cause.code === "stale_write") return { ok: false as const, error: "That document changed. Reload to see the current state." };
     }
     throw cause;
