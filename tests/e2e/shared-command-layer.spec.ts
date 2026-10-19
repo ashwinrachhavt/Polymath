@@ -3,34 +3,35 @@ import { expect, test } from "@playwright/test";
 import { waitSettled } from "./helpers/settled";
 
 test("global capture and search open the exact shared task without losing the original", async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const shared = `Cross-app capture regression ${tag}`;
   await page.goto("/command-center/briefing");
   await waitSettled(page);
   const capture = page.getByRole("button", { name: "Capture", exact: true });
   await capture.click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Task", exact: true }).click();
-  await dialog.getByRole("textbox", { name: "Capture content" }).fill("Cross-app capture regression\nKeep this original context");
+  await dialog.getByRole("textbox", { name: "Capture content" }).fill(`${shared}\nKeep this original context`);
   await dialog.getByRole("button", { name: "Save capture", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(capture).toBeFocused();
 
   await page.keyboard.press("Control+k");
-  await page.getByRole("combobox", { name: "Search workspace" }).fill("Cross-app capture regression");
-  await page.keyboard.press("Enter");
-  // Work views are canonical now: a preview-store deep link opens the
-  // canonical list, and the preview inspector is gone. (The command layer
-  // itself goes canonical in the stacked PR.)
-  await expect(page).toHaveURL(/\/neuralflow\/work\?view=list&task=/);
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Task inspector" })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Search workspace" }).fill(shared);
+  const hit = page.getByRole("option", { name: new RegExp(shared) });
+  await expect(hit).toBeVisible();
+  await hit.click();
+  // The same canonical record: the search hit opens the saved task's detail.
+  await expect(page).toHaveURL(/\/neuralflow\/work\?view=saved&task=[0-9a-f-]{36}/);
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(shared);
 
   // The durable inbox proves the same retain-the-original contract against
   // Postgres: capture, convert to a canonical task, original text survives.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await page.getByLabel("Original material").fill("Cross-app capture regression\nKeep this original context");
+  await page.getByLabel("Original material").fill(`Inbox original ${tag}\nKeep this original context`);
   await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
-  const inboxOriginal = page.getByRole("article").filter({ hasText: "Cross-app capture regression" });
+  const inboxOriginal = page.getByRole("article").filter({ hasText: `Inbox original ${tag}` });
   await expect(inboxOriginal).toContainText("Keep this original context");
   await inboxOriginal.getByRole("button", { name: "Make task", exact: true }).click();
   await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Converted", exact: true }).click();
@@ -50,8 +51,13 @@ test("the header capture dialog validates pasted URLs and a captured item surviv
   await expect(dialog.getByRole("alert")).toContainText("valid http or https URL");
   await page.keyboard.press("Escape");
 
-  await page.getByLabel("Original material").fill("Preserve these bytes");
-  await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+  // Header capture writes the durable inbox directly: the item survives reload.
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox", { name: "Capture content" }).fill("Preserve these bytes");
+  await page.getByRole("dialog").getByRole("button", { name: "Save capture", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
   await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
   await page.reload();
   await waitSettled(page);
