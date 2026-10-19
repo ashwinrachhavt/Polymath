@@ -38,7 +38,7 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   // Commit it: Ready shows up under Today.
   await page.getByRole("link", { name: a, exact: true }).click();
   await page.getByRole("combobox", { name: "Status" }).selectOption("ready");
-  await page.getByRole("combobox", { name: "Priority" }).selectOption("high");
+  await page.getByRole("combobox", { name: "Priority", exact: true }).selectOption("high");
   await page.getByRole("button", { name: "Save task" }).click();
   // The saved row comes back from the server with its new priority badge.
   await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("high", { exact: true })).toBeVisible();
