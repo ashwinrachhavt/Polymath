@@ -25,7 +25,7 @@ const suite = handle ? describe : describe.skip;
 type Auth = { userId: string; workspaceId: string; role: "owner" | "member" | "viewer" };
 const holder: { auth?: Auth } = {};
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => holder.auth) }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 
 let extraction: typeof import("@/domains/knowledge/extraction");
 let actions: typeof import("@/app/(workspace)/alfred/knowledge/actions");

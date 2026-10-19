@@ -44,7 +44,7 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
     )
     select t.id, t.title, t.status, t.priority, t.due_at, t.tags, t.version,
       (select today from day)::text as today,
-      (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome,
+      (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome
     from tasks t
     where t.workspace_id = ${auth.workspaceId}
       and t.archived_at is null

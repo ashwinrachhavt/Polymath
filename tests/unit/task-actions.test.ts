@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // The action module imports Clerk through getAuthContext and the domain
 // commands through their module; both are stubbed so the test exercises the
 // action's own contract — validation, the error mapping, and the revalidate.
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 vi.mock("@/lib/auth", () => ({
   getAuthContext: vi.fn(async () => ({ userId: "u1", workspaceId: "w1", role: "owner" })),
 }));
