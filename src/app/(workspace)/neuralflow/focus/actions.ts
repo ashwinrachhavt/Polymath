@@ -42,21 +42,31 @@ const transitionInput = z.object({
   expectedVersion: z.number().int().min(1),
   reason: z.string().trim().max(200).optional().default(""),
   outcome: z.string().trim().max(500).optional().default(""),
+  whatChanged: z.string().trim().max(500).optional().default(""),
+  nextStep: z.string().trim().max(500).optional().default(""),
 });
 
 export async function startSessionAction(input: unknown): Promise<Result> {
   const parsed = z
     .object({
-      subject: z.string().trim().min(1, "Name what you are focusing on.").max(200),
+      subject: z.string().trim().max(200).optional().default(""),
       plannedMinutes: z.number().int().min(1).max(480).nullable(),
+      taskId: z.string().uuid().optional(),
     })
     .safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the session and try again." };
   }
+  if (!parsed.data.taskId && !parsed.data.subject) {
+    return { ok: false, error: "Name what you are focusing on." };
+  }
   const auth = await authorize();
   try {
-    await startFocusSession(auth, { subject: parsed.data.subject, plannedMinutes: parsed.data.plannedMinutes });
+    await startFocusSession(auth, {
+      subject: parsed.data.subject || null,
+      plannedMinutes: parsed.data.plannedMinutes,
+      taskId: parsed.data.taskId ?? null,
+    });
   } catch (error) {
     return fail(error);
   }
@@ -95,7 +105,7 @@ export async function finishSessionAction(input: unknown): Promise<Result> {
   if (!parsed.success) return { ok: false, error: "Reload and try again." };
   const auth = await authorize();
   try {
-    await finishFocusSession(auth, { ...parsed.data, outcome: parsed.data.outcome || null });
+    await finishFocusSession(auth, { ...parsed.data, outcome: parsed.data.outcome || null, whatChanged: parsed.data.whatChanged || null, nextStep: parsed.data.nextStep || null });
   } catch (error) {
     return fail(error);
   }

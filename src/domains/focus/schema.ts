@@ -46,6 +46,9 @@ export const focusSessions = pgTable(
     /** [{ at, reason }] — every pause, interruption, and resume. */
     interruptions: jsonb("interruptions").notNull().default([]),
     outcome: text("outcome"),
+    /** The finish record against a linked task: what moved, where to resume. */
+    whatChanged: text("what_changed"),
+    nextStep: text("next_step"),
     ...mutable,
   },
   (t) => [

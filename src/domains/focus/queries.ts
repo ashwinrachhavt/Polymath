@@ -40,7 +40,7 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
 }
 
 /** Closed sessions, newest first. */
-export async function listFocusHistory(auth: AuthContext, limit = 30): Promise<FocusSessionView[]> {
+export async function listFocusHistory(auth: AuthContext, limit = 30, taskId?: string): Promise<FocusSessionView[]> {
   const rows = await db
     .select()
     .from(focusSessions)
@@ -49,6 +49,7 @@ export async function listFocusHistory(auth: AuthContext, limit = 30): Promise<F
         eq(focusSessions.workspaceId, auth.workspaceId),
         inArray(focusSessions.state, ["finished", "abandoned", "interrupted"]),
         isNull(focusSessions.archivedAt),
+        taskId ? eq(focusSessions.taskId, taskId) : undefined,
       ),
     )
     .orderBy(desc(focusSessions.startedAt))

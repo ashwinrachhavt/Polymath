@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
+import { listFocusHistory } from "@/domains/focus/queries";
 import { getTaskDetail, listWorkRows, type WorkRow } from "@/domains/work/queries";
 import { QuickAdd, RowActions, TaskCard } from "./task-controls";
 
@@ -34,6 +35,7 @@ export async function NeonTasks({ show, selectedTask }: { show?: string; selecte
   const scope = scopeOf(show);
   const rows = await listWorkRows(auth, scope);
   const detail = selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? await getTaskDetail(auth, selectedTask) : null;
+  const focusHistory = detail ? await listFocusHistory(auth, 10, detail.task.id) : [];
   const openRows = scope === "open" ? rows : detail ? await listWorkRows(auth, "open") : [];
   const candidates = detail ? openRows.filter((r) => r.id !== detail.task.id).map((r) => ({ id: r.id, title: r.title })) : [];
   const base = `/neuralflow/work?view=saved`;
@@ -121,6 +123,34 @@ export async function NeonTasks({ show, selectedTask }: { show?: string; selecte
           ) : (
             <Empty title="Select a task" description="Open a task to edit it, split it into subtasks, or record what blocks it." />
           )}
+          {detail ? (
+            <div className="mt-4 border-t border-border pt-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[13px] font-medium">Focus history</p>
+                <Link
+                  href={`/neuralflow/focus?task=${detail.task.id}`}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Start a focus session
+                </Link>
+              </div>
+              {focusHistory.length ? (
+                <div className="divide-y divide-border">
+                  {focusHistory.map((session) => (
+                    <div key={session.id} className="py-2 first:pt-0">
+                      <p className="text-xs text-muted-foreground">
+                        {session.state} · {Math.round(session.elapsedSeconds / 60)} min · {session.startedAt.toISOString().slice(0, 10)}
+                      </p>
+                      {session.whatChanged ? <p className="text-[13px]">Changed: {session.whatChanged}</p> : null}
+                      {session.nextStep ? <p className="text-[13px] text-muted-foreground">Next: {session.nextStep}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No focus sessions against this task yet.</p>
+              )}
+            </div>
+          ) : null}
         </Panel>
       </div>
     </Screen>

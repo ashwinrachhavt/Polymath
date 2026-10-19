@@ -39,7 +39,7 @@ type ActiveSession = {
   version: number;
 };
 
-export function ActiveSessionControls({ session }: { session: ActiveSession }) {
+export function ActiveSessionControls({ session }: { session: ActiveSession & { hasTask?: boolean } }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // Display-only drift counter: the server remains the clock of record and
@@ -59,6 +59,14 @@ export function ActiveSessionControls({ session }: { session: ActiveSession }) {
     startTransition(async () => {
       const result = await action({ sessionId: session.id, expectedVersion: session.version, ...extra });
       if (!result.ok) setError(result.error);
+    });
+  };
+
+  const finish = (form: HTMLFormElement | null) => {
+    const data = form ? new FormData(form) : null;
+    act(finishSessionAction, {
+      whatChanged: String(data?.get("whatChanged") || ""),
+      nextStep: String(data?.get("nextStep") || ""),
     });
   };
 
@@ -86,9 +94,29 @@ export function ActiveSessionControls({ session }: { session: ActiveSession }) {
             Resume
           </Button>
         )}
-        <Button disabled={pending} onClick={() => act(finishSessionAction)}>
-          Finish
-        </Button>
+        {session.hasTask ? (
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              finish(event.currentTarget);
+            }}
+          >
+            <Field label="What changed? (saved against the task)">
+              <Input name="whatChanged" maxLength={500} placeholder="What moved in this session" />
+            </Field>
+            <Field label="Next step (where you resume)">
+              <Input name="nextStep" maxLength={500} placeholder="Where you pick this up" />
+            </Field>
+            <Button type="submit" disabled={pending}>
+              Finish
+            </Button>
+          </form>
+        ) : (
+          <Button disabled={pending} onClick={() => act(finishSessionAction)}>
+            Finish
+          </Button>
+        )}
         <Button variant="ghost" disabled={pending} onClick={() => act(abandonSessionAction)}>
           Abandon
         </Button>
@@ -98,7 +126,13 @@ export function ActiveSessionControls({ session }: { session: ActiveSession }) {
   );
 }
 
-export function StartSessionForm({ defaultSubject }: { defaultSubject?: string }) {
+export function StartSessionForm({
+  defaultSubject,
+  task,
+}: {
+  defaultSubject?: string;
+  task?: { id: string; title: string; status: string };
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   return (
@@ -114,6 +148,7 @@ export function StartSessionForm({ defaultSubject }: { defaultSubject?: string }
           const result = await startSessionAction({
             subject: String(data.get("subject") || ""),
             plannedMinutes: plannedRaw ? Number.parseInt(plannedRaw, 10) : null,
+            ...(task ? { taskId: task.id } : {}),
           });
           if (!result.ok) {
             setError(result.error);
@@ -123,8 +158,14 @@ export function StartSessionForm({ defaultSubject }: { defaultSubject?: string }
         });
       }}
     >
+      {task ? (
+        <div className="sm:col-span-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+          <p className="text-[13px] font-medium">{task.title}</p>
+          <p className="text-xs text-muted-foreground">Task-linked session · status {task.status} - finishing the session never completes the task.</p>
+        </div>
+      ) : null}
       <Field label="Focusing on">
-        <Input name="subject" required maxLength={200} defaultValue={defaultSubject} placeholder="What are you focusing on?" />
+        <Input name="subject" required={!task} maxLength={200} defaultValue={defaultSubject ?? task?.title} placeholder="What are you focusing on?" />
       </Field>
       <Field label="Planned minutes (optional)">
         <Input name="plannedMinutes" inputMode="numeric" placeholder="25" />
