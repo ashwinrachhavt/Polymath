@@ -39,7 +39,6 @@ const nextConfig: NextConfig = {
 // Verified API shape: withEve(config, { agents: { <name>: { root } } }).
 // alfred is the first-party chief-of-staff agent; specialist serves every
 // hired specialist profile (the run's role brief arrives as client context).
-// LOCAL-ONLY perf measurement: AXIOM_NO_EVE skips the Eve dev servers (2GB sandbox cannot fit them). Never commit with the env set.
-export default process.env.AXIOM_NO_EVE === "1" ? nextConfig : withEve(nextConfig, {
+export default withEve(nextConfig, {
   agents: { alfred: "./eve/alfred", specialist: "./eve/specialist" },
 });
