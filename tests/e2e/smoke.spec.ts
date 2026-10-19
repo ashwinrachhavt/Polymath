@@ -7,7 +7,8 @@ test("home opens the canonical Command Center briefing", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL("/command-center/briefing");
   await expect(page.locator("#content h1")).toContainText("Briefing");
-  await expect(page.getByText("Interactive preview", { exact: true })).toBeVisible();
+  // The briefing reads canonical tasks; the preview banner must not claim otherwise.
+  await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
 });
 
 /*
