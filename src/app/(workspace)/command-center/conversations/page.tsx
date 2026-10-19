@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
@@ -18,6 +19,7 @@ function when(date: Date | null): string {
 }
 
 async function Conversations() {
+  await connection();
   const auth = await getAuthContext();
   const conversations = await listConversations(auth);
 

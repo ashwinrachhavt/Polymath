@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { listCorrespondence } from "@/domains/crm/correspondence";
 import { Suspense } from "react";
@@ -53,6 +54,7 @@ const STATUS_LABELS: Record<RelationshipStatus, string> = {
 
 async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
+  await connection();
   const auth = await getAuthContext();
   const q = first(query.q)?.trim() || undefined;
   const rawStatus = first(query.status);

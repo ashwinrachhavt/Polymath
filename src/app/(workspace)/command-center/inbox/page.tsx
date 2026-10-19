@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   const query = await searchParams;
   const raw = typeof query.filter === "string" ? query.filter : "unprocessed";
   const filter: InboxFilter = filters.some((f) => f.value === raw) ? (raw as InboxFilter) : "unprocessed";
+  await connection();
   const auth = await getAuthContext();
   const [rows, pending] = await Promise.all([listCaptures(auth, filter), countToClarify(auth)]);
 

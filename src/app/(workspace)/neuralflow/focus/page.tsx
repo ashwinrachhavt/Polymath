@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
@@ -28,6 +29,7 @@ type FocusQuery = Promise<Record<string, string | string[] | undefined>>;
 async function Focus({ searchParams }: { searchParams: FocusQuery }) {
   const query = await searchParams;
   const initialTask = typeof query.task === "string" ? query.task : undefined;
+  await connection();
   const auth = await getAuthContext();
   const [active, history] = await Promise.all([getActiveFocusSession(auth), listFocusHistory(auth)]);
 
