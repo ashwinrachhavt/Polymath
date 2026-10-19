@@ -79,6 +79,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
     <Screen
       title="Relationships"
       description="Contacts and companies on canonical records. Research, enrichment and delivery still need configured adapters."
+      actions={<ImportButton />}
     >
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5 text-[13px]">
@@ -360,13 +361,6 @@ function ContactDetailPanel({
 export default function RelationshipsPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
-        <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
-          Importing writes people and organizations to the identity domain;
-          merging them with CRM contacts is still open work.
-        </p>
-        <ImportButton />
-      </div>
       <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading relationships…</p>}>
         <Relationships searchParams={searchParams} />
       </Suspense>
