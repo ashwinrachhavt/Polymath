@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,11 +86,11 @@ export function ObservationForm({ contactId }: { contactId: string }) {
           <Textarea name="body" required maxLength={5000} placeholder="What was seen or said, and where it came from." />
         </Field>
         <Field label="Source">
-          <select name="source" defaultValue="stated" className="border-input bg-background h-9 rounded-md border px-2 text-[13px]">
+          <Select name="source" defaultValue="stated">
             <option value="stated">Stated</option>
             <option value="observed">Observed</option>
             <option value="document">Document</option>
-          </select>
+          </Select>
         </Field>
       </div>
       {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}

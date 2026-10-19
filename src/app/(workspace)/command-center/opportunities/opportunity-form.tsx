@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,32 +79,24 @@ export function OpportunityForm({
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Company">
-          <select
-            name="companyId"
-            defaultValue={opportunity?.companyId ?? ""}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-          >
+          <Select name="companyId" defaultValue={opportunity?.companyId ?? ""} >
             <option value="">No company</option>
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
                 {company.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="Primary contact">
-          <select
-            name="primaryContactId"
-            defaultValue={opportunity?.primaryContactId ?? ""}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-          >
+          <Select name="primaryContactId" defaultValue={opportunity?.primaryContactId ?? ""} >
             <option value="">No contact</option>
             {contacts.map((contact) => (
               <option key={contact.id} value={contact.id}>
                 {contact.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="Source">
           <Input

@@ -34,17 +34,17 @@ export function CaptureUrlForm() {
         });
       }}
     >
-      <div className="flex items-center gap-2">
-        <label htmlFor={inputId} className="sr-only">Address of a PDF, image, or web page</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={inputId} className="text-muted-foreground text-xs">Paste a link</label>
         <input
           id={inputId}
           name="url"
           type="url"
           inputMode="url"
           required
-          placeholder="Paste a link to a PDF, image, or web page"
+          placeholder="PDF, image, or web page"
           disabled={pending}
-          className="border-input bg-background h-9 w-64 rounded-md border px-3 text-sm"
+          className="border-input bg-background h-9 min-w-0 flex-1 rounded-md border px-3 text-sm sm:w-64 sm:flex-none"
         />
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? "Capturing…" : "Capture"}

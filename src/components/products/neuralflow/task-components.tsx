@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Select } from "@/components/ui/select";
 import { Empty, Field, Status, Unavailable } from "@/components/workspace/ui";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import type { Task, TaskAttachment, TaskStatus } from "@/components/workspace/types";
@@ -18,7 +19,6 @@ import { ImportDrop, ImportedFileState } from "@/components/workspace/import-dro
 import { recurrenceLabel } from "@/components/workspace/tasks";
 import "./neuralflow-stones.css";
 
-export const selectClass = "h-9 w-full rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 function TaskForm({ task, defaultStatus = "INBOX", onSaved }: { task?: Task; defaultStatus?: TaskStatus; onSaved: () => void }) {
   const { state, addTask, updateTask } = useWorkspace();
@@ -53,14 +53,14 @@ function TaskForm({ task, defaultStatus = "INBOX", onSaved }: { task?: Task; def
     <Field label="Title"><Input name="title" required maxLength={300} defaultValue={task?.title} autoFocus /></Field>
     <Field label="Description"><Textarea name="description" defaultValue={task?.description} rows={4} /></Field>
     <div className="grid grid-cols-2 gap-3">
-      <Field label="Status"><select name="status" className={selectClass} defaultValue={task?.status || defaultStatus}>{taskStatuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></Field>
-      <Field label="Priority"><select name="priority" className={selectClass} defaultValue={task?.priority || "Medium"}>{["High", "Medium", "Low"].map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
+      <Field label="Status"><Select name="status" defaultValue={task?.status || defaultStatus}>{taskStatuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</Select></Field>
+      <Field label="Priority"><Select name="priority" defaultValue={task?.priority || "Medium"}>{["High", "Medium", "Low"].map((priority) => <option key={priority}>{priority}</option>)}</Select></Field>
       <Field label="Due date"><Input type="date" name="due" defaultValue={task?.dueDate} /></Field>
       <Field label="Estimate (minutes)"><Input type="number" name="estimate" min={0} max={1440} required defaultValue={task?.estimate ?? 25} /></Field>
-      <Field label="Repeats"><select name="recurrence" className={selectClass} defaultValue={presetForRecurrence(task?.recurrence)}>{recurrencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></Field>
+      <Field label="Repeats"><Select name="recurrence" defaultValue={presetForRecurrence(task?.recurrence)}>{recurrencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</Select></Field>
     </div>
     {task?.recurrence && <p className="text-xs text-muted-foreground">Completing this task moves it to its next date instead of closing it. {recurrenceLabel(task.recurrence)}.</p>}
-    <Field label="Project"><select name="project" className={selectClass} defaultValue={task?.projectId || ""}><option value="">No project</option>{state.projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></Field>
+    <Field label="Project"><Select name="project" defaultValue={task?.projectId || ""}><option value="">No project</option>{state.projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</Select></Field>
     <Field label="Tags (comma-separated)"><Input name="tags" defaultValue={task?.tags.join(", ")} /></Field>
     {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
     <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onSaved}>Cancel</Button><Button type="submit">{task ? "Save task locally" : "Create task locally"}</Button></div>

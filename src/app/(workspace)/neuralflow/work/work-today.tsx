@@ -11,7 +11,7 @@ const views: { id: WorkView; label: string }[] = [
 
 export function WorkViewLinks({ active }: { active: WorkView }) {
   return (
-    <nav aria-label="Work views" className="flex flex-wrap gap-1">
+    <nav aria-label="Work views" className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 md:flex-wrap md:overflow-visible">
       {views.map(({ id, label }) => (
         <Link
           key={id}
@@ -28,7 +28,7 @@ export function WorkViewLinks({ active }: { active: WorkView }) {
 
 export function NeuralFlowFeatureLinks() {
   return (
-    <nav aria-label="NeuralFlow tools" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+    <nav aria-label="NeuralFlow tools" className="-mx-1 flex flex-nowrap items-center gap-x-4 overflow-x-auto px-1 text-xs text-muted-foreground md:flex-wrap md:gap-y-2 md:overflow-visible">
       <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/focus">Focus</Link>
       <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/projects">Projects</Link>
       <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>

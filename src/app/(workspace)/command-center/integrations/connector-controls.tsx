@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Field } from "@/components/workspace/ui";
 import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction } from "./actions";
 
@@ -32,11 +33,11 @@ export function RegisterForm({ providers }: { providers: Array<{ provider: strin
       }}
     >
       <Field label="Provider">
-        <select name="provider" className="h-9 rounded-md border border-input bg-background px-3 text-[13px]">
+        <Select name="provider">
           {providers.map((p) => (
             <option key={p.provider} value={p.provider}>{p.displayName}</option>
           ))}
-        </select>
+        </Select>
       </Field>
       <Field label="Alias">
         <Input name="alias" required maxLength={60} placeholder="work-gmail" />

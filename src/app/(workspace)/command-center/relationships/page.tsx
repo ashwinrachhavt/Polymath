@@ -1,3 +1,4 @@
+import { Select } from "@/components/ui/select";
 import { connection } from "next/server";
 import Link from "next/link";
 import { listCorrespondence } from "@/domains/crm/correspondence";
@@ -92,18 +93,14 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
         </label>
         <label className="flex flex-col gap-1.5 text-[13px]">
           <span className="font-medium">Status</span>
-          <select
-            name="status"
-            defaultValue={status ?? ""}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-          >
+          <Select name="status" defaultValue={status ?? ""} >
             <option value="">All</option>
             {RELATIONSHIP_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {STATUS_LABELS[value]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <Button type="submit" variant="outline">
           Apply

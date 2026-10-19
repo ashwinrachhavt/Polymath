@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,31 +96,23 @@ export function ContactForm({
           <Input name="location" maxLength={200} defaultValue={contact?.location ?? ""} />
         </Field>
         <Field label="Company">
-          <select
-            name="companyId"
-            defaultValue={contact?.currentCompanyId ?? ""}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-          >
+          <Select name="companyId" defaultValue={contact?.currentCompanyId ?? ""} >
             <option value="">No company</option>
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
                 {company.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="Relationship status">
-          <select
-            name="relationshipStatus"
-            defaultValue={contact?.relationshipStatus ?? "unknown"}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
-          >
+          <Select name="relationshipStatus" defaultValue={contact?.relationshipStatus ?? "unknown"} >
             {RELATIONSHIP_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {RELATIONSHIP_STATUS_LABELS[status]}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       </div>
       <Field label="Notes">

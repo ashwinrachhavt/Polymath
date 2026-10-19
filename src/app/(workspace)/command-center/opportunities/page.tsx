@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listCompanies, listContacts } from "@/domains/crm/queries";
 import {
@@ -104,10 +105,10 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
         </label>
         <label className="flex flex-col gap-1.5 text-[13px]">
           <span className="font-medium">Stage</span>
-          <select
+          <Select
             name="stage"
             defaultValue={stage ?? ""}
-            className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
+           
           >
             <option value="">All</option>
             {OPPORTUNITY_STAGES.map((value) => (
@@ -115,7 +116,7 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
                 {STAGE_LABELS[value]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <Button type="submit" variant="outline">
           Apply

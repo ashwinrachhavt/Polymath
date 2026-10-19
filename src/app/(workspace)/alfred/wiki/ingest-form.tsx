@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ingestDocumentAction } from "./actions";
@@ -45,20 +47,14 @@ export function IngestForm({ documents }: { documents: { id: string; title: stri
     >
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor={selectId} className="sr-only">Document to ingest</label>
-        <select
-          id={selectId}
-          name="documentId"
-          required
-          disabled={pending}
-          className="border-input bg-background h-9 max-w-72 rounded-md border px-2 text-sm"
-        >
+        <Select id={selectId} name="documentId" required disabled={pending} className="border-input bg-background h-9 max-w-72 rounded-md border px-2 text-sm" >
           {documents.map((d) => (
             <option key={d.id} value={d.id}>
               {d.title}
               {d.ingested ? " (in wiki)" : ""}
             </option>
           ))}
-        </select>
+        </Select>
         <label htmlFor={topicsId} className="sr-only">Topics, comma-separated (optional)</label>
         <input
           id={topicsId}

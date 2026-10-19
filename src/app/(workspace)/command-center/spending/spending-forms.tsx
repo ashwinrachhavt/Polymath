@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,14 +79,10 @@ export function PolicyForm({
         </Field>
       </div>
       <Field label="At the ceiling">
-        <select
-          name="onExceeded"
-          defaultValue={policy?.onExceeded ?? "pause"}
-          className="border-input bg-background h-9 w-full max-w-xs rounded-md border px-2 text-[13px]"
-        >
+        <Select name="onExceeded" defaultValue={policy?.onExceeded ?? "pause"} className="border-input bg-background h-9 w-full max-w-xs rounded-md border px-2 text-[13px]" >
           <option value="pause">Pause the agent</option>
           <option value="fail">Fail the run</option>
-        </select>
+        </Select>
       </Field>
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pending}>

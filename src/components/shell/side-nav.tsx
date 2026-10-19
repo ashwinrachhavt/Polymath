@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import { cn } from "cn";
 import {
   additionalDestinationsIn,
@@ -34,6 +34,7 @@ export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [collapsed, setCollapsed] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
@@ -54,6 +55,11 @@ export function SideNav() {
 
   const activeApp = appForPath(pathname);
   const activeHref = destinationForPath(pathname)?.href;
+  // Standing on a preview tool unfolds the group so the rail shows where you
+  // are; anywhere else it stays folded behind its count.
+  const previewActive = activeApp
+    ? additionalDestinationsIn(activeApp.slug).some((destination) => destination.href === activeHref)
+    : false;
 
   const PickerIcon = activeApp?.icon;
 
@@ -142,9 +148,23 @@ export function SideNav() {
               {additionalDestinationsIn(activeApp.slug).length > 0 ? (
                 <>
                   {collapsed ? <div aria-hidden className="border-sidebar-border mx-2 my-2 border-t" /> : (
-                    <p className="text-muted-foreground px-2.5 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider">Preview tools</p>
+                    // The preview tools are a workshop, not the product: the
+                    // group stays folded behind its count so the rail reads as
+                    // the app's real pages first (ASH-168).
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOpen((open) => !open)}
+                      aria-expanded={previewOpen || previewActive}
+                      className="text-muted-foreground hover:text-sidebar-foreground flex w-full items-center gap-1.5 rounded-md px-2.5 pt-3 pb-1 text-left text-[11px] font-medium uppercase tracking-wider transition-colors"
+                    >
+                      {previewOpen ? <ChevronDown aria-hidden className="size-3" /> : <ChevronRight aria-hidden className="size-3" />}
+                      <span>Preview tools</span>
+                      <span className="readout ml-auto normal-case tracking-normal">{additionalDestinationsIn(activeApp.slug).length}</span>
+                    </button>
                   )}
-                  <div className="flex flex-col gap-px">{additionalDestinationsIn(activeApp.slug).map(itemLink)}</div>
+                  {collapsed || (!previewOpen && !previewActive) ? null : (
+                    <div className="flex flex-col gap-px">{additionalDestinationsIn(activeApp.slug).map(itemLink)}</div>
+                  )}
                 </>
               ) : null}
             </>

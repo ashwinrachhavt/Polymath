@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -54,17 +56,14 @@ export function StartRunForm({ dossiers = [] }: { dossiers?: Array<{ id: string;
       {dossiers.length > 0 ? (
         <div className="flex items-center gap-2">
           <label htmlFor="dossier" className="text-muted-foreground text-xs">Search only in</label>
-          <select
-            id="dossier"
-            value={dossierId}
-            onChange={(event) => setDossierId(event.target.value)}
+          <Select id="dossier" value={dossierId} onChange={(event) => setDossierId(event.target.value)}
             className="border-input bg-background rounded-md border px-2 py-1 text-xs"
           >
             <option value="">All documents</option>
             {dossiers.map((d) => (
               <option key={d.id} value={d.id}>{d.title}</option>
             ))}
-          </select>
+          </Select>
         </div>
       ) : null}
       <Button onClick={start} disabled={pending || objective.trim().length === 0} className="w-fit">
