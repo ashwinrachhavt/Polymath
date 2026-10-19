@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
   abandonFocusSession,
@@ -12,6 +12,8 @@ import {
   startFocusSession,
 } from "@/domains/focus/commands";
 import { getAuthContext } from "@/lib/auth";
+import type { AuthContext } from "@/domains/identity/resolve";
+import { focusTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
@@ -20,7 +22,10 @@ import { requireRole } from "@/lib/auth/guards";
  * The server owns the clock - clients send intents, not timestamps.
  */
 
-const revalidate = () => revalidatePath("/neuralflow/focus");
+const revalidate = (auth: AuthContext) => {
+  updateTag(focusTag(auth));
+  revalidatePath("/neuralflow/focus");
+};
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -70,7 +75,7 @@ export async function startSessionAction(input: unknown): Promise<Result> {
   } catch (error) {
     return fail(error);
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true };
 }
 
@@ -83,7 +88,7 @@ export async function pauseSessionAction(input: unknown): Promise<Result> {
   } catch (error) {
     return fail(error);
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true };
 }
 
@@ -96,7 +101,7 @@ export async function resumeSessionAction(input: unknown): Promise<Result> {
   } catch (error) {
     return fail(error);
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true };
 }
 
@@ -109,7 +114,7 @@ export async function finishSessionAction(input: unknown): Promise<Result> {
   } catch (error) {
     return fail(error);
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true };
 }
 
@@ -122,6 +127,6 @@ export async function abandonSessionAction(input: unknown): Promise<Result> {
   } catch (error) {
     return fail(error);
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true };
 }

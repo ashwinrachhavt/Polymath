@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { updateTask } from "@/domains/work/task-commands";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
@@ -13,14 +14,19 @@ import { requireRole } from "@/lib/auth/guards";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-async function setOutcomeTag(input: { taskId: string; expectedVersion: number; tags: string[] }): Promise<Result> {
+async function authorize(): Promise<AuthContext> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
+  return auth;
+}
+
+async function setOutcomeTag(auth: AuthContext, input: { taskId: string; expectedVersion: number; tags: string[] }): Promise<Result> {
   try {
     await updateTask(auth, { taskId: input.taskId, expectedVersion: input.expectedVersion, patch: { tags: input.tags } });
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not update the outcome." };
   }
+  updateTag(tasksTag(auth));
   revalidatePath("/command-center/briefing");
   return { ok: true };
 }
@@ -32,7 +38,8 @@ export async function acceptOutcomeAction(input: {
   outcomeTag: string;
 }): Promise<Result> {
   if (input.tags.includes(input.outcomeTag)) return { ok: true };
-  return setOutcomeTag({ taskId: input.taskId, expectedVersion: input.expectedVersion, tags: [...input.tags, input.outcomeTag] });
+  const auth = await authorize();
+  return setOutcomeTag(auth, { taskId: input.taskId, expectedVersion: input.expectedVersion, tags: [...input.tags, input.outcomeTag] });
 }
 
 export async function replaceOutcomeAction(input: {
@@ -41,7 +48,8 @@ export async function replaceOutcomeAction(input: {
   tags: string[];
   outcomeTag: string;
 }): Promise<Result> {
-  return setOutcomeTag({
+  const auth = await authorize();
+  return setOutcomeTag(auth, {
     taskId: input.taskId,
     expectedVersion: input.expectedVersion,
     tags: input.tags.filter((tag) => tag !== input.outcomeTag),

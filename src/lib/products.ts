@@ -41,6 +41,7 @@ export const products: Product[] = [
   ] },
   { id: "alfred", name: "Alfred", description: "Read, connect and build understanding", icon: BookOpen, home: "dashboard", destinations: [
     { slug: "dashboard", label: "Knowledge home", icon: CircleDot, group: "Knowledge", description: "Your connected thinking workspace" },
+    { slug: "files", label: "Files", icon: FolderKanban, group: "Knowledge", description: "Browse, search and review every document" },
     { slug: "library", label: "Source library", icon: Library, group: "Knowledge", description: "Source reader, intake and evidence" },
     { slug: "zettels", label: "Atomic zettels", icon: Layers3, group: "Knowledge", description: "One sourced idea per knowledge card" },
     { slug: "dossiers", label: "Dossiers", icon: FolderKanban, group: "Knowledge", description: "Bounded source-grounded workspaces" },
