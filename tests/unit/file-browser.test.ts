@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  flattenFolders,
   folderCounts,
   inFolder,
   kindLabel,
   matchesQuery,
   rangeIds,
+  tagCounts,
   sortRows,
   statusLabel,
   type BrowserRow,
@@ -21,6 +23,9 @@ const row = (over: Partial<BrowserRow>): BrowserRow => ({
   extractionStatus: "succeeded",
   undecidedProposals: 0,
   partyNames: [],
+  folderId: null,
+  version: 1,
+  tags: [],
   ...over,
 });
 
@@ -36,7 +41,33 @@ describe("file browser", () => {
     expect(inFolder(rows[1]!, "pages")).toBe(true);
     expect(inFolder(rows[1]!, "unread")).toBe(true);
     expect(inFolder(rows[2]!, "failed")).toBe(true);
-    expect(folderCounts(rows)).toEqual({ all: 3, files: 2, pages: 1, review: 1, unread: 1, failed: 1 });
+    expect(folderCounts(rows)).toEqual({ all: 3, files: 2, pages: 1, review: 1, unread: 1, failed: 1, unfiled: 3 });
+  });
+
+  it("derives owner folders and unfiled from the folder id", () => {
+    const filed = row({ id: "9", folderId: "f1" });
+    expect(inFolder(filed, "folder:f1")).toBe(true);
+    expect(inFolder(filed, "folder:f2")).toBe(false);
+    expect(inFolder(filed, "unfiled")).toBe(false);
+    expect(inFolder(row({}), "unfiled")).toBe(true);
+    expect(inFolder(filed, "folder:")).toBe(false);
+  });
+
+  it("derives tag views and searches tags", () => {
+    const tagged = row({ id: "t", tags: ["tax", "2026"] });
+    expect(inFolder(tagged, "tag:tax")).toBe(true);
+    expect(inFolder(tagged, "tag:other")).toBe(false);
+    expect(matchesQuery(tagged, "2026")).toBe(true);
+    expect(tagCounts([tagged, row({ id: "u", tags: ["tax"] })])).toEqual([
+      { tag: "tax", count: 2 },
+      { tag: "2026", count: 1 },
+    ]);
+  });
+
+  it("flattens the folder tree depth-first by name and surfaces orphans at the root", () => {
+    const node = (id: string, name: string, parentId: string | null) => ({ id, name, parentId, version: 1, documentCount: 0 });
+    const flat = flattenFolders([node("c", "Zed", "a"), node("a", "Alpha", null), node("b", "Beta", null), node("o", "Orphan", "gone"), node("d", "Deep", "c")]);
+    expect(flat.map((f) => `${f.depth}:${f.name}`)).toEqual(["0:Alpha", "1:Zed", "2:Deep", "0:Beta", "0:Orphan"]);
   });
 
   it("searches title, filename, url and parties with every term", () => {

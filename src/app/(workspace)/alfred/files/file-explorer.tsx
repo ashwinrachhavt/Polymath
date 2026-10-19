@@ -6,11 +6,14 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 import {
   FileImage,
   FileText,
+  Folder,
+  FolderPlus,
   Globe,
   LayoutGrid,
   List,
   Search,
   Share2,
+  Tag,
   Upload,
   X,
 } from "lucide-react";
@@ -20,18 +23,22 @@ import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import {
   FOLDERS,
+  flattenFolders,
   folderCounts,
   inFolder,
   kindLabel,
   matchesQuery,
   rangeIds,
   sortRows,
+  tagCounts,
   statusLabel,
   type BrowserRow,
   type FolderId,
+  type FolderNode,
   type SortKey,
 } from "@/domains/knowledge/file-browser";
-import { PreviewPane } from "./preview-pane";
+import { addTagAction, createFolderAction, moveDocumentsAction, removeTagAction, removeFolderAction, renameFolderAction } from "./actions";
+import { invalidatePreview, PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 
 type Upload = { key: string; name: string; state: "busy" | "done" | "error"; note?: string };
@@ -65,7 +72,17 @@ function StatusBadge({ row }: { row: BrowserRow }) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserRow[]; truncated: boolean }) {
+const DRAG_TYPE = "application/x-axiom-documents";
+
+export function FileExplorer({
+  initialRows,
+  folders,
+  truncated,
+}: {
+  initialRows: BrowserRow[];
+  folders: FolderNode[];
+  truncated: boolean;
+}) {
   const router = useRouter();
   // The server re-renders after an upload or re-read; its rows are the truth.
   const rows = initialRows;
@@ -80,6 +97,10 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [newFolderIn, setNewFolderIn] = useState<{ parentId: string | null; name: string } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [tagDraft, setTagDraft] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -90,6 +111,9 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
   };
 
   const counts = useMemo(() => folderCounts(rows), [rows]);
+  const tree = useMemo(() => flattenFolders(folders), [folders]);
+  const tags = useMemo(() => tagCounts(rows), [rows]);
+  const activeFolder = folder.startsWith("folder:") ? (folders.find((f) => `folder:${f.id}` === folder) ?? null) : null;
   const visible = useMemo(
     () => sortRows(rows.filter((r) => inFolder(r, folder) && matchesQuery(r, query)), sort),
     [rows, folder, query, sort],
@@ -166,6 +190,39 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
     setNotice(`Copied ${selectedRows.length} title${selectedRows.length === 1 ? "" : "s"}.`);
   }
 
+  async function organise(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
+    const result = await fn();
+    setNotice(result.ok ? done : result.error);
+    if (result.ok) router.refresh();
+    return result.ok;
+  }
+
+  function move(ids: string[], folderId: string | null) {
+    const items = rows.filter((r) => ids.includes(r.id)).map((r) => ({ documentId: r.id, expectedVersion: r.version }));
+    if (items.length === 0) return Promise.resolve(false);
+    for (const item of items) invalidatePreview(item.documentId);
+    return organise(() => moveDocumentsAction(items, folderId), folderId ? "Moved." : "Moved to Unfiled.");
+  }
+
+  async function submitNewFolder() {
+    const draft = newFolderIn;
+    if (!draft?.name.trim()) return setNewFolderIn(null);
+    const result = await createFolderAction(draft.name, draft.parentId);
+    if (result.ok) {
+      setNewFolderIn(null);
+      setFolder(`folder:${result.folderId}`);
+      router.refresh();
+    } else {
+      setNotice(result.error);
+    }
+  }
+
+  function startDrag(event: React.DragEvent, id: string) {
+    const ids = selected.includes(id) ? selected : [id];
+    event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(ids));
+    event.dataTransfer.effectAllowed = "move";
+  }
+
   function onKeyDown(event: React.KeyboardEvent) {
     const target = event.target as HTMLElement;
     if (target.matches("input, select, textarea")) {
@@ -231,7 +288,7 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
         </div>
       ) : null}
 
-      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 md:w-56 md:flex-col md:border-r md:border-b-0 md:p-3">
+      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 md:w-60 md:flex-col md:overflow-y-auto md:border-r md:border-b-0 md:p-3">
         {FOLDERS.map((f) => (
           <button
             key={f.id}
@@ -239,14 +296,110 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
             title={f.hint}
             aria-current={folder === f.id ? "page" : undefined}
             onClick={() => setFolder(f.id)}
-            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === f.id ? "bg-muted font-medium" : "text-muted-foreground"}`}
+            onDragOver={(e) => {
+              if (f.id === "unfiled" && e.dataTransfer.types.includes(DRAG_TYPE)) {
+                e.preventDefault();
+                setDropTarget("unfiled");
+              }
+            }}
+            onDragLeave={() => setDropTarget(null)}
+            onDrop={(e) => {
+              const raw = f.id === "unfiled" ? e.dataTransfer.getData(DRAG_TYPE) : "";
+              if (!raw) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setDropTarget(null);
+              dragDepth.current = 0;
+              setDragging(false);
+              void move(JSON.parse(raw) as string[], null);
+            }}
+            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === f.id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
           >
             <span>{f.label}</span>
             <Readout className="text-xs text-muted-foreground">{counts[f.id]}</Readout>
           </button>
         ))}
+        <div className="text-muted-foreground mt-3 hidden items-center justify-between px-2.5 text-xs md:flex">
+          <span>My folders</span>
+          <button type="button" aria-label="New folder" onClick={() => setNewFolderIn({ parentId: activeFolder?.id ?? null, name: "" })} className="hover:bg-muted rounded p-0.5">
+            <FolderPlus aria-hidden className="size-3.5" />
+          </button>
+        </div>
+        <button type="button" onClick={() => setNewFolderIn({ parentId: null, name: "" })} className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] whitespace-nowrap md:hidden">
+          <FolderPlus aria-hidden className="size-3.5" /> New folder
+        </button>
+        {newFolderIn ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitNewFolder();
+            }}
+          >
+            <input
+              autoFocus
+              value={newFolderIn.name}
+              onChange={(e) => setNewFolderIn({ ...newFolderIn, name: e.target.value })}
+              onBlur={() => !newFolderIn.name.trim() && setNewFolderIn(null)}
+              onKeyDown={(e) => e.key === "Escape" && setNewFolderIn(null)}
+              maxLength={80}
+              aria-label={newFolderIn.parentId ? "Subfolder name" : "Folder name"}
+              placeholder={newFolderIn.parentId ? "Subfolder name" : "Folder name"}
+              className="border-input bg-background focus-visible:ring-ring h-8 w-full min-w-32 rounded-md border px-2 text-[13px] outline-none focus-visible:ring-2"
+            />
+          </form>
+        ) : null}
+        {tree.map((f) => {
+          const id = `folder:${f.id}`;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              aria-current={folder === id ? "page" : undefined}
+              onClick={() => setFolder(id)}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+                  e.preventDefault();
+                  setDropTarget(f.id);
+                }
+              }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(e) => {
+                const raw = e.dataTransfer.getData(DRAG_TYPE);
+                if (!raw) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDropTarget(null);
+                dragDepth.current = 0;
+                setDragging(false);
+                void move(JSON.parse(raw) as string[], f.id);
+              }}
+              style={{ paddingLeft: `${0.625 + f.depth * 0.875}rem` }}
+              className={`flex items-center justify-between gap-3 rounded-md py-1.5 pr-2.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
+            >
+              <span className="flex min-w-0 items-center gap-1.5"><Folder aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{f.name}</span></span>
+              <Readout className="text-xs text-muted-foreground">{f.documentCount}</Readout>
+            </button>
+          );
+        })}
+        {tags.length > 0 ? (
+          <>
+            <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs md:block">Tags</p>
+            {tags.map((t) => (
+              <button
+                key={t.tag}
+                type="button"
+                aria-current={folder === `tag:${t.tag}` ? "page" : undefined}
+                onClick={() => setFolder(`tag:${t.tag}`)}
+                className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === `tag:${t.tag}` ? "bg-muted font-medium" : "text-muted-foreground"}`}
+              >
+                <span className="flex min-w-0 items-center gap-1.5"><Tag aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{t.tag}</span></span>
+                <Readout className="text-xs text-muted-foreground">{t.count}</Readout>
+              </button>
+            ))}
+          </>
+        ) : null}
         <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs leading-relaxed md:block">
-          Folders are views. A document sits in every folder that describes it, so nothing is ever filed twice.
+          Drag documents onto a folder to file them. Built-in views describe what a document is; folders are where you keep it.
         </p>
       </nav>
 
@@ -294,11 +447,74 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
           </Button>
         </div>
 
+        {activeFolder ? (
+          <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
+            {renaming === activeFolder.id ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const value = new FormData(e.currentTarget).get("name");
+                  void organise(() => renameFolderAction(activeFolder.id, String(value), activeFolder.version), "Renamed.").then(() => setRenaming(null));
+                }}
+              >
+                <input name="name" autoFocus defaultValue={activeFolder.name} maxLength={80} aria-label="Folder name" className="border-input bg-background h-8 rounded-md border px-2 text-[13px]" />
+                <Button type="submit" size="sm">Save</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+              </form>
+            ) : (
+              <>
+                <span className="font-medium">{activeFolder.name}</span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(activeFolder.id)}>Rename</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setNewFolderIn({ parentId: activeFolder.id, name: "" })}>New subfolder</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (!window.confirm(`Remove the empty folder "${activeFolder.name}"? A folder with documents or subfolders cannot be removed.`)) return;
+                    void organise(() => removeFolderAction(activeFolder.id, activeFolder.version), "Folder removed.").then((ok) => ok && setFolder("all"));
+                  }}
+                >
+                  Remove folder
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
+
         {selected.length > 0 ? (
           <div role="toolbar" aria-label="Bulk actions" className="bg-muted/60 border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
             <Readout>{selected.length} selected</Readout>
             <Button type="button" variant="outline" size="sm" onClick={() => void rereadSelected()}>Read again</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => void copyTitles()}>Copy titles</Button>
+            <Select
+              aria-label="Move to folder"
+              value=""
+              className="w-40"
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value) void move(selected, value === "__unfiled" ? null : value);
+              }}
+            >
+              <option value="">Move to…</option>
+              <option value="__unfiled">Unfiled</option>
+              {tree.map((f) => (
+                <option key={f.id} value={f.id}>{`${"\u00a0\u00a0".repeat(f.depth)}${f.name}`}</option>
+              ))}
+            </Select>
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!tagDraft.trim()) return;
+                for (const id of selected) invalidatePreview(id);
+                void organise(() => addTagAction(selected, tagDraft), "Tagged.").then((ok) => ok && setTagDraft(""));
+              }}
+            >
+              <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-8 w-24 rounded-md border px-2 text-[13px]" />
+              <Button type="submit" variant="outline" size="sm">Tag</Button>
+            </form>
             <Button type="button" variant="outline" size="sm" onClick={() => setShareOpen(true)}>
               <Share2 aria-hidden className="size-3.5" /> Share
             </Button>
@@ -355,6 +571,8 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
               {visible.map((row) => (
                 <tr
                   key={row.id}
+                  draggable
+                  onDragStart={(e) => startDrag(e, row.id)}
                   aria-selected={selected.includes(row.id)}
                   onClick={() => setActive(row.id)}
                   onDoubleClick={() => router.push(`/alfred/library/${row.id}`)}
@@ -390,6 +608,8 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
                 <div
                   role="button"
                   tabIndex={0}
+                  draggable
+                  onDragStart={(e) => startDrag(e, row.id)}
                   aria-pressed={selected.includes(row.id)}
                   onClick={() => setActive(row.id)}
                   onDoubleClick={() => router.push(`/alfred/library/${row.id}`)}
@@ -427,7 +647,7 @@ export function FileExplorer({ initialRows, truncated }: { initialRows: BrowserR
         </p>
       </section>
 
-      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} /> : null}
+      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} folders={tree} onMove={(id) => void move([activeRow.id], id)} onTag={(t) => { invalidatePreview(activeRow.id); return organise(() => addTagAction([activeRow.id], t), "Tagged."); }} onUntag={(t) => { invalidatePreview(activeRow.id); void organise(() => removeTagAction([activeRow.id], t), "Tag removed."); }} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} /> : null}
       <ShareDialog open={shareOpen} onOpenChange={setShareOpen} rows={selectedRows.length > 0 ? selectedRows : activeRow ? [activeRow] : []} />
     </div>
   );

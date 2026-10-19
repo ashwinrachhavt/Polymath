@@ -4,6 +4,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { getDocumentInbox } from "@/domains/knowledge/queries";
+import { listFolders } from "@/domains/knowledge/library";
+import { getDocumentTags } from "@/domains/knowledge/tags";
+import { db } from "@/lib/db";
+import { documents } from "@/domains/knowledge/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import type { BrowserRow } from "@/domains/knowledge/file-browser";
 import { FileExplorer } from "./file-explorer";
 
@@ -22,6 +27,17 @@ async function FilesSurface() {
   await connection();
   const auth = await getAuthContext();
   const rows = await getDocumentInbox(auth, { limit: LIMIT });
+  const [folders, tagMap, placed] = await Promise.all([
+    listFolders(auth),
+    getDocumentTags(auth, rows.map((r) => r.id)),
+    rows.length
+      ? db
+          .select({ id: documents.id, folderId: documents.folderId, version: documents.version })
+          .from(documents)
+          .where(and(eq(documents.workspaceId, auth.workspaceId), inArray(documents.id, rows.map((r) => r.id))))
+      : Promise.resolve([]),
+  ]);
+  const placement = new Map(placed.map((p) => [p.id, p]));
   const initial: BrowserRow[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -33,8 +49,11 @@ async function FilesSurface() {
     extractionStatus: r.extractionStatus,
     undecidedProposals: r.undecidedProposals,
     partyNames: r.partyNames,
+    folderId: placement.get(r.id)?.folderId ?? null,
+    version: placement.get(r.id)?.version ?? 1,
+    tags: tagMap.get(r.id) ?? [],
   }));
-  return <FileExplorer initialRows={initial} truncated={rows.length >= LIMIT} />;
+  return <FileExplorer initialRows={initial} folders={folders} truncated={rows.length >= LIMIT} />;
 }
 
 export default function FilesPage() {
