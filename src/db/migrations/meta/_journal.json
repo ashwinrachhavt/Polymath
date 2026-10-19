@@ -232,6 +232,13 @@
       "tag": "0162_membership_role_assignments",
       "when": 1792480190000,
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "tag": "0170_agent_principals",
+      "when": 1792480200000,
+      "breakpoints": true
     }
   ]
 }
