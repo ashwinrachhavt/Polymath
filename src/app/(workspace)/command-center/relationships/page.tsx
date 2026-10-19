@@ -18,7 +18,9 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, parsePageNumber } from "@/lib/list-params";
+import { findCompanyDuplicates, findContactDuplicates } from "@/domains/crm/dedupe";
 import { ContactForm } from "./contact-form";
+import { DuplicatesPanel } from "./duplicates-panel";
 import {
   ArchiveContactButton,
   CancelCorrespondenceButton,
@@ -71,12 +73,14 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   const selectedId = rawId && /^[0-9a-fA-F-]{36}$/.test(rawId) ? rawId : undefined;
   const invalidSelection = !!rawId && !selectedId;
 
-  const [contactsPage, companyPageData, allCompanies, detail] = await Promise.all([
+  const [contactsPage, companyPageData, allCompanies, detail, contactDuplicates, companyDuplicates] = await Promise.all([
     listContacts(auth, { query: q, status, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
     pageCompanies(auth, { limit: list.pageSize, offset: offsetFor(companyPage, list.pageSize) }),
     // The pickers in the forms need every company, not just the visible page.
     listCompanies(auth),
     selectedId ? getContactDetail(auth, { contactId: selectedId }) : Promise.resolve(null),
+    findContactDuplicates(auth),
+    findCompanyDuplicates(auth),
   ]);
   redirectPastEnd("/command-center/relationships", query, list.page, list.pageSize, contactsPage.total);
   redirectPastEnd("/command-center/relationships", query, companyPage, list.pageSize, companyPageData.total, "cpage");
@@ -101,6 +105,8 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
           },
         ]}
       />
+
+      <DuplicatesPanel contactGroups={contactDuplicates} companyGroups={companyDuplicates} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-6">
