@@ -34,7 +34,7 @@ export type DocumentReviewParty = {
 };
 
 export type DocumentReview = {
-  document: { id: string; title: string; mimeType: string | null; version: number; sourceUrl: string | null };
+  document: { id: string; title: string; docType: string | null; mimeType: string | null; version: number; sourceUrl: string | null };
   extraction: {
     id: string;
     status: string;
@@ -59,6 +59,7 @@ export async function getDocumentReview(
     .select({
       id: documents.id,
       title: documents.title,
+      docType: documents.docType,
       mimeType: documents.mimeType,
       version: documents.version,
       sourceUrl: documents.sourceUrl,

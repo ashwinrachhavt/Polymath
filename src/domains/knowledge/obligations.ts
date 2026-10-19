@@ -211,7 +211,7 @@ export async function proposeObligationsFromDocument(
   input: { documentId: string },
 ) {
   const [document] = await db
-    .select({ id: documents.id, title: documents.title })
+    .select({ id: documents.id, title: documents.title, docType: documents.docType })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
     .limit(1);
@@ -237,7 +237,12 @@ export async function proposeObligationsFromDocument(
     }
   }
   // The agreement rule keys off the document itself, not a field proposal.
-  if (/agreement|contract/i.test(document.title) && !ruleHits.has("review_agreement")) {
+  // The accepted doc-type signal decides; the title regex survives only as
+  // the fallback for rows classified before the signal existed (ASH-133 #1).
+  const looksLikeAgreement =
+    document.docType === "agreement" ||
+    (document.docType == null && /agreement|contract/i.test(document.title));
+  if (looksLikeAgreement && !ruleHits.has("review_agreement")) {
     ruleHits.set("review_agreement", {
       rule: RULES.find((r) => r.kind === "review_agreement")!,
       proposalId: null,
