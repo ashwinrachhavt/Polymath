@@ -8,6 +8,7 @@ import {
   Compass,
   Inbox,
   LayoutList,
+  MessagesSquare,
   NotebookPen,
   Settings,
   ShieldCheck,
@@ -191,7 +192,6 @@ export const destinations: Destination[] = [
     icon: Briefcase,
     group: "command-center",
   },
-
   {
     href: "/command-center/spending",
     label: "Spending",
@@ -199,7 +199,13 @@ export const destinations: Destination[] = [
     icon: Wallet,
     group: "command-center",
   },
-
+  {
+    href: "/command-center/conversations",
+    label: "Conversations",
+    purpose: "Pick up agent threads where you left them.",
+    icon: MessagesSquare,
+    group: "command-center",
+  },
   {
     href: "/neuralflow/work",
     label: "Work",
@@ -270,6 +276,7 @@ const featureRoutes: Record<string, string> = {
   "/apps/command-center/contacts": "/command-center/relationships",
   "/apps/command-center/opportunities": "/command-center/opportunities",
   "/apps/command-center/spending": "/command-center/spending",
+  "/apps/command-center/conversations": "/command-center/conversations",
   "/apps/command-center/reviews": "/reviews",
   "/apps/command-center/activity": "/activity",
   "/apps/command-center/settings": "/settings",
