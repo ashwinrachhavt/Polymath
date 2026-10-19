@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { workView } from "@/components/products/neuralflow/work-views";
+import { NeonBoard } from "./neon-board";
+import { NeonCalendar } from "./neon-calendar";
 import { NeonTasks } from "./neon-tasks";
 import { NeuralFlowFeatureLinks, WorkViewLinks } from "./work-today";
 
@@ -15,11 +17,9 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   let surface;
 
   if (view === "board") {
-    const { BoardsScreen } = await import("@/components/products/neuralflow/work-screens");
-    surface = <BoardsScreen title="Work" />;
+    surface = <NeonBoard />;
   } else if (view === "calendar") {
-    const { CalendarScreen } = await import("@/components/products/neuralflow/calendar-screens");
-    surface = <CalendarScreen key={date || "current"} title="Work" initialDate={date} />;
+    surface = <NeonCalendar key={date || "current"} date={date} />;
   } else if (view === "saved") {
     const show = typeof query.show === "string" ? query.show : undefined;
     surface = <NeonTasks show={show} selectedTask={task} />;
@@ -27,7 +27,7 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
     const { TasksScreen } = await import("@/components/products/neuralflow/work-screens");
     surface = <TasksScreen key={view} title="Work" view={view} selectedTask={task} />;
   }
-  const saved = view === "saved";
+  const saved = view === "saved" || view === "board" || view === "calendar";
 
   return (
     <>

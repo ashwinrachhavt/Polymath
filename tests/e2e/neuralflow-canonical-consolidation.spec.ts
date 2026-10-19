@@ -21,21 +21,22 @@ test("canonical Work captures, clarifies, and presents the same work across work
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Today", exact: true }).click();
   await expect(page.getByRole("button", { name: "Canonical work: prepare the review", exact: true })).toBeVisible();
   await expect(page.getByText("#Review", { exact: true })).toBeVisible();
+  // Board and Calendar read the canonical Neon rows, not this browser capture:
+  // they are covered with saved data in work-neon.spec.ts. Here they only
+  // prove they render as workspace surfaces alongside the preview views.
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Board", exact: true }).click();
-  await page.getByLabel("Move Canonical work: prepare the review to status").selectOption("IN_PROGRESS");
-  await expect(page.getByText(/^\d+ tasks? in view$/)).toBeVisible();
-  await expect(page.getByText(/\b1 tasks\b/)).toHaveCount(0);
+  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "In progress", exact: true })).toBeVisible();
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "List", exact: true }).click();
-  // Board tiles share the task's accessible name; open the inspector only once List has replaced Board.
+  // Board lanes share the task's accessible name; open the inspector only once List has replaced Board.
   await expect(page.getByRole("heading", { name: "Task queue", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Canonical work: prepare the review", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Status" })).toHaveValue("IN_PROGRESS");
+  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Status" })).toHaveValue("READY");
   await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
 
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Calendar", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Work", exact: true })).toBeVisible();
-  await page.getByRole("combobox", { name: "View" }).selectOption("day");
-  await expect(page.getByRole("button", { name: "Previous day", exact: true })).toBeEnabled();
+  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Previous week", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "NeuralFlow tools" }).getByRole("link", { name: "Stone collection" })).toHaveAttribute("href", "/apps/neuralflow/rewards");
 });
 

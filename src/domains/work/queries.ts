@@ -136,3 +136,39 @@ export async function listWorkRows(
     blockedBy: r.blocked_by as number,
   }));
 }
+
+export type DatedTask = {
+  id: string;
+  title: string;
+  status: (typeof tasks.$inferSelect)["status"];
+  priority: (typeof tasks.$inferSelect)["priority"];
+  dueAt: Date;
+  version: number;
+};
+
+/**
+ * Top-level tasks due between two dates, inclusive, compared by UTC calendar
+ * day (the task card writes due dates as noon UTC, so the day is unambiguous).
+ * The calendar's whole read.
+ */
+export async function listTasksDueBetween(
+  auth: Pick<AuthContext, "workspaceId">,
+  startDay: string,
+  endDay: string,
+): Promise<DatedTask[]> {
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, version: tasks.version })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.workspaceId, auth.workspaceId),
+        isNull(tasks.archivedAt),
+        isNull(tasks.parentTaskId),
+        sql`${tasks.dueAt} is not null`,
+        sql`(${tasks.dueAt} at time zone 'utc')::date >= ${startDay}::date`,
+        sql`(${tasks.dueAt} at time zone 'utc')::date <= ${endDay}::date`,
+      ),
+    )
+    .orderBy(sql`${tasks.dueAt}`, sql`${tasks.rank} collate "C"`, asc(tasks.id));
+  return rows.filter((r): r is typeof r & { dueAt: Date } => r.dueAt !== null);
+}
