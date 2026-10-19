@@ -1,7 +1,7 @@
 "use server";
 
 import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { createCapture, convertCaptureToTask } from "@/domains/capture/commands";
 import { captures } from "@/domains/capture/schema";
 import { contacts } from "@/domains/crm/schema";
@@ -9,6 +9,7 @@ import { createNote } from "@/domains/knowledge/notes";
 import { artifacts } from "@/domains/knowledge/schema";
 import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
+import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { db } from "@/lib/db";
 
 /*
@@ -37,8 +38,11 @@ export async function quickCreate(
         expectedVersion: capture.version,
         title: value.split("\n", 1)[0],
       });
+      updateTag(tasksTag(auth));
+      updateTag(capturesTag(auth));
       revalidatePath("/neuralflow/work");
-      revalidatePath("/command-center/inbox");
+      updateTag(capturesTag(auth));
+    revalidatePath("/command-center/inbox");
       return { ok: true, message: "Task saved to your workspace. The original stays in your inbox." };
     }
     if (kind === "note") {
@@ -51,6 +55,7 @@ export async function quickCreate(
       return { ok: true, message: "Note saved to your notebook." };
     }
     await createCapture(auth, { text: value });
+    updateTag(capturesTag(auth));
     revalidatePath("/command-center/inbox");
     return { ok: true, message: "Saved to your inbox." };
   } catch (cause) {

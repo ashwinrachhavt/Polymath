@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
-import { type BriefingTask, getBriefing } from "@/domains/work/briefing";
+import { type BriefingTask } from "@/domains/work/briefing";
+import { getBriefingForPage } from "./data";
 import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
 import { OutcomeButton } from "./briefing-client";
@@ -41,7 +42,7 @@ function TaskRow({ task, outcomeTag, mode }: { task: BriefingTask; outcomeTag: s
 async function Briefing() {
   await connection();
   const auth = await getAuthContext();
-  const briefing = await getBriefing(auth);
+  const briefing = await getBriefingForPage(auth);
   const outcomeTag = `Outcome:${briefing.today}`;
 
   return (

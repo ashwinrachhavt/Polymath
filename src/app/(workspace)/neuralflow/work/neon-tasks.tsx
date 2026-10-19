@@ -2,8 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { listFocusHistory } from "@/domains/focus/queries";
-import { getTaskDetail, listWorkPage, listWorkRows, WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { getTaskDetailForPage, listFocusHistoryForPage, listWorkPageForPage, listWorkRowsForPage } from "./data";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
@@ -52,7 +52,7 @@ export async function NeonTasks({
   const statusChoices = scope === "today" ? (["ready", "in_progress"] as const) : scope === "open" ? WORK_OPEN_STATUSES : ([] as const);
   const list = parseListParams(raw, { filters: { priority: WORK_PRIORITIES, status: statusChoices } });
   const filtered = Boolean(list.q || list.filters.priority || list.filters.status);
-  const found = await listWorkPage(auth, scope, {
+  const found = await listWorkPageForPage(auth, scope, {
     limit: list.pageSize,
     offset: offsetFor(list.page, list.pageSize),
     query: list.q || undefined,
@@ -65,9 +65,12 @@ export async function NeonTasks({
   // Reordering is a rank between two neighbours; with rows hidden by a filter
   // the neighbours are not adjacent in the real order, so moves wait for a clear list.
   const canMove = scope !== "done" && !filtered;
-  const detail = selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? await getTaskDetail(auth, selectedTask) : null;
-  const focusHistory = detail ? await listFocusHistory(auth, 10, detail.task.id) : [];
-  const openRows = detail ? await listWorkRows(auth, "open") : [];
+  // Detail, its focus history and the move targets are independent reads.
+  const [detail, openRows] = await Promise.all([
+    selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? getTaskDetailForPage(auth, selectedTask) : null,
+    selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? listWorkRowsForPage(auth, "open") : ([] as WorkRow[]),
+  ]);
+  const focusHistory = detail ? await listFocusHistoryForPage(auth, 10, detail.task.id) : [];
   const candidates = detail ? openRows.filter((r) => r.id !== detail.task.id).map((r) => ({ id: r.id, title: r.title })) : [];
   const tab = (value: Scope, label: string) => (
     <Link
