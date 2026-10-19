@@ -39,7 +39,7 @@ import { users } from "./tables";
 export * from "./tables";
 
 export const membershipRole = pgEnum("membership_role", ["owner", "admin", "member", "viewer"]);
-export const membershipStatus = pgEnum("membership_status", ["invited", "active", "suspended"]);
+export const membershipStatus = pgEnum("membership_status", ["invited", "active", "suspended", "removed"]);
 export const appearance = pgEnum("appearance", ["light", "dark", "system"]);
 export const motionPreference = pgEnum("motion_preference", ["full", "reduced"]);
 export const apiClientKind = pgEnum("api_client_kind", ["companion", "machine"]);
@@ -537,5 +537,39 @@ export const accountPersonLinks = pgTable(
     // One person per account per workspace: a second link for the same
     // account must name a different person or be an edit, not a duplicate.
     uniqueIndex("account_person_links_account_key").on(t.workspaceId, t.accountId),
+  ],
+);
+
+/*
+ * ASH-121 AC02: workspace invitations. The raw token is shown once to the
+ * inviter and stored only as a SHA-256 digest. An invitation is bound to a
+ * recipient email and is single-use, expiring and revocable; acceptance
+ * requires the caller to present an identity-provider-VERIFIED email that
+ * matches, never a self-asserted one. Default off: nothing in the request path
+ * reads these rows, and no route creates them yet.
+ */
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    email: text("email").notNull(),
+    role: membershipRole("role").notNull().default("member"),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedBy: uuid("accepted_by"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("invitations_token_hash_key").on(t.tokenHash),
+    // One pending invitation per recipient; re-inviting means revoke first.
+    uniqueIndex("invitations_pending_email_key")
+      .on(t.workspaceId, t.email)
+      .where(sql`accepted_at is null and revoked_at is null`),
+    check("invitations_role_check", sql`role <> 'owner'`),
+    check("invitations_email_lower_check", sql`email = lower(email)`),
   ],
 );

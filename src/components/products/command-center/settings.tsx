@@ -10,13 +10,16 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Field, Panel, Screen, Status, Unavailable } from "@/components/workspace/ui";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Check, Destination, DisabledAction, Select } from "./controls";
+import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
+import type { LoadedPreferences } from "@/domains/identity/preferences";
 import { SchedulerPanel } from "./scheduler-panel";
 
 /*
- * One settings surface for all three products. Anything this browser cannot
- * actually do is named as unavailable with the reason, rather than shown as a
- * control that pretends to save. The only settings that persist here are the
- * ones the preview store genuinely owns.
+ * One settings surface for all three products. Timezone, week start,
+ * appearance and motion are server rows (D23): they save to the account and
+ * load on every device. Anything this browser still owns is named as
+ * preview-local, and anything it cannot do is named as unavailable with the
+ * reason, rather than shown as a control that pretends to save.
  *
  * Layout follows the Loan Labs settings reference the owner sent: a grouped
  * sub-nav on the left, one quiet column of sections on the right. The sub-nav
@@ -80,13 +83,23 @@ function Section({ id, children }: { id: string; children: React.ReactNode }) {
   return <div id={id} className="scroll-mt-6">{children}</div>;
 }
 
-export default function Settings() {
+export default function Settings({ serverPreferences }: { serverPreferences?: LoadedPreferences }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
+  // The server row is the record; `saved` mirrors it here so a form always
+  // submits against the version it rendered (compare-and-set on the server).
+  // The /settings route passes the row in; the legacy /apps dispatch is
+  // client-rendered, so it loads the same row on mount instead.
+  const [saved, setSaved] = useState(serverPreferences ?? { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 0 });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (serverPreferences) return;
+    void loadPreferencesAction().then((result) => { if (result.ok) setSaved(result.preferences); });
+  }, [serverPreferences]);
   const [resetOpen, setResetOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [factsOpen, setFactsOpen] = useState(false);
   const active = useActiveSection();
-  return <Screen title="Settings" description="Preferences affect this shared browser preview. They are not server policy, provider credentials or production account settings." actions={<Destination screen="integrations">Connection catalog</Destination>}>
+  return <Screen title="Settings" description="Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels describe this browser preview or name what is not built yet." actions={<Destination screen="integrations">Connection catalog</Destination>}>
     <div className="grid gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 md:sticky md:top-16 md:h-fit md:flex-col md:overflow-visible md:pb-0">
         {SECTION_GROUPS.map((group) => (
@@ -109,12 +122,28 @@ export default function Settings() {
       <div className="flex min-w-0 flex-col gap-6">
         <Section id="planning">
           <Panel title="Planning preferences">
-            <form key={`${state.preferences.timezone}-${state.preferences.weekStart}`} className="grid gap-4" onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget); const timezone = String(data.get("timezone")).trim(); try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(new Date()); } catch { notify("Timezone is not recognized. Enter an IANA timezone such as America/Los_Angeles."); return; } updatePreferences({ timezone, weekStart: data.get("weekStart") as "Monday" | "Sunday" }); notify("Planning preferences saved locally across all three products."); }}>
+            <form key={`${saved.timezone}-${saved.weekStart}`} className="grid gap-4" onSubmit={(e) => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              const timezone = String(data.get("timezone")).trim();
+              try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(new Date()); } catch { notify("Timezone is not recognized. Enter an IANA timezone such as America/Los_Angeles."); return; }
+              const weekStart = String(data.get("weekStart")) === "Sunday" ? 7 : 1;
+              setSaving(true);
+              void savePreferencesAction({ expectedVersion: saved.version, timezone, weekStart }).then((result) => {
+                setSaving(false);
+                if (!result.ok) { notify(result.error); return; }
+                setSaved(result.preferences);
+                // The preview store follows the account record so the local
+                // screens that still read it stay consistent.
+                updatePreferences({ timezone: result.preferences.timezone, weekStart: result.preferences.weekStart === 7 ? "Sunday" : "Monday" });
+                notify("Planning preferences saved to your account. They load on every device and product.");
+              });
+            }}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Timezone (IANA identifier)"><Input required name="timezone" defaultValue={state.preferences.timezone} list="cc-timezones"/><datalist id="cc-timezones">{["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Kolkata", "Asia/Tokyo"].map((timezone) => <option key={timezone} value={timezone}/>)}</datalist></Field>
-                <Field label="Week starts on"><Select name="weekStart" defaultValue={state.preferences.weekStart}><option>Monday</option><option>Sunday</option></Select></Field>
+                <Field label="Timezone (IANA identifier)"><Input required name="timezone" defaultValue={saved.timezone} list="cc-timezones"/><datalist id="cc-timezones">{["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Kolkata", "Asia/Tokyo"].map((timezone) => <option key={timezone} value={timezone}/>)}</datalist></Field>
+                <Field label="Week starts on"><Select name="weekStart" defaultValue={saved.weekStart === 7 ? "Sunday" : "Monday"}><option>Monday</option><option>Sunday</option></Select></Field>
               </div>
-              <Button type="submit" variant="outline">Save planning preferences</Button>
+              <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save planning preferences"}</Button>
             </form>
           </Panel>
         </Section>
@@ -125,15 +154,26 @@ export default function Settings() {
 
         <Section id="accessibility">
           <Panel title="Accessibility and feedback">
-            <Check label="Reduce motion" checked={state.preferences.reducedMotion} onChange={(reducedMotion) => updatePreferences({ reducedMotion })}/>
-            <Check label="Enable completion celebrations" checked={state.preferences.celebrations} onChange={(celebrations) => updatePreferences({ celebrations })}/>
-            <p className="mt-2 text-xs text-muted-foreground">Appearance is controlled by the shared shell, which already follows your system light or dark preference. System reduced-motion settings remain respected.</p>
+            <Check label="Reduce motion" checked={saved.motion === "reduced"} onChange={(reduced) => {
+              const motion = reduced ? "reduced" as const : "full" as const;
+              const before = saved;
+              setSaved({ ...saved, motion });
+              updatePreferences({ reducedMotion: reduced });
+              void savePreferencesAction({ expectedVersion: before.version, motion }).then((result) => {
+                if (result.ok) { setSaved(result.preferences); return; }
+                setSaved(before);
+                updatePreferences({ reducedMotion: before.motion === "reduced" });
+                notify(result.error);
+              });
+            }}/>
+            <Check label="Enable completion celebrations (this browser preview only)" checked={state.preferences.celebrations} onChange={(celebrations) => updatePreferences({ celebrations })}/>
+            <p className="mt-2 text-xs text-muted-foreground">Motion saves to your account. Appearance is set by the header toggle, which also saves to your account; system reduced-motion settings remain respected.</p>
           </Panel>
         </Section>
 
         <Section id="appearance">
           <Panel title="Appearance" description="Adopted from the shared shell so every product lens matches.">
-            <p className="text-[13px] leading-relaxed text-muted-foreground">Light and dark both follow your system preference, with a manual toggle in the header. One accent colour is used across all three products; per-surface palette switching is not offered.</p>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">The header toggle cycles light, dark and system, and saves the choice to your account, so a new browser adopts it on first load. One accent colour is used across all three products; per-surface palette switching is not offered.</p>
           </Panel>
         </Section>
 
