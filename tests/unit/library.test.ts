@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickPin } from "@/domains/knowledge/exports";
+import { canRestore } from "@/domains/knowledge/versions";
 import { validateFolderName, wouldCreateCycle } from "@/domains/knowledge/folders";
 import { decodeCursor, encodeCursor, libraryStateOf } from "@/domains/knowledge/library";
 import { documentStatus } from "@/domains/knowledge/status";
@@ -90,5 +91,32 @@ describe("normalizeTag", () => {
     const { normalizeTag } = await import("@/domains/knowledge/tags");
     expect(normalizeTag("  Tax   2026 ")).toBe("tax 2026");
     expect(normalizeTag("URGENT")).toBe("urgent");
+  });
+});
+
+describe("canRestore", () => {
+  it("only a succeeded version of the same document is a restore target", () => {
+    expect(canRestore({ documentId: "d1", status: "succeeded" }, "d1")).toBe(true);
+    expect(canRestore({ documentId: "d1", status: "failed" }, "d1")).toBe(false);
+    expect(canRestore({ documentId: "d1", status: "pending" }, "d1")).toBe(false);
+    expect(canRestore({ documentId: "other", status: "succeeded" }, "d1")).toBe(false);
+  });
+});
+
+describe("pickPin with a restore pin", () => {
+  const older = { id: "v1", documentId: "d1", contentHash: "hash-1", status: "succeeded", createdAt: new Date("2026-01-01") };
+  const newer = { id: "v2", documentId: "d1", contentHash: "hash-2", status: "succeeded", createdAt: new Date("2026-02-01") };
+
+  it("the restore pin wins over recency", () => {
+    expect(pickPin([older, newer], "v1")).toEqual({ extractionId: "v1", extractionContentHash: "hash-1" });
+  });
+
+  it("a pin at a failed version falls back to the newest succeeded", () => {
+    const failed = { ...newer, id: "v3", status: "failed", createdAt: new Date("2026-03-01") };
+    expect(pickPin([older, failed], "v3")).toEqual({ extractionId: "v1", extractionContentHash: "hash-1" });
+  });
+
+  it("no pin means the newest succeeded, as before", () => {
+    expect(pickPin([older, newer])).toEqual({ extractionId: "v2", extractionContentHash: "hash-2" });
   });
 });

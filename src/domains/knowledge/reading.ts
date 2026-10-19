@@ -3,6 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { currentExtractionSql } from "./versions";
 import { withTransaction } from "@/lib/db-transaction";
 import {
   documentReadingEvents,
@@ -252,11 +253,7 @@ export async function listLibrary(auth: AuthContext, limit = 200): Promise<Libra
       sourceUrl: documents.sourceUrl,
       createdAt: documents.createdAt,
       filename: files.filename,
-      extractionStatus: sql<string | null>`(
-        select de.status::text from document_extractions de
-        where de.document_id = ${documents.id}
-        order by de.created_at desc limit 1
-      )`,
+      extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
       stateLastOpenedAt: documentReadingState.lastOpenedAt,
       stateOpenCount: documentReadingState.openCount,
       stateTotalActiveSeconds: documentReadingState.totalActiveSeconds,

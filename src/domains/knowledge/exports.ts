@@ -34,17 +34,24 @@ type ExtractionRow = { id: string; contentHash: string; status: string; createdA
 /** The version an item pins: the document's latest succeeded extraction, or an honest null. */
 export function pickPin(
   extractions: ExtractionRow[],
+  pinnedExtractionId?: string | null,
 ): { extractionId: string; extractionContentHash: string } | null {
   const succeeded = extractions
     .filter((e) => e.status === "succeeded")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  // A restore pin wins when it points at a succeeded version: the document
+  // honestly reads as those bytes today.
+  if (pinnedExtractionId) {
+    const pinned = succeeded.find((e) => e.id === pinnedExtractionId);
+    if (pinned) return { extractionId: pinned.id, extractionContentHash: pinned.contentHash };
+  }
   const latest = succeeded[0];
   return latest ? { extractionId: latest.id, extractionContentHash: latest.contentHash } : null;
 }
 
 async function loadExtractions(documentIds: string[], executor: TxDrizzle | typeof db = db) {
   const byDocument = new Map<string, ExtractionRow[]>();
-  if (documentIds.length === 0) return byDocument;
+  if (documentIds.length === 0) return { byDocument, pins: new Map<string, string | null>() };
   const rows = await executor
     .select({
       documentId: documentExtractions.documentId,
@@ -60,7 +67,12 @@ async function loadExtractions(documentIds: string[], executor: TxDrizzle | type
     list.push(row);
     byDocument.set(row.documentId, list);
   }
-  return byDocument;
+  const docRows = await executor
+    .select({ id: documents.id, activeExtractionId: documents.activeExtractionId })
+    .from(documents)
+    .where(inArray(documents.id, documentIds));
+  const pins = new Map(docRows.map((d) => [d.id, d.activeExtractionId]));
+  return { byDocument, pins };
 }
 
 export type ManifestItemInput = { documentId: string; note?: string | null };
@@ -125,14 +137,14 @@ async function addItemsIn(
   if (owned.length !== documentIds.length) {
     throw new ExportManifestError("not_found", "One or more documents are not in this workspace.");
   }
-  const extractionsByDocument = await loadExtractions(documentIds, tx);
+  const { byDocument: extractionsByDocument, pins: restorePins } = await loadExtractions(documentIds, tx);
   // A document already in the manifest is a no-op, not a second row in the
   // packet; the unique key is the backstop, the dedupe keeps positions dense.
   await tx
     .insert(documentExportManifestItems)
     .values(
     items.map((item, index) => {
-      const pin = pickPin(extractionsByDocument.get(item.documentId) ?? []);
+      const pin = pickPin(extractionsByDocument.get(item.documentId) ?? [], restorePins.get(item.documentId));
       return {
         workspaceId: auth.workspaceId,
         manifestId,
@@ -267,10 +279,10 @@ export async function getExportManifest(auth: AuthContext, input: { manifestId: 
     .where(eq(documentExportManifestItems.manifestId, manifest.id))
     .orderBy(asc(documentExportManifestItems.position), asc(documentExportManifestItems.createdAt));
 
-  const extractionsByDocument = await loadExtractions(items.map((i) => i.documentId));
+  const { byDocument: extractionsByDocument, pins: restorePins } = await loadExtractions(items.map((i) => i.documentId));
 
   const views: ExportManifestItemView[] = items.map((item) => {
-    const current = pickPin(extractionsByDocument.get(item.documentId) ?? []);
+    const current = pickPin(extractionsByDocument.get(item.documentId) ?? [], restorePins.get(item.documentId));
     const isCurrent = current !== null && current.extractionContentHash === item.extractionContentHash;
     return {
       itemId: item.itemId,

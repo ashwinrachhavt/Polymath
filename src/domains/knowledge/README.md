@@ -129,16 +129,29 @@ The read model behind the document library UI: `library.ts` for reads,
   asserts parity combination by combination. `listFolders` returns the flat
   live folder list with direct document counts; the tree is composed
   client-side.
-- Detail: `getDocumentVersions` (every extraction version, newest first),
+- Detail: `getDocumentVersions` (every extraction version, newest first;
+  each row carries `isCurrent`),
   `getDocumentActivity` (added, read attempts, classification, renames,
-  moves, field and obligation decisions, newest first, bounded),
+  moves, restores, field and obligation decisions, newest first, bounded),
   `getDocumentParties` (roles with resolved CRM names).
+- Version restore (`versions.ts`): "current" is `documents.active_extraction_id`
+  when pinned, else the newest extraction. `restoreDocumentVersion` moves the
+  pin to any succeeded version of the document (version-checked, audited as
+  `document.version_restored`); failed or pending reads are never restore
+  targets. Every read surface - inbox, library rows and snippets, search
+  (document and chunk), review, reading state, wiki ingest, zettel
+  proposals, and export-manifest drift - follows the pin through
+  `currentExtractionSql` / `currentExtractionIdSubquery`. A newly created
+  extraction clears the pin (fresh bytes are newer truth). The UI calls the
+  `restoreDocumentVersionAction` server action (member role).
 - Tags (`tags.ts`): free tags, normalized lowercase, one row per (document,
   tag); batch add/remove with idempotent re-tags. `listDocuments` takes a tag
   filter and returns each row's tags; `listTags` is the filter rail.
 - Export manifests (`exports.ts`): a named selection for a party or purpose.
-  Each item pins the latest succeeded extraction at add time (id plus
-  content hash, so the pin survives extraction pruning); a document with no
-  succeeded extraction is pinned as an honest null. The read side reports
-  drift (`isCurrent: false`) after a re-extraction rather than silently
-  upgrading. Full packets remain deferred per ASH-130.
+  Each item pins the current succeeded extraction at add time (id plus
+  content hash, so the pin survives extraction pruning; a restore pin wins
+  over recency); a document with no succeeded extraction is pinned as an
+  honest null. The read side reports drift (`isCurrent: false`) after a
+  re-extraction or a restore rather than silently upgrading, and reports
+  current again when a restore returns the document to the pinned version.
+  Full packets remain deferred per ASH-130.
