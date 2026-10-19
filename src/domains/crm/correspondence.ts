@@ -1,9 +1,11 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { actionRevisions } from "@/domains/actions/schema";
 import { createProposal } from "@/domains/actions/commands";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { externalAccounts } from "@/domains/integrations/schema";
 import { withTransaction } from "@/lib/db-transaction";
 import { contacts, correspondence } from "./schema";
 
@@ -30,6 +32,8 @@ export async function draftCorrespondence(
     channel?: string;
     subject?: string;
     body: string;
+    /** The connected account the send will go out from (checked at send time). */
+    externalAccountId?: string;
     idempotencyKey?: string;
   },
 ) {
@@ -42,10 +46,20 @@ export async function draftCorrespondence(
         .limit(1);
       if (!contact) throw new ConflictError("That contact does not exist in this workspace.");
 
+      if (input.externalAccountId) {
+        const [account] = await tx
+          .select({ id: externalAccounts.id })
+          .from(externalAccounts)
+          .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.externalAccountId)))
+          .limit(1);
+        if (!account) throw new ConflictError("That connected account does not exist in this workspace.");
+      }
+
       const [row] = await tx
         .insert(correspondence)
         .values({
           workspaceId: auth.workspaceId,
+          externalAccountId: input.externalAccountId ?? null,
           contactId: input.contactId,
           direction: "outbound",
           channel: input.channel ?? "email",
@@ -154,7 +168,7 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
       return { correspondence: draft, proposalId: draft.actionProposalId, alreadyRequested: true };
     }
 
-    const { proposalId } = await createProposal(tx, auth, {
+    const { proposalId, deduplicated } = await createProposal(tx, auth, {
       capability: "send_mail",
       riskClass: "external_write",
       targetType: "correspondence",
@@ -164,6 +178,18 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
       dedupeKey: `correspondence-send:${draft.id}`,
     });
 
+    // The decision binds to a revision; without one nothing could be approved.
+    // The payload is the exact content the executor re-checks before sending.
+    if (!deduplicated) {
+      await tx.insert(actionRevisions).values({
+        workspaceId: auth.workspaceId,
+        proposalId,
+        revisionNumber: 1,
+        payload: { contactId: draft.contactId, externalAccountId: draft.externalAccountId, subject: draft.subject, body: draft.body },
+        preview: { subject: draft.subject, body: draft.body },
+        createdBy: auth.userId,
+      });
+    }
     const [updated] = await tx
       .update(correspondence)
       .set({ actionProposalId: proposalId, version: sql`${correspondence.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
