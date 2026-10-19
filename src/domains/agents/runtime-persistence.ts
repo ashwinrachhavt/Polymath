@@ -151,7 +151,8 @@ export async function recordExecution(input: ExecutionInput, client: Executor = 
   const [created] = await client
     .insert(runtimeExecutions)
     .values(input)
-    .onConflictDoNothing({ target: [runtimeExecutions.workspaceId, runtimeExecutions.dispatchKey] })
+    // No target: either unique key (dispatch key, or run + generation) may collide.
+    .onConflictDoNothing()
     .returning();
   if (created) return { execution: created, created: true };
   const [existing] = await client
