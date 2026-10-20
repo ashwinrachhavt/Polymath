@@ -29,22 +29,22 @@ suite("conversation auto-sync (real Postgres)", () => {
   it("folds a burst into one event, due after the window, and syncs a node once", async () => {
     const db = holder.db!;
     const ws = await seedWorkspace(db, `ts-${crypto.randomUUID()}`);
-    const auth = { ...ws, role: "owner" as const };
+    const auth = { workspaceId: ws.workspaceId, userId: ws.userId, role: "owner" as const };
     const [profile] = await db.insert(agentProfiles).values({ workspaceId: ws.workspaceId, name: `p-${crypto.randomUUID()}`, allowedTools: [] }).returning();
     const [thread] = await db.insert(threads).values({ workspaceId: ws.workspaceId, agentProfileId: profile.id, title: "Roadmap" }).returning();
     await db.insert(messages).values({ workspaceId: ws.workspaceId, threadId: thread.id, role: "user", content: "What ships first?" });
 
     const at = new Date("2026-01-01T10:00:20Z");
     await db.transaction(async (tx) => {
-      await queueThreadSync(tx, ws.workspaceId, thread.id, at);
-      await queueThreadSync(tx, ws.workspaceId, thread.id, new Date(at.getTime() + 15_000));
+      await queueThreadSync(tx as never, ws.workspaceId, thread.id, at);
+      await queueThreadSync(tx as never, ws.workspaceId, thread.id, new Date(at.getTime() + 15_000));
     });
     const rows = await db.select().from(outboxEvents).where(and(eq(outboxEvents.workspaceId, ws.workspaceId), eq(outboxEvents.topic, THREAD_CHANGED_TOPIC)));
     expect(rows).toHaveLength(1);
     expect(rows[0].availableAt.toISOString()).toBe("2026-01-01T10:01:02.000Z");
 
     const handler = threadChangedHandler(async () => auth);
-    const run = () => handler({ ...(rows[0] as never), payload: { threadId: thread.id } });
+    const run = () => handler({ workspaceId: ws.workspaceId, payload: { threadId: thread.id } } as never);
     await run();
     await run();
     const node = await syncThreadToGraph(auth, thread.id);
