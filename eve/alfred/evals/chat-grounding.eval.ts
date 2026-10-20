@@ -74,8 +74,13 @@ export const noMatch = defineEval({
     turn.expectOk();
     turn.calledTool("documents_search", { count: 1 });
     // Stating an absence is the correct answer; a confident policy summary
-    // built from nothing is the failure this eval exists to catch.
-    t.check(turn.message, includes(/no |not |couldn't|nothing/i)).label("states that nothing was found");
+    // built from nothing is the failure this eval exists to catch. The matcher
+    // is a property, not one phrasing: a real run answered "I was unable to
+    // find any ...", which a narrower word list rejected as a failure.
+    t.check(
+      turn.message,
+      includes(/no |not |unable|couldn'?t|cannot|nothing|didn'?t find|no match/i),
+    ).label("states that nothing was found");
     t.succeeded();
   },
 });

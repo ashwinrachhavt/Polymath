@@ -83,6 +83,45 @@ describe("eval-summary", () => {
     expect(out.stdout).toContain("1/1 passed");
   });
 
+  it("marks a crashed eval as failed even though it has no assertions", () => {
+    // The bug this guards: a crashed/timed-out eval reports verdict "failed"
+    // with zero assertions, and a check that only counted failed assertions
+    // rendered it as "✅ 1/1 passed" — a false green on the gate itself.
+    const out = run({
+      target: { url: "u" },
+      results: [{ id: "crashed", assertions: [], verdict: "failed", error: "model timeout" }],
+    });
+    expect(out.status).toBe(0);
+    expect(out.stdout).toContain("0/1 passed");
+    expect(out.stdout).toContain("**fail**");
+    expect(out.stdout).toContain("model timeout");
+  });
+
+  it("reads a plain-string verdict, not the session status", () => {
+    // The runner writes `verdict: "passed"`. Reading `verdict.status` yields
+    // undefined and falls through to the session's own state ("waiting" for a
+    // healthy open session), which made every real report render as failed.
+    const out = run({
+      target: { url: "u" },
+      results: [
+        { id: "ok", assertions: [{ name: "g", passed: true }], verdict: "passed", result: { status: "waiting" } },
+        { id: "bad", assertions: [{ name: "g", passed: true }], verdict: "failed", result: { status: "waiting" } },
+      ],
+    });
+    expect(out.stdout).toContain("1/2 passed");
+    expect(out.stdout).toContain("| `ok` | pass | 1/1 |");
+    expect(out.stdout).toContain("| `bad` | **fail** | 1/1 |");
+  });
+
+  it("treats an unrecognised verdict as a failure, not a pass", () => {
+    const out = run({
+      target: { url: "u" },
+      results: [{ id: "weird", assertions: [{ name: "g", passed: true }], verdict: "something-new" }],
+    });
+    expect(out.stdout).toContain("0/1 passed");
+    expect(out.stdout).toContain("**fail**");
+  });
+
   it("fails loudly when there is no report to render", () => {
     // A missing report means the gate did not run. Printing an empty table
     // would render that as success.

@@ -9,7 +9,6 @@ import { getProfileNameForRun } from "@/domains/agents/queries";
 import { agentRuns } from "@/domains/agents/schema";
 import { isFinished } from "@/domains/agents/thread";
 import {
-  decodeFrame,
   encodeFrame,
   frameOf,
   splitLines,
@@ -39,6 +38,12 @@ import {
 type Ctx = { params: Promise<{ runId: string }> };
 
 const CURSOR_HEADER = "x-chat-cursor";
+/**
+ * How many chunks a slow consumer may fall behind before the proxy gives up on
+ * the connection. A frame is well under 1 KB, so this caps a stalled reader at
+ * roughly 250 KB; past that the client reconnects from its cursor instead.
+ */
+const MAX_QUEUED_CHUNKS = 256;
 
 export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   requireRole(auth, "member");
@@ -62,10 +67,12 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   if (!run) return problemResponse(404, "not_found", "No such run.");
 
   // The cursor the client has already applied. Eve's startIndex is an absolute
-  // event count, so this is a count, not an event id.
+  // event count, so this is a count, not an event id. A malformed or negative
+  // value replays from the start rather than failing the stream: the client
+  // dedupes by cursor, so a replay is correct, just redundant.
   const rawCursor = request.headers.get(CURSOR_HEADER);
-  const parsedCursor = rawCursor === null ? 0 : Number.parseInt(rawCursor, 10);
-  const startIndex = Number.isFinite(parsedCursor) && parsedCursor >= 0 ? parsedCursor : 0;
+  const parsedCursor = rawCursor === null ? 0 : Number(rawCursor);
+  const startIndex = Number.isSafeInteger(parsedCursor) && parsedCursor >= 0 ? parsedCursor : 0;
 
   const emit = (frame: ChatFrame) => encodeFrame(frame);
 
@@ -78,7 +85,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     // shows it inside the chat.
     return ndjsonResponse([
       emit({ type: "error", runId, code: "stream_unavailable", message: "This run has no agent session.", cursor: startIndex }),
-      emit({ type: "end", runId, state: run.state === "cancelled" ? "cancelled" : "failed", cursor: startIndex }),
+      emit({ type: "end", runId, state: terminalStateOf(run.state), cursor: startIndex }),
     ]);
   }
 
@@ -107,7 +114,9 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
 
   if (!upstream.ok || !upstream.body) {
     // A finished session can answer 409 session_stranded; either way the
-    // surface gets a frame it can render instead of a bare 5xx.
+    // surface gets a frame it can render instead of a bare 5xx. The terminal
+    // state comes from the run row, never from the transport: a failed run that
+    // answers 409 must not be reported as succeeded.
     return ndjsonResponse([
       emit({
         type: "error",
@@ -116,7 +125,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         message: `The agent stream returned ${upstream.status}.`,
         cursor: startIndex,
       }),
-      ...(finished ? [emit({ type: "end" as const, runId, state: "succeeded" as const, cursor: startIndex })] : []),
+      ...(finished ? [emit({ type: "end" as const, runId, state: terminalStateOf(run.state), cursor: startIndex })] : []),
     ]);
   }
 
@@ -124,42 +133,66 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
+      // One decoder for the whole stream: a multi-byte UTF-8 character split
+      // across two upstream chunks decodes as replacement characters if each
+      // chunk gets a fresh decoder, which silently corrupts non-ASCII answers.
+      const decoder = new TextDecoder();
       let buffer = "";
       let cursor = startIndex;
-      let closed = false;
+      // Two different stops: `gone` means the consumer is no longer there (do
+      // not enqueue), `terminal` means the run ended (stop reading). Conflating
+      // them dropped a terminal event delivered as an unterminated tail line.
+      let gone = false;
+      let terminal = false;
       const push = (text: string) => {
-        if (closed) return;
+        if (gone) return;
         try {
           controller.enqueue(encoder.encode(text));
         } catch {
-          closed = true;
+          gone = true;
         }
       };
       try {
         for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
-          buffer += new TextDecoder().decode(chunk, { stream: true });
+          buffer += decoder.decode(chunk, { stream: true });
           const { lines, rest } = splitLines(buffer);
           buffer = rest;
           for (const line of lines) {
             const event = decodeEveEvent(line);
+            // A blank or unparseable line is not an Eve event, so it must not
+            // advance the cursor: the cursor is Eve's absolute event count, and
+            // counting a non-event would make every reconnect replay.
             if (!event) continue;
             for (const frame of frameOf(runId, event, cursor)) push(encodeFrame(frame));
             cursor += 1;
             if (event.type === "session.completed" || event.type === "session.failed") {
               // Terminal: stop following rather than waiting for the lease.
-              closed = true;
+              terminal = true;
             }
           }
-          if (closed) break;
+          if (terminal || gone) break;
+          // Bounded backpressure. `enqueue` never blocks, so a client that
+          // stops reading (backgrounded tab, throttled connection) would
+          // otherwise grow this queue for the length of the turn. Ending the
+          // stream lets the client resume from its cursor, so nothing is lost
+          // and the server's memory is bounded. This is a normal reconnect, not
+          // a defect: emitting an `error` frame would leave a red notice on
+          // screen for the rest of the session after the stream recovered.
+          if ((controller.desiredSize ?? 0) <= -MAX_QUEUED_CHUNKS) {
+            break;
+          }
         }
-        // A trailing line without its newline still carries an event.
+        // A trailing line without its newline still carries an event, including
+        // a terminal one.
         const tail = decodeEveEvent(buffer);
-        if (tail) for (const frame of frameOf(runId, tail, cursor)) push(encodeFrame(frame));
+        if (tail && !gone) {
+          for (const frame of frameOf(runId, tail, cursor)) push(encodeFrame(frame));
+        }
       } catch {
         // A client disconnect or upstream reset ends the read; the durable
         // stream keeps the events, and the client reconnects from its cursor.
       } finally {
-        closed = true;
+        gone = true;
         try {
           controller.close();
         } catch {
@@ -181,6 +214,13 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     },
   });
 });
+
+/** The run row's own terminal state, for a run that is already finished. */
+function terminalStateOf(state: string): "succeeded" | "failed" | "cancelled" {
+  if (state === "cancelled") return "cancelled";
+  if (state === "failed") return "failed";
+  return "succeeded";
+}
 
 /** Eve's envelope: `{ type, data, meta }`. Anything else is skipped, not fatal. */
 function decodeEveEvent(line: string): { type: string; data?: Record<string, unknown>; meta?: { id?: string } } | null {
@@ -207,7 +247,3 @@ function ndjsonResponse(lines: string[]): Response {
     },
   });
 }
-
-// `decodeFrame` is re-exported for the client store's tests; keeping the import
-// here documents that the route and the store share one decoder.
-export { decodeFrame };

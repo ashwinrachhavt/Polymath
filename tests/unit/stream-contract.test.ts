@@ -146,6 +146,23 @@ describe("frameOf", () => {
     expect(frames.some((frame) => frame.type === "citations")).toBe(false);
   });
 
+  it("does not treat an unknown or cancelled tool status as success", () => {
+    // Only an explicit success may render as ok or produce citations. An
+    // unknown outcome is missing evidence, not a completed effect.
+    for (const status of ["cancelled", "timeout", "denied", undefined]) {
+      const frames = frameOf(
+        RUN,
+        {
+          type: "action.result",
+          data: { status, result: { callId: "c1", toolName: "documents_search", output: { results: [{ documentId: "d", title: "t", text: "x" }] } } },
+        },
+        1,
+      );
+      expect(frames[0]).toMatchObject({ type: "tool", status: "error" });
+      expect(frames.some((frame) => frame.type === "citations")).toBe(false);
+    }
+  });
+
   it("ignores a tool output with no citable results", () => {
     const frames = frameOf(
       RUN,
@@ -278,6 +295,25 @@ describe("wire framing", () => {
     expect(decodeFrame("not json")).toBeNull();
     expect(decodeFrame('{"type":"delta"}')).toBeNull();
     expect(decodeFrame('{"runId":"x"}')).toBeNull();
+  });
+
+  it("refuses a frame missing the fields its consumer reads", () => {
+    // A delta without a cursor made Math.max(cursor, undefined) NaN, which the
+    // client then sent back as x-chat-cursor: NaN and the route read as 0,
+    // forcing a full replay on every reconnect.
+    expect(decodeFrame('{"type":"delta","runId":"r","text":"x","cursor":1}')).toBeNull();
+    expect(decodeFrame('{"type":"delta","runId":"r","blockId":"b","cursor":1}')).toBeNull();
+    expect(decodeFrame('{"type":"delta","runId":"r","blockId":"b","text":"x"}')).toBeNull();
+    expect(decodeFrame('{"type":"delta","runId":"r","blockId":"b","text":"x","cursor":null}')).toBeNull();
+  });
+
+  it("accepts a stateless frame that carries only a cursor", () => {
+    expect(decodeFrame('{"type":"turn","runId":"r","state":"waiting","cursor":3}')).toMatchObject({ type: "turn", cursor: 3 });
+    expect(decodeFrame('{"type":"end","runId":"r","state":"succeeded","cursor":4}')).toMatchObject({ type: "end" });
+  });
+
+  it("drops an unknown frame type rather than passing it through", () => {
+    expect(decodeFrame('{"type":"deltaa","runId":"r","blockId":"b","text":"x","cursor":1}')).toBeNull();
   });
 
   it("keeps an unterminated trailing line out of the parsed set", () => {

@@ -39,6 +39,29 @@ function readReport(file) {
   return null;
 }
 
+/**
+ * The only verdict statuses that count as a passing eval. Anything else —
+ * "failed", "error", "cancelled", or a status this script does not recognise —
+ * renders as a failure, because an unknown verdict is missing evidence, not
+ * success.
+ */
+const PASS_STATUSES = new Set(["passed", "pass", "completed"]);
+
+/**
+ * Read an eval's verdict status across the report's shapes. The runner writes
+ * `verdict` as a plain string ("passed" | "failed" | ...); older/other shapes
+ * nest it as `{status}`. `result.result.status` is the session's own state
+ * ("waiting" for a healthy open session), so it is only a last resort — using it
+ * first made every passing eval render as a failure.
+ */
+function verdictOf(result) {
+  const verdict = result.verdict;
+  if (typeof verdict === "string") return verdict;
+  if (verdict && typeof verdict === "object" && typeof verdict.status === "string") return verdict.status;
+  const nested = result.result?.status;
+  return typeof nested === "string" ? nested : "unknown";
+}
+
 const report = readReport(path);
 if (!report) {
   console.error("Could not read the eval report; the gate did not produce a parseable result.");
@@ -48,9 +71,13 @@ if (!report) {
 const rows = report.results.map((result) => {
   const assertions = result.assertions ?? [];
   const failed = assertions.filter((assertion) => !assertion.passed);
-  const status = result.verdict?.status ?? result.result?.status ?? "unknown";
-  const passed = status === "passed" || status === "completed" || failed.length === 0;
-  const firstFailure = failed[0]?.name ?? result.error ?? "";
+  const status = verdictOf(result).toLowerCase();
+  // Pass comes from the verdict, never from the assertion count. A crashed or
+  // timed-out eval reports status "failed" with zero assertions, and treating
+  // "no failed assertions" as success rendered exactly that as a green row.
+  const passed = PASS_STATUSES.has(status) && failed.length === 0;
+  const firstFailure =
+    failed[0]?.name ?? result.error ?? (passed ? "" : `status ${status}`);
   return {
     id: result.id,
     status: passed ? "pass" : "fail",

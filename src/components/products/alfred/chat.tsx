@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChatSurface, type ChatSubject } from "@/components/chat/chat-surface";
 import { Screen, Status } from "@/components/workspace/ui";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
@@ -21,8 +21,6 @@ export default function Chat({ initialId }: { initialId?: string }) {
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  // One key per conversation, minted once so a retry reuses the same start.
-  const keyRef = useRef<string | null>(null);
 
   const begin = useCallback(async () => {
     const objective = message.trim();
@@ -30,13 +28,10 @@ export default function Chat({ initialId }: { initialId?: string }) {
     setStarting(true);
     setError(null);
     try {
-      // `randomUUID` needs a secure context, which every supported browser
       // serves; a conversation without a key would risk a second run on retry.
-      keyRef.current ??= crypto.randomUUID();
       const result = await startChatRun({
         objective,
         subject,
-        clientKey: keyRef.current,
       });
       if (!result.ok) {
         setError(result.message);

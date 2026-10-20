@@ -199,21 +199,25 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
       const result = (data.result ?? {}) as { toolName?: unknown; callId?: unknown; output?: unknown };
       const callId = asString(result.callId);
       if (callId === null) return [];
-      const failed = data.status === "failed" || data.status === "rejected";
+      // Only an explicit success counts as ok. "cancelled", "timeout", a missing
+      // status, or a status this fold does not know are all failures: rendering
+      // an unknown outcome as success would claim an effect that may not have
+      // happened, and would emit citations from a partial result.
+      const succeeded = data.status === "completed" || data.status === "succeeded";
       const frames: ChatFrame[] = [
         {
           type: "tool",
           runId,
           callId,
           label: asString(result.toolName) ?? "tool",
-          status: failed ? "error" : "ok",
+          status: succeeded ? "ok" : "error",
           cursor,
         },
       ];
       // A search result carries the passages an answer cites. Emitting them as
       // their own frame is what lets the surface call onCitation; without this
       // the citation list would never fill.
-      if (!failed) {
+      if (succeeded) {
         const citations = citationsFromToolOutput(result.output);
         if (citations.length > 0) frames.push({ type: "citations", runId, citations, cursor });
       }
@@ -318,16 +322,40 @@ export function encodeFrame(frame: ChatFrame): string {
 }
 
 /** Parse one NDJSON line; null for a blank line or a line that is not a frame. */
+/** Frame types that carry no state and only report activity. */
+const STATELESS_FRAMES = new Set(["tool", "turn", "citations", "end", "error"]);
+
+/**
+ * Parse one NDJSON line into a frame, or null.
+ *
+ * Validates the discriminant and the fields the accumulator and the hook read.
+ * A shape check on `type`/`runId` alone was not enough: a `delta` without a
+ * cursor made `Math.max(cursor, undefined)` NaN, the client sent
+ * `x-chat-cursor: NaN`, and the route read it back as 0 — forcing a full replay
+ * on every reconnect. A `delta` without a blockId would silently append to
+ * nothing.
+ */
 export function decodeFrame(line: string): ChatFrame | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) return null;
+  let parsed: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(trimmed) as { type?: unknown; runId?: unknown };
-    if (typeof parsed.type !== "string" || typeof parsed.runId !== "string") return null;
-    return parsed as ChatFrame;
+    parsed = JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
     return null;
   }
+  if (typeof parsed.type !== "string" || typeof parsed.runId !== "string") return null;
+  if (!STATELESS_FRAMES.has(parsed.type) && parsed.type !== "delta" && parsed.type !== "block" && parsed.type !== "message" && parsed.type !== "snapshot") {
+    // An unknown frame type is protocol skew. Dropping it silently is correct
+    // for forward compatibility; the caller sees no state change.
+    return null;
+  }
+  if (typeof parsed.cursor !== "number" || !Number.isFinite(parsed.cursor)) return null;
+  if (parsed.type === "delta" && (typeof parsed.blockId !== "string" || typeof parsed.text !== "string")) return null;
+  if (parsed.type === "block" && typeof parsed.blockId !== "string") return null;
+  if (parsed.type === "message" && typeof parsed.text !== "string") return null;
+  if (parsed.type === "snapshot" && !Array.isArray(parsed.blocks)) return null;
+  return parsed as unknown as ChatFrame;
 }
 
 /** Split a buffer into complete lines plus the unterminated remainder. */

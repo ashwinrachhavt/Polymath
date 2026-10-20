@@ -161,4 +161,67 @@ describe("geminiFetch", () => {
     // Identity, so the common no-tool path allocates nothing extra.
     expect(withRememberedSignatures(body)).toBe(body);
   });
+
+  it("geminiFetch itself re-attaches the signature on the follow-up request", async () => {
+    /*
+     * Value card
+     * protects: the request side of the shim — the half that makes a tool-using
+     *   turn survive past its first model call. Gemini rejects a tool result
+     *   whose assistant message lost `extra_content`.
+     * fails_when: `geminiFetch` captures signatures from the response but never
+     *   applies them to the outgoing body (the code calls
+     *   `withRememberedSignatures` on the parsed body), so every tool follow-up
+     *   fails with "missing a thought_signature" while a direct unit test of
+     *   the helper still passes.
+     * why_new: the round-trip test above exercises `withRememberedSignatures`
+     *   directly, which proves the helper and not that the fetch shim wires it
+     *   into the request path — the seam that actually broke in production.
+     * seam: `geminiFetch` composed with a fake base fetch, observing the body
+     *   the base fetch receives.
+     */
+    const callId = `call_shim_${Date.now()}`;
+    const capture = sse([
+      JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  extra_content: { google: { thought_signature: "sig-shim" } },
+                  function: { name: "documents_search", arguments: "{}" },
+                  id: callId,
+                  type: "function",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ]);
+    const seen: Array<Record<string, unknown>> = [];
+    const fake: typeof fetch = async (_input, init) => {
+      if (typeof init?.body === "string") seen.push(JSON.parse(init.body) as Record<string, unknown>);
+      return new Response(streamOf(capture), { headers: { "content-type": "text/event-stream" } });
+    };
+    const shimmed = geminiFetch(fake);
+
+    // Turn 1: the model calls a tool; the shim captures the signature.
+    await (await shimmed("https://gemini.test/chat/completions", { method: "POST", body: JSON.stringify({ messages: [] }) })).text();
+
+    // Turn 2: the tool result goes back. The assistant message the SDK rebuilt
+    // has no `extra_content`, so only the shim can restore it.
+    const followUp = {
+      messages: [
+        { role: "assistant", tool_calls: [{ id: callId, type: "function", function: { name: "documents_search", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: callId, content: "[]" },
+      ],
+    };
+    await (await shimmed("https://gemini.test/chat/completions", { method: "POST", body: JSON.stringify(followUp) })).text();
+
+    expect(seen).toHaveLength(2);
+    const sent = seen[1].messages as Array<{ tool_calls?: Array<Record<string, unknown>> }>;
+    expect(sent[0].tool_calls?.[0]).toMatchObject({
+      extra_content: { google: { thought_signature: "sig-shim" } },
+    });
+  });
 });

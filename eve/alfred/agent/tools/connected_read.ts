@@ -26,7 +26,8 @@ import { resolveConnectedAccount } from "../../../../src/domains/integrations/qu
  */
 
 /**
- * Provider to (catalog id, Composio toolkit slug, capability).
+ * Provider to (catalog id, Composio toolkit slug, capability, allowed URL
+ * surface).
  *
  * The three names are genuinely different and all three matter:
  *  - the catalog id is what `integration_catalog.provider` and
@@ -38,27 +39,31 @@ import { resolveConnectedAccount } from "../../../../src/domains/integrations/qu
  *    (eve/alfred/evals/axiom-policy.ts); a capability absent from that table
  *    has no risk class and can never be granted.
  *
- * The tool's input enum uses the catalog id, because that is what the owner sees
- * on the connectors screen and what the account row is keyed by.
+ * `hosts` pairs a hostname with the path prefix that provider's API lives under.
+ * A host alone is not enough confinement: `www.googleapis.com` serves Drive,
+ * Docs, Sheets, Photos, and BigQuery as well as Calendar, so a host-only check
+ * would let a prompt aim the owner's Google grant at any of them.
  */
-const PROVIDERS: Readonly<Record<string, { catalog: string; toolkit: string; capability: string; hosts: readonly string[] }>> = {
+const PROVIDERS: Readonly<
+  Record<string, { catalog: string; toolkit: string; capability: string; hosts: ReadonlyArray<{ host: string; path: string }> }>
+> = {
   gmail: {
     catalog: "gmail",
     toolkit: "gmail",
     capability: "gmail.read",
-    hosts: ["gmail.googleapis.com"],
+    hosts: [{ host: "gmail.googleapis.com", path: "/gmail/v1/" }],
   },
   "google-calendar": {
     catalog: "google-calendar",
     toolkit: "googlecalendar",
     capability: "calendar.read",
-    hosts: ["www.googleapis.com"],
+    hosts: [{ host: "www.googleapis.com", path: "/calendar/v3/" }],
   },
   notion: {
     catalog: "notion",
     toolkit: "notion",
     capability: "notion.read",
-    hosts: ["api.notion.com"],
+    hosts: [{ host: "api.notion.com", path: "/v1/" }],
   },
 };
 
@@ -94,12 +99,20 @@ export default defineTool({
     }
     const spec = PROVIDERS[input.provider];
     if (!spec) return { ok: false as const, error: `unknown provider ${input.provider}` };
-    const allowed = spec.hosts;
-    if (parsed.protocol !== "https:" || !allowed.includes(parsed.hostname)) {
+    // Host AND path prefix: a host alone is not confinement when one hostname
+    // serves many APIs (www.googleapis.com hosts Drive, Docs, Sheets, and more).
+    const target = spec.hosts.find(
+      (entry) => parsed.hostname === entry.host && parsed.pathname.startsWith(entry.path),
+    );
+    if (parsed.protocol !== "https:" || !target) {
       return {
         ok: false as const,
-        error: `${input.provider} reads must target https on ${allowed.join(" or ")}`,
+        error: `${input.provider} reads must target https on ${spec.hosts.map((h) => `${h.host}${h.path}`).join(" or ")}`,
       };
+    }
+    // A URL carrying userinfo or an explicit port is not a provider API call.
+    if (parsed.username || parsed.password || parsed.port) {
+      return { ok: false as const, error: `${input.provider} reads must target the default port with no credentials in the URL` };
     }
 
     const current = ctx.session.auth.current;
