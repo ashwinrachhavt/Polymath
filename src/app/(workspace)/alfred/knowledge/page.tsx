@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { fieldLabel, fieldValueText } from "./field-display";
 import { PageHeader, Section } from "@/components/page-header";
@@ -181,6 +182,9 @@ export async function KnowledgeSurface({
               Import
             </Button>
             <Button disabled>New note</Button>
+            <Button variant="outline" asChild>
+              <Link href="/alfred/knowledge/zettels">Zettels</Link>
+            </Button>
           </>
         }
       />
