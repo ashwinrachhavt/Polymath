@@ -25,39 +25,53 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
 
 | State kind | Where it lives | Example |
 |---|---|---|
-| Server records | Server component and the domain query layer | A notes list composed in `page.tsx` by the domain's query |
+| Server records | Server component and the domain query layer | The note list composed by `pageNotes` in `(workspace)/alfred/notebook/page.tsx` |
 | Shareable view state | The URL | `?q=capture&page=2&status=open` |
-| Selected record | The URL | `/notes/[id]`, or a `selected` param beside a list |
+| Selected record | The URL | `?id=<noteId>` on the notebook and inbox, `?task=<taskId>` on work |
 | Drafts and dialogs | Component state | A textarea before submit, an open menu, a hover |
-| Preview sample data | The browser-preview store, localStorage only | `/apps/neuralflow` standalone preview |
+| Preview sample data | The browser-preview store, localStorage only | `/apps/neuralflow`, `/activity`, `/settings` |
 
 - **Server state is not copied into a client store.** The server component read
   it and passes typed props. A client store holding records creates a second
   source of truth that no one reconciles.
 - **The URL owns what a person can share, reload, or return to.** Search text,
-  filters, sort, page, page size, and the selected record. Use
-  `src/lib/list-params.ts`: `parseListParams` validates against a `ListSpec` and
-  falls back to the default rather than throwing on a hand-edited URL, and
-  `listHref` writes a patch while dropping empty values and defaults. One
-  convention for every list surface.
+  filters, page, page size, and the selected record. A selected record is its own
+  param (`?id=`, `?task=`), not part of the list contract. For list surfaces the
+  target convention is `src/lib/list-params.ts`: `parseListParams` parses
+  `{ q, page, pageSize, filters }` against a `ListSpec` and falls back to the
+  default rather than throwing on a hand-edited URL; `listHref` writes a patch
+  and drops only empty values and `page === 1`, so a default page size or a
+  default filter value stays in the URL once set. Most list screens already use
+  it; the `apps/*/[screen]` preview screens still hold search, status, priority,
+  project, and sort in `useState`, so treat this as the convention to move
+  toward, not a description of every screen today.
 - **Component state owns what is not yet a fact.** A draft, an open dialog, a
   hover. It disappears on unmount, which is the correct lifetime.
 - **The browser-preview store is not production data.**
   `src/components/workspace/workspace-provider.tsx` holds a sample workspace and
-  persists it to scoped localStorage (`axiom-ui-preview-v1:<scope>`). It exists
-  for the standalone `/apps/neuralflow` preview surface only. Canonical reads and
-  writes go through the domain layer, never through `useWorkspace`.
+  persists it to scoped localStorage: the bare key `axiom-ui-preview-v1` for the
+  anonymous scope, `axiom-ui-preview-v1:<scope>` otherwise. `isBrowserPreviewPath`
+  in `src/lib/navigation.ts` defines where it is read: every `/apps/*` path, plus
+  `/activity` and `/settings`. Canonical reads and writes go through the domain
+  layer, never through `useWorkspace`.
 
 Preview and canonical writes are separate operations. A preview mutation never
 stands in for a canonical one, and a preview success says nothing about what
 Postgres holds.
 
 Every preview mutation reports whether the write landed. Most return
-`{ ok, persisted }`; the add paths return the record or `undefined`. `ok: false`
-means the write was refused, usually because another tab moved first.
-`persisted: false` means storage itself failed. A refused write must never be
-reported as saved: no success notice, no record handed back, no optimistic row
-kept. `PreviewStorageWarning` owns that message; do not add a second one.
+`{ ok, persisted }`. The add paths return the created record or `undefined`, and
+`clarifyCapture` returns the derived id or `undefined`; `undefined` means the
+input was invalid or the write was refused. `ok: false` means the write was
+refused, for any of several reasons: another tab moved first, the record was
+missing, the attachment was a duplicate, the event belonged to a provider, the
+reorder changed nothing, or the reward was already earned. `persisted: false`
+means nothing was written, whatever the cause; it is a storage failure only when
+the storage write itself threw. A refused write must never be reported as saved:
+no success notice, no record handed back, no optimistic row kept.
+`PreviewStorageWarning` owns that message. It carries three cases (refused write,
+storage unavailable, incompatible saved format) and is mounted only on preview
+paths, so do not add a second one.
 
 Do not add a second global store without a measured need. The server, the URL,
 and component state cover the cases that exist, and a store is a permanent
