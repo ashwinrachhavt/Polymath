@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import Link from "next/link";
 import { Suspense } from "react";
 import { Status } from "@/components/workspace/ui";
 import { Pagination } from "@/components/list/pagination";
@@ -35,7 +36,11 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   const list = parseListParams(query, { filters: { kind: CAPTURE_KINDS } });
   const raw = typeof query.filter === "string" ? query.filter : "unprocessed";
   const filter: InboxFilter = filters.some((f) => f.value === raw) ? (raw as InboxFilter) : "unprocessed";
-  const selectedId = typeof query.id === "string" && query.id ? query.id : null;
+  // A malformed id (or a non-uuid string) would make Postgres reject the
+  // uuid comparison with 22P02 and crash the screen; treat it as no
+  // selection, matching the valid-but-unknown id path.
+  const rawId = typeof query.id === "string" ? query.id : null;
+  const selectedId = rawId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId) ? rawId : null;
   await connection();
   const auth = await getAuthContext();
   const kind = list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined;
@@ -75,7 +80,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
 
           <nav aria-label="Inbox filters" className="mt-4 flex flex-wrap gap-3 text-[13px]">
             {filters.map((f) => (
-              <a
+              <Link
                 key={f.value}
                 href={listHref("/command-center/inbox", query, {
                   filter: f.value === "unprocessed" ? undefined : f.value,
@@ -87,7 +92,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               >
                 {f.label}
                 <span className="readout ml-1 text-muted-foreground">{tabs[f.value]}</span>
-              </a>
+              </Link>
             ))}
           </nav>
 
