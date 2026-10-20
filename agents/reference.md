@@ -95,6 +95,17 @@ example, from a directly-invoked handler in a test. The pattern in
 `src/app/api/v1/files/route.ts` is to catch and fall back to fire-and-forget.
 Do not assume `after()` is always available.
 
+### `connection()` must sit inside a Suspense boundary
+
+Under `cacheComponents`, calling `await connection()` at the top of an async page
+default does not satisfy the prerender check. The call has to live in a
+component that is itself inside a `<Suspense>` boundary, which is why every
+working route (briefing, inbox, spending) extracts the data-reading body into a
+child and wraps it. The symptom is the uncached-data error at navigation, not a
+type error, so `tsc` never catches it and a page can look correct in `next dev`
+while failing the build. Two settings routes were broken this way and fixed by
+extracting the body.
+
 ### Migration numbering is not sequential
 
 Migrations are grouped by area (`00xx`, `01xx`), not one counter. Read the
