@@ -195,6 +195,7 @@ export type DatedTask = {
   status: (typeof tasks.$inferSelect)["status"];
   priority: (typeof tasks.$inferSelect)["priority"];
   dueAt: Date;
+  estimateMinutes: number | null;
   version: number;
 };
 
@@ -209,7 +210,7 @@ export async function listTasksDueBetween(
   endDay: string,
 ): Promise<DatedTask[]> {
   const rows = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, version: tasks.version })
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version })
     .from(tasks)
     .where(
       and(
