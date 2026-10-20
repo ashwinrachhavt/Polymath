@@ -62,6 +62,32 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
 });
 
 /**
+ * The role a user currently holds in a workspace, or null when they hold no
+ * active membership or the workspace is archived. The gateway runs this on
+ * every call: a token names the user and workspace it was minted for, but only
+ * the database knows whether that membership still exists.
+ */
+export async function activeMembershipRole(
+  workspaceId: string,
+  userId: string,
+): Promise<AuthRole | null> {
+  const [row] = await db
+    .select({ role: memberships.role })
+    .from(memberships)
+    .innerJoin(workspaces, eq(workspaces.id, memberships.workspaceId))
+    .where(
+      and(
+        eq(memberships.userId, userId),
+        eq(memberships.workspaceId, workspaceId),
+        eq(memberships.status, "active"),
+        isNull(workspaces.archivedAt),
+      ),
+    )
+    .limit(1);
+  return row?.role ?? null;
+}
+
+/**
  * Re-proves a workspace binding that arrived as a claim (the Eve bridge token):
  * the user must hold an active membership in that workspace right now, with the
  * role the claim states, and the workspace must not be archived. Returns the

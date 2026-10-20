@@ -1,7 +1,7 @@
-import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { agentProfiles, agentRuns, toolCalls } from "./schema";
+import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 
 /*
  * A run's frozen policy snapshot, read back for the tools that must honour it.
@@ -84,6 +84,26 @@ export async function getRun(workspaceId: string, runId: string) {
 }
 
 /**
+ * The columns the gateway binds a call against. Read fresh on every call and
+ * never cached: a cancelled run or a reassigned owner must take effect on the
+ * next request, not when a token expires.
+ */
+export async function getRunForGateway(runId: string, workspaceId: string) {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      createdBy: agentRuns.createdBy,
+      sessionRef: agentRuns.sessionRef,
+      policySnapshot: agentRuns.policySnapshot,
+    })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
+    .limit(1);
+  return run ?? null;
+}
+
+/**
  * The profile name that decides which Eve agent serves a run. The routing table
  * lives in `eveAgentForProfile`, so the stream proxy needs the name, not the id,
  * to pick the same mount the driver started the session on. A run whose profile
@@ -97,6 +117,19 @@ export async function getProfileNameForRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return row?.name ?? null;
+}
+
+/**
+ * One run's timeline, oldest first: every event the bridge persisted, which is
+ * what the SSE cursor replays from. Workspace-scoped like every other read, and
+ * the caller has already proved the run belongs here through getRun.
+ */
+export async function listRunEvents(workspaceId: string, runId: string) {
+  return db
+    .select({ sequence: runEvents.sequence, type: runEvents.type, data: runEvents.data, createdAt: runEvents.createdAt })
+    .from(runEvents)
+    .where(and(eq(runEvents.workspaceId, workspaceId), eq(runEvents.runId, runId)))
+    .orderBy(asc(runEvents.sequence));
 }
 
 /** Tool names a documents search is recorded under (the capability and the tool file name). */
