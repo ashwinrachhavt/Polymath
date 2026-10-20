@@ -1,3 +1,4 @@
+import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
@@ -305,6 +306,7 @@ export async function mirrorMessage(input: {
       parts: input.parts ?? null,
       runId: input.runId,
     });
+    await queueThreadSync(tx, input.workspaceId, threadId);
   });
 }
 
