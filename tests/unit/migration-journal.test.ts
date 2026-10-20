@@ -35,8 +35,8 @@ describe("migration journal ordering", () => {
     }
   });
 
-  it("includes the inbox tab-count index migration (0214)", () => {
-    const sql = readFileSync("src/db/migrations/0214_captures_inbox_tabs_index.sql", "utf8");
+  it("includes the inbox tab-count index migration (0217)", () => {
+    const sql = readFileSync("src/db/migrations/0217_captures_inbox_tabs_index.sql", "utf8");
     expect(sql).toContain("captures_workspace_state_created_idx");
     expect(sql).toContain("\"captures\"");
   });
