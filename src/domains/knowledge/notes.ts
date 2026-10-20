@@ -5,6 +5,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
+import { embedArtifact } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, recoveryCopies, workingDrafts } from "./schema";
 
 /*
@@ -237,7 +238,7 @@ export async function commitNoteSnapshot(
     note?: string;
   },
 ): Promise<{ versionId: string; versionNumber: number; version: number }> {
-  return withTransaction(async (tx) => {
+  const value = await withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "commitNoteSnapshot", ...input }, async () => {
       const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
       const [max] = await tx
@@ -276,6 +277,15 @@ export async function commitNoteSnapshot(
     });
     return value;
   });
+  // A committed version is the text the card embeds from; refresh its
+  // semantic relations best-effort, after the commit has landed, and never
+  // blocking the save.
+  try {
+    await embedArtifact(auth, { artifactId: input.artifactId });
+  } catch (cause) {
+    console.error(`embedArtifact after commit failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+  return value;
 }
 
 export async function renameNote(

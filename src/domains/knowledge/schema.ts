@@ -105,6 +105,8 @@ export const artifacts = pgTable(
     tags: jsonb("tags").notNull().default([]),
     /** Provenance for generated work: which run or proposal produced it. */
     producedByRunId: uuid("produced_by_run_id"),
+    /** Last card-embedding failure; null after a successful pass. */
+    embedError: text("embed_error"),
     ...mutable,
   },
   (t) => [index("artifacts_workspace_kind_idx").on(t.workspaceId, t.kind, t.updatedAt)],

@@ -1,0 +1,129 @@
+import { and, eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { artifacts, embeddings } from "@/domains/knowledge/schema";
+import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
+import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+
+/*
+ * ASH-174/ASH-184: cards embed like documents, and the semantic half of the
+ * knowledge graph ranks a card's nearest neighbours by cosine distance.
+ */
+
+const handle = makeTestDb();
+const suite = handle ? describe : describe.skip;
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
+import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
+import { autosaveNoteDraft, commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
+import { relatedNotes } from "@/domains/knowledge/relations";
+
+/** Deterministic 1536-wide vectors: basis directions per key. */
+function vec(dims: number[]): number[] {
+  const v = new Array(1536).fill(0);
+  for (const d of dims) v[d] = 1;
+  return v;
+}
+const fakeProvider = (byText: Record<string, number[]>): EmbeddingProvider => ({
+  model: "fake@1",
+  embed: async (values) => values.map((t) => byText[t] ?? vec([0])),
+});
+
+beforeAll(() => { holder.db = handle?.db; });
+afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
+
+const workspace = async () => ({ ...await seedWorkspace(holder.db!, `sr-${crypto.randomUUID()}`), role: "owner" as const });
+
+async function writeNote(auth: { workspaceId: string; userId: string; role: "owner" }, title: string, text: string) {
+  const note = await createNote(auth, { title });
+  await commitNoteSnapshot(auth, {
+    artifactId: note.id,
+    expectedVersion: 1,
+    content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+    plainText: text,
+  });
+  return note;
+}
+
+suite("card embeddings and semantic relations (real Postgres)", () => {
+  it("embeds a note's committed version and re-embed replaces, never doubles", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Alpha", "alpha body text");
+    const provider = fakeProvider({ "alpha body text": vec([1]) });
+
+    const first = await embedArtifact(auth, { artifactId: note.id, provider });
+    expect(first).toEqual({ status: "succeeded", chunks: 1 });
+    const again = await embedArtifact(auth, { artifactId: note.id, provider });
+    expect(again).toEqual({ status: "succeeded", chunks: 1 });
+
+    const rows = await holder.db!.select().from(embeddings).where(and(
+      eq(embeddings.workspaceId, auth.workspaceId),
+      eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+      eq(embeddings.ownerId, note.id),
+    ));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].model).toBe("fake@1");
+
+    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, note.id));
+    expect(card.embedError).toBeNull();
+  });
+
+  it("the commit hook records an unconfigured provider on the card and never blocks the save", async () => {
+    const auth = await workspace();
+    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const note = await writeNote(auth, "Beta", "beta body text");
+    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, note.id));
+    expect(card.embedError).toContain("No embedding provider configured");
+  });
+
+  it("ranks nearest cards by cosine distance and marks explicit links", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "Rent law", "rent law body");
+    const b = await writeNote(auth, "Rent control", "rent control body");
+    const c = await writeNote(auth, "Cooking", "cooking body");
+    // A and B point the same way; C is orthogonal (cosine distance 1).
+    const provider = fakeProvider({
+      "rent law body": vec([5]),
+      "rent control body": vec([5]),
+      "cooking body": vec([9]),
+    });
+    for (const n of [a, b, c]) await embedArtifact(auth, { artifactId: n.id, provider });
+
+    const related = await relatedNotes(auth, a.id);
+    expect(related.map((r) => r.id)).toEqual([b.id]);
+    expect(related[0].score).toBeCloseTo(1, 5);
+    expect(related[0].kind).toBe("note");
+    expect(related[0].excerpt).toBe("rent control body");
+    expect(related[0].alreadyLinked).toBe(false);
+
+    // An explicit edge flips the flag, so the panel can keep the two halves distinct.
+    await autosaveNoteDraft(auth, {
+      artifactId: a.id,
+      expectedVersion: 2,
+      content: { type: "doc", content: [] },
+      plainText: "rent law body\n\nSee [[Rent control]].",
+    });
+    const after = await relatedNotes(auth, a.id);
+    expect(after[0].alreadyLinked).toBe(true);
+  });
+
+  it("a card with no embedding has no semantic relations, and foreign workspaces never leak", async () => {
+    const auth = await workspace();
+    const other = await workspace();
+    const a = await writeNote(auth, "Lonely", "lonely body");
+    const outsider = await writeNote(other, "Outsider", "lonely body");
+    const provider = fakeProvider({ "lonely body": vec([3]) });
+    await embedArtifact(other, { artifactId: outsider.id, provider });
+
+    expect(await relatedNotes(auth, a.id)).toEqual([]);
+    expect(await relatedNotes(other, outsider.id)).toEqual([]);
+  });
+});

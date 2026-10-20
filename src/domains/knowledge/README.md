@@ -84,6 +84,17 @@ the reverse read of the same rows, and `listNoteOutlinks` /
 `listNoteBacklinks` return the other card's kind, the edge type, its context
 and a first-line excerpt so a backlink reads as what the related note is.
 
+## Semantic relations
+
+Cards embed like documents (`embedArtifact`): the artifact's current version
+text is chunked into `embeddings` rows under owner_type `artifact`, replaced
+on every re-embed, with failures recorded on `artifacts.embed_error` and never
+blocking a save (a commit or zettel accept triggers the pass best-effort).
+`relatedNotes` is the semantic half of the graph: nearest cards by cosine
+distance over those vectors (same workspace, same model), computed at read
+time so nothing drifts, each with a score and a first-line excerpt. Explicit
+edges are flagged `alreadyLinked` so a UI can keep the two halves distinct.
+
 ## Dossiers
 
 A dossier is a name plus a set of documents in this workspace
