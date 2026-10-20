@@ -89,3 +89,35 @@ describe("webSearchProvider resolution", () => {
     expect(() => webSearchProvider({ SEARCH_PROVIDER: "altavista" })).toThrow(WebSearchError);
   });
 });
+
+describe("searchWebForAgent quota gating", () => {
+  it("reserves firecrawl credits from the ledger and stops hard at exhaustion", async () => {
+    const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
+    const { firecrawlSearchCost } = await import("@/integrations/search/firecrawl");
+    let spent = 0;
+    const cap = firecrawlSearchCost(5); // one search's worth of credits, then exhaustion
+    const store = {
+      async reserve(_k: unknown, units: number) {
+        if (spent + units > cap) return null;
+        spent += units;
+        return { bucketId: "b" };
+      },
+      async settle() {},
+      async release() {
+        spent = 0;
+      },
+    };
+    const f = vi.fn(async () => new Response(JSON.stringify({ success: true, data: [] })));
+    vi.stubEnv("SEARCH_PROVIDER", "firecrawl");
+    vi.stubEnv("FIRECRAWL_HOSTED_API_KEY", "fc-test");
+    vi.stubGlobal("fetch", f);
+    const auth = { workspaceId: "w1" };
+    const first = await searchWebForAgent(auth, { query: "q", limit: 5 }, store);
+    expect(first.ok).toBe(true);
+    expect(spent).toBe(firecrawlSearchCost(5));
+    const second = await searchWebForAgent(auth, { query: "q", limit: 5 }, store);
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.error).toContain("free search allowance exhausted");
+    expect(f).toHaveBeenCalledTimes(1); // the exhausted call never reached the provider
+  });
+});

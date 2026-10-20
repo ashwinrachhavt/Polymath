@@ -1,4 +1,7 @@
 import type { AuthContext } from "@/domains/identity/resolve";
+import { providerEntry } from "@/integrations/providers/registry";
+import { drizzleQuotaStore, QuotaExhaustedError, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { firecrawlSearchCost } from "@/integrations/search/firecrawl";
 import { WebSearchError, webSearchProvider, type WebSearchResponse } from "@/integrations/search/provider";
 
 /*
@@ -10,6 +13,12 @@ import { WebSearchError, webSearchProvider, type WebSearchResponse } from "@/int
  * Provider errors are collapsed to a fixed message: an adapter's error text
  * can carry account or key detail, and the model (or API client) has no use
  * for it either way.
+ *
+ * ASH-187: when the resolved provider carries a quota in the registry (the
+ * hosted Firecrawl route today), the call reserves its credits from the
+ * shared ledger first and stops hard when the free allowance is exhausted.
+ * No paid fallback, no recharge — an exhausted route is a clean error, not a
+ * silent switch to a metered provider.
  */
 
 export const WEB_SEARCH_CAPABILITY = "web.search";
@@ -20,22 +29,38 @@ export type AgentWebSearchResult =
   | { ok: false; error: string };
 
 export async function searchWebForAgent(
-  // The workspace is part of the signature on purpose: a future provider with
-  // per-workspace keys must not have to change the call sites.
-  _auth: Pick<AuthContext, "workspaceId">,
+  // The workspace is part of the signature on purpose: the quota ledger is
+  // per-workspace, so a provider with a metered allowance needs to know whose
+  // balance the reservation draws on.
+  auth: Pick<AuthContext, "workspaceId">,
   input: { query: string; limit?: number },
+  quotaStore?: QuotaStore,
 ): Promise<AgentWebSearchResult> {
   const query = input.query.trim();
   if (!query) return { ok: false, error: "query is empty" };
   const limit = Math.min(Math.max(input.limit ?? 5, 1), WEB_SEARCH_MAX_RESULTS);
   try {
     const provider = webSearchProvider();
-    const results = await provider.search(query, limit);
+    const entry = providerEntry(provider.name);
+    const run = () => provider.search(query, limit);
+    const results =
+      entry?.quota && entry.enabled
+        ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
+        : await run();
     return { ok: true, provider: provider.name, query, results };
   } catch (cause) {
+    if (cause instanceof QuotaExhaustedError) {
+      return { ok: false, error: `free search allowance exhausted for ${cause.provider}; it renews with the next period` };
+    }
     if (cause instanceof WebSearchError) {
       return { ok: false, error: `web search failed (${cause.provider}), try again` };
     }
     return { ok: false, error: "web search failed, try again" };
   }
+}
+
+/** What one search call costs the provider's allowance, from the registry entry's verified pricing. */
+function searchCostEstimate(providerName: string, limit: number): number {
+  if (providerName === "firecrawl") return firecrawlSearchCost(limit);
+  return 1; // one request against a request-metered allowance
 }

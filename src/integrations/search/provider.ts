@@ -8,7 +8,10 @@
  * search tools (Perplexity/Exa/Tako/Browserbase/Parallel) bill per 1k requests
  * and their free promos expired in Aug/Sep 2026, so the default here is a
  * zero-key DuckDuckGo adapter, with free-tier keyed providers (Brave, Tavily,
- * Exa) selected automatically when their env key is present.
+ * Exa) selected automatically when their env key is present. ASH-187 adds the
+ * hosted Firecrawl route: the one verified recurring free search allowance
+ * (1,000 credits/month, no card), quota-gated at the caller through the
+ * provider registry and shared ledger — not here in selection.
  */
 
 export type WebSearchResult = {
@@ -47,6 +50,7 @@ export const WEB_SEARCH_TIMEOUT_MS = 10_000;
 import { braveProvider } from "./brave";
 import { duckDuckGoProvider } from "./duckduckgo";
 import { exaProvider } from "./exa";
+import { firecrawlSearchProvider } from "./firecrawl";
 import { searxngProvider } from "./searxng";
 import { tavilyProvider } from "./tavily";
 
@@ -60,6 +64,8 @@ import { tavilyProvider } from "./tavily";
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
   switch (choice) {
+    case "firecrawl":
+      return firecrawlSearchProvider(env);
     case "searxng":
       return searxngProvider(env);
     case "brave":
@@ -73,13 +79,14 @@ export function webSearchProvider(env: Record<string, string | undefined> = proc
     case undefined:
     case "":
       if (env.SEARXNG_URL) return searxngProvider(env);
+      if (env.FIRECRAWL_HOSTED_API_KEY) return firecrawlSearchProvider(env);
       if (env.BRAVE_SEARCH_API_KEY) return braveProvider(env);
       if (env.TAVILY_API_KEY) return tavilyProvider(env);
       if (env.EXA_API_KEY) return exaProvider(env);
       return duckDuckGoProvider();
     default:
       throw new WebSearchError(
-        `Unknown SEARCH_PROVIDER "${choice}". Expected searxng, brave, tavily, exa, or duckduckgo.`,
+        `Unknown SEARCH_PROVIDER "${choice}". Expected firecrawl, searxng, brave, tavily, exa, or duckduckgo.`,
         choice,
       );
   }
