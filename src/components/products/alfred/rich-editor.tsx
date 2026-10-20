@@ -83,6 +83,8 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
   const { state, notify } = useWorkspace();
   const [slash, setSlash] = useState<{ query: string; from: number; to: number } | null>(null);
   const [link, setLink] = useState<{ query: string; from: number; to: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [linkActive, setLinkActive] = useState(0);
   const [slashActive, setSlashActive] = useState(0);
   const [url, setUrl] = useState("");
@@ -155,8 +157,21 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
   const slashMatches = slash ? filterBlockCommands(slash.query) : [];
   const linkMatches = link ? candidates(link.query) : [];
   const formatting = useEditorState({ editor, selector: ({ editor }) => ({ bold: editor?.isActive("bold"), italic: editor?.isActive("italic"), bulletList: editor?.isActive("bulletList"), orderedList: editor?.isActive("orderedList"), blockquote: editor?.isActive("blockquote"), heading: editor?.isActive("heading", { level: 2 }), canUndo: editor?.can().undo(), canRedo: editor?.can().redo() }) });
+  // Menus open under the caret line, inside the panel, so they never cover the text being typed.
+  const menuAnchor = link?.to ?? slash?.to ?? null;
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!editor || !panel || menuAnchor === null) return;
+    try {
+      const caret = editor.view.coordsAtPos(menuAnchor);
+      const box = panel.getBoundingClientRect();
+      setMenuPos({ top: caret.bottom - box.top + 4, left: Math.max(8, Math.min(caret.left - box.left, box.width - 296)) });
+    } catch {
+      setMenuPos(null);
+    }
+  }, [editor, menuAnchor]);
   useEffect(() => { if (editor && editor.getMarkdown() !== content) editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false }); }, [content, editor]);
-  return <div className="relative panel overflow-hidden rounded-lg">{slash && slashMatches.length > 0 && <div className="absolute top-12 left-4"><SlashMenu items={slashMatches} active={slashActive} onPick={(command) => { editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (editor) applyBlock(editor, command); setSlash(null); }} /></div>}{link && linkMatches.length > 0 && <div className="absolute top-12 left-4"><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${artifact.title}]] `).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind}{artifact.version !== undefined ? ` / v${artifact.version}` : ""}</span></button>)}</div></div>}<div role="toolbar" aria-label="Formatting" className="flex flex-wrap gap-1 border-b border-border p-2">{[
+  return <div ref={panelRef} className="relative panel overflow-hidden rounded-lg">{slash && slashMatches.length > 0 && <div className="absolute z-50 top-12 left-4" style={menuPos ?? undefined}><SlashMenu items={slashMatches} active={slashActive} onPick={(command) => { editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (editor) applyBlock(editor, command); setSlash(null); }} /></div>}{link && linkMatches.length > 0 && <div className="absolute z-50 top-12 left-4" style={menuPos ?? undefined}><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${artifact.title}]] `).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind}{artifact.version !== undefined ? ` / v${artifact.version}` : ""}</span></button>)}</div></div>}<div role="toolbar" aria-label="Formatting" className="flex flex-wrap gap-1 border-b border-border p-2">{[
     { label: "Bold", icon: Bold, active: formatting?.bold, run: () => editor?.chain().focus().toggleBold().run() },
     { label: "Italic", icon: Italic, active: formatting?.italic, run: () => editor?.chain().focus().toggleItalic().run() },
     { label: "Bullet list", icon: List, active: formatting?.bulletList, run: () => editor?.chain().focus().toggleBulletList().run() },
