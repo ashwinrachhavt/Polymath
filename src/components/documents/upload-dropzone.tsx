@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, FileText, FileUp, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { requestJson, type RequestFailure } from "@/lib/client-request";
 
 /*
  * The one upload affordance: drop one or many files, watch each store, then
@@ -28,6 +29,23 @@ type FilePhase =
   | { kind: "error"; message: string };
 
 type Entry = { id: string; file: File; phase: FilePhase };
+
+// A poll can outlast a session. These kinds say the request will keep failing
+// for the same reason, so waiting out the full ceiling would turn a clear cause
+// into three minutes of silence and the wrong diagnosis at the end.
+const TERMINAL_POLL_KINDS = new Set<RequestFailure["kind"]>(["unauthenticated", "forbidden", "not_found"]);
+
+// A throttle is transient, so it stays retryable, but a server that keeps
+// throttling for half a minute is not going to answer inside this poll.
+const RATE_LIMIT_CEILING = 20;
+
+export type PollDecision = { action: "stop"; message: string } | { action: "continue"; rateLimited: boolean };
+
+/** Classify a failed poll: stop with the cause, retry, or retry and count a rate limit. */
+export function shouldStopPolling(failure: RequestFailure): PollDecision {
+  if (TERMINAL_POLL_KINDS.has(failure.kind)) return { action: "stop", message: failure.title };
+  return { action: "continue", rateLimited: failure.kind === "rate_limited" };
+}
 
 function Ring({ percent, indeterminate, done }: { percent: number; indeterminate?: boolean; done?: boolean }) {
   const radius = 20;
@@ -95,23 +113,38 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   // The reading ring is honest only if it ends: poll the document until a
   // terminal status, then stop. A long silence is reported, not spun forever.
   const poll = useCallback(async (id: string, documentId: string) => {
+    let rateLimited = 0;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      try {
-        const response = await fetch(`/api/v1/files?documentId=${encodeURIComponent(documentId)}`);
-        if (!response.ok) continue;
-        const body = (await response.json()) as { extractionStatus?: string | null; extractionError?: string | null };
-        if (body.extractionStatus === "succeeded") {
-          patch(id, { kind: "done", documentId });
-          router.refresh();
+      const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
+        `/api/v1/files?documentId=${encodeURIComponent(documentId)}`,
+      );
+      if (!result.ok) {
+        // A network blip is not a verdict; a 401/403/404 is, and the person
+        // needs the cause now rather than a queue-worker guess in three minutes.
+        const decision = shouldStopPolling(result.failure);
+        if (decision.action === "stop") {
+          patch(id, { kind: "error", message: decision.message });
           return;
         }
-        if (body.extractionStatus === "failed") {
-          patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
-          return;
+        if (decision.rateLimited) {
+          rateLimited += 1;
+          if (rateLimited >= RATE_LIMIT_CEILING) {
+            patch(id, { kind: "error", message: result.failure.title });
+            return;
+          }
         }
-      } catch {
-        // A blip is not a verdict.
+        continue;
+      }
+      const body = result.data;
+      if (body.extractionStatus === "succeeded") {
+        patch(id, { kind: "done", documentId });
+        router.refresh();
+        return;
+      }
+      if (body.extractionStatus === "failed") {
+        patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
+        return;
       }
     }
     patch(id, {
@@ -186,21 +219,11 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
     setOpenText(documentId);
     setOpenPending(true);
     setOpenBody(null);
-    try {
-      const detail = await fetch(`/api/v1/documents/${documentId}/preview`);
-      if (detail.ok) {
-        const data = (await detail.json()) as { excerpt?: string | null };
-        // The preview route returns an excerpt by design; the full text lives
-        // in the library's reader. Link there rather than shipping the body twice.
-        setOpenBody(data.excerpt ?? "");
-      } else {
-        setOpenBody("");
-      }
-    } catch {
-      setOpenBody("");
-    } finally {
-      setOpenPending(false);
-    }
+    const detail = await requestJson<{ excerpt?: string | null }>(`/api/v1/documents/${documentId}/preview`);
+    // The preview route returns an excerpt by design; the full text lives in
+    // the library's reader. Link there rather than shipping the body twice.
+    setOpenBody(detail.ok ? detail.data.excerpt ?? "" : "");
+    setOpenPending(false);
   };
 
   const busy = entries.some((entry) => entry.phase.kind === "uploading" || entry.phase.kind === "reading");

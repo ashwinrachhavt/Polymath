@@ -9,12 +9,16 @@ import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import { kindLabel, type BrowserRow } from "@/domains/knowledge/file-browser";
 import type { DocumentPreview } from "@/domains/knowledge/file-preview";
+import { requestJson } from "@/lib/client-request";
 import { archiveDocumentAction, restoreDocumentVersionAction } from "../library/actions";
 import { downloadPacketAction } from "./actions";
 import { PartyBlocks } from "./party-blocks";
 
 type Tab = "details" | "evidence" | "versions" | "activity";
-type Load = { id: string; state: "loading" } | { id: string; state: "error" } | { id: string; state: "ready"; data: DocumentPreview };
+type Load =
+  | { id: string; state: "loading" }
+  | { id: string; state: "error"; message: string }
+  | { id: string; state: "ready"; data: DocumentPreview };
 
 const cache = new Map<string, DocumentPreview>();
 
@@ -62,15 +66,18 @@ export function PreviewPane({
     // The pane is keyed by row, so a cached row never needs a fetch.
     if (cache.has(row.id)) return;
     const controller = new AbortController();
-    fetch(`/api/v1/documents/${row.id}/preview`, { signal: controller.signal })
-      .then((r) => (r.ok ? (r.json() as Promise<DocumentPreview>) : Promise.reject(new Error(String(r.status)))))
-      .then((data) => {
-        cache.set(row.id, data);
-        setLoad({ id: row.id, state: "ready", data });
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string }).name !== "AbortError") setLoad({ id: row.id, state: "error" });
-      });
+    void requestJson<DocumentPreview>(`/api/v1/documents/${row.id}/preview`, { signal: controller.signal }).then(
+      (result) => {
+        if (result.ok) {
+          cache.set(row.id, result.data);
+          setLoad({ id: row.id, state: "ready", data: result.data });
+          return;
+        }
+        // Abort is the pane closing or the row changing, not a failure to show.
+        if (result.failure.kind === "aborted") return;
+        setLoad({ id: row.id, state: "error", message: result.failure.title });
+      },
+    );
     return () => controller.abort();
   }, [row.id]);
 
@@ -161,7 +168,7 @@ export function PreviewPane({
       <div role="tabpanel" className="flex flex-col gap-5 overflow-auto px-4 py-4 text-[13px]">
         {!data ? (
           <p role="status" className="text-muted-foreground">
-            {load.id === row.id && load.state === "error" ? "Could not load this document." : "Loading…"}
+            {load.id === row.id && load.state === "error" ? load.message : "Loading…"}
           </p>
         ) : tab === "details" ? (
           <>
