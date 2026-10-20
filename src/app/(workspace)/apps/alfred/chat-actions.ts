@@ -31,7 +31,12 @@ export type StartChatResult = { ok: true; runId: string } | { ok: false; message
 
 export async function startChatRun(input: {
   objective: string;
-  subject: { type: "dossier" | "document" | "artifact"; id: string };
+  /**
+   * Omitted by the Assistant home, which starts a conversation before there is
+   * a record to name. The run then carries `subjects: []`, the column's own
+   * default — an invented subject with an empty id would be a false link.
+   */
+  subject?: { type: "dossier" | "document" | "artifact"; id: string };
 }): Promise<StartChatResult> {
   const objective = input.objective?.trim();
   if (!objective) return { ok: false, message: "Write a message first." };
@@ -56,7 +61,7 @@ export async function startChatRun(input: {
       auth,
       profileName,
       objective,
-      subjects: [{ type: input.subject.type, id: input.subject.id }],
+      subjects: input.subject ? [{ type: input.subject.type, id: input.subject.id }] : [],
       estimateUsd: "0.50",
     });
     return { ok: true, runId };

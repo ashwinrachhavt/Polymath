@@ -6,7 +6,7 @@ import { waitSettled } from "./helpers/settled";
 test("home opens Assistant", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL("/alfred");
-  await expect(page.locator("#content h1")).toContainText("Assistant");
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
   // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
 });
@@ -23,7 +23,7 @@ test("canonical routes render", async ({ page }) => {
 
   await page.goto("/");
   await expect(page).toHaveURL("/alfred");
-  await expect(page.locator("#content h1")).toContainText("Assistant");
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],
