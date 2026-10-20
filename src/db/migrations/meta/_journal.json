@@ -281,6 +281,13 @@
       "tag": "0211_note_embeddings",
       "when": 1792480410000,
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "tag": "0212_document_enrichment",
+      "when": 1792480420000,
+      "breakpoints": true
     }
   ]
 }
