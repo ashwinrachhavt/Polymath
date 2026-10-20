@@ -78,7 +78,7 @@ export function FocusScreen({ initialTask }: { initialTask?: string }) {
         const note = addArtifact(`Focus reflection: ${task?.title || "Task"}`, "note", `${completed ? "Completed focus interval" : "Ended early"}\n\nOutcome\n${outcome || "No reflection entered."}\n\nNext step\n${next || "Not recorded."}`);
         if (note) updateArtifact(note.id, { links: [current.taskId], tags: ["Focus reflection", sessionId] });
       }
-      if (data.get("done")) updateTask(current.taskId, { status: "DONE" });
+      if (data.get("done") && !updateTask(current.taskId, { status: "DONE" }).ok) return;
       // The stone follows the ledger: it shows only when this save added the entry.
       const hadReward = getSnapshot().rewards.some((reward) => reward.sessionId === sessionId);
       if (completed) awardReward({ title: "Clarity stone", earnedAt: new Date().toISOString(), sessionId });

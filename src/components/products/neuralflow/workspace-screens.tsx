@@ -43,7 +43,7 @@ function NoteEditor({ note, close }: { note: Artifact; close: () => void }) {
     event.preventDefault();
     if (!title.trim()) { setError("Enter a note title."); return; }
     if (state.artifacts.find((artifact) => artifact.id === note.id)?.version !== baselineVersion) { setError("This note changed in another view. Your draft has not been overwritten. Copy it, then close and reopen the note to load the latest revision."); return; }
-    updateArtifact(note.id, { title: title.trim(), body, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), links });
+    if (!updateArtifact(note.id, { title: title.trim(), body, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), links }).ok) return;
     notify("Canonical note saved locally. No AI rewrite was performed."); close();
   }
   return <form className="space-y-4" onSubmit={save}><Field label="Note title"><Input value={title} required onChange={(event) => setTitle(event.target.value)} /></Field>

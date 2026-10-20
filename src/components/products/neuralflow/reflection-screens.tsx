@@ -39,7 +39,7 @@ export function BrainDumpScreen() {
     const capture = addCapture(source); if (!capture) return;
     const created = chosen.flatMap((draft) => { const record = addTask(draft.title, { status: "INBOX", description: draft.description, priority: draft.priority, estimate: draft.estimate, projectId: draft.projectId || undefined, tags: ["Brain dump"] }); return record ? [record] : []; });
     const provenance = addArtifact("Brain dump: accepted local plan", "note", `Original capture: ${capture.id}\n\n${source}\n\nPrepared by a deterministic newline splitter, not AI. Selected tasks were edited and accepted by the owner into Inbox.`);
-    if (provenance) updateArtifact(provenance.id, { links: created.map((task) => task.id), tags: ["Planning", "Original capture"] });
+    if (provenance && !updateArtifact(provenance.id, { links: created.map((task) => task.id), tags: ["Planning", "Original capture"] }).ok) return;
     updateCapture(capture.id, { status: "TASK" });
     setDrafts((drafts || []).filter((draft) => !draft.selected)); setError(""); notify(`${created.length} canonical tasks captured locally. Original text retained in Inbox and a linked planning note. No AI ran.`);
   }

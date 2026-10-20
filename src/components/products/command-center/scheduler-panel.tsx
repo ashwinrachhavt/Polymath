@@ -26,7 +26,7 @@ export function SchedulerPanel() {
     setDraft((current) => ({ ...current, ...patch }));
   }
   return <Panel title="Scheduling preferences" description="Bounds the window focus and planning suggestions may use. No calendar provider is read or written from here." actions={<Status>{dirty ? "Unsaved changes" : "Saved locally"}</Status>}>
-    <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); if (problems.length) { notify(problems[0]); return; } updatePreferences({ scheduler: draft }); notify("Scheduling preferences saved locally. Focus suggestions use the earliest start hour."); }}>
+    <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); if (problems.length) { notify(problems[0]); return; } if (!updatePreferences({ scheduler: draft }).ok) return; notify("Scheduling preferences saved locally. Focus suggestions use the earliest start hour."); }}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Earliest focus start">
           <Select value={draft.workStartHour} onChange={(event) => set({ workStartHour: clamp(Number(event.target.value), workStartRange.min, workStartRange.max) })}>

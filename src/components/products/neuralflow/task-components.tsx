@@ -130,8 +130,8 @@ export function TaskRow({ task }: { task: Task }) {
   const project = state.projects.find((item) => item.id === task.projectId);
   const done = task.status === "DONE";
   function toggleDone() {
-    if (task.status === "DONE") { updateTask(task.id, { status: "READY", completedAt: undefined }); notify("Task reopened locally."); return; }
-    completeTask(task.id);
+    if (task.status === "DONE") { if (!updateTask(task.id, { status: "READY", completedAt: undefined }).ok) return; notify("Task reopened locally."); return; }
+    if (!completeTask(task.id).ok) return;
     notify(task.recurrence ? "Task completed locally and moved to its next date." : "Task marked done locally. Reopen with its checkbox; task completion does not grant focus rewards.");
   }
   return <div className={`nf-row grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 border-b border-border py-2.5 last:border-0 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto]`} data-done={done} data-motion={state.preferences.reducedMotion ? "reduce" : "full"}>
