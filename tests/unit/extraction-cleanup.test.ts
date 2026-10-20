@@ -38,3 +38,40 @@ describe("normalizeExtractedText", () => {
     expect(normalizeExtractedText("\u0000\u0007\u001f", "plain")).toBe("");
   });
 });
+
+describe("docling adapter empty verdict", () => {
+  it("returns ok:false with the named error when md_content is empty", async () => {
+    const { createDoclingDockerProvider } = await import("@/integrations/extraction/docling-docker");
+    const fetchMock = async () => new Response(JSON.stringify({ document: { md_content: "", page_count: 1 } }), { status: 200 });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      const result = await createDoclingDockerProvider("http://docling.fixture").extract({
+        bytes: new Uint8Array([1]), filename: "f.pdf", mimeType: "application/pdf",
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("docling-serve returned no readable text");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects oversized input before any fetch", async () => {
+    const { createDoclingDockerProvider } = await import("@/integrations/extraction/docling-docker");
+    const { MAX_UPLOAD_BYTES } = await import("@/lib/file-validation");
+    let fetched = false;
+    const fetchMock = async () => { fetched = true; throw new Error("should not fetch"); };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      const result = await createDoclingDockerProvider("http://docling.fixture").extract({
+        bytes: new Uint8Array(MAX_UPLOAD_BYTES + 1), filename: "f.pdf", mimeType: "application/pdf",
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("The document is too large to read.");
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

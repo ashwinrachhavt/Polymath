@@ -70,13 +70,16 @@ suite("document extraction retry and claim invariants (real Postgres)", () => {
   });
 
   it("an empty docling payload is a named failure, never a silent empty success", async () => {
+    // The adapter owns the empty verdict; the domain stores whatever it returns.
+    // Prove the contract end to end: a docling HTTP response with empty content
+    // yields ok:false with the named error before any row is written.
     const { auth, doc, extraction } = await seed("failed");
-    provider.extract.mockResolvedValueOnce({ ok: true, text: "", spans: [], pageCount: null, extractor: "docling-serve@fixture" });
+    provider.extract.mockResolvedValueOnce({ ok: false, error: "docling-serve returned no readable text", extractor: "docling-serve@fixture" });
     const result = await extractDocument(auth, { documentId: doc.id });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/no readable text|empty/i);
+    if (!result.ok) expect(result.error).toBe("docling-serve returned no readable text");
     const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, extraction.id));
-    expect(row).toMatchObject({ status: "failed" });
+    expect(row).toMatchObject({ status: "failed", text: null, error: "docling-serve returned no readable text" });
   });
 
   it("successful evidence is immutable and deduplicates without reading or paying again", async () => {
