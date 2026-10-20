@@ -89,10 +89,10 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   // The target reads the reverse edge; following it lands on the source,
   // whose own panel shows the forward edge.
   await page.goto(targetUrl);
-  await expect(page.getByText("Linked from", { exact: true })).toBeVisible();
+  await expect(page.getByText("Links to this note", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: sourceTitle, exact: true }).click();
   await expect(page).toHaveURL(/\/alfred\/notebook\?id=/);
-  await expect(page.getByText("Links to", { exact: true })).toBeVisible();
+  await expect(page.getByText("References", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: targetTitle, exact: true })).toBeVisible();
 });
 
