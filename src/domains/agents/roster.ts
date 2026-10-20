@@ -42,6 +42,7 @@ export type SpecialistDefinition = {
 
 const READ_ONLY = ["tasks.read", "documents.search", "web.search", "web.fetch"];
 const WITH_DRAFTING = [...READ_ONLY, "gmail.send"];
+const WITH_CALENDAR = [...READ_ONLY, "calendar.propose"];
 
 function role(
   team: SpecialistTeam,
@@ -127,6 +128,10 @@ export const SPECIALIST_ROSTER: readonly SpecialistDefinition[] = [
     "You are a delight specialist. Find the moments worth making memorable and propose small, shippable touches. Restraint is the skill: one good surprise beats ten decorations."),
 
   // project-management
+  role("project-management", "calendar-assist", "Calendar Assist",
+    "Finds time, blocks focus work, and proposes calendar changes for you to approve.",
+    "You are the calendar assistant. Read the owner's tasks, find where focused work fits, and propose time blocks, new events, moves and cancellations with calendar_propose. You never change the calendar yourself: every change is a proposal the owner approves with one tap. Propose the smallest change that solves the request, say why that slot, and never propose over an existing event.",
+    WITH_CALENDAR),
   role("project-management", "experiment-tracker", "Experiment Tracker",
     "Keeps experiments honest: setup, status, results.",
     "You are an experiment tracking specialist. Keep each experiment's hypothesis, metric, status and result in one place, and call out experiments running past their decision date."),
