@@ -22,7 +22,7 @@ import { createPdfTextLayerProvider } from "../../src/integrations/extraction/pd
 import type { ExtractionProvider } from "../../src/integrations/extraction/provider";
 
 /** A minimal valid one-page PDF with a text layer (content stream draws "Polymath smoke test"). */
-function samplePdf(): Uint8Array {
+export function samplePdf(): Uint8Array {
   const objects = [
     "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
     "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
@@ -96,4 +96,8 @@ for (const { name, provider } of configured) {
     console.log(`\n[${name}] FAILED in ${seconds}s — ${result.error}`);
   }
 }
-process.exit(failures ? 1 : 0);
+
+/** Run the smoke only when executed directly; an import (the lane test) gets the helpers. */
+const invokedDirectly = process.argv[1]?.endsWith("extraction-providers.mts");
+if (invokedDirectly) process.exit(failures ? 1 : 0);
+else if (failures) throw new Error(`${failures} configured provider(s) failed`);

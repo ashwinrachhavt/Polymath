@@ -13,6 +13,6 @@
     "package.json": [],
     "pnpm-lock.yaml": [],
     "scripts/pair-companion.ts": ["tests/integration/companion-token.test.ts"],
-    "scripts/smoke/extraction-providers.mts": []
+    "scripts/smoke/extraction-providers.mts": ["tests/unit/extraction-providers-smoke.test.ts"]
   }
 }
