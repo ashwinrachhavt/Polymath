@@ -51,8 +51,16 @@ commit a real value.
 | `SEARXNG_URL` | Private metasearch endpoint | Falls back to keyed providers |
 | `FIRECRAWL_API_URL` | Firecrawl endpoint | Crawl unavailable |
 | `FIRECRAWL_API_KEY` | Firecrawl auth | |
+| `OUTBOX_DISPATCH_SECRET` | Bearer for `/api/internal/cron` and `/api/internal/outbox` | Both routes answer 404 |
+| `CRON_SECRET` | Bearer Vercel Cron sends on GET | Scheduled ticks answer 404; run the drain by hand or locally |
 | Clerk keys | Identity | App cannot authenticate |
 | Object storage keys | File blobs | Uploads unavailable |
+
+`OUTBOX_DISPATCH_SECRET` and `CRON_SECRET` are both accepted by
+`/api/internal/cron`: the first is for an operator or local script, the second is
+what Vercel Cron signs with. Set both in a deployment — `vercel.json` schedules
+the GET once a day, and without `CRON_SECRET` that tick is a 404 that looks like
+a quiet no-op.
 
 Provider selection is **in code**, in `src/integrations/*/provider.ts`. Reading
 the env var alone does not tell you which adapter is active; read the resolver.
