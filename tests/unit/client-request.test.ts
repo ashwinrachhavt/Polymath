@@ -186,6 +186,20 @@ describe("requestJson transport failures", () => {
     expect(result.failure.kind).toBe("network");
     expect(result.failure.title).toMatch(/did not reach the server/i);
   });
+
+  it("an AbortSignal.timeout rejection is timeout, not network", async () => {
+    // AbortSignal.timeout() rejects with name "TimeoutError"; the request may
+    // have reached the server, so "check your connection" is the wrong advice.
+    const error = new DOMException("The operation timed out.", "TimeoutError");
+    fetchMock.mockRejectedValue(error);
+    const result = await requestJson("/api/v1/notes");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.kind).toBe("timeout");
+    expect(result.failure.kind).not.toBe("network");
+    expect(result.failure.title).toMatch(/did not answer in time/i);
+    expect(result.failure.title).not.toMatch(/check your connection/i);
+  });
 });
 
 describe("requestJson request shape", () => {

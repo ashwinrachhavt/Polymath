@@ -15,6 +15,7 @@ export type RequestFailureKind =
   | "rate_limited"
   | "server"
   | "network"
+  | "timeout"
   | "aborted"
   | "malformed";
 
@@ -44,6 +45,7 @@ const KIND_COPY: Record<RequestFailureKind, string> = {
   rate_limited: "Too many requests. Wait a moment and try again.",
   server: "The server could not complete this. Try again; if it keeps failing, wait and retry later.",
   network: "The request did not reach the server. Check your connection, then retry; if a change was being submitted, check the record before sending it again.",
+  timeout: "The server did not answer in time. Retry; if the change was a submission, check the record before sending it again.",
   aborted: "The request was cancelled. If a change was being submitted, check the record before sending it again.",
   malformed: "The server answered, but the response could not be read. Retry; if it keeps happening, reload the page.",
 };
@@ -57,6 +59,20 @@ function isAbortError(error: unknown): boolean {
     typeof error === "object" &&
     error !== null &&
     (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+/*
+ * AbortSignal.timeout() rejects fetch with a TimeoutError, which is neither a
+ * cancellation (nobody aborted it) nor a broken connection (the request may
+ * well have reached the server and be running). Reporting it as `network`
+ * told the person to check a connection that was fine.
+ */
+function isTimeoutError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === "TimeoutError"
   );
 }
 
@@ -110,6 +126,9 @@ export async function requestJson<T>(
     // network failed would be a lie about something they did themselves.
     if (isAbortError(error)) {
       return { ok: false, failure: { kind: "aborted", title: KIND_COPY.aborted } };
+    }
+    if (isTimeoutError(error)) {
+      return { ok: false, failure: { kind: "timeout", title: KIND_COPY.timeout } };
     }
     return { ok: false, failure: { kind: "network", title: KIND_COPY.network } };
   }
