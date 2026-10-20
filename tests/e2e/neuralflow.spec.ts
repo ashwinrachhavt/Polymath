@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import { sampleState } from "../fixtures/sample-workspace";
 
 async function preview(page: Page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem("axiom-ui-preview-v1") || "{}"));
@@ -38,6 +37,15 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect(state.tasks.filter((task: { tags: string[] }) => task.tags.includes("Brain dump"))).toHaveLength(2);
   expect(state.captures.some((capture: { text: string }) => capture.text.includes("Prepare a bounded review"))).toBe(true);
   expect(state.artifacts.some((note: { title: string; links: string[] }) => note.title === "Brain dump: accepted local plan" && note.links.length === 2)).toBe(true);
+  // The scheduler only proposes blocks for Ready and In progress tasks, so
+  // promote both accepted captures through the same inspector flow test 1 uses.
+  await page.goto("/apps/neuralflow/tasks");
+  for (const title of ["Prepare a bounded review", "Write the findings"]) {
+    await page.getByRole("button", { name: title, exact: true }).first().click();
+    const inspector = page.getByRole("dialog");
+    await inspector.getByRole("combobox", { name: "Status" }).selectOption("READY");
+    await inspector.getByRole("button", { name: "Save task locally" }).click();
+  }
   await page.goto("/apps/neuralflow/scheduler");
   // The hydration snapshot swap can remount the controlled input under the
   // fill, so one fill reverts to today even with a hydration wait. Refill
@@ -102,8 +110,11 @@ test("a local overnight meeting retains full metadata and uses canonical event n
 });
 
 test("a canonical rich note saves an immutable local revision and shared task link", async ({ page }) => {
-  // The link target is a task the fixture owns; an empty default workspace has none.
-  await page.addInitScript((state) => localStorage.setItem("axiom-ui-preview-v1", JSON.stringify(state)), sampleState);
+  // The link target is created through the UI: the workspace boots empty.
+  await page.goto("/apps/neuralflow/tasks");
+  await page.getByRole("textbox", { name: "Quick task title" }).fill("Link target task");
+  await page.getByRole("button", { name: "Capture task", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Link target task", exact: true })).toBeVisible();
   await page.goto("/apps/neuralflow/notes");
   await page.getByRole("button", { name: "New note", exact: true }).click();
   let dialog = page.getByRole("dialog");
@@ -113,12 +124,13 @@ test("a canonical rich note saves an immutable local revision and shared task li
   await page.getByRole("button", { name: "Shared parity reflection", exact: true }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Rich note content" }).fill("Revised owner note.");
-  await dialog.getByRole("checkbox", { name: "Task: Review the canonical Polymath data model", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "Task: Link target task", exact: true }).check();
   await dialog.getByRole("button", { name: "Save note locally" }).click();
   const state = await preview(page);
   const note = state.artifacts.find((artifact: { title: string }) => artifact.title === "Shared parity reflection");
   expect(note.body).toContain("Revised owner note.");
-  expect(note.links).toContain("task-architecture");
+  const linkTarget = state.tasks.find((task: { title: string }) => task.title === "Link target task");
+  expect(note.links).toContain(linkTarget.id);
   expect(state.artifactVersions.filter((version: { artifactId: string }) => version.artifactId === note.id).length).toBeGreaterThanOrEqual(2);
   await page.reload();
   await expect(page.getByRole("button", { name: "Shared parity reflection", exact: true })).toBeVisible();
