@@ -63,18 +63,21 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]): CardNode[] {
   return placed;
 }
 
+const RELATION_NAME: Record<string, string> = { related: "related", explains: "explains", supports: "supports", contradicts: "challenges", applies: "applies to", extends: "extends", contrasts: "contrasts with", source: "derived from" };
+
 function toEdge(e: GraphEdge): Edge {
   const suggested = e.linkType === "semantic";
+  const typed = RELATION_NAME[e.linkType];
   return {
     id: e.id,
     source: e.source,
     target: e.target,
     animated: false,
-    label: suggested && e.score != null ? `${Math.round(e.score * 100)}%` : undefined,
+    label: suggested && e.score != null ? `${Math.round(e.score * 100)}%` : typed,
     labelStyle: { fontSize: 10, fill: "var(--muted-foreground)" },
     labelBgStyle: { fill: "var(--background)" },
-    style: suggested ? { stroke: "var(--muted-foreground)", strokeDasharray: "5 4", strokeWidth: 1 } : { stroke: "var(--foreground)", strokeWidth: 1.5 },
-    markerEnd: suggested ? undefined : { type: MarkerType.ArrowClosed, color: "var(--foreground)" },
+    style: suggested ? { stroke: "var(--muted-foreground)", strokeDasharray: "5 4", strokeWidth: 1 } : { stroke: e.linkType === "contradicts" ? "var(--destructive)" : "var(--foreground)", strokeWidth: 1.5 },
+    markerEnd: suggested ? undefined : { type: MarkerType.ArrowClosed, color: e.linkType === "contradicts" ? "var(--destructive)" : "var(--foreground)" },
   };
 }
 
@@ -127,7 +130,7 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
             <Button size="sm" onClick={() => void combine()} disabled={busy}>{busy ? "Combining" : "Combine into new zettel"}</Button>
           </>
         ) : (
-          <span className="text-muted-foreground">Shift-click or drag a box to select cards. Solid lines are links; dashed lines are suggestions.</span>
+          <span className="text-muted-foreground">Shift-click or drag a box to select cards. Solid lines are links with their meaning; dashed lines are suggestions.</span>
         )}
         {error && <span role="alert" className="text-destructive">{error}</span>}
       </div>

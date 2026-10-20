@@ -13,10 +13,16 @@ export const metadata = { title: "Graph · Polymath" };
  * links solid, machine suggestions dashed. Drag between two cards to tie
  * them; select two or more and combine them into one new zettel.
  */
-async function GraphSurface() {
+async function GraphSurface({ searchParams }: { searchParams: Promise<{ focus?: string | string[] }> }) {
   await connection();
   const auth = await getAuthContext();
-  const { nodes, edges } = await listCardGraph(auth);
+  const all = await listCardGraph(auth);
+  // Local graph: one card and its direct neighbours.
+  const raw = (await searchParams).focus;
+  const focus = typeof raw === "string" ? raw : undefined;
+  const near = focus ? new Set([focus, ...all.edges.flatMap((e) => (e.source === focus ? [e.target] : e.target === focus ? [e.source] : []))]) : null;
+  const nodes = near ? all.nodes.filter((n) => near.has(n.id)) : all.nodes;
+  const edges = near ? all.edges.filter((e) => near.has(e.source) && near.has(e.target)) : all.edges;
   return nodes.length === 0 ? (
     <Empty title="No cards yet" description="Write a note or a zettel and it appears here, linked to what it resembles." />
   ) : (
@@ -24,11 +30,11 @@ async function GraphSurface() {
   );
 }
 
-export default function AlfredGraphPage() {
+export default function AlfredGraphPage({ searchParams }: { searchParams: Promise<{ focus?: string | string[] }> }) {
   return (
     <Screen title="Graph" description="Tie ideas together. Drag from one card to another to link them, or select several and combine them into a new zettel.">
       <Suspense fallback={<Skeleton className="h-[70vh] min-h-96 rounded-xl" />}>
-        <GraphSurface />
+        <GraphSurface searchParams={searchParams} />
       </Suspense>
     </Screen>
   );

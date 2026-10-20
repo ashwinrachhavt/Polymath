@@ -547,6 +547,7 @@ export function NoteEditor({
             </div>
           </div>
         )}
+        <Link className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={`/alfred/graph?focus=${noteId}`}>Show in graph</Link>
         {related.filter((r) => !r.alreadyLinked).length > 0 && (
           <div className="border-t border-border pt-3">
             <p className="text-xs font-medium text-muted-foreground">Related by meaning</p>
