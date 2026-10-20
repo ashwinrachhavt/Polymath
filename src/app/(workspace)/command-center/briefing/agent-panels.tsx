@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Empty, Panel, Status } from "@/components/workspace/ui";
+import { Panel, Status } from "@/components/workspace/ui";
 import { countPendingProposals, listTopPendingProposals } from "@/domains/actions/queries";
 import { overnightRuns } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
@@ -79,10 +79,7 @@ export async function AgentPanels() {
           ))}
         </div>
         {pendingCount === 0 ? (
-          <Empty
-            title="Nothing needs your judgment"
-            description="When an agent wants to change something outside Polymath, it proposes the exact payload in Reviews first."
-          />
+          <p className="text-[13px] text-muted-foreground">Nothing is waiting on you.</p>
         ) : null}
       </Panel>
 
@@ -109,7 +106,7 @@ export async function AgentPanels() {
           ))}
         </div>
         {overnight.items.length === 0 ? (
-          <Empty title="No runs in the last 24 hours" description="Start work from Alfred or hire a specialist; their runs log here." />
+          <p className="text-[13px] text-muted-foreground">No runs yet. Start work with the assistant or hire a specialist.</p>
         ) : null}
       </Panel>
     </div>

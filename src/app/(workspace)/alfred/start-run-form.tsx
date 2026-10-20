@@ -43,14 +43,14 @@ export function StartRunForm({ dossiers = [] }: { dossiers?: Array<{ id: string;
   return (
     <div className="flex flex-col gap-3">
       <label htmlFor="objective" className="sr-only">
-        What should Alfred do?
+        What should the assistant do?
       </label>
       <textarea
         id="objective"
         rows={3}
         value={objective}
         onChange={(event) => setObjective(event.target.value)}
-        placeholder="Describe an objective. Alfred proposes; you approve anything that leaves Polymath."
+        placeholder="Describe an objective. Polymath proposes; you approve anything that leaves Polymath."
         className="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3"
       />
       {dossiers.length > 0 ? (

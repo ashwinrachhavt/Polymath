@@ -131,7 +131,7 @@ export async function DossiersSurface({
         {detail ? (
           <Section title={detail.title} description="The documents this dossier holds, each pinned at the version it was attached at.">
             {detail.documents.length === 0 ? (
-              <p className="text-muted-foreground text-[13px]">No documents yet. Create a dossier with documents, or ask Alfred to attach them.</p>
+              <p className="text-muted-foreground text-[13px]">No documents yet. Create a dossier with documents, or ask the assistant to attach them.</p>
             ) : (
               <ul className="flex flex-col gap-1">
                 {docsPaged!.items.map((doc) => (

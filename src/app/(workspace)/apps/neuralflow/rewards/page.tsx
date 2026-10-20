@@ -61,9 +61,9 @@ async function Rewards() {
       </Panel>
 
       <Panel title="Definitions" description="What a reward is. Defining one changes no balances and awards nothing.">
-        <div className="divide-y divide-border">
+        <div className="flex flex-col gap-4">
           {overview.definitions.map((definition) => (
-            <div key={definition.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+            <div key={definition.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-medium">
                   {definition.label} <span className="text-muted-foreground">({definition.key})</span>
@@ -87,16 +87,16 @@ async function Rewards() {
       </Panel>
 
       <Panel title="Ledger" description="Newest entries first. The ledger is append-only; a reversal is a new negative row, never a delete.">
-        <div className="divide-y divide-border">
+        <div className="flex flex-col gap-4">
           {overview.ledger.map((entry) => (
-            <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+            <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-medium">{entry.definitionLabel}</p>
                 <p className="text-xs text-muted-foreground">
                   {entry.reason.replaceAll("_", " ")} · {when(entry.createdAt)}
                 </p>
               </div>
-              <p className="font-mono text-[13px] tabular-nums">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
+              <p className="readout text-[13px]">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
             </div>
           ))}
           {!overview.ledger.length ? (

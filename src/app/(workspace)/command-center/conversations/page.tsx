@@ -6,7 +6,7 @@ import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
-import { listConversationProfiles, pageConversations } from "@/domains/conversations/queries";
+import { listConversationProfiles, pageConversations , formatThreadTime } from "@/domains/conversations/queries";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { ConversationForm } from "./conversation-form";
@@ -18,10 +18,6 @@ export const metadata = { title: "Conversations · Polymath" };
  * Postgres, so a reload or another device sees the same list. Counts and
  * last activity are derived from the messages table at render.
  */
-
-function when(date: Date | null): string {
-  return date ? date.toISOString().slice(0, 16).replace("T", " ") + "Z" : "—";
-}
 
 const BASE = "/command-center/conversations";
 
@@ -69,7 +65,7 @@ async function Conversations({ searchParams }: { searchParams: Promise<RawSearch
                   {conversation.subjectType ? ` · about ${conversation.subjectType}` : ""}
                 </p>
               </div>
-              <Status>active {when(conversation.lastMessageAt ?? conversation.updatedAt)}</Status>
+              <Status>active {formatThreadTime(conversation.lastMessageAt ?? conversation.updatedAt)}</Status>
             </div>
           ))}
         </div>

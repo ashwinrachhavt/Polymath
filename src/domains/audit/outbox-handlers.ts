@@ -1,15 +1,15 @@
-import postgres from "postgres";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
-import { sources } from "@/domains/knowledge/schema";
+import { documents } from "@/domains/knowledge/schema";
+import { recordSource } from "@/domains/knowledge/sources";
 import { isTerminalCrawlStatus, pollCrawl, submitCrawl } from "@/integrations/firecrawl/client";
 import { memberships } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { OutboxDeferredError, OutboxParkedError, updateOutboxPayload, type ClaimedOutboxEvent, type OutboxHandler } from "./outbox";
+import { OutboxParkError, updateOutboxPayload, type ClaimedOutboxEvent, type OutboxHandler } from "./outbox";
 
 /*
  * Consumers for the outbox dispatcher (ASH-134 Q03). Intake queues
@@ -99,8 +99,7 @@ function isProviderDown(cause: unknown): boolean {
   return cause instanceof TypeError;
 }
 
-export function crawlRequestedHandler(rawClient: ReturnType<typeof postgres>): OutboxHandler {
-  return async (event: ClaimedOutboxEvent) => {
+export const crawlRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
     const raw = event.payload ?? {};
     // A payload that is not an object was never written by this handler's
     // producer. Failing loudly beats completing silently with nothing done -
@@ -122,15 +121,15 @@ export function crawlRequestedHandler(rawClient: ReturnType<typeof postgres>): O
       try {
         submitted = await submitCrawl(url, { limit, maxDepth });
       } catch (cause) {
-        if (isProviderDown(cause)) throw new OutboxDeferredError("Firecrawl is unreachable", 60_000);
+        if (isProviderDown(cause)) throw new OutboxParkError(60_000, "Firecrawl is unreachable");
         throw cause;
       }
-      await updateOutboxPayload(rawClient, {
+      await updateOutboxPayload({
         id: event.id,
         leaseToken: event.leaseToken,
         payload: { ...payload, jobId: submitted.jobId, startedAt: new Date().toISOString() },
       });
-      throw new OutboxParkedError(CRAWL_POLL_BASE_MS, "crawl submitted, awaiting pages");
+      throw new OutboxParkError(CRAWL_POLL_BASE_MS, "crawl submitted, awaiting pages");
     }
 
     // Pass n: read the job. A status endpoint that cannot answer is deferred,
@@ -139,7 +138,7 @@ export function crawlRequestedHandler(rawClient: ReturnType<typeof postgres>): O
     try {
       poll = await pollCrawl(jobId);
     } catch (cause) {
-      if (isProviderDown(cause)) throw new OutboxDeferredError("Firecrawl is unreachable", 60_000);
+      if (isProviderDown(cause)) throw new OutboxParkError(60_000, "Firecrawl is unreachable");
       throw cause;
     }
 
@@ -148,12 +147,12 @@ export function crawlRequestedHandler(rawClient: ReturnType<typeof postgres>): O
 
     const polls = typeof payload.polls === "number" ? payload.polls : 0;
     if (!isTerminalCrawlStatus(poll.status) && !abandoned) {
-      await updateOutboxPayload(rawClient, {
+      await updateOutboxPayload({
         id: event.id,
         leaseToken: event.leaseToken,
         payload: { ...payload, polls: polls + 1 },
       });
-      throw new OutboxParkedError(nextPollMs(polls + 1), `crawl still ${poll.status}`);
+      throw new OutboxParkError(nextPollMs(polls + 1), `crawl still ${poll.status}`);
     }
 
     if (poll.status === "failed" || poll.status === "cancelled" || abandoned) {
@@ -175,7 +174,7 @@ export function crawlRequestedHandler(rawClient: ReturnType<typeof postgres>): O
       throw new Error(`crawl completed but none of its ${outcome.failed} page(s) could be filed`);
     }
   };
-}
+
 
 /**
  * Every page becomes a document, and every page becomes a source row.
@@ -208,6 +207,17 @@ async function landCrawlPages(
     if (seen.has(sourceUrl)) continue;
     seen.add(sourceUrl);
 
+    // At-least-once delivery: this event may be redelivered after it already
+    // filed these pages. `documents` holds one row per (workspace, source_url),
+    // so a second intake would violate that index and dead-letter the crawl.
+    // Checking first is what makes the handler idempotent.
+    const [existing] = await db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(and(eq(documents.workspaceId, auth.workspaceId), eq(documents.sourceUrl, sourceUrl)))
+      .limit(1);
+    if (existing) continue;
+
     const bytes = new TextEncoder().encode(trimmed);
     if (bytes.byteLength > MAX_UPLOAD_BYTES) continue;
     const contentHash = await sha256Hex(bytes);
@@ -222,25 +232,14 @@ async function landCrawlPages(
         contentHash,
         origin: "crawl",
         sourceUrl,
-        inTransaction: async (tx) => {
-          await tx
-            .insert(sources)
-            .values({
-              workspaceId: auth.workspaceId,
-              kind: "web",
-              title,
-              url: sourceUrl,
-              contentHash,
-              fetchedAt: new Date(),
-              providerRequestId: input.jobId,
-              createdBy: auth.userId,
-              updatedBy: auth.userId,
-            })
-            .onConflictDoNothing({
-              target: [sources.workspaceId, sources.url, sources.contentHash],
-              where: sql`url is not null and content_hash is not null`,
-            });
-        },
+        inTransaction: (tx) =>
+          recordSource(auth, tx, {
+            title,
+            url: sourceUrl,
+            contentHash,
+            kind: "web",
+            providerRequestId: input.jobId,
+          }),
       });
       landed += 1;
     } catch (cause) {
@@ -259,14 +258,7 @@ function safeSlug(url: URL): string {
   return (base || "page").slice(0, 80);
 }
 
-/**
- * The consumer registry for one dispatcher pass. A factory rather than a
- * constant because the crawl handler must write back to the row it is holding,
- * and only the dispatcher owns the raw client that can.
- */
-export function outboxHandlers(rawClient: ReturnType<typeof postgres>): Record<string, OutboxHandler> {
-  return {
-    "document.extraction_requested": extractionRequestedHandler,
-    [CRAWL_TOPIC]: crawlRequestedHandler(rawClient),
-  };
-}
+export const outboxHandlers: Record<string, OutboxHandler> = {
+  "document.extraction_requested": extractionRequestedHandler,
+  [CRAWL_TOPIC]: crawlRequestedHandler,
+};

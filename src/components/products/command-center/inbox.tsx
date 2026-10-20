@@ -39,11 +39,11 @@ export default function Inbox() {
         <p className="whitespace-pre-wrap break-words text-[13px]">{capture.text}</p>
         {capture.attachment && <div className="mt-3"><ImportedFileState name={capture.attachment.label} size={capture.attachment.size} value={capture.attachment.value} /></div>}
         {capture.status === "UNPROCESSED" && <div className="mt-3 flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "task")) notify("Task created in NeuralFlow. Original material retained in Inbox."); }}>Make task</Button>
-          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "note")) notify("Note created in Alfred. Original material retained in Inbox."); }}>Make note</Button>
+          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "task")) notify("Task created in Work. Original material retained in the inbox."); }}>Make task</Button>
+          <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "note")) notify("Note created in the library. Original material retained in the inbox."); }}>Make note</Button>
           <Button size="sm" variant="ghost" onClick={() => updateCapture(capture.id, { status: "ARCHIVED" })}>Archive</Button>
         </div>}
-        {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/alfred/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in NeuralFlow" : "Open note in Alfred"}</Link></Button>}
+        {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/alfred/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in Work" : "Open note in the assistant"}</Link></Button>}
         {capture.status === "ARCHIVED" && <Button className="mt-3" size="sm" variant="outline" onClick={() => updateCapture(capture.id, { status: "UNPROCESSED" })}>Restore capture</Button>}
       </article>)}</div>
       {!captures.length && <Empty title="Nothing in this view" description="Capture material above or choose another triage status." />}

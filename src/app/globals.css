@@ -77,28 +77,10 @@
      dialogs, popovers). Warm-tinted to the ground, never grey-black. */
   --shadow: 0 1px 2px oklch(0.35 0.01 80 / 4%), 0 8px 24px oklch(0.35 0.01 80 / 6%);
 
-  /* All apps share the single accent. The [data-app] scoping stays so
-     components keep reading --app-accent, but every app resolves to the
-     same charcoal: one product, not three. */
+  /* One product, one accent: a soft warm charcoal used everywhere. The
+     --app-accent alias and the [data-app] scopes stay so components that
+     read them keep working without knowing any app name. */
   --app-accent: var(--primary);
-  --app-accent-foreground: var(--primary-foreground);
-  --accent-command-center: var(--primary);
-  --accent-neuralflow: var(--primary);
-  --accent-alfred: var(--primary);
-}
-
-[data-app="command-center"] {
-  --app-accent: var(--accent-command-center);
-  --app-accent-foreground: var(--primary-foreground);
-}
-
-[data-app="neuralflow"] {
-  --app-accent: var(--accent-neuralflow);
-  --app-accent-foreground: var(--primary-foreground);
-}
-
-[data-app="alfred"] {
-  --app-accent: var(--accent-alfred);
   --app-accent-foreground: var(--primary-foreground);
 }
 
@@ -169,9 +151,6 @@
   --popover-foreground: oklch(0.930 0.004 85);
 
   --primary: oklch(0.920 0.004 85);
-  --accent-command-center: var(--primary);
-  --accent-neuralflow: var(--primary);
-  --accent-alfred: var(--primary);
   --primary-foreground: oklch(0.240 0.006 78);
 
   --secondary: oklch(0.255 0.005 80);

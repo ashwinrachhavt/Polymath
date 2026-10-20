@@ -22,7 +22,7 @@ export function ImportDrop({ onImport, accept, hint = "Drop a file here, or past
 
   function takeFile(file: File) {
     setError("");
-    if (file.size > maxBytes) { setError("Choose a file no larger than 1 MB. Use Alfred Knowledge for larger document uploads."); return; }
+    if (file.size > maxBytes) { setError("Choose a file no larger than 1 MB. Use the library for larger document uploads."); return; }
     setReading(true);
     const reader = new FileReader();
     reader.onload = () => {

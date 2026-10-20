@@ -16,7 +16,17 @@ const SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47] }, // \x89PNG
 ];
 
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+/*
+ * 25 MB. A scanned 20-page PDF or a phone photo comfortably fits; anything
+ * larger is a file the owner should process elsewhere first.
+ *
+ * Deployed on Vercel this is capped lower by the platform, not by us: a
+ * serverless request body maxes out at 4.5 MB, so a bigger upload fails before
+ * this check runs. Raising the deployed ceiling means the client-upload path
+ * (direct to Blob, then finalize), which is separate work. Locally there is no
+ * such limit.
+ */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export type FileValidationResult =
   | { ok: true; mimeType: string }

@@ -63,7 +63,7 @@ export async function WikiSurface({
         {!overview ? (
           <EmptyState
             title="No wiki yet"
-            description="Ingest a read document and Alfred starts the wiki: an article per document, a hub per topic, a master index, and a log of every ingest. Documents stay the immutable sources; the wiki is what's maintained."
+            description="Ingest a read document and Polymath starts the wiki: an article per document, a hub per topic, a master index, and a log of every ingest. Documents stay the immutable sources; the wiki is what's maintained."
           />
         ) : (
           <>

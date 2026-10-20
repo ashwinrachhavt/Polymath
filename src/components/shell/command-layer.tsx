@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { additionalDestinationsIn, apps, destinations } from "@/lib/navigation";
+import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
 import { ShortcutsDialog } from "./shortcuts-dialog";
@@ -55,9 +55,9 @@ export function CommandLayer() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const navigation = [...destinations, ...apps.flatMap((app) => additionalDestinationsIn(app.slug))].map((destination) => ({
+  const navigation = [...destinations, ...["command-center", "neuralflow", "alfred"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug))].map((destination) => ({
     key: destination.href, label: destination.label,
-    context: destination.href.startsWith("/apps/") ? `${apps.find((app) => app.slug === destination.group)?.label} preview tool` : destination.group === "shared" ? "Shared workspace" : apps.find((app) => app.slug === destination.group)?.label ?? "Polymath",
+    context: destination.href.startsWith("/apps/") ? "Preview tool" : destination.group === "shared" ? "Shared workspace" : "Polymath",
     icon: destination.icon, href: destination.href,
   }));
   // Canonical record search: debounced server query over saved tasks, notes,

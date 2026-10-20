@@ -57,3 +57,5 @@ npm-debug.log*
 
 # Local queue worker pid/log (make queue-up).
 .run/
+.playwright-mcp/
+.gstack/

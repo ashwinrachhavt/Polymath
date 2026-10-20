@@ -38,7 +38,7 @@ vi.mock("@/lib/db-transaction", () => ({
       (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
   },
 }));
-vi.mock("@/lib/clerk", () => ({ clerkConfigured: true }));
+vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false }));
 // The route's authedHandler would call Clerk's auth() otherwise; the suite
 // supplies the AuthContext directly, same swap the other suites make.
 vi.mock("@clerk/nextjs/server", () => ({

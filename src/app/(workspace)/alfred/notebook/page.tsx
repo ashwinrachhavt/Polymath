@@ -60,7 +60,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
   return (
     <Screen
       title="Notebook"
-      description="Notes live on the same artifact rows as generated work — autosaved as you type, with checkpoints you can name and a history you can trust."
+      description="Notes autosave as you type, with checkpoints you can name."
       actions={<NewNoteButton />}
     >
       <div className={`grid gap-4 ${kanban ? "lg:grid-cols-[minmax(360px,480px)_1fr]" : "lg:grid-cols-[300px_1fr]"}`}>

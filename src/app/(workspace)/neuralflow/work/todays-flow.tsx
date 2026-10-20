@@ -70,12 +70,9 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" aria-label="Today's Flow">
       <div className="flex flex-col gap-5">
-        <div>
-          <h2 className="text-3xl font-semibold tracking-tight">Today&apos;s Flow</h2>
-          <p className="text-sm text-muted-foreground">
-            {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
+        </p>
         <nav aria-label="Quick Filters" className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">Quick Filters</span>
           {chip("All", { ft: undefined, fp: undefined }, !filter.topic && !filter.priority)}
@@ -86,7 +83,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
         </nav>
         <Card title="Upcoming">
           {upcoming.length === 0 ? (
-            <p className="text-muted-foreground">{filter.topic || filter.priority ? "Nothing matches these filters." : "Nothing upcoming."}</p>
+            <p className="text-muted-foreground">{filter.topic || filter.priority ? "Nothing matches these filters." : "Nothing upcoming this week."}</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {upcoming.map((t) => (

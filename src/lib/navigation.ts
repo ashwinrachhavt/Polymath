@@ -3,158 +3,37 @@ import { products, productHref } from "@/lib/products";
 import {
   Activity,
   BookOpen,
+  Bot,
   Briefcase,
   CalendarClock,
-  Compass,
   Inbox,
   LayoutList,
   Library,
   MessagesSquare,
-  Unplug,
   NotebookPen,
   Settings,
   ShieldCheck,
-  Bot,
   Sparkles,
   SquareCheckBig,
   Target,
+  Unplug,
   Users,
   Wallet,
 } from "lucide-react";
 
 /*
- * The information architecture, in one place (product spec § The suite). The
- * switcher, the rail, the breadcrumb, and the mobile bar all read this list, so
- * a destination cannot exist in one and be missing from another.
+ * The information architecture, in one place. The rail, the breadcrumb, the
+ * mobile bar, and the command layer all read this list, so a destination
+ * cannot exist in one and be missing from another.
  *
- * Three micro-apps over one system of record. The prefix is what makes the
- * boundary real: a record prepared in Command Center appears in NeuralFlow
- * without being copied, but the screens the owner navigates stay separate, and
- * a URL says which app it belongs to.
- *
- * `shared` is the fourth rail section, not a fourth app. Reviews, Activity, and
- * Settings are platform services that every app links into; they are not owned
- * by any one of the three.
+ * One product, one rail. The former Command Center / NeuralFlow / Alfred
+ * split was a development scaffold over one system of record; the owner
+ * directed (2026-10-19) that Polymath ship as a single product, so the rail
+ * is one flat list of destinations and the app-switching chrome is gone.
+ * URLs keep their historic prefixes; nothing else cares.
  */
 
 export type AppSlug = "command-center" | "neuralflow" | "alfred";
-
-export type AppDefinition = {
-  slug: AppSlug;
-  label: string;
-  /** The label the phone bar uses. A 5-across 44px strip cannot carry two words. */
-  short: string;
-  /** The question this app answers, in the owner's words. */
-  question: string;
-  /** The app's home. `/alfred` is its own root, so these are plain strings. */
-  href: string;
-  icon: LucideIcon;
-  /**
-   * The nav bar's shape. Each app owns its own, and this is the only thing
-   * about an app's personality that lives in code rather than in components.
-   *
-   * `rail` is a full-height lateral rail: Command Center is an operations desk,
-   * so its sections are always visible. `bar` is a horizontal top nav:
-   * NeuralFlow and Alfred are places you read and work in, where a rail would
-   * take width from the thing being worked on.
-   *
-   * ponytail: two shapes, no registry. A third variant arrives when a third app
-   * genuinely needs a different one, not before.
-   */
-  nav: "rail" | "bar";
-};
-
-export const apps: AppDefinition[] = [
-  {
-    slug: "command-center",
-    label: "Command Center",
-    short: "Command",
-    question: "What is happening, what do I owe, and what needs action?",
-    href: "/command-center/briefing",
-    icon: Compass,
-    nav: "rail",
-  },
-  {
-    slug: "neuralflow",
-    label: "NeuralFlow",
-    short: "NeuralFlow",
-    question: "What should I work on, and how do I make progress?",
-    href: "/neuralflow/work",
-    icon: SquareCheckBig,
-    nav: "bar",
-  },
-  {
-    slug: "alfred",
-    label: "Alfred",
-    short: "Alfred",
-    question: "What do I know, and what can I produce?",
-    href: "/alfred",
-    icon: Sparkles,
-    nav: "bar",
-  },
-];
-
-/**
- * The cross-app links each app offers to the other two — the "interoperable"
- * half of the suite.
- *
- * These are not "the same screen in another app"; there is no such screen. Each
- * one opens the *other* app at the record class that continues the work, which
- * is what makes a task prepared in Command Center finishable in NeuralFlow
- * without being copied. Because they are declared here rather than inside each
- * app's nav, both endpoints exist: the link out of Command Center and the
- * ability for NeuralFlow's nav to name where it came from.
- */
-export type CrossAppLink = {
-  from: AppSlug;
-  to: AppSlug;
-  /** What the owner is doing, in the owner's words. */
-  label: string;
-  href: string;
-};
-
-export const crossAppLinks: CrossAppLink[] = [
-  {
-    from: "command-center",
-    to: "neuralflow",
-    label: "Open in NeuralFlow",
-    href: "/neuralflow/work",
-  },
-  {
-    from: "command-center",
-    to: "alfred",
-    label: "Find in Alfred",
-    href: "/alfred/knowledge",
-  },
-  {
-    from: "neuralflow",
-    to: "alfred",
-    label: "Notes in Alfred",
-    href: "/alfred/knowledge",
-  },
-  {
-    from: "neuralflow",
-    to: "command-center",
-    label: "Back to Briefing",
-    href: "/command-center/briefing",
-  },
-  {
-    from: "alfred",
-    to: "neuralflow",
-    label: "Turn into work",
-    href: "/neuralflow/work",
-  },
-  {
-    from: "alfred",
-    to: "command-center",
-    label: "Back to Briefing",
-    href: "/command-center/briefing",
-  },
-];
-
-export function crossAppLinksFrom(slug: AppSlug) {
-  return crossAppLinks.filter((link) => link.from === slug);
-}
 
 export type Destination = {
   href: string;
@@ -162,14 +41,13 @@ export type Destination = {
   /** What the owner does here, in the owner's words — used as the page subtitle. */
   purpose: string;
   icon: LucideIcon;
-  /** Which rail cluster it sits in. The app slugs are the three apps. */
   group: AppSlug | "shared";
 };
 
 export const destinations: Destination[] = [
   {
     href: "/command-center/briefing",
-    label: "Briefing",
+    label: "Today",
     purpose: "Decide what to do today.",
     icon: Target,
     group: "command-center",
@@ -180,6 +58,55 @@ export const destinations: Destination[] = [
     purpose: "Clarify what arrived.",
     icon: Inbox,
     group: "command-center",
+  },
+  {
+    href: "/neuralflow/work",
+    label: "Work",
+    purpose: "Execute your commitments.",
+    icon: SquareCheckBig,
+    group: "neuralflow",
+  },
+  {
+    href: "/neuralflow/focus",
+    label: "Focus",
+    purpose: "Work on one thing.",
+    icon: CalendarClock,
+    group: "neuralflow",
+  },
+  {
+    href: "/alfred/knowledge",
+    label: "Library",
+    purpose: "Write, retrieve, and connect.",
+    icon: BookOpen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred",
+    label: "Assistant",
+    purpose: "Hand off work and inspect what it did.",
+    icon: Sparkles,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/wiki",
+    label: "Wiki",
+    purpose: "The maintained layer over your documents.",
+    icon: Library,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/dossiers",
+    label: "Dossiers",
+    purpose: "Research with a bounded set of sources.",
+    icon: NotebookPen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/specialists",
+    label: "Specialists",
+    purpose: "Hire an agent for the job.",
+    icon: Bot,
+    group: "alfred",
   },
   {
     href: "/command-center/relationships",
@@ -217,57 +144,6 @@ export const destinations: Destination[] = [
     group: "command-center",
   },
   {
-    href: "/neuralflow/work",
-    label: "Work",
-    purpose: "Execute your commitments.",
-    icon: SquareCheckBig,
-    group: "neuralflow",
-  },
-  {
-    href: "/neuralflow/focus",
-    label: "Focus",
-    purpose: "Work on one thing.",
-    icon: CalendarClock,
-    group: "neuralflow",
-  },
-
-  {
-    href: "/alfred",
-    label: "Threads",
-    purpose: "Delegate and inspect what it did.",
-    icon: Sparkles,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/knowledge",
-    label: "Knowledge",
-    purpose: "Write, retrieve, and connect.",
-    icon: BookOpen,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/wiki",
-    label: "Wiki",
-    purpose: "The maintained layer over your documents.",
-    icon: Library,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/dossiers",
-    label: "Dossiers",
-    purpose: "Research with a bounded set of sources.",
-    icon: NotebookPen,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/specialists",
-    label: "Specialists",
-    purpose: "Hire an agent for the job.",
-    icon: Bot,
-    group: "alfred",
-  },
-
-  {
     href: "/reviews",
     label: "Reviews",
     purpose: "Decide what happens next.",
@@ -290,14 +166,10 @@ export const destinations: Destination[] = [
   },
 ];
 
-export function destinationsIn(group: AppSlug | "shared") {
-  return destinations.filter((d) => d.group === group);
-}
-
 const featureRoutes: Record<string, string> = {
-  // The notebook has no nav entry of its own; it is a Knowledge surface
-  // (same artifact tables), so the nav and breadcrumb name Knowledge, not
-  // the prefix-matched Threads (ASH-167).
+  // The notebook has no nav entry of its own; it is a Library surface
+  // (same artifact tables), so the nav and breadcrumb name Library, not
+  // the prefix-matched Assistant (ASH-167).
   "/alfred/notebook": "/alfred/knowledge",
   "/apps/command-center/briefing": "/command-center/briefing",
   "/apps/command-center/inbox": "/command-center/inbox",
@@ -324,14 +196,9 @@ export const featureDestinations: Destination[] = products.flatMap((product) =>
   })),
 );
 
+/** Preview tools: reachable from More and the command layer, not the rail. */
 export function additionalDestinationsIn(group: AppSlug) {
   return featureDestinations.filter((destination) => destination.group === group && !featureRoutes[destination.href]);
-}
-
-export function appForPath(pathname: string): AppDefinition | undefined {
-  const segments = pathname.split("/").filter(Boolean);
-  const segment = segments[0] === "apps" ? segments[1] : segments[0];
-  return apps.find((app) => app.slug === segment);
 }
 
 export function destinationForPath(pathname: string): Destination | undefined {
@@ -346,7 +213,7 @@ export function destinationForPath(pathname: string): Destination | undefined {
 
 export function isBrowserPreviewPath(pathname: string) {
   // The browser preview lives under /apps/ plus the shared screens still
-  // rendered from the preview store. Everything under an app's own prefix
+  // rendered from the preview store. Everything under a historic prefix
   // (/command-center, /neuralflow, /alfred) and /reviews read canonical
   // records, so they never carry the preview banner (ASH-165).
   return pathname.startsWith("/apps/")
@@ -359,5 +226,5 @@ export const moreDestination = {
   icon: LayoutList,
 };
 
-/** Where the wordmark sends you when no app is more current than another. */
-export const homeHref = apps[0].href;
+/** Where the wordmark sends you. */
+export const homeHref = "/command-center/briefing";

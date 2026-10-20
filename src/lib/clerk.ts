@@ -9,3 +9,15 @@
 export const clerkConfigured =
   Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
   Boolean(process.env.CLERK_SECRET_KEY);
+
+/*
+ * Local testing without Clerk. Set POLYMATH_DEV_AUTH=1 to skip the sign-in
+ * redirect and resolve a fixed `dev-user` owner, which auto-provisions its
+ * personal workspace on first request.
+ *
+ * Impossible in production: NODE_ENV is checked here, not by the caller, so a
+ * stray env var in a deployment cannot open the app. Useful for exercising a
+ * signed-in screen on a laptop without cycling a real session.
+ */
+export const devAuthBypass =
+  process.env.POLYMATH_DEV_AUTH === "1" && process.env.NODE_ENV !== "production";

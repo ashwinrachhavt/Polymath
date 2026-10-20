@@ -199,28 +199,16 @@ export async function releaseOutbox(
 }
 
 /*
- * A handler that throws this is saying "the provider was unreachable, not the
- * work was wrong". The dispatcher parks the row and does not spend an attempt,
- * so five minutes of a stopped Firecrawl cannot dead-letter a crawl that never
- * ran. The row is still visible as pending and overdue, which is the point.
+ * A handler that throws this is saying "look again later, and count no
+ * attempt": the provider was unreachable (an outage must not dead-letter work
+ * that never ran) or a long job is still running (a crawl that polls forty
+ * times is one attempt, not forty). The dispatcher parks the row with the
+ * caller's delay and the row stays visible as pending.
  */
-export class OutboxDeferredError extends Error {
-  constructor(message: string, readonly retryAfterMs = 60_000) {
+export class OutboxParkError extends Error {
+  constructor(readonly retryAfterMs: number, message = "work is not finished") {
     super(message);
-    this.name = "OutboxDeferredError";
-  }
-}
-
-/*
- * A handler that throws this is saying "long job still running; look again
- * later". Same effect as returning, but it parks the row instead of completing
- * it, and it spends no attempt - a crawl that polls forty times is one attempt,
- * not forty.
- */
-export class OutboxParkedError extends Error {
-  constructor(readonly retryAfterMs: number, message = "work is still running") {
-    super(message);
-    this.name = "OutboxParkedError";
+    this.name = "OutboxParkError";
   }
 }
 
@@ -231,7 +219,6 @@ export class OutboxParkedError extends Error {
  * cannot resurrect it by writing into the update.
  */
 export async function updateOutboxPayload(
-  rawClient: ReturnType<typeof postgres>,
   input: { id: string; leaseToken: string; payload: unknown },
 ): Promise<void> {
   // Written through drizzle so the jsonb column does the encoding. Casting a
@@ -261,12 +248,11 @@ export async function dispatchPendingOutbox(
   rawClient: ReturnType<typeof postgres>,
   handlers: Record<string, OutboxHandler>,
   input: { workerId: string; limit?: number; leaseMs?: number },
-): Promise<{ claimed: number; dispatched: number; failed: number; dead: number; deferred: number; parked: number }> {
+): Promise<{ claimed: number; dispatched: number; failed: number; dead: number; parked: number }> {
   const batch = await claimOutboxBatch(rawClient, input);
   let dispatched = 0;
   let failed = 0;
   let dead = 0;
-  let deferred = 0;
   let parked = 0;
   for (const event of batch) {
     const handler = handlers[event.topic];
@@ -288,16 +274,15 @@ export async function dispatchPendingOutbox(
       dispatched += 1;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      if (cause instanceof OutboxDeferredError || cause instanceof OutboxParkedError) {
-        // Still running, or the provider is unreachable: park the row without
-        // spending an attempt. The distinction is only in the counters.
+      if (cause instanceof OutboxParkError) {
+        // Provider unreachable or work still running: park the row without
+        // spending an attempt. Both are the same mechanism; only the delay differs.
         await releaseOutbox(rawClient, {
           id: event.id,
           leaseToken: event.leaseToken,
           availableAt: new Date(Date.now() + cause.retryAfterMs),
         });
-        if (cause instanceof OutboxDeferredError) deferred += 1;
-        else parked += 1;
+        parked += 1;
         continue;
       }
       const retryAt = new Date(Date.now() + backoffMs(event.attempts + 1));
@@ -306,5 +291,5 @@ export async function dispatchPendingOutbox(
       if (outcome.dead) dead += 1;
     }
   }
-  return { claimed: batch.length, dispatched, failed, dead, deferred, parked };
+  return { claimed: batch.length, dispatched, failed, dead, parked };
 }

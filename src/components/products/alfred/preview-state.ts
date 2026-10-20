@@ -42,10 +42,10 @@ export function createAlfredPreview(storageScope: string) {
           if (raw) {
             const result = schema.safeParse(JSON.parse(raw));
             if (result.success) state = result.data;
-            else storageWarning = "Saved Alfred metadata has an incompatible format. Export open feature history before replacing it.";
+            else storageWarning = "Saved metadata has an incompatible format. Export open feature history before replacing it.";
           } else state = initial;
         }
-      } catch { storageWarning = "Alfred preview storage is unavailable. Keep this tab open and export feature history before refreshing."; }
+      } catch { storageWarning = "Preview storage is unavailable. Keep this tab open and export feature history before refreshing."; }
     }
     return state;
   }
@@ -58,7 +58,7 @@ export function createAlfredPreview(storageScope: string) {
       lastRaw = raw;
       loaded = true;
       storageWarning = "";
-    } catch { storageWarning = "Alfred feature history could not be saved. Keep this tab open and export it; refreshing will lose unsaved changes."; }
+    } catch { storageWarning = "Feature history could not be saved. Keep this tab open and export it; refreshing will lose unsaved changes."; }
     publish();
   }
   return { subscribe, getSnapshot, getServerSnapshot: () => initial, getStorageWarning: () => storageWarning, update };
@@ -83,7 +83,7 @@ export function useAlfredPreview() {
       anchor.download = "polymath-alfred-feature-history.json";
       anchor.click();
       URL.revokeObjectURL(url);
-    } catch { notify("Alfred feature history could not be exported. Keep this tab open and copy important evidence and annotations manually."); }
+    } catch { notify("Feature history could not be exported. Keep this tab open and copy important evidence and annotations manually."); }
   }
   return { state, update: store.update, storageWarning, exportMetadata };
 }

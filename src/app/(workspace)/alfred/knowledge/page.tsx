@@ -40,7 +40,7 @@ import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/sta
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
 import { getOpenClassification } from "@/domains/knowledge/classify";
 import { CaptureUrlForm } from "./capture-url-form";
-import { UploadButton } from "./upload-button";
+import { UploadButton } from "@/components/documents/upload-button";
 
 export const metadata = { title: "Knowledge · Polymath" };
 
@@ -289,7 +289,7 @@ export async function KnowledgeSurface({
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <a
                           href={`/alfred/knowledge?doc=${doc.id}`}
-                          className="text-[13px] font-medium underline-offset-4 hover:underline"
+                          className="inline-flex min-h-6 items-center text-[13px] font-medium underline-offset-4 hover:underline"
                         >
                           {doc.title}
                         </a>
