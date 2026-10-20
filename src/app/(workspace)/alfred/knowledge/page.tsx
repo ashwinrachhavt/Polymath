@@ -9,6 +9,7 @@ import { RetryExtractionButton } from "./retry-extraction-button";
 import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
+import { fieldLabel } from "./field-display";
 import { getOpenClassification } from "@/domains/knowledge/classify";
 import { sentenceCase, suggestTitle } from "@/domains/knowledge/naming";
 import {
@@ -296,7 +297,7 @@ function ReviewWorkbench({
               <ul className="flex flex-col gap-2">
                 {fieldProposals.map((proposal) => (
                   <li key={proposal.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                    <p className="text-[13px] font-medium">{sentenceCase(proposal.fieldName)}</p>
+                    <p className="text-[13px] font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
                     {proposal.evidenceQuote ? (
                       <p className="text-muted-foreground mt-0.5 text-xs">
                         Read from: <q className="text-foreground">{proposal.evidenceQuote}</q>
@@ -313,7 +314,7 @@ function ReviewWorkbench({
                       <div className="mt-2">
                         <FieldDecisions
                           proposalId={proposal.id}
-                          fieldName={sentenceCase(proposal.fieldName)}
+                          fieldName={fieldLabel(proposal.fieldName)}
                           readable={proposal.normalizedValue != null}
                         />
                       </div>

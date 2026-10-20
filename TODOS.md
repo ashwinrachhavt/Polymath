@@ -92,3 +92,20 @@ AssertionError: expected 201 to be 200
 
 - ASH-120 F01–F03 (scope ADR, glossary, canonical identity schema, auth
   spine): **v-unversioned** (2026-10-18), PR #10.
+
+## Inbox / command center
+
+**Priority:** P3
+
+- Arrow-key roving through inbox list rows. **What:** roving tabindex or
+  arrow-key navigation across capture rows, complementing the plain-link
+  navigation shipped with the two-pane redesign. **Why:** keyboard-first
+  users clear a 50-row queue without tabbing through every row; the design
+  review (D12, 2026-10-20) deferred it to keep the keyboard model minimal.
+  **Pros:** power-user speed through the queue; consistent with Linear-style
+  keyboard workflows. **Cons:** a new a11y pattern to maintain and test;
+  focus-management edge cases with the detail pane. **Context:** rows are
+  plain links per the a11y spec in
+  `docs/superpowers/specs/2026-10-20-inbox-redesign-and-extraction-cleanup.md`;
+  revisit when the first keyboard-first feedback arrives. **Depends on:**
+  the two-pane inbox shipping first.

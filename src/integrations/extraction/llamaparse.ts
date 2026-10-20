@@ -4,6 +4,7 @@ import type {
   ExtractionProvider,
   ExtractionResult,
 } from "./provider";
+import { normalizePageText } from "./cleanup";
 
 /*
  * LlamaParse, the hosted extraction used where a local docling docker is
@@ -116,7 +117,9 @@ export function createLlamaParseProvider(
         const spans = pages.map((page, index) => {
           if (index > 0) text += PAGE_BREAK;
           const start = text.length;
-          text += page.markdown ?? "";
+          // Cleanup per page, before the join: offsets stay correct for the
+          // spans accumulated over the joined text.
+          text += normalizePageText(page.markdown ?? "");
           return { page: page.page_number, start, end: text.length };
         });
         if (!text.trim()) return { ok: false, error: "llamaparse returned empty result text", extractor };

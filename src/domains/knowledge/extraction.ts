@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createDoclingDockerProvider } from "@/integrations/extraction/docling-docker";
 import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
 import { createPdfTextLayerProvider } from "@/integrations/extraction/pdf-text-layer";
+import { createReductoProvider } from "@/integrations/extraction/reducto";
 import { createPlainTextProvider } from "@/integrations/extraction/plain-text";
 import type {
   ExtractedField,
@@ -30,14 +31,16 @@ import { clearRestoreOnNewExtraction } from "./versions";
  * re-running an improved extractor is a new row and every span that pointed at
  * the old extraction stays answerable.
  *
- * Provider resolution: docling-serve in docker locally; LlamaParse on Vercel
- * where the docker is unreachable. Env decides — the presence of each
+ * Provider resolution: docling-serve in docker locally; Reducto or LlamaParse
+ * on Vercel where the docker is unreachable. Env decides — the presence of each
  * provider's URL/key picks the adapter; the text-layer reader is the floor.
  */
 
 export async function extractionProvider(): Promise<ExtractionProvider> {
   const doclingUrl = process.env.DOCLING_SERVE_URL;
   if (doclingUrl) return createDoclingDockerProvider(doclingUrl);
+  const reductoKey = process.env.REDUCTO_API_KEY;
+  if (reductoKey) return createReductoProvider(reductoKey);
   const llamaKey = process.env.LLAMAPARSE_API_KEY;
   if (llamaKey) return createLlamaParseProvider(llamaKey);
   // The in-process reader is the floor in every environment: it needs no

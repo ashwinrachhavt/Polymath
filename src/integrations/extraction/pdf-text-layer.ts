@@ -1,5 +1,6 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import type { ExtractionInput, ExtractionProvider, ExtractionResult } from "./provider";
+import { normalizePageText } from "./cleanup";
 
 /*
  * The development-only reader: the text layer a PDF already carries, read in
@@ -30,11 +31,12 @@ export function createPdfTextLayerProvider(): ExtractionProvider {
         const { totalPages, text: pages } = await extractText(pdf, { mergePages: false });
 
         // Per-page spans over the joined text, so evidence opens on its page.
+        // Cleanup per page, before the join: offsets stay correct.
         let text = "";
         const spans = pages.map((pageText, index) => {
           if (index > 0) text += PAGE_BREAK;
           const start = text.length;
-          text += pageText;
+          text += normalizePageText(pageText);
           return { page: index + 1, start, end: text.length };
         });
         if (!text.trim()) {

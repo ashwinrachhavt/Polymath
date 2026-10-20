@@ -316,6 +316,13 @@
       "tag": "0216_youtube_transcripts",
       "when": 1792480460000,
       "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "tag": "0217_captures_inbox_tabs_index",
+      "when": 1792480470000,
+      "breakpoints": true
     }
   ]
 }

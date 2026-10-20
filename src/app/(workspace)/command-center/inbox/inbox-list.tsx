@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/workspace/ui";
-import { makeTaskAction, setCaptureStateAction } from "./actions";
+import { listHref } from "@/lib/list-params";
+import { setCaptureStateAction } from "./actions";
 
 /*
- * Optimistic clarify loop: a row leaves the current filtered view the moment
- * it is decided, and the server action's version check is the final word - a
- * conflict or failure returns the row as the transition settles (useOptimistic
- * reverts to the base state), with the error pinned to the row.
+ * The list pane: clamped previews over the 300-char slice, per-row and bulk
+ * decisions through the version-checked actions. Rows are plain links (D12);
+ * the checkbox is the only non-navigating control. Optimistic reducer (D2):
+ * in "all" a decided row stays visible with its new state, elsewhere it
+ * leaves the list; a conflict returns it as the transition settles.
  */
 
 export type InboxRow = {
@@ -18,7 +20,7 @@ export type InboxRow = {
   processingState: string;
   kind: string;
   createdAt: string;
-  text: string | null;
+  preview: string | null;
   url: string | null;
   version: number;
   convertedType: string | null;
@@ -30,75 +32,159 @@ export type InboxView = "unprocessed" | "converted" | "discarded" | "all";
 type Decision = { id: string; next: "converted" | "discarded" | "unprocessed" };
 
 function when(iso: string): string {
-  return iso.slice(0, 16).replace("T", " ") + "Z";
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diff / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
 }
 
-export function InboxList({ rows, view }: { rows: InboxRow[]; view: InboxView }) {
-  // In "all" a decided row stays visible with its new state; in the filtered
-  // views it leaves the list. Both are one reducer on the same decision.
+function rowTitle(row: InboxRow): string {
+  const body = row.preview?.trim() || row.url || "Empty capture";
+  return body.slice(0, 80);
+}
+
+export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow[]; view: InboxView; selectedId: string | null; rawQuery: Record<string, string | string[] | undefined> }) {
   const [optimisticRows, decide] = useOptimistic(rows, (current: InboxRow[], decision: Decision) =>
     view === "all"
       ? current.map((row) => (row.id === decision.id ? { ...row, processingState: decision.next } : row))
       : current.filter((row) => row.id !== decision.id),
   );
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
+  const [bulkErrors, setBulkErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const lastToggledId = useRef<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
-  function act(row: InboxRow, next: Decision["next"]) {
-    setError(null);
+  const bulk = selected.size > 0;
+  // Converted rows cannot transition; every other selected row is sent and
+  // non-permitting rows fail through the setCaptureState domain guard (D15).
+  const bulkTargets = optimisticRows.filter(
+    (row) => selected.has(row.id) && row.processingState !== "converted",
+  );
+
+  function bulkAct(next: "discarded" | "unprocessed") {
+    // Focus origin is tracked explicitly: on click the toolbar button (not
+    // the row) holds focus, so activeElement cannot identify the row.
+    const originId = lastToggledId.current;
+    const targets = bulkTargets;
     startTransition(async () => {
-      decide({ id: row.id, next });
-      const result =
-        next === "converted"
-          ? await makeTaskAction({ captureId: row.id, expectedVersion: row.version })
-          : await setCaptureStateAction({ captureId: row.id, expectedVersion: row.version, state: next });
-      if (!result.ok) setError({ id: row.id, message: result.error });
+      const failures: Array<{ id: string; title: string; message: string }> = [];
+      setBulkErrors([]);
+      await Promise.all(
+        targets.map(
+          (row) =>
+            new Promise<void>((resolve) => {
+              decide({ id: row.id, next });
+              setCaptureStateAction({ captureId: row.id, expectedVersion: row.version, state: next }).then(
+                (result) => {
+                  if (!result.ok) failures.push({ id: row.id, title: rowTitle(row), message: result.error });
+                  resolve();
+                },
+                () => {
+                  // A transport rejection must settle too, or Promise.all
+                  // hangs and the toolbar stays pending forever.
+                  failures.push({ id: row.id, title: rowTitle(row), message: "The inbox write failed." });
+                  resolve();
+                },
+              );
+            }),
+        ),
+      );
+      setBulkErrors(failures);
+      // Keep the selection (and the toolbar that renders the errors) when any
+      // row failed: clearing both in one batch unmounts the error list before
+      // it is ever seen.
+      if (!failures.length) {
+        setSelected(new Set());
+        // Focus returns to the originating row link when the selection clears
+        // (D12); only when that row still exists after the transition.
+        const row = originId ? listRef.current?.querySelector<HTMLAnchorElement>(`li[data-capture-id="${originId}"] a`) : null;
+        row?.focus();
+      }
+    });
+  }
+
+  function toggle(id: string) {
+    lastToggledId.current = id;
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   }
 
   return (
-    <div className="divide-y divide-border">
-      {optimisticRows.map((capture) => {
-        const state =
-          capture.processingState === "converted" ? "converted" : capture.processingState === "discarded" ? "discarded" : "open";
-        return (
-          <article key={capture.id} className="py-4 first:pt-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Status>{capture.processingState}</Status>
-              <span className="text-xs text-muted-foreground">{capture.kind}</span>
-              <time className="readout text-xs text-muted-foreground" dateTime={capture.createdAt}>
-                {when(capture.createdAt)}
-              </time>
-            </div>
-            <p className="whitespace-pre-wrap break-words text-[13px]">{capture.text ?? capture.url}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {state === "open" ? (
-                <>
-                  <Button size="sm" variant="outline" disabled={pending} onClick={() => act(capture, "converted")}>
-                    Make task
-                  </Button>
-                  <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(capture, "discarded")}>
-                    Archive
-                  </Button>
-                </>
-              ) : null}
-              {state === "discarded" ? (
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => act(capture, "unprocessed")}>
-                  Restore capture
-                </Button>
-              ) : null}
-              {error?.id === capture.id ? (
-                <p className="text-destructive text-[13px]" role="alert">{error.message}</p>
-              ) : null}
-            </div>
-            {capture.processingState === "converted" && capture.convertedType === "task" && capture.convertedId ? (
-              <Button asChild className="mt-3" size="sm" variant="outline">
-                <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in Work</Link>
-              </Button>
-            ) : null}
-          </article>
-        );
-      })}
+    <div className="relative">
+      <ul ref={listRef} className="divide-y divide-border" role="list">
+        {optimisticRows.map((capture) => {
+          const isSelected = selected.has(capture.id);
+          const isHighlighted = capture.id === selectedId;
+          return (
+            <li key={capture.id} data-capture-id={capture.id} className={isSelected ? "bg-muted" : undefined}>
+              <div className="flex items-start gap-2 py-2">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggle(capture.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  aria-label={`Select capture: ${rowTitle(capture)}`}
+                  className="mt-1 size-4 accent-[var(--primary)] max-sm:size-[18px] max-sm:my-2"
+                />
+                <Link
+                  href={listHref("/command-center/inbox", rawQuery, { id: capture.id })}
+                  className={`group block min-w-0 flex-1 rounded-md px-2 py-1.5 transition-colors duration-150 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${
+                    isHighlighted ? "bg-muted" : ""
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Status>{capture.processingState}</Status>
+                    <span className="text-xs text-muted-foreground">{capture.kind}</span>
+                    <time suppressHydrationWarning className="readout ml-auto text-xs text-muted-foreground" dateTime={capture.createdAt}>
+                      {when(capture.createdAt)}
+                    </time>
+                  </div>
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[13px]">
+                    {capture.preview?.trim() || capture.url}
+                  </p>
+                </Link>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {bulk ? (
+        <div
+          role="toolbar"
+          aria-label="Bulk actions"
+          aria-live="polite"
+          className="sticky bottom-4 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow)] transition-all duration-150 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:z-30 max-sm:min-h-[44px]"
+        >
+          <span className="readout text-[13px]">{selected.size} selected</span>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => bulkAct("discarded")}>
+            Archive
+          </Button>
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => bulkAct("unprocessed")}>
+            Restore capture
+          </Button>
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setSelected(new Set()); setBulkErrors([]); }}>
+            Clear
+          </Button>
+          {bulkErrors.length ? (
+            <ul className="w-full text-[13px]">
+              {bulkErrors.map((failure) => (
+                <li key={failure.id} className="text-destructive" role="alert">
+                  {failure.title}: {failure.message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
