@@ -137,7 +137,18 @@ describe("live Alfred route functionality", () => {
     expect(html).toContain("What would you like to work on?");
     expect(html).toContain("Ask anything or describe a task…");
     expect(html).toContain("verified Clerk identity");
-    expect(html).not.toContain("Start a run");
+    // Every phrase the retired run-launcher screen carried. One list, so a
+    // string that creeps back onto the home fails here and in the browser.
+    for (const gone of [
+      "Hand off work and inspect what it did",
+      "Start a run",
+      "No threads yet",
+      "Recent runs",
+      "You:",
+      "Assistant:",
+    ]) {
+      expect(html, gone).not.toContain(gone);
+    }
     // A fresh workspace gets no "Recent" heading and no empty-state box.
     expect(html).not.toContain(">Recent<");
     expect(html).not.toContain("No runs yet");
@@ -156,8 +167,13 @@ describe("live Alfred route functionality", () => {
     expect(html).toContain("Draft the renewal letter");
     expect(html).toContain("Reconcile the invoices");
     expect(html.match(/Needs your reply/g)).toHaveLength(1);
+    // One status, in the owner's words: no enum label or second badge beside it.
+    for (const other of ["Running", "In progress", "Queued", "Succeeded", "waiting_approval", "succeeded"]) {
+      expect(html, other).not.toContain(other);
+    }
     // No model names, summaries, or transcript prefixes on a recent row.
     expect(html).not.toContain("You:");
+    expect(html).not.toContain("Assistant:");
     expect(html).not.toContain("Done.");
   });
 });

@@ -196,9 +196,9 @@ function ReviewWorkbench({
 
   return (
     <div className="flex flex-col gap-4">
-      <a href="/alfred/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
+      <Link href="/alfred/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
         Back to vault
-      </a>
+      </Link>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.5fr)]">
         {/* Left: document info */}

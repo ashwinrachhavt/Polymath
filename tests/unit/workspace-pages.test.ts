@@ -15,6 +15,8 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../..");
 
 const PAGE_SHELLS = [
+  "src/app/(workspace)/alfred/page.tsx",
+  "src/app/(workspace)/alfred/[runId]/page.tsx",
   "src/app/(workspace)/alfred/dossiers/page.tsx",
   "src/app/(workspace)/alfred/knowledge/page.tsx",
   "src/app/(workspace)/command-center/briefing/page.tsx",
