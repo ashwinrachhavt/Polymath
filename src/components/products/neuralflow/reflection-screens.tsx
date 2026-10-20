@@ -67,6 +67,7 @@ export function MeetingsScreen() {
   </Screen>;
 }
 
+import { ServerWeek } from "./server-week";
 export function ReportsScreen() {
   const { state, addArtifact, updateArtifact, notify } = useWorkspace();
   const [end, setEnd] = useState(localDate); const [start, setStart] = useState(() => shiftDate(localDate(), -6)); const [project, setProject] = useState("all");
@@ -94,6 +95,7 @@ export function ReportsScreen() {
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `neuralflow-local-report-${start}.json`; anchor.click(); URL.revokeObjectURL(url);
   }
   return <Screen title="Reports" description="Reflect on evidence you actually recorded. Focus metrics use local completion rewards; task counts describe current state, not fabricated weekly completion history." actions={<><Button variant="outline" onClick={exportSnapshot}>Export local snapshot</Button><Button onClick={saveSnapshot}>Save snapshot as note</Button></>}>
+    <ServerWeek />
     <Panel title="Reflection window"><div className="flex flex-wrap items-end gap-3"><Field label="From"><Input type="date" value={start} onChange={(event) => event.target.value && setStart(event.target.value)} /></Field><Field label="Through"><Input type="date" value={end} onChange={(event) => event.target.value && setEnd(event.target.value)} /></Field><Field label="Project"><Select value={project} onChange={(event) => setProject(event.target.value)}><option value="all">All projects</option>{state.projects.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</Select></Field><Button variant="outline" onClick={() => changePeriod(-7)}>Previous week</Button><Button variant="outline" onClick={() => { setStart(shiftDate(localDate(), -6)); setEnd(localDate()); }}>Last seven days</Button><Button variant="outline" onClick={() => changePeriod(7)}>Next week</Button></div></Panel>
     {start > end && <p role="alert" className="text-[13px] text-destructive">The reporting range is reversed. Select an end date on or after the start.</p>}
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5"><Stat label="Recorded focus intervals" value={records.length} hint="Completed and explicitly recorded in this window" /><Stat label="Recorded focus minutes" value={minutes} hint="Actual completed interval durations, not task estimates" /><Stat label="Current streak" value={`${streak.current} ${streak.current === 1 ? "day" : "days"}`} hint={`Longest recorded run is ${streak.longest} ${streak.longest === 1 ? "day" : "days"}`} /><Stat label="Planned local blocks" value={blocks.length} hint="Plans do not establish work performed" /><Stat label="Current done tasks" value={tasks.filter((task) => task.status === "DONE").length} hint="Not a weekly completion count" /></div>
