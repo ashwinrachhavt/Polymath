@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { listEventsBetween } from "@/domains/calendar/queries";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { applyFlowFilter, FLOW_PRIORITIES, parseFlowFilter, topicsOf } from "@/domains/work/flow-filters";
 import { listTasksDueBetween } from "@/domains/work/queries";
+import { listHref, type RawSearchParams } from "@/lib/list-params";
 
 /*
  * Today's Flow (ASH-185, Dao layout): Upcoming, Focus Windows and Next Events
@@ -25,7 +27,9 @@ function when(d: Date) {
   return d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 }
 
-export async function TodaysFlow({ auth }: { auth: Pick<AuthContext, "workspaceId"> }) {
+const BASE = "/neuralflow/work";
+
+export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "workspaceId">; raw?: RawSearchParams }) {
   const now = new Date();
   const today = iso(now);
   const weekEnd = iso(new Date(now.getTime() + 7 * DAY));
@@ -38,7 +42,20 @@ export async function TodaysFlow({ auth }: { auth: Pick<AuthContext, "workspaceI
     listTasksDueBetween(auth, iso(monthStart), iso(new Date(nextMonth.getTime() - DAY))),
   ]);
 
-  const upcoming = due.filter((t) => t.status !== "done" && t.status !== "cancelled").slice(0, 5);
+  const filter = parseFlowFilter({ ft: raw.ft, fp: raw.fp });
+  const open = due.filter((t) => t.status !== "done" && t.status !== "cancelled");
+  const topics = topicsOf(open);
+  const upcoming = applyFlowFilter(open, filter).slice(0, 5);
+  const chip = (label: string, patch: Record<string, string | undefined>, active: boolean) => (
+    <Link
+      key={label}
+      href={listHref(BASE, raw, patch)}
+      aria-pressed={active}
+      className={`rounded-full border px-3 py-1 text-xs ${active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
+    >
+      {label}
+    </Link>
+  );
   const windows = events.filter((e) => e.taskId && iso(e.startsAt) === today && e.endsAt > now);
   const next = events.filter((e) => !e.taskId && e.endsAt > now).slice(0, 5);
 
@@ -59,9 +76,17 @@ export async function TodaysFlow({ auth }: { auth: Pick<AuthContext, "workspaceI
             {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
           </p>
         </div>
+        <nav aria-label="Quick Filters" className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Quick Filters</span>
+          {chip("All", { ft: undefined, fp: undefined }, !filter.topic && !filter.priority)}
+          {(Object.keys(FLOW_PRIORITIES) as Array<keyof typeof FLOW_PRIORITIES>).map((k) =>
+            chip(k.toUpperCase(), { fp: filter.priority === k ? undefined : k }, filter.priority === k),
+          )}
+          {topics.map((t) => chip(`#${t}`, { ft: filter.topic === t ? undefined : t }, filter.topic === t))}
+        </nav>
         <Card title="Upcoming">
           {upcoming.length === 0 ? (
-            <p className="text-muted-foreground">Nothing upcoming.</p>
+            <p className="text-muted-foreground">{filter.topic || filter.priority ? "Nothing matches these filters." : "Nothing upcoming."}</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {upcoming.map((t) => (

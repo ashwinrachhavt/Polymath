@@ -5,6 +5,7 @@ import { registerAccount, setAccountStatus, setDefaultForWrites } from "@/domain
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
+import { syncNotionAccount } from "@/domains/integrations/notion";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -117,5 +118,19 @@ export async function syncGoogleCalendarAction(input: { accountId: string }): Pr
     return { ok: true, summary: `${r.created} new, ${r.updated} updated, ${r.cancelled} cancelled` };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The calendar sync failed." };
+  }
+}
+
+/* Read-only pull of shared Notion pages into knowledge documents. Nothing is written to Notion. */
+export async function syncNotionAction(input: { accountId: string }): Promise<
+  { ok: true; summary: string } | { ok: false; error: string }
+> {
+  const auth = await authorize();
+  try {
+    const r = await syncNotionAccount(auth, { externalAccountId: input.accountId });
+    revalidate();
+    return { ok: true, summary: `${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged, ${r.failed} failed` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The Notion sync failed." };
   }
 }

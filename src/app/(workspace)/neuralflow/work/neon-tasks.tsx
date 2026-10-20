@@ -92,7 +92,7 @@ export async function NeonTasks({
       title="Work"
       description="Saved tasks in rank order. Today shows only Ready and In progress work; move a task to Ready when you choose to work on it."
     >
-      {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} /> : null}
+      {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Panel
           title={scope === "today" ? "Today" : scope === "done" ? "Finished" : "Open tasks"}
