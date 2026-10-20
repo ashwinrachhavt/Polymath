@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "backfill:semantic-edges": "tsx --env-file=.env scripts/backfill-semantic-edges.ts",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
