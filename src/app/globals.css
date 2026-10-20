@@ -5,69 +5,68 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Owner direction (2026-10-18): look and feel of Notion AI and Linear.
- * Minimal, calm, fast, keyboard-first. This supersedes the earlier
- * "machined instrument" register: no engraving, no milled edges, no
- * per-app accent colours in chrome.
+ * Owner direction (2026-10-19): the "stronghold" design of the whole product
+ * follows Dao (Opal-like): light, sparse, airy, calm. This supersedes the
+ * 2026-10-18 "Notion AI and Linear" register below and the DESIGN.md target
+ * register, both of which are denser and colder than this direction.
  *
  * What that means in values:
- * 1. Near-neutral cool greys at very low chroma. Surfaces are white /
- *    near-white (dark: Linear's near-black); separation comes from hairline
- *    borders and whitespace, not from shadows or texture.
- * 2. One accent for the whole product: Linear's indigo. It marks the primary
- *    action, the focus ring, and links, and appears nowhere else. Apps no
- *    longer carry their own hue; --app-accent is kept as an alias so
+ * 1. A warm, near-white ground with generous whitespace. Surfaces separate
+ *    by the lightest hairline that still reads; nothing presses or glows.
+ * 2. One quiet accent for the whole product: a soft warm charcoal, used the
+ *    way Opal uses its dark button - primary actions, the focus ring, links.
+ *    Apps no longer carry their own hue; --app-accent stays as an alias so
  *    components do not change.
- * 3. Flat panels. A card is a 1px border and a fill, nothing pressed or
- *    bevelled. Floating layers (menus, dialogs) get one soft shadow.
+ * 3. Flat panels. A card is a 1px border and a fill. Floating layers get one
+ *    soft, warm-tinted shadow. Everything else is whitespace.
  */
 
 :root {
-  --radius: 0.375rem;
+  --radius: 0.5rem;
   --page-gutter: 16px;
   --page-width: 1200px;
 
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.25 0.01 265);
+  --background: oklch(0.982 0.004 90);
+  --foreground: oklch(0.27 0.008 75);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.01 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.01 265);
+  --card: oklch(0.997 0.002 90);
+  --card-foreground: oklch(0.27 0.008 75);
+  --popover: oklch(0.997 0.002 90);
+  --popover-foreground: oklch(0.27 0.008 75);
 
-  /* The product's one accent: Linear indigo. */
-  --primary: oklch(0.55 0.19 277);
-  --primary-foreground: oklch(0.985 0.002 277);
+  /* The product's one accent: a soft warm charcoal, Opal-style. */
+  --primary: oklch(0.32 0.010 75);
+  --primary-foreground: oklch(0.982 0.004 90);
 
-  --secondary: oklch(0.965 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 265);
+  --secondary: oklch(0.955 0.004 85);
+  --secondary-foreground: oklch(0.27 0.008 75);
 
-  --muted: oklch(0.965 0.003 260);
-  --muted-foreground: oklch(0.425 0.012 265);
+  --muted: oklch(0.960 0.004 85);
+  --muted-foreground: oklch(0.52 0.008 78);
 
-  --accent: oklch(0.955 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 265);
+  --accent: oklch(0.948 0.005 85);
+  --accent-foreground: oklch(0.27 0.008 75);
 
-  --destructive: oklch(0.55 0.19 25);
+  --destructive: oklch(0.56 0.15 25);
 
-  --border: oklch(0.925 0.004 260);
-  --input: oklch(0.925 0.004 260);
-  --ring: oklch(0.55 0.19 277);
+  --border: oklch(0.918 0.004 85);
+  --input: oklch(0.918 0.004 85);
+  --ring: oklch(0.38 0.012 75);
 
-  --chart-1: oklch(0.55 0.19 277);
-  --chart-2: oklch(0.58 0.08 168);
-  --chart-3: oklch(0.5 0.09 268);
-  --chart-4: oklch(0.62 0.1 96);
-  --chart-5: oklch(0.55 0.09 330);
+  --chart-1: oklch(0.45 0.02 75);
+  --chart-2: oklch(0.60 0.07 168);
+  --chart-3: oklch(0.55 0.08 268);
+  --chart-4: oklch(0.65 0.09 96);
+  --chart-5: oklch(0.58 0.08 330);
 
-  --sidebar: oklch(0.977 0.003 260);
-  --sidebar-foreground: oklch(0.25 0.01 265);
-  --sidebar-primary: oklch(0.55 0.19 277);
-  --sidebar-primary-foreground: oklch(0.985 0.002 277);
-  --sidebar-accent: oklch(0.95 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 265);
-  --sidebar-border: oklch(0.925 0.004 260);
-  --sidebar-ring: oklch(0.55 0.19 277);
+  --sidebar: oklch(0.978 0.004 90);
+  --sidebar-foreground: oklch(0.27 0.008 75);
+  --sidebar-primary: oklch(0.32 0.010 75);
+  --sidebar-primary-foreground: oklch(0.982 0.004 90);
+  --sidebar-accent: oklch(0.948 0.005 85);
+  --sidebar-accent-foreground: oklch(0.27 0.008 75);
+  --sidebar-border: oklch(0.918 0.004 85);
+  --sidebar-ring: oklch(0.38 0.012 75);
 
   /* Kept defined for any straggler referencing them; the flat panel no
      longer uses inset edges. */
@@ -75,12 +74,12 @@
   --edge-shade: oklch(0 0 0 / 0%);
 
   /* One soft shadow, reserved for layers that genuinely float (menus,
-     dialogs, popovers). Cards and panels cast none. */
-  --shadow: 0 1px 2px oklch(0.3 0.02 265 / 5%), 0 8px 24px oklch(0.3 0.02 265 / 8%);
+     dialogs, popovers). Warm-tinted to the ground, never grey-black. */
+  --shadow: 0 1px 2px oklch(0.35 0.01 80 / 4%), 0 8px 24px oklch(0.35 0.01 80 / 6%);
 
   /* All apps share the single accent. The [data-app] scoping stays so
      components keep reading --app-accent, but every app resolves to the
-     same indigo: one product, not three. */
+     same charcoal: one product, not three. */
   --app-accent: var(--primary);
   --app-accent-foreground: var(--primary-foreground);
   --accent-command-center: var(--primary);
@@ -158,56 +157,57 @@
 }
 
 .dark {
-  /* Linear's dark register: near-black ground, panels a breath lighter,
-     hairlines at low alpha, indigo accent kept identical to light mode. */
-  --background: oklch(0.165 0.005 265);
-  --foreground: oklch(0.94 0.004 260);
+  /* The same calm register, inverted: a warm near-black ground, panels a
+     breath lighter, hairlines at low alpha, the accent inverted to a soft
+     warm off-white so dark mode stays the same product. */
+  --background: oklch(0.190 0.004 80);
+  --foreground: oklch(0.930 0.004 85);
 
-  --card: oklch(0.19 0.005 265);
-  --card-foreground: oklch(0.94 0.004 260);
-  --popover: oklch(0.2 0.005 265);
-  --popover-foreground: oklch(0.94 0.004 260);
+  --card: oklch(0.225 0.005 80);
+  --card-foreground: oklch(0.930 0.004 85);
+  --popover: oklch(0.235 0.005 80);
+  --popover-foreground: oklch(0.930 0.004 85);
 
-  --primary: oklch(0.55 0.19 277);
+  --primary: oklch(0.920 0.004 85);
   --accent-command-center: var(--primary);
   --accent-neuralflow: var(--primary);
   --accent-alfred: var(--primary);
-  --primary-foreground: oklch(0.985 0.002 277);
+  --primary-foreground: oklch(0.240 0.006 78);
 
-  --secondary: oklch(0.225 0.006 265);
-  --secondary-foreground: oklch(0.94 0.004 260);
+  --secondary: oklch(0.255 0.005 80);
+  --secondary-foreground: oklch(0.930 0.004 85);
 
-  --muted: oklch(0.225 0.006 265);
-  --muted-foreground: oklch(0.68 0.01 262);
+  --muted: oklch(0.255 0.005 80);
+  --muted-foreground: oklch(0.680 0.008 82);
 
-  --accent: oklch(0.24 0.006 265);
-  --accent-foreground: oklch(0.94 0.004 260);
+  --accent: oklch(0.270 0.005 80);
+  --accent-foreground: oklch(0.930 0.004 85);
 
-  --destructive: oklch(0.65 0.17 25);
+  --destructive: oklch(0.65 0.15 25);
 
-  --border: oklch(0.265 0.006 265);
-  --input: oklch(0.265 0.006 265);
-  --ring: oklch(0.62 0.17 279);
+  --border: oklch(0.290 0.005 80);
+  --input: oklch(0.290 0.005 80);
+  --ring: oklch(0.820 0.006 85);
 
-  --chart-1: oklch(0.62 0.17 279);
+  --chart-1: oklch(0.85 0.01 85);
   --chart-2: oklch(0.76 0.08 168);
-  --chart-3: oklch(0.7 0.09 268);
-  --chart-4: oklch(0.8 0.1 96);
+  --chart-3: oklch(0.72 0.09 268);
+  --chart-4: oklch(0.80 0.1 96);
   --chart-5: oklch(0.74 0.09 330);
 
-  --sidebar: oklch(0.18 0.005 265);
-  --sidebar-foreground: oklch(0.94 0.004 260);
-  --sidebar-primary: oklch(0.55 0.19 277);
-  --sidebar-primary-foreground: oklch(0.985 0.002 277);
-  --sidebar-accent: oklch(0.24 0.006 265);
-  --sidebar-accent-foreground: oklch(0.94 0.004 260);
-  --sidebar-border: oklch(0.265 0.006 265);
-  --sidebar-ring: oklch(0.62 0.17 279);
+  --sidebar: oklch(0.205 0.004 80);
+  --sidebar-foreground: oklch(0.930 0.004 85);
+  --sidebar-primary: oklch(0.920 0.004 85);
+  --sidebar-primary-foreground: oklch(0.240 0.006 78);
+  --sidebar-accent: oklch(0.270 0.005 80);
+  --sidebar-accent-foreground: oklch(0.930 0.004 85);
+  --sidebar-border: oklch(0.290 0.005 80);
+  --sidebar-ring: oklch(0.820 0.006 85);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);
 
-  --shadow: 0 1px 2px oklch(0 0 0 / 40%), 0 12px 32px oklch(0 0 0 / 45%);
+  --shadow: 0 1px 2px oklch(0 0 0 / 35%), 0 12px 32px oklch(0 0 0 / 40%);
 }
 
 @layer components {
