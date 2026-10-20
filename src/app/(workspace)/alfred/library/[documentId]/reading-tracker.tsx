@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import { recordReadingEventAction } from "../actions";
+import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import type { TextSegment } from "@/domains/knowledge/passages";
+import { recordReadingEventAction, savePassageAction } from "../actions";
 
 /*
  * The reader shell: renders the server-composed article and emits the sitting's
@@ -17,7 +21,11 @@ const HEARTBEAT_MS = 5_000;
 /** Below this scroll delta a heartbeat sends nothing: the position did not move. */
 const PROGRESS_EPSILON = 0.005;
 
-export function ReadingShell({ documentId, children }: { documentId: string; children: ReactNode }) {
+export function ReadingShell({ documentId, segments, canSave }: { documentId: string; segments: TextSegment[]; canSave: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [selection, setSelection] = useState<{ quote: string; x: number; y: number } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const lastSentProgressRef = useRef(0);
 
@@ -101,13 +109,68 @@ export function ReadingShell({ documentId, children }: { documentId: string; chi
     };
   }, [documentId]);
 
+  const onSelect = () => {
+    const sel = window.getSelection();
+    const article = articleRef.current;
+    const quote = sel?.toString().trim() ?? "";
+    if (!canSave || !sel || !article || !quote || sel.rangeCount === 0 || !article.contains(sel.anchorNode) || !article.contains(sel.focusNode)) {
+      setSelection(null);
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const box = article.getBoundingClientRect();
+    setMessage(null);
+    setSelection({ quote, x: Math.max(0, rect.left - box.left), y: rect.bottom - box.top + 6 });
+  };
+
+  const save = () => {
+    if (!selection) return;
+    const quote = selection.quote;
+    startTransition(async () => {
+      const result = await savePassageAction({ documentId, quote });
+      setSelection(null);
+      window.getSelection()?.removeAllRanges();
+      setMessage(result.ok ? (result.created ? "Saved as a zettel." : "Already saved.") : result.error);
+      if (result.ok) router.refresh();
+    });
+  };
+
   return (
     <article
       ref={articleRef}
-      className="max-w-[75ch] whitespace-pre-wrap text-sm leading-7"
+      className="relative max-w-[75ch] whitespace-pre-wrap text-sm leading-7"
       data-reading-article
+      onMouseUp={onSelect}
+      onKeyUp={onSelect}
     >
-      {children}
+      {segments.map((segment, index) =>
+        segment.passage ? (
+          <mark key={index} className="rounded-sm bg-accent/60 px-0.5 text-foreground" title="Kept as a zettel">
+            {segment.text}
+            <Link
+              href={`/alfred/notebook?id=${segment.passage.artifactId}`}
+              className="ml-1 align-super text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+              aria-label={`Open zettel: ${segment.passage.title}`}
+            >
+              card
+            </Link>
+          </mark>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
+      {selection ? (
+        <div className="absolute z-10 whitespace-normal" style={{ left: selection.x, top: selection.y }}>
+          <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={save} disabled={pending}>
+            Save as zettel
+          </Button>
+        </div>
+      ) : null}
+      {message ? (
+        <p role="status" className="mt-3 whitespace-normal text-xs text-muted-foreground">
+          {message}
+        </p>
+      ) : null}
     </article>
   );
 }
