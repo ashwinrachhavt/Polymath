@@ -317,7 +317,7 @@ export function FileExplorer({
 
   return (
     <div
-      className="relative flex min-h-[60dvh] flex-col md:flex-row"
+      className="relative flex min-h-[60dvh] flex-col min-[1400px]:flex-row"
       onKeyDown={onKeyDown}
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
@@ -347,7 +347,7 @@ export function FileExplorer({
         </div>
       ) : null}
 
-      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 md:w-60 md:flex-col md:overflow-y-auto md:border-r md:border-b-0 md:p-3">
+      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 min-[1400px]:w-60 min-[1400px]:flex-col min-[1400px]:overflow-y-auto min-[1400px]:border-r min-[1400px]:border-b-0 min-[1400px]:p-3">
         {FOLDERS.map((f) => (
           <button
             key={f.id}
@@ -378,13 +378,13 @@ export function FileExplorer({
             <Readout className="text-xs text-muted-foreground">{counts[f.id]}</Readout>
           </button>
         ))}
-        <div className="text-muted-foreground mt-3 hidden items-center justify-between px-2.5 text-xs md:flex">
+        <div className="text-muted-foreground mt-3 hidden items-center justify-between px-2.5 text-xs min-[1400px]:flex">
           <span>My folders</span>
           <button type="button" aria-label="New folder" onClick={() => setNewFolderIn({ parentId: activeFolder?.id ?? null, name: "" })} className="hover:bg-muted rounded p-0.5">
             <FolderPlus aria-hidden className="size-3.5" />
           </button>
         </div>
-        <button type="button" onClick={() => setNewFolderIn({ parentId: null, name: "" })} className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] whitespace-nowrap md:hidden">
+        <button type="button" onClick={() => setNewFolderIn({ parentId: null, name: "" })} className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] whitespace-nowrap min-[1400px]:hidden">
           <FolderPlus aria-hidden className="size-3.5" /> New folder
         </button>
         {newFolderIn ? (
@@ -442,7 +442,7 @@ export function FileExplorer({
         })}
         {tags.length > 0 ? (
           <>
-            <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs md:block">Tags</p>
+            <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs min-[1400px]:block">Tags</p>
             {tags.map((t) => (
               <button
                 key={t.tag}
@@ -457,7 +457,7 @@ export function FileExplorer({
             ))}
           </>
         ) : null}
-        <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs leading-relaxed md:block">
+        <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs leading-relaxed min-[1400px]:block">
           Drag documents onto a folder to file them. Built-in views describe what a document is; folders are where you keep it.
         </p>
       </nav>
@@ -609,7 +609,7 @@ export function FileExplorer({
             </p>
           </div>
         ) : view === "list" ? (
-          <table className="w-full text-[13px]">
+          <table className="w-full table-fixed text-[13px]">
             <thead className="text-muted-foreground text-xs">
               <tr className="border-border border-b">
                 <th className="w-10 py-2 pl-4 md:pl-5">
@@ -621,10 +621,10 @@ export function FileExplorer({
                   />
                 </th>
                 <th className="py-2 text-left font-normal">Name</th>
-                <th className="hidden py-2 text-left font-normal md:table-cell">People</th>
-                <th className="hidden py-2 text-left font-normal sm:table-cell">Type</th>
-                <th className="py-2 text-left font-normal">Status</th>
-                <th className="hidden py-2 pr-5 text-left font-normal lg:table-cell">Added</th>
+                <th className="hidden py-2 text-left font-normal md:table-cell md:w-28">People</th>
+                <th className="hidden py-2 text-left font-normal sm:table-cell sm:w-20">Type</th>
+                <th className="w-20 py-2 text-left font-normal">Status</th>
+                <th className="hidden py-2 pr-5 text-left font-normal whitespace-nowrap lg:table-cell lg:w-28">Added</th>
               </tr>
             </thead>
             <tbody>
@@ -656,7 +656,7 @@ export function FileExplorer({
                   <td className="text-muted-foreground hidden max-w-[12rem] truncate py-2 pr-3 md:table-cell">{row.partyNames.slice(0, 2).join(", ") || "-"}</td>
                   <td className="text-muted-foreground hidden py-2 pr-3 sm:table-cell">{kindLabel(row)}</td>
                   <td className="py-2 pr-3"><StatusBadge row={row} /></td>
-                  <td className="text-muted-foreground hidden py-2 pr-5 lg:table-cell"><Readout>{dateFmt.format(new Date(row.createdAt))}</Readout></td>
+                  <td className="text-muted-foreground hidden py-2 pr-5 whitespace-nowrap lg:table-cell"><Readout>{dateFmt.format(new Date(row.createdAt))}</Readout></td>
                 </tr>
               ))}
             </tbody>
