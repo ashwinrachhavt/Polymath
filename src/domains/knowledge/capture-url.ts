@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { validateFile } from "@/lib/file-validation";
@@ -8,7 +8,8 @@ import { canonicalCaptureUrl, parseCaptureUrl, safeFetch, type SafeFetchOptions 
 import { extractDocument, type ExtractDocumentResult } from "./extraction";
 import { extractPageText, isHtmlDocument } from "./html-to-text";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
-import { documentExtractions, documents } from "./schema";
+import type { TxDrizzle } from "@/lib/db-transaction";
+import { documentExtractions, documents, sources } from "./schema";
 
 /*
  * URL capture is the file upload with a different source. The document row is
@@ -64,15 +65,58 @@ type IntakeAttachment = {
   verdict: FileValidationResult;
   sourceUrl: string;
   documentId: string;
+  /** A reduced HTML page is a web source; an attached binary is a document source. */
+  sourceKind: "web" | "document";
 };
+
+/*
+ * A captured page is a source, not only a document. `sources` is the citation
+ * identity that claims and dossiers point at; a capture path that skipped it
+ * left every pasted URL uncitable, which is the gap this closes. Written in
+ * intake's transaction, so a source exists exactly when the file does.
+ */
+async function recordSource(
+  auth: AuthContext,
+  tx: TxDrizzle,
+  input: { title: string; url: string; contentHash: string; kind: "web" | "document" },
+): Promise<void> {
+  await tx
+    .insert(sources)
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: input.kind,
+      title: input.title,
+      url: input.url,
+      contentHash: input.contentHash,
+      fetchedAt: new Date(),
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoNothing({
+      target: [sources.workspaceId, sources.url, sources.contentHash],
+      where: sql`url is not null and content_hash is not null`,
+    });
+}
 
 /** The one attach step both content kinds share; a concurrent paste's win is not an error. */
 async function attachIntake(
   auth: AuthContext,
   input: IntakeAttachment,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const contentHash = await sha256Hex(input.bytes);
   try {
-    await intakeFile(auth, { ...input, origin: "url" });
+    await intakeFile(auth, {
+      ...input,
+      contentHash,
+      origin: "url",
+      inTransaction: (tx) =>
+        recordSource(auth, tx, {
+          title: input.title,
+          url: input.sourceUrl,
+          contentHash,
+          kind: input.sourceKind,
+        }),
+    });
     return { ok: true };
   } catch (cause) {
     // A concurrent paste attached its bytes first; this call joins its result.
@@ -152,6 +196,7 @@ export async function captureUrl(
       verdict: { ok: true, mimeType: "text/markdown" },
       sourceUrl,
       documentId,
+      sourceKind: "web",
     });
     if (!attached.ok) return { ok: false, documentId, error: attached.error };
     return { ok: true, documentId, created, extraction: await extractDocument(auth, { documentId }) };
@@ -173,6 +218,7 @@ export async function captureUrl(
     verdict,
     sourceUrl,
     documentId,
+    sourceKind: "document",
   });
   if (!attached.ok) return { ok: false, documentId, error: attached.error };
   return { ok: true, documentId, created, extraction: await extractDocument(auth, { documentId }) };

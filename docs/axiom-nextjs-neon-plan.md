@@ -346,3 +346,29 @@ These were in the previous revision and are no longer the direction:
 - Docker Compose as a deployment target rather than a local development
   convenience.
 - Cloud cron as the only way to drain the queue.
+
+# Appendix: the research stack is local-only (ASH-178)
+
+`make search-up` runs SearXNG, Firecrawl and Docling as containers bound to
+`127.0.0.1`. A deployed Vercel function cannot reach them: the addresses in
+`SEARXNG_URL`, `FIRECRAWL_API_URL` and `DOCLING_SERVE_URL` resolve inside the
+deployment's own network, not the operator's laptop. Nothing tunnels them,
+because a tunnel would put a development machine on the public internet.
+
+What a deployment actually does today:
+
+| Capability | Deployed behaviour |
+|---|---|
+| Web search | falls through the resolver to keyed providers or DuckDuckGo |
+| Page fetch | Firecrawl unreachable; the tool reports "fetch failed" |
+| Crawl | queues and never submits; the row stays `pending` |
+| Document extraction | LlamaParse when `LLAMAPARSE_API_KEY` is set, else the PDF text layer |
+
+Draining the queue is likewise local. `make queue-up` runs
+`scripts/outbox-worker.ts` against the database. The deployed trigger
+(`POST /api/internal/cron`, bearer `OUTBOX_DISPATCH_SECRET`) exists and is
+tested, but registering it in `vercel.json` buys nothing on the free plan: its
+cron cadence is at most daily, so an upload would sit at "Waiting for the
+queue" for a day. Deployed extraction is a manual operation until the plan
+changes or a hosted adapter covers it. The inbox says so rather than showing
+"Reading" indefinitely.

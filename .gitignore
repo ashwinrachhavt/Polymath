@@ -54,3 +54,6 @@ npm-debug.log*
 
 # local development uploads (object-store/local-fs.ts) — never commit
 .cache/
+
+# Local queue worker pid/log (make queue-up).
+.run/

@@ -26,8 +26,11 @@ export default defineTool({
     maxDepth: z.number().int().min(1).max(3).optional().describe("Crawl: link depth (default 1)"),
   }),
   async execute(input, ctx) {
-    const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
+    const current = ctx.session.auth.current;
+    const workspaceId = current?.attributes?.workspaceId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
+    const userId = current?.principalId;
+    if (typeof userId !== "string") return { ok: false as const, error: "no principal in session" };
 
     const run = await getRunBySessionRef(ctx.session.id, workspaceId);
     if (!run || run.state !== "running") {
@@ -38,7 +41,7 @@ export default defineTool({
     }
 
     if (input.crawl) {
-      return crawlSiteForAgent({ workspaceId }, { url: input.url, limit: input.limit, maxDepth: input.maxDepth });
+      return crawlSiteForAgent({ workspaceId, userId }, { url: input.url, limit: input.limit, maxDepth: input.maxDepth });
     }
     return fetchPageForAgent({ workspaceId }, { url: input.url });
   },

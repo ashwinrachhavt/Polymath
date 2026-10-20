@@ -91,17 +91,32 @@ type CrawlBody = {
   error?: string;
 };
 
+export type CrawlPage = { url: string; markdown: string; title: string | null };
+
+export type CrawlPollResult = {
+  status: string;
+  pages: CrawlPage[];
+  error: string | null;
+};
+
+/** Firecrawl's terminal states. Anything else means "still working". */
+export function isTerminalCrawlStatus(status: string): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 /*
- * Synchronous crawl: submit, then poll the status endpoint until it settles or
- * the timeout budget runs out. A crawl that outlives the budget returns its
- * partial pages with a running status rather than blocking the run — the caller
- * can treat that as "more where this came from", which is honest.
+ * Crawl is two transports, not one.
+ *
+ * `submitCrawl` starts a job and returns its id; `pollCrawl` reads it once.
+ * Neither waits. The caller decides whether to sleep and poll again — the
+ * outbox worker does, across requests, which is what lets a crawl outlive the
+ * 20 s budget that used to truncate one silently.
  */
-export async function crawlSite(
+export async function submitCrawl(
   url: string,
   opts: { limit?: number; maxDepth?: number },
   env: Record<string, string | undefined> = process.env,
-): Promise<FirecrawlCrawlResult> {
+): Promise<{ jobId: string }> {
   const cfg = config(env);
   const submission = await fetch(`${cfg.baseUrl}/v1/crawl`, {
     method: "POST",
@@ -111,32 +126,31 @@ export async function crawlSite(
   });
   if (!submission.ok) throw new FirecrawlError(`Firecrawl crawl returned ${submission.status}`);
   const started = (await submission.json().catch(() => null)) as CrawlBody | null;
-  const jobId = started?.id;
-  if (!jobId) return { jobId: "", status: "failed", pages: [], error: started?.error ?? "crawl did not start" };
+  if (!started?.id) throw new FirecrawlError(started?.error ?? "crawl did not start");
+  return { jobId: started.id };
+}
 
-  const deadline = Date.now() + FIRECRAWL_TIMEOUT_MS;
-  let status = started.status ?? "scraping";
-  let pages: CrawlBody["data"] = started.data ?? [];
-  while (status !== "completed" && status !== "failed" && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const poll = await fetch(`${cfg.baseUrl}/v1/crawl/${jobId}`, {
-      headers: headers(cfg),
-      signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
-    });
-    if (!poll.ok) throw new FirecrawlError(`Firecrawl crawl status returned ${poll.status}`);
-    const body = (await poll.json().catch(() => null)) as CrawlBody | null;
-    status = body?.status ?? status;
-    if (body?.data) pages = body.data;
-  }
-
+/** One status read. No retry, no loop; a non-ok response is the caller's to schedule. */
+export async function pollCrawl(
+  jobId: string,
+  env: Record<string, string | undefined> = process.env,
+): Promise<CrawlPollResult> {
+  const cfg = config(env);
+  const response = await fetch(`${cfg.baseUrl}/v1/crawl/${jobId}`, {
+    headers: headers(cfg),
+    signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new FirecrawlError(`Firecrawl crawl status returned ${response.status}`);
+  const body = (await response.json().catch(() => null)) as CrawlBody | null;
+  if (!body) throw new FirecrawlError("Firecrawl crawl status returned no body");
+  const status = body.status ?? "scraping";
   return {
-    jobId,
     status,
-    pages: (pages ?? []).map((p) => ({
+    pages: (body.data ?? []).map((p) => ({
       url: p.metadata?.sourceURL ?? "",
       markdown: p.markdown ?? "",
       title: p.metadata?.title ?? null,
     })),
-    error: status === "failed" ? "crawl failed" : null,
+    error: status === "failed" ? (body.error ?? "crawl failed") : null,
   };
 }

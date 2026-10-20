@@ -1,5 +1,6 @@
 import type postgres from "postgres";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { outboxEvents } from "./schema";
@@ -177,16 +178,77 @@ export async function recoverStrandedOutbox(rawClient: ReturnType<typeof postgre
 
 export type OutboxHandler = (event: ClaimedOutboxEvent) => Promise<void>;
 
-/** Releases one claim without spending an attempt (no consumer for the topic yet). */
+/**
+ * Releases one claim without spending an attempt: no consumer for the topic
+ * yet, or a long-running job that is not terminal and must be looked at again.
+ *
+ * `availableAt` matters. Clearing the lease alone makes the row immediately
+ * claimable again, so a handler that releases a still-running crawl would spin
+ * at the speed of the loop. Passing a future time parks it instead.
+ */
 export async function releaseOutbox(
   rawClient: ReturnType<typeof postgres>,
-  input: { id: string; leaseToken: string },
+  input: { id: string; leaseToken: string; availableAt?: Date },
 ): Promise<void> {
   await rawClient`
     update outbox_events
-    set lease_owner = null, lease_token = null, lease_expires_at = null
+    set lease_owner = null, lease_token = null, lease_expires_at = null,
+        available_at = coalesce(${input.availableAt ? input.availableAt.toISOString() : null}::timestamptz, available_at)
     where id = ${input.id} and lease_token = ${input.leaseToken}::uuid and status = 'pending'
   `;
+}
+
+/*
+ * A handler that throws this is saying "the provider was unreachable, not the
+ * work was wrong". The dispatcher parks the row and does not spend an attempt,
+ * so five minutes of a stopped Firecrawl cannot dead-letter a crawl that never
+ * ran. The row is still visible as pending and overdue, which is the point.
+ */
+export class OutboxDeferredError extends Error {
+  constructor(message: string, readonly retryAfterMs = 60_000) {
+    super(message);
+    this.name = "OutboxDeferredError";
+  }
+}
+
+/*
+ * A handler that throws this is saying "long job still running; look again
+ * later". Same effect as returning, but it parks the row instead of completing
+ * it, and it spends no attempt - a crawl that polls forty times is one attempt,
+ * not forty.
+ */
+export class OutboxParkedError extends Error {
+  constructor(readonly retryAfterMs: number, message = "work is still running") {
+    super(message);
+    this.name = "OutboxParkedError";
+  }
+}
+
+/**
+ * A handler's only legal mid-flight write: update its own payload while it
+ * still holds the lease. A crawl needs this to remember the provider job id
+ * between passes. Fenced by the lease token, so a worker that lost the row
+ * cannot resurrect it by writing into the update.
+ */
+export async function updateOutboxPayload(
+  rawClient: ReturnType<typeof postgres>,
+  input: { id: string; leaseToken: string; payload: unknown },
+): Promise<void> {
+  // Written through drizzle so the jsonb column does the encoding. Casting a
+  // string parameter to ::jsonb instead stores a jsonb *string*, and the next
+  // handler pass then reads no fields at all - a crawl would silently dispatch
+  // having done nothing. The update stays fenced by the lease token, so a
+  // worker that lost the row cannot resurrect it.
+  await db
+    .update(outboxEvents)
+    .set({ payload: input.payload })
+    .where(
+      and(
+        eq(outboxEvents.id, input.id),
+        eq(outboxEvents.leaseToken, input.leaseToken),
+        eq(outboxEvents.status, "pending"),
+      ),
+    );
 }
 
 /**
@@ -199,17 +261,25 @@ export async function dispatchPendingOutbox(
   rawClient: ReturnType<typeof postgres>,
   handlers: Record<string, OutboxHandler>,
   input: { workerId: string; limit?: number; leaseMs?: number },
-): Promise<{ claimed: number; dispatched: number; failed: number; dead: number }> {
+): Promise<{ claimed: number; dispatched: number; failed: number; dead: number; deferred: number; parked: number }> {
   const batch = await claimOutboxBatch(rawClient, input);
   let dispatched = 0;
   let failed = 0;
   let dead = 0;
+  let deferred = 0;
+  let parked = 0;
   for (const event of batch) {
     const handler = handlers[event.topic];
     if (!handler) {
       // No consumer for this topic yet: release the lease without spending an
-      // attempt, so a deploy order (producer before consumer) never dead-letters intent.
-      await releaseOutbox(rawClient, { id: event.id, leaseToken: event.leaseToken });
+      // attempt, so a deploy order (producer before consumer) never dead-letters
+      // intent. Parked for a minute rather than released into the next claim,
+      // otherwise every tick re-claims the same handlerless row forever.
+      await releaseOutbox(rawClient, {
+        id: event.id,
+        leaseToken: event.leaseToken,
+        availableAt: new Date(Date.now() + 60_000),
+      });
       continue;
     }
     try {
@@ -218,11 +288,23 @@ export async function dispatchPendingOutbox(
       dispatched += 1;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
+      if (cause instanceof OutboxDeferredError || cause instanceof OutboxParkedError) {
+        // Still running, or the provider is unreachable: park the row without
+        // spending an attempt. The distinction is only in the counters.
+        await releaseOutbox(rawClient, {
+          id: event.id,
+          leaseToken: event.leaseToken,
+          availableAt: new Date(Date.now() + cause.retryAfterMs),
+        });
+        if (cause instanceof OutboxDeferredError) deferred += 1;
+        else parked += 1;
+        continue;
+      }
       const retryAt = new Date(Date.now() + backoffMs(event.attempts + 1));
       const outcome = await failOutbox(rawClient, { id: event.id, leaseToken: event.leaseToken, error: message, retryAt });
       failed += 1;
       if (outcome.dead) dead += 1;
     }
   }
-  return { claimed: batch.length, dispatched, failed, dead };
+  return { claimed: batch.length, dispatched, failed, dead, deferred, parked };
 }

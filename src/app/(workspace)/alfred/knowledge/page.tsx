@@ -275,7 +275,11 @@ export async function KnowledgeSurface({
               {inbox.map((doc) => {
                 const status = documentStatus(
                   doc.extractionStatus
-                    ? { status: doc.extractionStatus, proposalStatus: doc.proposalStatus }
+                    ? {
+                        status: doc.extractionStatus,
+                        proposalStatus: doc.proposalStatus,
+                        createdAt: doc.extractionCreatedAt,
+                      }
                     : null,
                   doc.undecidedProposals,
                 );

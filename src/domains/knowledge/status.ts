@@ -7,6 +7,17 @@
 
 export type DocumentStatusTone = "neutral" | "progress" | "attention" | "done" | "error";
 
+/**
+ * How long a queued read may sit before the row stops claiming to be in
+ * progress. Comfortably longer than one worker tick plus a Docling first run,
+ * short enough that a stopped worker is obvious the same session.
+ */
+export const STALLED_AFTER_MS = 5 * 60_000;
+
+function stalled(createdAt: Date | null | undefined, now: Date): boolean {
+  return createdAt != null && now.getTime() - createdAt.getTime() > STALLED_AFTER_MS;
+}
+
 export type DocumentStatus = { label: string; tone: DocumentStatusTone };
 
 /**
@@ -17,20 +28,35 @@ export type DocumentStatus = { label: string; tone: DocumentStatusTone };
  * were never proposed (or whose proposal pass failed) is never "Filed".
  */
 export function documentStatus(
-  extraction: { status: string; error?: string | null; proposalStatus?: string | null } | null | undefined,
+  extraction: {
+    status: string;
+    error?: string | null;
+    proposalStatus?: string | null;
+    /** When this attempt was created. Omit for callers that have no timestamp. */
+    createdAt?: Date | null;
+  } | null | undefined,
   undecidedProposals: number,
+  /** Anything that can move the row along. Gives "Reading" an age. */
+  now: Date = new Date(),
 ): DocumentStatus {
   if (!extraction) return { label: "Added", tone: "neutral" };
   switch (extraction.status) {
     case "pending":
     case "skipped":
-      return { label: "Reading", tone: "progress" };
+      // A pending extraction only moves when something drains the queue. If
+      // nothing has for a long time, the honest word is not "Reading" - it is
+      // that nothing is reading. ASH-178: the worker being off must be visible.
+      return stalled(extraction.createdAt, now) ? { label: "Waiting for the queue", tone: "attention" } : { label: "Reading", tone: "progress" };
     case "failed":
       return { label: "Could not read", tone: "error" };
     case "succeeded":
       // Text alone is not filed: the proposal pass must have run too.
       if (extraction.proposalStatus === "failed") return { label: "Fields not read", tone: "error" };
-      if (extraction.proposalStatus === "pending") return { label: "Reading", tone: "progress" };
+      if (extraction.proposalStatus === "pending") {
+        return stalled(extraction.createdAt, now)
+          ? { label: "Waiting for the queue", tone: "attention" }
+          : { label: "Reading", tone: "progress" };
+      }
       if (extraction.proposalStatus !== "succeeded") return { label: "Fields not proposed", tone: "attention" };
       return undecidedProposals > 0
         ? { label: "Needs your check", tone: "attention" }
