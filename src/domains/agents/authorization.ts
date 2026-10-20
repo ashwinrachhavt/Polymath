@@ -57,6 +57,15 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "documents.search": { capability: "document.read", effectClass: "read" },
   "web.search": { capability: "integration.use", effectClass: "read", note: "Egress: query terms leave the workspace." },
   "web.fetch": { capability: "integration.use", effectClass: "read", note: "Egress: the fetched URL leaves the workspace." },
+  /*
+   * The provider gateway's Gmail reads, keyed by the capability names the
+   * gateway dispatches on. They were absent while the gateway did not dispatch,
+   * which would have made every granted read deny as `unknown_operation`.
+   * Reading a mailbox is integration use, the same authority the connected
+   * reads already carried.
+   */
+  "gmail.read": { capability: "integration.use", effectClass: "read" },
+  "gmail.thread.read": { capability: "integration.use", effectClass: "read" },
   "gmail.send": {
     capability: "action.execute",
     effectClass: "external_effect",
