@@ -46,6 +46,10 @@ export type PollDecision = { action: "stop"; message: string } | { action: "cont
 /** Classify a failed poll: stop with the cause, retry, or retry and count a rate limit. */
 export function shouldStopPolling(failure: RequestFailure): PollDecision {
   if (TERMINAL_POLL_KINDS.has(failure.kind)) return { action: "stop", message: failure.title };
+  // A cancellation is not a blip: retrying a request the caller aborted would
+  // repeat work nobody asked for. The loop passes no signal today, so this
+  // guards the behaviour before one arrives.
+  if (failure.kind === "aborted") return { action: "stop", message: failure.title };
   // An unknown future kind retries: a blip costs one more poll, while stopping
   // on a healthy poll would abandon a document that was about to finish.
   return { action: "continue", rateLimited: failure.kind === "rate_limited" };
@@ -117,6 +121,15 @@ export function phaseLabel(phase: FilePhase): string {
   }
 }
 
+/*
+ * The badge is text a screen reader would reach only by leaving the live
+ * region, and the cause is the actionable half; announce it with the counts.
+ */
+export function failureCopy(entries: { phase: FilePhase }[]): string {
+  const failure = entries.find((entry) => entry.phase.kind === "error")?.phase;
+  return failure?.kind === "error" ? `, failed: ${failure.message}` : "";
+}
+
 export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHref?: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -125,6 +138,7 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   const [dragging, setDragging] = useState(false);
   const [openText, setOpenText] = useState<string | null>(null); // documentId of the expanded entry
   const [openBody, setOpenBody] = useState<string | null>(null); // extracted text once loaded
+  const [openError, setOpenError] = useState<string | null>(null); // preview failure copy
   const [openPending, setOpenPending] = useState(false);
   const liveId = useId();
 
@@ -235,29 +249,31 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
     if (openText === documentId) {
       setOpenText(null);
       setOpenBody(null);
+      setOpenError(null);
       return;
     }
     setOpenText(documentId);
     setOpenPending(true);
     setOpenBody(null);
+    setOpenError(null);
     const detail = await requestJson<{ excerpt?: string | null }>(`/api/v1/documents/${documentId}/preview`);
     // The preview route returns an excerpt by design; the full text lives in
     // the library's reader. Link there rather than shipping the body twice.
-    setOpenBody(detail.ok ? detail.data.excerpt ?? "" : "");
+    // An empty panel on failure would read as "no text", so the panel carries
+    // the failure's own copy instead; a cancelled request just closes quietly.
+    if (detail.ok) setOpenBody(detail.data.excerpt ?? "");
+    else if (detail.failure.kind !== "aborted") setOpenError(detail.failure.title);
     setOpenPending(false);
   };
 
   const busy = entries.some((entry) => entry.phase.kind === "uploading" || entry.phase.kind === "reading");
   const anyDone = entries.some((entry) => entry.phase.kind === "done");
-  // The badge is text a screen reader would reach only by leaving the live
-  // region, and the cause is the actionable half; announce it with the counts.
-  const failure = entries.find((entry) => entry.phase.kind === "error")?.phase;
-  const failureCopy = failure?.kind === "error" ? `, failed: ${failure.message}` : "";
+  const failureAnnouncement = failureCopy(entries);
 
   return (
     <div className="flex flex-col gap-3">
       <div aria-live="polite" id={liveId} className="sr-only">
-        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done${failureCopy}`}
+        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done${failureAnnouncement}`}
       </div>
 
       <div
@@ -346,6 +362,8 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
           </div>
           {openPending ? (
             <p role="status" className="text-muted-foreground text-xs">Loading the extracted text…</p>
+          ) : openError ? (
+            <p role="alert" className="text-[13px] text-destructive">{openError}</p>
           ) : openBody ? (
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[13px] leading-relaxed">
               {openBody}

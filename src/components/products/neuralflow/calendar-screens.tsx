@@ -103,8 +103,16 @@ export function SchedulerScreen() {
       const task = state.tasks.find((item) => item.id === proposal.taskId);
       if (task?.version !== proposal.taskVersion || !["READY", "IN_PROGRESS"].includes(task.status) || hasConflict(state.events, proposal.date, proposal.start, proposal.duration) || state.events.some((event) => event.taskId === proposal.taskId && event.date === proposal.date)) { setError("A task or local calendar block changed after this proposal was prepared. Refresh proposals before accepting; no blocks were added."); return; }
     }
-    chosen.forEach((proposal) => addEvent({ title: proposal.title, taskId: proposal.taskId, date: proposal.date, start: proposal.start, duration: proposal.duration, provider: "local" }));
-    setProposals((proposals || []).filter((proposal) => !selected.includes(proposal.taskId))); setSelected([]); setError(""); notify(`${chosen.length} reviewed work blocks added to this browser only. No provider writes were performed.`);
+    const savedTaskIds = new Set(chosen.filter((proposal) => addEvent({ title: proposal.title, taskId: proposal.taskId, date: proposal.date, start: proposal.start, duration: proposal.duration, provider: "local" })).map((proposal) => proposal.taskId));
+    const saved = savedTaskIds.size;
+    // Refused proposals stay listed so a partial accept does not discard the
+    // blocks it failed to save.
+    setProposals((proposals || []).filter((proposal) => !savedTaskIds.has(proposal.taskId))); setSelected([]); setError("");
+    // A bulk accept can be partially refused; the notice must report what
+    // landed, not what was attempted.
+    if (saved === chosen.length) notify(`${chosen.length} reviewed work blocks added to this browser only. No provider writes were performed.`);
+    else if (saved > 0) notify(`${saved} of ${chosen.length} reviewed work blocks added to this browser only; the rest were not saved. No provider writes were performed.`);
+    else setError("No reviewed work blocks were saved. Inspect the latest calendar and prepare fresh proposals.");
   }
   return <Screen title="Scheduler" description="Prepare, inspect, and deliberately accept a small local schedule. Deterministic rules—not AI—use priority, estimates, and the blocks already in this preview." actions={<Button variant="outline" asChild><Link href="/apps/neuralflow/calendar">Open calendar</Link></Button>}>
     <Unavailable feature="Provider free/busy and external scheduling">Suggestions only avoid local preview blocks. They do not check meetings from a real account. Accepting below creates local blocks, not approved or successful provider events.</Unavailable>

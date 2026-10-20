@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /*
  * Replaces the root layout when it crashes, so no provider, theme, font, or
  * stylesheet is guaranteed to be mounted. Everything here is inline for that
@@ -16,6 +18,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // The boundary is where a render crash becomes visible; log the real error
+  // here or it is swallowed behind the generic copy (ASH-163).
+  useEffect(() => {
+    console.error("Polymath failed to start", error);
+  }, [error]);
   return (
     <html lang="en">
       <head>

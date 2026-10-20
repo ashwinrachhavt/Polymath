@@ -51,12 +51,19 @@ export function TasksScreen({ selectedTask, title = "Tasks", view = "list" }: { 
   function quickAdd(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const title = String(new FormData(event.currentTarget).get("title") || ""); if (addTask(title)) { event.currentTarget.reset(); notify("Task captured in Inbox locally. Choose List to clarify it; capture does not add it to Today."); } }
   function bulkDone() {
     const changed = state.tasks.filter((task) => selected.includes(task.id) && task.status !== "DONE");
-    setUndo(changed.map((task) => ({ id: task.id, status: task.status, version: task.version + 1 })));
-    changed.forEach((task) => updateTask(task.id, { status: "DONE" })); setSelected([]); notify(`${countLabel(changed.length, "task")} marked done locally.`);
+    const saved = changed.filter((task) => updateTask(task.id, { status: "DONE" }).ok);
+    setUndo(saved.map((task) => ({ id: task.id, status: task.status, version: task.version + 1 })));
+    setSelected([]);
+    // Only the tasks that landed can be undone or reported as done.
+    if (saved.length) notify(`${countLabel(saved.length, "task")} marked done locally.`);
+    if (saved.length < changed.length) notify(`${saved.length} of ${changed.length} tasks were marked done locally; the rest were not saved.`);
   }
   function undoBulk() {
     const safe = undo.filter((previous) => state.tasks.find((task) => task.id === previous.id)?.version === previous.version);
-    safe.forEach((previous) => updateTask(previous.id, { status: previous.status })); setUndo([]); notify(`${countLabel(safe.length, "task")} restored. Tasks edited since the bulk change were not overwritten.`);
+    const restored = safe.filter((previous) => updateTask(previous.id, { status: previous.status }).ok);
+    setUndo([]);
+    if (restored.length) notify(`${countLabel(restored.length, "task")} restored. Tasks edited since the bulk change were not overwritten.`);
+    if (restored.length < safe.length) notify(`${restored.length} of ${safe.length} tasks were restored; the rest were not saved.`);
   }
   return <Screen title={title} description={view === "today" ? "Today shows Ready and In progress work, not every captured thought. Move a task to Ready when you choose to work on it. This is a browser-only preview, not a connected daily plan." : "One task list, with details a click away. Capture into Inbox, then choose its status, priority, dates, and project. Changes stay in this browser preview."} actions={<NewTask />}>
     {selectedTask && <SelectedTask key={selectedTask} id={selectedTask} />}
@@ -92,7 +99,7 @@ function ScopedBoardsScreen({ storageScope, title }: { storageScope: string; tit
     if (viewStore.getNotice()) notify(viewStore.getNotice());
     setViewId(record.id); setOpen(false);
   }
-  function move(task: Task, status: TaskStatus) { updateTask(task.id, { status }); notify(`${task.title} moved to ${statusLabels[status]} locally.`); }
+  function move(task: Task, status: TaskStatus) { if (!updateTask(task.id, { status }).ok) return; notify(`${task.title} moved to ${statusLabels[status]} locally.`); }
   return <Screen title={title} description="Saved Kanban views select the same tasks as your list, calendar, and focus session. Drag a tile by its handle to rank it, drag across lanes to change status, or use Alt + Left / Right from the keyboard. There is no separate board-owned task model." actions={<><Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline">Save a view</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Save a board view</DialogTitle><DialogDescription>Stores filters in this browser only, not tasks or production board configuration.</DialogDescription></DialogHeader><form onSubmit={saveView} className="space-y-3"><Field label="View name"><Input name="title" required /></Field><Field label="Project"><Select name="project"><option value="all">All projects</option>{state.projects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</Select></Field><Field label="Title or tag contains"><Input name="query" /></Field><Button type="submit">Save view locally</Button></form></DialogContent></Dialog><NewTask /></>}>
     {viewReadNotice && <p role="status" className="text-[13px] text-muted-foreground">{viewReadNotice}</p>}
     <div className="flex flex-wrap items-end gap-4"><Field label="Saved view"><Select value={viewId} onChange={(event) => setViewId(event.target.value)}>{views.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</Select></Field><SearchField value={search} onChange={setSearch} placeholder="Search board tasks" /><Button variant="outline" onClick={() => setShowDone(!showDone)}>{showDone ? "Hide done" : "Show done"}</Button><Status>{countLabel(tasks.length, "task")} in view</Status></div>

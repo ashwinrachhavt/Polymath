@@ -86,7 +86,8 @@ export function ReportsScreen() {
   function saveSnapshot() {
     if (!validDate(start) || !validDate(end) || start > end) { setError("Choose valid dates with the end on or after the start."); return; }
     const note = addArtifact(`Work reflection: ${start} to ${end}`, "note", summary);
-    if (note) updateArtifact(note.id, { tags: ["Weekly review", "Local snapshot"], links: project === "all" ? [] : [project] });
+    if (!note) return;
+    if (!updateArtifact(note.id, { tags: ["Weekly review", "Local snapshot"], links: project === "all" ? [] : [project] }).ok) return;
     notify("Report snapshot saved as a canonical local note. No AI analysis ran."); setError("");
   }
   function exportSnapshot() {

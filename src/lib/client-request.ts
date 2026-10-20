@@ -43,8 +43,8 @@ const KIND_COPY: Record<RequestFailureKind, string> = {
   validation: "The request was not valid. Check the fields and try again.",
   rate_limited: "Too many requests. Wait a moment and try again.",
   server: "The server could not complete this. Try again; if it keeps failing, wait and retry later.",
-  network: "The request did not reach the server. Check your connection, then retry — nothing was submitted yet.",
-  aborted: "The request was cancelled. Nothing was submitted; start again when you are ready.",
+  network: "The request did not reach the server. Check your connection, then retry; if a change was being submitted, check the record before sending it again.",
+  aborted: "The request was cancelled. If a change was being submitted, check the record before sending it again.",
   malformed: "The server answered, but the response could not be read. Retry; if it keeps happening, reload the page.",
 };
 
