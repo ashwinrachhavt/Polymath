@@ -1,5 +1,6 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
+import { geminiFetch } from "../../alfred/agent/lib/gemini-openai";
 
 /*
  * The specialist agent: one shared runtime for every hired profile
@@ -8,19 +9,31 @@ import { createOpenAI } from "@ai-sdk/openai";
  * src/domains/agents/eve-driver.ts for why the brief travels with the create
  * call rather than being resolved here from the database).
  *
- * The model resolver mirrors alfred's: credentials read per step, because the
- * deployed bundle's module-scope env reads did not see Vercel's runtime env.
+ * The model resolver mirrors alfred's: Gemini through its OpenAI-compatible
+ * endpoint, credentials read per step (the deployed bundle's module-scope env
+ * reads did not see Vercel's runtime env), and the same `geminiFetch` repair for
+ * streaming tool calls. Two agents on two providers would mean two quota
+ * stories and two ways for a tool call to fail.
  */
+const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/";
+const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
+
 function specialistModel() {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY ?? "";
-  const baseURL =
-    process.env.OPENAI_BASE_URL ??
-    (apiKey.startsWith("sk-or-") ? "https://openrouter.ai/api/v1" : "https://api.groq.com/openai/v1");
-  const provider = createOpenAI({ apiKey, baseURL, name: "groq" });
-  return provider.chat("openai/gpt-oss-120b");
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? "";
+  const provider = createOpenAI({
+    apiKey,
+    baseURL: GEMINI_OPENAI_BASE,
+    name: "gemini",
+    fetch: geminiFetch(),
+  });
+  return provider.chat(process.env.GEMINI_AGENT_MODEL || GEMINI_DEFAULT_MODEL);
 }
 
 export default defineAgent({
+  // No shell, filesystem, or glob/grep tools: a specialist reaches the world
+  // through the authored, policy-gated tools in agent/tools/. Same reasoning as
+  // the alfred agent, and it keeps the request schema small on every step.
+  defaultTools: false,
   model: defineDynamic({
     events: {
       "step.started": () => ({ model: specialistModel(), modelContextWindowTokens: 128_000 }),

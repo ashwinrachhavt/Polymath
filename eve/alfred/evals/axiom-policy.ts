@@ -37,6 +37,7 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "tasks.read": "read",
   "gmail.read": "read",
   "calendar.read": "read",
+  "notion.read": "read",
   "gmail.draft": "prepare",
   "notion.draft": "prepare",
   "gmail.send": "external_write",

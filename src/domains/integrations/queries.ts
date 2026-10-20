@@ -65,3 +65,58 @@ export async function listSyncCursors(auth: AuthContext, accountId: string) {
     .orderBy(asc(syncCursors.resource))
     .limit(50);
 }
+
+/**
+ * The connected account an agent tool should read through.
+ *
+ * `alias` is what the owner names an account and what a model is allowed to
+ * choose; the Composio id never appears in a tool argument. An explicit alias
+ * must exist, be connected, and have a Composio id — a merely "connecting"
+ * account is not a usable credential. Without an alias, only a single healthy
+ * account for that provider is inferred; two accounts with no alias is an
+ * ambiguity the tool must surface, not guess at.
+ */
+export async function resolveConnectedAccount(
+  auth: AuthContext,
+  provider: string,
+  alias?: string,
+): Promise<
+  | { ok: true; connectedAccountId: string; alias: string }
+  | { ok: false; code: "not_connected" | "ambiguous"; message: string }
+> {
+  const rows = await db
+    .select({
+      alias: externalAccounts.alias,
+      status: externalAccounts.status,
+      connectedAccountId: externalAccounts.composioConnectedAccountId,
+    })
+    .from(externalAccounts)
+    .where(
+      and(
+        eq(externalAccounts.workspaceId, auth.workspaceId),
+        eq(externalAccounts.provider, provider),
+        eq(externalAccounts.status, "active"),
+      ),
+    )
+    .orderBy(asc(externalAccounts.alias))
+    .limit(25);
+
+  const usable = rows.filter((row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0);
+  if (alias) {
+    const match = usable.find((row) => row.alias === alias);
+    return match && match.connectedAccountId
+      ? { ok: true, connectedAccountId: match.connectedAccountId, alias: match.alias }
+      : { ok: false, code: "not_connected", message: `No connected ${provider} account named "${alias}".` };
+  }
+  if (usable.length === 1 && usable[0].connectedAccountId) {
+    return { ok: true, connectedAccountId: usable[0].connectedAccountId, alias: usable[0].alias };
+  }
+  if (usable.length === 0) {
+    return { ok: false, code: "not_connected", message: `No ${provider} account is connected.` };
+  }
+  return {
+    ok: false,
+    code: "ambiguous",
+    message: `More than one ${provider} account is connected (${usable.map((r) => r.alias).join(", ")}); name one.`,
+  };
+}

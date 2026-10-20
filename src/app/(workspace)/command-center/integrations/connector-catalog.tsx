@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
+import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
 import { AccountControls, ConnectButton } from "./connector-controls";
 
@@ -122,7 +123,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                 <article key={connector.provider} className="panel flex flex-col gap-3 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <span className="product-mark" aria-hidden>
-                      {connector.displayName.slice(0, 1)}
+                      <ProviderIcon provider={connector.provider} displayName={connector.displayName} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">

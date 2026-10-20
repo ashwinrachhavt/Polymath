@@ -70,6 +70,34 @@ function eveMount(agentName: string): string {
   return target.kind === "standalone" ? `${target.base}/eve/v1` : `${target.base}/eve/${agentName}/v1`;
 }
 
+/**
+ * The Eve session routes for one agent, plus the auth header to call them.
+ *
+ * The chat proxy needs the same mount resolution and the same short-lived
+ * bridge token the driver mints, and duplicating either is how the app and the
+ * agent drift apart. Keeping one resolver means a change to where Eve lives
+ * cannot fix the driver and miss the stream.
+ */
+export function eveSessionEndpoint(input: {
+  agentName?: string;
+  sessionRef: string;
+  auth: AuthContext;
+  /** The absolute stream index to resume from; omitted reads from the start. */
+  startIndex?: number;
+  /** When true the response stops at the durable tail instead of following. */
+  follow?: boolean;
+}): { url: string; headers: Record<string, string> } {
+  const mount = eveMount(input.agentName ?? "alfred");
+  const params = new URLSearchParams();
+  if (input.startIndex !== undefined) params.set("startIndex", String(input.startIndex));
+  if (input.follow === false) params.set("follow", "false");
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return {
+    url: `${mount}/session/${encodeURIComponent(input.sessionRef)}/stream${query}`,
+    headers: { accept: "application/x-ndjson", ...bridgeHeaders(input.auth) },
+  };
+}
+
 export function eveBridgeUnavailableReason(): string | null {
   if (!bridgeSecret()) {
     return "Agent execution is unavailable: EVE_BRIDGE_SECRET is not set (32 or more characters, the same value for the app and the Eve agent). No run was started.";
