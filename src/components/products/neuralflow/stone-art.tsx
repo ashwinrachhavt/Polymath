@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import type { Task, WorkspaceState } from "@/components/workspace/types";
@@ -14,6 +14,23 @@ export function StoneArt({ stone, size, locked = false, sheen = false, decorativ
   return <span className={cn("nf-vitrine", locked && "nf-locked", sheen && "nf-sheen", className)} style={{ width: size, height: size }}>
     <Image src={stone.image} alt={decorative ? "" : `${stone.name}${locked ? ", locked" : ""}`} width={size * 2} height={size * 2} sizes={`${size}px`} />
   </span>;
+}
+
+
+/*
+ * The Opal-style stage (ASH-175): the stone alone on a dark field with a soft
+ * halo and a small pedestal, a small-caps caption, and one large readout
+ * under it. Used wherever a single stone is the hero - the focus timer and
+ * the session reveal. `sub` is a node so the caller can keep the timer's
+ * role and aria-label on the readout.
+ */
+export function StoneStage({ caption, sub, children, className }: { caption?: string; sub?: ReactNode; children?: ReactNode; className?: string }) {
+  return <div className={cn("nf-stage", className)}>
+    <span className="nf-stage-glow" aria-hidden />
+    {children ? <div className="flex flex-col items-center">{children}<span className="nf-stage-pedestal" aria-hidden /></div> : null}
+    {caption ? <p className="nf-stage-caption">{caption}</p> : null}
+    {sub ? <div className="nf-stage-sub readout">{sub}</div> : null}
+  </div>;
 }
 
 /* The crystal greys out at the start of an interval and lights up as it elapses. */
@@ -33,11 +50,15 @@ export function FormingStone({ stone, progress, reduceMotion }: { stone: Stone; 
 export function SessionComplete({ completed, taskDone, stone, reason, earnedTotal, animate, onRestart, onDismiss }: { completed: boolean; taskDone: boolean; stone?: Stone; reason?: string; earnedTotal: number; animate: boolean; onRestart?: () => void; onDismiss: () => void }) {
   const heading = !completed ? "Session ended early. The task is still open." : taskDone ? "The session is complete, and so is the task." : "The session is complete. The task is not.";
   return <section aria-labelledby="nf-session-complete" className="panel flex flex-col gap-4 rounded-xl p-4 sm:flex-row sm:items-center">
-    {stone && <div className={cn("nf-reveal self-center", animate && "nf-animate")} aria-hidden>
-      <span className="nf-halo" />
-      <span className="nf-ring" />
-      {Array.from({ length: 8 }, (_, index) => <span key={index} className="nf-shard" />)}
-      <StoneArt stone={stone} size={80} className="nf-reveal-stone" />
+    {stone && <div className="nf-stage self-center px-6 py-5" aria-hidden>
+      <span className="nf-stage-glow" aria-hidden />
+      <div className={cn("nf-reveal", animate && "nf-animate")}>
+        <span className="nf-halo" />
+        <span className="nf-ring" />
+        {Array.from({ length: 8 }, (_, index) => <span key={index} className="nf-shard" />)}
+        <StoneArt stone={stone} size={80} className="nf-reveal-stone" />
+      </div>
+      <span className="nf-stage-pedestal" aria-hidden />
     </div>}
     <div className="min-w-0 flex-1">
       <h2 id="nf-session-complete" className="text-[13px] font-medium">{heading}</h2>

@@ -204,3 +204,110 @@
     animation: none;
   }
 }
+
+/*
+ * The Opal register for reward moments (ASH-175): one dark, quiet stage where
+ * the stone is the only object - a soft violet halo behind it, a small
+ * pedestal under it, a small-caps caption and one large readout. The app
+ * ground stays the warm light register; the jewel box is dark in both themes.
+ */
+.nf-stage {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 2rem 1.5rem 1.75rem;
+  overflow: hidden;
+  border-radius: 12px;
+  background: oklch(0.19 0.012 285);
+  color: oklch(0.94 0.008 285);
+}
+.nf-stage-glow {
+  position: absolute;
+  z-index: 0;
+  top: 8%;
+  left: 50%;
+  width: 18rem;
+  height: 18rem;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, oklch(0.58 0.16 300 / 0.38), oklch(0.46 0.13 275 / 0.18) 55%, transparent 78%);
+  pointer-events: none;
+}
+.nf-stage > *:not(.nf-stage-glow) {
+  position: relative;
+  z-index: 1;
+}
+.nf-stage .nf-vitrine {
+  border-radius: 9999px;
+  box-shadow: none;
+  background: transparent;
+}
+.nf-stage .nf-vitrine.nf-forming {
+  width: 6rem;
+  height: 6rem;
+}
+.nf-stage-pedestal {
+  display: block;
+  width: 5rem;
+  height: 0.625rem;
+  margin: -0.375rem auto 0;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, oklch(0 0 0 / 0.75), transparent 78%);
+}
+.nf-stage-caption {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: oklch(0.76 0.02 285);
+}
+.nf-stage-sub {
+  font-size: 2.25rem;
+  line-height: 1.1;
+  color: oklch(0.96 0.006 285);
+}
+/* Reveal particles read against the dark stage, not the page ink. */
+.nf-stage .nf-halo {
+  background: radial-gradient(closest-side, oklch(0.72 0.15 295 / 0.4), transparent);
+}
+.nf-stage .nf-ring {
+  border-color: oklch(0.82 0.1 295 / 0.55);
+}
+.nf-stage .nf-shard {
+  background: oklch(0.86 0.08 295 / 0.85);
+}
+
+/*
+ * The jewel collection (ASH-175, from the owner's Dao app): soft rounded
+ * cards on the light ground, a round dark photoreal gem, a lowercase name,
+ * and one small-caps status word. Dense but calm.
+ */
+.nf-vitrine.nf-jewel {
+  border-radius: 9999px;
+  box-shadow: none;
+}
+.nf-jewel-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+.nf-jewel-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 1.25rem 0.75rem 1rem;
+  text-align: center;
+}
+.nf-jewel-name {
+  font-size: 13px;
+  color: var(--foreground);
+}
+.nf-jewel-status {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
