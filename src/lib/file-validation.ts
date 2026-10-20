@@ -39,9 +39,9 @@ function looksLikeText(bytes: Uint8Array): boolean {
 }
 
 /** The DOCX family (zip container) is picked out of the shared zip magic by extension, the one place extension matters. */
-const ZIP_DOCX = /^\.docx?$/i;
-const ZIP_XLSX = /^\.xlsx?$/i;
-const ZIP_PPTX = /^\.pptx?$/i;
+const ZIP_DOCX = /\.(docx|doc)$/i;
+const ZIP_XLSX = /\.(xlsx|xls)$/i;
+const ZIP_PPTX = /\.(pptx|ppt)$/i;
 
 /*
  * 25 MB. A scanned 20-page PDF or a phone photo comfortably fits; anything

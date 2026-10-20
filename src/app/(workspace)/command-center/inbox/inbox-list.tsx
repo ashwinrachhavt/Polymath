@@ -63,6 +63,7 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
   );
 
   function bulkAct(next: "discarded" | "unprocessed") {
+    const originRow = document.activeElement?.closest("li") ?? null;
     const targets = bulkTargets;
     startTransition(async () => {
       const failures: Array<{ id: string; title: string; message: string }> = [];
@@ -79,7 +80,10 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
         ),
       );
       setBulkErrors(failures);
-      setSelected(new Set());
+      // Keep the selection (and the toolbar that renders the errors) when any
+      // row failed: clearing both in one batch unmounts the error list before
+      // it is ever seen.
+      if (!failures.length) setSelected(new Set());
     });
   }
 
@@ -107,7 +111,7 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
                   onChange={() => toggle(capture.id)}
                   onClick={(event) => event.stopPropagation()}
                   aria-label={`Select capture: ${rowTitle(capture)}`}
-                  className="mt-1 size-4 accent-[var(--primary)]"
+                  className="mt-1 size-4 accent-[var(--primary)] max-sm:size-[18px] max-sm:my-2"
                 />
                 <Link
                   href={`/command-center/inbox?${view === "unprocessed" ? "" : `filter=${view}&`}id=${capture.id}`}
@@ -137,7 +141,7 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
           role="toolbar"
           aria-label="Bulk actions"
           aria-live="polite"
-          className="sticky bottom-4 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow)] transition-all duration-150"
+          className="sticky bottom-4 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow)] transition-all duration-150 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:z-30 max-sm:min-h-[44px]"
         >
           <span className="readout text-[13px]">{selected.size} selected</span>
           <Button size="sm" variant="outline" disabled={pending} onClick={() => bulkAct("discarded")}>

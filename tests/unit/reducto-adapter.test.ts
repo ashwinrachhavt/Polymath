@@ -62,13 +62,19 @@ describe("reducto adapter (sanitized fixture contract)", () => {
 
   it("sends the reducto:// input with Bearer auth and page chunking", async () => {
     let parseBody: unknown;
+    let parseHeaders: Headers | undefined;
     globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
       if (String(url).includes("/upload")) return okJson({ file_id: "file-9" });
       parseBody = JSON.parse(String(init?.body));
+      parseHeaders = new Headers(init?.headers);
       return okJson({ result: { type: "full", chunks: [{ content: "x" }] } });
     }) as typeof fetch;
     await createReductoProvider("secret", "https://fixture.test").extract(input);
-    expect(parseBody).toMatchObject({ input: "reducto://file-9" });
+    expect(parseBody).toMatchObject({
+      input: "reducto://file-9",
+      retrieval: { chunking: { chunk_mode: "page" } },
+    });
+    expect(parseHeaders?.get("Authorization")).toBe("Bearer secret");
   });
 
   it("fails with a named error when the result is a URL reference", async () => {
