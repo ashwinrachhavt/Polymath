@@ -12,6 +12,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
+import { SearchResults } from "./search-results";
 
 export const metadata = { title: "Notebook · Polymath" };
 
@@ -89,7 +90,9 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
               </div>
             )}
           </div>
-          {notes.length === 0 ? (
+          {list.q && !kanban ? (
+            <SearchResults auth={auth} q={list.q} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+          ) : notes.length === 0 ? (
             <NoResults
               filtered={Boolean(list.q || list.filters.view)}
               clearHref={listHref(BASE, raw, { q: undefined, view: undefined, page: undefined })}
@@ -153,7 +156,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
               ))}
             </ul>
           )}
-          {!kanban && <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />}
+          {!kanban && !list.q && <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />}
         </Panel>
         {selected ? (
           <NoteEditor

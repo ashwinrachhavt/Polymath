@@ -1,6 +1,6 @@
 "use client";
 
-import { RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relation-vocabulary";
+import { RELATION_GROUPS, RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relation-vocabulary";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -129,7 +129,12 @@ function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: st
   return (
     <div className="mt-1.5 flex flex-col gap-1.5 rounded-md border border-border bg-background p-2">
       <select aria-label="Relationship" value={type} onChange={(e) => setType(e.target.value)} className="h-7 rounded-md border border-border bg-background px-1.5 text-xs">
-        {RELATION_OPTIONS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+        {RELATION_GROUPS.map((g) => (
+          <optgroup key={g.group} label={g.group}>
+            {g.types.map((t) => <option key={t} value={t}>{RELATION_LABELS[t]}</option>)}
+          </optgroup>
+        ))}
+        <option value="source">{RELATION_LABELS.source}</option>
       </select>
       <input aria-label="Why this link exists" value={why} onChange={(e) => setWhy(e.target.value)} placeholder="Why? (one line)" maxLength={500} className="h-7 rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" />
       <div className="flex items-center gap-2 text-xs">

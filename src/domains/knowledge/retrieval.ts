@@ -129,6 +129,22 @@ async function meaningLeg(auth: AuthContext, vector: number[], model: string, ki
   return (rows as unknown as { id: string; distance: number | string }[]).map((r, i) => ({ id: r.id, rank: i + 1, distance: Number(r.distance) }));
 }
 
+/*
+ * Query vectors are cached per process: the same query typed twice, or the
+ * same prefix revisited while editing, costs one provider call, not two.
+ */
+const QUERY_CACHE_MAX = 200;
+const queryCache = new Map<string, number[]>();
+async function embedQuery(provider: EmbeddingProvider, query: string): Promise<number[]> {
+  const key = `${provider.model}\u0000${query.toLowerCase()}`;
+  const hit = queryCache.get(key);
+  if (hit) return hit;
+  const [vector] = await provider.embed([query]);
+  if (queryCache.size >= QUERY_CACHE_MAX) queryCache.delete(queryCache.keys().next().value as string);
+  queryCache.set(key, vector);
+  return vector;
+}
+
 export async function searchKnowledge(
   auth: AuthContext,
   input: { query: string; limit?: number; mode?: SearchMode; kinds?: readonly string[]; provider?: EmbeddingProvider },
@@ -153,7 +169,7 @@ export async function searchKnowledge(
             return [];
           }
           try {
-            const [vector] = await provider.embed([query]);
+            const vector = await embedQuery(provider, query);
             return await meaningLeg(auth, vector, provider.model, kinds);
           } catch {
             meaningState = "failed";
