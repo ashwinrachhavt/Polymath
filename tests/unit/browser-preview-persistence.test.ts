@@ -133,7 +133,7 @@ describe("browser preview persistence", () => {
     expect(workspace.getSnapshot().activity.some((entry) => entry.id === otherTab.id)).toBe(true);
   });
   it("does not claim a reset that was refused", () => {
-    // resetPreview builds its state from the constant sample, so the first
+    // resetPreview builds its state from emptyWorkspaceState, so the first
     // read is already commit's stale check.
     const { workspace } = staleTab("stale-reset-owner", 1);
     expect(workspace.resetPreview()).toEqual({ ok: false, persisted: false });

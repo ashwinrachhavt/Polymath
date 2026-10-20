@@ -128,8 +128,10 @@ reconciliation cost paid to avoid a temporary prop.
 
 ### Calling `/api/v1` from a client island
 
-Use `requestJson` from `src/lib/client-request.ts`. Never call `fetch` directly;
-the raw version drifts on what a network failure, a 401 and a 500 each say.
+Use `requestJson` from `src/lib/client-request.ts`. Never call `fetch` directly —
+the raw version drifts on what a network failure, a 401 and a 500 each say — except
+for streaming (`src/components/chat/use-chat-stream.ts`) and multipart upload
+progress over XHR (`src/components/documents/upload-dropzone.tsx`).
 
 It returns `{ ok: true, data }` or `{ ok: false, failure }`, and `failure.kind`
 is one of:
@@ -143,8 +145,8 @@ is one of:
 | `validation` | Fields rejected | Point at the field |
 | `rate_limited` | Too many requests | Wait, then retry |
 | `server` | Server answered with a failure | Retry; say it is not the person's fault |
-| `network` | Never reached the server | Say nothing was submitted |
-| `aborted` | The caller cancelled | Say nothing; the person knows |
+| `network` | Never reached the server | Hedge: the request did not reach the server, so check the record before sending it again |
+| `aborted` | The caller cancelled | Hedge: the request was cancelled, so check the record before sending it again |
 | `malformed` | Answered, body unreadable | Retry, then reload |
 
 `failure.title` is safe copy for the surface. `failure.code` carries the server's
