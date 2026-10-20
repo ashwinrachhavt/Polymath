@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { sampleState } from "../fixtures/sample-workspace";
 
 async function preview(page: Page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem("axiom-ui-preview-v1") || "{}"));
@@ -101,6 +102,8 @@ test("a local overnight meeting retains full metadata and uses canonical event n
 });
 
 test("a canonical rich note saves an immutable local revision and shared task link", async ({ page }) => {
+  // The link target is a task the fixture owns; an empty default workspace has none.
+  await page.addInitScript((state) => localStorage.setItem("axiom-ui-preview-v1", JSON.stringify(state)), sampleState);
   await page.goto("/apps/neuralflow/notes");
   await page.getByRole("button", { name: "New note", exact: true }).click();
   let dialog = page.getByRole("dialog");

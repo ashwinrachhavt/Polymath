@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sampleState } from "@/components/workspace/sample-state";
+import { sampleState } from "../fixtures/sample-workspace";
 import { loopBeats, nextBeat } from "@/components/products/command-center/loop-story";
 import type { WorkspaceState } from "@/components/workspace/types";
 

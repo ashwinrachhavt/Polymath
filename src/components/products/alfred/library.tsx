@@ -16,7 +16,7 @@ import SourceActions from "./source-actions";
 
 export default function Library({ initialId }: { initialId?: string }) {
   const { state, addArtifact, updateArtifact, addCapture, notify } = useWorkspace();
-  const [id, setId] = useState(initialId || "source-spec");
+  const [id, setId] = useState(initialId || "");
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");

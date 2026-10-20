@@ -16,7 +16,7 @@ import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
  * that never asks anything must not reserve budget or open an Eve session.
  */
 export default function Chat({ initialId }: { initialId?: string }) {
-  const [subject, setSubject] = useState<ChatSubject>({ type: "dossier", id: initialId ?? "dossier-axiom" });
+  const [subject, setSubject] = useState<ChatSubject>({ type: "dossier", id: initialId ?? "" });
   const [runId, setRunId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
