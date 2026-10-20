@@ -106,6 +106,15 @@ type error, so `tsc` never catches it and a page can look correct in `next dev`
 while failing the build. Two settings routes were broken this way and fixed by
 extracting the body.
 
+### A passing build is evidence about the tree, not the commit
+
+`pnpm build` reads the working tree. Whenever anything is uncommitted, "the
+build passed" says nothing about the commit you are about to push: it measured
+whatever edits happen to be on disk. Commit first, then build, or state plainly
+that the build covered a dirty tree. The same distinction applies to `tsc` and
+to grepping rendered HTML for a console-only string, which is not evidence of
+behaviour at all.
+
 ### Migration numbering is not sequential
 
 Migrations are grouped by area (`00xx`, `01xx`), not one counter. Read the
