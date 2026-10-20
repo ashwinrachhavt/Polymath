@@ -41,9 +41,14 @@ for (const width of [390, 1440, 1920]) {
       for (const wrapper of await selects.all()) {
         const box = await wrapper.boundingBox();
         if (!box) continue;
-        const select = await wrapper.locator("select").boundingBox();
-        expect(select).not.toBeNull();
-        expect(Math.abs(box.width - select!.width), path).toBeLessThan(1);
+        // Streaming/hydration can leave a select at zero width for a frame
+        // after the first paint; retry the measurement until the box settles.
+        await expect(async () => {
+          const select = await wrapper.locator("select").boundingBox();
+          expect(select).not.toBeNull();
+          expect(select!.width, path).toBeGreaterThan(0);
+          expect(Math.abs(box.width - select!.width), path).toBeLessThan(1);
+        }).toPass();
       }
     }
   });

@@ -88,6 +88,12 @@ work rather than new Axiom subsystems. Proposed shape, per package:
   and reconcile.
 - **GA09 — budgets:** atomic reservations for cost/tool calls/concurrency/
   tokens, shared across fan-out; authorization stays independent of budget.
+  **First slice built (ASH-187, 2026-10-19):** the shared quota ledger
+  (`provider_quota_buckets` + `provider_usage_ledger`, migration 0213) reserves
+  provider-allowance units atomically before execution and settles or releases
+  after, with a hard stop at exhaustion and no paid fallback. Enforced today
+  for the hosted Firecrawl search route and the free Gemini generation route;
+  tool-call/concurrency budgets remain proposal.
 - **GA10 (console half):** the permissions console renders grants, verdicts,
   and why-allowed/denied from the decision log; configuring agents stays
   separate from running or approving them.

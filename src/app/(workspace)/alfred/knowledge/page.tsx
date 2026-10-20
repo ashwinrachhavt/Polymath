@@ -30,6 +30,7 @@ import { listFolders } from "@/domains/knowledge/library";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { DocumentVault } from "./vault";
 
+
 export const metadata = { title: "Knowledge · Polymath" };
 
 /*
@@ -169,6 +170,7 @@ export async function KnowledgeSurface({
           currentFolderId={params.folder}
           breadcrumb={breadcrumb}
         />
+
       </div>
     </>
   );

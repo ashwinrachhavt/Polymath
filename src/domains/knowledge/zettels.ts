@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
-import { openRouterZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { defaultZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { embedArtifact } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
 
@@ -70,7 +70,7 @@ export async function proposeZettels(
     .limit(1);
   if (!extraction?.text) throw new Error("document has no succeeded extraction");
 
-  const extractor = input.extractor ?? openRouterZettelExtractor();
+  const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
   const candidates = await extractor.extract(extraction.text);
 
   const accepted: Array<ZettelCandidate & { start: number; end: number }> = [];

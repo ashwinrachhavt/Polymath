@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -161,5 +162,61 @@ export const triggers = pgTable(
       .on(t.composioTriggerId)
       .where(sql`composio_trigger_id is not null`),
     index("triggers_active_idx").on(t.workspaceId, t.status, t.eventType),
+  ],
+);
+
+/*
+ * ASH-187: the shared quota ledger. One bucket row per (workspace, provider,
+ * period) tracks a free allowance; reservations are atomically added to
+ * `reserved` only while consumed + reserved stays under the allowance, so two
+ * simultaneous agents cannot both believe the same free balance is available.
+ * The ledger rows are the append-only evidence: every reserve, settle and
+ * release, with the units and the run that caused them.
+ *
+ * Buckets are provisioned lazily on first reservation in a period. Allowances
+ * come from the provider registry (with its env override), never from input.
+ */
+export const providerQuotaBuckets = pgTable(
+  "provider_quota_buckets",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    provider: text("provider").notNull(),
+    /** Period key: "2026-10" for monthly allowances, "2026-10-19" for daily. */
+    period: text("period").notNull(),
+    unit: text("unit").notNull(),
+    allowance: integer("allowance").notNull(),
+    reserved: integer("reserved").notNull().default(0),
+    consumed: integer("consumed").notNull().default(0),
+    ...recorded,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("provider_quota_buckets_scope_key").on(t.workspaceId, t.provider, t.period),
+    check("provider_quota_buckets_allowance_check", sql`${t.allowance} > 0`),
+    check("provider_quota_buckets_reserved_check", sql`${t.reserved} >= 0`),
+    check("provider_quota_buckets_consumed_check", sql`${t.consumed} >= 0`),
+  ],
+);
+
+export const providerUsageLedger = pgTable(
+  "provider_usage_ledger",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    bucketId: uuid("bucket_id")
+      .notNull()
+      .references(() => providerQuotaBuckets.id, { onDelete: "cascade" }),
+    /** reserve | settle | release */
+    kind: text("kind").notNull(),
+    units: integer("units").notNull(),
+    /** The agent run that caused the entry, when one drove the call. */
+    runId: text("run_id"),
+    ...recorded,
+  },
+  (t) => [
+    index("provider_usage_ledger_bucket_idx").on(t.bucketId),
+    check("provider_usage_ledger_kind_check", sql`${t.kind} in ('reserve', 'settle', 'release')`),
+    check("provider_usage_ledger_units_check", sql`${t.units} >= 0`),
   ],
 );

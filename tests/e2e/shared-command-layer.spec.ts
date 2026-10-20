@@ -36,7 +36,7 @@ test("global capture and search open the exact shared task without losing the or
   await inboxOriginal.getByRole("button", { name: "Make task", exact: true }).click();
   await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Converted", exact: true }).click();
   await expect(inboxOriginal).toContainText("Keep this original context");
-  await expect(inboxOriginal.getByRole("link", { name: "Open task in NeuralFlow" })).toBeVisible();
+  await expect(inboxOriginal.getByRole("link", { name: "Open task in Work" })).toBeVisible();
 });
 
 test("the header capture dialog validates pasted URLs and a captured item survives reload in the durable inbox", async ({ page }) => {
@@ -70,22 +70,20 @@ test("preview routes retain app context and all tools are reachable on a phone",
   // No notebook-toolbar landmark here: the breadcrumb assertion retries
   // until the dynamic screen mounts, and this test runs no axe sweep.
   await waitSettled(page);
-  // The pill nav names the open workshop tool in its last pill; the rest of
-  // the workshop sits behind it.
-  const workspaceNav = page.getByRole("navigation", { name: "Workspace", exact: true });
-  await expect(workspaceNav).toContainText("Dictionary");
-  await expect(page.locator("[data-app]")).toHaveAttribute("data-app", "alfred");
-  await workspaceNav.getByRole("button", { name: "Dictionary", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Learning", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  // One product: the breadcrumb names the open preview tool, and the rest of
+  // the workshop lives behind More.
+  await expect(page.getByRole("navigation", { name: "Breadcrumb", exact: true })).toContainText("Dictionary");
+  await page.goto("/more");
+  await expect(page.getByRole("link", { name: "Dictionary" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Learning" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/command-center/inbox");
+  await page.goto("/command-center/briefing");
   await waitSettled(page);
-  await expect(page.getByRole("navigation", { name: "Apps", exact: true }).getByRole("link", { name: "Command Center", exact: true })).toHaveAttribute("aria-current", "page");
-  await page.goto("/neuralflow/focus");
-  await expect(page.getByRole("navigation", { name: "Apps", exact: true }).getByRole("link", { name: "NeuralFlow", exact: true })).toHaveAttribute("aria-current", "page");
-  await page.getByRole("navigation", { name: "Apps", exact: true }).getByRole("link", { name: "More", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Today", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.goto("/neuralflow/work");
+  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Work", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "More", exact: true }).click();
   await expect(page).toHaveURL(/\/more$/);
   const content = page.locator("#content");
   await expect(content.getByRole("link", { name: /Stone collection/ })).toBeVisible();

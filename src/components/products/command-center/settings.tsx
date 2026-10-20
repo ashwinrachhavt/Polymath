@@ -159,6 +159,7 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       <SettingsNav groups={SECTION_GROUPS} active={active} />
 
+
       <div className="flex min-w-0 flex-1 flex-col gap-6">
         <Section id="planning">
           <Panel title="Planning preferences">

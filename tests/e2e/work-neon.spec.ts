@@ -10,7 +10,7 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   const a = `Plan launch ${tag}`;
   const b = `Write copy ${tag}`;
   await page.goto("/neuralflow/work?view=saved");
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
 
   for (const title of [a, b]) {
     await page.getByLabel("New task title").fill(title);
@@ -98,7 +98,7 @@ test("board lanes and the calendar show the same saved rows", async ({ page }) =
 
   // The board files it under In progress, and a lane move saves a new status.
   await page.goto("/neuralflow/work?view=board");
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   const lane = page.getByRole("heading", { name: "In progress", exact: true }).locator("..").locator("..").locator("..");
   await expect(lane.getByText(a, { exact: true })).toBeVisible();
   await page.getByLabel(`Move ${a} to status`).selectOption("waiting");
@@ -114,5 +114,5 @@ test("board lanes and the calendar show the same saved rows", async ({ page }) =
   await page.goto(`/neuralflow/work?view=calendar&date=${due}`);
   // The week grid lists it under "Needs a time block" until it has a block.
   await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
 });
