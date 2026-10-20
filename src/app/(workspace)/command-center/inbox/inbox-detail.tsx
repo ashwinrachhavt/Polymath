@@ -137,7 +137,15 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
             </p>
           ) : null
         ) : (
-          <CaptureBody text={capture.text ?? ""} label={`Captured ${captureKindLabel(capture.kind).toLowerCase()}`} />
+          <CaptureBody
+            captureId={capture.id}
+            version={capture.version}
+            text={capture.text ?? ""}
+            label={`Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
+            // The domain lets only an unprocessed or classifying capture be
+            // edited: after conversion the derived task or note owns the text.
+            editable={state === "unprocessed" || state === "classifying"}
+          />
         )}
       </div>
 
