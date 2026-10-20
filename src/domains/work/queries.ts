@@ -197,6 +197,7 @@ export type DatedTask = {
   dueAt: Date;
   estimateMinutes: number | null;
   version: number;
+  tags: unknown;
 };
 
 /**
@@ -210,7 +211,7 @@ export async function listTasksDueBetween(
   endDay: string,
 ): Promise<DatedTask[]> {
   const rows = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version })
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
     .from(tasks)
     .where(
       and(
