@@ -19,6 +19,14 @@ const SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: [0x50, 0x4b, 0x03, 0x04] }, // PK\x03\x04 (docx/xlsx/pptx zip container)
 ];
 
+/**
+ * Extensions that declare a binary type. Content still wins for the
+ * renamed-PDF case, but text bytes carrying one of these names is a sniff
+ * mismatch, not a text upload: quarantine it rather than file it as a
+ * document it cannot be.
+ */
+const BINARY_EXTENSIONS = /\.(pdf|jpe?g|png|webp|docx?|xlsx?|pptx?)$/i;
+
 /** A text file is mostly printable UTF-8; a binary is not. Sampled, not scanned whole. */
 function looksLikeText(bytes: Uint8Array): boolean {
   const sample = bytes.subarray(0, 4096);
@@ -76,6 +84,9 @@ export function validateFile(bytes: Uint8Array, filename = ""): FileValidationRe
     }
     return { ok: true, mimeType: match.mimeType };
   }
-  if (looksLikeText(bytes)) return { ok: true, mimeType: "text/plain" };
+  if (looksLikeText(bytes)) {
+    if (BINARY_EXTENSIONS.test(filename)) return { ok: false, reason: "unidentified" };
+    return { ok: true, mimeType: "text/plain" };
+  }
   return { ok: false, reason: "unidentified" };
 }
