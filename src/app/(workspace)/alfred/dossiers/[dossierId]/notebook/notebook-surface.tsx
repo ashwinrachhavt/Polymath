@@ -6,12 +6,14 @@ import { BookmarkPlus, FileText, Image, Layers, Loader2, NotebookPen, Presentati
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status, Unavailable } from "@/components/workspace/ui";
+import { ChatSurface } from "@/components/chat/chat-surface";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/alfred/artifact-views";
 import { CitedAnswer } from "@/components/products/alfred/cited-answer";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
 import { saveAnswerAction } from "../../../save-answer-actions";
+import { startNotebookRun } from "./chat-run-actions";
 
 /*
  * The notebook surface, laid out the way NotebookLM reads: sources on the left,
@@ -50,13 +52,11 @@ export default function NotebookSurface({
   notebook,
   sources,
   artifacts,
-  chatAvailable,
   lastAnswer,
 }: {
   notebook: { dossierId: string; title: string };
   sources: SourceRow[];
   artifacts: GeneratedArtifact[];
-  chatAvailable: boolean;
   /** The most recent grounded answer, when one exists. */
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
 }) {
@@ -64,7 +64,20 @@ export default function NotebookSurface({
   const [brief, setBrief] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
+  const [runId, setRunId] = useState<string | null>(null);
+  const [starting, startStart] = useTransition();
+  const [streamCitations, setStreamCitations] = useState<DocumentCitation[]>([]);
+  const [discarded, setDiscarded] = useState(false);
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
+
+  function beginChat() {
+    setMessage(null);
+    startStart(async () => {
+      const out = await startNotebookRun({ dossierId: notebook.dossierId, title: notebook.title });
+      if (out.ok) setRunId(out.runId);
+      else setMessage(out.error);
+    });
+  }
 
   function saveAnswer() {
     if (!lastAnswer) return;
@@ -116,31 +129,65 @@ export default function NotebookSurface({
 
       {/* Chat */}
       <section aria-label="Chat" className="panel flex min-h-[60vh] flex-col rounded-xl p-4">
-        <h2 className="text-[13px] font-medium">{notebook.title}</h2>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-[13px] font-medium">{notebook.title}</h2>
+          {runId && (
+            <Button size="sm" variant="ghost" onClick={() => { setRunId(null); setDiscarded(false); setStreamCitations([]); }}>
+              New conversation
+            </Button>
+          )}
+        </div>
         <div className="mt-3 flex-1">
-          {lastAnswer && (
-            <div className="mb-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
+          {runId ? (
+            <ChatSurface
+              runId={runId}
+              subject={{ type: "dossier", id: notebook.dossierId }}
+              capabilities={["documents.search", "notebook.open"]}
+              title={notebook.title}
+              placeholder="Ask about these sources"
+              onCitation={(citations) => setStreamCitations(citations)}
+            />
+          ) : lastAnswer && !discarded ? (
+            <div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-medium text-muted-foreground">Last answer</h3>
-                <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
-                  {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
-                  Save to notes
-                </Button>
+                <span className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
+                    {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
+                    Save to notes
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDiscarded(true)}>
+                    Discard
+                  </Button>
+                </span>
               </div>
               <CitedAnswer answer={lastAnswer.answer} citations={lastAnswer.citations} />
             </div>
-          )}
-          {chatAvailable ? (
-            // The shared surface takes over here once it is on the branch.
-            <Unavailable feature="Chat surface">
-              The shared chat surface is on its way. Until it lands, this pane stays closed rather than shipping a
-              second conversation implementation.
+          ) : sources.filter((s) => s.readiness === "ready").length === 0 ? (
+            <Unavailable feature="Grounded chat">
+              No source in this notebook is ready yet. Add one and wait for it to say Ready, then ask away.
             </Unavailable>
           ) : (
-            <Unavailable feature="Grounded chat">
-              Ask questions across these sources with citations. The surface arrives with the streaming chat branch; this
-              notebook already has everything it needs to answer.
-            </Unavailable>
+            <div className="flex h-full flex-col items-start justify-center gap-3">
+              <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground">
+                Ask questions across the {sources.length} source{sources.length === 1 ? "" : "s"} in this notebook. Answers
+                cite the passages they came from.
+              </p>
+              <Button onClick={beginChat} disabled={starting}>
+                {starting ? <Loader2 aria-hidden className="animate-spin" /> : <NotebookPen aria-hidden />}
+                Start a conversation
+              </Button>
+            </div>
+          )}
+          {streamCitations.length > 0 && runId && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {streamCitations.length} source{streamCitations.length === 1 ? "" : "s"} cited in this answer.
+            </p>
+          )}
+          {message && (
+            <p role="status" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              {message}
+            </p>
           )}
         </div>
       </section>

@@ -82,7 +82,6 @@ async function NotebookData({ dossierId }: { dossierId: string }) {
         notebook={{ dossierId: dossier.id, title: dossier.title }}
         sources={sources}
         artifacts={generated}
-        chatAvailable={false}
       />
     </>
   );
