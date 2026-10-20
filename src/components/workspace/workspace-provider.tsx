@@ -248,7 +248,13 @@ function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
   if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return { ok: false, persisted: false };
   return commit({ ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: crypto.randomUUID() }] }, "Preview reward earned");
 }
-function resetPreview() { commit(sampleState, "Sample workspace reset"); notify("Sample workspace reset. Your previous browser preview changes were replaced."); }
+function resetPreview() {
+  const result = commit(sampleState, "Sample workspace reset");
+  // A refused reset wrote nothing, so the notice must not claim the previous
+  // preview was replaced; commit already published the refusal warning.
+  if (result.ok) notify("Sample workspace reset. Your previous browser preview changes were replaced.");
+  return result;
+}
 
 return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, clarifyCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
 }

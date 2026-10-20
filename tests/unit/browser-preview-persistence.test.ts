@@ -14,8 +14,7 @@ function browserStorage() {
  * the nth read after it is armed, which is what makes a tab stale mid-write.
  */
 function switchingStorage() {
-  const values = new Map<string, string>();
-  vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  const values = browserStorage();
   let pending: { remaining: number; run: (key: string) => void } | undefined;
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => {
@@ -30,6 +29,20 @@ function switchingStorage() {
   });
   return { values, onRead(n: number, run: (key: string) => void) { pending = { remaining: n, run }; } };
 }
+type Preview = ReturnType<typeof createPreviewWorkspace>;
+/*
+ * Arms a write from another tab to land between a mutation's base read and its
+ * commit check, then returns the base state the foreign snapshot was built on.
+ */
+function staleTab(scope: string, checkRead = 2) {
+  const storage = switchingStorage();
+  const workspace = createPreviewWorkspace(scope);
+  const base = workspace.getSnapshot();
+  const otherTab = { id: "other-tab", title: "Saved in the other tab", detail: "", at: "2026-01-15T12:00:00.000Z" };
+  storage.onRead(checkRead, () => storage.values.set(`axiom-ui-preview-v1:${scope}`, JSON.stringify({ ...base, activity: [otherTab, ...base.activity] })));
+  return { workspace, otherTab };
+}
+afterEach(() => vi.unstubAllGlobals());
 describe("browser preview persistence", () => {
   it("refreshes another tab's saved records before updating preferences", () => {
     browserStorage();
@@ -100,5 +113,36 @@ describe("browser preview persistence", () => {
     const created = workspace.addTask("Committed task");
     expect(created?.title).toBe("Committed task");
     expect(workspace.getSnapshot().tasks.find((task) => task.id === created?.id)?.title).toBe("Committed task");
+  });
+  it.each([
+    ["artifact", (workspace: Preview) => workspace.addArtifact("Stale note", "note", "Body")],
+    ["project", (workspace: Preview) => workspace.addProject({ title: "Stale project", description: "", status: "Active" })],
+    ["event", (workspace: Preview) => workspace.addEvent({ title: "Stale block", date: "2026-01-15", start: "10:00", duration: 25, provider: "local" })],
+    ["contact", (workspace: Preview) => workspace.addContact({ name: "Stale contact", email: "", company: "", role: "", status: "New", notes: "" })],
+    ["company", (workspace: Preview) => workspace.addCompany({ name: "Stale company", industry: "", domain: "", notes: "" })],
+    ["opportunity", (workspace: Preview) => workspace.addOpportunity({ title: "Stale opportunity", company: "", stage: "Saved", value: "", notes: "" })],
+    ["review", (workspace: Preview) => workspace.addReview({ title: "Stale proposal", kind: "Email", risk: "External write", payload: "" })],
+  ] as const)("returns no %s when another tab moved first", (_kind, create) => {
+    const { workspace, otherTab } = staleTab(`stale-${_kind}-owner`);
+    expect(create(workspace)).toBeUndefined();
+    expect(workspace.getStorageWarning()).toContain("Another tab changed");
+    expect(workspace.getSnapshot().activity.some((entry) => entry.id === otherTab.id)).toBe(true);
+  });
+  it("does not claim a reset that was refused", () => {
+    // resetPreview builds its state from the constant sample, so the first
+    // read is already commit's stale check.
+    const { workspace } = staleTab("stale-reset-owner", 1);
+    expect(workspace.resetPreview()).toEqual({ ok: false, persisted: false });
+    expect(workspace.getNotice()).not.toContain("were replaced");
+    expect(workspace.getStorageWarning()).toContain("Another tab changed");
+  });
+  it("refuses to delete a provider event locally", () => {
+    const values = browserStorage();
+    const base = createPreviewWorkspace("provider-event-owner").getSnapshot();
+    values.set("axiom-ui-preview-v1:provider-event-owner", JSON.stringify({ ...base, events: [...base.events, { id: "google-event", title: "Provider block", date: "2026-01-15", start: "09:00", duration: 25, provider: "google" }] }));
+    const workspace = createPreviewWorkspace("provider-event-owner");
+    expect(workspace.deleteEvent("google-event")).toEqual({ ok: false, persisted: false });
+    expect(workspace.getNotice()).toContain("read-only");
+    expect(workspace.getSnapshot().events.some((event) => event.id === "google-event")).toBe(true);
   });
 });
