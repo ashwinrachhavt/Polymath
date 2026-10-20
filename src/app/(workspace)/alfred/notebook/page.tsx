@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { Status } from "@/components/workspace/ui";
 import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteTags, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
@@ -12,6 +12,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
+import { NotebookWorkspace } from "./notebook-workspace";
 import { SearchResults } from "./search-results";
 
 export const metadata = { title: "Notebook · Polymath" };
@@ -21,6 +22,10 @@ export const metadata = { title: "Notebook · Polymath" };
  * autosaving editor, checkpoints, history and draft recovery all read and
  * write the same artifact tables generated work uses. The /apps/alfred
  * notebook screen redirects here — one surface, one source of truth.
+ *
+ * The page is the note: a slim collapsible list on the left, the note in one
+ * centered column, and its properties, links and history behind the Note
+ * details inspector (DESIGN.md § Minimalism).
  */
 
 export function noteMarkdown(content: NoteContent | null): string {
@@ -58,106 +63,112 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
   const backlinks = selected ? await listNoteBacklinks(auth, selected.id) : [];
   const related = selected ? await relatedNotes(auth, selected.id) : [];
 
-  return (
-    <Screen
-      title="Notebook"
-      description="Notes autosave as you type, with checkpoints you can name."
-      actions={<NewNoteButton />}
-    >
-      <div className={`grid gap-4 ${kanban ? "lg:grid-cols-[minmax(360px,480px)_1fr]" : "lg:grid-cols-[300px_1fr]"}`}>
-        <Panel title="Notes" description={list.q && !kanban ? "Ranked by keyword and meaning" : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}>
-          <div className="mb-3">
-            <ListToolbar
-              searchPlaceholder="Search notes"
-              filters={[
-                { key: "view", label: "Show", allLabel: "All notes", options: [{ value: "drafts", label: "With unsaved draft" }] },
-                { key: "layout", label: "Layout", allLabel: "List", options: [{ value: "kanban", label: "Kanban by tag" }] },
-              ]
-              }
-            />
-            {allTags.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-1" aria-label="Filter by tag">
-                {allTags.map((t) => (
-                  <Link
-                    key={t}
-                    href={listHref(BASE, raw, { tag: tag === t ? undefined : t, page: undefined, id: undefined })}
-                    aria-pressed={tag === t}
-                    className={`rounded-full border px-2 py-0.5 text-xs ${tag === t ? "border-foreground/40 bg-muted/70" : "border-border hover:bg-muted/40"}`}
-                  >
-                    {t}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-          {list.q && !kanban ? (
-            <SearchResults auth={auth} q={list.q} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
-          ) : notes.length === 0 ? (
-            <NoResults
-              filtered={Boolean(list.q || list.filters.view)}
-              clearHref={listHref(BASE, raw, { q: undefined, view: undefined, page: undefined })}
-              emptyTitle="No notes yet"
-              emptyDescription="Create the first note — it autosaves as you type, and every checkpoint becomes an immutable version."
-            />
-          ) : kanban ? (
-            <div className="flex flex-col gap-3">
-              {Object.entries(
-                notes.reduce<Record<string, typeof notes>>((groups, note) => {
-                  const column = note.tags[0] ?? "untagged";
-                  (groups[column] ??= []).push(note);
-                  return groups;
-                }, {}),
-              ).map(([column, columnNotes]) => (
-                <section key={column} aria-label={`Tag ${column}`} className="rounded-md border border-border">
-                  <header className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{column}</span>
-                    <span className="text-xs text-muted-foreground">{columnNotes.length}</span>
-                  </header>
-                  <ul className="flex flex-col gap-1 p-1.5">
-                    {columnNotes.map((note) => (
-                      <li key={note.id}>
-                        <Link
-                          href={listHref(BASE, raw, { id: note.id })}
-                          className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
-                        >
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate font-medium">{note.title}</span>
-                            <span className="flex items-center gap-1">
-                              {note.kind === "zettel" && <Status>zettel</Status>}
-                              {note.hasDraft && <Status>draft</Status>}
-                            </span>
-                          </span>
-                          {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {notes.map((note) => (
-                <li key={note.id}>
-                  <Link
-                    href={listHref(BASE, raw, { id: note.id })}
-                    className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{note.title}</span>
-                      <span className="flex items-center gap-1">
-                        {note.kind === "zettel" && <Status>zettel</Status>}
-                        {note.hasDraft && <Status>draft</Status>}
+  const noteList = (
+    <div className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-[13px] font-medium">Notes</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {list.q && !kanban ? "Ranked by keyword and meaning" : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}
+        </p>
+      </div>
+      <ListToolbar
+        searchPlaceholder="Search notes"
+        filters={[
+          { key: "view", label: "Show", allLabel: "All notes", options: [{ value: "drafts", label: "With unsaved draft" }] },
+          { key: "layout", label: "Layout", allLabel: "List", options: [{ value: "kanban", label: "Kanban by tag" }] },
+        ]}
+      />
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1" aria-label="Filter by tag">
+          {allTags.map((t) => (
+            <Link
+              key={t}
+              href={listHref(BASE, raw, { tag: tag === t ? undefined : t, page: undefined, id: undefined })}
+              aria-pressed={tag === t}
+              className={`rounded-full border px-2 py-0.5 text-xs ${tag === t ? "border-foreground/40 bg-muted/70" : "border-border hover:bg-muted/40"}`}
+            >
+              {t}
+            </Link>
+          ))}
+        </div>
+      )}
+      {list.q && !kanban ? (
+        <SearchResults auth={auth} q={list.q} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+      ) : notes.length === 0 ? (
+        <NoResults
+          filtered={Boolean(list.q || list.filters.view)}
+          clearHref={listHref(BASE, raw, { q: undefined, view: undefined, page: undefined })}
+          emptyTitle="No notes yet"
+          emptyDescription="Create the first note — it autosaves as you type, and every checkpoint becomes an immutable version."
+        />
+      ) : kanban ? (
+        <div className="flex flex-col gap-3">
+          {Object.entries(
+            notes.reduce<Record<string, typeof notes>>((groups, note) => {
+              const column = note.tags[0] ?? "untagged";
+              (groups[column] ??= []).push(note);
+              return groups;
+            }, {}),
+          ).map(([column, columnNotes]) => (
+            <section key={column} aria-label={`Tag ${column}`} className="rounded-md border border-border">
+              <header className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{column}</span>
+                <span className="text-xs text-muted-foreground">{columnNotes.length}</span>
+              </header>
+              <ul className="flex flex-col gap-1 p-1.5">
+                {columnNotes.map((note) => (
+                  <li key={note.id}>
+                    <Link
+                      href={listHref(BASE, raw, { id: note.id })}
+                      className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{note.title}</span>
+                        <span className="flex items-center gap-1">
+                          {note.kind === "zettel" && <Status>zettel</Status>}
+                          {note.hasDraft && <Status>draft</Status>}
+                        </span>
                       </span>
-                    </span>
-                    {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          {!kanban && !list.q && <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />}
-        </Panel>
+                      {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {notes.map((note) => (
+            <li key={note.id}>
+              <Link
+                href={listHref(BASE, raw, { id: note.id })}
+                className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{note.title}</span>
+                  <span className="flex items-center gap-1">
+                    {note.kind === "zettel" && <Status>zettel</Status>}
+                    {note.hasDraft && <Status>draft</Status>}
+                  </span>
+                </span>
+                {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!kanban && !list.q && <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />}
+    </div>
+  );
+
+  return (
+    <div className="suite-screen">
+      <header className="mb-5 flex items-center justify-between gap-3">
+        <h1 className="text-[13px] font-medium text-muted-foreground">Notebook</h1>
+        {selected && <NewNoteButton />}
+      </header>
+      <NotebookWorkspace list={noteList}>
         {selected ? (
           <NoteEditor
             key={selected.id}
@@ -176,12 +187,14 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
             related={related}
           />
         ) : (
-          <Panel>
-            <Empty title="Choose a note" description="Pick a note on the left, or start a new one. Editing begins the moment you type." />
-          </Panel>
+          <div className="mx-auto max-w-[720px] px-3 py-12">
+            <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>A place to think</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">Choose a note from the list, or start a new one.</p>
+            <div className="mt-5"><NewNoteButton /></div>
+          </div>
         )}
-      </div>
-    </Screen>
+      </NotebookWorkspace>
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import {
   commitNoteSnapshot,
   createNote,
   listNotes,
+  listNoteVersions,
   renameNote,
   setNoteTags,
 } from "@/domains/knowledge/notes";
@@ -96,13 +97,14 @@ const commitInput = z.object({
   idempotencyKey: key,
 });
 
-export async function commitNoteAction(input: z.input<typeof commitInput>): Promise<Result<{ version: number; versionNumber: number }>> {
+export async function commitNoteAction(input: z.input<typeof commitInput>): Promise<Result<{ version: number; versionNumber: number; versions: { id: string; versionNumber: number; reason: string; note: string | null; createdAt: string }[] }>> {
   const parsed = commitInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That checkpoint is not valid." };
   const auth = await authorize();
   return guarded(async () => {
     const { version, versionNumber } = await commitNoteSnapshot(auth, parsed.data);
-    return { version, versionNumber };
+    const versions = await listNoteVersions(auth, parsed.data.artifactId);
+    return { version, versionNumber, versions: versions.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })) };
   });
 }
 

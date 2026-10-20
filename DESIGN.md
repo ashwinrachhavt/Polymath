@@ -349,7 +349,28 @@ What still contradicts this file, in the order it should die:
 | Preview tools | `/apps/*` | The 16 destinations' legacy paths redirect to canonical routes (#162); the workshop tools that remain should land on canonical homes or go. |
 | App-era vocabulary | assorted copy | Screens and docs that still say "app", "suite", or "workspace" as a product layer should read as one Polymath. |
 
-## 16. Open items
+## 16. Minimalism rules
+
+How a surface stays calm (the Notes redesign is the reference build):
+
+1. **The page is the object.** A single-object surface (a note, a document, a
+   dossier) renders the object itself: one centered column, the object's name
+   as the title, the content first. Chrome appears on demand, not by default.
+2. **Toolbars appear on selection or intent.** Formatting floats up over a
+   text selection; "/" opens block insert; "[[" links a record. No persistent
+   toolbar on a writing surface.
+3. **One quiet inspector.** Metadata (type, tags, dates, version),
+   relationships (references, backlinks, related), history, and secondary
+   actions live in one right-side inspector, closed by default, an overlay on
+   the phone. The canvas keeps one persistent action at most.
+4. **Lists are slim and collapsible.** A list column beside an object narrows
+   to a strip; the object takes the width.
+5. **Quiet status.** Save and sync state is one small line of words, not a
+   badge row.
+6. **Empty space is placed, not leftover** - it comes from the fixed grid and
+   one gutter, never from a card stretched over nothing.
+
+## 17. Open items
 
 - **Icon family.** `lucide-react` is installed. The intended family is
   Phosphor or Tabler. One family per tree, one global `strokeWidth`, never a
