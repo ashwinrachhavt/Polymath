@@ -26,6 +26,8 @@ export type IntakeInput = {
   origin: "upload" | "url" | "crawl";
   /** Captured documents carry where they came from. */
   sourceUrl?: string;
+  /** Folder the document files into; null (the default) is the library root. */
+  folderId?: string | null;
   /** Attach the file to this existing document row (a URL document whose first fetch failed) instead of inserting one. */
   documentId?: string;
   /** Runs inside the same transaction, after the rows exist. */
@@ -119,6 +121,7 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
             title: input.title,
             mimeType,
             sourceUrl: input.sourceUrl,
+            folderId: input.folderId ?? null,
             createdBy: auth.userId,
             updatedBy: auth.userId,
           })

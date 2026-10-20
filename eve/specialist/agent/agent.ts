@@ -19,7 +19,10 @@ const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/ope
 const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
 
 function specialistModel() {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? "";
+  // Same blank-key guard as alfred: a set-but-empty GEMINI_API_KEY must not
+  // shadow a populated fallback.
+  const apiKey =
+    [process.env.GEMINI_API_KEY, process.env.GOOGLE_GENERATIVE_AI_API_KEY].find((key) => key && key.length > 0) ?? "";
   const provider = createOpenAI({
     apiKey,
     baseURL: GEMINI_OPENAI_BASE,

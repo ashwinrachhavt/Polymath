@@ -11,6 +11,7 @@ import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object
 import { requestReceipts } from "@/domains/audit/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
+import { resolveFolderPath } from "@/domains/knowledge/folder-paths";
 import { documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
 
@@ -30,6 +31,8 @@ import { currentExtractionSql } from "@/domains/knowledge/versions";
 
 const documentMeta = z.object({
   title: z.string().min(1).max(500),
+  /** Relative folder path from the upload; only subdirectories create folders. */
+  folderPath: z.string().max(1000).optional(),
 });
 
 export const POST = authedHandler(async (auth, request) => {
@@ -41,7 +44,10 @@ export const POST = authedHandler(async (auth, request) => {
 
   const form = await request.formData();
   const file = form.get("file");
-  const parsedTitle = documentMeta.shape.title.safeParse(form.get("title"));
+  const parsedTitle = documentMeta.safeParse({
+    title: form.get("title"),
+    folderPath: form.get("folderPath") ?? undefined,
+  });
   if (!(file instanceof File)) {
     return problemResponse(400, "invalid_request", "Attach a file in the 'file' field.");
   }
@@ -58,7 +64,7 @@ export const POST = authedHandler(async (auth, request) => {
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const verdict = validateFile(bytes);
+  const verdict = validateFile(bytes, file.name);
 
   // Truly unreadable: empty. A sniff mismatch is not unreadable — it gets
   // quarantined below, not rejected here. (Oversize already returned above.)
@@ -72,7 +78,7 @@ export const POST = authedHandler(async (auth, request) => {
   // receipt hash and the blob row via putBlob's contentHash passthrough.
   const contentHex = await sha256Hex(bytes);
   const requestHash = idempotencyKey
-    ? await sha256Hex(`${contentHex}:${parsedTitle.data}`)
+    ? await sha256Hex(`${contentHex}:${parsedTitle.data.title}`)
     : null;
 
   // Replay check before any blob write: the stored response is the document id
@@ -105,7 +111,10 @@ export const POST = authedHandler(async (auth, request) => {
     result = await intakeFile(auth, {
       bytes,
       filename: file.name,
-      title: parsedTitle.data,
+      title: parsedTitle.data.title,
+      folderId: parsedTitle.data.folderPath
+        ? (await resolveFolderPath(auth, parsedTitle.data.folderPath)).folderId
+        : null,
       verdict,
       contentHash: contentHex,
       origin: "upload",

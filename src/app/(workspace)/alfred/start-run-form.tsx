@@ -5,11 +5,13 @@ import { Select } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 
 /*
  * The one mutation on this page: an objective becomes a run. The POST goes to
  * /api/v1/runs, whose engine claims the budget before the session starts.
  * On success the router refresh lands the new run in the server-rendered list.
+ * The idempotency key makes a browser retry or a double-submit start one run.
  */
 export function StartRunForm({ dossiers = [] }: { dossiers?: Array<{ id: string; title: string }> }) {
   const router = useRouter();
@@ -21,23 +23,18 @@ export function StartRunForm({ dossiers = [] }: { dossiers?: Array<{ id: string;
   async function start() {
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch("/api/v1/runs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ objective, ...(dossierId ? { dossierId } : {}) }),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `Run failed to start (${response.status}).`);
-      }
-      setObjective("");
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Run failed to start.");
-    } finally {
-      setPending(false);
+    const result = await requestJson<{ runId: string }>("/api/v1/runs", {
+      method: "POST",
+      body: { objective, ...(dossierId ? { dossierId } : {}) },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    setObjective("");
+    router.refresh();
   }
 
   return (

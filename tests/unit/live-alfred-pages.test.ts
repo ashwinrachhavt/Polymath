@@ -8,6 +8,8 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
 import { AlfredSurface } from "@/app/(workspace)/alfred/page";
 import { DossiersSurface } from "@/app/(workspace)/alfred/dossiers/page";
+import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
+import { listFolders } from "@/domains/knowledge/library";
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn() }));
@@ -29,6 +31,11 @@ vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () =>
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/vault-queries", () => ({ getVaultDocuments: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/library", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/domains/knowledge/library")>()),
+  listFolders: vi.fn(async () => []),
+}));
 vi.mock("@/domains/knowledge/classify", () => ({ getOpenClassification: vi.fn(async () => null) }));
 vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
@@ -51,6 +58,8 @@ beforeEach(() => {
   vi.mocked(getDocumentInbox).mockResolvedValue([]);
   vi.mocked(countDocumentInbox).mockResolvedValue(0);
   vi.mocked(getDocumentReview).mockResolvedValue(null);
+  vi.mocked(getVaultDocuments).mockResolvedValue([]);
+  vi.mocked(listFolders).mockResolvedValue([]);
   vi.mocked(pageRuns).mockResolvedValue({ items: [], total: 0 });
   vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
 });
@@ -61,39 +70,49 @@ async function knowledge(doc?: string) {
 }
 
 describe("live Alfred route functionality", () => {
-  it("keeps one enabled upload affordance in both empty and populated inboxes", async () => {
+  it("keeps one enabled upload affordance in both empty and populated vaults", async () => {
     const empty = await knowledge();
-    expect(empty).toContain("No documents yet");
-    expect(empty.match(/Upload a document/g)).toHaveLength(1);
-    vi.mocked(getDocumentInbox).mockResolvedValue([document]);
+    expect(empty).toContain("The vault is empty");
+    expect(empty.match(/aria-label="New"/g)).toHaveLength(1);
+    vi.mocked(getVaultDocuments).mockResolvedValue([
+      {
+        id: "doc-fixture", title: "Existing document", filename: "fixture.pdf",
+        mimeType: "application/pdf", kind: "file" as const,
+        status: { label: "Filed", tone: "done" as const }, sourceUrl: null,
+        updatedAt: new Date().toISOString(), sizeBytes: 1200, pageCount: 2, docType: null,
+        href: "/alfred/knowledge?doc=doc-fixture",
+      },
+    ]);
     const populated = await knowledge();
     expect(populated).toContain("Existing document");
-    expect(populated.match(/Upload a document/g)).toHaveLength(1);
+    expect(populated.match(/aria-label="New"/g)).toHaveLength(1);
     expect(populated).toContain('type="file"');
   });
 
   it("presents a captured URL as a web page, not a file row", async () => {
-    vi.mocked(getDocumentInbox).mockResolvedValue([{
-      ...document,
-      id: "page-fixture", title: "Ashwin Rachha", filename: null, mimeType: "text/markdown",
-      sourceUrl: "https://ashwinrachha.com/", kind: "web_page" as const, fetchedAt: new Date("2026-10-18T12:00:00Z"),
-    }]);
+    vi.mocked(getVaultDocuments).mockResolvedValue([
+      {
+        id: "page-fixture", title: "Ashwin Rachha", filename: null,
+        mimeType: "text/markdown", kind: "web_page" as const,
+        status: { label: "Filed", tone: "done" as const },
+        sourceUrl: "https://ashwinrachha.com/",
+        updatedAt: new Date().toISOString(), sizeBytes: null, pageCount: null, docType: null,
+        href: "/alfred/knowledge?doc=page-fixture",
+      },
+    ]);
     const html = await knowledge();
-    expect(html).toContain("Web page · ashwinrachha.com");
-    expect(html).toContain("Fetched");
-    expect(html).not.toContain("No file");
+    expect(html).toContain("ashwinrachha.com");
+    expect(html).not.toContain("fixture.pdf");
   });
 
   it("keeps upload available while reviewing an existing document", async () => {
-    vi.mocked(getDocumentInbox).mockResolvedValue([document]);
     vi.mocked(getDocumentReview).mockResolvedValue({
       document: { id: document.id, title: document.title, docType: null, mimeType: document.mimeType, version: 1, sourceUrl: null },
       extraction: { id: "extraction", status: "succeeded", contentHash: "fixture", error: null, proposalStatus: "succeeded", proposalError: null, proposer: "text-rules@1" },
       fieldProposals: [], parties: [], obligations: [],
     });
     const html = await knowledge(document.id);
-    expect(html).toContain("Back to inbox");
-    expect(html.match(/Upload a document/g)).toHaveLength(1);
+    expect(html).toContain("Back to vault");
   });
 
   it("renders explicit configuration states, not crashes or fictitious empty data, without DATABASE_URL", async () => {

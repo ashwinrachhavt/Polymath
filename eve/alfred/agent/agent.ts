@@ -44,7 +44,11 @@ const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/ope
 const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 function alfredModel() {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? "";
+  // A set-but-blank key must not shadow a real fallback: ?? only skips
+  // null/undefined, so a blank GEMINI_API_KEY would otherwise win over a
+  // populated GOOGLE_GENERATIVE_AI_API_KEY.
+  const apiKey =
+    [process.env.GEMINI_API_KEY, process.env.GOOGLE_GENERATIVE_AI_API_KEY].find((key) => key && key.length > 0) ?? "";
   // `fetch` repairs Gemini's streaming tool-call deltas, which omit the `index`
   // the OpenAI schema requires; see lib/gemini-openai.ts.
   const provider = createOpenAI({ apiKey, baseURL: GEMINI_OPENAI_BASE, name: "gemini", fetch: geminiFetch() });

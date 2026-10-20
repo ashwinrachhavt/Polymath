@@ -28,8 +28,18 @@ describe("validateFile", () => {
     expect(validateFile(fake)).toEqual({ ok: true, mimeType: "application/pdf" });
   });
 
-  it("rejects a text file that does not match any allowlisted signature", () => {
-    expect(validateFile(TEXT)).toEqual({ ok: false, reason: "unidentified" });
+  it("accepts a plain text file by its printable content, not its metadata", () => {
+    expect(validateFile(TEXT)).toEqual({ ok: true, mimeType: "text/plain" });
+  });
+
+  it("accepts a CSV as text — a CSV is a text document", () => {
+    const csv = new TextEncoder().encode("name,amount\nAshwin,1200\nNadia,940\n");
+    expect(validateFile(csv)).toEqual({ ok: true, mimeType: "text/plain" });
+  });
+
+  it("rejects a binary that matches no signature and is not printable text", () => {
+    const binary = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xde, 0xad, 0xbe, 0xef]);
+    expect(validateFile(binary)).toEqual({ ok: false, reason: "unidentified" });
   });
 
   it("rejects an empty file", () => {

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
+import { requestJson } from "@/lib/client-request";
 import {
   FOLDERS,
   flattenFolders,
@@ -190,11 +191,20 @@ export function FileExplorer({
       return;
     }
     setNotice(`Reading ${targets.length} document${targets.length === 1 ? "" : "s"}…`);
+    // Each read posts with its own idempotency key, and a failure names the
+    // document instead of collapsing into a count.
     const results = await Promise.all(
-      targets.map((r) => fetch(`/api/v1/documents/${r.id}/extract`, { method: "POST" }).then((res) => res.ok).catch(() => false)),
+      targets.map(async (r) => {
+        const outcome = await requestJson(`/api/v1/documents/${r.id}/extract`, { method: "POST" });
+        return outcome.ok ? null : `${r.title}: ${outcome.failure.title}`;
+      }),
     );
-    const failed = results.filter((ok) => !ok).length;
-    setNotice(failed ? `${targets.length - failed} read, ${failed} could not be read.` : `${targets.length} read.`);
+    const failures = results.filter((title): title is string => title !== null);
+    setNotice(
+      failures.length === 0
+        ? `${targets.length} read.`
+        : `${targets.length - failures.length} read. ${failures.length} failed — ${failures[0]}${failures.length > 1 ? ` and ${failures.length - 1} more` : ""}.`,
+    );
     router.refresh();
   }
 
@@ -203,9 +213,15 @@ export function FileExplorer({
     setNotice(`Copied ${selectedRows.length} title${selectedRows.length === 1 ? "" : "s"}.`);
   }
 
+  // A request token per fetch: two loadPageAction calls in flight (a fast sort
+  // toggle) resolve out of order, and the older response must not overwrite
+  // the newer one's rows.
+  const pageToken = useRef(0);
   async function fetchPage(next: { sort: ServerSort; cursor?: string; q?: string }, replace: boolean) {
+    const token = ++pageToken.current;
     setLoading(true);
     const result = await loadPageAction(next);
+    if (token !== pageToken.current) return;
     setLoading(false);
     if (!result.ok) return setNotice(result.error);
     setRows((current) => (replace ? result.page.rows : [...current, ...result.page.rows.filter((r) => !current.some((c) => c.id === r.id))]));

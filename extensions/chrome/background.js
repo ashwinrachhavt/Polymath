@@ -49,7 +49,17 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       });
     })
     .catch(function (error) {
-      sendResponse({ ok: false, error: error && error.message ? error.message : "Request failed." });
+      // A bare "Failed to fetch" hides whether the server is down or the URL
+      // was never allowed. Say which one happened.
+      var raw = error && error.message ? error.message : "Request failed.";
+      var allowed = /^http:\/\/localhost:3000\//;
+      var detail;
+      if (typeof msg.url !== "string" || !allowed.test(msg.url)) {
+        detail = "Blocked: the extension only forwards to http://localhost:3000.";
+      } else {
+        detail = "Could not reach Polymath at localhost:3000. Is the dev server running? (" + raw + ")";
+      }
+      sendResponse({ ok: false, error: detail });
     });
 
   return true; // keep the channel open for the async response

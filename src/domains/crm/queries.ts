@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import {
@@ -224,4 +224,36 @@ export async function pageCompanies(
     db.select({ total: count() }).from(companies).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
+}
+
+/*
+ * Read-side seam for other domains: the relationship status a CRM contact
+ * carries, keyed by the contact's primary email. The People surface joins on
+ * this — email is the one key both domains already agree on (ASH-135 owns the
+ * eventual merge). Returns only what the caller needs; nothing here writes.
+ */
+export async function listContactStatusesByEmail(
+  auth: AuthContext,
+  emails: string[],
+): Promise<Map<string, { id: string; relationshipStatus: RelationshipStatus }>> {
+  const addresses = [...new Set(emails.filter(Boolean))];
+  const byEmail = new Map<string, { id: string; relationshipStatus: RelationshipStatus }>();
+  if (!addresses.length) return byEmail;
+  // Addresses arrive lowercased (imports store them that way), but a CRM row
+  // may hold mixed case: compare on lower(primary_email) so a casing
+  // difference still links the record instead of reading as Unknown.
+  const rows = await db
+    .select({ id: contacts.id, primaryEmail: contacts.primaryEmail, relationshipStatus: contacts.relationshipStatus })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.workspaceId, auth.workspaceId),
+        isNull(contacts.archivedAt),
+        inArray(sql`lower(${contacts.primaryEmail})`, addresses.map((address) => address.toLowerCase())),
+      ),
+    );
+  for (const row of rows) {
+    if (row.primaryEmail) byEmail.set(row.primaryEmail.toLowerCase(), { id: row.id, relationshipStatus: row.relationshipStatus });
+  }
+  return byEmail;
 }
