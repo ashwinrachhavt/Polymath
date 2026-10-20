@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -254,6 +254,7 @@ export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNo
     .from(artifactLinks)
     .where(and(
       eq(artifactLinks.workspaceId, auth.workspaceId),
+      ne(artifactLinks.linkType, "dismissed"),
       inArray(artifactLinks.artifactId, ids),
       inArray(artifactLinks.targetId, ids),
     ));
@@ -265,6 +266,27 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
   if (input.artifactId === input.targetId) return;
   if (await promoteSemanticLink(auth, input)) return;
   await withTransaction(async (tx) => {
+    // Tying a pair the owner once rejected is a fresh decision: revive that
+    // edge, direction normalized to viewer -> target.
+    const rejected = await tx
+      .select({ id: artifactLinks.id })
+      .from(artifactLinks)
+      .where(and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), eq(artifactLinks.linkType, "dismissed")))
+      .orderBy(sql`(${artifactLinks.artifactId} = ${input.artifactId}) desc`);
+    if (rejected.length) {
+      const [keep, ...extra] = rejected;
+      if (extra.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, extra.map((r) => r.id)));
+      const [target] = await tx.select({ title: artifacts.title, kind: artifacts.kind }).from(artifacts).where(eq(artifacts.id, input.targetId));
+      await tx.update(artifactLinks).set({
+        artifactId: input.artifactId,
+        targetId: input.targetId,
+        targetType: target?.kind ?? "note",
+        label: target?.title ?? "",
+        linkType: "related",
+        context: null,
+      }).where(eq(artifactLinks.id, keep.id));
+      return;
+    }
     const found = await tx
       .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
       .from(artifacts)
@@ -296,4 +318,74 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
       linkType: "related",
     }).onConflictDoNothing();
   });
+}
+
+/* ---------------------------------------------------------------------------
+ * Curating links (ASH-110 section 6): similarity is not a relationship. The
+ * owner names what a link means and why, rejects a suggestion for good, or
+ * removes a link; none of it touches either note.
+ * ------------------------------------------------------------------------- */
+
+export const RELATION_TYPES = ["related", "explains", "supports", "contradicts", "applies", "extends", "contrasts", "source"] as const;
+export type RelationType = (typeof RELATION_TYPES)[number];
+
+export const RELATION_LABELS: Record<string, string> = {
+  related: "Related",
+  explains: "Explains",
+  supports: "Supports",
+  contradicts: "Challenges",
+  applies: "Applies to",
+  extends: "Extends",
+  contrasts: "Contrasts with",
+  source: "Derived from",
+  reference: "Linked",
+  semantic: "Suggested",
+};
+
+export class LinkEditError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LinkEditError";
+  }
+}
+
+const pairWhere = (workspaceId: string, a: string, b: string) => and(
+  eq(artifactLinks.workspaceId, workspaceId),
+  or(
+    and(eq(artifactLinks.artifactId, a), eq(artifactLinks.targetId, b)),
+    and(eq(artifactLinks.artifactId, b), eq(artifactLinks.targetId, a)),
+  ),
+);
+
+/** Name what an accepted link means and why. A [[wiki]] link keeps its text-managed type until retyped here. */
+export async function setLinkRelation(
+  auth: AuthContext,
+  input: { artifactId: string; targetId: string; linkType: RelationType; why?: string },
+): Promise<void> {
+  const why = input.why?.trim().slice(0, 500) || null;
+  const rows = await db
+    .update(artifactLinks)
+    .set({ linkType: input.linkType, context: why })
+    .where(and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), notInArray(artifactLinks.linkType, ["semantic", "dismissed"])))
+    .returning({ id: artifactLinks.id });
+  if (!rows.length) throw new LinkEditError("There is no link between those cards.");
+}
+
+/** Remove a curated link. A [[wiki]] link lives in the note text, so it is removed there. */
+export async function removeLink(auth: AuthContext, input: { artifactId: string; targetId: string }): Promise<void> {
+  const rows = await db
+    .delete(artifactLinks)
+    .where(and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), notInArray(artifactLinks.linkType, ["semantic", "dismissed", "reference"])))
+    .returning({ id: artifactLinks.id });
+  if (!rows.length) throw new LinkEditError("Remove a [[wiki link]] by editing the note text; there is no curated link to remove.");
+}
+
+/** Reject a suggestion; it stays rejected across re-embeds. */
+export async function dismissSemanticLink(auth: AuthContext, input: { artifactId: string; targetId: string }): Promise<boolean> {
+  const rows = await db
+    .update(artifactLinks)
+    .set({ linkType: "dismissed" })
+    .where(and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), eq(artifactLinks.linkType, "semantic")))
+    .returning({ id: artifactLinks.id });
+  return rows.length > 0;
 }

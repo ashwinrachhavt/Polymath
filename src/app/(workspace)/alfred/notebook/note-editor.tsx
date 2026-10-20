@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, linkRelatedNoteAction, renameNoteAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for the canonical notebook. The body is Markdown inside
@@ -101,14 +101,55 @@ export function NewNoteButton() {
  * linking context and its opening text. Pure CSS (group-hover/focus), no
  * client state and no extra fetch - the rows already carry excerpt/context.
  */
-function LinkRow({ link, label }: { link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }; label: string }) {
+const RELATION_OPTIONS: [string, string][] = [["related", "Related"], ["explains", "Explains"], ["supports", "Supports"], ["contradicts", "Challenges"], ["applies", "Applies to"], ["extends", "Extends"], ["contrasts", "Contrasts with"], ["source", "Derived from"]];
+const RELATION_NAME: Record<string, string> = { ...Object.fromEntries(RELATION_OPTIONS), reference: "Linked" };
+
+/* Name what a link means and why, or remove it. Similarity is not a relationship. */
+function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: string; linkType: string; context: string | null }; outgoing: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState(link.linkType === "reference" ? "related" : link.linkType);
+  const [why, setWhy] = useState(link.context && link.linkType !== "reference" ? link.context : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pair = outgoing ? { artifactId: noteId, targetId: link.id } : { artifactId: link.id, targetId: noteId };
+  const run = async (fn: () => Promise<{ ok: boolean } & { error?: string }>) => {
+    setBusy(true);
+    setError("");
+    const result = await fn();
+    setBusy(false);
+    if (!result.ok) return setError(result.error ?? "Could not save.");
+    setOpen(false);
+    router.refresh();
+  };
+  if (!open) {
+    return <button type="button" onClick={() => setOpen(true)} className="ml-2 text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">Edit</button>;
+  }
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5 rounded-md border border-border bg-background p-2">
+      <select aria-label="Relationship" value={type} onChange={(e) => setType(e.target.value)} className="h-7 rounded-md border border-border bg-background px-1.5 text-xs">
+        {RELATION_OPTIONS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+      </select>
+      <input aria-label="Why this link exists" value={why} onChange={(e) => setWhy(e.target.value)} placeholder="Why? (one line)" maxLength={500} className="h-7 rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+      <div className="flex items-center gap-2 text-xs">
+        <button type="button" disabled={busy} onClick={() => void run(() => setLinkRelationAction({ ...pair, linkType: type as "related", why }))} className="rounded-md bg-primary px-2 py-1 text-primary-foreground disabled:opacity-50">Save</button>
+        <button type="button" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
+        {link.linkType !== "reference" && <button type="button" disabled={busy} onClick={() => void run(() => removeLinkAction(pair))} className="ml-auto text-destructive hover:underline disabled:opacity-50">Remove link</button>}
+      </div>
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function LinkRow({ noteId, outgoing, link, label }: { noteId: string; outgoing: boolean; link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }; label: string }) {
   return (
     <li className="group relative rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40 focus-within:border-border focus-within:bg-muted/40">
       <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
         {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
         {link.title}
       </Link>
-      <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">{link.linkType}</span>
+      <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">{RELATION_NAME[link.linkType] ?? link.linkType}</span>
+      <LinkEditor noteId={noteId} link={link} outgoing={outgoing} />
       {(link.context || link.excerpt) && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.context ? `…${link.context}…` : link.excerpt}</p>}
       <div
         role="tooltip"
@@ -490,7 +531,7 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">References</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {outlinks.map((link) => (
-                  <LinkRow key={link.id} link={link} label="Reference" />
+                  <LinkRow key={link.id} noteId={noteId} outgoing link={link} label="Reference" />
                 ))}
                 {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
               </ul>
@@ -499,7 +540,7 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {backlinks.map((link) => (
-                  <LinkRow key={link.id} link={link} label="Linked from" />
+                  <LinkRow key={link.id} noteId={noteId} outgoing={false} link={link} label="Linked from" />
                 ))}
                 {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
               </ul>
@@ -529,6 +570,15 @@ export function NoteEditor({
                     className="mr-0.5 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
                     {linkingId === r.id ? "Linking" : "Link"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Dismiss ${r.title}`}
+                    title="Not related. Stop suggesting this."
+                    onClick={async () => { const res = await removeLinkAction({ artifactId: noteId, targetId: r.id, dismiss: true }); if (!res.ok) setError(res.error); else router.refresh(); }}
+                    className="mr-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    ×
                   </button>
                 </li>
               ))}

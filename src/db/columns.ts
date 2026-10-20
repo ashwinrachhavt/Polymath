@@ -96,6 +96,11 @@ export const artifactLinkTypes = [
   "contradicts",
   "source",
   "semantic",
+  "explains",
+  "applies",
+  "extends",
+  "contrasts",
+  "dismissed",
 ] as const;
 
 export const artifactLinkType = () => text("link_type").notNull().default("reference");

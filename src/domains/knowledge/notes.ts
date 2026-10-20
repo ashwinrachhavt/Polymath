@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
@@ -107,7 +107,7 @@ export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId
       eq(artifactLinks.workspaceId, auth.workspaceId),
       eq(artifactLinks.artifactId, artifactId),
       inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
-      eq(artifactLinks.linkType, "semantic"),
+      inArray(artifactLinks.linkType, ["semantic", "dismissed"]),
     ));
   const upgradable = suggested.filter((row) => wanted.has(row.targetId) && !kept.has(row.targetId));
   for (const row of upgradable) {
@@ -618,7 +618,7 @@ export async function listNoteOutlinks(auth: AuthContext, artifactId: string): P
         and(
           eq(artifactLinks.workspaceId, auth.workspaceId),
           eq(artifactLinks.artifactId, artifactId),
-          ne(artifactLinks.linkType, "semantic"),
+          notInArray(artifactLinks.linkType, ["semantic", "dismissed"]),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           isNull(artifacts.archivedAt),
         ),
@@ -648,7 +648,7 @@ export async function listNoteBacklinks(auth: AuthContext, artifactId: string): 
           eq(artifactLinks.workspaceId, auth.workspaceId),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           eq(artifactLinks.targetId, artifactId),
-          ne(artifactLinks.linkType, "semantic"),
+          notInArray(artifactLinks.linkType, ["semantic", "dismissed"]),
           isNull(artifacts.archivedAt),
         ),
       )

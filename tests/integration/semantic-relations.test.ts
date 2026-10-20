@@ -23,7 +23,7 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
 import { autosaveNoteDraft, commitNoteSnapshot, createNote, getNote, listNoteBacklinks, listNoteOutlinks, synthesizeZettel } from "@/domains/knowledge/notes";
-import { linkCards, listCardGraph, materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
+import { dismissSemanticLink, linkCards, listCardGraph, removeLink, setLinkRelation, materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
 
 /** Deterministic 1536-wide vectors: basis directions per key. */
 function vec(dims: number[]): number[] {
@@ -198,5 +198,39 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     expect((await listNoteOutlinks(auth, merged.id)).map((l) => l.id).sort()).toEqual([a.id, b.id].sort());
     expect((await listNoteBacklinks(auth, a.id)).map((l) => l.id)).toContain(merged.id);
     await expect(synthesizeZettel(auth, { sourceIds: [a.id] })).rejects.toThrow("at least two");
+  });
+
+  it("curating links: name the relation and why, reject a suggestion for good, remove a link, notes untouched", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "Claim", "c");
+    const b = await writeNote(auth, "Evidence", "e");
+    const c = await writeNote(auth, "Noise", "n");
+    const provider = fakeProvider({ c: vec([7]), e: vec([7]), n: vec([7]) });
+    for (const n of [a, b, c]) await embedArtifact(auth, { artifactId: n.id, provider });
+
+    // Reject a suggestion: it leaves the panel and a re-embed does not bring it back.
+    expect((await relatedNotes(auth, a.id)).map((r) => r.id).sort()).toEqual([b.id, c.id].sort());
+    expect(await dismissSemanticLink(auth, { artifactId: a.id, targetId: c.id })).toBe(true);
+    await embedArtifact(auth, { artifactId: a.id, provider });
+    await embedArtifact(auth, { artifactId: c.id, provider });
+    expect((await relatedNotes(auth, a.id)).map((r) => r.id)).toEqual([b.id]);
+    expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).not.toContain(c.id);
+
+    // Accept, then say what it means and why.
+    await linkCards(auth, { artifactId: a.id, targetId: b.id });
+    await setLinkRelation(auth, { artifactId: a.id, targetId: b.id, linkType: "supports", why: "b measures the claim" });
+    const [out] = await listNoteOutlinks(auth, a.id);
+    expect(out).toMatchObject({ id: b.id, linkType: "supports", context: "b measures the claim" });
+    expect((await listNoteBacklinks(auth, b.id))[0]).toMatchObject({ id: a.id, linkType: "supports" });
+
+    // Remove the link; both notes remain.
+    await removeLink(auth, { artifactId: b.id, targetId: a.id });
+    expect(await listNoteOutlinks(auth, a.id)).toEqual([]);
+    expect((await listCardGraph(auth)).nodes).toHaveLength(3);
+    await expect(removeLink(auth, { artifactId: a.id, targetId: b.id })).rejects.toThrow();
+
+    // Tying a rejected pair again is a fresh decision.
+    await linkCards(auth, { artifactId: a.id, targetId: c.id });
+    expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).toEqual([c.id]);
   });
 });
