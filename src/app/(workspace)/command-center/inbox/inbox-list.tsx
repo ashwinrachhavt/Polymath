@@ -93,7 +93,7 @@ export function InboxList({ rows, view }: { rows: InboxRow[]; view: InboxView })
             </div>
             {capture.processingState === "converted" && capture.convertedType === "task" && capture.convertedId ? (
               <Button asChild className="mt-3" size="sm" variant="outline">
-                <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in NeuralFlow</Link>
+                <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in Work</Link>
               </Button>
             ) : null}
           </article>

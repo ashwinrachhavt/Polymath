@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-const loading = () => <p role="status" className="p-6 text-[13px] text-muted-foreground">Loading Command Center screen…</p>;
+const loading = () => <p role="status" className="p-6 text-[13px] text-muted-foreground">Loading screen…</p>;
 const Briefing = dynamic(() => import("./briefing"), { loading });
 const Inbox = dynamic(() => import("./inbox"), { loading });
 const Work = dynamic(() => import("./work"), { loading });

@@ -109,7 +109,7 @@ export async function AgentPanels() {
           ))}
         </div>
         {overnight.items.length === 0 ? (
-          <Empty title="No runs in the last 24 hours" description="Start work from Alfred or hire a specialist; their runs log here." />
+          <Empty title="No runs in the last 24 hours" description="Start work with the assistant or hire a specialist; their runs log here." />
         ) : null}
       </Panel>
     </div>

@@ -22,7 +22,7 @@ import { Markdown } from "@/components/markdown";
 import { listDossiers } from "@/domains/knowledge/dossiers";
 import { StartRunForm } from "./start-run-form";
 
-export const metadata = { title: "Alfred · Polymath" };
+export const metadata = { title: "Assistant · Polymath" };
 
 /*
  * Conversation, delegation, and the run timeline. Reads the workspace's real
@@ -68,7 +68,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Alfred" purpose="Delegate and inspect what it did." />
+        <PageHeader title="Assistant" purpose="Hand off work and inspect what it did." />
         <div className="page-content">
           <EmptyState
             title="Agent storage is not configured"
@@ -99,8 +99,8 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
   return (
     <>
       <PageHeader
-        title="Alfred"
-        purpose="Delegate and inspect what it did."
+        title="Assistant"
+        purpose="Hand off work and inspect what it did."
         actions={
           <Badge variant="secondary" className="font-normal">
             Profile: alfred
@@ -109,9 +109,11 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
       />
 
       <div className="flex flex-col gap-6 page-content">
-        <Section title="Ask Alfred" description="One agent, with a stated model, tools, and budget before it starts.">
-          {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : <StartRunForm dossiers={dossierList} />}
-        </Section>
+        {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : (
+          <Section title="Start a run" description="One agent, with a stated model, tools, and budget before it starts.">
+            <StartRunForm dossiers={dossierList} />
+          </Section>
+        )}
 
         <Section title="Threads" description="A thread keeps its record context, so it does not start from nothing.">
           <EmptyState
@@ -172,7 +174,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
                         className={entry.kind === "user" ? "text-[13px]" : "text-muted-foreground text-[13px]"}
                       >
                         <span className="text-muted-foreground text-xs">
-                          {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Alfred" : "Run"}:{" "}
+                          {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Assistant" : "Run"}:{" "}
                         </span>
                         {entry.kind === "assistant" ? <Markdown text={entry.text} /> : entry.text}
                       </li>
@@ -192,7 +194,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
   );
 }
 
-/* Sources Alfred read for a run: the passages its documents.search calls returned. */
+/* Sources the assistant read for a run: the passages its documents.search calls returned. */
 function Citations({ citations }: { citations: ReturnType<typeof collectCitations> }) {
   if (citations.length === 0) return null;
   return (
@@ -223,7 +225,7 @@ export default function AlfredPage({ searchParams }: { searchParams: Promise<Raw
 
 function AlfredSkeleton() {
   return (
-    <div role="status" aria-label="Loading Alfred" className="flex flex-1 flex-col gap-4 p-6">
+    <div role="status" aria-label="Loading assistant" className="flex flex-1 flex-col gap-4 p-6">
       <Skeleton className="h-6 w-40" />
       <Skeleton className="h-4 w-full max-w-xl" />
       <Skeleton className="h-24 w-full" />

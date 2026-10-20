@@ -5,7 +5,7 @@ import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getActiveFocusSession, listFocusHistory } from "@/domains/focus/queries";
 import { getTaskDetail } from "@/domains/work/queries";
 import { getAuthContext } from "@/lib/auth";
-import { NeuralFlowFeatureLinks } from "../work/work-today";
+import { FeatureLinks } from "../work/work-today";
 import { ActiveSessionControls, StartSessionForm } from "./focus-controls";
 
 export const metadata = { title: "Focus · Polymath" };
@@ -102,7 +102,7 @@ export default function FocusPage({ searchParams }: { searchParams: FocusQuery }
     <>
       <div className="flex flex-col gap-2 border-b border-border px-4 py-3 md:px-6">
         <Link href="/neuralflow/work" className="w-fit py-1 text-[13px] font-medium hover:underline">Back to Work</Link>
-        <NeuralFlowFeatureLinks />
+        <FeatureLinks />
       </div>
       <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening focus session…</p>}>
         <Focus searchParams={searchParams} />

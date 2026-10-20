@@ -26,9 +26,9 @@ export function WorkViewLinks({ active }: { active: WorkView }) {
   );
 }
 
-export function NeuralFlowFeatureLinks() {
+export function FeatureLinks() {
   return (
-    <nav aria-label="NeuralFlow tools" className="-mx-1 flex flex-nowrap items-center gap-x-4 overflow-x-auto px-1 text-xs text-muted-foreground md:flex-wrap md:gap-y-2 md:overflow-visible">
+    <nav aria-label="More tools" className="-mx-1 flex flex-nowrap items-center gap-x-4 overflow-x-auto px-1 text-xs text-muted-foreground md:flex-wrap md:gap-y-2 md:overflow-visible">
       <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/focus">Focus</Link>
       <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/projects">Projects</Link>
       <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>

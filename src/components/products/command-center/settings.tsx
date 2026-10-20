@@ -186,8 +186,8 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
 
         <Section id="model-policy">
           <Panel title="Model and tool policy" description="Profile, model routing and tool allowlists are server-owned.">
-            <Unavailable feature="Alfred profile and tool policy">Model choice, reasoning effort, allowed tools and per-run budgets are captured server-side when a run starts. Nothing on this screen can widen them.</Unavailable>
-            <div className="mt-4 flex flex-wrap gap-2"><Destination screen="agents">Alfred profile</Destination><Destination screen="spending">Spending policy</Destination></div>
+            <Unavailable feature="Assistant profile and tool policy">Model choice, reasoning effort, allowed tools and per-run budgets are captured server-side when a run starts. Nothing on this screen can widen them.</Unavailable>
+            <div className="mt-4 flex flex-wrap gap-2"><Destination screen="agents">Assistant profile</Destination><Destination screen="spending">Spending policy</Destination></div>
           </Panel>
         </Section>
 
@@ -222,7 +222,7 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
         </Section>
 
         <Section id="candidate-facts">
-          <Panel title="Candidate facts and résumé setup" description="Structured facts about the owner, reused by Alfred when it drafts or reviews career material.">
+          <Panel title="Candidate facts and résumé setup" description="Structured facts about the owner, reused by the assistant when it drafts or reviews career material.">
             <Button variant="outline" onClick={() => setFactsOpen(!factsOpen)}>{factsOpen ? "Close candidate facts" : "Prepare candidate facts and résumé setup"}</Button>
             {factsOpen && <div className="mt-4"><CandidateFacts/></div>}
           </Panel>

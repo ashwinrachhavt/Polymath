@@ -67,8 +67,8 @@ async function Briefing() {
         {!briefing.outcomes.length && !briefing.suggested.length ? (
           <Empty
             title="No open outcome candidates"
-            description="Create work in NeuralFlow, then accept it as an outcome."
-            action={<Button size="sm" asChild><Link href="/neuralflow/work">Create work in NeuralFlow</Link></Button>}
+            description="Create a commitment, then accept it as an outcome."
+            action={<Button size="sm" asChild><Link href="/neuralflow/work">Create a commitment</Link></Button>}
           />
         ) : null}
       </Panel>

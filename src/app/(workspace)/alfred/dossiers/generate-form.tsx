@@ -61,7 +61,7 @@ export function GenerateForm({ dossierId }: { dossierId: string }) {
       </div>
       {runId ? (
         <p className="text-muted-foreground text-[13px]">
-          Run started. It writes a draft for review, nothing publishes. <a className="underline" href="/alfred">Watch it on the Alfred screen</a>.
+          Run started. It writes a draft for review, nothing publishes. <a className="underline" href="/alfred">Watch it in the assistant</a>.
         </p>
       ) : null}
       {error ? <p className="text-destructive text-[13px]">{error}</p> : null}
