@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import { motionTransition } from "@/components/motion-config";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,8 +59,6 @@ const toneClass: Record<VaultDocument["status"]["tone"], string> = {
   done: "text-teal-700 dark:text-teal-400",
   error: "text-destructive",
 };
-
-const motionConfig = { duration: 0.18, ease: [0.25, 0.1, 0.25, 1] as const };
 
 const dateFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -254,7 +253,7 @@ export function DocumentVault({
             onClick={() => setPlusOpen((open) => !open)}
             className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 items-center gap-1 rounded-md pr-2.5 pl-2 text-[13px] font-medium transition-colors active:scale-[0.98]"
           >
-            <motion.span animate={{ rotate: plusOpen ? 45 : 0 }} transition={motionConfig} className="grid place-items-center">
+            <motion.span animate={{ rotate: plusOpen ? 45 : 0 }} transition={motionTransition} className="grid place-items-center">
               <Plus className="size-4" aria-hidden />
             </motion.span>
             New
@@ -267,7 +266,7 @@ export function DocumentVault({
                 initial={{ opacity: 0, y: -4, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                transition={motionConfig}
+                transition={motionTransition}
                 className="bg-popover text-popover-foreground border-border absolute right-0 z-20 mt-1 w-52 rounded-md border p-1 shadow-sm"
               >
                 <button
@@ -315,7 +314,7 @@ export function DocumentVault({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={motionConfig}
+            transition={motionTransition}
             role="status"
             className="border-ring bg-accent/40 text-accent-foreground pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed text-[13px] font-medium"
           >
@@ -335,7 +334,7 @@ export function DocumentVault({
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={motionConfig}
+                transition={motionTransition}
                 className={cn(
                   "flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-xs",
                   item.state === "error" ? "bg-destructive/10 text-destructive" : "bg-muted/60 text-muted-foreground",
@@ -394,7 +393,7 @@ export function DocumentVault({
                     initial={{ opacity: 0, y: 2 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    transition={motionConfig}
+                    transition={motionTransition}
                     className="border-border border-b last:border-b-0"
                   >
                     <button
@@ -532,7 +531,7 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={motionConfig}
+      transition={motionTransition}
       className="bg-foreground/20 fixed inset-0 z-40 p-2 sm:p-6"
       onClick={onClose}
     >
@@ -540,7 +539,7 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
         initial={{ opacity: 0, scale: 0.99 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.99 }}
-        transition={motionConfig}
+        transition={motionTransition}
         className="bg-background border-border mx-auto flex size-full max-w-[1400px] flex-col overflow-hidden rounded-lg border shadow-sm"
         onClick={(event) => event.stopPropagation()}
       >
