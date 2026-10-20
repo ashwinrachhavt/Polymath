@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OutboxDeferredError, OUTBOX_MAX_ATTEMPTS } from "@/domains/audit/outbox";
+import { OutboxParkError, OUTBOX_MAX_ATTEMPTS } from "@/domains/audit/outbox";
 
 /*
  * ASH-178. Two shapes a handler can use that the dispatcher must honour, both
@@ -7,18 +7,18 @@ import { OutboxDeferredError, OUTBOX_MAX_ATTEMPTS } from "@/domains/audit/outbox
  * pin the contract so a refactor cannot quietly change it.
  */
 
-describe("OutboxDeferredError", () => {
+describe("OutboxParkError", () => {
   it("defaults to a one-minute park", () => {
-    expect(new OutboxDeferredError("provider down").retryAfterMs).toBe(60_000);
+    expect(new OutboxParkError(60_000, "provider down").retryAfterMs).toBe(60_000);
   });
 
   it("carries a caller-supplied park", () => {
-    expect(new OutboxDeferredError("provider down", 5_000).retryAfterMs).toBe(5_000);
+    expect(new OutboxParkError(5_000, "provider down").retryAfterMs).toBe(5_000);
   });
 
   it("is distinguishable from a real failure", () => {
-    expect(new OutboxDeferredError("x")).toBeInstanceOf(Error);
-    expect(new OutboxDeferredError("x").name).toBe("OutboxDeferredError");
+    expect(new OutboxParkError(1_000, "x")).toBeInstanceOf(Error);
+    expect(new OutboxParkError(1_000, "x").name).toBe("OutboxParkError");
   });
 });
 

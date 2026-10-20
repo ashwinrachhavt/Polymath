@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const client = postgres(process.env.DATABASE_URL ?? "", { max: 1 });
   try {
     const recovered = await recoverStrandedOutbox(client);
-    const result = await dispatchPendingOutbox(client, outboxHandlers(client), { workerId: `cron:${crypto.randomUUID()}` });
+    const result = await dispatchPendingOutbox(client, outboxHandlers, { workerId: `cron:${crypto.randomUUID()}` });
     return Response.json({ recovered: recovered.length, ...result });
   } finally {
     await client.end({ timeout: 5 });

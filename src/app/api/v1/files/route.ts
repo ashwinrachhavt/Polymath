@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -12,6 +12,7 @@ import { requestReceipts } from "@/domains/audit/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
+import { currentExtractionSql } from "@/domains/knowledge/versions";
 
 /*
  * POST /api/v1/files — upload a document, store the binary in Vercel Blob,
@@ -48,7 +49,7 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "invalid_request", "Give the document a title.");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return problemResponse(413, "payload_too_large", "Files are limited to 4 MB.");
+    return problemResponse(413, "payload_too_large", "Files are limited to 25 MB.");
   }
 
   const idempotencyKey = request.headers.get("idempotency-key");
@@ -171,7 +172,15 @@ export const GET = authedHandler(async (auth, request) => {
   if (!documentId) return problemResponse(400, "invalid_request", "Pass a documentId.");
 
   const [doc] = await db
-    .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
+    .select({
+      id: documents.id,
+      title: documents.title,
+      mimeType: documents.mimeType,
+      // The upload UI polls this to show reading progress rather than guessing
+      // how long Docling takes.
+      extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
+      extractionError: sql<string | null>`(select de.error from document_extractions de where de.document_id = ${documents.id} order by de.created_at desc limit 1)`,
+    })
     .from(documents)
     .where(and(eq(documents.id, documentId), eq(documents.workspaceId, auth.workspaceId)))
     .limit(1);

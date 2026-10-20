@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
-import { clerkConfigured } from "@/lib/clerk";
+import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 
 /*
  * Every destination shares the shell. A route group rather than a path
@@ -19,11 +19,12 @@ import { clerkConfigured } from "@/lib/clerk";
  */
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let storageScope = "anonymous";
-  if (clerkConfigured) {
+  const clerkSession = clerkConfigured && !devAuthBypass;
+  if (clerkSession) {
     const { userId } = await auth();
     if (!userId) redirect("/sign-in");
     storageScope = createHash("sha256").update(userId).digest("hex");
   }
 
-  return <AppShell storageScope={storageScope} clerkConfigured={clerkConfigured}>{children}</AppShell>;
+  return <AppShell storageScope={storageScope} clerkConfigured={clerkSession}>{children}</AppShell>;
 }

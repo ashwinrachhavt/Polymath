@@ -40,7 +40,7 @@ import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/sta
 import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
 import { getOpenClassification } from "@/domains/knowledge/classify";
 import { CaptureUrlForm } from "./capture-url-form";
-import { UploadButton } from "./upload-button";
+import { UploadButton } from "@/components/documents/upload-button";
 
 export const metadata = { title: "Knowledge · Polymath" };
 

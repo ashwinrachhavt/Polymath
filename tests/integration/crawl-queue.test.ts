@@ -94,7 +94,7 @@ async function queuedRow(workspaceId: string) {
   return row;
 }
 
-const crawlHandlers = () => handlers.outboxHandlers(client);
+const crawlHandlers = () => handlers.outboxHandlers;
 
 suite("crawl queue (real Postgres)", () => {
   it("the agent tool enqueues a crawl and returns queued, not a partial page set", async () => {
@@ -195,7 +195,7 @@ suite("crawl queue (real Postgres)", () => {
 
     vi.stubEnv("FIRECRAWL_API_URL", "http://127.0.0.1:9"); // nothing listens here
     const pass = await outbox.dispatchPendingOutbox(client, crawlHandlers(), { workerId: "w1" });
-    expect(pass).toMatchObject({ claimed: 1, dispatched: 0, failed: 0, deferred: 1 });
+    expect(pass).toMatchObject({ claimed: 1, dispatched: 0, failed: 0, parked: 1 });
 
     const after = await queuedRow(auth.workspaceId);
     expect(after.status).toBe("pending");

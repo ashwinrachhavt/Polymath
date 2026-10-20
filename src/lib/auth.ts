@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveMachineClient } from "@/domains/identity/machine";
 import { sha256Hex } from "./hash";
-import { clerkConfigured } from "@/lib/clerk";
+import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { ForbiddenRoleError } from "./auth/guards";
 import { problemResponse } from "./problems";
 
@@ -47,7 +47,7 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
   await connection();
   // Same dev fallback as getAnyAuthContext below: without Clerk keys the
   // proxy is a no-op and auth() throws. See the longer note there.
-  if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+  if ((!clerkConfigured || devAuthBypass) && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
     return resolveAuthContext("dev-user");
   }
   const { userId } = await auth();
@@ -104,7 +104,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
   // in a shared dev env — then delete this branch. Tests mock the Clerk module
   // without touching clerkConfigured's env read, so the flag gates the branch:
   // configured keys always take the real path below.
-  if (!clerkConfigured && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+  if ((!clerkConfigured || devAuthBypass) && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
     return resolveAuthContext("dev-user");
   }
   const session = await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
