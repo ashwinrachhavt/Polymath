@@ -7,9 +7,10 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Panel, Status } from "@/components/workspace/ui";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
+import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
@@ -211,6 +212,10 @@ export function NoteEditor({
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [awaitingVersion, setAwaitingVersion] = useState(0);
+  const [savedVersions, setSavedVersions] = useState<VersionItem[] | null>(null);
+  const history = savedVersions ?? versions;
+  const historyReady = !pending && history.some((item) => item.versionNumber >= awaitingVersion);
   const versionRef = useRef(initialVersion);
   const savedRef = useRef(initialMarkdown);
   const markdownRef = useRef(initialMarkdown);
@@ -311,6 +316,8 @@ export function NoteEditor({
     setPending(false);
     if (!result.ok) return setError(result.error);
     versionRef.current = result.version;
+    setAwaitingVersion(result.versionNumber);
+    setSavedVersions(result.versions);
     savedRef.current = markdown;
     setSaveState("saved");
     router.refresh();
@@ -395,209 +402,254 @@ export function NoteEditor({
     router.refresh();
   };
 
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<MarkdownEditorMode>(() => markdownEditorMode(initialMarkdown));
+  const sourceReason = markdownSourceReason(markdown);
+
+  /*
+   * The page is the note: one centered column with the title and the writing
+   * surface, and everything else behind the Note details inspector on the
+   * right (properties, checkpoints, history, links, related, the editing
+   * mode). Chrome appears on demand - the formatting toolbar floats up on a
+   * selection, "/" opens blocks, "[[" links a note.
+   */
   return (
-    <Panel
-      title={initialTitle}
-      description="Autosaves as a draft; checkpoints are immutable versions."
-      actions={
-        <span className="flex items-center gap-2">
-          {saveState === "saving" && <Status>Saving…</Status>}
-          {saveState === "dirty" && <Status>Unsaved changes</Status>}
-          {saveState === "saved" && <Status>Saved</Status>}
-          {saveState === "error" && <Status>Not saved</Status>}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline">History</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogTitle>Version history</DialogTitle>
-              <DialogDescription>Every checkpoint is immutable — this is what the note said, when.</DialogDescription>
-              {versions.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No checkpoints yet. Save one to start the history.</p>
-              ) : (
-                <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-                  {versions.map((v) => (
-                    <li key={v.id} className="rounded-md border border-border px-3 py-2 text-[13px]">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-medium">Version {v.versionNumber}</span>
-                        <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` — ${v.note}` : ""}</span>
+    <div className="flex min-w-0 flex-1 items-start gap-6">
+      <div className="min-w-0 flex-1">
+        <div className="mx-auto flex max-w-[720px] flex-col gap-4 pb-24">
+          {offer && (
+            <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
+              <span>A draft from {stamp(offer.updatedAt)} was left unsaved.</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(offer.markdown); setOffer(null); }}>
+                Restore draft
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setOffer(null)}>
+                Keep saved version
+              </Button>
+            </div>
+          )}
+          <div>
+            <input
+              aria-label="Note title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={rename}
+              placeholder="Untitled note"
+              style={{ fontFamily: "var(--font-display)" }}
+              className="w-full bg-transparent text-[26px] leading-snug outline-none placeholder:text-muted-foreground/50"
+            />
+            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              {saveState === "saving" && <span role="status">Saving…</span>}
+              {saveState === "dirty" && <span role="status">Unsaved changes</span>}
+              {saveState === "saved" && <span role="status">Saved</span>}
+              {saveState === "error" && <span role="status">Not saved</span>}
+              <span>Updated {stamp(updatedAt)}</span>
+              <span className="flex-1" />
+              <Button type="button" variant="ghost" size="sm" aria-expanded={detailsOpen} aria-controls="note-details" onClick={() => setDetailsOpen((open) => !open)}>
+                Note details
+              </Button>
+            </div>
+          </div>
+          <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
+          {ai && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2">
+                <Status>AI · {ai.heading}</Status>
+                <span className="text-xs text-muted-foreground">
+                  {ai.failed ? "Something went wrong" : AI_TERMINAL.has(ai.state) ? (ai.output ? "Draft ready - review it before anything is written" : "Finished without output") : "Working - the draft appears here when the run finishes"}
+                </span>
+              </div>
+              {ai.output && !ai.failed && (
+                <>
+                  <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[13px] leading-6">{ai.output}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {ai.selection && (
+                      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replace")}>
+                        Replace the selection
+                      </Button>
+                    )}
+                    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("append")}>
+                      {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
+                    </Button>
+                    {ai.heading !== "Answer" && (
+                      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replaceNote")}>
+                        Replace the note
+                      </Button>
+                    )}
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAi(null)}>
+                      Discard
+                    </Button>
+                  </div>
+                </>
+              )}
+              {ai.notice && <p role="alert" className="text-xs text-destructive">{ai.notice}</p>}
+              {ai.failed && (
+                <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => setAi(null)}>
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          )}
+          {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+        </div>
+      </div>
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent id="note-details" className="overflow-y-auto p-5 pt-12">
+          <SheetTitle>Note details</SheetTitle>
+          <SheetDescription className="sr-only">Properties, history and connections for this note.</SheetDescription>
+            <section aria-label="Note actions" className="flex flex-col gap-2">
+              <h2 className="text-xs font-medium text-muted-foreground">Note</h2>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={checkpoint} disabled={pending || saveState === "saving"}>
+                  {pending ? "Saving…" : "Save checkpoint"}
+                </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button type="button" size="sm" variant="outline" disabled={!historyReady}>History</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogTitle>Version history</DialogTitle>
+                    <DialogDescription>Every checkpoint is immutable - this is what the note said, when.</DialogDescription>
+                    {history.length === 0 ? (
+                      <p className="text-[13px] text-muted-foreground">No checkpoints yet. Save one to start the history.</p>
+                    ) : (
+                      <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                        {history.map((v) => (
+                          <li key={v.id} className="rounded-md border border-border px-3 py-2 text-[13px]">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="font-medium">Version {v.versionNumber}</span>
+                              <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` — ${v.note}` : ""}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <Link className="w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={`/alfred/graph?focus=${noteId}`}>Show in graph</Link>
+            </section>
+            <section aria-label="Properties" className="flex flex-col gap-2">
+              <h2 className="text-xs font-medium text-muted-foreground">Properties</h2>
+              <dl aria-label="Note properties" className="flex flex-col gap-2 text-[13px]">
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-muted-foreground">Type</dt>
+                  <dd><Status>{kind}</Status></dd>
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <dt className="pt-0.5 text-xs text-muted-foreground">Tags</dt>
+                  <dd className="flex flex-wrap items-center justify-end gap-1">
+                    {tags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        title={`Remove tag ${tag}`}
+                        aria-label={`Remove tag ${tag}`}
+                        className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-destructive/50 hover:text-destructive"
+                        onClick={() => void saveTags(tags.filter((t) => t !== tag))}
+                      >
+                        {tag} ×
+                      </button>
+                    ))}
+                    <input
+                      aria-label="Add a tag"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); }
+                        if (e.key === "Backspace" && !tagInput && tags.length) void saveTags(tags.slice(0, -1));
+                      }}
+                      onBlur={addTag}
+                      placeholder="+ tag"
+                      className="w-16 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                    />
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-muted-foreground">Created</dt>
+                  <dd className="text-xs">{stamp(createdAt)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-muted-foreground">Updated</dt>
+                  <dd className="text-xs">{stamp(updatedAt)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-xs text-muted-foreground">Version</dt>
+                  <dd className="text-xs">v{initialVersion}</dd>
+                </div>
+              </dl>
+            </section>
+            <section aria-label="Editing mode" className="flex flex-col gap-2">
+              <h2 className="text-xs font-medium text-muted-foreground">Editing mode</h2>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant={editorMode === "rich" ? "secondary" : "outline"} aria-pressed={editorMode === "rich"} disabled={!!sourceReason} onClick={() => { setEditorMode("rich"); setDetailsOpen(false); }}>Rich text</Button>
+                <Button type="button" size="sm" variant={editorMode === "source" ? "secondary" : "outline"} aria-pressed={editorMode === "source"} onClick={() => { setEditorMode("source"); setDetailsOpen(false); }}>Markdown source</Button>
+              </div>
+            </section>
+            {(outlinks.length > 0 || backlinks.length > 0) && (
+              <section aria-label="Links" className="flex flex-col gap-3">
+                <h2 className="text-xs font-medium text-muted-foreground">Links</h2>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">References</p>
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {outlinks.map((link) => (
+                      <LinkRow key={link.id} noteId={noteId} outgoing link={link} label="Reference" />
+                    ))}
+                    {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {backlinks.map((link) => (
+                      <LinkRow key={link.id} noteId={noteId} outgoing={false} link={link} label="Linked from" />
+                    ))}
+                    {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
+                  </ul>
+                </div>
+              </section>
+            )}
+            {related.filter((r) => !r.alreadyLinked).length > 0 && (
+              <section aria-label="Related" className="flex flex-col gap-2">
+                <h2 className="text-xs font-medium text-muted-foreground">Related by meaning</h2>
+                <ul className="flex flex-wrap gap-1.5">
+                  {related.filter((r) => !r.alreadyLinked).map((r) => (
+                    <li key={r.id} className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-[13px] transition-colors hover:bg-muted/60">
+                      <Link
+                        className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        href={`/alfred/notebook?id=${r.id}`}
+                        title={r.excerpt ?? r.title}
+                      >
+                        {r.kind === "zettel" && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+                        <span className="truncate">{r.title}</span>
+                        <span className="tabular-nums text-[11px] text-muted-foreground">{Math.round(r.score * 100)}%</span>
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={`Link ${r.title}`}
+                        disabled={linkingId === r.id}
+                        onClick={() => void confirmLink(r.id)}
+                        className="mr-0.5 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      >
+                        {linkingId === r.id ? "Linking" : "Link"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Dismiss ${r.title}`}
+                        title="Not related. Stop suggesting this."
+                        onClick={async () => { const res = await removeLinkAction({ artifactId: noteId, targetId: r.id, dismiss: true }); if (!res.ok) setError(res.error); else router.refresh(); }}
+                        className="mr-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        ×
+                      </button>
                     </li>
                   ))}
                 </ul>
-              )}
-            </DialogContent>
-          </Dialog>
-          <Button type="button" onClick={checkpoint} disabled={pending || saveState === "saving"}>
-            {pending ? "Saving…" : "Save checkpoint"}
-          </Button>
-        </span>
-      }
-    >
-      <div className="flex flex-col gap-3">
-        {offer && (
-          <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
-            <span>A draft from {stamp(offer.updatedAt)} was left unsaved.</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(offer.markdown); setOffer(null); }}>
-              Restore draft
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setOffer(null)}>
-              Keep saved version
-            </Button>
-          </div>
-        )}
-        <Input aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={rename} />
-        <dl aria-label="Note properties" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-border px-3 py-2 text-[13px]">
-          <span className="flex items-center gap-1.5">
-            <dt className="text-xs text-muted-foreground">Type</dt>
-            <dd><Status>{kind}</Status></dd>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <dt className="text-xs text-muted-foreground">Tags</dt>
-            <dd className="flex flex-wrap items-center gap-1">
-              {tags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  title={`Remove tag ${tag}`}
-                  aria-label={`Remove tag ${tag}`}
-                  className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-destructive/50 hover:text-destructive"
-                  onClick={() => void saveTags(tags.filter((t) => t !== tag))}
-                >
-                  {tag} ×
-                </button>
-              ))}
-              <input
-                aria-label="Add a tag"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); }
-                  if (e.key === "Backspace" && !tagInput && tags.length) void saveTags(tags.slice(0, -1));
-                }}
-                onBlur={addTag}
-                placeholder="+ tag"
-                className="w-16 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-              />
-            </dd>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <dt className="text-xs text-muted-foreground">Created</dt>
-            <dd className="text-xs">{stamp(createdAt)}</dd>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <dt className="text-xs text-muted-foreground">Updated</dt>
-            <dd className="text-xs">{stamp(updatedAt)}</dd>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <dt className="text-xs text-muted-foreground">Version</dt>
-            <dd className="text-xs">v{initialVersion}</dd>
-          </span>
-        </dl>
-        <RichEditor findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
-        {ai && (
-          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
-            <div className="flex items-center gap-2">
-              <Status>AI · {ai.heading}</Status>
-              <span className="text-xs text-muted-foreground">
-                {ai.failed ? "Something went wrong" : AI_TERMINAL.has(ai.state) ? (ai.output ? "Draft ready — review it before anything is written" : "Finished without output") : "Working — the draft appears here when the run finishes"}
-              </span>
-            </div>
-            {ai.output && !ai.failed && (
-              <>
-                <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[13px] leading-6">{ai.output}</div>
-                <div className="flex flex-wrap gap-2">
-                  {ai.selection && (
-                    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replace")}>
-                      Replace the selection
-                    </Button>
-                  )}
-                  <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("append")}>
-                    {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
-                  </Button>
-                  {ai.heading !== "Answer" && (
-                    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => acceptAI("replaceNote")}>
-                      Replace the note
-                    </Button>
-                  )}
-                  <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAi(null)}>
-                    Discard
-                  </Button>
-                </div>
-              </>
+              </section>
             )}
-            {ai.notice && <p role="alert" className="text-xs text-destructive">{ai.notice}</p>}
-            {ai.failed && (
-              <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => setAi(null)}>
-                Dismiss
-              </Button>
-            )}
-          </div>
-        )}
-        {(outlinks.length > 0 || backlinks.length > 0) && (
-          <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">References</p>
-              <ul className="mt-1 flex flex-col gap-0.5">
-                {outlinks.map((link) => (
-                  <LinkRow key={link.id} noteId={noteId} outgoing link={link} label="Reference" />
-                ))}
-                {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
-              <ul className="mt-1 flex flex-col gap-0.5">
-                {backlinks.map((link) => (
-                  <LinkRow key={link.id} noteId={noteId} outgoing={false} link={link} label="Linked from" />
-                ))}
-                {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
-              </ul>
-            </div>
-          </div>
-        )}
-        <Link className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={`/alfred/graph?focus=${noteId}`}>Show in graph</Link>
-        {related.filter((r) => !r.alreadyLinked).length > 0 && (
-          <div className="border-t border-border pt-3">
-            <p className="text-xs font-medium text-muted-foreground">Related by meaning</p>
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {related.filter((r) => !r.alreadyLinked).map((r) => (
-                <li key={r.id} className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-[13px] transition-colors hover:bg-muted/60">
-                  <Link
-                    className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    href={`/alfred/notebook?id=${r.id}`}
-                    title={r.excerpt ?? r.title}
-                  >
-                    {r.kind === "zettel" && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
-                    <span className="truncate">{r.title}</span>
-                    <span className="tabular-nums text-[11px] text-muted-foreground">{Math.round(r.score * 100)}%</span>
-                  </Link>
-                  <button
-                    type="button"
-                    aria-label={`Link ${r.title}`}
-                    disabled={linkingId === r.id}
-                    onClick={() => void confirmLink(r.id)}
-                    className="mr-0.5 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                  >
-                    {linkingId === r.id ? "Linking" : "Link"}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Dismiss ${r.title}`}
-                    title="Not related. Stop suggesting this."
-                    onClick={async () => { const res = await removeLinkAction({ artifactId: noteId, targetId: r.id, dismiss: true }); if (!res.ok) setError(res.error); else router.refresh(); }}
-                    className="mr-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
-      </div>
-    </Panel>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }
