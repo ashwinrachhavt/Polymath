@@ -52,6 +52,7 @@ them is hard to trust.
 |---|---|
 | `connected_read` is a generic URL proxy, host+path allowlisted | `eve/alfred/agent/tools/connected_read.ts` |
 | Gmail proposals are created but never executed | `eve/alfred/agent/tools/gmail_send.ts` creates a proposal; `src/domains/crm/send-executor.ts:43` `unconfiguredSender` throws |
+| **Gmail proposals cannot even be approved** | `createProposal` writes no `action_revisions` row, and `decideProposal` calls `latestRevisionId` then throws `ProposalNotFoundError` when it is null (`src/domains/actions/commands.ts:123,141`). The tool's comment says "the proposal IS the human gate"; there is no gate. |
 | Calendar has a working end-to-end executor | `src/domains/calendar/proposals.ts:121` `approveCalendarProposal` → `execute` |
 | `decideProposal` does not execute | `src/domains/actions/commands.ts:81` — "Nothing here executes" |
 | `authorizeToolInvocation` / grant-based authorization is **never called** | no references outside `authorization.ts` |
@@ -163,6 +164,25 @@ type EffectOutcome =
 
 An agent turn that creates a proposal reports `awaiting_review`. It must never
 report having sent anything. The eval in §7 asserts exactly this.
+
+---
+
+### 4.5 A proposal without a revision is not a proposal
+
+Found while planning slice 1, and it precedes everything else in this section:
+`createProposal` inserts the proposal row and nothing else, while
+`decideProposal` requires the newest `action_revisions` row and throws
+`ProposalNotFoundError` without one. Every proposal the agent creates today is
+therefore **unapprovable**.
+
+Slice 1 fixes this at the source: `createProposal` writes revision 1 in the same
+transaction, containing the payload a reviewer must see (recipient, subject,
+body, account). That is what makes the content binding in §4.2 step 2 mean
+anything — an approval can only bind to a revision that exists.
+
+The revision carries the payload, which `createProposal`'s current signature does
+not accept. The change is additive: a `payload` field on the input, required for
+`external_write` and `sensitive_write`.
 
 ---
 
