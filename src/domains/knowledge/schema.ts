@@ -17,6 +17,8 @@ import {
   vector,
 } from "drizzle-orm/pg-core";
 import {
+  artifactLinkType,
+  artifactLinkTypeCheck,
   linkTargetKind,
   linkTargetKindCheck,
   mutable,
@@ -38,6 +40,7 @@ import { companies, contacts } from "../crm/schema";
 
 export const artifactKind = pgEnum("artifact_kind", [
   "note",
+  "zettel",
   "document",
   "memo",
   "report",
@@ -563,6 +566,12 @@ export const artifactLinks = pgTable(
     targetType: linkTargetKind(),
     targetId: uuid("target_id").notNull(),
     label: text("label"),
+    /** Why the edge exists (artifactLinkTypes); `reference` for explicit [[Title]] links. */
+    linkType: artifactLinkType(),
+    /** The passage or reason that justifies the edge, when one exists. */
+    context: text("context"),
+    /** Similarity confidence for `semantic` edges; null on explicit ones. */
+    score: real("score"),
     ...recorded,
   },
   (t) => [
@@ -570,6 +579,7 @@ export const artifactLinks = pgTable(
     // Backlinks are the reverse read of the same row.
     index("artifact_links_target_idx").on(t.workspaceId, t.targetType, t.targetId),
     linkTargetKindCheck("artifact_links_target_type_check"),
+    artifactLinkTypeCheck("artifact_links_link_type_check"),
   ],
 );
 
@@ -983,6 +993,8 @@ export const zettelProposals = pgTable(
     status: zettelProposalStatus("status").notNull().default("proposed"),
     conceptId: uuid("concept_id"),
     claimId: uuid("claim_id"),
+    /** The zettel artifact an accept created — the card in the graph. */
+    artifactId: uuid("artifact_id").references((): AnyPgColumn => artifacts.id, { onDelete: "set null" }),
     proposer: text("proposer"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decidedBy: uuid("decided_by"),

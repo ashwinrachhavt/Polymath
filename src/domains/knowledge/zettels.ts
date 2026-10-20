@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { currentExtractionIdSubquery } from "./versions";
 import { openRouterZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
-import { claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
 
 /*
  * proposeZettels: one succeeded document in, proposal rows out. Each row is a
@@ -17,6 +17,13 @@ import { claimEvidence, claims, concepts, documentExtractions, documents, source
  * The extractor is injected. Whatever it returns is checked here against the
  * document: a quote that is not a verbatim passage of the extraction text is
  * dropped, so a model cannot invent evidence.
+ *
+ * Accept creates the zettel card itself (ASH-174/ASH-184): an artifact of kind
+ * "zettel" - the same versioned container a user-written note lives in, so a
+ * note and a zettel are the same kind of thing in the link graph - with a
+ * `source` edge back to the document it was decomposed from. The concept,
+ * claim and evidence rows stay: the card is the readable surface, they are the
+ * structured provenance underneath it.
  */
 
 export const MAX_ZETTELS_PER_DOCUMENT = 8;
@@ -191,9 +198,52 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       startOffset: proposal.spanStart,
       endOffset: proposal.spanEnd,
     });
+    // The zettel card: one artifact, version 1, carrying the claim as its
+    // body and the verbatim quote as its evidence block. [[Title]] links in
+    // the claim resolve on the next note-link sync like any note's.
+    const zettelText = `${proposal.claim}\n\n> ${proposal.quote}`;
+    const [card] = await tx
+      .insert(artifacts)
+      .values({
+        workspaceId: auth.workspaceId,
+        kind: "zettel",
+        title: proposal.title,
+        status: "reviewed",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: artifacts.id });
+    const [cardVersion] = await tx
+      .insert(artifactVersions)
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: card.id,
+        versionNumber: 1,
+        content: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: proposal.claim }] },
+            { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: proposal.quote }] }] },
+          ],
+        },
+        plainText: zettelText,
+        reason: "created",
+        createdBy: auth.userId,
+      })
+      .returning({ id: artifactVersions.id });
+    await tx.update(artifacts).set({ currentVersionId: cardVersion.id }).where(eq(artifacts.id, card.id));
+    await tx.insert(artifactLinks).values({
+      workspaceId: auth.workspaceId,
+      artifactId: card.id,
+      targetType: "document",
+      targetId: proposal.documentId,
+      linkType: "source",
+      label: doc.title,
+      context: proposal.quote,
+    });
     await tx
       .update(zettelProposals)
-      .set({ conceptId: concept.id, claimId: claim.id })
+      .set({ conceptId: concept.id, claimId: claim.id, artifactId: card.id })
       .where(eq(zettelProposals.id, proposal.id));
     await tx.insert(auditEvents).values({
       workspaceId: auth.workspaceId,
@@ -203,9 +253,9 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       subjectType: "zettel_proposal",
       subjectId: proposal.id,
       summary: `Accepted zettel "${proposal.title}"`,
-      metadata: { conceptId: concept.id, claimId: claim.id, documentId: proposal.documentId },
+      metadata: { conceptId: concept.id, claimId: claim.id, documentId: proposal.documentId, artifactId: card.id },
     });
-    return { conceptId: concept.id, claimId: claim.id };
+    return { conceptId: concept.id, claimId: claim.id, artifactId: card.id };
   });
 }
 

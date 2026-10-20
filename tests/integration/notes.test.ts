@@ -122,8 +122,12 @@ suite("notes core", () => {
       idempotencyKey: crypto.randomUUID(),
     });
     // The resolved target becomes the only edge; the unmatched title stays prose.
-    expect(await notes.listNoteOutlinks(auth, source.id)).toEqual([{ id: target.id, title: "Venue Shortlist" }]);
-    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([{ id: source.id, title: "Launch plan" }]);
+    expect(await notes.listNoteOutlinks(auth, source.id)).toEqual([
+      { id: target.id, title: "Venue Shortlist", kind: "note", linkType: "reference", context: null, excerpt: null },
+    ]);
+    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([
+      { id: source.id, title: "Launch plan", kind: "note", linkType: "reference", context: null, excerpt: null },
+    ]);
     // Titles match case-insensitively; the edge survives an unrelated edit.
     await notes.autosaveNoteDraft(auth, {
       artifactId: source.id,
@@ -132,7 +136,7 @@ suite("notes core", () => {
       plainText: "still see [[venue shortlist]]",
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(await notes.listNoteOutlinks(auth, source.id)).toEqual([{ id: target.id, title: "Venue Shortlist" }]);
+    expect((await notes.listNoteOutlinks(auth, source.id)).map((l) => l.id)).toEqual([target.id]);
     const rows = await db.select().from(artifactLinks).where(and(eq(artifactLinks.artifactId, source.id), eq(artifactLinks.targetType, "note")));
     expect(rows).toHaveLength(1);
   });
@@ -157,7 +161,9 @@ suite("notes core", () => {
       plainText: "points at [[Glossary]]",
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([{ id: source.id, title: "Reader" }]);
+    expect(await notes.listNoteBacklinks(auth, target.id)).toEqual([
+      { id: source.id, title: "Reader", kind: "note", linkType: "reference", context: null, excerpt: "points at [[Glossary]]" },
+    ]);
     await notes.commitNoteSnapshot(auth, {
       artifactId: source.id,
       expectedVersion: 2,

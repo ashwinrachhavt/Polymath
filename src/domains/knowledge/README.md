@@ -65,9 +65,24 @@ extraction and asks an extractor (default: OpenRouter, `ZETTEL_MODEL`, needs
 and a quote. The domain re-locates the quote in the extraction text and drops
 anything that is not verbatim, so every proposal row carries a real span
 (`span_start`/`span_end`). Rows are `zettel_proposals`, deduped by
-`zettel:<documentId>:<start>-<end>`. Accept writes a concept, a claim and a
-`claim_evidence` row pointing at the span; reject writes only the decision.
-Controls live on the Knowledge screen (/alfred/knowledge); there is no graph page.
+`zettel:<documentId>:<start>-<end>`. Accept writes a concept, a claim, a
+`claim_evidence` row pointing at the span, and the zettel card itself: an
+artifact of kind `zettel` (ASH-174/ASH-184), so a note and a zettel are the
+same kind of thing — versioned, linkable, listed together in the notebook. The
+card carries a `source`-typed `artifact_links` edge back to its document with
+the quote as context. Reject writes only the decision. Controls live on the
+Knowledge screen (/alfred/knowledge).
+
+## The note link graph
+
+`artifact_links` is the one graph over notes and zettels. `link_type` says why
+an edge exists: `reference` (an explicit `[[Title]]` in a body, synced on every
+save by `syncNoteLinks`), `source` (zettel provenance), `related`, `supports`,
+`contradicts` (human-curated) and `semantic` (machine similarity, carries
+`score`). A `[[Title]]` resolves against notes and zettels alike; backlinks are
+the reverse read of the same rows, and `listNoteOutlinks` /
+`listNoteBacklinks` return the other card's kind, the edge type, its context
+and a first-line excerpt so a backlink reads as what the related note is.
 
 ## Dossiers
 
