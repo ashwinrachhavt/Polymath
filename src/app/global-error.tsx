@@ -18,6 +18,18 @@ export default function GlobalError({
 }) {
   return (
     <html lang="en">
+      <head>
+        <title>Polymath could not start</title>
+        {/* Inline on purpose: the app stylesheet is not guaranteed to load here. */}
+        <style>{`
+          html { color-scheme: light dark; }
+          body { background: #ffffff; color: #111111; }
+          @media (prefers-color-scheme: dark) {
+            body { background: #111111; color: #f5f5f5; }
+            button { background: #1f1f1f; border-color: #444444; color: inherit; }
+          }
+        `}</style>
+      </head>
       <body
         style={{
           margin: 0,
@@ -26,8 +38,6 @@ export default function GlobalError({
           alignItems: "center",
           justifyContent: "center",
           padding: "24px",
-          background: "#ffffff",
-          color: "#111111",
           fontFamily:
             "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
@@ -57,7 +67,7 @@ export default function GlobalError({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cccccc",
-                background: "#ffffff",
+                background: "transparent",
                 color: "inherit",
                 cursor: "pointer",
               }}
@@ -72,7 +82,7 @@ export default function GlobalError({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cccccc",
-                background: "#ffffff",
+                background: "transparent",
                 color: "inherit",
                 cursor: "pointer",
               }}
