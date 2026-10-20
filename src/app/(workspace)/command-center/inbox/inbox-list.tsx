@@ -83,7 +83,11 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
       // Keep the selection (and the toolbar that renders the errors) when any
       // row failed: clearing both in one batch unmounts the error list before
       // it is ever seen.
-      if (!failures.length) setSelected(new Set());
+      if (!failures.length) {
+        setSelected(new Set());
+        // Focus returns to the originating row link when the selection clears (D12).
+        originRow?.querySelector("a")?.focus();
+      }
     });
   }
 
