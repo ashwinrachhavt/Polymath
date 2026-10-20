@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
@@ -547,6 +548,12 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
         <DocGlyph doc={doc} className="size-4" />
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{doc.title}</p>
         <span className={cn("shrink-0 text-xs font-medium", toneClass[doc.status.tone])}>{doc.status.label}</span>
+        {/* The review workbench is where field proposals get accepted or
+            corrected; the vault list replaced the old row links, so this is
+            the surviving way in. */}
+        <Link href={doc.href} className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
+          Review fields
+        </Link>
         <button
           type="button"
           onClick={onClose}

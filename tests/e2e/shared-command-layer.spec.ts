@@ -98,8 +98,10 @@ test("a capture outside the current filter still renders in the detail pane and 
   await waitSettled(page);
   await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(body);
   await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+  // Capture navigates client-side after the action resolves; reading page.url()
+  // straight after the click races that push.
+  await expect(page).toHaveURL(/id=[0-9a-f-]{36}$/);
   const detailUrl = page.url();
-  expect(detailUrl).toMatch(/id=[0-9a-f-]{36}$/);
 
   // From the converted tab the capture is outside the filter, but ?id= still
   // renders it: the detail pane is a view of the record, not of the view.
@@ -107,11 +109,12 @@ test("a capture outside the current filter still renders in the detail pane and 
   await waitSettled(page);
   await expect(page.getByRole("article")).toContainText(body);
 
-  // An impossible search yields the filtered-empty state, not the zero state.
+  // An impossible search yields the filtered-empty state ("No matches"), not
+  // the zero state ("Nothing in this view" is reserved for an empty inbox).
   await page.goto("/command-center/inbox");
   await waitSettled(page);
   await page.getByPlaceholder("Search captures").fill(`no-such-capture-${tag}`);
-  await expect(page.getByText("Nothing in this view")).toBeVisible();
+  await expect(page.getByText("No matches")).toBeVisible();
 });
 
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
@@ -125,8 +128,11 @@ test("preview routes retain app context and all tools are reachable on a phone",
   // the workshop lives behind More.
   await expect(page.getByRole("navigation", { name: "Breadcrumb", exact: true })).toContainText("Dictionary");
   await page.goto("/more");
+  // "Learning" names the canonical destination in the rail and again as a
+  // preview tool, so scope the assertion to the section it belongs to.
+  const previewTools = page.getByRole("listitem").filter({ hasText: "Learning" }).filter({ hasText: "Flashcards and quiz" });
   await expect(page.getByRole("link", { name: "Dictionary" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Learning" })).toBeVisible();
+  await expect(previewTools.getByRole("link", { name: /Learning/ })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/briefing");

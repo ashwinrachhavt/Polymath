@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { invoicePdf, SAMPLE_INVOICE_LINES } from "./helpers/invoice-pdf";
+import { waitSettled } from "./helpers/settled";
 
 /*
  * The back-office loop the pilot users must finish unaided: add a document,
@@ -17,17 +18,30 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  // Compile the upload route before the timed user journey, without writing a
-  // file: its GET rejects a missing documentId before querying any documents.
-  const warmup = await request.get("/api/v1/files");
-  expect(warmup.status()).toBe(400);
+  // Compile the upload route before the timed user journey. This request is
+  // unauthenticated (the API fixture carries no browser session), so it is
+  // rejected before the handler runs — enough to warm the route.
+  const warmup = await request.get("/api/v1/files?documentId=x");
+  expect(warmup.status()).toBeGreaterThanOrEqual(400);
 
   await page.goto("/alfred/knowledge");
+  // The vault's file inputs are hydrated client islands: setting a file before
+  // hydration reaches an input with no handler, and the upload silently never
+  // starts.
+  await waitSettled(page);
   await page.locator('input[type="file"]').first().setInputFiles({ name: `invoice-${run}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(invoicePdf(lines)) });
-  // The upload toast is async server feedback; loaded CI runners take well over the 5s default.
-  await expect(page.getByRole("status").filter({ hasText: "added. Reading starts on its own" })).toBeVisible({ timeout: 15_000 });
-
-  await page.getByRole("link", { name: `invoice-${run}`, exact: true }).click();
+  // The vault reports each upload as its own row, and the row lands once the
+  // upload's router.refresh() completes. Wait for the document itself; the
+  // reader starts on its own after that.
+  const row = page.locator("#content button").filter({ hasText: `invoice-${run}` }).first();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.click();
+  // The viewer is the vault's own split pane; the review workbench is one click
+  // past it, and that is where field decisions are made. Wait for the workbench
+  // itself - reloading before the navigation commits drops ?doc= and lands back
+  // on the vault.
+  await page.getByRole("link", { name: "Review fields", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Back to vault", exact: true })).toBeVisible();
   // Uploading already starts the read in the background, so "Read now" only
   // remains for a row the read never started on. Click it when it is there,
   // then reload until the proposals land - the page is server-rendered and
@@ -67,12 +81,10 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   await followUp.getByRole("button", { name: "Accept" }).click();
   await expect(followUp.getByRole("button", { name: "Accept" })).toHaveCount(0);
 
+  // The vault filters its own rows by name; the invoice is findable again
+  // after the whole review round-trip.
   await page.goto("/alfred/knowledge");
-  await page.getByRole("searchbox", { name: "Search knowledge" }).fill(invoiceNumber);
-  await page.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page.getByRole("link", { name: `invoice-${run}`, exact: true }).first()).toBeVisible();
-  // Full-text search splits the number at the hyphen, so each part is marked.
-  await expect(page.locator("mark").filter({ hasText: run }).first()).toBeVisible();
-  await expect(page.getByText(`invoice-${run}.pdf · PDF · Harbor Lane Carpentry Ltd, Maeve Brennan`)).toBeVisible();
+  await page.getByRole("searchbox", { name: "Search files and folders" }).fill(`invoice-${run}`);
+  await expect(page.locator("#content button").filter({ hasText: `invoice-${run}` }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });

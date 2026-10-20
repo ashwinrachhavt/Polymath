@@ -84,14 +84,16 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 key={f.value}
                 href={listHref("/command-center/inbox", query, {
                   filter: f.value === "unprocessed" ? undefined : f.value,
-                  id: undefined,
                   page: 1,
                 })}
                 aria-current={f.value === filter ? "page" : undefined}
                 className={f.value === filter ? "font-medium underline underline-offset-4" : "text-muted-foreground hover:underline"}
               >
                 {f.label}
-                <span className="readout ml-1 text-muted-foreground">{tabs[f.value]}</span>
+                {/* The count is decoration on the link's name; without
+                    aria-hidden the accessible name becomes "Converted 3" and
+                    the tab stops being addressable as "Converted". */}
+                <span aria-hidden="true" className="readout ml-1 text-muted-foreground">{tabs[f.value]}</span>
               </Link>
             ))}
           </nav>
