@@ -8,6 +8,17 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { artifactLinks, artifactVersions, artifacts, dossierSources, dossiers, sources } from "./schema";
 import { documents } from "./schema";
+import { buildObjective } from "./generation-brief";
+import {
+  deckContent,
+  filterCitations,
+  infographicContent,
+  parseGeneratedContent,
+  parseStructuredContent,
+  structuredPlainText,
+  type DeckContent,
+  type InfographicContent,
+} from "./artifact-content";
 
 /*
  * Studio Generate: a run that names a dossier, whose output is saved as a DRAFT
@@ -18,7 +29,7 @@ import { documents } from "./schema";
 
 export class StudioError extends Error {
   constructor(
-    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind",
+    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind" | "unreadable_output",
     message: string,
   ) {
     super(message);
@@ -42,22 +53,46 @@ export function isGeneratableKind(value: string): value is GeneratableKind {
 /** Starts the run. The objective names the dossier, and the run is bound to it so search stays inside it. */
 export async function startStudioGenerate(
   auth: AuthContext,
-  input: { dossierId: string; brief: string },
+  input: { dossierId: string; brief: string; kind?: GeneratableKind },
   engine: AgentEngine,
 ) {
+  const kind = input.kind ?? "report";
+  if (!isGeneratableKind(kind)) throw new StudioError("unsupported_kind", "That artifact kind is not generated here.");
   const [dossier] = await db
     .select({ id: dossiers.id, title: dossiers.title })
     .from(dossiers)
     .where(and(eq(dossiers.id, input.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!dossier) throw new StudioError("dossier_not_found", "No such dossier.");
+
+  // The prompt needs the pinned documents so the model can cite by id.
+  const pinnedDocuments = await db
+    .select({ id: documents.id, title: documents.title })
+    .from(dossierSources)
+    .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
+    .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .where(and(eq(dossierSources.dossierId, dossier.id), eq(dossierSources.workspaceId, auth.workspaceId)));
+
+  const objective = buildObjective(kind, {
+    dossierTitle: dossier.title,
+    documents: dedupeDocuments(pinnedDocuments),
+    brief: input.brief,
+  });
+
   return engine.start({
     auth,
     profileName: "alfred",
-    objective: `Using only the documents in the dossier "${dossier.title}", write a draft: ${input.brief.trim()}`,
+    objective,
     subjects: [{ type: "dossier", id: dossier.id }],
     estimateUsd: "0.50",
   });
+}
+
+function dedupeDocuments(rows: Array<{ id: string; title: string }>): Array<{ id: string; title: string }> {
+  const seen = new Map<string, { id: string; title: string }>();
+  for (const row of rows) if (!seen.has(row.id)) seen.set(row.id, row);
+  return [...seen.values()];
 }
 
 /**
@@ -92,6 +127,20 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
     if (!last) throw new StudioError("no_output", "This run has produced no output yet.");
     const text = last.content as string;
 
+    // A deck or infographic is stored as structure, not as the model's prose.
+    // Parsing here means a malformed answer is a stated error at save time, not
+    // a renderer crash later.
+    let content: Record<string, unknown> = { text };
+    let plainText = text;
+    if (kind !== "report") {
+      const parsed = parseGeneratedContent(kind, text);
+      if (!parsed) {
+        throw new StudioError("unreadable_output", `That run did not produce a readable ${kind}. Regenerate it and try again.`);
+      }
+      content = parsed as unknown as Record<string, unknown>;
+      plainText = structuredPlainText(parsed);
+    }
+
     const dossierSubject = (Array.isArray(run.subjects) ? (run.subjects as Array<{ type?: string; id?: string }>) : []).find((s) => s?.type === "dossier");
     const [artifact] = await tx
       .insert(artifacts)
@@ -107,7 +156,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       .returning({ id: artifacts.id });
     const [version] = await tx
       .insert(artifactVersions)
-      .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, versionNumber: 1, content: { text }, plainText: text, reason: "generated", createdBy: auth.userId })
+      .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, versionNumber: 1, content, plainText, reason: "generated", createdBy: auth.userId })
       .returning({ id: artifactVersions.id });
     await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
 
@@ -184,8 +233,13 @@ export async function listDrafts(auth: AuthContext) {
 export type DraftLinkRow = { id: string; targetType: string; targetId: string; label: string | null };
 
 export type DraftDetail = {
-  artifact: { id: string; title: string; status: string; version: number };
+  artifact: { id: string; title: string; kind: string; status: string; version: number };
   text: string;
+  /**
+   * The structured payload for a deck or infographic. Null for a report, and
+   * null when stored content does not match the kind's shape (a legacy row).
+   */
+  structured: DeckContent | InfographicContent | null;
   /** The documents this draft was generated from, each at the hash it was pinned at. */
   sources: { documentId: string; title: string; pinnedHash: string | null }[];
   /** Raw record links; the app layer resolves their titles. */
@@ -211,7 +265,7 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
 
   const [version] = artifact.currentVersionId
     ? await db
-        .select({ plainText: artifactVersions.plainText })
+        .select({ plainText: artifactVersions.plainText, content: artifactVersions.content })
         .from(artifactVersions)
         .where(and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)))
         .limit(1)
@@ -232,8 +286,17 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
   const docTitles = new Map(docs.map((d) => [d.id, d.title]));
 
   return {
-    artifact: { id: artifact.id, title: artifact.title, status: artifact.status, version: artifact.version },
+    artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, status: artifact.status, version: artifact.version },
     text: version?.plainText ?? "",
+    // Structured content is read back as stored, and citations are checked
+    // against the documents this artifact is actually pinned to, so a stale or
+    // foreign citation never renders as a live link.
+    structured: (() => {
+      const parsed = parseStructuredContent(artifact.kind, version?.content ?? null);
+      if (!parsed) return null;
+      const allowed = new Set(docTitles.keys());
+      return filterCitations(parsed, allowed).content;
+    })(),
     sources: linkRows
       .filter((l) => l.targetType === "document" && docTitles.has(l.targetId))
       .map((l) => ({
@@ -249,15 +312,47 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
  * Appends an edited version and moves the pointer, guarded by the caller's
  * last-seen version. Drafts and reviewed drafts are editable; an archived one
  * is not. Idempotent under the receipt, and a stale expectedVersion loses.
+ *
+ * A report is edited as text. A deck or infographic is edited as structure, and
+ * the stored content keeps its shape: flattening a deck to text on edit is what
+ * loses the slides.
  */
 export async function editGeneratedDraft(
   auth: AuthContext,
-  input: { artifactId: string; expectedVersion: number; text: string; note?: string; idempotencyKey: string },
+  input: {
+    artifactId: string;
+    expectedVersion: number;
+    /** Present for a report. */
+    text?: string;
+    /** Present for a deck or infographic; replaces the whole structure. */
+    structured?: DeckContent | InfographicContent;
+    note?: string;
+    idempotencyKey: string;
+  },
 ) {
-  const text = input.text.trim();
-  if (!text) throw new StudioError("empty_text", "The draft needs some text.");
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "editGeneratedDraft", ...input }, async () => {
+      const [current] = await tx
+        .select({ kind: artifacts.kind })
+        .from(artifacts)
+        .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+        .limit(1);
+      if (!current || !isGeneratableKind(current.kind)) throw new StudioError("draft_not_found", "No such draft.");
+
+      let content: Record<string, unknown>;
+      let plainText: string;
+      if (current.kind === "report") {
+        const text = input.text?.trim();
+        if (!text) throw new StudioError("empty_text", "The draft needs some text.");
+        content = { text };
+        plainText = text;
+      } else {
+        if (!input.structured) throw new StudioError("empty_text", "The draft needs its content.");
+        const parsed = current.kind === "deck" ? deckContent.safeParse(input.structured) : infographicContent.safeParse(input.structured);
+        if (!parsed.success) throw new StudioError("empty_text", "That content does not match the draft's shape.");
+        content = parsed.data as unknown as Record<string, unknown>;
+        plainText = structuredPlainText(parsed.data);
+      }
       const [updated] = await tx
         .update(artifacts)
         .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
@@ -284,8 +379,8 @@ export async function editGeneratedDraft(
           workspaceId: auth.workspaceId,
           artifactId: input.artifactId,
           versionNumber: (last?.n ?? 0) + 1,
-          content: { text },
-          plainText: text,
+          content,
+          plainText,
           reason: "edited",
           createdBy: auth.userId,
         })

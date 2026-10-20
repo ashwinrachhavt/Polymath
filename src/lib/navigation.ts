@@ -6,6 +6,7 @@ import {
   Bot,
   Briefcase,
   CalendarClock,
+  GraduationCap,
   Inbox,
   LayoutList,
   Library,
@@ -106,6 +107,13 @@ export const destinations: Destination[] = [
     label: "Dossiers",
     purpose: "Research with a bounded set of sources.",
     icon: NotebookPen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/learning",
+    label: "Learning",
+    purpose: "Review what you are trying to retain.",
+    icon: GraduationCap,
     group: "alfred",
   },
   {
