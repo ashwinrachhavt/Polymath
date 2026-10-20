@@ -1,0 +1,31 @@
+{
+  "id": "thr_fixture_alpha",
+  "historyId": "9001",
+  "messages": [
+    {
+      "id": "msg_fixture_alpha",
+      "threadId": "thr_fixture_alpha",
+      "labelIds": ["INBOX"],
+      "internalDate": "1700000000000",
+      "payload": {
+        "mimeType": "multipart/alternative",
+        "headers": [
+          { "name": "From", "value": "fixture-sender@example.invalid" },
+          { "name": "To", "value": "fixture-recipient@example.invalid" },
+          { "name": "Subject", "value": "Fixture thread subject" }
+        ],
+        "parts": [
+          {
+            "partId": "0",
+            "mimeType": "text/plain",
+            "body": {
+              "size": 43,
+              "data": "Rml4dHVyZSBib2R5OiBvbmUgcGxhaW4tdGV4dCBwYXJ0Lg0K"
+            }
+          }
+        ]
+      },
+      "sizeEstimate": 140
+    }
+  ]
+}

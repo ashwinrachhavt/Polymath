@@ -1,0 +1,5 @@
+{
+  "id": "msg_fixture_sent",
+  "threadId": "thr_fixture_sent",
+  "labelIds": ["SENT"]
+}

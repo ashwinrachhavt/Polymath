@@ -107,7 +107,10 @@ export type ComposioCall = {
 
 export type ComposioCallResult =
   | { ok: true; data: unknown }
-  | { ok: false; code: "not_configured" | "read_only_violation" | "provider_error"; message: string };
+  // `status` is additive: the gateway tells a revoked credential (401) from a
+  // provider outage (500), and reading it back out of `message` would break the
+  // first time the wording changed.
+  | { ok: false; code: "not_configured" | "read_only_violation" | "provider_error"; message: string; status?: number };
 
 /**
  * Runs one read against a provider through Composio and returns its parsed body.
@@ -158,6 +161,7 @@ export async function executeComposioRead(call: ComposioCall): Promise<ComposioC
     return {
       ok: false,
       code: "provider_error",
+      status: response.status,
       message: `The connected service returned ${response.status}.`,
     };
   }
