@@ -8,8 +8,8 @@ describe("browser-only UI preview", () => {
     const first = createPreviewWorkspace("owner-one");
     const second = createPreviewWorkspace("owner-two");
     first.addTask("Only the first owner should see this");
-    expect(first.getSnapshot().tasks).toHaveLength(7);
-    expect(second.getSnapshot().tasks).toHaveLength(6);
+    expect(first.getSnapshot().tasks).toHaveLength(1);
+    expect(second.getSnapshot().tasks).toHaveLength(0);
     expect(second.getSnapshot().tasks.some((t) => t.title.includes("first owner"))).toBe(false);
   });
   it("captures a task without requiring a board", () => {
@@ -22,16 +22,20 @@ describe("browser-only UI preview", () => {
     const note = workspace.addArtifact("Shared note", "note", "A source-grounded idea");
     expect(note).toBeDefined();
     if (!note) throw new Error("Expected a note");
-    workspace.updateArtifact(note.id, { links: ["task-architecture", "dossier-axiom"] });
+    const other = workspace.addArtifact("Linked target", "note", "A second note");
+    if (!other) throw new Error("Expected a second note");
+    workspace.updateArtifact(note.id, { links: [note.id, other.id] });
     expect(workspace.getSnapshot().artifacts.find((r) => r.id === note.id)?.links).toHaveLength(2);
   });
   it("changes task presentation state without replacing the record", () => {
-    const before = workspace.getSnapshot().tasks[0];
+    const added = workspace.addTask("Present me", { description: "Original description" });
+    if (!added) throw new Error("Expected a task");
+    const before = workspace.getSnapshot().tasks.find((r) => r.id === added.id)!;
     workspace.updateTask(before.id, { status: "DONE" });
     const after = workspace.getSnapshot().tasks.find((r) => r.id === before.id);
     expect(after?.description).toBe(before.description);
     expect(after?.version).toBe(before.version + 1);
-    expect(workspace.getSnapshot().tasks).toHaveLength(6);
+    expect(workspace.getSnapshot().tasks).toHaveLength(1);
   });
   it("keeps immutable checkpoints when a shared note changes", () => {
     const note = workspace.addArtifact("Versioned note", "note", "Original text");
@@ -42,7 +46,7 @@ describe("browser-only UI preview", () => {
     expect(versions.map((v) => v.version)).toEqual([1, 2]);
   });
   it("invalidates local approval whenever the reviewed payload changes", () => {
-    const review = workspace.getSnapshot().reviews[0];
+    const review = workspace.addReview({ title: "Send the brief", kind: "Email", risk: "External write", payload: "Original payload" });
     workspace.updateReview(review.id, { status: "Approved locally" });
     workspace.updateReview(review.id, { payload: "Revised payload", status: "Approved locally" });
     const revised = workspace.getSnapshot().reviews.find((r) => r.id === review.id);

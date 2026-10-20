@@ -227,6 +227,39 @@ hover, focus-visible, active, disabled.
 - Labels sit **above** inputs; error text below. Never placeholder-as-label.
 - A missing disabled state is a bug.
 
+### 10.1 Empty states, defined
+
+An empty state is a designed screen, not an absence of data dressed as data.
+
+- It says what the space is, why it is empty, and names the one action that
+  fills it. The action is a real control, not a suggestion.
+- It never contains fabricated records: no sample tasks, fictional contacts,
+  demo zettels, placeholder cards, or invented numbers. A count of zero is
+  honest; a demo value is a defect, whatever its label.
+- Test fixtures live in `tests/`. Nothing under `src/` ships fictional
+  content to the interface.
+- An expected absence is never an error boundary. Boundaries are for
+  failures, and a failure renders the labelled status card: what happened,
+  plus the recovery action (retry, go back). Never a raw crash, never an
+  empty list standing in for either.
+
+### 10.2 Consistency model
+
+The product is **highly available**, **eventually consistent** across
+machines, and **consistent on the same machine**: the author reads their own
+writes.
+
+- A write is reflected in the interface the moment it is durable locally.
+  The owner never refreshes to see their own change.
+- Across devices, records converge through sync. Until convergence a surface
+  shows the latest it has and says so (the stale state above); it never
+  dresses an old read as current.
+- A conflict surfaces as a conflict with a choice. Nothing silently
+  overwrites the newer edit; the preview store's stale-tab refusal is the
+  pattern.
+- An unavailable backend renders the labelled status card and the app stays
+  usable for local work. Availability never comes from invented data.
+
 ## 11. Copy
 
 Owned by `agents/product.md` § Voice. The interface additions:
@@ -242,8 +275,8 @@ Owned by `agents/product.md` § Voice. The interface additions:
   guess.
 - An empty screen is an invitation to act, never a mood.
 - No `Elevate`, `Seamless`, `Unleash`, `Next-Gen`, `Revolutionize`, `Delve`.
-- No `John Doe`, `Acme Corp`, `Lorem Ipsum`. No fake-precise numbers; mock data
-  is labelled as mock.
+- No `John Doe`, `Acme Corp`, `Lorem Ipsum`. No fake-precise numbers. Demo and
+  sample content never ships, labelled or not; fixtures live in `tests/`.
 - Eyebrows rationed to one per three sections. No section numbers, version
   stamps, locale/weather strips, scroll cues, or decorative dotted metadata.
   The middle dot (`·`) appears at most once per line.
@@ -282,6 +315,10 @@ WCAG 2.2 AA.
 9. Radius comes from the 4 / 6 / 8 / 12 ladder; full radius only for chips
    and status dots.
 10. Every new shadcn primitive is restyled through tokens before merge.
+11. No fabricated records in any shipped surface; an empty surface renders
+    its designed empty state with the action that fills it (§ 10.1).
+12. A write is visible to its author immediately; cross-device lag is
+    labelled stale, never dressed as current (§ 10.2).
 
 ## 14. Glossary
 
