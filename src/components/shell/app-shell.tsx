@@ -24,7 +24,7 @@ const subscribeToHydration = () => () => {};
 export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  // Browser-preview records live in localStorage; rendering the server's sample
+  // Browser-preview records live in localStorage; rendering the server's empty
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
 
