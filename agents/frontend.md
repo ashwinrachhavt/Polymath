@@ -85,15 +85,16 @@ unknown id. The refusals that do occur: another tab moved first, a guarded
 operation found no record, the attachment was a duplicate, the event belonged to
 a provider, the reorder changed nothing, or the reward was already earned.
 
-`persisted: false` means nothing reached storage, whatever the cause; the change
-is visible in this tab only and is lost on refresh. It is a storage failure only
-when the storage write itself threw. A refused write must never be reported as
-saved: no success notice, no record handed back, no optimistic row kept.
-`PreviewStorageWarning` owns that message. It carries four distinct cases: an
-incompatible saved format, storage unavailable on read, a stale-tab refusal, and
-a storage write that could not save. The last two are different conditions and
-must not share a message. It is mounted only on preview paths, so do not add a
-second one.
+`ok: false` is a refusal: nothing changed, and no success notice, record handed
+back, or optimistic row may accompany it. `ok: true, persisted: false` is a
+change that exists only in this tab, because the storage write threw; it is lost
+on refresh and is not a refusal. A surface that announces a save must check `ok`
+first. A caller that cares about durability must also check `persisted`.
+`PreviewStorageWarning` owns that message. It carries
+four distinct cases: an incompatible saved format, storage unavailable on read, a
+stale-tab refusal, and a storage write that could not save. The last two are
+different conditions and must not share a message. It is mounted only on preview
+paths, so do not add a second one.
 
 Do not add a second global store without a measured need. The server, the URL,
 and component state cover the cases that exist, and a store is a permanent

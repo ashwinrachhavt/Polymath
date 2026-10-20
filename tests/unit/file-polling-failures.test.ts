@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   RATE_LIMIT_CEILING,
   TERMINAL_POLL_KINDS,
   advancePoll,
+  failureCopy,
   phaseLabel,
   shouldStopPolling,
 } from "@/components/documents/upload-dropzone";
@@ -29,7 +31,9 @@ const ALL_KINDS: RequestFailureKind[] = [
   "malformed",
 ];
 
-const NON_TERMINAL = ALL_KINDS.filter((kind) => !TERMINAL_POLL_KINDS.has(kind));
+// `aborted` stops too, but it is a cancellation rather than a server verdict,
+// so it is not part of the terminal-kind set that models permanent causes.
+const NON_TERMINAL = ALL_KINDS.filter((kind) => !TERMINAL_POLL_KINDS.has(kind) && kind !== "aborted");
 
 function failure(kind: RequestFailureKind, title = `${kind} copy`): RequestFailure {
   return { kind, title };
@@ -55,6 +59,11 @@ describe("shouldStopPolling", () => {
       const decision = shouldStopPolling(failure(kind));
       expect(decision.action === "continue" && decision.rateLimited).toBe(kind === "rate_limited");
     }
+  });
+
+  it("stops on a cancellation instead of retrying a request the caller aborted", () => {
+    expect(shouldStopPolling(failure("aborted"))).toEqual(stop("aborted"));
+    expect(advancePoll({ ok: false, failure: failure("aborted") }, 3)).toEqual(stop("aborted"));
   });
 
   it("keeps the exact auth copy a person needs to act on", () => {
@@ -122,5 +131,40 @@ describe("phaseLabel", () => {
     expect(phaseLabel({ kind: "uploading", percent: 42 })).toBe("Uploading 42%");
     expect(phaseLabel({ kind: "reading" })).toBe("Reading the text…");
     expect(phaseLabel({ kind: "done", documentId: "d1" })).toBe("Read");
+  });
+});
+
+/*
+ * The original defect was in the JSX, not the helper: the row rendered a
+ * hardcoded status word while `phaseLabel` did the right thing. The helper
+ * passing proves nothing about what a person sees, so the render path is
+ * asserted from the source, the same way motion-config pins its provider.
+ */
+describe("upload row rendering", () => {
+  const source = readFileSync("src/components/documents/upload-dropzone.tsx", "utf8");
+
+  it("renders phaseLabel(entry.phase) inside the row", () => {
+    expect(source).toMatch(/\{phaseLabel\(entry\.phase\)\}/);
+  });
+
+  it('does not hardcode "Failed" in that row label paragraph', () => {
+    const label = source.match(/<p\b[^>]*>\s*\{phaseLabel\(entry\.phase\)\}\s*<\/p>/);
+    expect(label).not.toBeNull();
+    expect(label?.[0]).not.toMatch(/Failed/);
+  });
+});
+
+describe("failureCopy", () => {
+  it("announces the cause of a failure alongside the counts", () => {
+    const copy = failureCopy([
+      { phase: { kind: "done", documentId: "d1" } },
+      { phase: { kind: "error", message: "Network error." } },
+    ]);
+    expect(copy).toBe(", failed: Network error.");
+  });
+
+  it("announces nothing when no entry failed", () => {
+    expect(failureCopy([{ phase: { kind: "reading" } }])).toBe("");
+    expect(failureCopy([])).toBe("");
   });
 });
