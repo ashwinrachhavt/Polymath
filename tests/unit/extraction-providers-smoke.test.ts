@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { samplePdf } from "../../scripts/smoke/extraction-providers.mts";
+import { samplePdf } from "../helpers/sample-pdf";
 
 describe("smoke sample PDF generator", () => {
   it("emits a byte-accurate one-page PDF: header, xref offsets, trailer, EOF", () => {
@@ -29,5 +29,25 @@ describe("smoke sample PDF generator", () => {
       expect(result.pageCount).toBe(1);
       expect(result.text).toContain("Polymath smoke test");
     }
+  });
+});
+
+describe("smoke script import safety", () => {
+  it("imports the smoke module with no provider calls fired", async () => {
+    let fetches = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      throw new Error("no network in unit tests");
+    }) as typeof fetch;
+    try {
+      // The path is built at runtime: TS rejects a literal .mts import path
+      // (TS5097) and the dynamic specifier is exactly the contract under test.
+      const modulePath = "../../scripts/smoke/extraction-providers.mts";
+      await import(/* @vite-ignore */ modulePath);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(fetches).toBe(0);
   });
 });

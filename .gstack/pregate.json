@@ -12,7 +12,17 @@
     "src/db/migrations/meta/_journal.json": [],
     "package.json": [],
     "pnpm-lock.yaml": [],
-    "scripts/pair-companion.ts": ["tests/integration/companion-token.test.ts"],
-    "scripts/smoke/extraction-providers.mts": ["tests/unit/extraction-providers-smoke.test.ts"]
-  }
+    "scripts/pair-companion.ts": [
+      "tests/integration/companion-token.test.ts"
+    ],
+    "scripts/smoke/extraction-providers.mts": [
+      "tests/unit/extraction-providers-smoke.test.ts"
+    ],
+    "src/db/migrations/*.sql": [
+      "tests/unit/migration-journal.test.ts"
+    ]
+  },
+  "empty_lanes": [
+    "src/db/migrations/*.sql"
+  ]
 }
