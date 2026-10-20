@@ -110,8 +110,8 @@ export function NoteEditor({
   initialMarkdown: string;
   draft: { markdown: string; updatedAt: string } | null;
   versions: VersionItem[];
-  outlinks: { id: string; title: string }[];
-  backlinks: { id: string; title: string }[];
+  outlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
+  backlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
@@ -373,8 +373,12 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">Links to</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {outlinks.map((link) => (
-                  <li key={link.id}>
-                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>{link.title}</Link>
+                  <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
+                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
+                      {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+                      {link.title}
+                    </Link>
+                    {link.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
                   </li>
                 ))}
                 {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
@@ -384,8 +388,12 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">Linked from</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {backlinks.map((link) => (
-                  <li key={link.id}>
-                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>{link.title}</Link>
+                  <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
+                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
+                      {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+                      {link.title}
+                    </Link>
+                    {link.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
                   </li>
                 ))}
                 {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}

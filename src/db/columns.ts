@@ -64,6 +64,7 @@ export const linkTargetKinds = [
   "opportunity",
   "run",
   "thread",
+  "zettel",
 ] as const;
 
 export const linkTargetKind = () => text("target_type").notNull();
@@ -78,4 +79,29 @@ export const linkTargetKindCheck = (name: string) =>
   check(
     name,
     sql.raw(`target_type in (${linkTargetKinds.map((k) => `'${k}'`).join(", ")})`),
+  );
+
+/*
+ * Why a link row exists. `reference` is an explicit [[Title]] or a manually
+ * created edge; `source` is provenance (a zettel points at the document it
+ * was decomposed from); `semantic` is a machine-proposed similarity edge and
+ * always carries `score`; `related`, `supports` and `contradicts` are the
+ * human-curated relation types. One vocabulary, because a free-text type
+ * column is how link graphs rot.
+ */
+export const artifactLinkTypes = [
+  "reference",
+  "related",
+  "supports",
+  "contradicts",
+  "source",
+  "semantic",
+] as const;
+
+export const artifactLinkType = () => text("link_type").notNull().default("reference");
+
+export const artifactLinkTypeCheck = (name: string) =>
+  check(
+    name,
+    sql.raw(`link_type in (${artifactLinkTypes.map((k) => `'${k}'`).join(", ")})`),
   );

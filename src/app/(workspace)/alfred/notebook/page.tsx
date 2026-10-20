@@ -81,7 +81,10 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
                   >
                     <span className="flex items-center justify-between gap-2">
                       <span className="truncate font-medium">{note.title}</span>
-                      {note.hasDraft && <Status>draft</Status>}
+                      <span className="flex items-center gap-1">
+                        {note.kind === "zettel" && <Status>zettel</Status>}
+                        {note.hasDraft && <Status>draft</Status>}
+                      </span>
                     </span>
                     {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
                   </Link>

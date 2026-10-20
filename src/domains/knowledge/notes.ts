@@ -43,10 +43,18 @@ export type NoteContent = Record<string, unknown>;
  * against this workspace's notes by title, case-insensitively, mirroring the
  * preview's semantics — a title matching nothing stays in the text as written
  * and creates no edge, and a note never links to itself. Edges are
- * artifact_links rows with targetType "note"; backlinks are the reverse read
- * of the same row, so there is one graph, not two stores.
+ * artifact_links rows; backlinks are the reverse read of the same row, so
+ * there is one graph, not two stores.
+ *
+ * ASH-174: a note and a zettel are the same kind of thing in the graph, so a
+ * title resolves against both kinds and the edge records which it found
+ * (targetType "note" or "zettel"). Both are read back by the same
+ * backlinks/outlinks queries.
  */
 const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
+
+/** The artifact kinds a wiki link may resolve to (one graph over both). */
+export const LINKABLE_KINDS = ["note", "zettel"] as const;
 
 export function extractWikiLinkTitles(markdown: string): string[] {
   const titles = new Set<string>();
@@ -67,34 +75,38 @@ async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId: strin
   const titles = extractWikiLinkTitles(markdown);
   const candidates = titles.length
     ? await tx
-        .select({ id: artifacts.id, title: artifacts.title })
+        .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
         .from(artifacts)
-        .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)))
+        .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...LINKABLE_KINDS]), isNull(artifacts.archivedAt)))
     : [];
-  const byTitle = new Map(candidates.map((c) => [c.title.toLowerCase(), c.id]));
-  const wanted = new Map<string, string>();
+  const byTitle = new Map(candidates.map((c) => [c.title.toLowerCase(), { id: c.id, kind: c.kind }]));
+  const wanted = new Map<string, { label: string; kind: (typeof LINKABLE_KINDS)[number] }>();
   for (const title of titles) {
-    const id = byTitle.get(title.toLowerCase());
-    if (id && id !== artifactId && !wanted.has(id)) wanted.set(id, title);
+    const hit = byTitle.get(title.toLowerCase());
+    if (hit && hit.id !== artifactId && !wanted.has(hit.id)) wanted.set(hit.id, { label: title, kind: hit.kind as (typeof LINKABLE_KINDS)[number] });
   }
   const existing = await tx
     .select({ id: artifactLinks.id, targetId: artifactLinks.targetId })
     .from(artifactLinks)
-    .where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, artifactId), eq(artifactLinks.targetType, "note")));
+    .where(and(
+      eq(artifactLinks.workspaceId, auth.workspaceId),
+      eq(artifactLinks.artifactId, artifactId),
+      inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
+      eq(artifactLinks.linkType, "reference"),
+    ));
   const stale = existing.filter((row) => !wanted.has(row.targetId)).map((row) => row.id);
   if (stale.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, stale));
   const kept = new Set(existing.filter((row) => wanted.has(row.targetId)).map((row) => row.targetId));
   const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id));
   if (fresh.length) {
     await tx.insert(artifactLinks).values(
-      fresh.map(([targetId, label]) => ({
+      fresh.map(([targetId, w]) => ({
         workspaceId: auth.workspaceId,
         artifactId,
-        targetType: "note" as const,
+        targetType: w.kind,
         targetId,
-        label,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
+        label: w.label,
+        linkType: "reference" as const,
       })),
     );
   }
@@ -131,13 +143,13 @@ async function claimVersion(tx: TxDrizzle, auth: AuthContext, artifactId: string
 
 export async function createNote(
   auth: AuthContext,
-  input: Keyed & { title: string; content?: NoteContent; plainText?: string },
+  input: Keyed & { title: string; content?: NoteContent; plainText?: string; kind?: (typeof LINKABLE_KINDS)[number] },
 ): Promise<{ id: string; versionId: string; version: number }> {
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () => {
       const [artifact] = await tx
         .insert(artifacts)
-        .values({ workspaceId: auth.workspaceId, kind: "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
+        .values({ workspaceId: auth.workspaceId, kind: input.kind ?? "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
         .returning({ id: artifacts.id, version: artifacts.version });
       const empty = { type: "doc", content: [] };
       const [version] = await tx
@@ -155,7 +167,7 @@ export async function createNote(
       await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
       await recordAudit(
         auth,
-        { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created note "${input.title}"`, metadata: { versionId: version.id } },
+        { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
         tx,
       );
       await emit(tx, auth, "note.created", { artifactId: artifact.id, versionId: version.id });
@@ -289,6 +301,7 @@ export async function renameNote(
 export type NoteListItem = {
   id: string;
   title: string;
+  kind: string;
   status: string;
   version: number;
   updatedAt: Date;
@@ -296,12 +309,13 @@ export type NoteListItem = {
   hasDraft: boolean;
 };
 
-export async function listNotes(auth: AuthContext, limit = 50): Promise<NoteListItem[]> {
+export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS): Promise<NoteListItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
       .select({
         id: artifacts.id,
         title: artifacts.title,
+        kind: artifacts.kind,
         status: artifacts.status,
         version: artifacts.version,
         updatedAt: artifacts.updatedAt,
@@ -311,7 +325,7 @@ export async function listNotes(auth: AuthContext, limit = 50): Promise<NoteList
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
-      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)))
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...kinds]), isNull(artifacts.archivedAt)))
       .orderBy(desc(artifacts.updatedAt))
       .limit(limit);
     return rows.map((row) => ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem);
@@ -321,10 +335,10 @@ export async function listNotes(auth: AuthContext, limit = 50): Promise<NoteList
 /** One page of notes for the sidebar list; the total honours search and the drafts filter. */
 export async function pageNotes(
   auth: AuthContext,
-  input: { query?: string; draftsOnly?: boolean; limit: number; offset: number },
+  input: { query?: string; draftsOnly?: boolean; kinds?: readonly ("note" | "zettel")[]; limit: number; offset: number },
 ): Promise<{ items: NoteListItem[]; total: number }> {
   return withTransaction(async (tx) => {
-    const filters = [eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)];
+    const filters = [eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...(input.kinds ?? LINKABLE_KINDS)]), isNull(artifacts.archivedAt)];
     if (input.draftsOnly) filters.push(isNotNull(workingDrafts.artifactId));
     if (input.query?.trim()) {
       const like = `%${escapeLike(input.query.trim())}%`;
@@ -335,6 +349,7 @@ export async function pageNotes(
         .select({
           id: artifacts.id,
           title: artifacts.title,
+          kind: artifacts.kind,
           status: artifacts.status,
           version: artifacts.version,
           updatedAt: artifacts.updatedAt,
@@ -462,44 +477,95 @@ export async function listNoteVersions(auth: AuthContext, artifactId: string, li
   });
 }
 
-export type NoteLinkItem = { id: string; title: string };
+export type NoteLinkItem = {
+  id: string;
+  title: string;
+  /** The card kind on the other end of the edge. */
+  kind: string;
+  /** Why the edge exists; "reference" is an explicit [[Title]]. */
+  linkType: string;
+  /** The passage or reason recorded with the edge, when there is one. */
+  context: string | null;
+  /** First line of the other card, so a backlink reads as what the note is. */
+  excerpt: string | null;
+};
+
+const excerptOf = (text: string | null) => {
+  if (!text) return null;
+  const line = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
+  return line ? line.slice(0, 240) : null;
+};
 
 /** Where this note points: resolved [[Title]] targets, newest link first. */
 export async function listNoteOutlinks(auth: AuthContext, artifactId: string): Promise<NoteLinkItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
-      .select({ id: artifacts.id, title: artifacts.title })
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        kind: artifacts.kind,
+        linkType: artifactLinks.linkType,
+        context: artifactLinks.context,
+        plainText: artifactVersions.plainText,
+      })
       .from(artifactLinks)
       .innerJoin(artifacts, eq(artifacts.id, artifactLinks.targetId))
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .where(
         and(
           eq(artifactLinks.workspaceId, auth.workspaceId),
           eq(artifactLinks.artifactId, artifactId),
-          eq(artifactLinks.targetType, "note"),
+          inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           isNull(artifacts.archivedAt),
         ),
       )
       .orderBy(desc(artifactLinks.createdAt));
-    return rows;
+    return rows.map(({ plainText, ...row }) => ({ ...row, excerpt: excerptOf(plainText) }));
   });
 }
 
-/** What points here: notes whose body resolves a [[Title]] to this one. */
+/** What points here: notes and zettels whose body resolves a [[Title]] to this one. */
 export async function listNoteBacklinks(auth: AuthContext, artifactId: string): Promise<NoteLinkItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
-      .select({ id: artifacts.id, title: artifacts.title })
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        kind: artifacts.kind,
+        linkType: artifactLinks.linkType,
+        context: artifactLinks.context,
+        plainText: artifactVersions.plainText,
+      })
       .from(artifactLinks)
       .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .where(
         and(
           eq(artifactLinks.workspaceId, auth.workspaceId),
-          eq(artifactLinks.targetType, "note"),
+          inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           eq(artifactLinks.targetId, artifactId),
           isNull(artifacts.archivedAt),
         ),
       )
       .orderBy(desc(artifactLinks.createdAt));
-    return rows;
+    return rows.map(({ plainText, ...row }) => ({ ...row, excerpt: excerptOf(plainText) }));
+  });
+}
+
+/** The document a zettel was decomposed from, via its `source` edge. */
+export async function listNoteSources(auth: AuthContext, artifactId: string) {
+  return withTransaction(async (tx) => {
+    return tx
+      .select({ id: artifactLinks.targetId, title: artifactLinks.label, context: artifactLinks.context })
+      .from(artifactLinks)
+      .where(
+        and(
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          eq(artifactLinks.artifactId, artifactId),
+          eq(artifactLinks.targetType, "document"),
+          eq(artifactLinks.linkType, "source"),
+        ),
+      )
+      .orderBy(desc(artifactLinks.createdAt));
   });
 }
