@@ -5,7 +5,7 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   const title = `Canonical work ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=list");
   await waitSettled(page);
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
@@ -21,12 +21,12 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   // Board and Calendar read the same rows.
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Board", exact: true }).click();
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Calendar", exact: true }).click();
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Previous week", exact: true })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "NeuralFlow tools" }).getByRole("link", { name: "Stone collection" })).toHaveAttribute("href", "/apps/neuralflow/rewards");
+  await expect(page.getByRole("navigation", { name: "More tools", exact: true }).getByRole("link", { name: "Stone collection" })).toHaveAttribute("href", "/apps/neuralflow/rewards");
 });
 
 test("a canonical task deep link opens its detail and starts a task-linked focus session", async ({ page }) => {
@@ -61,7 +61,7 @@ test("a canonical task deep link opens its detail and starts a task-linked focus
 test("a non-canonical task parameter opens nothing and the canonical list still renders", async ({ page }) => {
   await page.goto("/neuralflow/work?view=list&task=task-architecture");
   await waitSettled(page);
-  await expect(page.getByText("Saved to your workspace.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Start a focus session" })).toHaveCount(0);
 });

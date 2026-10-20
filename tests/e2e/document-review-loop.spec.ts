@@ -25,7 +25,7 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   await page.goto("/alfred/knowledge");
   await page.locator('input[type="file"]').first().setInputFiles({ name: `invoice-${run}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(invoicePdf(lines)) });
   // The upload toast is async server feedback; loaded CI runners take well over the 5s default.
-  await expect(page.getByRole("status").filter({ hasText: "added to the inbox" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("status").filter({ hasText: "added. Reading starts on its own" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("link", { name: `invoice-${run}`, exact: true }).click();
   // Uploading already starts the read in the background, so "Read now" only
