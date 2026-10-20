@@ -3,6 +3,29 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Notebooks (NotebookLM parity)
+
+**Priority:** P2
+
+- **Unify the two citation models.** The chat stream emits `citations` frames
+  carrying full `DocumentCitation` objects as structured tool output
+  (`feat/eve-agents-chat-composio`). The notebook renderer parses `[[n]]`
+  markers out of the model's prose (`src/domains/knowledge/inline-citations.ts`).
+  Both are correct for their seam, and forcing one through the other means
+  inventing markers the model never wrote. The open decision: does the agent
+  generate markers, or does the renderer number structured output? Decide that,
+  then delete the losing path. Until then a saved note uses the marker form and
+  a streamed answer uses the frame form, and the two do not share numbering.
+
+**Priority:** P3
+
+- **Learning eval for answer leakage.** `tests/unit/teaching-contract.test.ts`
+  pins that a teaching card carries no `answer`, `answerIndex` or `explanation`.
+  That is not the same as proving the model cannot leak what it was never shown.
+  The eval needs a real turn with `learning_next` as the only tool, and belongs
+  next to `chat-grounding.eval.ts`. Note: evals run serially
+  (`maxConcurrency: 1`) because concurrent Gemini sessions intermittently 429.
+
 ## Identity / authorization
 
 **Priority:** P1
@@ -37,6 +60,33 @@ Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 - Playwright coverage of the legacy `/apps/**` preview screens still assumes
   the pre-split IA in places (switch-product journeys); reconcile with the
   launcher now that canonical chrome is single-sourced.
+
+## File intake
+
+### A sniff mismatch returns 201 instead of quarantining the original
+
+**What:** `tests/integration/file-intake.test.ts` ("a sniff mismatch quarantines
+the original instead of rejecting it") asserts a 200 with `fileStatus:
+"quarantined"`; the route returns 201.
+
+**Why:** The suite is red on every PR that runs integration tests, so a real
+regression in file intake has nowhere to show up. A wrong file status is also the
+difference between a quarantined upload and an accepted one.
+
+**Context:** Reproduced on a pristine `origin/main` checkout (`cf47131`) in a
+throwaway worktree with a local Postgres: same 201-vs-200, so it is not
+introduced by any one branch. The route and the test disagree on the contract;
+decide which is correct before changing the assertion. Failing output:
+
+```
+AssertionError: expected 201 to be 200
+ ❯ tests/integration/file-intake.test.ts:118:24
+   expect(res.status).toBe(200);
+```
+
+**Effort:** S
+**Priority:** P0
+**Depends on:** None
 
 ## Completed
 

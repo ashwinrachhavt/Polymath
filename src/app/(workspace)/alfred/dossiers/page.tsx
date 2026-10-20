@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -120,6 +121,12 @@ export async function DossiersSurface({
                       {dossier.documentCount} {dossier.documentCount === 1 ? "document" : "documents"}
                     </span>
                   </a>
+                  <Link
+                    href={`/alfred/dossiers/${dossier.id}/notebook`}
+                    className="ml-2 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    Open notebook
+                  </Link>
                 </li>
               ))}
             </ul>

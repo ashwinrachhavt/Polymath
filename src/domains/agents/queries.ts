@@ -83,6 +83,22 @@ export async function getRun(workspaceId: string, runId: string) {
   return run ?? null;
 }
 
+/**
+ * The profile name that decides which Eve agent serves a run. The routing table
+ * lives in `eveAgentForProfile`, so the stream proxy needs the name, not the id,
+ * to pick the same mount the driver started the session on. A run whose profile
+ * row has gone returns null; callers fall back to the default agent.
+ */
+export async function getProfileNameForRun(workspaceId: string, runId: string) {
+  const [row] = await db
+    .select({ name: agentProfiles.name })
+    .from(agentRuns)
+    .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
+    .limit(1);
+  return row?.name ?? null;
+}
+
 /** Tool names a documents search is recorded under (the capability and the tool file name). */
 const DOCUMENT_SEARCH_TOOLS = ["documents_search", "documents.search"];
 

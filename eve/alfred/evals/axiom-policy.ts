@@ -37,8 +37,13 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "tasks.read": "read",
   "gmail.read": "read",
   "calendar.read": "read",
+  "notion.read": "read",
   "gmail.draft": "prepare",
   "notion.draft": "prepare",
+  // NotebookLM parity. Opening a notebook reads; grading a review writes an
+  // attempt locally, the same act the owner performs in the learning UI.
+  "notebook.open": "read",
+  "learning.review": "prepare",
   "gmail.send": "external_write",
   "calendar.create": "external_write",
   "linear.create": "external_write",

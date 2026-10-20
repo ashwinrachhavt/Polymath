@@ -299,8 +299,29 @@
     {
       "idx": 214,
       "version": "7",
+      "tag": "0214_artifact_kinds",
+      "when": 1792480440000,
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "tag": "0215_learning_quiz_columns",
+      "when": 1792480450000,
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "tag": "0216_youtube_transcripts",
+      "when": 1792480460000,
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
       "tag": "0214_captures_inbox_tabs_index",
-      "when": 1792484565232,
+      "when": 1792480461000,
       "breakpoints": true
     }
   ]

@@ -131,6 +131,76 @@ jobs:
         env:
           PERF_BUDGET_ENFORCE: "1"
 
+  # Behavioral gate for the agent. The unit suite cannot see whether Alfred
+  # actually reaches for the corpus before answering; these evals drive a real
+  # turn against Gemini and fail the build when grounding regresses.
+  #
+  # Skipped, not failed, when the secret is absent: a fork PR has no access to
+  # repository secrets, and a red X there would train people to ignore the gate.
+  # On main and on same-repo PRs the secret is required — see the guard step.
+  evals:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the agent is runnable
+        id: credential
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GEMINI_API_KEY is not set; agent evals were skipped, not run."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run agent evals
+        id: evals
+        if: steps.credential.outputs.present == 'true'
+        working-directory: eve/alfred
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_AGENT_MODEL: gemini-3.5-flash-lite
+        # --strict turns soft thresholds into failures, so a score regression
+        # blocks the merge instead of only showing in the artifact.
+        # --json also prints the per-eval verdicts as one JSON document, which
+        # the summary step below turns into the job table.
+        run: |
+          set +e
+          ../../node_modules/.bin/eve eval --strict --json > "$RUNNER_TEMP/eval-report.json"
+          status=$?
+          cat "$RUNNER_TEMP/eval-report.json"
+          exit $status
+      # Surface the result where a reviewer looks first. The artifact has the
+      # detail; this table answers "which eval failed, and how many gates did it
+      # miss" without opening a download.
+      - name: Eval results
+        if: always() && steps.credential.outputs.present == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node .github/scripts/eval-summary.mjs "$RUNNER_TEMP/eval-report.json"
+      # A skipped gate on main is how an eval suite quietly stops protecting
+      # anything. On main the secret must exist; only PRs may skip.
+      - name: Require evals on main
+        if: github.ref == 'refs/heads/main' && steps.credential.outputs.present != 'true'
+        run: |
+          echo "::error::GEMINI_API_KEY is absent on main, so the agent eval gate did not run."
+          exit 1
+      - name: Upload eval artifacts
+        if: always() && steps.credential.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eve-evals
+          path: eve/alfred/.eve/evals/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Vercel deploys `main` through its own GitHub integration; every other branch
   # is disabled in vercel.json, so a merged PR is the only thing that ships.
   # Nothing is deployed from CI.
