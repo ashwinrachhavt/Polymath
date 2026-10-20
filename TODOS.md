@@ -3,6 +3,29 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Notebooks (NotebookLM parity)
+
+**Priority:** P2
+
+- **Unify the two citation models.** The chat stream emits `citations` frames
+  carrying full `DocumentCitation` objects as structured tool output
+  (`feat/eve-agents-chat-composio`). The notebook renderer parses `[[n]]`
+  markers out of the model's prose (`src/domains/knowledge/inline-citations.ts`).
+  Both are correct for their seam, and forcing one through the other means
+  inventing markers the model never wrote. The open decision: does the agent
+  generate markers, or does the renderer number structured output? Decide that,
+  then delete the losing path. Until then a saved note uses the marker form and
+  a streamed answer uses the frame form, and the two do not share numbering.
+
+**Priority:** P3
+
+- **Learning eval for answer leakage.** `tests/unit/teaching-contract.test.ts`
+  pins that a teaching card carries no `answer`, `answerIndex` or `explanation`.
+  That is not the same as proving the model cannot leak what it was never shown.
+  The eval needs a real turn with `learning_next` as the only tool, and belongs
+  next to `chat-grounding.eval.ts`. Note: evals run serially
+  (`maxConcurrency: 1`) because concurrent Gemini sessions intermittently 429.
+
 ## Identity / authorization
 
 **Priority:** P1

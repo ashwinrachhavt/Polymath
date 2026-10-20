@@ -23,7 +23,7 @@ export type IntakeInput = {
   verdict: FileValidationResult;
   /** sha256 hex of the bytes when the caller already has it. */
   contentHash?: string;
-  origin: "upload" | "url" | "crawl";
+  origin: "upload" | "url" | "crawl" | "youtube";
   /** Captured documents carry where they came from. */
   sourceUrl?: string;
   /** Folder the document files into; null (the default) is the library root. */
@@ -143,7 +143,10 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       actorId: auth.userId,
       actorKind: "user",
       action: input.verdict.ok
-        ? input.origin === "url" ? "file.captured" : input.origin === "crawl" ? "file.crawled" : "file.uploaded"
+        ? input.origin === "url" ? "file.captured"
+          : input.origin === "crawl" ? "file.crawled"
+            : input.origin === "youtube" ? "file.transcribed"
+              : "file.uploaded"
         : "file.quarantined",
       subjectType: input.verdict.ok ? "document" : "file",
       subjectId: input.verdict.ok ? documentId : fileRow.id,
@@ -152,7 +155,9 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
           ? `Captured ${input.sourceUrl ?? input.filename}`
           : input.origin === "crawl"
             ? `Crawled ${input.sourceUrl ?? input.filename}`
-            : `Uploaded ${input.filename}`
+            : input.origin === "youtube"
+              ? `Transcribed ${input.sourceUrl ?? input.filename}`
+              : `Uploaded ${input.filename}`
         : `Quarantined ${input.filename}: content did not match the allowlist`,
     });
 
