@@ -38,6 +38,33 @@ Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
   the pre-split IA in places (switch-product journeys); reconcile with the
   launcher now that canonical chrome is single-sourced.
 
+## File intake
+
+### A sniff mismatch returns 201 instead of quarantining the original
+
+**What:** `tests/integration/file-intake.test.ts` ("a sniff mismatch quarantines
+the original instead of rejecting it") asserts a 200 with `fileStatus:
+"quarantined"`; the route returns 201.
+
+**Why:** The suite is red on every PR that runs integration tests, so a real
+regression in file intake has nowhere to show up. A wrong file status is also the
+difference between a quarantined upload and an accepted one.
+
+**Context:** Reproduced on a pristine `origin/main` checkout (`cf47131`) in a
+throwaway worktree with a local Postgres: same 201-vs-200, so it is not
+introduced by any one branch. The route and the test disagree on the contract;
+decide which is correct before changing the assertion. Failing output:
+
+```
+AssertionError: expected 201 to be 200
+ ❯ tests/integration/file-intake.test.ts:118:24
+   expect(res.status).toBe(200);
+```
+
+**Effort:** S
+**Priority:** P0
+**Depends on:** None
+
 ## Completed
 
 - ASH-120 F01–F03 (scope ADR, glossary, canonical identity schema, auth

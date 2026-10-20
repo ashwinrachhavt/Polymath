@@ -31,6 +31,21 @@ const bridgeAuth: AuthFn<Request> = async (request) => {
 
 // localDev() is the Eve TUI's own loopback identity; it never carries a
 // workspace, so it cannot start an Polymath run, and it is never mounted in production.
-export default eveChannel({
-  auth: [bridgeAuth, ...(process.env.NODE_ENV !== "production" ? [localDev()] : [])],
-});
+//
+// It is wrapped, not used directly, so the local eval runner can create stubbed
+// sessions: eve denies tool replacement unless the verified auth result carries
+// `allowToolStubs` (docs/guides/auth-and-route-protection, "Tool replacement
+// permission"). The grant rides on this dev-only identity and nowhere else — the
+// bridge token path above never sets it, so a real workspace caller cannot stub
+// a tool in a deployed environment.
+const localDevWithStubs: AuthFn<Request> = async (request) => {
+  const caller = await localDev()(request);
+  return caller ? { ...caller, allowToolStubs: true } : null;
+};
+
+// The authenticators, in order. `localDevWithStubs` is dev-only and never
+// mounted in production; the bridge token path is the only production caller.
+const authenticators: AuthFn<Request>[] = [bridgeAuth];
+if (process.env.NODE_ENV !== "production") authenticators.push(localDevWithStubs);
+
+export default eveChannel({ auth: authenticators });

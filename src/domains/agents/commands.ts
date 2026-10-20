@@ -13,7 +13,7 @@ import { agentProfiles } from "./schema";
  * until profile management lands.
  */
 /** The first-party profile's capabilities. documents.search and the wiki tools are reads or internal writes. */
-export const DEFAULT_ALLOWED_TOOLS = ["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.send"];
+export const DEFAULT_ALLOWED_TOOLS = ["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.send", "gmail.read", "calendar.read", "notion.read"];
 
 export async function ensureProfile(workspaceId: string, name = "alfred") {
   const [existing] = await db
@@ -28,7 +28,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
     const tools = Array.isArray(existing.allowedTools) ? (existing.allowedTools as string[]) : [];
     // Reads and internal wiki writes gained after early profiles were made.
     // Nothing else is added, and runs already started keep their frozen snapshot.
-    const gained = ["documents.search", "wiki.read", "wiki.ingest", "wiki.lint"];
+    // The connected reads are here for the same reason as the wiki ones: an
+    // existing profile's frozen list would otherwise never gain them, and the
+    // tool would fail closed forever with "not in this run's policy snapshot".
+    const gained = ["documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.read", "calendar.read", "notion.read"];
     const missing = gained.filter((t) => !tools.includes(t));
     if (missing.length) {
       await db.update(agentProfiles).set({ allowedTools: [...tools, ...missing] }).where(eq(agentProfiles.id, existing.id));
