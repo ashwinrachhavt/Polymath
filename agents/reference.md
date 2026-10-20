@@ -16,7 +16,7 @@ Read the relevant section instead of grepping the repo or reading `package.json`
 | `make search-up` | Starts SearXNG + Firecrawl | First run generates a local SearXNG secret. Loopback-bound. |
 | `make search-down` | Removes the search stack | |
 | `make search-logs` | Tails search stack logs | |
-| `make queue-up` | Starts the outbox worker | Uploads and crawls queue work; nothing drains it without this. Logs to `.run/outbox-worker.log`. |
+| `make queue-up` | Starts the outbox worker | In local development nothing drains the queue without this; a deployment also has the daily `vercel.json` cron, which is far too slow to develop against. Logs to `.run/outbox-worker.log`. |
 | `make queue-down` | Stops the outbox worker | |
 | `make queue-logs` | Tails the outbox worker log | |
 | `pnpm db:migrate` | Applies migrations | |
@@ -51,8 +51,17 @@ commit a real value.
 | `SEARXNG_URL` | Private metasearch endpoint | Falls back to keyed providers |
 | `FIRECRAWL_API_URL` | Firecrawl endpoint | Crawl unavailable |
 | `FIRECRAWL_API_KEY` | Firecrawl auth | |
+| `OUTBOX_DISPATCH_SECRET` | Bearer for `/api/internal/cron` and `/api/internal/outbox` | Both routes answer 404 |
+| `CRON_SECRET` | Bearer Vercel Cron sends on GET | Scheduled ticks answer 404; run the drain by hand or locally |
 | Clerk keys | Identity | App cannot authenticate |
 | Object storage keys | File blobs | Uploads unavailable |
+
+`OUTBOX_DISPATCH_SECRET` and `CRON_SECRET` are both accepted by
+`/api/internal/cron`: the first is for an operator or local script, the second is
+what Vercel Cron signs with. Set both in a deployment — `vercel.json` schedules
+the GET once a day. With neither set the route answers 404 (it does not advertise
+itself); with one set but the wrong bearer it answers 401. Either way the tick
+drains nothing, which is indistinguishable from a quiet queue.
 
 Provider selection is **in code**, in `src/integrations/*/provider.ts`. Reading
 the env var alone does not tell you which adapter is active; read the resolver.

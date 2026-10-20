@@ -93,6 +93,23 @@ AssertionError: expected 201 to be 200
 - ASH-120 F01–F03 (scope ADR, glossary, canonical identity schema, auth
   spine): **v-unversioned** (2026-10-18), PR #10.
 
+## CRM / outreach
+
+**Priority:** P1
+
+- **Ship a `MailSender` adapter.** The send executor is complete — it refuses
+  unapproved sends, binds approval to a revision, and leaves an `unknown`
+  attempt that blocks retry until reconciled. But there is no implementation of
+  the port anywhere in `src/`; `unconfiguredSender` (`src/domains/crm/send-executor.ts`)
+  always throws, so no approved message can leave the workspace. The settings
+  capability panel reports "Email sending is not implemented" for exactly this
+  reason, and the release claim excludes sending until it is untrue. **What:**
+  one adapter over a connected account (Composio Gmail first), wired through the
+  existing `sendApprovedCorrespondence` path with an idempotency key per
+  attempt. **Why:** without it the approval-gated send story is untestable
+  outside unit tests, and the `action_attempts` reconciliation work has no live
+  producer. **Depends on:** an explicit go-ahead before any real send.
+
 ## Inbox / command center
 
 **Priority:** P3

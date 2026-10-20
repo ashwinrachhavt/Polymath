@@ -81,4 +81,47 @@ suite("cron route (real Postgres)", () => {
     const [row] = await db.select().from(outboxEvents);
     expect(row.status).toBe("dispatched");
   });
+
+  /*
+   * ASH-189. Vercel Cron calls the path with GET and signs with CRON_SECRET;
+   * it never sends OUTBOX_DISPATCH_SECRET. Before this, the schedule existed in
+   * vercel.json but the route answered POST only, so every scheduled tick would
+   * have 405'd while the deployment looked healthy.
+   */
+  it("accepts a GET signed with CRON_SECRET, which is how Vercel Cron calls it", async () => {
+    if (!handle) return;
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", "");
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret");
+    vi.stubEnv("DATABASE_URL", process.env.TEST_DATABASE_URL!);
+    await db.execute(sql`delete from outbox_events`);
+    const seeded = await seedWorkspace(db, `cron-get-${Date.now()}`);
+    await seedPending(seeded.workspaceId);
+
+    const response = await route.GET(
+      new Request("http://localhost/api/internal/cron", {
+        method: "GET",
+        headers: { authorization: "Bearer vercel-cron-secret" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ dispatched: 1 });
+  });
+
+  it("still refuses a GET whose bearer matches neither secret", async () => {
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret");
+    const response = await route.GET(
+      new Request("http://localhost/api/internal/cron", {
+        method: "GET",
+        headers: { authorization: "Bearer wrong" },
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("answers 404 on GET when no secret is configured at all", async () => {
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", "");
+    vi.stubEnv("CRON_SECRET", "");
+    const response = await route.GET(new Request("http://localhost/api/internal/cron", { method: "GET" }));
+    expect(response.status).toBe(404);
+  });
 });
