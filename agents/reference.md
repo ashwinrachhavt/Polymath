@@ -16,7 +16,7 @@ Read the relevant section instead of grepping the repo or reading `package.json`
 | `make search-up` | Starts SearXNG + Firecrawl | First run generates a local SearXNG secret. Loopback-bound. |
 | `make search-down` | Removes the search stack | |
 | `make search-logs` | Tails search stack logs | |
-| `make queue-up` | Starts the outbox worker | Uploads and crawls queue work; nothing drains it without this. Logs to `.run/outbox-worker.log`. |
+| `make queue-up` | Starts the outbox worker | In local development nothing drains the queue without this; a deployment also has the daily `vercel.json` cron, which is far too slow to develop against. Logs to `.run/outbox-worker.log`. |
 | `make queue-down` | Stops the outbox worker | |
 | `make queue-logs` | Tails the outbox worker log | |
 | `pnpm db:migrate` | Applies migrations | |

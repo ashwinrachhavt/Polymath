@@ -38,7 +38,7 @@ src/components/   presentation only; no data access
 src/domains/      17 domains, each owning its tables
 src/integrations/ embeddings, extraction, firecrawl, notion, object-store,
                   search, wiki, zettels
-src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, crons
+src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, capability-config
 src/db/           migrations, schema root
 src/proxy.ts      request proxy
 extensions/chrome/  browser companion

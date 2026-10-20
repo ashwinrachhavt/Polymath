@@ -793,9 +793,15 @@ strings, so the unique index does not dedupe them.
 
 ### P1 — the outbox is not scheduled
 
-`vercel.json` registers no cron. `/api/internal/outbox` is 404 unless
-`OUTBOX_DISPATCH_SECRET` is set, and the route's own comment says the trigger
-is the operator's choice (`src/app/api/internal/outbox/route.ts:8-11`).
+**Resolved 2026-10-20.** `vercel.json` now registers `/api/internal/cron` daily,
+and the route accepts `CRON_SECRET` on a `GET` (Vercel Cron's method) as well as
+`OUTBOX_DISPATCH_SECRET`. The finding below is kept as written, because its
+cadence argument still holds: daily is a safety net, not a prompt drain, so the
+readiness-UI correction it asks for is still the right behaviour.
+
+The original finding: `vercel.json` registered no cron; `/api/internal/outbox`
+is 404 unless `OUTBOX_DISPATCH_SECRET` is set, and the route's own comment says
+the trigger is the operator's choice (`src/app/api/internal/outbox/route.ts:8-11`).
 
 In a default deploy, YouTube and batch imports sit at `queued` forever.
 
