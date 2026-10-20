@@ -102,8 +102,13 @@ export function PreviewPane({
     setBusy(true);
     const result = await archiveDocumentAction({ documentId: row.id, expectedVersion: version });
     setBusy(false);
-    if (result.ok) onArchived("Archived.");
-    else onChanged(result.error);
+    if (result.ok) {
+      // Archiving retracts the reviewed evidence, so the cached preview is now
+      // a lie. Bulk archive and restore both drop it; a single archive from the
+      // pane must too, or reopening the row this session renders "ready".
+      invalidatePreview(row.id);
+      onArchived("Archived.");
+    } else onChanged(result.error);
   }
 
   const data = load.id === row.id && load.state === "ready" ? load.data : null;
