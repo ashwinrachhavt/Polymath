@@ -70,9 +70,14 @@ test("preview routes retain app context and all tools are reachable on a phone",
   // No notebook-toolbar landmark here: the breadcrumb assertion retries
   // until the dynamic screen mounts, and this test runs no axe sweep.
   await waitSettled(page);
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Dictionary");
+  // The pill nav names the open workshop tool in its last pill; the rest of
+  // the workshop sits behind it.
+  const workspaceNav = page.getByRole("navigation", { name: "Workspace", exact: true });
+  await expect(workspaceNav).toContainText("Dictionary");
   await expect(page.locator("[data-app]")).toHaveAttribute("data-app", "alfred");
-  await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: "Learning", exact: true })).toBeVisible();
+  await workspaceNav.getByRole("button", { name: "Dictionary", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Learning", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/inbox");
