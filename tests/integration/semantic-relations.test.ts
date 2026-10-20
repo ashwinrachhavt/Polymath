@@ -22,7 +22,7 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
-import { autosaveNoteDraft, commitNoteSnapshot, createNote, listNoteBacklinks, listNoteOutlinks, synthesizeZettel } from "@/domains/knowledge/notes";
+import { autosaveNoteDraft, commitNoteSnapshot, createNote, getNote, listNoteBacklinks, listNoteOutlinks, synthesizeZettel } from "@/domains/knowledge/notes";
 import { linkCards, listCardGraph, materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
 
 /** Deterministic 1536-wide vectors: basis directions per key. */
@@ -192,6 +192,9 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     const merged = await synthesizeZettel(auth, { sourceIds: [a.id, b.id], title: "A meets B" });
     const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, merged.id));
     expect(card.kind).toBe("zettel");
+    const opened = await getNote(auth, merged.id);
+    expect((opened?.content as { format?: string; text?: string }).format).toBe("markdown");
+    expect((opened?.content as { text?: string }).text).toContain("Idea A");
     expect((await listNoteOutlinks(auth, merged.id)).map((l) => l.id).sort()).toEqual([a.id, b.id].sort());
     expect((await listNoteBacklinks(auth, a.id)).map((l) => l.id)).toContain(merged.id);
     await expect(synthesizeZettel(auth, { sourceIds: [a.id] })).rejects.toThrow("at least two");

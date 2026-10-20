@@ -705,7 +705,7 @@ export async function synthesizeZettel(
       const created = await createNoteInTx(tx, auth, {
         title,
         kind: "zettel",
-        content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+        content: { format: "markdown", text },
         plainText: text,
       });
       await tx.insert(artifactLinks).values(

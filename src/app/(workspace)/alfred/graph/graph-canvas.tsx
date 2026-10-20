@@ -14,28 +14,53 @@ type CardNode = Node<CardData, "card">;
 function CardNodeView({ id, data, selected }: NodeProps<CardNode>) {
   return (
     <div className={`w-52 rounded-lg border bg-card px-3 py-2 text-left shadow-none transition-colors ${selected ? "border-foreground" : "border-border hover:border-muted-foreground"}`}>
-      <Handle type="target" position={Position.Top} className="!size-2 !border-border !bg-muted-foreground" />
+      <Handle type="target" position={Position.Left} className="!size-2 !border-border !bg-muted-foreground" />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{data.kind}</span>
         <a href={`/alfred/notebook?id=${id}`} className="nodrag text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Open</a>
       </div>
       <p className="mt-0.5 line-clamp-2 text-[13px] font-medium leading-snug">{data.title}</p>
       {data.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{data.excerpt}</p>}
-      <Handle type="source" position={Position.Bottom} className="!size-2 !border-border !bg-muted-foreground" />
+      <Handle type="source" position={Position.Right} className="!size-2 !border-border !bg-muted-foreground" />
     </div>
   );
 }
 
 const nodeTypes = { card: CardNodeView };
 
-function layout(nodes: GraphNode[]): CardNode[] {
-  const cols = Math.max(2, Math.ceil(Math.sqrt(nodes.length)));
-  return nodes.map((n, i) => ({
-    id: n.id,
-    type: "card" as const,
-    position: { x: (i % cols) * 260, y: Math.floor(i / cols) * 190 },
-    data: { title: n.title, kind: n.kind, excerpt: n.excerpt },
-  }));
+/* Connected cards sit side by side: walk each component breadth-first so a
+ * linked pair lands in one row and its edge runs straight across. */
+function layout(nodes: GraphNode[], edges: GraphEdge[]): CardNode[] {
+  const near = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
+  for (const e of edges) { near.get(e.source)?.push(e.target); near.get(e.target)?.push(e.source); }
+  const seen = new Set<string>();
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const cols = 3;
+  const placed: CardNode[] = [];
+  let slot = 0;
+  for (const n of [...nodes].sort((a, b) => (near.get(b.id)?.length ?? 0) - (near.get(a.id)?.length ?? 0))) {
+    if (seen.has(n.id)) continue;
+    const group: GraphNode[] = [];
+    const queue = [n.id];
+    seen.add(n.id);
+    while (queue.length) {
+      const id = queue.shift()!;
+      group.push(byId.get(id)!);
+      for (const next of near.get(id) ?? []) if (!seen.has(next)) { seen.add(next); queue.push(next); }
+    }
+    // A linked group starts a fresh row when it would straddle one.
+    if (group.length > 1 && group.length <= cols && slot % cols + group.length > cols) slot += cols - (slot % cols);
+    for (const g of group) {
+      placed.push({
+        id: g.id,
+        type: "card" as const,
+        position: { x: (slot % cols) * 300, y: Math.floor(slot / cols) * 170 },
+        data: { title: g.title, kind: g.kind, excerpt: g.excerpt },
+      });
+      slot += 1;
+    }
+  }
+  return placed;
 }
 
 function toEdge(e: GraphEdge): Edge {
@@ -55,7 +80,7 @@ function toEdge(e: GraphEdge): Edge {
 
 export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
   const router = useRouter();
-  const [nodes, , onNodesChange] = useNodesState<CardNode>(useMemo(() => layout(initialNodes), [initialNodes]));
+  const [nodes, , onNodesChange] = useNodesState<CardNode>(useMemo(() => layout(initialNodes, initialEdges), [initialNodes, initialEdges]));
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(useMemo(() => initialEdges.map(toEdge), [initialEdges]));
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
