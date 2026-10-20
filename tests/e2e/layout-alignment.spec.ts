@@ -10,18 +10,28 @@ for (const width of [390, 1440, 1920]) {
     for (const path of ["/settings", "/reviews", "/command-center/relationships", "/alfred/knowledge", "/alfred/dossiers", "/more"]) {
       await page.goto(path);
       await waitSettled(page);
-      const screen = page.locator(".suite-screen").first();
-      const canonical = page.locator(".page-header").first();
+      // Scope to the shell's content main: route-level loading.tsx renders a
+      // second skeleton main, and streamed pages swap it in late.
+      const screen = page.locator("#content .suite-screen").first();
+      const canonical = page.locator("#content .page-header").first();
       if (await screen.count()) {
-        const header = await screen.locator(":scope > header").boundingBox();
-        const content = await screen.locator(":scope > div").first().boundingBox();
+        const headerEl = screen.locator(":scope > header");
+        const contentEl = screen.locator(":scope > div").first();
+        await expect(headerEl, path).toBeVisible();
+        await expect(contentEl, path).toBeVisible();
+        const header = await headerEl.boundingBox();
+        const content = await contentEl.boundingBox();
         expect(header, path).not.toBeNull();
         expect(content, path).not.toBeNull();
         expect(Math.abs(header!.x - content!.x), path).toBeLessThan(1);
         expect(Math.abs(header!.width - content!.width), path).toBeLessThan(1);
       } else {
-        const heading = await canonical.locator("h1").boundingBox();
-        const content = await page.locator(".page-content").first().boundingBox();
+        const headingEl = canonical.locator("h1");
+        const contentEl = page.locator("#content .page-content").first();
+        await expect(headingEl, path).toBeVisible();
+        await expect(contentEl, path).toBeVisible();
+        const heading = await headingEl.boundingBox();
+        const content = await contentEl.boundingBox();
         expect(heading, path).not.toBeNull();
         expect(content, path).not.toBeNull();
         expect(Math.abs(heading!.x - content!.x - (width < 768 ? 16 : 24)), path).toBeLessThan(1);
