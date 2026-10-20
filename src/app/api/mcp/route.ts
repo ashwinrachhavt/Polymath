@@ -4,6 +4,8 @@ import { getRunForGateway } from "@/domains/agents/queries";
 import { gatewaySecret, verifyGatewayToken } from "@/domains/agents/gateway-token";
 import { activeMembershipRole } from "@/domains/identity/resolve";
 import { toolManifest } from "@/domains/integrations/tool-manifest";
+import { createGateway } from "@/domains/agents/gateway";
+import { composioTransport } from "@/domains/integrations/transport";
 
 /*
  * POST /api/mcp — the provider gateway eve reaches. JSON-RPC 2.0 over a single
@@ -34,6 +36,23 @@ const requestSchema = z.object({
   params: z.unknown().optional(),
 });
 
+/*
+ * `tools/call` params. `arguments` stays unknown here: the tool's own schema in
+ * `tool-manifest.ts` is the one description of them, and parsing twice invites
+ * two answers.
+ */
+const callSchema = z.object({
+  name: z.string(),
+  arguments: z.unknown().optional(),
+});
+
+/*
+ * The Composio transport, built once per process. It holds no credential: the
+ * Composio key is read from the environment inside `composio.ts` at call time,
+ * so a rotation does not need this module reloaded.
+ */
+const gateway = createGateway({ transport: composioTransport });
+
 function rpcResult(id: JsonRpcId, result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
 }
@@ -60,7 +79,8 @@ export async function POST(request: Request) {
   if (!claims) return problemResponse(401, "unauthorized", "Unauthorized.");
 
   // 2. Membership, re-proved rather than trusted from the claim.
-  if (!(await activeMembershipRole(claims.workspaceId, claims.userId))) {
+  const role = await activeMembershipRole(claims.workspaceId, claims.userId);
+  if (!role) {
     return problemResponse(401, "unauthorized", "Unauthorized.");
   }
 
@@ -103,14 +123,25 @@ export async function POST(request: Request) {
       return new Response(null, { status: 204 });
     case "tools/list":
       return rpcResult(id, { tools: toolManifest() });
-    case "tools/call":
-      // Dispatch lands in Task 6. Until then the call is refused rather than
-      // silently dropped, so a client sees a method it cannot use.
-      return rpcError(id, -32601, "tools/call is not implemented yet.");
+    case "tools/call": {
+      const call = callSchema.safeParse(parsed.data.params);
+      if (!call.success) return rpcError(id, -32602, "Invalid params.");
+      const outcome = await gateway.call({
+        auth: { userId: claims.userId, workspaceId: claims.workspaceId, role },
+        run,
+        tool: call.data.name,
+        args: call.data.arguments,
+      });
+      if (!outcome.ok) return problemResponse(outcome.status, outcome.code, outcome.message);
+      return rpcResult(id, outcome.result);
+    }
     default:
       return rpcError(id, -32601, "Method not found.");
   }
 }
 
-/** Never cached: every response is a fresh authorization decision. */
-export const dynamic = "force-dynamic";
+/*
+ * Never cached: every response is a fresh authorization decision. The route
+ * already reads the request and the database, so it is dynamic without a
+ * segment config; `cacheComponents` rejects `export const dynamic` outright.
+ */
