@@ -15,6 +15,7 @@ import {
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { promoteSemanticLink } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -115,6 +116,19 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
   const auth = await authorize();
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
+}
+
+const linkRelatedInput = z.object({ artifactId: z.string().uuid(), targetId: z.string().uuid() });
+
+/** Confirm a "related by meaning" suggestion into the explicit graph. */
+export async function linkRelatedNoteAction(input: z.input<typeof linkRelatedInput>): Promise<Result<{ linked: true }>> {
+  const parsed = linkRelatedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That suggestion is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    if (!(await promoteSemanticLink(auth, parsed.data))) throw new NoteNotFoundError();
+    return { linked: true as const };
+  });
 }
 
 const tagsInput = z.object({

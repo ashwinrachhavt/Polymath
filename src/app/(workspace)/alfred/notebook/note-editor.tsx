@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, renameNoteAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, linkRelatedNoteAction, renameNoteAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for the canonical notebook. The body is Markdown inside
@@ -265,6 +265,16 @@ export function NoteEditor({
     router.refresh();
   };
 
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const confirmLink = async (targetId: string) => {
+    setError("");
+    setLinkingId(targetId);
+    const result = await linkRelatedNoteAction({ artifactId: noteId, targetId });
+    setLinkingId(null);
+    if (!result.ok) return setError(result.error);
+    router.refresh();
+  };
+
   const [ai, setAi] = useState<AIProposal | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiBusy = !!ai && !AI_TERMINAL.has(ai.state);
@@ -499,14 +509,27 @@ export function NoteEditor({
         {related.filter((r) => !r.alreadyLinked).length > 0 && (
           <div className="border-t border-border pt-3">
             <p className="text-xs font-medium text-muted-foreground">Related by meaning</p>
-            <ul className="mt-1 flex flex-col gap-0.5">
+            <ul className="mt-2 flex flex-wrap gap-1.5">
               {related.filter((r) => !r.alreadyLinked).map((r) => (
-                <li key={r.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
-                  <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${r.id}`}>
-                    {r.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
-                    {r.title}
+                <li key={r.id} className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-[13px] transition-colors hover:bg-muted/60">
+                  <Link
+                    className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    href={`/alfred/notebook?id=${r.id}`}
+                    title={r.excerpt ?? r.title}
+                  >
+                    {r.kind === "zettel" && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+                    <span className="truncate">{r.title}</span>
+                    <span className="tabular-nums text-[11px] text-muted-foreground">{Math.round(r.score * 100)}%</span>
                   </Link>
-                  {r.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{r.excerpt}</p>}
+                  <button
+                    type="button"
+                    aria-label={`Link ${r.title}`}
+                    disabled={linkingId === r.id}
+                    onClick={() => void confirmLink(r.id)}
+                    className="mr-0.5 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    {linkingId === r.id ? "Linking" : "Link"}
+                  </button>
                 </li>
               ))}
             </ul>

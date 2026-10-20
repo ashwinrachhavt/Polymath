@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
@@ -98,7 +98,23 @@ export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId
   const stale = existing.filter((row) => !wanted.has(row.targetId)).map((row) => row.id);
   if (stale.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, stale));
   const kept = new Set(existing.filter((row) => wanted.has(row.targetId)).map((row) => row.targetId));
-  const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id));
+  // A typed [[link]] toward a card already suggested upgrades that semantic
+  // edge into the reference edge: one row per pair, score kept as provenance.
+  const suggested = await tx
+    .select({ id: artifactLinks.id, targetId: artifactLinks.targetId })
+    .from(artifactLinks)
+    .where(and(
+      eq(artifactLinks.workspaceId, auth.workspaceId),
+      eq(artifactLinks.artifactId, artifactId),
+      inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
+      eq(artifactLinks.linkType, "semantic"),
+    ));
+  const upgradable = suggested.filter((row) => wanted.has(row.targetId) && !kept.has(row.targetId));
+  for (const row of upgradable) {
+    await tx.update(artifactLinks).set({ linkType: "reference", label: wanted.get(row.targetId)!.label }).where(eq(artifactLinks.id, row.id));
+  }
+  const upgraded = new Set(upgradable.map((row) => row.targetId));
+  const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id) && !upgraded.has(id));
   if (fresh.length) {
     await tx.insert(artifactLinks).values(
       fresh.map(([targetId, w]) => ({
@@ -602,6 +618,7 @@ export async function listNoteOutlinks(auth: AuthContext, artifactId: string): P
         and(
           eq(artifactLinks.workspaceId, auth.workspaceId),
           eq(artifactLinks.artifactId, artifactId),
+          ne(artifactLinks.linkType, "semantic"),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           isNull(artifacts.archivedAt),
         ),
@@ -631,6 +648,7 @@ export async function listNoteBacklinks(auth: AuthContext, artifactId: string): 
           eq(artifactLinks.workspaceId, auth.workspaceId),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           eq(artifactLinks.targetId, artifactId),
+          ne(artifactLinks.linkType, "semantic"),
           isNull(artifacts.archivedAt),
         ),
       )

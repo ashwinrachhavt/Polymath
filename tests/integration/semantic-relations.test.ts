@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { artifacts, embeddings } from "@/domains/knowledge/schema";
+import { artifactLinks, artifacts, embeddings } from "@/domains/knowledge/schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -22,8 +22,8 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
-import { autosaveNoteDraft, commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
-import { relatedNotes } from "@/domains/knowledge/relations";
+import { autosaveNoteDraft, commitNoteSnapshot, createNote, listNoteBacklinks, listNoteOutlinks } from "@/domains/knowledge/notes";
+import { materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
 
 /** Deterministic 1536-wide vectors: basis directions per key. */
 function vec(dims: number[]): number[] {
@@ -125,5 +125,57 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
 
     expect(await relatedNotes(auth, a.id)).toEqual([]);
     expect(await relatedNotes(other, outsider.id)).toEqual([]);
+  });
+
+  it("an embed materializes semantic edges, and a new card surfaces on existing cards at once", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "Deep work", "deep body");
+    const b = await writeNote(auth, "Focus", "focus body");
+    const provider = fakeProvider({ "deep body": vec([2]), "focus body": vec([2]) });
+    await embedArtifact(auth, { artifactId: a.id, provider });
+    expect(await relatedNotes(auth, a.id)).toEqual([]);
+    await embedArtifact(auth, { artifactId: b.id, provider });
+    // b embedded after a: the edge is b -> a, yet a sees b immediately.
+    expect((await relatedNotes(auth, a.id)).map((r) => r.id)).toEqual([b.id]);
+    expect((await relatedNotes(auth, b.id)).map((r) => r.id)).toEqual([a.id]);
+    const edges = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
+    expect(edges).toHaveLength(1);
+    expect(edges[0].linkType).toBe("semantic");
+    // Re-embedding rewrites, never doubles; semantic edges stay out of outlinks/backlinks.
+    await embedArtifact(auth, { artifactId: b.id, provider });
+    expect(await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId))).toHaveLength(1);
+    expect(await listNoteOutlinks(auth, b.id)).toEqual([]);
+    expect(await listNoteBacklinks(auth, a.id)).toEqual([]);
+  });
+
+  it("confirming a suggestion promotes it to a durable related edge that survives re-embed", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "One", "one body");
+    const b = await writeNote(auth, "Two", "two body");
+    const provider = fakeProvider({ "one body": vec([4]), "two body": vec([4]) });
+    for (const n of [a, b]) await embedArtifact(auth, { artifactId: n.id, provider });
+    expect(await promoteSemanticLink(auth, { artifactId: a.id, targetId: b.id })).toBe(true);
+    const [edge] = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
+    expect(edge).toMatchObject({ artifactId: a.id, targetId: b.id, linkType: "related" });
+    expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).toEqual([b.id]);
+    await embedArtifact(auth, { artifactId: b.id, provider });
+    const after = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
+    expect(after).toHaveLength(1);
+    expect(after[0].linkType).toBe("related");
+    expect(await promoteSemanticLink(auth, { artifactId: a.id, targetId: b.id })).toBe(false);
+  });
+
+  it("materialization is idempotent, and a typed [[link]] upgrades a suggestion", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "Skip alpha", "skip a");
+    const b = await writeNote(auth, "Skip beta", "skip b");
+    const provider = fakeProvider({ "skip a": vec([6]), "skip b": vec([6]) });
+    for (const n of [a, b]) await embedArtifact(auth, { artifactId: n.id, provider });
+    expect(await materializeSemanticEdges(auth, b.id)).toBe(1);
+    expect(await materializeSemanticEdges(auth, b.id)).toBe(1);
+    await autosaveNoteDraft(auth, { artifactId: a.id, expectedVersion: 2, content: { type: "doc", content: [] }, plainText: "skip a\n\nSee [[Skip beta]]." });
+    const rows = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
+    expect(rows.filter((r) => r.linkType === "reference")).toHaveLength(1);
+    expect(await materializeSemanticEdges(auth, b.id)).toBe(0);
   });
 });
