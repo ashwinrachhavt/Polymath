@@ -1,7 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { artifacts } from "@/domains/knowledge/schema";
 import { documents } from "@/domains/knowledge/schema";
 import { learningItems } from "@/domains/learning/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
+  boolean,
   check,
   date,
   index,
@@ -542,8 +543,43 @@ export const sources = pgTable(
   ],
 );
 
-export const claims = pgTable(
-  "claims",
+/*
+ * A video's timed text, kept beside the document rather than inside its spans.
+ *
+ * Extraction spans are character offsets into the text (page, start, end), and
+ * chunking compares them to character positions. A video timestamp is seconds
+ * into the media, which is a different coordinate. Overloading one for the
+ * other makes every citation point at the wrong passage, so the cue table lives
+ * here and a citation deep-links to `?t=<seconds>` from it.
+ */
+export const youtubeTranscripts = pgTable(
+  "youtube_transcripts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    /** The canonical youtube.com/watch?v=<id> identity. */
+    videoId: text("video_id").notNull(),
+    language: text("language"),
+    /** [{ start, duration, text }], in seconds. */
+    cues: jsonb("cues").notNull().default([]),
+    /** True when the captions are auto-generated rather than authored. */
+    generated: boolean("generated").notNull().default(false),
+    /** The extraction row this transcript was filed with, so a re-fetch replaces it. */
+    extractionId: uuid("extraction_id").references((): AnyPgColumn => documentExtractions.id, {
+      onDelete: "set null",
+    }),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("youtube_transcripts_document_key").on(t.documentId),
+    index("youtube_transcripts_workspace_idx").on(t.workspaceId, t.videoId),
+  ],
+);
+
+export const claims = pgTable("claims",
   {
     id: primaryId(),
     workspaceId: tenantId(),

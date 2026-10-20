@@ -828,15 +828,12 @@ activate `src/domains/learning/`; put readiness/discovery in
 
 ### P1 — one PR is the wrong unit
 
-**Correction:** four sequential PRs:
-
-1. Migration: learning quiz columns, hashed dedupe key, deck/infographic kinds,
-   Studio kind widening. No UI. (In progress.)
-2. Learning: commands, queries, SM-2, quiz generator in
-   `src/integrations/quiz/`, canonical learning route.
-3. Deck + infographic: widened content contract, renderers, Studio surface.
-4. Sources discovery + YouTube behind a flag, after a one-day spike proving
-   the transport and URL normalization.
+**Correction proposed four sequential PRs; the owner overruled it
+(2026-10-19): one PR.** Everything lands on `ashwinr/notebooklm` → `main` as
+PR #168. The migration order still holds: `0214_artifact_kinds` then
+`0215_learning_quiz_columns`, because the second cannot reference the enum
+values added by the first in the same transaction. Revert isolation is lost;
+watch the migration ordering.
 
 ### P2 — additional verified gaps
 

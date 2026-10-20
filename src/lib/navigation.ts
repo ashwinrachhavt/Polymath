@@ -74,6 +74,13 @@ export const destinations: Destination[] = [
     group: "neuralflow",
   },
   {
+    href: "/alfred/sources",
+    label: "Sources",
+    purpose: "Find and bring in the material you will study.",
+    icon: Inbox,
+    group: "alfred",
+  },
+  {
     href: "/alfred/knowledge",
     label: "Library",
     purpose: "Write, retrieve, and connect.",
