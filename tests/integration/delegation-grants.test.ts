@@ -42,7 +42,7 @@ suite("delegation grants", () => {
     const seeded = await seedWorkspace(db, `dlg-svc-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const { principalId: svc } = await principals.registerAgentPrincipal(auth, { key: "nightly", kind: "service_principal", label: "nightly" });
-    const agent = await seedPrincipal(auth, "alfred-2");
+    const agent = await seedPrincipal(auth, "alfred_two");
     const scope = { operations: ["document.read"] };
     await expect(
       delegation.issueDelegationGrant(auth, { agentPrincipalId: svc, scope, expiresAt: new Date(Date.now() + 29 * DAY) }),
