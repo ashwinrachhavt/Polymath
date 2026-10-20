@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 
 /*
  * The controls under one run's thread. Live runs take a follow-up and can be
  * cancelled; finished runs can only be retried (which starts a new run). Every
  * action posts to the run's API route and then refreshes the server-rendered
- * thread, so the page never holds thread state of its own.
+ * thread, so the page never holds thread state of its own. The idempotency
+ * key makes a retry after a network timeout apply once.
  */
 export function RunControls({ runId, finished }: { runId: string; finished: boolean }) {
   const router = useRouter();
@@ -19,23 +21,18 @@ export function RunControls({ runId, finished }: { runId: string; finished: bool
   async function call(path: string, body?: unknown) {
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch(`/api/v1/runs/${runId}/${path}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `Request failed (${response.status}).`);
-      }
-      setMessage("");
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Request failed.");
-    } finally {
-      setPending(false);
+    const result = await requestJson(`/api/v1/runs/${runId}/${path}`, {
+      method: "POST",
+      body,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    setMessage("");
+    router.refresh();
   }
 
   if (finished) {

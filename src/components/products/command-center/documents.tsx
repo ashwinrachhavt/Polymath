@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import Link from "next/link";
 import { UploadDropzone } from "@/components/documents/upload-dropzone";
 import { Empty, Field, Panel, Screen, SearchField, Status } from "@/components/workspace/ui";
 import { useWorkspace } from "@/components/workspace/workspace-provider";

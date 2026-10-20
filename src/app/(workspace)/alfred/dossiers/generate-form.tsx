@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 
 /*
  * Studio Generate from the dossier screen: the brief becomes a run bound to
@@ -18,24 +19,18 @@ export function GenerateForm({ dossierId }: { dossierId: string }) {
     setPending(true);
     setError(null);
     setRunId(null);
-    try {
-      const response = await fetch(`/api/v1/dossiers/${dossierId}/generate`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brief }),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `Generate failed to start (${response.status}).`);
-      }
-      const { runId: started } = (await response.json()) as { runId: string };
-      setRunId(started);
-      setBrief("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Generate failed to start.");
-    } finally {
-      setPending(false);
+    const result = await requestJson<{ runId: string }>(`/api/v1/dossiers/${dossierId}/generate`, {
+      method: "POST",
+      body: { brief },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    setRunId(result.data.runId);
+    setBrief("");
   }
 
   return (

@@ -4,26 +4,36 @@
  */
 /**
  * True when running inside a page. Extension pages (popup, dashboard, side
- * panel) have chrome.extension; content scripts do not.
+ * panel) live on chrome-extension://; content scripts run on the page's own
+ * origin. chrome.extension is not a reliable signal in MV3.
  */
 function isContentScript() {
   return (
     typeof chrome !== "undefined" &&
     Boolean(chrome.runtime && chrome.runtime.id) &&
-    !chrome.extension
+    typeof location !== "undefined" &&
+    !location.protocol.startsWith("chrome-extension")
   );
 }
 
 /** Ask the service worker to perform the request; reply as a Response. */
 async function relayThroughWorker(url, options) {
-  const reply = await chrome.runtime.sendMessage({
-    type: "AXIOM_FETCH",
-    url,
-    method: options.method || "GET",
-    headers: options.headers || {},
-    body: options.body ?? null,
-    signalTimeoutMs: 15000,
-  });
+  let reply;
+  try {
+    reply = await chrome.runtime.sendMessage({
+      type: "AXIOM_FETCH",
+      url,
+      method: options.method || "GET",
+      headers: options.headers || {},
+      body: options.body ?? null,
+      signalTimeoutMs: 15000,
+    });
+  } catch {
+    // "Extension context invalidated" — the extension was reloaded or updated
+    // and this tab still runs the old content script. Chrome fixes it on the
+    // next page load.
+    throw new Error("The extension was just reloaded. Refresh this page and try again.");
+  }
   if (!reply || reply.ok !== true) {
     throw new Error(reply && reply.error ? `Polymath API: ${reply.error}` : "Polymath API: the companion worker did not answer.");
   }
@@ -117,6 +127,11 @@ const AlfredAPI = {
     const resp = isContentScript() ? await relayThroughWorker(url, merged) : await fetch(url, merged);
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
+      if (resp.status === 401 && bearer) {
+        throw new Error(
+          "Polymath rejected this companion token (401). Paste a fresh token from `pnpm companion:pair` into the extension settings, or clear the token field to save without one.",
+        );
+      }
       throw new Error(`Polymath API ${resp.status}: ${text}`);
     }
     const ct = resp.headers.get("content-type") || "";
@@ -164,17 +179,10 @@ const AlfredAPI = {
   /** Check that Polymath is reachable and this companion is paired. */
   async health() {
     try {
-      const base = await this.base();
-      const bearer = await this.token();
-      const resp = await fetch(`${base}/api/v1/captures`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-        },
-        signal: AbortSignal.timeout(3000),
-      });
-      return resp.ok;
+      // Same relay as _fetch: from a page, a direct fetch is subject to that
+      // page's CORS and would report offline on every third-party site.
+      const resp = await this._fetch("/api/v1/captures?filter=all");
+      return Boolean(resp);
     } catch {
       return false;
     }

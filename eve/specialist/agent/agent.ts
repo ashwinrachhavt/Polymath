@@ -12,7 +12,10 @@ import { createOpenAI } from "@ai-sdk/openai";
  * deployed bundle's module-scope env reads did not see Vercel's runtime env.
  */
 function specialistModel() {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY ?? "";
+  // Same blank-key guard as alfred: a set-but-empty OPENAI_API_KEY must not
+  // shadow a real OpenRouter key.
+  const apiKey =
+    [process.env.OPENAI_API_KEY, process.env.OPENROUTER_API_KEY].find((key) => key && key.length > 0) ?? "";
   const baseURL =
     process.env.OPENAI_BASE_URL ??
     (apiKey.startsWith("sk-or-") ? "https://openrouter.ai/api/v1" : "https://api.groq.com/openai/v1");
