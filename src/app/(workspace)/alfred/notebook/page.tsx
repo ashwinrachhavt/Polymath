@@ -65,7 +65,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
       actions={<NewNoteButton />}
     >
       <div className={`grid gap-4 ${kanban ? "lg:grid-cols-[minmax(360px,480px)_1fr]" : "lg:grid-cols-[300px_1fr]"}`}>
-        <Panel title="Notes" description={`${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}>
+        <Panel title="Notes" description={list.q && !kanban ? "Ranked by keyword and meaning" : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}>
           <div className="mb-3">
             <ListToolbar
               searchPlaceholder="Search notes"

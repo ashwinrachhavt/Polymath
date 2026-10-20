@@ -36,7 +36,7 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]): CardNode[] {
   for (const e of edges) { near.get(e.source)?.push(e.target); near.get(e.target)?.push(e.source); }
   const seen = new Set<string>();
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const cols = 3;
+  const cols = 5;
   const placed: CardNode[] = [];
   let slot = 0;
   for (const n of [...nodes].sort((a, b) => (near.get(b.id)?.length ?? 0) - (near.get(a.id)?.length ?? 0))) {
@@ -144,7 +144,7 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
           minZoom={0.2}
           selectionOnDrag
           panOnDrag={[1, 2]}

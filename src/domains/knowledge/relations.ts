@@ -219,7 +219,7 @@ export async function promoteSemanticLink(
 
 function firstLine(text: string | null): string | null {
   if (!text) return null;
-  const line = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
+  const line = text.replace(/\*\*/g, "").split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
   return line ? line.slice(0, 240) : null;
 }
 
