@@ -94,6 +94,36 @@ export function NewNoteButton() {
   );
 }
 
+
+/*
+ * Matuschak-style hover preview: the link row stays one scannable line, and
+ * hovering or keyboard-focusing it raises a card with the note's kind, the
+ * linking context and its opening text. Pure CSS (group-hover/focus), no
+ * client state and no extra fetch - the rows already carry excerpt/context.
+ */
+function LinkRow({ link, label }: { link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }; label: string }) {
+  return (
+    <li className="group relative rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40 focus-within:border-border focus-within:bg-muted/40">
+      <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
+        {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+        {link.title}
+      </Link>
+      <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">{link.linkType}</span>
+      {(link.context || link.excerpt) && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.context ? `…${link.context}…` : link.excerpt}</p>}
+      <div
+        role="tooltip"
+        aria-label={`${label} ${link.title}`}
+        className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-lg border border-border bg-popover p-3 shadow-md group-hover:block group-focus-within:block"
+      >
+        <p className="text-[13px] font-medium">{link.title}</p>
+        {link.context && <p className="mt-1 line-clamp-3 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">…{link.context}…</p>}
+        {link.excerpt && <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{link.excerpt}</p>}
+        {!link.context && !link.excerpt && <p className="mt-1 text-xs text-muted-foreground">No preview text yet.</p>}
+      </div>
+    </li>
+  );
+}
+
 export function NoteEditor({
   noteId,
   initialTitle,
@@ -450,14 +480,7 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">References</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {outlinks.map((link) => (
-                  <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
-                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
-                      {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
-                      {link.title}
-                    </Link>
-                    {link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">…{link.context}…</p>}
-                    {link.excerpt && !link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
-                  </li>
+                  <LinkRow key={link.id} link={link} label="Reference" />
                 ))}
                 {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
               </ul>
@@ -466,14 +489,7 @@ export function NoteEditor({
               <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {backlinks.map((link) => (
-                  <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
-                    <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
-                      {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
-                      {link.title}
-                    </Link>
-                    {link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">…{link.context}…</p>}
-                    {link.excerpt && !link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
-                  </li>
+                  <LinkRow key={link.id} link={link} label="Linked from" />
                 ))}
                 {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
               </ul>
