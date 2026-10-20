@@ -3,7 +3,6 @@
 import { Suspense, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
-import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
 import { PreviewBanner } from "@/components/shell/preview-banner";
@@ -37,7 +36,6 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
       <div data-app={app?.slug} className="flex min-h-dvh flex-1">
-        <SideNav />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar clerkConfigured={clerkConfigured} />
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
