@@ -1,8 +1,12 @@
-# engineering.md — How code is written here
+# coding.md — How code is written here
 
 **Purpose:** the rules a change must satisfy. Behaviour is owned by
-[axiom-nextjs-neon-plan.md](../docs/axiom-nextjs-neon-plan.md); this file owns
-how the code is shaped on the way there.
+[axiom-product-spec.md](../docs/axiom-product-spec.md); this file owns how the
+code is shaped on the way there.
+
+**Process is elsewhere.** How work flows — roles, gates, tickets, escalation — is
+[agent.md](agent.md). The system map is [architecture.md](architecture.md).
+Commands and gotchas are [reference.md](reference.md).
 
 Bias: **DHH's Rails** (fat models, thin controllers, no service layer for its own
 sake, deleting code is a feature, the framework does the boring part) plus
@@ -14,9 +18,8 @@ deletable code that a stranger can read at 3am.
 
 Stop at the first rung that holds. Two rungs work — take the earlier one and move on.
 
-1. Does this need to exist? Speculative need = don't build it; say so in one line.
-2. Does it already exist in this repo? Reuse the helper, type, or pattern. Re-deriving
-   what lives three files over is the most common waste.
+1. Does this need to exist? Speculative need means do not build it; say so in one line.
+2. Does it already exist in this repo? Reuse the helper, type, or pattern.
 3. Does the platform do it? Postgres constraints, `timestamptz`, `input type="date"`,
    CSS, Server Actions, `revalidateTag`, RSC streaming.
 4. Does an installed dependency do it? Use it. Adding a package for a few lines is a
@@ -34,7 +37,7 @@ src/app/         routes, layouts, RSC pages, server actions, route handlers
 src/components/  presentation; no data access
 src/domains/     one folder per domain: schema, commands, queries, policies, events
 src/integrations/ composio, firecrawl, object storage, model providers
-src/workflows/   durable workflow definitions, steps, signals
+src/workflows/   durable workflow definitions (not yet created; see architecture.md)
 src/lib/         auth, errors, idempotency, telemetry, validation
 ```
 
@@ -48,6 +51,21 @@ src/lib/         auth, errors, idempotency, telemetry, validation
 - No interface with one implementation, no factory for one product, no config for a
   value that never changes. Type the seam when a second implementation actually
   arrives.
+
+## Naming
+
+The data model uses business domain language, plural nouns, no prefixes, no verbs.
+
+- Tables and resources: `sources`, `notes`, `claims`, `cards`, `links`, `tasks`,
+  `sessions`, `areas`, `runs`, `workspaces`, `users`, `memberships`.
+- Foreign keys: `<singular>_id`.
+- A junction table is named for the relationship it represents, not for the two
+  things it joins.
+- REST paths follow the names: `POST /v1/sources`, `GET /v1/notes?area=`.
+- No `tbl_` prefixes, no `doThing` resource names, no abbreviations that need a
+  glossary.
+
+If a name needs explaining in two sentences, it is the wrong name.
 
 ## TypeScript and Next.js
 
@@ -91,17 +109,19 @@ src/lib/         auth, errors, idempotency, telemetry, validation
 ## Agents
 
 - All agent execution goes through the `AgentEngine` contract
-  (`start` / `signal` / `cancel` / `resume`). Domain code never imports a model SDK,
-  Eve, or a workflow platform directly.
+  (`start` / `signal` / `cancel` / `resume`). Domain code never imports a model SDK
+  directly.
 - A run captures its policy snapshot at start — profile, model, tools, budget — and
-  cannot escape it. Tool availability is bounded by profile, feature, account,
-  policy, and run; the full catalog is never handed to a model.
+  cannot escape it.
+- **Delegation narrows authority.** A sub-agent's tool set is verified as a subset
+  of its delegator's. This is a test, not a convention.
+- Tool availability is bounded by profile, feature, account, policy, and run; the
+  full catalog is never handed to a model.
 - Runs are durable. Retries create new runs; terminal states are immutable; tool
   results are append-only. Reload reconstructs the timeline from events.
 - Persist visible summaries, decisions, evidence, redacted tool arguments, and
   status. Never persist hidden chain-of-thought.
-- Spend is reserved before paid work and settled after. No run spends past its
-  captured budget.
+- Spend is reserved before paid work and settled after.
 - External writes become action proposals — preview, risk class, dedupe key, expiry,
   expected effect — never a direct call from a tool.
 
@@ -128,8 +148,8 @@ src/lib/         auth, errors, idempotency, telemetry, validation
   mock works.
 - Provider contract tests use sanitized fixtures — never live calls in CI, never real
   contacts, mail, resumes, tokens, or screenshots of private data.
-- Playwright covers journeys, not pages: capture → task → briefing → focus →
-  completion; note → search → cite; proposal → approve → confirm.
+- Playwright covers journeys, not pages: capture → note → focus → stone; note →
+  search → cite; proposal → approve → confirm.
 - Don't assert on snapshots of markup. They pass while the UI is broken and fail when
   it is merely changed.
 - Every fixed bug gains the one check that would have caught it.
@@ -138,8 +158,8 @@ src/lib/         auth, errors, idempotency, telemetry, validation
 
 Budgets are in the product spec and are treated as tests, not aspirations:
 initial route JS under 180 KB gzip, LCP under 2.5 s p75, INP under 200 ms p75,
-one composition boundary for Briefing, virtualize above 200 rows, paginate every
-server collection.
+one composition boundary for the home surface, virtualize above 200 rows, paginate
+every server collection.
 
 Query hygiene: no N+1 (select what the view needs in one round trip), index every
 column a hot query filters on, keep transactions short, and log an index when you add
@@ -153,7 +173,8 @@ a filter.
 - Mark a deliberate simplification with its ceiling and the upgrade path when the
   ceiling is real (e.g. `// global lock; per-account locks when throughput matters`).
 - A change that alters behaviour updates the doc that owns that behaviour:
-  `docs/` for product and architecture, `agents/` for stance.
+  `docs/` for product and architecture, `agents/` for stance, Notion for the
+  canonical product copy.
 
 ## Anti-patterns
 
@@ -171,3 +192,7 @@ Beyond the plan's test gates: `make check` (lint, typecheck, build, tests) passe
 no new dependency without a reason in the commit message; the diff is the smallest
 one that is correct; deleted lines are counted as progress; and a reviewer who has
 never seen the feature can follow it top to bottom in the files the change touched.
+
+[agent.md](agent.md#definition-of-done) adds the evidence requirement: the
+acceptance check named in the ticket has been run, and its output is in the PR
+description. A description of what should happen is not evidence of what did.
