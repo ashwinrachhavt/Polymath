@@ -44,16 +44,15 @@ export type ToolOperationSpec = {
  * allowedTools does not put it here - this list is the reviewable boundary,
  * and changing it is a code review, not a config edit.
  *
- * Known gap, recorded for ADR 0006: catalog v1 has no task/knowledge-read
- * granularity, so "tasks.read" maps to no capability and denies until the
- * catalog grows the honest entry. Shipping that mapping anyway (as
- * document.read) would launder one capability into another.
+ * Catalog v2 (ADR 0006 Q2) added task.read and knowledge.read, so tasks.read
+ * now maps honestly instead of being laundered through document.read. The
+ * registry stays in code on purpose (ADR 0006 Q4, owner-approved): adding an
+ * operation is a code review, never runtime data an owner edits.
  */
 export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "tasks.read": {
-    capability: null,
+    capability: "task.read",
     effectClass: "read",
-    note: "Catalog v1 has no task-read capability; denies until the catalog grows one.",
   },
   "documents.search": { capability: "document.read", effectClass: "read" },
   "web.search": { capability: "integration.use", effectClass: "read", note: "Egress: query terms leave the workspace." },

@@ -12,9 +12,13 @@ import type { AuthRole } from "./resolve";
  * The catalog is versioned: a stored role revision pins the catalog version
  * it was defined against, so tightening the catalog later is a visible
  * migration, not a silent change in what a role means.
+ *
+ * v2 (ADR 0006 Q2, owner-approved): adds task.read and knowledge.read so the
+ * agent tool gateway can authorize reads at honest granularity instead of
+ * laundering them through document.read. Additive: no v1 entry changed.
  */
 
-export const CAPABILITY_CATALOG_VERSION = 1 as const;
+export const CAPABILITY_CATALOG_VERSION = 2 as const;
 
 export const CAPABILITIES = [
   // Person records (contacts, companies, party data).
@@ -29,6 +33,9 @@ export const CAPABILITIES = [
   "document.update",
   "document.delete",
   "document.export",
+  // Tasks and the knowledge base, read at their own granularity (v2).
+  "task.read",
+  "knowledge.read",
   // Member administration.
   "member.read",
   "member.invite",
@@ -76,7 +83,7 @@ export function validateRoleCapabilities(input: string[]): { ok: true; capabilit
   return { ok: true, capabilities: unique as Capability[] };
 }
 
-const READ_ONLY: Capability[] = ["person.read", "document.read", "member.read", "role.read", "integration.use", "audit.read"];
+const READ_ONLY: Capability[] = ["person.read", "document.read", "task.read", "knowledge.read", "member.read", "role.read", "integration.use", "audit.read"];
 
 const MEMBER_WORK: Capability[] = [
   ...READ_ONLY,

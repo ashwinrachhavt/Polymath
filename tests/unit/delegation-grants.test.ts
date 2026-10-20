@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalGrantContent, MAX_DELEGATION_DEPTH, MAX_GRANT_LIFETIME_MS, NEVER_DELEGABLE } from "@/domains/agents/delegation";
+import { canonicalGrantContent, maxGrantLifetimeMs, MAX_SERVICE_GRANT_LIFETIME_MS, MAX_DELEGATION_DEPTH, MAX_GRANT_LIFETIME_MS, NEVER_DELEGABLE } from "@/domains/agents/delegation";
 
 /*
  * GA02 hash discipline, DB-free: the content hash is the tamper tripwire the
@@ -40,6 +40,9 @@ describe("grant bounds", () => {
   });
   it("caps lifetime and depth", () => {
     expect(MAX_GRANT_LIFETIME_MS).toBe(7 * 24 * 3600 * 1000);
+    expect(MAX_SERVICE_GRANT_LIFETIME_MS).toBe(30 * 24 * 3600 * 1000);
+    expect(maxGrantLifetimeMs("agent")).toBe(MAX_GRANT_LIFETIME_MS);
+    expect(maxGrantLifetimeMs("service_principal")).toBe(MAX_SERVICE_GRANT_LIFETIME_MS);
     expect(MAX_DELEGATION_DEPTH).toBe(3);
   });
 });
