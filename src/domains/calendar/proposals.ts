@@ -49,7 +49,7 @@ function describe(change: CalendarChange): { title: string; effect: string } {
 
 /** Agent entry point. `dedupeKey` is the agent's own intent key; replays resolve the same proposal. */
 export async function proposeCalendarChange(
-  auth: AuthContext,
+  auth: Pick<AuthContext, "workspaceId"> & { userId?: string | null },
   input: { change: CalendarChange; dedupeKey: string; runId?: string | null },
 ): Promise<{ proposalId: string; deduplicated: boolean }> {
   const { title, effect } = describe(input.change);
@@ -70,7 +70,7 @@ export async function proposeCalendarChange(
         revisionNumber: 1,
         payload: input.change as Record<string, unknown>,
         preview: { title, effect },
-        createdBy: auth.userId,
+        createdBy: auth.userId ?? null,
       });
     }
     return result;
