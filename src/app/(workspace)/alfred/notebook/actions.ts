@@ -9,6 +9,7 @@ import {
   autosaveNoteDraft,
   commitNoteSnapshot,
   createNote,
+  listNotes,
   renameNote,
   setNoteTags,
 } from "@/domains/knowledge/notes";
@@ -17,6 +18,7 @@ import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
+import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -234,4 +236,22 @@ export async function applyNoteAIResultAction(input: z.input<typeof aiApplyInput
   if (!parsed.success) return { ok: false, error: "That apply request is not valid." };
   const auth = await authorize();
   return guarded(async () => applyNoteAIResult(auth, parsed.data));
+}
+
+const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword", "hybrid"]), excludeId: z.string().uuid().optional() });
+
+/**
+ * Cards the `[[` picker can link to, from the same retrieval layer as search.
+ * An empty query lists recent cards so the menu is useful the moment it opens.
+ * A read: membership is enough, and nothing is revalidated.
+ */
+export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string }[]> {
+  const parsed = findInput.safeParse(input);
+  if (!parsed.success) return [];
+  const auth = await getAuthContext();
+  const query = parsed.data.query.trim();
+  const rows = query
+    ? (await searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 })).hits
+    : await listNotes(auth, 9);
+  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
 }
