@@ -70,6 +70,14 @@ describe("requestJson status mapping", () => {
     expect(result.failure.code).toBeUndefined();
   });
 
+  it("a whitespace-only code is treated as absent, like title", async () => {
+    fetchMock.mockResolvedValue(problem(409, { code: "   ", title: "Conflict." }));
+    const result = await requestJson("/api/v1/notes");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBeUndefined();
+  });
+
   it("an HTML error page never leaks into the title", async () => {
     fetchMock.mockResolvedValue(
       new Response("<html><body>stack trace at secret.js:1</body></html>", {
@@ -141,6 +149,33 @@ describe("requestJson transport failures", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.kind).toBe("aborted");
+  });
+
+  it("an abort while the body is draining is aborted, not malformed", async () => {
+    // Headers already arrived; the signal fires during response.text().
+    const abort = new DOMException("Aborted", "AbortError");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.reject(abort),
+    } as unknown as Response);
+    const result = await requestJson("/api/v1/notes");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.kind).toBe("aborted");
+    expect(result.failure.title).toMatch(/cancelled/i);
+  });
+
+  it("a body read failure that is not an abort stays malformed", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.reject(new TypeError("terminated")),
+    } as unknown as Response);
+    const result = await requestJson("/api/v1/notes");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.kind).toBe("malformed");
   });
 
   it("a TypeError from fetch is network", async () => {

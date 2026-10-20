@@ -63,21 +63,28 @@ function isAbortError(error: unknown): boolean {
 /*
  * Read the body once, as text, so an empty body is distinguishable from a
  * malformed one. The parsed value is untrusted; callers narrow it.
+ *
+ * A signal can also fire after the headers arrive, while the body is still
+ * draining; that rejects text() with an AbortError. It is a cancellation, not
+ * an unreadable response, and must not be reported as `malformed`.
  */
-async function readBody(
-  response: Response,
-): Promise<{ parsed: true; value: unknown } | { parsed: false }> {
+type BodyRead =
+  | { status: "ok"; value: unknown }
+  | { status: "malformed" }
+  | { status: "aborted" };
+
+async function readBody(response: Response): Promise<BodyRead> {
   let text: string;
   try {
     text = await response.text();
-  } catch {
-    return { parsed: false };
+  } catch (error) {
+    return { status: isAbortError(error) ? "aborted" : "malformed" };
   }
-  if (text.trim() === "") return { parsed: false };
+  if (text.trim() === "") return { status: "malformed" };
   try {
-    return { parsed: true, value: JSON.parse(text) as unknown };
+    return { status: "ok", value: JSON.parse(text) as unknown };
   } catch {
-    return { parsed: false };
+    return { status: "malformed" };
   }
 }
 
@@ -108,25 +115,33 @@ export async function requestJson<T>(
   }
   if (response.ok) {
     const body = await readBody(response);
+    if (body.status === "aborted") {
+      return { ok: false, failure: { kind: "aborted", title: KIND_COPY.aborted } };
+    }
     // Every caller expects a JSON object of its declared type. An empty or
     // unparseable success body (a proxy page, a 204 from an endpoint that
     // should have returned a record) is not `server`: the server answered,
     // the response could not be read.
-    if (!body.parsed || body.value === null) {
+    if (body.status === "malformed" || body.value === null) {
       return { ok: false, failure: { kind: "malformed", title: KIND_COPY.malformed } };
     }
     return { ok: true, data: body.value as T };
   }
   const body = await readBody(response);
+  if (body.status === "aborted") {
+    return { ok: false, failure: { kind: "aborted", title: KIND_COPY.aborted } };
+  }
   const problem =
-    body.parsed && typeof body.value === "object" && body.value !== null
+    body.status === "ok" && typeof body.value === "object" && body.value !== null
       ? (body.value as { title?: unknown; code?: unknown })
       : null;
   const kind = STATUS_KIND[response.status] ?? "server";
   const title =
     typeof problem?.title === "string" && problem.title.trim() !== "" ? problem.title : null;
   const code =
-    typeof problem?.code === "string" && problem.code !== "" ? problem.code : undefined;
+    typeof problem?.code === "string" && problem.code.trim() !== ""
+      ? problem.code
+      : undefined;
   const failure: RequestFailure = { kind, title: copyFor(kind, title) };
   if (code !== undefined) failure.code = code;
   return { ok: false, failure };
