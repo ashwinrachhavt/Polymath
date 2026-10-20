@@ -57,7 +57,7 @@ async function nearestNeighbors(
       and e.owner_id <> ${artifactId}
       and e.model = m.model
       and a.archived_at is null
-      and a.kind in ('note', 'zettel')
+      and a.kind in ('note', 'zettel', 'document', 'memo', 'report', 'transcript')
     group by e.owner_id
     having min(e.embedding <=> m.embedding) <= ${input.maxDistance}
     order by distance asc
@@ -163,7 +163,7 @@ export async function relatedNotes(
     join artifacts a on a.id = s.other_id
     where a.workspace_id = ${auth.workspaceId}
       and a.archived_at is null
-      and a.kind in ('note', 'zettel')
+      and a.kind in ('note', 'zettel', 'document', 'memo', 'report', 'transcript')
     order by s.score desc
     limit ${limit}
   `);
@@ -239,7 +239,7 @@ export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNo
            (select v.plain_text from artifact_versions v where v.id = a.current_version_id) as excerpt
     from artifacts a
     where a.workspace_id = ${auth.workspaceId}
-      and a.kind in ('note', 'zettel')
+      and a.kind in ('note', 'zettel', 'document', 'memo', 'report', 'transcript')
       and a.archived_at is null
     order by a.updated_at desc
     limit ${GRAPH_NODE_LIMIT}
@@ -326,21 +326,8 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
  * removes a link; none of it touches either note.
  * ------------------------------------------------------------------------- */
 
-export const RELATION_TYPES = ["related", "explains", "supports", "contradicts", "applies", "extends", "contrasts", "source"] as const;
-export type RelationType = (typeof RELATION_TYPES)[number];
-
-export const RELATION_LABELS: Record<string, string> = {
-  related: "Related",
-  explains: "Explains",
-  supports: "Supports",
-  contradicts: "Challenges",
-  applies: "Applies to",
-  extends: "Extends",
-  contrasts: "Contrasts with",
-  source: "Derived from",
-  reference: "Linked",
-  semantic: "Suggested",
-};
+export { RELATION_TYPES, RELATION_LABELS, type RelationType } from "./relation-vocabulary";
+import type { RelationType } from "./relation-vocabulary";
 
 export class LinkEditError extends Error {
   constructor(message: string) {

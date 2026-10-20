@@ -57,6 +57,9 @@ const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
 /** The artifact kinds a wiki link may resolve to (one graph over both). */
 export const LINKABLE_KINDS = ["note", "zettel"] as const;
 
+/** Kinds a note command may create: the two linkable kinds, and a transcript (a conversation projected into the graph). */
+export type NoteKind = (typeof LINKABLE_KINDS)[number] | "transcript";
+
 export function extractWikiLinkTitles(markdown: string): string[] {
   const titles = new Set<string>();
   for (const match of markdown.matchAll(WIKI_LINK)) {
@@ -167,7 +170,7 @@ async function claimVersion(tx: TxDrizzle, auth: AuthContext, artifactId: string
 export async function createNoteInTx(
   tx: TxDrizzle,
   auth: AuthContext,
-  input: { title: string; content?: NoteContent; plainText?: string; kind?: (typeof LINKABLE_KINDS)[number] },
+  input: { title: string; content?: NoteContent; plainText?: string; kind?: NoteKind },
 ): Promise<{ id: string; versionId: string; version: number }> {
   const [artifact] = await tx
     .insert(artifacts)
@@ -198,7 +201,7 @@ export async function createNoteInTx(
 
 export async function createNote(
   auth: AuthContext,
-  input: Keyed & { title: string; content?: NoteContent; plainText?: string; kind?: (typeof LINKABLE_KINDS)[number] },
+  input: Keyed & { title: string; content?: NoteContent; plainText?: string; kind?: NoteKind },
 ): Promise<{ id: string; versionId: string; version: number }> {
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () => createNoteInTx(tx, auth, input));

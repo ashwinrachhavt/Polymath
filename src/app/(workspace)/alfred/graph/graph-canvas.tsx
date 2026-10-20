@@ -1,5 +1,6 @@
 "use client";
 
+import { RELATION_EDGE_LABELS } from "@/domains/knowledge/relation-vocabulary";
 import "@xyflow/react/dist/style.css";
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, useEdgesState, useNodesState, type Connection, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import { useRouter } from "next/navigation";
@@ -63,11 +64,11 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]): CardNode[] {
   return placed;
 }
 
-const RELATION_NAME: Record<string, string> = { related: "related", explains: "explains", supports: "supports", contradicts: "challenges", applies: "applies to", extends: "extends", contrasts: "contrasts with", source: "derived from" };
+
 
 function toEdge(e: GraphEdge): Edge {
   const suggested = e.linkType === "semantic";
-  const typed = RELATION_NAME[e.linkType];
+  const typed = RELATION_EDGE_LABELS[e.linkType];
   return {
     id: e.id,
     source: e.source,

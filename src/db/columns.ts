@@ -101,6 +101,9 @@ export const artifactLinkTypes = [
   "extends",
   "contrasts",
   "dismissed",
+  "instance_of",
+  "part_of",
+  "causes",
 ] as const;
 
 export const artifactLinkType = () => text("link_type").notNull().default("reference");

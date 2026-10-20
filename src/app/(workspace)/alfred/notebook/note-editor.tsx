@@ -1,5 +1,6 @@
 "use client";
 
+import { RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relation-vocabulary";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -101,7 +102,7 @@ export function NewNoteButton() {
  * linking context and its opening text. Pure CSS (group-hover/focus), no
  * client state and no extra fetch - the rows already carry excerpt/context.
  */
-const RELATION_OPTIONS: [string, string][] = [["related", "Related"], ["explains", "Explains"], ["supports", "Supports"], ["contradicts", "Challenges"], ["applies", "Applies to"], ["extends", "Extends"], ["contrasts", "Contrasts with"], ["source", "Derived from"]];
+const RELATION_OPTIONS: [string, string][] = RELATION_TYPES.map((t) => [t, RELATION_LABELS[t] ?? t]);
 const RELATION_NAME: Record<string, string> = { ...Object.fromEntries(RELATION_OPTIONS), reference: "Linked" };
 
 /* Name what a link means and why, or remove it. Similarity is not a relationship. */
