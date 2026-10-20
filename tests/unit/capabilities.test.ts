@@ -10,7 +10,7 @@ import { CAPABILITIES, CAPABILITY_CATALOG_VERSION, FIXED_ROLE_CAPABILITIES, vali
 
 describe("capability catalog", () => {
   it("has a version and unique entries", () => {
-    expect(CAPABILITY_CATALOG_VERSION).toBe(1);
+    expect(CAPABILITY_CATALOG_VERSION).toBe(2);
     expect(new Set(CAPABILITIES).size).toBe(CAPABILITIES.length);
   });
 
@@ -20,6 +20,8 @@ describe("capability catalog", () => {
       expect(joined).toContain(family);
     }
     // Approval is deliberately separate from preparation and execution.
+    expect(CAPABILITIES).toContain("task.read");
+    expect(CAPABILITIES).toContain("knowledge.read");
     expect(CAPABILITIES).toContain("action.approve");
     expect(CAPABILITIES).toContain("action.prepare");
     expect(CAPABILITIES).toContain("action.execute");

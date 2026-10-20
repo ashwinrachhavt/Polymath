@@ -41,15 +41,21 @@ describe("authorizeToolInvocation", () => {
     ).toEqual({ allowed: true, requiresApproval: true });
   });
 
-  it("denies by default: unknown operations and the recorded catalog gap", () => {
+  it("denies by default: unknown operations", () => {
     expect(authorizeToolInvocation(grant(), req({ operation: "gmail.delete_all" }))).toEqual({
       allowed: false,
       reasons: ["unknown_operation"],
     });
-    // tasks.read has no honest catalog-v1 capability; it denies until the catalog grows one.
+  });
+
+  it("catalog v2: tasks.read maps to task.read and needs that grant", () => {
     expect(authorizeToolInvocation(grant(), req({ operation: "tasks.read" }))).toEqual({
       allowed: false,
-      reasons: ["no_capability_mapping"],
+      reasons: ["operation_not_granted"],
+    });
+    expect(authorizeToolInvocation(grant({ allowedOperations: ["task.read"] }), req({ operation: "tasks.read" }))).toEqual({
+      allowed: true,
+      requiresApproval: false,
     });
   });
 

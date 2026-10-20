@@ -38,6 +38,23 @@ async function seedPrincipal(auth: { userId: string; workspaceId: string; role: 
 }
 
 suite("delegation grants", () => {
+  it("service principals may hold grants up to 30 days; agents stay at 7", async () => {
+    const seeded = await seedWorkspace(db, `dlg-svc-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const { principalId: svc } = await principals.registerAgentPrincipal(auth, { key: "nightly", kind: "service_principal", label: "nightly" });
+    const agent = await seedPrincipal(auth, "alfred_two");
+    const scope = { operations: ["document.read"] };
+    await expect(
+      delegation.issueDelegationGrant(auth, { agentPrincipalId: svc, scope, expiresAt: new Date(Date.now() + 29 * DAY) }),
+    ).resolves.toMatchObject({ replayed: false });
+    await expect(
+      delegation.issueDelegationGrant(auth, { agentPrincipalId: svc, scope, expiresAt: new Date(Date.now() + 31 * DAY) }),
+    ).rejects.toMatchObject({ code: "grant_input" });
+    await expect(
+      delegation.issueDelegationGrant(auth, { agentPrincipalId: agent, scope, expiresAt: new Date(Date.now() + 8 * DAY) }),
+    ).rejects.toMatchObject({ code: "grant_input" });
+  });
+
   it("issue, list, revoke one-way - with receipt replay and a pinned content hash", async () => {
     const seeded = await seedWorkspace(db, `dlg-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);

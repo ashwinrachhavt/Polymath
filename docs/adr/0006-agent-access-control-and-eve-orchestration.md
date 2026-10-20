@@ -1,6 +1,6 @@
 # ADR 0006: Agent access control foundation and Eve orchestration
 
-**Status:** PROPOSAL — the foundation half is built and merged (recorded here
+**Status:** PROPOSAL (owner questions 1-5 answered 2026-10-19; adapter work remains) — the foundation half is built and merged (recorded here
 as as-built); everything under "Eve-dependent remainder" is a proposal
 awaiting the owner decisions listed at the end.
 **Date:** 2026-10-19
@@ -139,16 +139,14 @@ Design consequences (proposal, to be built against the adapter boundary):
 1. **ANSWERED 2026-10-19** (see "Owner decision: Eve runtime" above; follow-ups listed there). Was: which runtime does Eve run in? (ASH-115's unanswered half.) The
    adapter boundary above is runtime-agnostic, but GA06/GA08/GA09 need the
    concrete dispatch/callback/resume semantics to bind against.
-2. **Catalog v2:** the gateway records that `tasks.read` has no honest
-   catalog-v1 capability and denies. Grow the catalog (task/knowledge-read
-   granularity) before gateway adoption, or accept the denial scope?
-3. **Max grant lifetime** is 7 days at issuance. Is that the right ceiling
-   for scheduled automation, or should service principals get a distinct
-   (longer or shorter) bound?
-4. **Registry growth:** adding a tool operation to
-   `TOOL_OPERATION_REGISTRY` is a code review by design. Confirm that
-   posture, or should the registry become data an owner edits at runtime?
-5. **Approval UX (GA06):** who may approve which effect classes — owner
-   only, or admin for some classes? The catalog already separates
-   `action.approve` at the admin tier; the approval binding needs the
-   owner's call before GA06 implementation.
+2. **DECIDED 2026-10-19 (option a): catalog v2.** Grew the catalog with
+   `task.read` and `knowledge.read`; `tasks.read` now maps to `task.read`.
+   Catalog version is 2, additive.
+3. **DECIDED 2026-10-19 (option a): grant lifetime.** Agent grants stay at
+   7 days. Service-principal grants may live up to 30 days; renewal is a
+   new grant issued by a human admin, which is the owner re-confirmation.
+4. **DECIDED 2026-10-19 (option a): registry stays in code.** Adding a tool
+   operation to `TOOL_OPERATION_REGISTRY` is a code review, never runtime data.
+5. **DECIDED 2026-10-19 (option a): approvals.** The owner approves external
+   writes and sensitive writes; an admin may approve internal preparation
+   (`prepare`). Members can still reject. Enforced in `decideProposal`.

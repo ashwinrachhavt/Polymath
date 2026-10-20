@@ -66,8 +66,19 @@ export const NEVER_DELEGABLE: readonly Capability[] = [
   "ownership.transfer",
 ];
 
-/** Bounded means bounded: the longest a grant may live. */
+/** Bounded means bounded: the longest a grant to an agent may live. */
 export const MAX_GRANT_LIFETIME_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * ADR 0006 Q3 (owner-approved): scheduled automation runs as a service
+ * principal and may hold longer grants, but never past 30 days. Renewal is a
+ * new grant issued by a human admin, which is the owner re-confirmation.
+ */
+export const MAX_SERVICE_GRANT_LIFETIME_MS = 30 * 24 * 3600 * 1000;
+
+export function maxGrantLifetimeMs(kind: "agent" | "service_principal") {
+  return kind === "service_principal" ? MAX_SERVICE_GRANT_LIFETIME_MS : MAX_GRANT_LIFETIME_MS;
+}
 
 export const MAX_DELEGATION_DEPTH = 3;
 
@@ -210,12 +221,13 @@ export async function issueDelegationGrant(
       if (input.expiresAt.getTime() <= now) {
         throw new DelegationGrantError("grant_input", "A grant's expiry must be in the future.");
       }
-      if (input.expiresAt.getTime() > now + MAX_GRANT_LIFETIME_MS) {
-        throw new DelegationGrantError("grant_input", `A grant may live at most ${MAX_GRANT_LIFETIME_MS / (24 * 3600 * 1000)} days; renewals are new grants.`);
-      }
       const principal = await getActiveAgentPrincipal(tx, auth.workspaceId, input.agentPrincipalId);
       if (!principal) {
         throw new DelegationGrantError("principal_not_found", "No active principal with that id in this workspace.");
+      }
+      const maxLifetime = maxGrantLifetimeMs(principal.kind);
+      if (input.expiresAt.getTime() > now + maxLifetime) {
+        throw new DelegationGrantError("grant_input", `A grant to ${principal.kind === "service_principal" ? "a service principal" : "an agent"} may live at most ${maxLifetime / (24 * 3600 * 1000)} days; renewals are new grants.`);
       }
       // The delegator is the caller's own active membership, resolved
       // server-side - never a client-supplied id.

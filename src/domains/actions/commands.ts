@@ -6,6 +6,7 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
+import { requireRole } from "@/lib/auth/guards";
 import { actionReviews, actionRevisions } from "./schema";
 
 
@@ -142,6 +143,19 @@ export async function decideProposal(
         const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
         if (!latest) throw new ProposalNotFoundError();
         if (latest.id !== input.revisionId) throw new StaleRevisionError();
+
+        // ADR 0006 Q5 (owner-approved): the owner approves anything that
+        // leaves the workspace or touches sensitive data; an admin may
+        // approve internal preparation. Rejecting stays open to members.
+        if (input.decision === "approved") {
+          const [risk] = await tx
+            .select({ riskClass: actionProposals.riskClass })
+            .from(actionProposals)
+            .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+            .limit(1);
+          if (!risk) throw new ProposalNotFoundError();
+          requireRole(auth, risk.riskClass === "prepare" ? "admin" : "owner");
+        }
 
         const [row] = await tx
           .update(actionProposals)

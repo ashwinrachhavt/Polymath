@@ -18,7 +18,7 @@ describe("diffRoleCapabilities", () => {
 
 describe("previewRoleChange", () => {
   it("compares a fixed role against a proposed set, in product language", () => {
-    const preview = previewRoleChange({ role: "viewer" }, ["person.read", "document.read", "member.read", "role.read", "integration.use", "audit.read", "billing.manage"]);
+    const preview = previewRoleChange({ role: "viewer" }, ["person.read", "document.read", "task.read", "knowledge.read", "member.read", "role.read", "integration.use", "audit.read", "billing.manage"]);
     expect(preview.granted).toEqual(["billing.manage"]);
     expect(preview.revoked).toEqual([]);
     expect(preview.surfacesOpened).toEqual(["Billing administration"]);
