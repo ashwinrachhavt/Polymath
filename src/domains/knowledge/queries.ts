@@ -208,6 +208,8 @@ export async function getDocumentObligations(auth: AuthContext, documentId: stri
 export type DocumentInboxRow = {
   id: string;
   title: string;
+  /** Optimistic-concurrency counter; the inbox's discard guard. */
+  version: number;
   filename: string | null;
   mimeType: string | null;
   createdAt: Date;
@@ -276,6 +278,7 @@ export async function getDocumentInbox(auth: AuthContext, limitOrInput: number |
     .select({
       id: documents.id,
       title: documents.title,
+      version: documents.version,
       filename: files.filename,
       mimeType: documents.mimeType,
       createdAt: documents.createdAt,

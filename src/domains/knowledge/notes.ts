@@ -72,7 +72,7 @@ function markdownOf(content: NoteContent, plainText?: string): string {
 }
 
 /** Reconcile this note's outgoing wiki edges with the body just saved. */
-async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId: string, markdown: string) {
+export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId: string, markdown: string) {
   const titles = extractWikiLinkTitles(markdown);
   const candidates = titles.length
     ? await tx
@@ -142,38 +142,50 @@ async function claimVersion(tx: TxDrizzle, auth: AuthContext, artifactId: string
   throw exists ? new VersionConflictError() : new NoteNotFoundError();
 }
 
+/*
+ * The row-level half of createNote, exposed for a caller that already holds a
+ * transaction and its own receipt (the capture inbox's convert-to-note, which
+ * must commit the note and the capture's lineage edge atomically). Same
+ * audit and outbox rows as createNote.
+ */
+export async function createNoteInTx(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { title: string; content?: NoteContent; plainText?: string; kind?: (typeof LINKABLE_KINDS)[number] },
+): Promise<{ id: string; versionId: string; version: number }> {
+  const [artifact] = await tx
+    .insert(artifacts)
+    .values({ workspaceId: auth.workspaceId, kind: input.kind ?? "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
+    .returning({ id: artifacts.id, version: artifacts.version });
+  const empty = { type: "doc", content: [] };
+  const [version] = await tx
+    .insert(artifactVersions)
+    .values({
+      workspaceId: auth.workspaceId,
+      artifactId: artifact.id,
+      versionNumber: 1,
+      content: input.content ?? empty,
+      plainText: input.plainText ?? null,
+      reason: "created",
+      createdBy: auth.userId,
+    })
+    .returning({ id: artifactVersions.id });
+  await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+  await recordAudit(
+    auth,
+    { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
+    tx,
+  );
+  await emit(tx, auth, "note.created", { artifactId: artifact.id, versionId: version.id });
+  return { id: artifact.id, versionId: version.id, version: artifact.version };
+}
+
 export async function createNote(
   auth: AuthContext,
   input: Keyed & { title: string; content?: NoteContent; plainText?: string; kind?: (typeof LINKABLE_KINDS)[number] },
 ): Promise<{ id: string; versionId: string; version: number }> {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () => {
-      const [artifact] = await tx
-        .insert(artifacts)
-        .values({ workspaceId: auth.workspaceId, kind: input.kind ?? "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
-        .returning({ id: artifacts.id, version: artifacts.version });
-      const empty = { type: "doc", content: [] };
-      const [version] = await tx
-        .insert(artifactVersions)
-        .values({
-          workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          versionNumber: 1,
-          content: input.content ?? empty,
-          plainText: input.plainText ?? null,
-          reason: "created",
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id });
-      await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
-      await recordAudit(
-        auth,
-        { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
-        tx,
-      );
-      await emit(tx, auth, "note.created", { artifactId: artifact.id, versionId: version.id });
-      return { id: artifact.id, versionId: version.id, version: artifact.version };
-    });
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () => createNoteInTx(tx, auth, input));
     return value;
   });
 }
