@@ -1,8 +1,11 @@
 # Polymath Design System
 
-**Status:** Target. `src/app/globals.css` currently implements a narrower
-register; § 15 lists the exact delta. Where this file and the code disagree,
-this file is the intent and the code is the debt.
+**Status:** Current. On 2026-10-19 the owner ruled that the "stronghold"
+design of the whole product follows Dao (the Opal-like reference in ASH-175):
+light, sparse, airy, calm, "as simple and good as the reference". This file
+describes that direction, and the code largely matches it: the tokens
+(#143), the Opal reward stage (#156), the jewel collection (#150), and the
+pill header (#161) are merged. Remaining debt is listed in § 15.
 
 **Precedence:** `agents/*` > `CLAUDE.md` > this file > skill defaults. This
 file is the concrete instantiation of `agents/design.md`, which owns stance.
@@ -13,14 +16,18 @@ either, fix it here.
 
 ## 1. Brief read
 
-> **Dense single-operator product UI** for one technical owner, in a
-> **quiet command-room** register, leaning **warm neutral ground + one accent
-> per app**, with **high information density and short motion**.
+> **A calm, single-operator product** for one technical owner, in the **Dao
+> register**: a warm near-white ground, generous whitespace, one quiet
+> charcoal accent, and type doing the work that chrome used to do.
 
-The audience is one person, mid-task, at a desk, scanning the same table for
-the third time today. That is a cockpit reading, not a magazine reading. Every
-rule below is downstream of that sentence: density is a feature, decoration is
-a cost, and anything that slows a second pass is a defect.
+The reference is the owner's own Dao app and Opal: a wordmark, one centered
+pill of sections, a thin divider, and then the content, with room to breathe.
+The product should feel like a clear desk, not a cockpit. Every rule below is
+downstream of that: sparseness is a feature, decoration is a cost, and any
+chrome that competes with the content is a defect.
+
+The one loud place is the reward register (§ 4.5): the dark Opal stage and
+its stones. Loud there is the point; loud anywhere else is a bug.
 
 ## 2. Dials
 
@@ -28,62 +35,59 @@ a cost, and anything that slows a second pass is a defect.
 |---|---|---|
 | `DESIGN_VARIANCE` | **4** | Structured grids. Asymmetry lives in headers and the shell, never in data. |
 | `MOTION_INTENSITY` | **4** | Transition, transform, opacity. Motion answers an action or celebrates a completed one. |
-| `VISUAL_DENSITY` | **8** | Cockpit. Tight padding, hairlines over card boxes, mono for every number. |
+| `VISUAL_DENSITY` | **5** | Airy. Whitespace separates before borders do; hairlines before fills; fills before shadows. |
 
 Overrides are conversational and per-screen. Do not edit this table to change
 one screen's feel; state the override in the task instead.
 
-## 3. Three apps, one instrument
+## 3. Three apps, one product
 
-Polymath is three micro-app experiences over one record set.
+Polymath is three micro-app experiences over one record set, and they look
+like one product because they share everything: ground, accent, type scale,
+radii, edge recipe, spacing, control heights, and the same pill header.
 
-| App | Accent | Nav shape | Why |
-|---|---|---|---|
-| Command Center | cyan | full-height **rail** | Operations desk; sections stay in view because you move between them constantly. |
-| NeuralFlow | green | horizontal **bar** | You read and work here; a rail would take width from the material. |
-| Alfred | violet | horizontal **bar** | Same. |
+| App | Home | Character |
+|---|---|---|
+| Command Center | `/command-center` | Operations desk: briefing, inbox, relationships, opportunities, spending, conversations, connectors. |
+| NeuralFlow | `/neuralflow` | The work: tasks, focus sessions, the stone collection. |
+| Alfred | `/alfred` | Knowledge: notebook, references, the library. |
 
-**The accent is the only thing that varies.** Ground, type scale, radii, edge
-recipe, spacing, and control heights are identical across all three. An app
-that also changed its weight or spacing would make the suite look assembled
-from parts. This is the load-bearing rule of the whole system.
+**One accent for the whole product.** Apps no longer carry their own hue.
+`--app-accent` stays as an alias so components do not change, but every app
+resolves to the same warm charcoal. An app that carried its own colour would
+make the suite look assembled from parts. This is the load-bearing rule of
+the whole system.
 
-Shared routes (Reviews, Activity, Settings, auth) fall back to the product
-accent, which is Command Center's cyan.
+Shared routes (Reviews, Activity, Settings, auth) use the same accent and the
+same header; on those routes the pill lists the apps.
 
 ## 4. Colour
 
 ### 4.1 Ground and ink
 
-Warm neutral. Surfaces separate by hairline and whitespace, not by shadow or
-texture.
+Warm bone. Surfaces separate by the lightest hairline that still reads, then
+whitespace. Never pure `#000` or `#fff`; every neutral carries a trace of
+warmth (`C ≥ 0.002`, hue 75-90) so light and dark stay the same product.
 
 | Token | Light | Dark |
 |---|---|---|
-| `--background` | `oklch(0.975 0.005 85)` | `oklch(0.200 0.004 80)` |
-| `--card` | `oklch(0.995 0.003 85)` | `oklch(0.235 0.004 80)` |
-| `--muted` | `oklch(0.955 0.006 85)` | `oklch(0.260 0.005 80)` |
-| `--border` | `oklch(0.900 0.006 85)` | `oklch(0.300 0.005 80)` |
-| `--foreground` | `oklch(0.220 0.006 70)` | `oklch(0.930 0.004 85)` |
-| `--muted-foreground` | `oklch(0.470 0.010 70)` | `oklch(0.700 0.008 82)` |
+| `--background` | `oklch(0.982 0.004 90)` | `oklch(0.190 0.004 80)` |
+| `--card` | `oklch(0.997 0.002 90)` | `oklch(0.225 0.005 80)` |
+| `--muted` | `oklch(0.960 0.004 85)` | `oklch(0.255 0.005 80)` |
+| `--border` | `oklch(0.918 0.004 85)` | `oklch(0.290 0.005 80)` |
+| `--foreground` | `oklch(0.27 0.008 75)` | `oklch(0.930 0.004 85)` |
+| `--muted-foreground` | `oklch(0.52 0.008 78)` | `oklch(0.680 0.008 82)` |
 
-Never pure `#000` or `#fff`. Never `oklch(L 0 0)` — every neutral carries a
-trace of warmth (`C ≥ 0.003`, hue 70–85) so light and dark stay the same
-product.
+### 4.2 The one accent
 
-### 4.2 Accents
+A soft warm charcoal, used the way Opal uses its dark button: primary
+actions, the active nav pill, the focus ring, links. Nothing else.
 
-One accent per app, scoped by `data-app` on the shell, read through
-`--app-accent`. Primary buttons, the active nav rule, focus rings, and links
-use it. Nothing else does.
-
-| App | Light | Dark |
+| Token | Light | Dark |
 |---|---|---|
-| Command Center | `oklch(0.55 0.10 210)` | `oklch(0.72 0.09 210)` |
-| NeuralFlow | `oklch(0.52 0.11 155)` | `oklch(0.70 0.10 155)` |
-| Alfred | `oklch(0.52 0.15 292)` | `oklch(0.72 0.12 292)` |
-
-Saturation stays under 0.16 chroma. The accents are labels, not lighting.
+| `--primary` | `oklch(0.32 0.010 75)` | `oklch(0.920 0.004 85)` |
+| `--primary-foreground` | `oklch(0.982 0.004 90)` | `oklch(0.240 0.006 78)` |
+| `--ring` | `oklch(0.38 0.012 75)` | `oklch(0.820 0.006 85)` |
 
 ### 4.3 Status
 
@@ -103,6 +107,15 @@ Gradient text, neon or outer glows, more than one accent on a surface, the
 beige + brass + espresso "premium consumer" family, decorative status dots,
 and any colour that is the only carrier of meaning.
 
+### 4.5 The reward register (the exception)
+
+The focus stage and the stone collection are the one place the calm register
+lifts, by design (Opal): a near-black stage with a violet halo, a photoreal
+gem on a pedestal, a small-caps caption, and a big mono readout. This lives
+in `.nf-stage` and `.nf-jewel` and is confined to reward surfaces: the Focus
+screen, the session-complete reveal, the collection. The glow is allowed here
+and only here.
+
 ## 5. Type
 
 | Role | Family | Size | Weight |
@@ -110,15 +123,13 @@ and any colour that is the only carrier of meaning.
 | Page title | system serif (`--font-display`) | 26px | 400 |
 | Section heading | Inter | 13px | 500 |
 | Body, controls, tables | Inter | 13px | 400 |
-| Metadata | Inter | 11–12px | 400 |
-| Readout, IDs, keys | Geist Mono | 13px | 400 |
+| Metadata, captions | Inter | 11-12px | 400-500, small-caps for stage captions |
+| Readout, IDs, keys, timers | Geist Mono | 13px (stage readouts larger) | 400 |
 
-- **One serif role: the page title.** It marks the top of a destination and
-  gives the suite a reading register. It never appears in body copy, labels,
-  buttons, or tables. This is a deliberate deviation from the "no serif"
-  default; the ceiling is that a second serif role would make the product look
-  editorial rather than operational.
-- Hierarchy comes from weight and colour, not raw scale. No oversized H1s.
+- **One serif role: the page title.** It marks the top of a destination. It
+  never appears in body copy, labels, buttons, or tables.
+- Hierarchy comes from weight and colour, not raw scale. No oversized H1s —
+  the stage readout is the only big number, and it is a reward moment.
 - **Every number the owner reads as instrument output is `.readout`** — mono,
   tabular figures, never for prose. A live value must not reflow as it changes.
 - Line length under 80 characters for prose; line-height ≥ 1.5.
@@ -126,28 +137,29 @@ and any colour that is the only carrier of meaning.
 ## 6. Space, shape, edge
 
 - **4px base.** Gaps are 4, 8, 12, 16, 24, 32. Nothing else.
-- **Radius lock:** 3px inline (badges, code), 4.5px controls, 6px cards and
-  panels, 9px overlays. Never a pill except a genuine status dot.
+- **Radius ladder:** `--radius` is 8px; the ladder is 4 / 6 / 8 / 12
+  (`sm / md / lg / xl`). **Full radius is reserved for the pill idiom**: the
+  header's section pill and its active item, chips, and genuine status dots.
 - **`.panel`** — 1px border + fill. Flat. No inset sheen, no per-card shadow.
 - **`.panel-empty`** — same border, dashed and quieter. An invitation, not a
   failed load.
 - **`.readout`** — mono + tabular figures.
-- Shadows belong to layers that genuinely float (menus, dialogs, popovers) and
-  are tinted to the ground hue, never pure-black at low opacity. A shadow per
-  card turns a grid into a contact sheet.
-- Density: 8–12px vertical padding on list rows, 16px on panels. Target size
-  ≥ 24px. Dense is fine; cramped is not.
+- Shadows belong to layers that genuinely float (menus, dialogs, popovers)
+  and are warm-tinted to the ground (`--shadow`), never grey-black. A shadow
+  per card turns a grid into a contact sheet.
+- Whitespace is the primary separator. 16-24px panel padding; list rows
+  8-12px vertical. Target size ≥ 24px (44px on the phone bar).
 
 ## 7. Motion
 
 - CSS transitions only until a real need for `motion` arrives. Do not install
   it in advance.
 - Animate `transform` and `opacity`. Never animate layout properties.
-- 120–200ms. Focus, hover, and press only.
+- 120-200ms. Focus, hover, and press only.
 - **Every animation must answer "what does this communicate?" in one sentence.**
   Press feedback is `scale(0.98)` or `translate-y(1px)` on `:active`.
-- Reward moments are the one place delight is allowed: completion springs, the
-  strike line, the forming stone and the stone reveal. Each plays once, honours
+- Reward moments are the one place delight is allowed: the forming stone, the
+  stage glow, the stone reveal. Each plays once, honours
   `prefers-reduced-motion`, and is disableable in Settings.
 - No scroll choreography, no pinned sections, no decorative loops, no
   fade-and-slide-up entrances per section, no hover-scale on cards.
@@ -155,22 +167,31 @@ and any colour that is the only carrier of meaning.
 
 ## 8. Layout and shell
 
-- **The app launcher is the only global chrome.** It sits in the header and is
-  not part of any app's navigation.
-- **Each app owns its nav.** Command Center renders a rail; NeuralFlow and
-  Alfred render a bar. No app's nav contains another app's destinations.
-- Desktop: rail (248px, collapsible) + flexible canvas + optional inspector
-  (360–440px). Tablet: icon rail + overlay inspector. Mobile: bottom bar with
-  the three apps, then More.
-- **The inspector is the rule, not the exception.** Details, backlinks,
-  activity, and Alfred context open beside the list so the owner never loses
-  their place.
+The shell is the Dao header plus the canvas. There is no rail.
+
+- **Header:** the app's wordmark on the left (icon + name, linking home; on
+  shared routes, "Polymath"), **one centered pill of the app's sections**
+  (`.pill-nav`), and the quiet global affordances on the right: search, the
+  reviews shield, theme, the app launcher, the account menu.
+- **The pill is the section nav.** Every canonical destination is a pill
+  item; the active item is a dark (primary) pill. Workshop and preview tools
+  fold into the last pill; while one of them is open, that pill takes the
+  tool's name so the bar still answers "where am I". On routes with no app,
+  the pill lists the apps. The landmark name is "Workspace".
+- **The app launcher is the only app-switching chrome.** It sits in the
+  header, Google-apps-style; no app's pill contains another app's
+  destinations.
+- **Below `lg`** the pill does not fit: the breadcrumb carries where-you-are
+  in the header, and the phone keeps the bottom bar with the three apps, then
+  More.
+- Desktop: flexible canvas + optional inspector (360-440px). **The inspector
+  is the rule, not the exception.** Details, backlinks, activity, and Alfred
+  context open beside the list so the owner never loses their place.
 - CSS Grid over flex percentage math. Container max-width 1200px
-  (`--content-width`). `min-h-[100dvh]`, never `h-screen`.
+  (`--page-width`). `min-h-[100dvh]`, never `h-screen`.
 - Breakpoints: 640 / 768 / 1024 / 1280 / 1536.
 - **Every multi-column layout declares its `< 768px` collapse in the same
   component.** No "Tailwind handles it".
-- Breadcrumbs name the app the owner crossed into.
 - `z-index` comes from a fixed scale: `base 0`, `sticky 10`, `dropdown 20`,
   `overlay 30`, `modal 40`, `toast 50`, `skip-link 100`. Never an arbitrary
   `z-50`.
@@ -243,26 +264,30 @@ WCAG 2.2 AA.
 - Visible focus on every focusable element, from the global `:focus-visible`
   rule, never a component-local override.
 - Stable focus order; focus returns to the trigger when an overlay closes.
-- Charts and rewards carry text equivalents.
+- Charts and rewards carry text equivalents. The stage readout is real text,
+  not part of the image.
 - Any motion above intensity 3 honours `prefers-reduced-motion`. `.pulse-dot`
   stops rather than hides.
 - Live regions for timers and run streaming are restrained — never a stream of
   announcements.
 - Contrast checks are mandatory before ship: button label against its own
   background, placeholder/helper/error text against the section, focus ring
-  against everything.
+  against everything. The dark stage still meets AA against its own ground.
 
 ## 13. Rules (testable)
 
-1. A screen shows at most one accent hue.
-2. No app redefines ground, type scale, radii, or spacing. Only `--app-accent`.
+1. A screen shows at most one accent hue. The reward stage's violet glow is
+   the standing exception, confined to `.nf-stage` and `.nf-jewel`.
+2. No app redefines ground, type scale, radii, or spacing. `--app-accent`
+   resolves to the same charcoal everywhere.
 3. No component carries a raw hex or a Tailwind palette class (`bg-slate-800`).
 4. No number in prose uses the sans face. Numbers are `.readout`.
 5. Every list surface has an empty state that names the action that fills it.
 6. Every mutation has a visible pending state and a visible result.
 7. No user-visible string contains an em dash.
 8. No screen renders an unlabelled partial result as complete.
-9. Radius comes from the 3 / 4.5 / 6 / 9 lock.
+9. Radius comes from the 4 / 6 / 8 / 12 ladder; full radius only for the
+   pill idiom, chips, and status dots.
 10. Every new shadcn primitive is restyled through tokens before merge.
 
 ## 14. Glossary
@@ -280,32 +305,28 @@ Use these words and no synonyms.
 | **Proposal** | A prepared external write, not yet executed. |
 | **Attempt** | One execution of a proposal against a provider. |
 | **Run** | One durable agent execution with its own timeline. |
-| **Stone** | A work memory awarded for completed focus, with a stated reason. |
+| **Stone** | A work memory awarded for completed focus, with a stated reason. The reward art calls it a jewel. |
 | **Connector** | A connected external account. Never "connection", never "integration". |
 | **Relationships** | The people-and-companies destination. Never "Contacts" as a nav label. |
 
-## 15. Drift from the current code
+## 15. Remaining debt
 
-`src/app/globals.css` as committed implements a narrower register. This table
-is the migration checklist for the System-first build step; until it is empty,
-reading the CSS will mislead you.
+What still contradicts this file, in the order it should die:
 
-| Area | Code today | This system |
+| Debt | Where | Note |
 |---|---|---|
-| Ground | Cool near-white `oklch(0.99 0.002 260)` | Warm bone `oklch(0.975 0.005 85)` |
-| Accent | One Linear indigo, all three app tokens aliased to it | Three app accents (cyan / green / violet) |
-| Type | Inter sans + serif page titles | Same; serif role now documented and bounded |
-| Radii | `--radius: 0.375rem` with derived ladder | 3 / 4.5 / 6 / 9 lock |
-| Shadow | One soft shadow token, unused by panels | Unchanged, now explicitly restricted to floating layers |
-| Preview routes | `/apps/*` still mounted | Delete; canonical routes only |
-| Registries | `navigation.ts` and `products.ts` both live, with conflicting labels | One registry; `products.ts` retires |
-| Nav shape | `nav: "rail" \| "bar"` declared in `navigation.ts` | Unchanged; this is the spec, not drift |
+| Legacy preview routes | `/apps/*` still mounted | Retire in favour of canonical routes; the pill's "More" pill is their home until then. |
+| Legacy registry | `src/lib/products.ts` | `navigation.ts` is the live registry; `products.ts` backs the preview routes and retires with them. |
+| Sidebar tokens | `--sidebar*` in `globals.css` | The rail is gone (#161); the token block is unused and should be deleted with its last reader. |
+| Per-app accent plumbing | `[data-app]` blocks in `globals.css` | All three resolve to the one charcoal today; delete once nothing reads them. |
 
 ## 16. Open items
 
 - **Icon family.** `lucide-react` is installed. The intended family is
   Phosphor or Tabler. One family per tree, one global `strokeWidth`, never a
   hand-rolled icon path. Migration not started.
-- **Motion dependency.** `motion` is not installed. Install it when the reward
-  animations land, not before.
-- **Stone art.** Reward surfaces only. Not yet designed.
+- **Motion dependency.** `motion` is not installed. Install it when a reward
+  animation needs it, not before.
+- **Stone art.** Live since #156/#150: photoreal gems on the dark stage and
+  in the All Jewels grid. The forming-stone progression (grey quartz to full
+  colour) is the growth metaphor; keep it.
