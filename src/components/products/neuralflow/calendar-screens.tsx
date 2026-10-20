@@ -39,6 +39,7 @@ export function EventDialog({ event, date, trigger = "Add work block", defaultTy
     const recurrence = recurrenceForPreset(String(data.get("recurrence") || "none"));
     const payload = { title, date: blockDate, start, endDate, duration, recurrence, taskId: String(data.get("task") || "") || undefined, provider: "local" as const, type: String(data.get("type")) as CalendarEvent["type"], location: String(data.get("location") || ""), tags: String(data.get("tags") || "").split(",").map((tag) => tag.trim()).filter(Boolean) };
     const record = event || addEvent(payload);
+    if (!record) return;
     let notesArtifactId = event?.notesArtifactId;
     if (linkedNote) updateArtifact(linkedNote.id, { body: noteBody });
     else if (noteBody.trim() || payload.type === "Meeting") {

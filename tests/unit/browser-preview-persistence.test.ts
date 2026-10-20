@@ -7,7 +7,29 @@ function browserStorage() {
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
   return values;
 }
-afterEach(() => vi.unstubAllGlobals());
+/*
+ * A mutation that commits reads storage twice: once to build the next state
+ * and once inside commit to check it against what is stored. A concurrent tab
+ * can write between those reads, so this storage rewrites the saved value on
+ * the nth read after it is armed, which is what makes a tab stale mid-write.
+ */
+function switchingStorage() {
+  const values = new Map<string, string>();
+  vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  let pending: { remaining: number; run: (key: string) => void } | undefined;
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => {
+      if (pending && --pending.remaining === 0) {
+        const { run } = pending;
+        pending = undefined;
+        run(key);
+      }
+      return values.get(key) ?? null;
+    },
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  });
+  return { values, onRead(n: number, run: (key: string) => void) { pending = { remaining: n, run }; } };
+}
 describe("browser preview persistence", () => {
   it("refreshes another tab's saved records before updating preferences", () => {
     browserStorage();
@@ -46,5 +68,37 @@ describe("browser preview persistence", () => {
     expect(window.addEventListener).toHaveBeenCalledWith("storage", expect.any(Function));
     unsubscribe();
     expect(window.removeEventListener).toHaveBeenCalledWith("storage", expect.any(Function));
+  });
+  it("returns no task when another tab moved first, and keeps that tab's record", () => {
+    const storage = switchingStorage();
+    const stale = createPreviewWorkspace("stale-owner");
+    const otherTabTask = { id: "other-tab", title: "Saved in the other tab", status: "INBOX", priority: "Medium", estimate: 25, description: "", tags: [], version: 1, rank: 1 };
+    const otherTabRaw = JSON.stringify({ ...stale.getSnapshot(), tasks: [otherTabTask, ...stale.getSnapshot().tasks] });
+    // The second read is the one commit uses for its expected-raw check, so
+    // this lands after addTask read the base state and before it commits.
+    storage.onRead(2, () => storage.values.set("axiom-ui-preview-v1:stale-owner", otherTabRaw));
+    expect(stale.addTask("Written by the stale tab")).toBeUndefined();
+    expect(stale.getStorageWarning()).toContain("Another tab changed");
+    expect(stale.getSnapshot().tasks.some((task) => task.title === "Written by the stale tab")).toBe(false);
+    expect(stale.getSnapshot().tasks.some((task) => task.title === "Saved in the other tab")).toBe(true);
+  });
+  it("reports a refused update instead of a silent success", () => {
+    const storage = switchingStorage();
+    const stale = createPreviewWorkspace("stale-update-owner");
+    const target = stale.getSnapshot().tasks[0];
+    const otherTabRaw = JSON.stringify({ ...stale.getSnapshot(), preferences: { ...stale.getSnapshot().preferences, weekStart: "Sunday" } });
+    // updateTask reads twice for the patch and the next state; the third read
+    // is commit's stale check, where the other tab's write lands.
+    storage.onRead(3, () => storage.values.set("axiom-ui-preview-v1:stale-update-owner", otherTabRaw));
+    expect(stale.updateTask(target.id, { title: "Renamed in a stale tab" })).toEqual({ ok: false, persisted: false });
+    expect(stale.getStorageWarning()).toContain("Another tab changed");
+    expect(stale.getSnapshot().tasks.find((task) => task.id === target.id)?.title).toBe(target.title);
+  });
+  it("still returns the created task on a saved write", () => {
+    browserStorage();
+    const workspace = createPreviewWorkspace("saved-owner");
+    const created = workspace.addTask("Committed task");
+    expect(created?.title).toBe("Committed task");
+    expect(workspace.getSnapshot().tasks.find((task) => task.id === created?.id)?.title).toBe("Committed task");
   });
 });
