@@ -100,17 +100,17 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
   const [factsOpen, setFactsOpen] = useState(false);
   const active = useActiveSection();
   return <Screen title="Settings" description="Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels describe this browser preview or name what is not built yet." actions={<Destination screen="integrations">Connection catalog</Destination>}>
-    <div className="grid gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 md:sticky md:top-16 md:h-fit md:flex-col md:overflow-visible md:pb-0">
+    <div className="grid gap-6 lg:grid-cols-[minmax(160px,220px)_minmax(0,1fr)]">
+      <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-16 lg:h-fit lg:flex-col lg:overflow-visible lg:pb-0">
         {SECTION_GROUPS.map((group) => (
-          <div key={group.label} className="contents md:block">
-            <p className="hidden px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0 md:block">{group.label}</p>
+          <div key={group.label} className="contents lg:block">
+            <p className="hidden px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0 lg:block">{group.label}</p>
             {group.items.map((item) => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
                 aria-current={active === item.id ? "true" : undefined}
-                className="min-h-8 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:text-foreground aria-current:bg-muted aria-current:font-medium aria-current:text-foreground"
+                className="min-h-8 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:text-foreground aria-current:bg-muted aria-current:font-medium aria-current:text-foreground lg:whitespace-nowrap"
               >
                 {item.label}
               </a>
