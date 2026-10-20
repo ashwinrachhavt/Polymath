@@ -47,6 +47,7 @@ describe("browser-only UI preview", () => {
   });
   it("invalidates local approval whenever the reviewed payload changes", () => {
     const review = workspace.addReview({ title: "Send the brief", kind: "Email", risk: "External write", payload: "Original payload" });
+    if (!review) throw new Error("Expected a review");
     workspace.updateReview(review.id, { status: "Approved locally" });
     workspace.updateReview(review.id, { payload: "Revised payload", status: "Approved locally" });
     const revised = workspace.getSnapshot().reviews.find((r) => r.id === review.id);

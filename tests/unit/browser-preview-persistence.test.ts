@@ -98,7 +98,11 @@ describe("browser preview persistence", () => {
   it("reports a refused update instead of a silent success", () => {
     const storage = switchingStorage();
     const stale = createPreviewWorkspace("stale-update-owner");
-    const target = stale.getSnapshot().tasks[0];
+    // The preview boots empty, so the row under test has to exist first.
+    const created = stale.addTask("Original title");
+    if (!created) throw new Error("Expected a task");
+    const target = stale.getSnapshot().tasks.find((task) => task.id === created.id);
+    if (!target) throw new Error("Expected the created task");
     const otherTabRaw = JSON.stringify({ ...stale.getSnapshot(), preferences: { ...stale.getSnapshot().preferences, weekStart: "Sunday" } });
     // updateTask reads twice for the patch and the next state; the third read
     // is commit's stale check, where the other tab's write lands.
