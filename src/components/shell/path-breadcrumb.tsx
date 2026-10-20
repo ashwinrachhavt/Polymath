@@ -24,7 +24,7 @@ export function PathBreadcrumb() {
     <nav aria-label="Breadcrumb" className="min-w-0">
       <ol className="flex items-center gap-1.5 text-[13px]">
         <li className="hidden sm:block">
-          <Link href={homeHref} className="text-muted-foreground hover:text-foreground">
+          <Link href={homeHref} className="text-muted-foreground hover:text-foreground -my-1 inline-flex min-h-6 items-center py-1">
             Polymath
           </Link>
         </li>

@@ -41,7 +41,7 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
   return (
     <Screen
       title="Focus"
-      description="One durable session at a time. The clock survives reloads because it lives on the server, not in this tab."
+      description="One durable session at a time."
     >
       {active ? (
         <Panel
@@ -65,7 +65,7 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
           />
         </Panel>
       ) : (
-        <Panel title="Start a session" description="A second start while one is live conflicts instead of splitting the clock.">
+        <Panel title="Start a session">
           <StartSessionForm
             defaultSubject={rawTask && !taskDetail ? rawTask : undefined}
             task={taskDetail ? { id: taskDetail.task.id, title: taskDetail.task.title, status: taskDetail.task.status } : undefined}

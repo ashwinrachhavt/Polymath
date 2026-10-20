@@ -55,10 +55,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   return (
     <Screen
       title="Inbox"
-      description="Clarify before committing. Original text stays here after conversion; nothing is classified or fetched on arrival."
+      description="Clarify before committing. Original text stays here after conversion."
       actions={<Status>{pending} to clarify</Status>}
     >
-      <Panel title="Capture material" description="Text or a URL. Remote content is not fetched; a duplicate URL is a conflict, not a second row.">
+      <Panel title="Capture material" description="Text or a URL.">
         <CaptureForm />
       </Panel>
 

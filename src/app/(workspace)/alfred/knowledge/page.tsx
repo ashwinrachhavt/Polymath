@@ -289,7 +289,7 @@ export async function KnowledgeSurface({
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <a
                           href={`/alfred/knowledge?doc=${doc.id}`}
-                          className="text-[13px] font-medium underline-offset-4 hover:underline"
+                          className="inline-flex min-h-6 items-center text-[13px] font-medium underline-offset-4 hover:underline"
                         >
                           {doc.title}
                         </a>

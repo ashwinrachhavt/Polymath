@@ -48,7 +48,7 @@ async function Briefing() {
   return (
     <Screen
       title="Briefing"
-      description={`Capture, clarify, commit, focus, review, learn. Here is where ${briefing.today} stands, read from the canonical task record. Nothing on this page calls a model or a connector.`}
+      description={`Capture, clarify, commit, focus, review, learn. Here is where ${briefing.today} stands.`}
       actions={
         <>
           <Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Clarify inbox</Link></Button>
@@ -77,33 +77,37 @@ async function Briefing() {
         <AgentPanels />
       </Suspense>
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <Panel title="Today and overdue" description="Open work with a due date on or before today.">
-          <div className="divide-y divide-border">
-            {briefing.dueTodayOrOverdue.map((task) => (
-              <div key={task.id} className="py-3 first:pt-0">
-                <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
-                  {task.title}
-                </Link>
-                <p className="mt-0.5 text-xs text-muted-foreground">due {task.dueAt?.toISOString().slice(0, 10)} · {task.priority} priority</p>
+      {briefing.dueTodayOrOverdue.length || briefing.waiting.length ? (
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          {briefing.dueTodayOrOverdue.length ? (
+            <Panel title="Today and overdue" description="Open work with a due date on or before today.">
+              <div className="divide-y divide-border">
+                {briefing.dueTodayOrOverdue.map((task) => (
+                  <div key={task.id} className="py-3 first:pt-0">
+                    <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
+                      {task.title}
+                    </Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">due {task.dueAt?.toISOString().slice(0, 10)} · {task.priority} priority</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {!briefing.dueTodayOrOverdue.length ? <Empty title="Nothing due" description="No open work is due today or earlier." /> : null}
-        </Panel>
-        <Panel title="Waiting commitments" description="Open work currently waiting on someone or something.">
-          <div className="divide-y divide-border">
-            {briefing.waiting.map((task) => (
-              <div key={task.id} className="py-3 first:pt-0">
-                <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
-                  {task.title}
-                </Link>
+            </Panel>
+          ) : null}
+          {briefing.waiting.length ? (
+            <Panel title="Waiting commitments" description="Open work currently waiting on someone or something.">
+              <div className="divide-y divide-border">
+                {briefing.waiting.map((task) => (
+                  <div key={task.id} className="py-3 first:pt-0">
+                    <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
+                      {task.title}
+                    </Link>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {!briefing.waiting.length ? <Empty title="Nothing waiting" description="No commitments are parked." /> : null}
-        </Panel>
-      </div>
+            </Panel>
+          ) : null}
+        </div>
+      ) : null}
     </Screen>
   );
 }

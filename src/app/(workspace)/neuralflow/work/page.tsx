@@ -29,11 +29,8 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
 
   return (
     <>
-      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <WorkViewLinks active={view} />
-          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Saved to your workspace.</p>
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3 md:px-6">
+        <WorkViewLinks active={view} />
         <FeatureLinks />
       </div>
       {surface}
