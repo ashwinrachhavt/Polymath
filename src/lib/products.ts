@@ -59,7 +59,4 @@ export const products: Product[] = [
   ] },
 ];
 export function productHref(product: Product, slug = product.home) { return `/apps/${product.id}/${slug}`; }
-export function productForPath(pathname: string) { return products.find((p) => pathname.startsWith(`/apps/${p.id}`)) || products[0]; }
-export const legacyRoutes: Record<string, string> = {
-  briefing: "/apps/command-center/briefing", inbox: "/apps/command-center/inbox", work: "/apps/neuralflow/tasks", focus: "/apps/neuralflow/focus", alfred: "/apps/alfred/chat", knowledge: "/apps/alfred/library", dossiers: "/apps/alfred/dossiers", relationships: "/apps/command-center/contacts", opportunities: "/apps/command-center/opportunities", reviews: "/apps/command-center/reviews", activity: "/apps/command-center/activity", settings: "/apps/command-center/settings",
-};
+

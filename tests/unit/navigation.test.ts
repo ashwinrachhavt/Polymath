@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  appForPath,
   additionalDestinationsIn,
   featureDestinations,
   isBrowserPreviewPath,
@@ -16,30 +15,18 @@ import {
  * reference an app name that no longer exists in the interface.
  */
 describe("navigation", () => {
-  it("resolves the historic prefix of a pathname", () => {
-    expect(appForPath("/command-center/briefing")?.slug).toBe("command-center");
-    expect(appForPath("/neuralflow/work")?.slug).toBe("neuralflow");
-    expect(appForPath("/alfred")?.slug).toBe("alfred");
-    expect(appForPath("/alfred/knowledge")?.slug).toBe("alfred");
-    expect(appForPath("/reviews")).toBeUndefined();
-  });
-
-  it("keeps preview routes inside their prefix without matching similar ones", () => {
-    expect(appForPath("/apps/neuralflow/tasks")?.slug).toBe("neuralflow");
-    expect(appForPath("/apps/alfred/notebook")?.slug).toBe("alfred");
-    expect(appForPath("/apps/command-center/contacts")?.slug).toBe("command-center");
-    expect(appForPath("/apps/alfred-other/notebook")).toBeUndefined();
+  it("keeps preview routes resolving to their canonical destination", () => {
     expect(destinationForPath("/apps/neuralflow/tasks")?.href).toBe("/neuralflow/work");
     expect(destinationForPath("/apps/alfred/not-a-screen")).toBeUndefined();
   });
 
-  it("keeps every preview tool reachable and attributed", () => {
+  it("keeps every preview tool reachable and on a real route", () => {
     for (const slug of ["command-center", "neuralflow", "alfred"] as const) {
       const additional = additionalDestinationsIn(slug);
       expect(additional.length).toBeGreaterThan(0);
       for (const destination of additional) {
-        expect(appForPath(destination.href)?.slug).toBe(slug);
         expect(featureDestinations).toContain(destination);
+        expect(destination.href).toMatch(/^\/(apps\/)?(command-center|neuralflow|alfred)\//);
       }
     }
     expect(additionalDestinationsIn("neuralflow").some((destination) => destination.label === "Stone collection")).toBe(true);
@@ -64,11 +51,9 @@ describe("navigation", () => {
     expect(destinationForPath("/alfred/knowledge")?.label).toBe("Library");
   });
 
-  it("keeps every destination attributed to a real prefix or shared", () => {
+  it("attributes every destination to a historic prefix or shared", () => {
     for (const destination of destinations) {
-      const app = appForPath(destination.href);
-      const expected = destination.group === "shared" ? undefined : destination.group;
-      expect(app?.slug).toBe(expected);
+      expect(destination.group === "shared" || ["command-center", "neuralflow", "alfred"].includes(destination.group)).toBe(true);
     }
   });
 

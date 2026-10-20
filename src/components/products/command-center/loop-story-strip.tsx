@@ -22,7 +22,7 @@ export function LoopStoryStrip({ today }: { today: string }) {
   return <nav aria-label="Your loop today" className={cn("loop-strip", state.preferences.reducedMotion && "loop-calm")} data-ready={ready}>
     {beats.map((beat, index) => {
       const isNext = beat.key === next;
-      return <Link key={beat.key} href={beat.href} data-app={beat.app} data-next={isNext} data-passed={nextIndex > index} aria-current={isNext ? "step" : undefined} aria-label={`${beat.label}${isNext ? ", your next step" : ""}: ${beat.count} ${beat.unit}. ${beat.action}`}
+      return <Link key={beat.key} href={beat.href} data-next={isNext} data-passed={nextIndex > index} aria-current={isNext ? "step" : undefined} aria-label={`${beat.label}${isNext ? ", your next step" : ""}: ${beat.count} ${beat.unit}. ${beat.action}`}
         className={cn("loop-beat", isNext && "loop-next")} style={{ "--i": index } as React.CSSProperties}>
         <span className={"loop-label"}><span className={"loop-step"}>{index + 1}</span>{beat.label}{isNext && <span className={"loop-pulse"} aria-hidden />}</span>
         <span className="flex items-baseline gap-1.5"><span className={"loop-count"}>{beat.count}</span><span className={"loop-unit"}>{beat.unit}</span></span>

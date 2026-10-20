@@ -201,16 +201,6 @@ export function additionalDestinationsIn(group: AppSlug) {
   return featureDestinations.filter((destination) => destination.group === group && !featureRoutes[destination.href]);
 }
 
-/** Which historic prefix a path belongs to. Route resolution only; not UI. */
-export function appForPath(pathname: string): { slug: AppSlug } | undefined {
-  const segments = pathname.split("/").filter(Boolean);
-  const segment = segments[0] === "apps" ? segments[1] : segments[0];
-  if (segment === "command-center" || segment === "neuralflow" || segment === "alfred") {
-    return { slug: segment };
-  }
-  return undefined;
-}
-
 export function destinationForPath(pathname: string): Destination | undefined {
   const canonical = featureRoutes[pathname] ?? pathname;
   const exact = destinations.find((destination) => destination.href === canonical)
