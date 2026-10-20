@@ -1,9 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { apps, destinationsIn } from "../../src/lib/navigation";
+import { destinations } from "../../src/lib/navigation";
 import { waitSettled } from "./helpers/settled";
 
-test("home opens the canonical Command Center briefing", async ({ page }) => {
+test("home opens the Today briefing", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL("/command-center/briefing");
   await expect(page.locator("#content h1")).toContainText("Briefing");
@@ -12,11 +12,11 @@ test("home opens the canonical Command Center briefing", async ({ page }) => {
 });
 
 /*
- * The canonical three-app routes: the IA this branch delivers. The unit layer
- * tests the navigation lib; this journey proves the routes themselves render —
- * a broken appForPath, shell, or dropped page file fails here.
+ * The canonical routes. The unit layer tests the navigation lib; this journey
+ * proves the routes themselves render — a broken destinationForPath, shell,
+ * or dropped page file fails here.
  */
-test("canonical app routes render", async ({ page }) => {
+test("canonical routes render", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -37,31 +37,28 @@ test("canonical app routes render", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-for (const app of apps) {
-  test(`${app.label} destinations are real screens`, async ({ page }) => {
-    test.setTimeout(180_000);
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    for (const destination of destinationsIn(app.slug)) {
-      const response = await page.goto(destination.href);
-      expect(response?.status(), destination.href).toBe(200);
-      // Route-level loading.tsx renders a second skeleton <main>; scope to
-      // the shell's content main so navigation never races the skeleton.
-      await expect(page.locator("#content h1")).toHaveCount(1);
-      await expect(page.locator("#content")).not.toContainText("Nothing is here");
-      await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: destination.label, exact: true })).toHaveAttribute("aria-current", "page");
-    }
-    expect(errors).toEqual([]);
-  });
-}
+test("rail destinations are real screens", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  for (const destination of destinations) {
+    const response = await page.goto(destination.href);
+    expect(response?.status(), destination.href).toBe(200);
+    // Route-level loading.tsx renders a second skeleton <main>; scope to
+    // the shell's content main so navigation never races the skeleton.
+    await expect(page.locator("#content h1")).toHaveCount(1);
+    await expect(page.locator("#content")).not.toContainText("Nothing is here");
+    await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link", { name: destination.label, exact: true })).toHaveAttribute("aria-current", "page");
+  }
+  expect(errors).toEqual([]);
+});
 
-test("the launcher crosses apps and shared routes are reachable", async ({ page }) => {
+test("the launcher lists destinations and shared routes are reachable", async ({ page }) => {
   await page.goto("/command-center/briefing");
-  await page.getByRole("button", { name: "Open apps" }).click();
+  await page.getByRole("button", { name: "Open destinations" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
-  // Cross-app links out of Command Center target the other two apps.
-  await expect(launcher.getByRole("link").filter({ hasText: "NeuralFlow" }).first()).toBeVisible();
+  await expect(launcher.getByRole("link", { name: "Work", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(launcher).toBeHidden();
   // Shared, unprefixed routes render under the same shell (no redirect to /apps).
@@ -72,9 +69,9 @@ test("the launcher crosses apps and shared routes are reachable", async ({ page 
   }
 });
 
-test("the app launcher is keyboard reachable and closes on escape", async ({ page }) => {
+test("the destination launcher is keyboard reachable and closes on escape", async ({ page }) => {
   await page.goto("/neuralflow/work");
-  const trigger = page.getByRole("button", { name: "Open apps" });
+  const trigger = page.getByRole("button", { name: "Open destinations" });
   await expect(trigger).toBeEnabled();
   await trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -107,10 +104,10 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   }
 });
 
-test("mobile exposes the apps bar without horizontal overflow", async ({ page }) => {
+test("mobile exposes the destinations bar without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/more");
   await expect(page.locator("#content h1")).toContainText("More");
-  await expect(page.getByRole("navigation", { name: "Apps", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Destinations", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

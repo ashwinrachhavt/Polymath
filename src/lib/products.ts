@@ -36,7 +36,7 @@ export const products: Product[] = [
     { slug: "reports", label: "Reports", icon: ChartNoAxesCombined, group: "Focus & reflect", description: "Work and focus reflection" },
     { slug: "rewards", label: "Stone collection", icon: Gem, group: "Focus & reflect", description: "Idempotent focus rewards" },
     { slug: "projects", label: "Projects", icon: Layers3, group: "Workspace", description: "Outcomes and their linked tasks" },
-    { slug: "notes", label: "Notes", icon: NotebookPen, group: "Workspace", description: "Canonical notes shared with Alfred" },
+    { slug: "notes", label: "Notes", icon: NotebookPen, group: "Workspace", description: "Canonical notes shared across the workspace" },
     { slug: "meetings", label: "Meetings", icon: Users, group: "Workspace", description: "Events, notes and action items" },
   ] },
   { id: "alfred", name: "Alfred", description: "Read, connect and build understanding", icon: BookOpen, home: "dashboard", destinations: [
@@ -49,7 +49,7 @@ export const products: Product[] = [
     { slug: "graph", label: "Knowledge graph", icon: Network, group: "Knowledge", description: "Links across canonical artifacts" },
     { slug: "studio", label: "Studio", icon: PenLine, group: "Create & research", description: "Grounded artifacts from pinned sources" },
     { slug: "research", label: "Deep research", icon: Search, group: "Create & research", description: "Bounded questions and citation budgets" },
-    { slug: "chat", label: "Ask Alfred", icon: MessageSquare, group: "Create & research", description: "Supervised grounded conversation" },
+    { slug: "chat", label: "Ask Polymath", icon: MessageSquare, group: "Create & research", description: "Supervised grounded conversation" },
     { slug: "blogs", label: "Blog studio", icon: FileText, group: "Create & research", description: "Draft before reviewed publishing" },
     { slug: "dictionary", label: "Dictionary", icon: BookOpen, group: "Learn", description: "Concepts, senses and annotations" },
     { slug: "learning", label: "Learning", icon: GraduationCap, group: "Learn", description: "Flashcards and quiz attempts" },

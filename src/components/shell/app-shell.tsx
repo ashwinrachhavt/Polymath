@@ -7,27 +7,22 @@ import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
 import { PreviewBanner } from "@/components/shell/preview-banner";
-import { appForPath, isBrowserPreviewPath } from "@/lib/navigation";
+import { isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const subscribeToHydration = () => () => {};
 
 /*
- * The shell is global chrome: header, the app's own nav, the canvas, and the
- * mobile bar. Nothing here knows what a destination is.
+ * The shell is global chrome: header, the rail, the canvas, and the mobile
+ * bar. Nothing here knows what a destination is.
  *
- * `data-app` is set per app rather than per page, and that attribute is what
- * scopes `--app-accent` — so every component inside an app inherits that app's
- * personality without any of them knowing which app they are in.
- *
- * A client component only because the app is derived from the pathname; the
- * layout above it stays a server component, so the auth guard there is
- * unaffected.
+ * A client component only because the browser-preview path is derived from
+ * the pathname; the layout above it stays a server component, so the auth
+ * guard there is unaffected.
  */
 export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
   const pathname = usePathname();
-  const app = appForPath(pathname);
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   // Browser-preview records live in localStorage; rendering the server's sample
   // snapshot first flashed stale rows before the stored workspace replaced them.
@@ -36,7 +31,7 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
-      <div data-app={app?.slug} className="flex min-h-dvh flex-1">
+      <div className="flex min-h-dvh flex-1">
         <SideNav />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar clerkConfigured={clerkConfigured} />

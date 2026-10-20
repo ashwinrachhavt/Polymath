@@ -1,34 +1,32 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { appForPath, apps, moreDestination } from "@/lib/navigation";
+import { destinationForPath, destinations, moreDestination } from "@/lib/navigation";
 import { cn } from "cn";
 
 /*
- * A phone cannot carry this app's nav bar and an app launcher in the same 44px
- * strip, and the header launcher is the one that has to survive — losing it
- * would strand the owner inside one app.
- *
- * So the bottom bar is the apps themselves: it is the launcher, at thumb range.
- * Within an app, that app's sections are reached from its home page or from the
- * More screen, which lists every destination grouped by app.
- *
+ * The phone bottom bar: Today, Work, Library, Assistant, and More — the five
+ * destinations a thumb reaches for most — with the full list behind More.
  * Target size is 44px, above the 24px floor in agents/design.md, because a
  * thumb is not a cursor.
  */
+const bar = ["Today", "Work", "Library", "Assistant"];
+
 export function MobileNav() {
   const pathname = usePathname();
-  const items = [...apps, moreDestination];
+  const activeHref = destinationForPath(pathname)?.href;
+  const items = [
+    ...destinations.filter((d) => bar.includes(d.label)),
+    moreDestination,
+  ];
 
   return (
     <nav
-      aria-label="Apps"
+      aria-label="Destinations"
       className="border-border bg-background sticky bottom-0 z-20 flex shrink-0 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      {items.map(({ href, label, icon: Icon, ...rest }) => {
-        const active = "slug" in rest ? appForPath(pathname)?.slug === rest.slug : pathname === href;
-        // `short` only exists on apps; the More entry has no such field.
-        const text = "short" in rest ? rest.short : label;
+      {items.map(({ href, label, icon: Icon }) => {
+        const active = "href" in moreDestination && href === moreDestination.href ? pathname === href : activeHref === href;
         return (
           <Link
             key={href}
@@ -43,7 +41,7 @@ export function MobileNav() {
             )}
           >
             <Icon aria-hidden className="size-4" />
-            <span className="truncate px-1">{text}</span>
+            <span className="truncate px-1">{label}</span>
           </Link>
         );
       })}

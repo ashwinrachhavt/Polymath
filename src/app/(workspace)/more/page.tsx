@@ -1,29 +1,31 @@
 import Link from "next/link";
 import { PageHeader, Section } from "@/components/page-header";
-import { additionalDestinationsIn, apps, destinationsIn } from "@/lib/navigation";
+import { additionalDestinationsIn, destinations } from "@/lib/navigation";
 
 export const metadata = { title: "More · Polymath" };
 
 /*
- * The mobile overflow: the three apps, then every destination in each, read
- * from the same source as the rail. Nothing can be reachable on desktop and
- * unreachable on a phone.
- *
- * Grouped by app rather than listed flat, because an unlabelled list of twelve
- * rows teaches the owner nothing about where the boundary is — and the boundary
- * is the one thing this shell exists to make visible.
+ * The full destination index: the rail's pages, then the preview tools and
+ * shared services. One product means one list; the historic app prefixes
+ * stay in URLs but name nothing in the interface.
  */
 export default function MorePage() {
   const sections = [
-    ...apps.map((app) => ({ key: app.slug, label: app.label, items: [...destinationsIn(app.slug), ...additionalDestinationsIn(app.slug)] })),
-    { key: "shared" as const, label: "Shared", items: destinationsIn("shared") },
+    { key: "product" as const, label: "Destinations", items: destinations.filter((d) => d.group !== "shared") },
+    { key: "shared" as const, label: "Workspace", items: destinations.filter((d) => d.group === "shared") },
+    { key: "preview" as const, label: "Preview tools", items: [
+      ...additionalDestinationsIn("command-center"),
+      ...additionalDestinationsIn("neuralflow"),
+      ...additionalDestinationsIn("alfred"),
+    ] },
   ];
 
   return (
     <>
-      <PageHeader title="More" purpose="Every destination, by app." />
+      <PageHeader title="More" purpose="Every destination, in one place." />
       <div className="flex flex-col gap-6 page-content">
         {sections.map(({ key, label, items }) => (
+          items.length > 0 ? (
           <Section key={key} title={label}>
             <ul className="flex flex-col">
               {items.map(({ href, label: itemLabel, purpose, icon: Icon }) => (
@@ -42,6 +44,7 @@ export default function MorePage() {
               ))}
             </ul>
           </Section>
+          ) : null
         ))}
       </div>
     </>

@@ -1,25 +1,22 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { appForPath, destinationForPath, homeHref } from "@/lib/navigation";
+import { destinationForPath, homeHref } from "@/lib/navigation";
 
 /*
- * The breadcrumb names where you are using the same vocabulary as the switcher
- * and the rail, and it is the one place the app boundary is stated in words:
- * `NeuralFlow / Focus`. Without the app segment a prefixed URL is invisible to
- * the owner, and the suite is only legible when they can see which app they
- * crossed into.
+ * The breadcrumb names where you are using the same vocabulary as the rail:
+ * `Polymath / Focus`. One product means one level of place above the page,
+ * so the former app segment is gone.
  *
  * No `A · B · C` meta string, no `→` (agents/design.md § Copy).
  */
 export function PathBreadcrumb() {
   const pathname = usePathname();
-  const app = appForPath(pathname);
   const destination = destinationForPath(pathname);
 
   if (!destination) {
     return (
-      <span className="text-[13px] font-medium tracking-tight">{app?.label ?? "Polymath"}</span>
+      <span className="text-[13px] font-medium tracking-tight">Polymath</span>
     );
   }
 
@@ -31,18 +28,6 @@ export function PathBreadcrumb() {
             Polymath
           </Link>
         </li>
-        {app ? (
-          <>
-            <li aria-hidden className="text-muted-foreground hidden sm:block">
-              /
-            </li>
-            <li className="text-muted-foreground hidden truncate sm:block">
-              <Link href={app.href} className="hover:text-foreground">
-                {app.label}
-              </Link>
-            </li>
-          </>
-        ) : null}
         <li aria-hidden className="text-muted-foreground hidden sm:block">
           /
         </li>
