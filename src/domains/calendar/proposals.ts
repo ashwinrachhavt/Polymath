@@ -94,7 +94,7 @@ export async function listPendingCalendarProposals(
       version: actionProposals.version,
       title: actionProposals.title,
       effect: actionProposals.expectedEffect,
-      revisionId: sql<string>`(select r.id from action_revisions r where r.proposal_id = ${actionProposals.id} order by r.revision_number desc limit 1)`,
+      revisionId: sql<string>`(select r.id from action_revisions r where r.proposal_id = action_proposals.id order by r.revision_number desc limit 1)`,
     })
     .from(actionProposals)
     .where(
