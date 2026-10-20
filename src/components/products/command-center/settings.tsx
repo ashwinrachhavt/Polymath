@@ -278,7 +278,7 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
             <dl className="grid gap-3 text-[13px]">
               <div><dt className="text-muted-foreground">Stored</dt><dd>Tasks, notes and checkpoints, captures, contacts, reviews, preferences and activity, in this browser&apos;s local storage.</dd></div>
               <div><dt className="text-muted-foreground">Sent anywhere</dt><dd>Nothing. No provider, model or analytics call is made from this preview.</dd></div>
-              <div><dt className="text-muted-foreground">Retention</dt><dd>Until you reset the sample workspace, or your browser clears site data.</dd></div>
+              <div><dt className="text-muted-foreground">Retention</dt><dd>Until you clear the browser preview, or your browser clears site data.</dd></div>
             </dl>
           </Panel>
         </Section>
@@ -291,12 +291,12 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="reset">
-          <Panel title="Reset browser preview" description="Replace local edits, notes, checkpoints, tasks and review decisions with the fictional sample workspace. No production or provider data is affected.">
+          <Panel title="Reset browser preview" description="Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected.">
             <Dialog open={resetOpen} onOpenChange={(open) => { setResetOpen(open); setConfirmation(""); }}>
-              <DialogTrigger asChild><Button variant="outline">Reset sample workspace</Button></DialogTrigger>
+              <DialogTrigger asChild><Button variant="outline">Clear preview data</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>Replace all preview changes?</DialogTitle>
-                <DialogDescription>This resets the shared browser workspace used by all three products. Your local edits and saved notes will be lost. Download any notes you need first.</DialogDescription>
+                <DialogDescription>This clears the shared browser workspace used by all three products. Your local edits and saved notes will be lost. Download any notes you need first.</DialogDescription>
                 <Field label="Type RESET to confirm"><Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off"/></Field>
                 <Button disabled={confirmation !== "RESET"} onClick={() => { resetPreview(); setResetOpen(false); setConfirmation(""); }}>Confirm reset</Button>
               </DialogContent>

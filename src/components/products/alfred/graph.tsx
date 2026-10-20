@@ -9,7 +9,7 @@ import { ArtifactLink, RecordLinks } from "./artifact-controls";
 
 export default function Graph({ initialId }: { initialId?: string }) {
   const { state } = useWorkspace();
-  const [id, setId] = useState(initialId || "note-axiom");
+  const [id, setId] = useState(initialId || "");
   const [kind, setKind] = useState("all");
   const [query, setQuery] = useState("");
   const nodes = state.artifacts.filter((item) => (kind === "all" || item.kind === kind) && item.title.toLowerCase().includes(query.toLowerCase())).slice(0, 40);

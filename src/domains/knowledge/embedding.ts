@@ -7,6 +7,7 @@ import {
   type EmbeddingProvider,
 } from "@/integrations/embeddings/provider";
 import { db } from "@/lib/db";
+import { materializeSemanticEdges } from "./relations";
 import { withTransaction } from "@/lib/db-transaction";
 import { chunkText } from "./chunking";
 import { artifacts, artifactVersions, documentExtractions, embeddings } from "./schema";
@@ -220,5 +221,11 @@ export async function embedArtifact(
     }
     await record(null);
   });
+  // Best-effort: edges follow the vectors, but a failure here never fails the embed.
+  try {
+    await materializeSemanticEdges(auth, row.id);
+  } catch (cause) {
+    console.error(`semantic edges failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
   return { status: "succeeded", chunks: chunks.length };
 }

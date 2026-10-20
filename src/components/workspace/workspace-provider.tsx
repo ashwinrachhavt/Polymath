@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
-import { sampleState } from "./sample-state";
+import { emptyWorkspaceState } from "./empty-state";
 import { completionPatch, nextRank, reorderTasks, statusLabels } from "./tasks";
 import type { Artifact, ArtifactKind, CalendarEvent, Capture, Company, Contact, Focus, Opportunity, Preferences, Project, Review, Task, TaskAttachment, TaskStatus, WorkspaceState } from "./types";
 
@@ -29,7 +29,7 @@ const schema = z.object({
 /*
  * Bump when the schema changes incompatibly. On a mismatch the saved payload is
  * kept untouched under its raw key with the old version appended, so export or
- * manual recovery stays possible; the preview falls back to the sample state
+ * manual recovery stays possible; the preview falls back to the empty state
  * rather than silently resetting user work.
  */
 const PREVIEW_FORMAT_VERSION = 1;
@@ -50,7 +50,7 @@ function resolveStorage(injected?: Pick<Storage, "getItem" | "setItem">) {
  */
 export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Storage, "getItem" | "setItem">) {
 const key = scope === "anonymous" ? "axiom-ui-preview-v1" : `axiom-ui-preview-v1:${scope}`;
-let snapshot: WorkspaceState = sampleState;
+let snapshot: WorkspaceState = emptyWorkspaceState;
 let loaded = false;
 let observedRaw: string | null = null;
 let notice = "";
@@ -83,7 +83,7 @@ function getSnapshot() {
             try { store.setItem(`${key}:incompatible-v${PREVIEW_FORMAT_VERSION}`, raw); } catch { /* best-effort backup */ }
             storageWarning = "Saved preview data has an incompatible format. Your saved data was kept aside; export any open work before resetting this preview.";
           }
-        } else snapshot = sampleState;
+        } else snapshot = emptyWorkspaceState;
       }
     } catch { storageWarning = "Browser storage is unavailable. Preview changes will last only until refresh."; }
   }
@@ -247,7 +247,7 @@ function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
   if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return;
   commit({ ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: crypto.randomUUID() }] }, "Preview reward earned");
 }
-function resetPreview() { commit(sampleState, "Sample workspace reset"); notify("Sample workspace reset. Your previous browser preview changes were replaced."); }
+function resetPreview() { commit(emptyWorkspaceState, "Browser preview cleared"); notify("Browser preview cleared. Your previous local changes were replaced with an empty workspace."); }
 
 return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, clarifyCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
 }
@@ -255,7 +255,7 @@ export const previewWorkspace = createPreviewWorkspace();
 const WorkspaceContext = createContext(previewWorkspace);
 export function useWorkspace() {
   const workspace = useContext(WorkspaceContext);
-  const state = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot, () => sampleState);
+  const state = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot, () => emptyWorkspaceState);
   return { state, ...workspace };
 }
 export function PreviewStorageWarning() {

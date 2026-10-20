@@ -1,4 +1,4 @@
-import type { WorkspaceState } from "./types";
+import type { WorkspaceState } from "../../src/components/workspace/types";
 
 const at = "2026-10-11T09:00:00.000Z";
 export const sampleState: WorkspaceState = {

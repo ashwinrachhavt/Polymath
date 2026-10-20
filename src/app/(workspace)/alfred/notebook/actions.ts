@@ -9,13 +9,16 @@ import {
   autosaveNoteDraft,
   commitNoteSnapshot,
   createNote,
+  listNotes,
   renameNote,
   setNoteTags,
 } from "@/domains/knowledge/notes";
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
+import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -39,7 +42,7 @@ async function authorize(): Promise<AuthContext> {
 }
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-const domainErrors = [NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError];
+const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -117,6 +120,52 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
 }
 
+const linkRelatedInput = z.object({ artifactId: z.string().uuid(), targetId: z.string().uuid() });
+
+/** Confirm a "related by meaning" suggestion into the explicit graph. */
+export async function linkRelatedNoteAction(input: z.input<typeof linkRelatedInput>): Promise<Result<{ linked: true }>> {
+  const parsed = linkRelatedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That suggestion is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    if (!(await promoteSemanticLink(auth, parsed.data))) throw new NoteNotFoundError();
+    return { linked: true as const };
+  });
+}
+
+const relationInput = z.object({
+  artifactId: z.string().uuid(),
+  targetId: z.string().uuid(),
+  linkType: z.enum(RELATION_TYPES),
+  why: z.string().max(500).optional(),
+});
+
+/** Name what a link means and why (ASH-110: similarity is not a relationship). */
+export async function setLinkRelationAction(input: z.input<typeof relationInput>): Promise<Result<{ saved: true }>> {
+  const parsed = relationInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That relationship is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    await setLinkRelation(auth, parsed.data);
+    return { saved: true as const };
+  });
+}
+
+/** Remove a curated link or reject a suggestion; neither touches the notes. */
+export async function removeLinkAction(input: z.input<typeof linkRelatedInput> & { dismiss?: boolean }): Promise<Result<{ removed: true }>> {
+  const parsed = linkRelatedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That link is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    if (input.dismiss) {
+      if (!(await dismissSemanticLink(auth, parsed.data))) throw new NoteNotFoundError();
+    } else {
+      await removeLink(auth, parsed.data);
+    }
+    return { removed: true as const };
+  });
+}
+
 const tagsInput = z.object({
   artifactId: z.string().uuid(),
   expectedVersion: z.number().int().min(1),
@@ -187,4 +236,22 @@ export async function applyNoteAIResultAction(input: z.input<typeof aiApplyInput
   if (!parsed.success) return { ok: false, error: "That apply request is not valid." };
   const auth = await authorize();
   return guarded(async () => applyNoteAIResult(auth, parsed.data));
+}
+
+const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword", "hybrid"]), excludeId: z.string().uuid().optional() });
+
+/**
+ * Cards the `[[` picker can link to, from the same retrieval layer as search.
+ * An empty query lists recent cards so the menu is useful the moment it opens.
+ * A read: membership is enough, and nothing is revalidated.
+ */
+export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string }[]> {
+  const parsed = findInput.safeParse(input);
+  if (!parsed.success) return [];
+  const auth = await getAuthContext();
+  const query = parsed.data.query.trim();
+  const rows = query
+    ? (await searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 })).hits
+    : await listNotes(auth, 9);
+  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
 }

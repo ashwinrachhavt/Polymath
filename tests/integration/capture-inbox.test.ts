@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
+import { artifactLinks, artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -84,6 +85,49 @@ suite("capture inbox", () => {
       commands.convertCaptureToTask(auth, { captureId: fresh.id, expectedVersion: fresh.version + 9 }),
     ).rejects.toMatchObject({ code: "stale_write" });
     expect(await auditCount(auth, capture.id)).toBe(2);
+  });
+
+  it("converts to a notebook note in one transaction, resolves wiki links, and refuses a second conversion", async () => {
+    const auth = await seed("capture-note");
+    // An existing note to link to: the capture body names it in [[...]].
+    const { createNote } = await import("@/domains/knowledge/notes");
+    const target = await createNote(auth, { title: "Atomic notes", content: { format: "markdown", text: "One idea per note." }, plainText: "One idea per note.", idempotencyKey: crypto.randomUUID() });
+
+    const capture = await commands.createCapture(auth, { text: "Zettelkasten is a web of [[Atomic notes]] - links are the thinking" });
+    const { note, capture: converted } = await commands.convertCaptureToNote(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
+    expect(converted.processingState).toBe("converted");
+    expect(converted.convertedType).toBe("note");
+    expect(converted.convertedId).toBe(note.id);
+    expect(converted.text).toBe(capture.text);
+
+    // The note landed as a normal notebook artifact: kind note, version 1 is
+    // the capture text, title from the first line.
+    const [artifact] = await db.select().from(artifacts).where(and(eq(artifacts.id, note.id), eq(artifacts.workspaceId, auth.workspaceId)));
+    expect(artifact.kind).toBe("note");
+    expect(artifact.status).not.toBe("inbox");
+    expect(artifact.title).toContain("Zettelkasten");
+    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    expect(version.plainText).toBe(capture.text);
+
+    // The wiki link resolved in the same commit.
+    const links = await db.select().from(artifactLinks).where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, note.id)));
+    expect(links.map((l) => l.targetId)).toContain(target.id);
+
+    // Converting again is a conflict, never a second note.
+    await expect(
+      commands.convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: converted.version }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    const stillOne = await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")));
+    expect(stillOne.filter((a) => a.title.includes("Zettelkasten")).length).toBe(1);
+
+    // A wrong version on an open capture is the stale-write path.
+    const fresh = await commands.createCapture(auth, { text: "Another open capture" });
+    await expect(
+      commands.convertCaptureToNote(auth, { captureId: fresh.id, expectedVersion: fresh.version + 9 }),
+    ).rejects.toMatchObject({ code: "stale_write" });
   });
 
   it("archives and restores, version-checked, and never un-converts", async () => {

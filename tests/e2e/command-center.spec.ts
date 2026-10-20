@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { sampleState } from "../../src/components/workspace/sample-state";
+import { sampleState } from "../fixtures/sample-workspace";
 
 const records = [
   { screen: "contacts", id: "contact-1", title: "Morgan Chen", missing: "Contact not found" },
@@ -9,6 +9,7 @@ const records = [
 
 for (const record of records) {
   test(`${record.screen} record deep link opens the exact inspector and can close`, async ({ page }) => {
+    await page.addInitScript((state) => localStorage.setItem("axiom-ui-preview-v1", JSON.stringify(state)), sampleState);
     await page.goto(`/apps/command-center/${record.screen}?id=${record.id}`);
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: record.title, exact: true })).toBeVisible();
@@ -19,6 +20,7 @@ for (const record of records) {
   });
 
   test(`${record.screen} unknown deep link reports missing without selecting a fallback`, async ({ page }) => {
+    await page.addInitScript((state) => localStorage.setItem("axiom-ui-preview-v1", JSON.stringify(state)), sampleState);
     await page.goto(`/apps/command-center/${record.screen}?id=does-not-exist`);
     await expect(page.getByText(record.missing, { exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
