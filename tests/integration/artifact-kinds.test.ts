@@ -34,7 +34,7 @@ import {
 suite("generatable draft kinds (Neon)", () => {
   let auth: ReturnType<typeof ownerAuth>;
 
-  async function succeededRun(objective: string): Promise<string> {
+  async function succeededRun(objective: string, content?: string): Promise<string> {
     const [profile] = await holder.db!
       .insert(agentProfiles)
       .values({ workspaceId: auth.workspaceId, name: "alfred", createdBy: auth.userId, updatedBy: auth.userId })
@@ -50,7 +50,7 @@ suite("generatable draft kinds (Neon)", () => {
       runId: run.id,
       sequence: 1,
       type: "message",
-      data: { role: "assistant", content: `# ${objective}\n\nA generated body.` },
+      data: { role: "assistant", content: content ?? `# ${objective}\n\nA generated body.` },
     });
     return run.id;
   }
@@ -72,7 +72,10 @@ suite("generatable draft kinds (Neon)", () => {
 
   it("saves a deck with kind deck, not report", async () => {
     if (!handle) return;
-    const runId = await succeededRun("deck: study guide");
+    const runId = await succeededRun(
+      "deck: study guide",
+      JSON.stringify({ slides: [{ title: "deck: study guide", bullets: ["A generated body."], citations: [] }] }),
+    );
     const { artifactId } = await saveGeneratedDraft(auth, { runId, kind: "deck" });
     const [row] = await holder.db!.select({ kind: artifacts.kind }).from(artifacts).where(eq(artifacts.id, artifactId));
     expect(row.kind).toBe("deck");
@@ -80,7 +83,15 @@ suite("generatable draft kinds (Neon)", () => {
 
   it("opens and edits a saved infographic", async () => {
     if (!handle) return;
-    const runId = await succeededRun("infographic: key numbers");
+    const runId = await succeededRun(
+      "infographic: key numbers",
+      JSON.stringify({
+        headline: "infographic: key numbers",
+        layout: "sections",
+        sections: [{ heading: "key numbers", body: "A generated body." }],
+        citations: [],
+      }),
+    );
     const { artifactId } = await saveGeneratedDraft(auth, { runId, kind: "infographic" });
     const detail = await getDraftDetail(auth, artifactId);
     expect(detail.artifact.status).toBe("draft");
@@ -88,7 +99,7 @@ suite("generatable draft kinds (Neon)", () => {
     const edited = await editGeneratedDraft(auth, {
       artifactId,
       expectedVersion: detail.artifact.version,
-      text: "An edited infographic body.",
+      structured: { kind: "infographic", headline: "An edited infographic body.", layout: "lede", stats: [], sections: [], citations: [] },
       idempotencyKey: crypto.randomUUID(),
     });
     expect(edited.version).toBe(detail.artifact.version + 1);

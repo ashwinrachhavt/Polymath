@@ -72,7 +72,9 @@ afterAll(async () => {
 });
 
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
-const TEXT = new TextEncoder().encode("plain text pretending to be nothing in particular");
+// Neither a known signature nor printable text: the quarantine path after text
+// became a first-class supported type.
+const UNIDENTIFIABLE = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
 
 function uploadRequest(bytes: Uint8Array, title: string, idempotencyKey?: string) {
   const form = new FormData();
@@ -109,12 +111,12 @@ suite("file intake", () => {
     expect(receipts).toHaveLength(1);
   });
 
-  it("a sniff mismatch quarantines the original instead of rejecting it", async () => {
+  it("unidentifiable bytes quarantine the original instead of rejecting it", async () => {
     const db = holder.db!;
     const { userId, workspaceId } = await seedWorkspace(db, `file-quarantine-${Date.now()}`);
     holder.auth = { userId, workspaceId, role: "owner" };
 
-    const res = await POST(uploadRequest(TEXT, "Not a pdf"), undefined);
+    const res = await POST(uploadRequest(UNIDENTIFIABLE, "Not a readable file"), undefined);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { fileId: string; fileStatus: string };
     expect(body.fileStatus).toBe("quarantined");

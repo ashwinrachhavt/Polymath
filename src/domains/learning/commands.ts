@@ -5,8 +5,8 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
-import { documentExtractions, documents } from "@/domains/knowledge/schema";
-import { currentExtractionSql } from "@/domains/knowledge/versions";
+import { documents } from "@/domains/knowledge/schema";
+import { getCurrentExtraction } from "@/domains/knowledge/versions";
 import { defaultQuizGenerator, QUESTIONS_PER_REQUEST, verifyCandidates, type QuizGenerator } from "@/integrations/quiz/generator";
 import { learningAttempts, learningDecks, learningItems } from "./schema";
 import { nextSchedule, type LearningResult } from "./sm2";
@@ -112,17 +112,10 @@ export async function generateQuiz(
     .limit(1);
   if (!doc) throw new LearningError("document_not_found", "No such document.");
 
-  const [extraction] = await db
-    .select({ id: documentExtractions.id, text: documentExtractions.text })
-    .from(documentExtractions)
-    .where(and(
-      eq(documentExtractions.documentId, doc.id),
-      eq(documentExtractions.workspaceId, auth.workspaceId),
-      eq(documentExtractions.status, "succeeded"),
-      eq(documentExtractions.id, sql`(${currentExtractionSql("id")})`),
-    ))
-    .limit(1);
-  const text = extraction?.text ?? "";
+  // The current extraction (restore pin wins, else newest) must also be a
+  // succeeded read: a quiz over half-read text cites pages that are not there.
+  const extraction = await getCurrentExtraction(auth, { documentId: doc.id });
+  const text = extraction && extraction.status === "succeeded" ? (extraction.text ?? "") : "";
   if (!text.trim()) throw new LearningError("no_extraction", "That document has no readable text yet.");
 
   const count = Math.min(Math.max(input.count ?? 10, 1), 20);
@@ -169,7 +162,10 @@ export async function generateQuiz(
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
-      .onConflictDoNothing({ target: [learningItems.deckId, learningItems.dedupeKey] })
+      .onConflictDoNothing({
+        target: [learningItems.deckId, learningItems.dedupeKey],
+        where: sql`"dedupe_key" is not null`,
+      })
       .returning({ id: learningItems.id });
     created += rows.length;
   }
