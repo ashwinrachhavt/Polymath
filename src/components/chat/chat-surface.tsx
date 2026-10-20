@@ -146,7 +146,7 @@ export function ChatSurface({
                   <span>{tool.label}</span>
                   <span
                     className={
-                      tool.status === "ok" ? "text-[#346538]" : tool.status === "error" ? "text-[#9F2F2D]" : ""
+                      tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""
                     }
                   >
                     {tool.status === "running" ? "running" : tool.status === "ok" ? "done" : "failed"}
@@ -169,7 +169,7 @@ export function ChatSurface({
         )}
 
         {chat.error && (
-          <p role="status" className="mt-3 text-[12px] text-[#9F2F2D]">
+          <p role="status" className="mt-3 text-[12px] text-destructive">
             {chat.error}
           </p>
         )}
@@ -196,7 +196,7 @@ export function ChatSurface({
           }}
         />
         {sendError && (
-          <p role="alert" className="mt-2 text-[12px] text-[#9F2F2D]">
+          <p role="alert" className="mt-2 text-[12px] text-destructive">
             {sendError}
           </p>
         )}

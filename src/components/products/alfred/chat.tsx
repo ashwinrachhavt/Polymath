@@ -83,7 +83,7 @@ export default function Chat({ initialId }: { initialId?: string }) {
                   />
                 </label>
                 {error && (
-                  <p role="alert" className="mt-2 text-[12px] text-[#9F2F2D]">
+                  <p role="alert" className="mt-2 text-[12px] text-destructive">
                     {error}
                   </p>
                 )}
