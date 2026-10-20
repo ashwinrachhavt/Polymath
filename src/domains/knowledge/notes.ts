@@ -308,6 +308,50 @@ export async function renameNote(
   });
 }
 
+/** Category tags: normalized lowercase, deduped, same shape document tags use. */
+export function normalizeNoteTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const tag = raw.trim().toLowerCase();
+    if (tag.length >= 1 && tag.length <= 40) seen.add(tag);
+  }
+  return [...seen].slice(0, 12);
+}
+
+export async function setNoteTags(
+  auth: AuthContext,
+  input: Keyed & { artifactId: string; expectedVersion: number; tags: string[] },
+): Promise<{ version: number; tags: string[] }> {
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "setNoteTags", ...input }, async () => {
+      const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
+      const tags = normalizeNoteTags(input.tags);
+      await tx.update(artifacts).set({ tags }).where(eq(artifacts.id, artifact.id));
+      await recordAudit(
+        auth,
+        { action: "note.tags_changed", subjectType: "artifact", subjectId: artifact.id, summary: `Tagged note "${artifact.title}" as ${tags.length ? tags.join(", ") : "untagged"}`, metadata: { tags } },
+        tx,
+      );
+      await emit(tx, auth, "note.tags_changed", { artifactId: artifact.id, tags });
+      return { version: artifact.version, tags };
+    });
+    return value;
+  });
+}
+
+/** Distinct category tags across this workspace's notes and zettels, for filter chips. */
+export async function listNoteTags(auth: AuthContext): Promise<string[]> {
+  return withTransaction(async (tx) => {
+    const rows = await tx
+      .select({ tag: sql<string>`jsonb_array_elements_text(${artifacts.tags})` })
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...LINKABLE_KINDS]), isNull(artifacts.archivedAt)))
+      .groupBy(sql`1`)
+      .orderBy(sql`1`);
+    return rows.map((row) => row.tag);
+  });
+}
+
 export type NoteListItem = {
   id: string;
   title: string;
@@ -317,7 +361,13 @@ export type NoteListItem = {
   updatedAt: Date;
   excerpt: string | null;
   hasDraft: boolean;
+  tags: string[];
 };
+
+/** tags is jsonb; the notes surface only ever stores a list of strings there. */
+function readTags(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((tag): tag is string => typeof tag === "string") : [];
+}
 
 export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS): Promise<NoteListItem[]> {
   return withTransaction(async (tx) => {
@@ -330,6 +380,7 @@ export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly (
         version: artifacts.version,
         updatedAt: artifacts.updatedAt,
         excerpt: artifactVersions.plainText,
+        tags: artifacts.tags,
         draftArtifactId: workingDrafts.artifactId,
       })
       .from(artifacts)
@@ -345,11 +396,12 @@ export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly (
 /** One page of notes for the sidebar list; the total honours search and the drafts filter. */
 export async function pageNotes(
   auth: AuthContext,
-  input: { query?: string; draftsOnly?: boolean; kinds?: readonly ("note" | "zettel")[]; limit: number; offset: number },
+  input: { query?: string; draftsOnly?: boolean; tag?: string; kinds?: readonly ("note" | "zettel")[]; limit: number; offset: number },
 ): Promise<{ items: NoteListItem[]; total: number }> {
   return withTransaction(async (tx) => {
     const filters = [eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...(input.kinds ?? LINKABLE_KINDS)]), isNull(artifacts.archivedAt)];
     if (input.draftsOnly) filters.push(isNotNull(workingDrafts.artifactId));
+    if (input.tag?.trim()) filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
     if (input.query?.trim()) {
       const like = `%${escapeLike(input.query.trim())}%`;
       filters.push(or(ilike(artifacts.title, like), ilike(artifactVersions.plainText, like))!);
@@ -364,6 +416,7 @@ export async function pageNotes(
           version: artifacts.version,
           updatedAt: artifacts.updatedAt,
           excerpt: artifactVersions.plainText,
+          tags: artifacts.tags,
           draftArtifactId: workingDrafts.artifactId,
         })
         .from(artifacts)
@@ -381,7 +434,7 @@ export async function pageNotes(
       .where(where);
     return {
       total: totalRow?.n ?? 0,
-      items: rows.map(({ draftArtifactId, ...row }) => ({ ...row, hasDraft: draftArtifactId !== null })),
+      items: rows.map(({ draftArtifactId, ...row }) => ({ ...row, tags: readTags(row.tags), hasDraft: draftArtifactId !== null })),
     };
   });
 }
@@ -389,9 +442,13 @@ export async function pageNotes(
 export type NoteDetail = {
   id: string;
   title: string;
+  kind: string;
   status: string;
   version: number;
   currentVersionId: string | null;
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
   content: NoteContent | null;
   draft: { content: NoteContent; baseVersionId: string | null; updatedAt: Date } | null;
 };
@@ -402,9 +459,13 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       .select({
         id: artifacts.id,
         title: artifacts.title,
+        kind: artifacts.kind,
         status: artifacts.status,
         version: artifacts.version,
         currentVersionId: artifacts.currentVersionId,
+        tags: artifacts.tags,
+        createdAt: artifacts.createdAt,
+        updatedAt: artifacts.updatedAt,
         content: artifactVersions.content,
         draftContent: workingDrafts.content,
         draftBaseVersionId: workingDrafts.baseVersionId,
@@ -419,9 +480,13 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
     return {
       id: row.id,
       title: row.title,
+      kind: row.kind,
       status: row.status,
       version: row.version,
       currentVersionId: row.currentVersionId,
+      tags: readTags(row.tags),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       content: (row.content as NoteContent | null) ?? null,
       draft: row.draftContent ? { content: row.draftContent as NoteContent, baseVersionId: row.draftBaseVersionId, updatedAt: row.draftUpdatedAt! } : null,
     };

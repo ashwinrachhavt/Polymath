@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, renameNoteAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, renameNoteAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for the canonical notebook. The body is Markdown inside
@@ -99,6 +99,10 @@ export function NoteEditor({
   initialTitle,
   initialVersion,
   initialMarkdown,
+  kind,
+  tags: initialTags,
+  createdAt,
+  updatedAt,
   draft,
   versions,
   outlinks,
@@ -109,6 +113,10 @@ export function NoteEditor({
   initialTitle: string;
   initialVersion: number;
   initialMarkdown: string;
+  kind: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
   draft: { markdown: string; updatedAt: string } | null;
   versions: VersionItem[];
   outlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
@@ -173,6 +181,25 @@ export function NoteEditor({
     };
   }, [markdown, noteId]);
 
+  const [tags, setTags] = useState<string[]>(initialTags);
+  const [tagInput, setTagInput] = useState("");
+  const saveTags = async (next: string[]) => {
+    setTags(next);
+    await enqueue(async () => {
+      const result = await setNoteTagsAction({ artifactId: noteId, expectedVersion: versionRef.current, tags: next, idempotencyKey: crypto.randomUUID() });
+      if (!result.ok) return setError(result.error);
+      versionRef.current = result.version;
+      setTags(result.tags);
+      router.refresh();
+    });
+  };
+  const addTag = () => {
+    const tag = tagInput.trim().toLowerCase();
+    if (!tag) return;
+    setTagInput("");
+    if (!tags.includes(tag)) void saveTags([...tags, tag]);
+  };
+
   const rename = async () => {
     const next = title.trim();
     if (!next || next === initialTitle) return;
@@ -209,6 +236,7 @@ export function NoteEditor({
   };
 
   const [ai, setAi] = useState<AIProposal | null>(null);
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiBusy = !!ai && !AI_TERMINAL.has(ai.state);
 
   const startAI = async (request: NoteAIRequest) => {
@@ -329,7 +357,54 @@ export function NoteEditor({
           </div>
         )}
         <Input aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={rename} />
-        <RichEditor content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI }} />
+        <dl aria-label="Note properties" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-border px-3 py-2 text-[13px]">
+          <span className="flex items-center gap-1.5">
+            <dt className="text-xs text-muted-foreground">Type</dt>
+            <dd><Status>{kind}</Status></dd>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <dt className="text-xs text-muted-foreground">Tags</dt>
+            <dd className="flex flex-wrap items-center gap-1">
+              {tags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  title={`Remove tag ${tag}`}
+                  aria-label={`Remove tag ${tag}`}
+                  className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-destructive/50 hover:text-destructive"
+                  onClick={() => void saveTags(tags.filter((t) => t !== tag))}
+                >
+                  {tag} ×
+                </button>
+              ))}
+              <input
+                aria-label="Add a tag"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); }
+                  if (e.key === "Backspace" && !tagInput && tags.length) void saveTags(tags.slice(0, -1));
+                }}
+                onBlur={addTag}
+                placeholder="+ tag"
+                className="w-16 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+            </dd>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <dt className="text-xs text-muted-foreground">Created</dt>
+            <dd className="text-xs">{stamp(createdAt)}</dd>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <dt className="text-xs text-muted-foreground">Updated</dt>
+            <dd className="text-xs">{stamp(updatedAt)}</dd>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <dt className="text-xs text-muted-foreground">Version</dt>
+            <dd className="text-xs">v{initialVersion}</dd>
+          </span>
+        </dl>
+        <RichEditor content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
         {ai && (
           <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <div className="flex items-center gap-2">
@@ -372,7 +447,7 @@ export function NoteEditor({
         {(outlinks.length > 0 || backlinks.length > 0) && (
           <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Links to</p>
+              <p className="text-xs font-medium text-muted-foreground">References</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {outlinks.map((link) => (
                   <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
@@ -380,14 +455,15 @@ export function NoteEditor({
                       {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
                       {link.title}
                     </Link>
-                    {link.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
+                    {link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">…{link.context}…</p>}
+                    {link.excerpt && !link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
                   </li>
                 ))}
                 {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
               </ul>
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Linked from</p>
+              <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {backlinks.map((link) => (
                   <li key={link.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
@@ -395,7 +471,8 @@ export function NoteEditor({
                       {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
                       {link.title}
                     </Link>
-                    {link.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
+                    {link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">…{link.context}…</p>}
+                    {link.excerpt && !link.context && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{link.excerpt}</p>}
                   </li>
                 ))}
                 {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}

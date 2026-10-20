@@ -10,6 +10,7 @@ import {
   commitNoteSnapshot,
   createNote,
   renameNote,
+  setNoteTags,
 } from "@/domains/knowledge/notes";
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
@@ -114,6 +115,20 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
   const auth = await authorize();
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
+}
+
+const tagsInput = z.object({
+  artifactId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  tags: z.array(z.string().max(60)).max(20),
+  idempotencyKey: key,
+});
+
+export async function setNoteTagsAction(input: z.input<typeof tagsInput>): Promise<Result<{ version: number; tags: string[] }>> {
+  const parsed = tagsInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Those tags are not valid." };
+  const auth = await authorize();
+  return guarded(async () => setNoteTags(auth, parsed.data));
 }
 
 /* ---------------------------------------------------------------------------

@@ -21,8 +21,25 @@ export type NoteAIRequest = {
  * to the parent, which runs it and stages the result for acceptance. Nothing
  * is generated or inserted here.
  */
-export function NoteAIMenu({ selection, pending, onAction }: { selection: string; pending: boolean; onAction: (request: NoteAIRequest) => void }) {
-  const [open, setOpen] = useState(false);
+export function NoteAIMenu({
+  selection,
+  pending,
+  onAction,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  selection: string;
+  pending: boolean;
+  onAction: (request: NoteAIRequest) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const [language, setLanguage] = useState("");
   const [question, setQuestion] = useState("");
   const scope = selection.trim() ? `the selected passage (${selection.trim().length} characters)` : "the whole note";

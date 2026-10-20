@@ -124,3 +124,20 @@ Failures stay visible in the table (never silently lost) and
 `retryDocumentEnrichment` re-runs the line, skipping already-succeeded
 stages. A stage marked `skipped` is a durable decision (e.g. no extractable
 text) and is not retried.
+
+## Notes tab: categories, kanban and editor ergonomics
+
+Notes and zettels carry category tags on `artifacts.tags` (normalized
+lowercase, deduped, audited through `note.tags_changed`). The notebook
+sidebar filters by tag with chips, and a layout toggle switches between the
+paged list and a kanban that groups the matching notes into one column per
+tag (`?layout=kanban`). The note page opens with a Notion-style properties
+block (type, tags, created, updated, version) whose tags edit inline against
+the artifact's optimistic version.
+
+Editor ergonomics follow the Notion/Tiptap pattern: `space` on an empty
+paragraph opens the Notebook AI menu (the result is always a reviewable
+draft, never silent text), `/` opens block commands, and `[[` links a note
+or zettel by title. Below the body, Matuschak-style panels show References
+(outlinks) and Links to this note (backlinks) with the linking context
+excerpt, plus the semantic Related by meaning panel.

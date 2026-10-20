@@ -17,7 +17,13 @@ import { SearchField, Unavailable } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
 
-export type RichEditorAI = { pending: boolean; onAction: (request: NoteAIRequest) => void };
+export type RichEditorAI = {
+  pending: boolean;
+  onAction: (request: NoteAIRequest) => void;
+  /** Controlled dialog state so "space on an empty line" can open the menu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
 
 export default function RichEditor({ content, onChange, ai }: { content: string; onChange: (content: string) => void; ai?: RichEditorAI }) {
   const [preferred, setPreferred] = useState<MarkdownEditorMode>(() => markdownEditorMode(content));
@@ -29,7 +35,7 @@ export default function RichEditor({ content, onChange, ai }: { content: string;
   const readTextareaSelection = (textarea: HTMLTextAreaElement) => {
     setSelection(textarea.selectionStart === textarea.selectionEnd ? "" : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd));
   };
-  return <div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><Button type="button" variant={mode === "rich" ? "secondary" : "outline"} aria-pressed={mode === "rich"} disabled={!!reason} onClick={() => setPreferred("rich")}>Rich text</Button><Button type="button" variant={mode === "source" ? "secondary" : "outline"} aria-pressed={mode === "source"} onClick={() => setPreferred("source")}>Markdown source</Button>{ai ? <NoteAIMenu selection={selection} pending={ai.pending} onAction={ai.onAction} /> : null}</div>{reason && <p role="status" className="text-[13px] leading-relaxed text-muted-foreground">This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those constructs in source.</p>}{mode === "source" ? <Textarea aria-label="Markdown source" className="min-h-72 font-mono text-[13px]" value={content} onChange={(event) => onChange(event.target.value)} onSelect={(event) => readTextareaSelection(event.currentTarget)} onKeyUp={(event) => readTextareaSelection(event.currentTarget)} /> : <RichMarkdownEditor content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} />}</div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><Button type="button" variant={mode === "rich" ? "secondary" : "outline"} aria-pressed={mode === "rich"} disabled={!!reason} onClick={() => setPreferred("rich")}>Rich text</Button><Button type="button" variant={mode === "source" ? "secondary" : "outline"} aria-pressed={mode === "source"} onClick={() => setPreferred("source")}>Markdown source</Button>{ai ? <NoteAIMenu selection={selection} pending={ai.pending} onAction={ai.onAction} open={ai.open} onOpenChange={ai.onOpenChange} /> : null}</div>{reason && <p role="status" className="text-[13px] leading-relaxed text-muted-foreground">This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those constructs in source.</p>}{mode === "source" ? <Textarea aria-label="Markdown source" className="min-h-72 font-mono text-[13px]" value={content} onChange={(event) => onChange(event.target.value)} onSelect={(event) => readTextareaSelection(event.currentTarget)} onKeyUp={(event) => readTextareaSelection(event.currentTarget)} /> : <RichMarkdownEditor content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined} />}</div>;
 }
 
 /*
@@ -68,7 +74,7 @@ function SlashMenu({ items, active, onPick }: { items: BlockCommand[]; active: n
   </div>;
 }
 
-function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI }: { content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean }) {
+function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI, onEmptySpace }: { content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean; onEmptySpace?: () => void }) {
   const { state, notify } = useWorkspace();
   const [slash, setSlash] = useState<{ query: string; from: number; to: number } | null>(null);
   const [link, setLink] = useState<{ query: string; from: number; to: number } | null>(null);
@@ -78,7 +84,17 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
   const [linkOpen, setLinkOpen] = useState(false);
   const [recordQuery, setRecordQuery] = useState("");
   const [recordOpen, setRecordOpen] = useState(false);
-  const editor = useEditor({ extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "Write a working note. Type / for a block, [[ to link a record." }), Markdown], content, contentType: "markdown", immediatelyRender: false, editorProps: { handleKeyDown: (_view, event) => {
+  const editor = useEditor({ extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "Write a working note. Press space for AI, / for a block, [[ to link a record." }), Markdown], content, contentType: "markdown", immediatelyRender: false, editorProps: { handleKeyDown: (_view, event) => {
+    // Space on an empty paragraph is the AI affordance (Notion-style): open
+    // the menu instead of inserting a space into a blank line.
+    if (event.key === " " && onEmptySpace && _view.state.selection.empty) {
+      const { $from } = _view.state.selection;
+      if ($from.parent.type.name === "paragraph" && $from.parent.content.size === 0) {
+        event.preventDefault();
+        onEmptySpace();
+        return true;
+      }
+    }
     // The link menu is handled before the slash menu so the two never both
     // respond to the same key. Enter inserts the active record's [[title]].
     if (link) {
