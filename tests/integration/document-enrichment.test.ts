@@ -38,7 +38,7 @@ const zettels = (): ZettelExtractor => ({
   extract: async () => [{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: "The tenant pays monthly rent of twelve hundred dollars." }],
 });
 const vec = (d: number) => { const v = new Array(1536).fill(0); v[d] = 1; return v; };
-const embedding: EmbeddingProvider = { model: "fake-embed@1", embed: async (values) => values.map(() => vec([7])) };
+const embedding: EmbeddingProvider = { model: "fake-embed@1", embed: async (values) => values.map(() => vec(7)) };
 
 beforeAll(() => { holder.db = handle?.db; });
 afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
