@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { Status } from "@/components/workspace/ui";
 import { makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
-import type { InboxRow } from "./inbox-list";
+import { CaptureBody } from "./capture-body";
+import { captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -16,9 +16,12 @@ import type { InboxRow } from "./inbox-list";
  * for.
  */
 
-function when(iso: string): string {
-  return iso.slice(0, 16).replace("T", " ") + "Z";
-}
+const stamp = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 /** Only http(s) may render as a live anchor; createCapture enforces this today, the render guard keeps it true regardless of future producers. */
 function isHttpUrl(url: string): boolean {
@@ -29,6 +32,12 @@ function isHttpUrl(url: string): boolean {
   }
 }
 
+/** "Oct 20, 3:42 PM" in the reader's zone, with the exact ISO kept in datetime. */
+function when(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : stamp.format(date);
+}
+
 export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> & { text: string | null }) | null }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -37,7 +46,10 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const lastFocusedId = useRef<string | null>(null);
+  // Seeded with the capture rendered on arrival: a page load with ?id= is not
+  // a selection, so it must not steal focus, and the global :focus-visible
+  // ring would otherwise frame the title like an input on first paint.
+  const lastFocusedId = useRef<string | null>(capture?.id ?? null);
   useEffect(() => {
     if (capture && capture.id !== lastFocusedId.current) {
       lastFocusedId.current = capture.id;
@@ -50,14 +62,17 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
 
   if (!capture) {
     return (
-      <div className="panel-empty flex min-h-40 items-center justify-center p-6 text-center text-[13px] text-muted-foreground">
-        Select a capture to read it and decide what happens next.
+      <div className="flex h-full min-h-64 items-center justify-center px-6">
+        <p className="max-w-sm text-center text-[13px] text-muted-foreground">
+          Select a capture to read it and decide what happens next.
+        </p>
       </div>
     );
   }
 
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
+  const title = captureTitle(capture);
 
   function saveAsNote() {
     setError(null);
@@ -81,42 +96,56 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
   }
 
   return (
-    <article className="min-w-0">
-      <header className="flex flex-wrap items-center gap-2">
-        <h2 ref={headingRef} tabIndex={-1} className="text-[13px] font-medium focus-visible:outline-none">
+    <article className="mx-auto flex min-w-0 max-w-3xl flex-col">
+      <header>
+        <h2
+          ref={headingRef}
+          tabIndex={-1}
+          className="font-display text-balance text-2xl leading-tight break-words focus-visible:outline-none"
+        >
           {capture.kind === "url" && capture.url && isHttpUrl(capture.url) ? (
-            <a href={capture.url} target="_blank" rel="noreferrer" className="readout break-all underline-offset-4 hover:underline">
+            <a href={capture.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
               {capture.url}
             </a>
           ) : (
-            "Capture"
+            title
           )}
         </h2>
-      </header>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Status>{state}</Status>
-        <span className="text-xs text-muted-foreground">{capture.kind}</span>
-        <time className="readout text-xs text-muted-foreground" dateTime={capture.createdAt}>
-          {when(capture.createdAt)}
-        </time>
-      </div>
 
-      {isUrlOnly ? null : (
-        <div className="mt-4 max-w-[70ch] whitespace-pre-wrap break-words text-[13px] leading-relaxed">
-          {capture.text}
-        </div>
-      )}
-      {isUrlOnly && capture.text === null ? (
-        <p className="mt-4 max-w-[70ch] text-[13px] text-muted-foreground">
-          This capture holds the URL only. Open the link to read the page.
-        </p>
-      ) : null}
+        <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
+          <dt className="text-muted-foreground">Status</dt>
+          <dd className="flex items-center gap-1.5 text-foreground">
+            <span aria-hidden className="size-1.5 rounded-full bg-primary" />
+            {captureStateLabel(state)}
+          </dd>
+          <dt className="text-muted-foreground">Kind</dt>
+          <dd className="text-foreground">{captureKindLabel(capture.kind)}</dd>
+          <dt className="text-muted-foreground">Captured</dt>
+          <dd className="text-foreground">
+            <time dateTime={capture.createdAt} suppressHydrationWarning>
+              {when(capture.createdAt)}
+            </time>
+          </dd>
+        </dl>
+      </header>
+
+      <div className="mt-6 border-border border-t pt-6">
+        {isUrlOnly ? (
+          capture.text === null ? (
+            <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+              This capture holds the URL only. Open the link to read the page.
+            </p>
+          ) : null
+        ) : (
+          <CaptureBody text={capture.text ?? ""} label={`Captured ${captureKindLabel(capture.kind).toLowerCase()}`} />
+        )}
+      </div>
 
       {error ? (
         <p className="mt-3 text-destructive text-[13px]" role="alert">{error}</p>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
+      <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
         {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
           <>
             <Button size="sm" disabled={pending} onClick={saveAsNote}>
