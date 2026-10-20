@@ -141,3 +141,14 @@ draft, never silent text), `/` opens block commands, and `[[` links a note
 or zettel by title. Below the body, Matuschak-style panels show References
 (outlinks) and Links to this note (backlinks) with the linking context
 excerpt, plus the semantic Related by meaning panel.
+
+## Zettel views
+
+`/alfred/knowledge/zettels` is the accepted-zettel collection (ASH-184),
+reached from the Knowledge header. Four Alfred-style views over the same
+card rows - **cards** (grid with excerpt, tags and source), **table**,
+**timeline** (grouped by the day the card was accepted) and **dictionary**
+(alphabetical with the claim as the entry) - plus search and tag filters.
+`pageZettelCards` reads the artifact rows with each card's `source` edge
+joined in, so every view is a projection of one store. A card opens in the
+notebook, where backlinks, outlinks and semantic relations already work.

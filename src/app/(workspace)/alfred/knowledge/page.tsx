@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { fieldLabel, fieldValueText } from "./field-display";
 import { PageHeader, Section } from "@/components/page-header";
@@ -184,6 +185,13 @@ export async function KnowledgeSurface({
           </>
         }
       />
+
+      <nav aria-label="Knowledge views" className="flex gap-1 border-b border-border">
+        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">Documents</span>
+        <Link href="/alfred/knowledge/zettels" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+          Zettels
+        </Link>
+      </nav>
 
       <div className="flex flex-col gap-6 page-content">
         <Section title="Search" description="Exact, full text, and semantic — one box.">

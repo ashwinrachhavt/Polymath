@@ -1,8 +1,9 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { openRouterZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { embedArtifact } from "./embedding";
@@ -266,6 +267,72 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       console.error(`embedArtifact after accept failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
     return value;
+  });
+}
+
+export type ZettelCardItem = {
+  id: string;
+  title: string;
+  tags: string[];
+  excerpt: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  sourceDocumentId: string | null;
+  sourceTitle: string | null;
+};
+
+/*
+ * The accepted zettel collection (ASH-184 views): cards read straight off the
+ * artifact rows with their `source` edge joined in, so every view (cards,
+ * table, timeline, dictionary) is a projection of the same store, never a
+ * second one. Sorting belongs to the view; this read is newest-first.
+ */
+export async function pageZettelCards(
+  auth: AuthContext,
+  input: { query?: string; tag?: string; limit: number; offset: number },
+): Promise<{ items: ZettelCardItem[]; total: number }> {
+  return withTransaction(async (tx) => {
+    const filters = [eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel"), isNull(artifacts.archivedAt)];
+    if (input.tag?.trim()) filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
+    if (input.query?.trim()) {
+      const like = `%${escapeLike(input.query.trim())}%`;
+      filters.push(or(ilike(artifacts.title, like), ilike(artifactVersions.plainText, like))!);
+    }
+    const where = and(...filters);
+    const rows = await tx
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        tags: artifacts.tags,
+        excerpt: artifactVersions.plainText,
+        createdAt: artifacts.createdAt,
+        updatedAt: artifacts.updatedAt,
+        sourceDocumentId: artifactLinks.targetId,
+        sourceTitle: artifactLinks.label,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(
+        artifactLinks,
+        and(eq(artifactLinks.artifactId, artifacts.id), eq(artifactLinks.linkType, "source"), eq(artifactLinks.targetType, "document")),
+      )
+      .where(where)
+      .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+      .limit(input.limit)
+      .offset(input.offset);
+    const [totalRow] = await tx
+      .select({ n: count() })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(where);
+    return {
+      total: totalRow?.n ?? 0,
+      items: rows.map((row) => ({
+        ...row,
+        tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+        excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
+      })),
+    };
   });
 }
 
