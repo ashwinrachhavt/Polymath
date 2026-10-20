@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath, updateTag } from "next/cache";
-import { convertCaptureToTask, createCapture, setCaptureState } from "@/domains/capture/commands";
+import { convertCaptureToNote, convertCaptureToTask, createCapture, setCaptureState } from "@/domains/capture/commands";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
@@ -47,6 +47,19 @@ export async function makeTaskAction(input: { captureId: string; expectedVersion
     return fail(error);
   }
   updateTag(tasksTag(auth));
+  revalidate(auth);
+  return { ok: true };
+}
+
+/** Accept a capture into the notebook: the note is created in the same transaction, links resolved. */
+export async function makeNoteAction(input: { captureId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await convertCaptureToNote(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidatePath("/alfred/notebook");
   revalidate(auth);
   return { ok: true };
 }
