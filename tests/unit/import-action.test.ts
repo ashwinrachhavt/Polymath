@@ -9,7 +9,7 @@ vi.mock("@/domains/identity/party-csv", async () => {
   const actual = await vi.importActual<typeof import("@/domains/identity/party-csv")>(
     "@/domains/identity/party-csv",
   );
-  return { ImportLimitError: actual.ImportLimitError, importConnections: vi.fn() };
+  return { ImportBusyError: actual.ImportBusyError, ImportLimitError: actual.ImportLimitError, importConnections: vi.fn() };
 });
 
 import { importConnections } from "@/domains/identity/party-csv";

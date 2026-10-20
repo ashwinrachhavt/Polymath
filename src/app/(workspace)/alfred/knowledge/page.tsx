@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
-import { fieldLabel, fieldValueText } from "./field-display";
-import { PageHeader, Section } from "@/components/page-header";
-import { Readout } from "@/components/readout";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
+import { getAuthContext } from "@/lib/auth";
+import type { RawSearchParams } from "@/lib/list-params";
+import { ApplyTitleButton, ClassificationDecisions, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
+import { listZettelProposals } from "@/domains/knowledge/zettels";
+import { RetryExtractionButton } from "./retry-extraction-button";
+import { RetryCaptureButton } from "./retry-capture-button";
+import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
+import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
+import { getOpenClassification } from "@/domains/knowledge/classify";
 import { sentenceCase, suggestTitle } from "@/domains/knowledge/naming";
 import {
-  countDocumentInbox,
-  getDocumentInbox,
-  INBOX_KINDS,
-  INBOX_READ_STATES,
   getDocumentReview,
   type DocumentReviewParty,
 } from "@/domains/knowledge/queries";
 import { resolvePartyCandidates } from "@/domains/knowledge/parties";
-import { searchDocuments } from "@/domains/knowledge/search";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,28 +26,18 @@ import {
   LoaderCircle,
   TriangleAlert,
 } from "lucide-react";
-import { getAuthContext } from "@/lib/auth";
-import { redirectPastEnd } from "@/components/list/clamp";
-import { ListToolbar } from "@/components/list/list-toolbar";
-import { NoResults } from "@/components/list/no-results";
-import { Pagination } from "@/components/list/pagination";
-import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
-import { ApplyTitleButton, ClassificationDecisions, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
-import { listZettelProposals } from "@/domains/knowledge/zettels";
-import { RetryExtractionButton } from "./retry-extraction-button";
-import { RetryCaptureButton } from "./retry-capture-button";
-import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
-import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
-import { getOpenClassification } from "@/domains/knowledge/classify";
-import { CaptureUrlForm } from "./capture-url-form";
-import { UploadButton } from "@/components/documents/upload-button";
+import { listFolders } from "@/domains/knowledge/library";
+import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
+import { DocumentVault } from "./vault";
 
 export const metadata = { title: "Knowledge · Polymath" };
 
 /*
- * Notes, documents, sources, and flashcards. The document inbox is the live
- * half of this screen: files arrive, get read, and wait for the owner's
- * per-item decisions in the review workbench (?doc=<id>, server-rendered).
+ * The document vault. The screen is three things: a search field, a quiet +,
+ * and the vault itself — folders as tiles, documents as rows. Everything that
+ * was here before (search section, sources, learning, filter toolbar) was
+ * removed on the owner's direction; the review workbench (?doc=<id>) stays as
+ * the detail view, and Zettels keeps its own tab.
  */
 
 const toneGlyph: Record<DocumentStatusTone, React.ReactNode> = {
@@ -66,7 +56,7 @@ const toneClass: Record<DocumentStatusTone, string> = {
   error: "text-destructive",
 };
 
-function StatusBadge({ label, tone }: { label: string; tone: DocumentStatusTone }) {
+export function StatusBadge({ label, tone }: { label: string; tone: DocumentStatusTone }) {
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${toneClass[tone]}`}>
       {toneGlyph[tone]}
@@ -82,28 +72,6 @@ function pageDomain(sourceUrl: string | null): string {
   } catch {
     return "page";
   }
-}
-
-const fetchedDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
-
-/** The inbox row's second line: a page shows where it came from, a file shows what it is. */
-function rowSubtitle(doc: { kind: "web_page" | "file"; sourceUrl: string | null; fetchedAt: Date | null; filename: string | null; mimeType: string | null }): string {
-  if (doc.kind === "web_page") {
-    const fetched = doc.fetchedAt ? ` · Fetched ${fetchedDate.format(doc.fetchedAt)}` : "";
-    return `Web page · ${pageDomain(doc.sourceUrl)}${fetched}`;
-  }
-  return `${doc.filename ?? "No file"} · ${mimeTypeLabel(doc.mimeType)}`;
-}
-
-function mimeTypeLabel(mimeType: string | null): string {
-  if (!mimeType) return "Unknown type";
-  const known: Record<string, string> = {
-    "application/pdf": "PDF",
-    "image/png": "PNG",
-    "image/jpeg": "JPEG",
-    "text/markdown": "Web page",
-  };
-  return known[mimeType] ?? mimeType;
 }
 
 export async function KnowledgeSurface({
@@ -128,63 +96,64 @@ export async function KnowledgeSurface({
   }
   const auth = await getAuthContext();
   const raw = await searchParams;
-  const params = { doc: typeof raw.doc === "string" ? raw.doc : undefined };
-  // The search box above queries content (full text + semantic); the toolbar
-  // below narrows the document list itself. Different keys so neither clobbers the other.
-  const query = typeof raw.q === "string" ? raw.q.trim() || undefined : undefined;
-  const list = parseListParams(raw, { filters: { kind: INBOX_KINDS, read: INBOX_READ_STATES }, qKey: "dq" });
-  const inboxInput = {
-    query: list.q || undefined,
-    kind: list.filters.kind as (typeof INBOX_KINDS)[number] | undefined,
-    readState: list.filters.read as (typeof INBOX_READ_STATES)[number] | undefined,
+  const params = {
+    doc: typeof raw.doc === "string" ? raw.doc : undefined,
+    folder: typeof raw.folder === "string" && raw.folder ? raw.folder : null,
   };
-  const inboxFiltered = Boolean(inboxInput.query || inboxInput.kind || inboxInput.readState);
-  const inboxTotal = await countDocumentInbox(auth, inboxInput);
-  redirectPastEnd("/alfred/knowledge", raw, list.page, list.pageSize, inboxTotal);
-  const [inbox, review, partyOptions, searchHits] = await Promise.all([
-    getDocumentInbox(auth, { ...inboxInput, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
-    params.doc ? getDocumentReview(auth, { documentId: params.doc }) : Promise.resolve(null),
-    params.doc
-      ? resolvePartyCandidates(auth, { documentId: params.doc }).catch(() => [])
-      : Promise.resolve([]),
-    query ? searchDocuments(auth, { query }) : Promise.resolve(null),
+  const review = params.doc ? await getDocumentReview(auth, { documentId: params.doc }) : null;
+
+  if (review) {
+    // The detail view: decisions are the whole screen when one document is open.
+    const partyOptions = new Map(
+      (await resolvePartyCandidates(auth, { documentId: review.document.id }).catch(() => [])).map(
+        (o: { partyId: string; options: unknown }) => [o.partyId, o.options],
+      ),
+    );
+    const classification = await getOpenClassification(auth, review.document.id);
+    const classificationValue = classification as Awaited<ReturnType<typeof getOpenClassification>> | null;
+    const suggestedTitle = suggestTitle(
+      review.document.docType ?? (classificationValue?.proposedType ?? ""),
+      Object.fromEntries(
+        review.fieldProposals
+          .filter((p) => p.status === "accepted" && (p.acceptedValue ?? p.normalizedValue) != null)
+          .map((p) => [
+            p.fieldName,
+            typeof (p.acceptedValue ?? p.normalizedValue) === "string"
+              ? String(p.acceptedValue ?? p.normalizedValue)
+              : JSON.stringify(p.acceptedValue ?? p.normalizedValue),
+          ]),
+      ),
+    );
+    return (
+      <ReviewWorkbench
+        review={review}
+        zettels={await listZettelProposals(auth, review.document.id)}
+        partyOptions={partyOptions as never}
+        suggestedTitle={suggestedTitle && suggestedTitle !== review.document.title ? suggestedTitle : null}
+        classification={classificationValue}
+      />
+    );
+  }
+
+  const [folders, vaultDocuments] = await Promise.all([
+    listFolders(auth),
+    getVaultDocuments(auth, params.folder),
   ]);
 
-  const selected = review;
-  const optionsByParty = new Map(partyOptions.map((o) => [o.partyId, o.options]));
-  const classification = selected ? await getOpenClassification(auth, selected.document.id) : null;
-  const suggestedTitle = selected
-    ? suggestTitle(
-        selected.document.docType ?? classification?.proposedType ?? "",
-        Object.fromEntries(
-          selected.fieldProposals
-            .filter((p) => p.status === "accepted" && (p.acceptedValue ?? p.normalizedValue) != null)
-            .map((p) => [
-              p.fieldName,
-              typeof (p.acceptedValue ?? p.normalizedValue) === "string"
-                ? String(p.acceptedValue ?? p.normalizedValue)
-                : JSON.stringify(p.acceptedValue ?? p.normalizedValue),
-            ]),
-        ),
-      )
-    : null;
+  const breadcrumb: { name: string; href: string | null }[] = [];
+  if (params.folder) {
+    const chain: { name: string; href: string | null }[] = [];
+    let current = folders.find((f) => f.id === params.folder) ?? null;
+    while (current) {
+      chain.unshift({ name: current.name, href: current.id === params.folder ? null : `/alfred/knowledge?folder=${current.id}` });
+      current = current.parentId ? (folders.find((f) => f.id === current!.parentId) ?? null) : null;
+    }
+    breadcrumb.push({ name: "Vault", href: "/alfred/knowledge" }, ...chain);
+  }
 
   return (
     <>
-      <PageHeader
-        title="Knowledge"
-        purpose="Write, retrieve, and connect."
-        actions={
-          <>
-            <UploadButton />
-            <CaptureUrlForm />
-            <Button variant="outline" disabled>
-              Import
-            </Button>
-            <Button disabled>New note</Button>
-          </>
-        }
-      />
+      <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
 
       <nav aria-label="Knowledge views" className="flex gap-1 border-b border-border">
         <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">Documents</span>
@@ -193,152 +162,13 @@ export async function KnowledgeSurface({
         </Link>
       </nav>
 
-      <div className="flex flex-col gap-6 page-content">
-        <Section title="Search" description="Exact, full text, and semantic — one box.">
-          <form action="/alfred/knowledge" method="get" className="flex gap-2">
-            <label htmlFor="search" className="sr-only">
-              Search knowledge
-            </label>
-            <input
-              id="search"
-              name="q"
-              type="search"
-              defaultValue={query ?? ""}
-              placeholder="Search notes, documents, sources, and claims"
-              className="border-input bg-background focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-[13px] outline-none focus-visible:ring-3"
-            />
-            <Button type="submit" variant="outline">
-              Search
-            </Button>
-          </form>
-          {searchHits ? (
-            searchHits.length === 0 ? (
-              <p className="text-muted-foreground text-xs">
-                Nothing matched “{query}”. Try a word from the document or its filename.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {searchHits.map((hit) => (
-                  <li key={hit.id} className="text-[13px]">
-                    <a
-                      href={`/alfred/knowledge?doc=${hit.id}`}
-                      className="font-medium underline-offset-4 hover:underline"
-                    >
-                      {hit.title}
-                    </a>
-                    <span className="text-muted-foreground">
-                      {hit.filename ? ` · ${hit.filename}` : ""}
-                    </span>
-                    {hit.snippet ? <Snippet text={hit.snippet} /> : null}
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : null}
-        </Section>
-
-        <Section
-          title="Documents"
-          description="Files arrive, get read, and wait for your per-item decisions. Nothing is filed until you file it."
-        >
-          {!selected && (inboxTotal > 0 || inboxFiltered) ? (
-            <ListToolbar
-              qKey="dq"
-              searchPlaceholder="Filter documents by title or file"
-              filters={[
-                { key: "kind", label: "Type", allLabel: "All types", options: [{ value: "file", label: "Files" }, { value: "web_page", label: "Web pages" }] },
-                { key: "read", label: "Reading", allLabel: "Any state", options: [{ value: "unread", label: "Not read yet" }, { value: "failed", label: "Failed" }] },
-              ]}
-              total={inboxTotal}
-              noun={inboxTotal === 1 ? "document" : "documents"}
-            />
-          ) : null}
-          {inbox.length === 0 ? (
-            <NoResults
-              filtered={inboxFiltered}
-              clearHref={listHref("/alfred/knowledge", raw, { dq: undefined, kind: undefined, read: undefined, page: undefined })}
-              emptyTitle="No documents yet"
-              emptyDescription="Upload a PDF or image and it appears here. Polymath reads it, proposes the fields, and you decide each one."
-            />
-          ) : selected ? (
-            <ReviewWorkbench
-              review={selected}
-              zettels={await listZettelProposals(auth, selected.document.id)}
-              partyOptions={optionsByParty}
-              suggestedTitle={
-                suggestedTitle && suggestedTitle !== selected.document.title ? suggestedTitle : null
-              }
-              classification={classification}
-            />
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {inbox.map((doc) => {
-                const status = documentStatus(
-                  doc.extractionStatus
-                    ? {
-                        status: doc.extractionStatus,
-                        proposalStatus: doc.proposalStatus,
-                        createdAt: doc.extractionCreatedAt,
-                      }
-                    : null,
-                  doc.undecidedProposals,
-                );
-                return (
-                  <li key={doc.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <a
-                          href={`/alfred/knowledge?doc=${doc.id}`}
-                          className="inline-flex min-h-6 items-center text-[13px] font-medium underline-offset-4 hover:underline"
-                        >
-                          {doc.title}
-                        </a>
-                        <p className="text-muted-foreground truncate text-xs">
-                          {rowSubtitle(doc)}
-                          {doc.partyNames.length > 0 ? ` · ${doc.partyNames.join(", ")}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* A row that never got read heals from the inbox: a
-                            page re-fetches on the same document, a file re-runs
-                            the idempotent extraction route. */}
-                        {doc.kind === "web_page" && !doc.fetchedAt ? (
-                          <RetryCaptureButton url={doc.sourceUrl!} />
-                        ) : doc.extractionStatus === null || doc.extractionStatus === "failed" ? (
-                          <RetryExtractionButton
-                            documentId={doc.id}
-                            label={doc.extractionStatus === null ? "Read now" : "Retry"}
-                          />
-                        ) : null}
-                        <StatusBadge label={status.label} tone={status.tone} />
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!selected ? (
-            <Pagination basePath="/alfred/knowledge" raw={raw} page={list.page} pageSize={list.pageSize} total={inboxTotal} />
-          ) : null}
-        </Section>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Section title="Sources" description="Where a claim came from, with the exact passage.">
-            <EmptyState
-              title="No sources yet"
-              description="Pages, files, and messages become sources once something cites them."
-            />
-          </Section>
-
-          <Section title="Learning" description="Separate from writing: what you are trying to retain.">
-            <EmptyState
-              title="No cards yet"
-              description="Flashcards and quizzes are proposed from your own material, and only scheduled once you approve them."
-              action={<Badge variant="outline"><Readout>0 due</Readout></Badge>}
-            />
-          </Section>
-        </div>
+      <div className="page-content">
+        <DocumentVault
+          folders={folders.map((f) => ({ id: f.id, parentId: f.parentId, name: f.name, documentCount: f.documentCount }))}
+          documents={vaultDocuments}
+          currentFolderId={params.folder}
+          breadcrumb={breadcrumb}
+        />
       </div>
     </>
   );
@@ -365,7 +195,7 @@ function ReviewWorkbench({
   return (
     <div className="flex flex-col gap-4">
       <a href="/alfred/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
-        Back to inbox
+        Back to vault
       </a>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.5fr)]">
@@ -382,7 +212,7 @@ function ReviewWorkbench({
                   </a>
                 </>
               ) : (
-                mimeTypeLabel(doc.mimeType)
+                (doc.mimeType ?? "File")
               )}
             </p>
             <div className="mt-2">
@@ -419,6 +249,9 @@ function ReviewWorkbench({
               documentId={doc.id}
               label={extraction.proposalStatus === null ? "Propose fields" : "Retry proposing fields"}
             />
+          ) : null}
+          {extraction?.status === "failed" && doc.sourceUrl ? (
+            <RetryCaptureButton url={doc.sourceUrl} />
           ) : null}
           {doc.docType ? (
             <p className="text-muted-foreground text-xs">
@@ -461,28 +294,24 @@ function ReviewWorkbench({
               <ul className="flex flex-col gap-2">
                 {fieldProposals.map((proposal) => (
                   <li key={proposal.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                    <p className="text-[13px] font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
+                    <p className="text-[13px] font-medium">{sentenceCase(proposal.fieldName)}</p>
                     {proposal.evidenceQuote ? (
                       <p className="text-muted-foreground mt-0.5 text-xs">
                         Read from: <q className="text-foreground">{proposal.evidenceQuote}</q>
                       </p>
                     ) : null}
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      {proposal.partyRole ? `About the ${proposal.partyRole}. ` : ""}
                       {proposal.confidence ? `Confidence: ${proposal.confidence}.` : ""}
                     </p>
                     <p className="text-muted-foreground mt-0.5 text-xs">
                       Reads as{" "}
-                      <span className="text-foreground">{fieldValueText(proposal.normalizedValue, proposal.normalizationNote)}</span>
-                      {proposal.rawValue && proposal.rawValue !== fieldValueText(proposal.normalizedValue, proposal.normalizationNote)
-                        ? ` (written “${proposal.rawValue}”)`
-                        : ""}
+                      <span className="text-foreground">{proposal.normalizedValue != null ? String(proposal.normalizedValue) : "nothing readable"}</span>
                     </p>
                     {proposal.status === "proposed" ? (
                       <div className="mt-2">
                         <FieldDecisions
                           proposalId={proposal.id}
-                          fieldName={fieldLabel(proposal.fieldName)}
+                          fieldName={sentenceCase(proposal.fieldName)}
                           readable={proposal.normalizedValue != null}
                         />
                       </div>
@@ -565,23 +394,6 @@ function ReviewWorkbench({
   );
 }
 
-/** A search passage with the matched words marked; ts_headline wraps them in [[ ]]. */
-function Snippet({ text }: { text: string }) {
-  return (
-    <p className="text-muted-foreground mt-0.5 text-xs">
-      {text.split(/(\[\[.*?\]\])/).map((part, index) =>
-        part.startsWith("[[") && part.endsWith("]]") ? (
-          <mark key={index} className="text-foreground bg-transparent font-medium underline underline-offset-2">
-            {part.slice(2, -2)}
-          </mark>
-        ) : (
-          <span key={index}>{part}</span>
-        ),
-      )}
-    </p>
-  );
-}
-
 function Parties({
   parties,
   optionsByParty,
@@ -648,12 +460,15 @@ export default function KnowledgePage({
 function KnowledgeSkeleton() {
   return (
     <div role="status" aria-label="Loading Knowledge" className="flex flex-1 flex-col gap-4 p-6">
-      <Skeleton className="h-6 w-40" />
-      <Skeleton className="h-4 w-full max-w-xl" />
-      <div className="grid gap-3 md:grid-cols-2">
-        <Skeleton className="h-40" />
-        <Skeleton className="h-40" />
+      <Skeleton className="h-8 w-full max-w-md" />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
       </div>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-2/3" />
     </div>
   );
 }

@@ -18,4 +18,11 @@ import postgres from "postgres";
 
 const url = process.env.DATABASE_URL ?? "";
 
-export const db = drizzle(postgres(url, { max: 5 }));
+/*
+ * prepare: false keeps the client safe behind Neon's transaction-mode pooler
+ * (PgBouncer), which cannot route named prepared statements to the same
+ * backend. It costs a per-execute parse on a local direct connection and is
+ * imperceptible at this scale; the pooled endpoint is the default Vercel+Neon
+ * posture, so the default must tolerate it. Documented in .env.example.
+ */
+export const db = drizzle(postgres(url, { max: 5, prepare: false }));

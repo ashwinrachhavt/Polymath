@@ -21,15 +21,14 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let importConnections: typeof import("@/domains/identity/party-csv").importConnections;
-let listPeople: typeof import("@/domains/identity/party-csv").listPeople;
-let listOrganizations: typeof import("@/domains/identity/party-csv").listOrganizations;
+let pagePeople: typeof import("@/domains/identity/party-queries").pagePeople;
+let pageOrganizations: typeof import("@/domains/identity/party-queries").pageOrganizations;
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
-  ({ importConnections, listPeople, listOrganizations } = await import(
-    "@/domains/identity/party-csv"
-  ));
+  ({ importConnections } = await import("@/domains/identity/party-csv"));
+  ({ pagePeople, pageOrganizations } = await import("@/domains/identity/party-queries"));
 });
 
 afterAll(async () => {
@@ -242,7 +241,7 @@ suite("connections import", () => {
     expect(audits).toHaveLength(2);
   });
 
-  it("listPeople returns each person once with their primary email and current org", async () => {
+  it("pagePeople returns each person once with their primary email and current org", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-list-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
     const csv =
@@ -252,25 +251,25 @@ suite("connections import", () => {
       "Grace,Hopper,,grace@example.org,,,01 Jan 2026\n";
 
     await importConnections(a, { csv });
-    const rows = await listPeople(a);
+    const { items: rows } = await pagePeople(a, { limit: 100 });
     const ada = rows.find((r) => r.displayName === "Ada Lovelace");
 
     // Two employment edges, one person: the join must not fan out into two rows.
     expect(rows.filter((r) => r.displayName === "Ada Lovelace")).toHaveLength(1);
     expect(ada?.email).toBe("ada@analytical.example");
-    expect(ada?.organizations.map((o) => o.name).sort()).toEqual([
-      "Analytical Engines",
-      "Bletchley Park",
-    ]);
-    expect(rows.find((r) => r.displayName === "Grace Hopper")?.organizations).toEqual([]);
+    // The page shows the current employer; both edges exist in party_employment.
+    expect(ada?.currentOrganizationName).toBeTruthy();
+    expect(rows.find((r) => r.displayName === "Grace Hopper")?.currentOrganizationName).toBeNull();
   });
 
-  it("listPeople is empty, not an error, for a workspace with no people", async () => {
+  it("pagePeople is empty, not an error, for a workspace with no people", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-list-empty-${Date.now()}`);
-    expect(await listPeople(ownerAuth(userId, workspaceId))).toEqual([]);
+    const page = await pagePeople(ownerAuth(userId, workspaceId));
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(0);
   });
 
-  it("listOrganizations counts distinct current people per organization", async () => {
+  it("pageOrganizations counts current people per organization", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `imp-orgs-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
     const csv =
@@ -280,7 +279,7 @@ suite("connections import", () => {
       "Alan,Turing,,alan@example.org,Bletchley Park,,01 Jan 2026\n";
 
     await importConnections(a, { csv });
-    const orgs = await listOrganizations(a);
+    const { items: orgs } = await pageOrganizations(a, { limit: 100 });
     const byName = new Map(orgs.map((o) => [o.name, o.peopleCount]));
     expect(byName.get("Analytical Engines")).toBe(2);
     expect(byName.get("Bletchley Park")).toBe(1);

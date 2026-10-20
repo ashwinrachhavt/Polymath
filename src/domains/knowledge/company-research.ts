@@ -323,15 +323,20 @@ export async function runCompanyResearch(
     }
   }
 
-  return withTransaction(async (tx) => {
-    // 2. Dossier-only evidence comes from the pinned dossier sources instead.
-    if (mode === "dossier-only") {
+  // 2. Dossier-only evidence comes from the pinned dossier sources. Its own
+  // short transaction: the model calls below are provider calls and must
+  // never hold a pooled connection open (lib/db-transaction.ts rule).
+  if (mode === "dossier-only") {
+    await withTransaction(async (tx) => {
       raw.push(...(await loadDossierManifest(tx, auth, input.dossierId!)));
-    }
-    const kept = filterByCutoff(raw, cutoff);
-    const manifest = kept.map((e, i) => ({ ...e, ref: `S${i + 1}` }));
+    });
+  }
+  const kept = filterByCutoff(raw, cutoff);
+  const manifest = kept.map((e, i) => ({ ...e, ref: `S${i + 1}` }));
 
-    // 3. Draft each narrative section with citations into the manifest.
+  // 3. Draft each narrative section with citations into the manifest. No
+  // transaction open here: io.complete is a provider call per section.
+  const draft = async (): Promise<{ written: string[]; grounded: number; gaps: number }> => {
     const written: string[] = [];
     let grounded = 0;
     let gaps = 0;
@@ -359,7 +364,11 @@ export async function runCompanyResearch(
       else grounded += 1;
       written.push(`## ${section}\n\n${body}`);
     }
+    return { written, grounded, gaps };
+  };
+  const { written, grounded, gaps } = await draft();
 
+  return withTransaction(async (tx) => {
     // 4. The manifest renders as its own section; the report stands alone.
     const manifestLines = manifest.length
       ? manifest.map((m) => `- [${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"} (retrieved ${m.retrievedAt.slice(0, 10)})`)

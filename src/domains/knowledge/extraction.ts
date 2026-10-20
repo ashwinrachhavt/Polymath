@@ -181,15 +181,27 @@ export async function extractDocument(
   let result: ExtractionResult;
   try {
     // Text needs no parsing provider: the stored bytes are the reading text.
-    const provider = document.mimeType?.startsWith("text/")
+    // A configured provider is tried first; a PDF whose provider attempt fails
+    // falls back to the in-process text-layer reader, so a text PDF still
+    // reads when docling is down or LlamaParse is out of credits. Images and
+    // non-PDF binaries keep the provider verdict — the floor cannot read them.
+    const primary = document.mimeType?.startsWith("text/")
       ? createPlainTextProvider()
       : await extractionProvider();
     const bytes = await readBlob(blob.storageKey);
-    result = await provider.extract({
+    result = await primary.extract({
       bytes,
       filename: input.documentId,
       mimeType: document.mimeType ?? "application/octet-stream",
     });
+    if (!result.ok && document.mimeType === "application/pdf" && result.extractor !== "pdf-text-layer@local") {
+      const fallback = await createPdfTextLayerProvider().extract({
+        bytes,
+        filename: input.documentId,
+        mimeType: document.mimeType,
+      });
+      if (fallback.ok) result = fallback;
+    }
   } catch (cause) {
     // Setup/storage/transport exceptions must release the retry claim too. Keep
     // provider credentials out of the durable error; the boundary handles cause.

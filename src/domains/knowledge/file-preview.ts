@@ -25,6 +25,17 @@ export type DocumentPreview = {
 
 const EXCERPT_CHARS = 1200;
 
+/** The full extracted text of a document's current read, for the split viewer's right pane. */
+export async function getDocumentText(auth: AuthContext, documentId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ text: documentExtractions.text })
+    .from(documentExtractions)
+    .where(and(eq(documentExtractions.documentId, documentId), eq(documentExtractions.workspaceId, auth.workspaceId), eq(documentExtractions.status, "succeeded")))
+    .orderBy(desc(documentExtractions.createdAt))
+    .limit(1);
+  return row?.text?.trim() ?? null;
+}
+
 export async function getDocumentPreview(auth: AuthContext, documentId: string): Promise<DocumentPreview | null> {
   const review = await getDocumentReview(auth, { documentId });
   if (!review) return null;

@@ -3,7 +3,7 @@
 import { cancelCorrespondence, draftCorrespondence, requestSendApproval } from "@/domains/crm/correspondence";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
+import { ImportBusyError, ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
 import {
   addObservation,
   archiveContact,
@@ -32,7 +32,17 @@ import { requireRole } from "@/lib/auth/guards";
  * error boundary, same split as the import action above this folder.
  */
 
-const revalidate = () => revalidatePath("/command-center/relationships");
+/*
+ * Mutations can land from any of the three surfaces (people, companies, the
+ * contact workspace), so all three revalidate.
+ */
+const revalidate = () => {
+  for (const path of [
+    "/command-center/relationships/people",
+    "/command-center/relationships/companies",
+    "/command-center/relationships/contacts",
+  ]) revalidatePath(path);
+};
 
 /*
  * The import takes CSV text, not a File: the client reads the file and posts
@@ -53,7 +63,9 @@ export async function importConnectionsCsv(input: {
   } catch (error) {
     // A deliberate refusal is the one error the owner can act on; anything
     // else is rethrown to the error boundary.
-    if (error instanceof ImportLimitError) return { ok: false, error: error.message };
+    if (error instanceof ImportLimitError || error instanceof ImportBusyError) {
+      return { ok: false, error: error.message };
+    }
     throw error;
   }
 }
