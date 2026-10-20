@@ -11,8 +11,12 @@ import { captures, captureSource } from "./schema";
 /*
  * Inbox commands (ASH-137 A02). Clarify-before-commit: conversion is a
  * decision the owner makes per capture, in one transaction - the canonical
- * task and the capture's lineage edge commit together or not at all. The
- * original text is never edited or deleted by these commands.
+ * task and the capture's lineage edge commit together or not at all.
+ *
+ * The original always lives in `captures.rawPayload`, which no command edits.
+ * `captures.text` is the working body, editable until the capture converts;
+ * after conversion the derived record owns the content, so a later edit would
+ * silently desync it.
  */
 
 export class ConflictError extends Error {
@@ -204,6 +208,76 @@ export async function convertCaptureToNote(
     console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
   return result;
+}
+
+/**
+ * Edit the working body of an open capture. `rawPayload` keeps the original
+ * exactly as it arrived, so this changes what the person is clarifying, never
+ * what was captured. Only an unprocessed or classifying capture may be edited:
+ * a converted capture's text already became a task or note, and editing it
+ * here would silently desync that record. Version-checked and idempotent like
+ * every other write.
+ */
+export async function updateCaptureText(
+  auth: AuthContext,
+  input: { captureId: string; expectedVersion: number; text: string; idempotencyKey?: string },
+) {
+  const text = input.text.trim();
+  if (!text) throw new ConflictError("A capture cannot be emptied. Archive it instead.");
+
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "updateCaptureText", captureId: input.captureId, expectedVersion: input.expectedVersion, text },
+      async () => {
+        const [capture] = await tx
+          .select()
+          .from(captures)
+          .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+          .limit(1);
+        if (!capture) throw new StaleWriteError("That capture no longer exists. Reload the inbox.");
+        if (capture.processingState === "converted") {
+          throw new ConflictError("This capture was already converted. Editing it here would desync the record it became.");
+        }
+        if (!["unprocessed", "classifying"].includes(capture.processingState)) {
+          throw new ConflictError("This capture is no longer open for editing. Reload the inbox.");
+        }
+        if (capture.version !== input.expectedVersion) {
+          throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+
+        const [updated] = await tx
+          .update(captures)
+          .set({
+            text,
+            version: sql`${captures.version} + 1`,
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+          })
+          .where(
+            and(
+              eq(captures.workspaceId, auth.workspaceId),
+              eq(captures.id, capture.id),
+              eq(captures.version, input.expectedVersion),
+              inArray(captures.processingState, ["unprocessed", "classifying"]),
+            ),
+          )
+          .returning();
+        if (!updated) {
+          throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+        await recordAudit(
+          auth,
+          { action: "capture.edited", subjectType: "capture", subjectId: updated.id, summary: "Capture text edited" },
+          tx,
+        );
+        return updated;
+      },
+    );
+    return value;
+  });
 }
 
 /** Archive (discard) or restore a capture. Version-checked like every write. */

@@ -162,6 +162,53 @@ suite("capture inbox", () => {
     ).rejects.toMatchObject({ code: "stale_write" });
   });
 
+  it("edits the working text while rawPayload keeps the original", async () => {
+    const auth = await seed("capture-edit");
+    const capture = await commands.createCapture(auth, { text: "Call the acccountant about Q3" });
+    const raw = JSON.stringify(capture.rawPayload);
+
+    const edited = await commands.updateCaptureText(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      text: "  Call the accountant about Q4  ",
+    });
+    expect(edited.text).toBe("Call the accountant about Q4");
+    expect(edited.version).toBe(capture.version + 1);
+    // The immutable original is untouched by the edit.
+    expect(JSON.stringify(edited.rawPayload)).toBe(raw);
+
+    const [audit] = (await db.select().from(auditEvents).where(eq(auditEvents.subjectId, capture.id))).filter(
+      (row) => row.action === "capture.edited",
+    );
+    expect(audit).toBeTruthy();
+    expect(audit.summary).not.toContain("Q4");
+
+    // The same key replays the first result instead of a second write.
+    const key = crypto.randomUUID();
+    const a = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
+    const b = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
+    expect(b.version).toBe(a.version);
+    expect((await queries.getCapture(auth, capture.id))?.version).toBe(a.version);
+  });
+
+  it("refuses to edit a converted, emptied or stale capture", async () => {
+    const auth = await seed("capture-edit-refuse");
+    const capture = await commands.createCapture(auth, { text: "Turn me into work" });
+    const converted = await commands.convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: converted.capture.version, text: "Rewritten" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    const open = await commands.createCapture(auth, { text: "Still open" });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: open.id, expectedVersion: open.version, text: "   " }),
+    ).rejects.toMatchObject({ code: "conflict", message: "A capture cannot be emptied. Archive it instead." });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: open.id, expectedVersion: open.version + 9, text: "Newer" }),
+    ).rejects.toMatchObject({ code: "stale_write" });
+    expect((await queries.getCapture(auth, open.id))?.text).toBe("Still open");
+  });
+
   // Two-pane inbox reads (2026-10-20): the detail pane and the tab counts.
   it("getCapture never returns another workspace's capture", async () => {
     const auth = await seed("get-capture");

@@ -1,7 +1,16 @@
 "use server";
 
 import { revalidatePath, updateTag } from "next/cache";
-import { convertCaptureToNote, convertCaptureToTask, createCapture, setCaptureState } from "@/domains/capture/commands";
+import { z } from "zod";
+import {
+  ConflictError,
+  StaleWriteError,
+  convertCaptureToNote,
+  convertCaptureToTask,
+  createCapture,
+  setCaptureState,
+  updateCaptureText,
+} from "@/domains/capture/commands";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
@@ -62,6 +71,42 @@ export async function makeNoteAction(input: { captureId: string; expectedVersion
   revalidatePath("/alfred/notebook");
   revalidate(auth);
   return { ok: true };
+}
+
+const updateTextInput = z.object({
+  captureId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  text: z.string().trim().min(1),
+  idempotencyKey: z.string().uuid().optional(),
+});
+
+/**
+ * Edit the working body of an open capture. The immutable original stays in
+ * rawPayload, so this is an honest edit rather than a rewrite of history. A
+ * stale version or a converted capture comes back as the message the editor
+ * shows inline; the caller's draft is never lost to it.
+ */
+export async function updateCaptureTextAction(input: {
+  captureId: string;
+  expectedVersion: number;
+  text: string;
+  idempotencyKey?: string;
+}): Promise<{ ok: true; version: number } | { ok: false; error: string }> {
+  const parsed = updateTextInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "A capture cannot be emptied. Archive it instead." };
+
+  const auth = await authorize();
+  let capture: { version: number };
+  try {
+    capture = await updateCaptureText(auth, parsed.data);
+  } catch (error) {
+    if (error instanceof ConflictError || error instanceof StaleWriteError) {
+      return { ok: false, error: error.message };
+    }
+    return fail(error);
+  }
+  revalidate(auth);
+  return { ok: true, version: capture.version };
 }
 
 export async function setCaptureStateAction(input: {
