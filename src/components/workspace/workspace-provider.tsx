@@ -155,7 +155,9 @@ function addAttachment(id: string, attachment: Omit<TaskAttachment, "id" | "adde
   const record: TaskAttachment = { ...attachment, id: crypto.randomUUID(), addedAt: new Date().toISOString() };
   const existing = task.attachments || [];
   // Same URL or file name twice in one task is a duplicate, not a second copy.
-  if (existing.some((item) => item.value === record.value && item.kind === record.kind)) { notify("That attachment is already on this task."); return { ok: false, persisted: false }; }
+  // persisted is true: nothing was written and nothing needed writing, so this
+  // refusal says nothing about storage health.
+  if (existing.some((item) => item.value === record.value && item.kind === record.kind)) { notify("That attachment is already on this task."); return { ok: false, persisted: true }; }
   return updateTask(id, { attachments: [...existing, record] });
 }
 function removeAttachment(id: string, attachmentId: string) {

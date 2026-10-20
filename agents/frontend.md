@@ -59,8 +59,9 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
   route, and two shell components read it unconditionally: `FocusDock` and
   `CommandLayer`. `isBrowserPreviewPath` in `src/lib/navigation.ts` does not
   describe where the store is read. It describes where the preview UI renders:
-  the banner, the storage warning, and the hydration skeleton, on every `/apps/*`
-  path plus `/activity` and `/settings`.
+  the banner and the hydration skeleton, on every `/apps/*` path plus `/activity`
+  and `/settings`. The storage warning is not gated by it; it is mounted on every
+  route because preview mutations are reachable from canonical screens.
 
   Canonical data never comes from `useWorkspace`, and canonical writes never go
   through it. What the shell does read on every route is preview chrome, not
@@ -83,7 +84,9 @@ input was invalid or the write was refused.
 `updateOpportunity`, and `updateProject` commit an `ok: true` no-op for an
 unknown id. The refusals that do occur: another tab moved first, a guarded
 operation found no record, the attachment was a duplicate, the event belonged to
-a provider, the reorder changed nothing, or the reward was already earned.
+a provider, the reorder changed nothing, or the reward was already earned. A
+duplicate attachment refusal returns `persisted: true` because storage was never
+at fault.
 
 `ok: false` is a refusal: nothing changed, and no success notice, record handed
 back, or optimistic row may accompany it. `ok: true, persisted: false` is a
@@ -93,8 +96,8 @@ first. A caller that cares about durability must also check `persisted`.
 `PreviewStorageWarning` owns that message. It carries
 four distinct cases: an incompatible saved format, storage unavailable on read, a
 stale-tab refusal, and a storage write that could not save. The last two are
-different conditions and must not share a message. It is mounted only on preview
-paths, so do not add a second one.
+different conditions and must not share a message. It is mounted in the shell on
+every route, because preview mutations are reachable from canonical screens.
 
 Do not add a second global store without a measured need. The server, the URL,
 and component state cover the cases that exist, and a store is a permanent

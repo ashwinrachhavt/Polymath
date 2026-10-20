@@ -37,7 +37,8 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
           <TopBar clerkConfigured={clerkConfigured} />
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
             <Suspense fallback={null}><PreviewBanner /></Suspense>
-            {isBrowserPreviewPath(pathname) ? <PreviewStorageWarning /> : null}
+            {/* Preview mutations are reachable from canonical routes, so the storage warning must be too. It renders null when empty. */}
+            <PreviewStorageWarning />
             {waitingForStorage ? <PreviewSkeleton /> : null}
             {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
             <div hidden={waitingForStorage} className="flex min-w-0 flex-1 flex-col">{children}</div>
