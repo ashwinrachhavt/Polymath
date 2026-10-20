@@ -28,6 +28,15 @@ describe("motion transition token", () => {
 describe("MotionProvider", () => {
   it('declares reducedMotion="user"', () => {
     const source = readFileSync("src/components/motion-config.tsx", "utf8");
-    expect(source).toContain("<MotionConfig reducedMotion=\"user\">");
+    expect(source).toMatch(/reducedMotion\s*=\s*["']user["']/);
+  });
+
+  /*
+   * A provider that is defined but never mounted leaves reduced motion
+   * silently inert, which is the defect this whole change exists to fix.
+   */
+  it("is mounted in the root layout around children", () => {
+    const layout = readFileSync("src/app/layout.tsx", "utf8");
+    expect(layout).toMatch(/<MotionProvider>\s*\{children\}\s*<\/MotionProvider>/);
   });
 });
