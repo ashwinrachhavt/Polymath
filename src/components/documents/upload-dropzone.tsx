@@ -33,18 +33,44 @@ type Entry = { id: string; file: File; phase: FilePhase };
 // A poll can outlast a session. These kinds say the request will keep failing
 // for the same reason, so waiting out the full ceiling would turn a clear cause
 // into three minutes of silence and the wrong diagnosis at the end.
-const TERMINAL_POLL_KINDS = new Set<RequestFailure["kind"]>(["unauthenticated", "forbidden", "not_found"]);
+export const TERMINAL_POLL_KINDS = new Set<RequestFailure["kind"]>(["unauthenticated", "forbidden", "not_found"]);
 
-// A throttle is transient, so it stays retryable, but a server that keeps
-// throttling for half a minute is not going to answer inside this poll.
-const RATE_LIMIT_CEILING = 20;
+// A throttle is transient, so it stays retryable. Counting consecutive 429s
+// bounds a server that keeps refusing at ~30s instead of 120 attempts. The
+// counter resets on any successful poll, so a slow extraction that trips one
+// throttle occasionally is never mistaken for a sustained block.
+export const RATE_LIMIT_CEILING = 20;
 
 export type PollDecision = { action: "stop"; message: string } | { action: "continue"; rateLimited: boolean };
 
 /** Classify a failed poll: stop with the cause, retry, or retry and count a rate limit. */
 export function shouldStopPolling(failure: RequestFailure): PollDecision {
   if (TERMINAL_POLL_KINDS.has(failure.kind)) return { action: "stop", message: failure.title };
+  // An unknown future kind retries: a blip costs one more poll, while stopping
+  // on a healthy poll would abandon a document that was about to finish.
   return { action: "continue", rateLimited: failure.kind === "rate_limited" };
+}
+
+export type PollStep =
+  | { action: "stop"; message: string }
+  | { action: "continue"; rateLimitStreak: number };
+
+/**
+ * One poll's effect on the loop: a terminal cause stops, any non-throttle
+ * outcome clears the throttle streak, and consecutive throttles stop at the
+ * ceiling.
+ */
+export function advancePoll(
+  outcome: { ok: true } | { ok: false; failure: RequestFailure },
+  rateLimitStreak: number,
+): PollStep {
+  if (outcome.ok) return { action: "continue", rateLimitStreak: 0 };
+  const decision = shouldStopPolling(outcome.failure);
+  if (decision.action === "stop") return decision;
+  if (!decision.rateLimited) return { action: "continue", rateLimitStreak: 0 };
+  const streak = rateLimitStreak + 1;
+  if (streak >= RATE_LIMIT_CEILING) return { action: "stop", message: outcome.failure.title };
+  return { action: "continue", rateLimitStreak: streak };
 }
 
 function Ring({ percent, indeterminate, done }: { percent: number; indeterminate?: boolean; done?: boolean }) {
@@ -84,7 +110,9 @@ function phaseLabel(phase: FilePhase): string {
     case "done":
       return "Read";
     case "error":
-      return "Failed";
+      // The badge already says "Failed"; this line carries the cause, which is
+      // the only part the person can act on.
+      return phase.message;
   }
 }
 
@@ -119,23 +147,15 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
       const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
         `/api/v1/files?documentId=${encodeURIComponent(documentId)}`,
       );
-      if (!result.ok) {
-        // A network blip is not a verdict; a 401/403/404 is, and the person
-        // needs the cause now rather than a queue-worker guess in three minutes.
-        const decision = shouldStopPolling(result.failure);
-        if (decision.action === "stop") {
-          patch(id, { kind: "error", message: decision.message });
-          return;
-        }
-        if (decision.rateLimited) {
-          rateLimited += 1;
-          if (rateLimited >= RATE_LIMIT_CEILING) {
-            patch(id, { kind: "error", message: result.failure.title });
-            return;
-          }
-        }
-        continue;
+      // A network blip is not a verdict; a 401/403/404 is, and the person
+      // needs the cause now rather than a queue-worker guess in three minutes.
+      const step = advancePoll(result, rateLimited);
+      if (step.action === "stop") {
+        patch(id, { kind: "error", message: step.message });
+        return;
       }
+      rateLimited = step.rateLimitStreak;
+      if (!result.ok) continue;
       const body = result.data;
       if (body.extractionStatus === "succeeded") {
         patch(id, { kind: "done", documentId });
@@ -279,7 +299,14 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium">{entry.file.name}</p>
-                  <p className="text-muted-foreground text-xs">{phaseLabel(entry.phase)}</p>
+                  {/* Recovery copy can be a full sentence; two clamped lines keeps
+                      the row height stable while the title attribute keeps it whole. */}
+                  <p
+                    className={`text-muted-foreground text-xs ${entry.phase.kind === "error" ? "line-clamp-2" : "truncate"}`}
+                    title={entry.phase.kind === "error" ? entry.phase.message : undefined}
+                  >
+                    {phaseLabel(entry.phase)}
+                  </p>
                 </div>
                 {entry.phase.kind === "done" ? (
                   <Badge variant="outline">Read</Badge>
