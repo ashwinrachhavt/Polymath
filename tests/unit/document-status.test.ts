@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentStatus } from "@/domains/knowledge/status";
+import { documentStatus, STALLED_AFTER_MS } from "@/domains/knowledge/status";
 
 /*
  * The inbox's status vocabulary is the one place database enums become human
@@ -46,6 +46,35 @@ describe("documentStatus", () => {
       label: "Fields not read",
       tone: "error",
     });
+  });
+
+  it("a queued read that has waited too long stops claiming to be reading", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    const old = new Date(now.getTime() - STALLED_AFTER_MS - 1_000);
+    expect(documentStatus({ status: "pending", createdAt: old }, 0, now)).toEqual({
+      label: "Waiting for the queue",
+      tone: "attention",
+    });
+    expect(documentStatus({ status: "pending", createdAt: now }, 0, now)).toEqual({
+      label: "Reading",
+      tone: "progress",
+    });
+  });
+
+  it("accepts a Postgres timestamp as an ISO string, which is what a server component gets", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    const old = new Date(now.getTime() - STALLED_AFTER_MS - 1_000).toISOString();
+    expect(documentStatus({ status: "pending", createdAt: old }, 0, now)).toEqual({
+      label: "Waiting for the queue",
+      tone: "attention",
+    });
+  });
+
+  it("an unparseable or absent timestamp reads as in progress, never throws", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    for (const createdAt of [null, undefined, "", "not-a-date"]) {
+      expect(documentStatus({ status: "pending", createdAt }, 0, now)).toEqual({ label: "Reading", tone: "progress" });
+    }
   });
 
   it("no raw enum value ever reaches the label", () => {

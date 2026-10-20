@@ -14,8 +14,15 @@ export type DocumentStatusTone = "neutral" | "progress" | "attention" | "done" |
  */
 export const STALLED_AFTER_MS = 5 * 60_000;
 
-function stalled(createdAt: Date | null | undefined, now: Date): boolean {
-  return createdAt != null && now.getTime() - createdAt.getTime() > STALLED_AFTER_MS;
+/**
+ * Accepts a Date or an ISO string. Postgres timestamps cross a server-component
+ * boundary as strings, and a raw `.getTime()` on one throws for the whole inbox.
+ */
+function stalled(createdAt: Date | string | null | undefined, now: Date): boolean {
+  if (createdAt == null) return false;
+  const at = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const ms = at.getTime();
+  return Number.isFinite(ms) && now.getTime() - ms > STALLED_AFTER_MS;
 }
 
 export type DocumentStatus = { label: string; tone: DocumentStatusTone };
@@ -33,7 +40,7 @@ export function documentStatus(
     error?: string | null;
     proposalStatus?: string | null;
     /** When this attempt was created. Omit for callers that have no timestamp. */
-    createdAt?: Date | null;
+    createdAt?: Date | string | null;
   } | null | undefined,
   undecidedProposals: number,
   /** Anything that can move the row along. Gives "Reading" an age. */
