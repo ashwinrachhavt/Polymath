@@ -14,6 +14,7 @@ import type {
 import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "../audit/schema";
 import { embedExtraction } from "./embedding";
+import { advanceDocumentEnrichment } from "./enrichment";
 import { proposeFromText, RULES_PROPOSER } from "./field-rules";
 import { flagConflicts, proposeFields } from "./fields";
 import { proposeObligationsFromDocument } from "./obligations";
@@ -163,6 +164,7 @@ export async function extractDocument(
         spans: existing.spans as ExtractionSpan[],
       });
       await embedAfterText(auth, existing.id, existing.embeddedAt);
+      await enrichAfterText(auth, input.documentId);
       return { ok: true, extractionId: existing.id, text, deduplicated: true, proposals };
     }
     return {
@@ -225,6 +227,7 @@ export async function extractDocument(
     extractor: result.extractor,
   });
   await embedAfterText(auth, row.id, null);
+  await enrichAfterText(auth, input.documentId);
   return { ok: true, extractionId: row.id, text: result.text, deduplicated: false, proposals };
 }
 
@@ -239,6 +242,20 @@ async function embedAfterText(auth: AuthContext, extractionId: string, embeddedA
     await embedExtraction(auth, { extractionId });
   } catch (cause) {
     console.error(`embedding pass threw for extraction ${extractionId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+}
+
+/*
+ * Once the text exists, the enrichment state machine takes over: embed (again
+ * a no-op when the chunks landed), zettel proposals, and linking accepted
+ * cards into the semantic graph. Each stage row records its own outcome, so a
+ * failed provider here is a visible, retryable stage - never a lost document.
+ */
+async function enrichAfterText(auth: AuthContext, documentId: string): Promise<void> {
+  try {
+    await advanceDocumentEnrichment(auth, { documentId });
+  } catch (cause) {
+    console.error(`enrichment pass threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
 }
 

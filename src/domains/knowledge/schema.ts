@@ -1010,6 +1010,41 @@ export const zettelProposals = pgTable(
 );
 
 /*
+ * The document enrichment state machine (ASH-174/ASH-184): one row per
+ * document per stage after capture and extraction. Stage rows are the record;
+ * a failure is visible (`failed` + `last_error`) and retryable, and a restart
+ * loses nothing because nothing about stage state lives in memory.
+ */
+export const ENRICHMENT_STAGES = ["extract", "embed", "zettels", "link"] as const;
+export type EnrichmentStage = (typeof ENRICHMENT_STAGES)[number];
+export const ENRICHMENT_STATUSES = ["pending", "running", "succeeded", "failed", "skipped"] as const;
+
+export const documentEnrichment = pgTable(
+  "document_enrichment",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    stage: text("stage").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    ...recorded,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_enrichment_document_stage_key").on(t.documentId, t.stage),
+    index("document_enrichment_workspace_document_idx").on(t.workspaceId, t.documentId),
+    check("document_enrichment_stage_check", sql.raw(`stage in (${ENRICHMENT_STAGES.map((k) => `'${k}'`).join(", ")})`)),
+    check("document_enrichment_status_check", sql.raw(`status in (${ENRICHMENT_STATUSES.map((k) => `'${k}'`).join(", ")})`)),
+    check("document_enrichment_attempts_check", sql`attempts >= 0`),
+  ],
+);
+
+/*
  * The wiki layer (second brain). Documents stay the immutable raw sources;
  * the wiki is the maintained layer above them: one master index, one hub per
  * topic, one article per ingested document, and an append-only log. Each wiki

@@ -97,3 +97,30 @@ The existing snapshot chain is incomplete. Do not resolve parallel snapshot
 collisions by blindly unioning JSON: generate serially on current main, review
 the SQL against existing migrations, and append one journal entry. The guard
 does not prove snapshot/schema equivalence or apply anything to a database.
+
+## Knowledge enrichment state machine
+
+Documents move through an enrichment pipeline after their text exists
+(source capture or upload triggers `extractAndEmbedAfterText`; transcription
+providers hook in too). The `document_enrichment` table records one row per
+document and stage with status `pending | running | succeeded | failed |
+skipped`, attempt count, and the last error.
+
+Stages run in order, and the line stops at the first failure so no stage
+runs on missing input:
+
+1. **extract** — mirrors the latest `document_extractions` run (visible
+   `skipped` with the reason when no text is extractable; `failed` with the
+   provider error on failure).
+2. **embed** — chunks and embeds the extraction through `embedExtraction`.
+3. **zettels** — proposes zettel cards through `proposeZettels`.
+4. **link** — embeds every accepted zettel card into the semantic graph
+   (`embedArtifact`, owner_type `artifact`), making the card discoverable
+   from `relatedNotes`. Link re-runs on later passes because accepting a
+   zettel after the first pass adds a card the last pass never saw;
+   embedding is idempotent per card.
+
+Failures stay visible in the table (never silently lost) and
+`retryDocumentEnrichment` re-runs the line, skipping already-succeeded
+stages. A stage marked `skipped` is a durable decision (e.g. no extractable
+text) and is not retried.
