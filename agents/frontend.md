@@ -19,6 +19,50 @@ There is exactly one order of preference. Use the earliest that works.
 If you are reaching for a client store to hold records, the design is wrong.
 Postgres already holds them, and the RSC already read them.
 
+## State ownership
+
+Every kind of state has exactly one home. A second copy is a copy that drifts.
+
+| State kind | Where it lives | Example |
+|---|---|---|
+| Server records | Server component and the domain query layer | A notes list composed in `page.tsx` by the domain's query |
+| Shareable view state | The URL | `?q=capture&page=2&status=open` |
+| Selected record | The URL | `/notes/[id]`, or a `selected` param beside a list |
+| Drafts and dialogs | Component state | A textarea before submit, an open menu, a hover |
+| Preview sample data | The browser-preview store, localStorage only | `/apps/neuralflow` standalone preview |
+
+- **Server state is not copied into a client store.** The server component read
+  it and passes typed props. A client store holding records creates a second
+  source of truth that no one reconciles.
+- **The URL owns what a person can share, reload, or return to.** Search text,
+  filters, sort, page, page size, and the selected record. Use
+  `src/lib/list-params.ts`: `parseListParams` validates against a `ListSpec` and
+  falls back to the default rather than throwing on a hand-edited URL, and
+  `listHref` writes a patch while dropping empty values and defaults. One
+  convention for every list surface.
+- **Component state owns what is not yet a fact.** A draft, an open dialog, a
+  hover. It disappears on unmount, which is the correct lifetime.
+- **The browser-preview store is not production data.**
+  `src/components/workspace/workspace-provider.tsx` holds a sample workspace and
+  persists it to scoped localStorage (`axiom-ui-preview-v1:<scope>`). It exists
+  for the standalone `/apps/neuralflow` preview surface only. Canonical reads and
+  writes go through the domain layer, never through `useWorkspace`.
+
+Preview and canonical writes are separate operations. A preview mutation never
+stands in for a canonical one, and a preview success says nothing about what
+Postgres holds.
+
+Every preview mutation reports whether the write landed. Most return
+`{ ok, persisted }`; the add paths return the record or `undefined`. `ok: false`
+means the write was refused, usually because another tab moved first.
+`persisted: false` means storage itself failed. A refused write must never be
+reported as saved: no success notice, no record handed back, no optimistic row
+kept. `PreviewStorageWarning` owns that message; do not add a second one.
+
+Do not add a second global store without a measured need. The server, the URL,
+and component state cover the cases that exist, and a store is a permanent
+reconciliation cost paid to avoid a temporary prop.
+
 ## Reads
 
 - Reads happen in server components. Compose the view model during render.
