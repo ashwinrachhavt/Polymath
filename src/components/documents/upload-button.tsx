@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,8 @@ import { Button } from "@/components/ui/button";
 
 type UploadState = { kind: "idle" } | { kind: "busy" } | { kind: "message"; text: string; error: boolean };
 
-export function UploadButton() {
+/** `libraryHref` links to where the document actually lands, for surfaces outside the inbox. */
+export function UploadButton({ libraryHref }: { libraryHref?: string } = {}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<UploadState>({ kind: "idle" });
@@ -43,7 +45,7 @@ export function UploadButton() {
             error: true,
           });
         } else {
-          setState({ kind: "message", text: `${file.name} added to the inbox.`, error: false });
+          setState({ kind: "message", text: `${file.name} added. Reading starts on its own.`, error: false });
           router.refresh();
         }
       } else {
@@ -88,6 +90,14 @@ export function UploadButton() {
       {state.kind === "message" ? (
         <p role={state.error ? "alert" : "status"} className={state.error ? "text-destructive text-xs" : "text-muted-foreground text-xs"}>
           {state.text}
+          {!state.error && libraryHref ? (
+            <>
+              {" "}
+              <Link href={libraryHref} className="underline underline-offset-4">
+                Open the library
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : null}
     </div>

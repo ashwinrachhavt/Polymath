@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { clerkConfigured } from "@/lib/clerk";
+import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 
 /*
  * Next 16 renamed middleware to proxy; this file is the old middleware.ts.
@@ -24,7 +24,10 @@ const isPublicRoute = createRouteMatcher([
   "/api/internal/cron",
 ]);
 
-export default clerkConfigured
+// devAuthBypass is the local no-Clerk path: the proxy stays out of the way and
+// getAuthContext resolves the dev owner instead. Guarded to non-production in
+// src/lib/clerk.ts.
+export default clerkConfigured && !devAuthBypass
   ? clerkMiddleware(async (auth, request) => {
       // A CORS preflight carries no credentials by design (the browser has not
       // sent the token yet), so protecting it makes every cross-origin call

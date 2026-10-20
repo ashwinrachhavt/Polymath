@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 import proxy from "@/proxy";
 
-vi.mock("@/lib/clerk", () => ({ clerkConfigured: true }));
+vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => ({
   ...await importOriginal<typeof import("@clerk/nextjs/server")>(),
   clerkMiddleware: (handler: unknown) => handler,

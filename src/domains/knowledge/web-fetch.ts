@@ -85,7 +85,7 @@ export async function crawlSiteForAgent(
     await withTransaction((tx) =>
       enqueueOutbox(tx, auth, {
         topic: "crawl.requested",
-        payload: { url: target, limit, maxDepth, request: url.toString() },
+        payload: { url: target, limit, maxDepth },
         // The canonical URL is the key, so asking twice while one is running
         // joins the first job instead of starting a second crawl of the site.
         dispatchKey: `crawl:${target}`,
