@@ -132,3 +132,16 @@ export async function getConversation(auth: AuthContext, threadId: string): Prom
 
   return { thread, entries };
 }
+
+/**
+ * Render a thread timestamp as `YYYY-MM-DD HH:MMZ`. The `max(created_at)`
+ * aggregate and some boundary crossings deliver an ISO string, not a Date,
+ * and `.toISOString()` on a string throws for the whole screen (1e2a636,
+ * then this formatter, 2026-10-20).
+ */
+export function formatThreadTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const at = date instanceof Date ? date : new Date(date);
+  const ms = at.getTime();
+  return Number.isFinite(ms) ? at.toISOString().slice(0, 16).replace("T", " ") + "Z" : "—";
+}
