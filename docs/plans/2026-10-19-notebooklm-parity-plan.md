@@ -698,12 +698,19 @@ needing a column change waits for C to merge.
 
 ## Binding decisions
 
-- **D1 (2026-10-19, owner): six separate domains.** `youtube`, `learning`,
-  `artifacts` (deck/infographic), `notebook`, `sources`, `teaching` each get
-  their own `src/domains/<name>/` folder and seam. Knowledge keeps what it has.
+- **D1 (2026-10-19, owner): six separate domains — SUPERSEDED.**
+  The outside review proved five of the six would own no tables, against
+  `agents/architecture.md:53-76`. Superseded by the repo-pattern layout:
+  `src/integrations/{youtube,quiz}/`, activated `domains/learning/`, and
+  knowledge-domain modules for readiness, discovery and deck generation. The
+  owner's intent (real seams, not a knowledge grab bag) is preserved; the
+  folder count is not.
 - **D2 (2026-10-19, owner): hard stop at the free allowance.** No paid ceiling,
   no fallback. `QuotaExhaustedError` surfaces with the reset date. The owner can
-  raise `GEMINI_DAILY_REQUESTS` or set a key by hand.
+  raise `GEMINI_DAILY_REQUESTS` or set a key by hand. **Precondition:** this
+  only holds when `GENERATION_PROVIDER=gemini`. With `OPENROUTER_API_KEY` set
+  and no explicit provider, OpenRouter is selected, its registry quota is null,
+  and nothing stops the spend. Embeddings are always paid and ungated.
 - **One document model.** YouTube videos become documents; no separate media table.
 - **No new artifact store.** Decks and infographics are artifacts with structured versions.
 - **No image generation.** Infographics are templates over model-chosen content.
@@ -714,6 +721,164 @@ needing a column change waits for C to merge.
   subject contract, the citation renderer, and the server-side resolution.
 
 - **Preview `/apps/*` untouched.** Canonical routes only.
+
+## Outside voice findings (late, verified)
+
+The native reviewer returned after the five-minute gate. Its findings were
+re-verified against the code below. Five are P0 and change the plan.
+
+### P0 — the learning schema cannot store the quiz the plan specifies
+
+`src/domains/learning/schema.ts:69-74` has `prompt`, `answer`, `sourceQuote`.
+There is **no** `options`, `answerIndex`, or `explanation` column. The earlier
+migration block said "learning tables already exist; nothing to add there",
+which is false for a 4-option MCQ. Storing JSON in `answer` violates the repo
+rule that anything queried gets a column, and the quiz UI must read
+`answerIndex`.
+
+**Correction:** the first migration adds three columns:
+`options jsonb`, `answer_index integer`, `explanation text`, plus a CHECK that
+`kind <> 'quiz_question' OR (options is not null and answer_index is not null)`.
+
+### P0 — "spans in seconds" violates the extraction span contract
+
+`ExtractionSpan = {page, start, end}` with `start`/`end` as **character
+offsets** (`src/integrations/extraction/provider.ts:13`, `chunking.ts:31-68`,
+`search.ts:215-222`). Writing seconds there makes `pageAt()` compare a
+character offset to a timestamp, and `embeddings.span_start/end` inherit the
+wrong numbers.
+
+Worse, the standard path **overwrites** them: a transcript text file goes
+through `intakeFile` → outbox → `plain-text@local`, which emits
+`spans: [{page:1, start:0, end:text.length}]`
+(`src/integrations/extraction/plain-text.ts:20`). Timestamps are lost.
+
+**Correction:** add a dedicated `youtube-transcript` extraction provider that
+returns character-offset spans plus a `timestamps` sidecar in
+`document_extractions.spans` is not enough; store the per-line second table in
+`documents` metadata or a new `youtube_transcripts` companion row keyed by
+document id. Citations deep-link with `?t=<seconds>` from that table, not from
+`spans`.
+
+### P1 — the free-tier hard stop does not govern the surfaces it claims to
+
+Three disconnected budgets exist:
+
+| Path | What it spends | Gated? |
+|---|---|---|
+| Chat, Studio report | Eve agent (`eve/alfred/agent/agent.ts:38-52`) via Groq/OpenRouter | USD `estimateUsd` reservation, not the request ledger |
+| Zettel/quiz/deck generator | `generationProvider()` | Only when `GENERATION_PROVIDER=gemini` |
+| Embeddings | `embeddingProvider()` | **Never**: requires OpenRouter/OpenAI, no registry entry |
+
+`generationProvider()` picks OpenRouter whenever `OPENROUTER_API_KEY` is set
+(`provider.ts:65-70`), and OpenRouter's registry entry has `quota: null`, so
+`withQuota` returns `fn()` with no ceiling (`quota.ts:132`).
+
+**Correction:** the plan must state the precondition explicitly -
+`GENERATION_PROVIDER=gemini` is required for the hard stop to exist. Embeddings
+are always paid and ungated; say so. Do not claim "every generation call goes
+through withQuota".
+
+### P1 — YouTube dedupe does not work as claimed
+
+`canonicalCaptureUrl` strips only `utm_*`, `fbclid`, `gclid`, `dclid`,
+`msclkid`, `mc_*`, `igshid`, `ref_src` (`src/lib/safe-fetch.ts:94`). It does
+**not** strip YouTube's `si`, `t`, `feature`, or `list`.
+
+`youtu.be/ID?si=abc` and `youtube.com/watch?v=ID` canonicalize to different
+strings, so the unique index does not dedupe them.
+
+**Correction:** the YouTube adapter rewrites the stored URL to exactly
+`https://www.youtube.com/watch?v=<id>` before it reaches `recordSource`.
+
+### P1 — the outbox is not scheduled
+
+`vercel.json` registers no cron. `/api/internal/outbox` is 404 unless
+`OUTBOX_DISPATCH_SECRET` is set, and the route's own comment says the trigger
+is the operator's choice (`src/app/api/internal/outbox/route.ts:8-11`).
+
+In a default deploy, YouTube and batch imports sit at `queued` forever.
+
+**Correction:** the readiness UI must name the worker after 2 minutes (already
+added), and the plan must state that production requires either the secret
+plus an external trigger or a cron added in the same PR.
+
+### P1 — `/alfred/notebook/[dossierId]` collides with a live route
+
+`/alfred/notebook` is the notes surface (`notebook/page.tsx`), and
+`navigation.ts:169-173` maps it to Library on purpose. Existing deep links use
+`?id=`.
+
+**Correction:** do not add a path segment. Use
+`/alfred/notebook?dossier=<id>` and let the page render the notebook panes when
+that param is present. One segment, one object.
+
+### P1 — six domains is over-engineering by this repo's convention
+
+`agents/architecture.md:53-76`: a domain owns tables. Five of the six proposed
+folders own none: `youtube` is transport, `artifacts` keeps its enum in
+knowledge, `notebook` is a dossier view, `sources` queries knowledge,
+`teaching` wraps learning.
+
+**Correction (supersedes D1):** use the repo's existing pattern -
+`src/integrations/youtube/` and `src/integrations/quiz/` for adapters;
+activate `src/domains/learning/`; put readiness/discovery in
+`src/domains/knowledge/`; put deck/infographic generation in
+`knowledge/studio.ts`. No empty domains.
+
+### P1 — one PR is the wrong unit
+
+**Correction:** four sequential PRs:
+
+1. Migration: learning quiz columns, hashed dedupe key, deck/infographic kinds,
+   Studio kind widening. No UI. (In progress.)
+2. Learning: commands, queries, SM-2, quiz generator in
+   `src/integrations/quiz/`, canonical learning route.
+3. Deck + infographic: widened content contract, renderers, Studio surface.
+4. Sources discovery + YouTube behind a flag, after a one-day spike proving
+   the transport and URL normalization.
+
+### P2 — additional verified gaps
+
+- `recordSource` kind `"video"` duplicates identity: `dossiers.sourceFor`
+  matches only `kind === "document"` (`dossiers.ts:29`), so attaching a video
+  creates a second `sources` row. Use `"document"` for video sources.
+- Deck content cannot round-trip: `saveGeneratedDraft` writes `{text}` and
+  `getDraftDetail` reads `plainText` only (`studio.ts:93-96,197-203`). The
+  content contract must widen before decks carry `{slides}`.
+- "Deck over 10 sources costs 1 request" has no context assembly; the only
+  precedent caps input at 12k chars (`zettels/extractor.ts:29`). Add retrieval
+  or per-source excerpting, or drop the cost claim.
+- New Eve tools need `ensureProfile`'s `gained` list
+  (`agents/commands.ts:31`). `learning_review` writes, so it must not join the
+  read-only default trio (`roster.ts:43`).
+- Readiness vocabulary does not map to `extraction_status`
+  (`pending|succeeded|failed|skipped`); derive all six states from
+  `currentExtractionSql` as `search.ts` does.
+- `sensitiveDataAllowed: false` is never enforced anywhere. Gemini's free tier
+  trains on prompts; do not send document text to it without an explicit gate.
+- A btree index on `source_quote` can exceed the 2704-byte row limit. Use the
+  `zettelDedupeKey` hash-column pattern (`zettels.ts:36-38`).
+- S4 said "replace the sample arrays in `products/alfred/learning.tsx`" while
+  the binding decisions say `/apps/*` is untouched. Correction: the canonical
+  `/alfred/learning` route is the only surface; the preview component stays.
+- Vercel deploys code without running `db:migrate`. Migrate before deploy is a
+  release step, not a build step.
+- Effort was understated. Four PRs, ~20 tests, one unverified adapter: call it
+  human ~4 weeks, CC ~4 days.
+
+### NotebookLM gaps the plan still does not close
+
+Named, not fixed, so the claim stays honest:
+
+- Inline numbered citations that jump to the passage (we have a per-run
+  footnote list, `alfred/page.tsx:183`).
+- Save-response-to-note from chat.
+- Streaming chat (owned by the other worktree).
+- Quiz as a Studio artifact alongside deck/infographic (ours lives in Learning).
+- Source types: pasted text, Docs/Slides, EPUB, audio upload.
+- Output customization: length, language, focus, regenerate.
+- Per-chat source limits and toggles.
 
 ## Approval readiness
 
@@ -733,13 +898,18 @@ approved scope's implementation and proof.
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
 - **OUTSIDE COVERAGE:** provider codex, phase plan-review, unavailable. Codex
-  returned `MODEL_QUOTA_EXHAUSTED` (account usage limit). Native Claude subagent
-  fallback ran; its findings are merged into the sections above. No external
-  completion.
-- **CROSS-MODEL:** none. Only the native review completed.
+  returned `MODEL_QUOTA_EXHAUSTED` (account usage limit). The native Claude
+  subagent completed **after** the five-minute gate, so it is recorded as late
+  and receives no outside-voice credit, but its findings were verified against
+  the code and five P0 corrections were folded into the plan above.
+- **CROSS-MODEL:** none counted. The late native report disagreed with the
+  earlier native review on the domain layout and PR count; the later report won
+  on evidence (five of six folders would own no tables).
 - **VERDICT:** ENGINEERING ISSUES OPEN — 3 P1 findings block implementation
   until resolved. Plan scope is approved; corrections are specified.
 
 **UNRESOLVED DECISIONS:**
-- Chat worktree contract: exact `ChatSurfaceProps` shape and component path not yet confirmed; this plan's Chat pane stays gated until it is.
-- YouTube transcript transport: public endpoint behavior unverified; T2 must prove it against fixtures before T3 depends on it.
+- Chat worktree contract: component path unconfirmed; Chat pane stays gated.
+- YouTube transcript transport: unverified; needs a one-day spike before PR 4.
+- D1 superseded: six domains became the repo-pattern layout. Confirm before PR 2.
+- Budget precondition: `GENERATION_PROVIDER=gemini` must be set for D2 to hold.
