@@ -24,18 +24,22 @@ import { problemResponse } from "@/lib/problems";
  */
 
 function secrets(): string[] {
-  return [process.env.OUTBOX_DISPATCH_SECRET, process.env.CRON_SECRET].filter(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  );
+  // Trimmed on both sides of the comparison: a secret pasted with a trailing
+  // newline is a normal operator mistake, and it must not present as an opaque
+  // 401 that looks like a wrong secret.
+  return [process.env.OUTBOX_DISPATCH_SECRET, process.env.CRON_SECRET]
+    .map((value) => value?.trim())
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function authorized(request: Request, candidates: string[]): boolean {
   const presented = /^Bearer\s+(\S+)$/.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
+  if (presented.length === 0) return false;
   const a = Buffer.from(presented);
   return candidates.some((secret) => {
     const b = Buffer.from(secret);
     return a.length === b.length && timingSafeEqual(a, b);
-  }) && presented.length > 0;
+  });
 }
 
 async function drain(): Promise<Response> {

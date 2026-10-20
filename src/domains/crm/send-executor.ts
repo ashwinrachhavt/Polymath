@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { actionAttempts, actionProposals, actionReviews, actionRevisions, providerObservations } from "@/domains/actions/schema";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -248,7 +248,7 @@ export async function resolveUnknownSend(
     /** How the caller learned it: a provider read, or a person checking their mailbox. */
     source: "provider_read" | "human_check";
   },
-): Promise<{ resolved: boolean }> {
+): Promise<{ resolved: boolean; settledAs?: "sent" | "absent" }> {
   return withTransaction(async (tx) => {
     const [attempt] = await tx
       .select()
@@ -256,7 +256,26 @@ export async function resolveUnknownSend(
       .where(and(eq(actionAttempts.workspaceId, auth.workspaceId), eq(actionAttempts.id, input.attemptId)))
       .limit(1);
     if (!attempt) throw new SendNotAllowedError("That send attempt is not in this workspace.");
+
+    const provider = input.source === "provider_read" ? "provider" : "human";
+
+    /*
+     * A later observer who finds evidence contrary to the settlement still gets
+     * recorded. Dropping it is the invisible work this table exists to prevent —
+     * someone looked at the provider, decided something, and the system forgot.
+     * The settlement itself stays closed: observations are append-only evidence,
+     * not a second decision.
+     */
     if (attempt.status !== "unknown" || attempt.reconciliation !== "pending") {
+      await tx.insert(providerObservations).values({
+        workspaceId: auth.workspaceId,
+        attemptId: attempt.id,
+        proposalId: attempt.proposalId,
+        provider,
+        providerObjectId: input.observation.observedState === "sent" ? input.observation.providerObjectId : null,
+        observedState: input.observation.observedState,
+        detail: { resolvedBy: auth.userId, arrivedAfterSettlement: true, settledStatus: attempt.status },
+      });
       return { resolved: false };
     }
 
@@ -269,7 +288,14 @@ export async function resolveUnknownSend(
         status: sent ? "succeeded" : "failed",
         reconciliation: "resolved",
         providerObjectId,
-        responseSummary: { resolvedBy: input.source, observedState: input.observation.observedState },
+        // Kept, not replaced: the original unknown-outcome summary is the record
+        // of what the provider did, and the resolution is a separate column's story.
+        responseSummary: {
+          ...(typeof attempt.responseSummary === "object" && attempt.responseSummary !== null
+            ? (attempt.responseSummary as Record<string, unknown>)
+            : {}),
+          resolution: { resolvedBy: input.source, observedState: input.observation.observedState },
+        },
         endedAt: new Date(),
       })
       .where(and(eq(actionAttempts.id, attempt.id), eq(actionAttempts.reconciliation, "pending")))
@@ -280,14 +306,17 @@ export async function resolveUnknownSend(
       workspaceId: auth.workspaceId,
       attemptId: attempt.id,
       proposalId: attempt.proposalId,
-      provider: input.source === "provider_read" ? "provider" : "human",
+      provider,
       providerObjectId,
       observedState: input.observation.observedState,
       detail: { resolvedBy: auth.userId },
     });
 
     if (input.observation.observedState === "sent") {
-      await tx
+      // State-guarded and row-counted. An earlier reconciliation could have run
+      // while this attempt was still pending, so the update must not resurrect a
+      // cancelled draft or claim a draft it did not actually move.
+      const moved = await tx
         .update(correspondence)
         .set({
           state: "sent",
@@ -300,8 +329,15 @@ export async function resolveUnknownSend(
           and(
             eq(correspondence.workspaceId, auth.workspaceId),
             eq(correspondence.actionProposalId, attempt.proposalId),
+            inArray(correspondence.state, ["planned", "drafted", "sent"]),
           ),
+        )
+        .returning({ id: correspondence.id });
+      if (moved.length === 0) {
+        throw new SendNotAllowedError(
+          "The message was found, but its draft is no longer in a state that can record a send. Reconcile the draft by hand.",
         );
+      }
     }
 
     await recordAudit(
@@ -314,6 +350,6 @@ export async function resolveUnknownSend(
       },
       tx,
     );
-    return { resolved: true };
+    return { resolved: true, settledAs: sent ? "sent" : "absent" };
   });
 }

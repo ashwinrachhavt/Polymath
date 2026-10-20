@@ -80,6 +80,16 @@ suite("withReceipt", () => {
       withTransaction((tx) => receipt.withReceipt(tx, auth, key, { body: "b" }, run)),
     ).rejects.toBeInstanceOf(receipt.IdempotencyConflictError);
     expect(effects).toBe(1);
+
+    // The rejected attempt must not disturb what the first one stored: a
+    // regression that overwrote or deleted the receipt before throwing would
+    // otherwise pass, and that is the case this suite exists to prove.
+    const stored = await db
+      .select({ response: requestReceipts.response })
+      .from(requestReceipts)
+      .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)));
+    expect(stored).toHaveLength(1);
+    expect(stored[0].response).toEqual({ n: 1 });
   });
 
   it("no key runs each time and stores no receipt", async () => {

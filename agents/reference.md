@@ -59,8 +59,9 @@ commit a real value.
 `OUTBOX_DISPATCH_SECRET` and `CRON_SECRET` are both accepted by
 `/api/internal/cron`: the first is for an operator or local script, the second is
 what Vercel Cron signs with. Set both in a deployment — `vercel.json` schedules
-the GET once a day, and without `CRON_SECRET` that tick is a 404 that looks like
-a quiet no-op.
+the GET once a day. With neither set the route answers 404 (it does not advertise
+itself); with one set but the wrong bearer it answers 401. Either way the tick
+drains nothing, which is indistinguishable from a quiet queue.
 
 Provider selection is **in code**, in `src/integrations/*/provider.ts`. Reading
 the env var alone does not tell you which adapter is active; read the resolver.

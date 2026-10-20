@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionRevisions, actionAttempts, providerObservations } from "@/domains/actions/schema";
+import { correspondence } from "@/domains/crm/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -164,7 +165,7 @@ suite("resolveUnknownSend", () => {
 
     await expect(
       exec.resolveUnknownSend(auth, { attemptId: attempt.id, observation: { observedState: "absent" }, source: "human_check" }),
-    ).resolves.toEqual({ resolved: true });
+    ).resolves.toEqual({ resolved: true, settledAs: "absent" });
 
     const calls: unknown[] = [];
     const sent = await exec.sendApprovedCorrespondence(auth, { correspondenceId: draft.id, sender: okSender(calls) });
@@ -204,7 +205,7 @@ suite("resolveUnknownSend", () => {
     expect(observation).toMatchObject({ observedState: "absent", provider: "human" });
   });
 
-  it("a second resolution is a no-op rather than a rewrite", async () => {
+  it("a second resolution is a no-op rather than a rewrite, but still records the observation", async () => {
     const { auth, attempt } = await unknownAttempt(`resolve-twice-${Date.now()}`);
     await exec.resolveUnknownSend(auth, { attemptId: attempt.id, observation: { observedState: "absent" }, source: "human_check" });
     await expect(
@@ -217,6 +218,59 @@ suite("resolveUnknownSend", () => {
 
     const [row] = await db.select().from(actionAttempts).where(eq(actionAttempts.id, attempt.id));
     expect(row.status).toBe("failed");
+
+    // A later observer who finds contrary evidence is recorded, not discarded:
+    // observations are append-only proof, even when they arrive too late to settle.
+    const observed = await db
+      .select()
+      .from(providerObservations)
+      .where(and(eq(providerObservations.attemptId, attempt.id), eq(providerObservations.observedState, "sent")));
+    expect(observed).toHaveLength(1);
+    expect(observed[0].detail).toMatchObject({ arrivedAfterSettlement: true, settledStatus: "failed" });
+  });
+
+  it("refuses to mark a cancelled draft sent, and says so", async () => {
+    const { auth, draft, attempt } = await unknownAttempt(`resolve-cancelled-${Date.now()}`);
+    const [current] = (await corr.listCorrespondence(auth)).filter((r) => r.id === draft.id);
+    await db
+      .update(correspondence)
+      .set({ state: "cancelled", updatedAt: new Date(), updatedBy: auth.userId })
+      .where(and(eq(correspondence.workspaceId, auth.workspaceId), eq(correspondence.id, current.id)));
+
+    // The message was really sent, but the draft is no longer live. Recording a
+    // send against it would resurrect a cancelled draft, so the command stops.
+    await expect(
+      exec.resolveUnknownSend(auth, {
+        attemptId: attempt.id,
+        observation: { observedState: "sent", providerObjectId: "msg_found" },
+        source: "provider_read",
+      }),
+    ).rejects.toThrow(/no longer in a state that can record a send/);
+  });
+
+  it("keeps the original unknown-outcome summary when it resolves", async () => {
+    const { auth, attempt } = await unknownAttempt(`resolve-summary-${Date.now()}`);
+    await exec.resolveUnknownSend(auth, {
+      attemptId: attempt.id,
+      observation: { observedState: "absent" },
+      source: "human_check",
+    });
+
+    const [row] = await db.select().from(actionAttempts).where(eq(actionAttempts.id, attempt.id));
+    expect(row.responseSummary).toMatchObject({ resolution: { resolvedBy: "human_check", observedState: "absent" } });
+    // The error code that recorded the unknown is not upgraded into a lie.
+    expect(row.errorCode).toBe("send_outcome_unknown");
+  });
+
+  it("reports what the attempt settled as", async () => {
+    const { auth, attempt } = await unknownAttempt(`resolve-reports-${Date.now()}`);
+    await expect(
+      exec.resolveUnknownSend(auth, {
+        attemptId: attempt.id,
+        observation: { observedState: "absent" },
+        source: "human_check",
+      }),
+    ).resolves.toEqual({ resolved: true, settledAs: "absent" });
   });
 
   it("refuses an attempt from another workspace", async () => {
