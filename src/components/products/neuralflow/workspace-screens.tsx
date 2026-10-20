@@ -43,7 +43,7 @@ function NoteEditor({ note, close }: { note: Artifact; close: () => void }) {
     event.preventDefault();
     if (!title.trim()) { setError("Enter a note title."); return; }
     if (state.artifacts.find((artifact) => artifact.id === note.id)?.version !== baselineVersion) { setError("This note changed in another view. Your draft has not been overwritten. Copy it, then close and reopen the note to load the latest revision."); return; }
-    if (!updateArtifact(note.id, { title: title.trim(), body, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), links }).ok) return;
+    const saved = updateArtifact(note.id, { title: title.trim(), body, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), links }); if (!saved.ok || !saved.persisted) return;
     notify("Canonical note saved locally. No AI rewrite was performed."); close();
   }
   return <form className="space-y-4" onSubmit={save}><Field label="Note title"><Input value={title} required onChange={(event) => setTitle(event.target.value)} /></Field>
@@ -80,7 +80,7 @@ function ProjectDialog({ project }: { project?: Project }) {
     event.preventDefault(); const data = new FormData(event.currentTarget); const title = String(data.get("title") || "").trim(); if (!title) return;
     if (original && JSON.stringify(state.projects.find((item) => item.id === original.id)) !== JSON.stringify(original)) { setError("Project changed while you were editing. Close and reopen to load it again."); return; }
     const payload = { title, description: String(data.get("description") || ""), status: String(data.get("status")) };
-    if (project) { if (!updateProject(project.id, payload).ok) return; } else if (!addProject(payload)) return;
+    if (project) { const saved = updateProject(project.id, payload); if (!saved.ok || !saved.persisted) return; } else if (!addProject(payload)) return;
     setOpen(false); notify("Project saved locally in the canonical workspace.");
   }
   return <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) { setOriginal(project); setError(""); } }}><DialogTrigger asChild><Button variant={project ? "outline" : "default"}>{project ? "Edit project" : "New project"}</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>{project ? "Edit project" : "Create a project"}</DialogTitle><DialogDescription>Projects are shared outcomes, not containers that own duplicate tasks.</DialogDescription></DialogHeader>{open && <form onSubmit={save} className="space-y-4"><Field label="Project title"><Input name="title" required defaultValue={project?.title} /></Field><Field label="Desired outcome"><Textarea name="description" rows={4} defaultValue={project?.description} /></Field><Field label="Status"><Select name="status" defaultValue={project?.status || "Active"}>{["Active", "Paused", "Completed", "Archived"].map((value) => <option key={value}>{value}</option>)}</Select></Field>{error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}<Button type="submit">Save project locally</Button></form>}</DialogContent></Dialog>;
