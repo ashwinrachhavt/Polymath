@@ -149,6 +149,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                             {account.lastError ? ` · ${account.lastError}` : ""}
                           </p>
                           <AccountControls
+                            provider={connector.provider}
                             accountId={account.id}
                             version={account.version}
                             status={account.status}

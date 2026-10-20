@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Field } from "@/components/workspace/ui";
-import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction } from "./actions";
+import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction } from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
 
@@ -55,7 +55,9 @@ export function AccountControls({
   version,
   status,
   isDefault,
+  provider,
 }: {
+  provider?: string;
   accountId: string;
   version: number;
   status: string;
@@ -104,7 +106,23 @@ export function AccountControls({
           Make write default
         </Button>
       ) : null}
-      {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
+      {provider === "google-calendar" && status === "active" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            setError(null);
+            startTransition(async () => {
+              const result = await syncGoogleCalendarAction({ accountId });
+              setError(result.ok ? `Synced: ${result.summary}` : result.error);
+            });
+          }}
+        >
+          Sync now
+        </Button>
+      ) : null}
+      {error ? <p className="text-[13px] text-muted-foreground" role="status">{error}</p> : null}
     </div>
   );
 }
