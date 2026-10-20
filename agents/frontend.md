@@ -29,7 +29,7 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
 | Shareable view state | The URL | `?q=capture&page=2&status=open` |
 | Selected record | The URL | `?id=<noteId>` on the notebook and inbox, `?task=<taskId>` on work |
 | Drafts and dialogs | Component state | A textarea before submit, an open menu, a hover |
-| Preview sample data | The browser-preview store, localStorage only | `/apps/neuralflow`, `/activity`, `/settings` |
+| Preview records | The browser-preview store, localStorage only | `/apps/neuralflow`, `/activity`, `/settings` |
 
 - **Server state is not copied into a client store.** The server component read
   it and passes typed props. A client store holding records creates a second
@@ -49,9 +49,11 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
 - **Component state owns what is not yet a fact.** A draft, an open dialog, a
   hover. It disappears on unmount, which is the correct lifetime.
 - **The browser-preview store is not production data.**
-  `src/components/workspace/workspace-provider.tsx` holds a sample workspace and
-  persists it to scoped localStorage: the bare key `axiom-ui-preview-v1` for the
-  anonymous scope, `axiom-ui-preview-v1:<scope>` otherwise.
+  `src/components/workspace/workspace-provider.tsx` boots from
+  `emptyWorkspaceState` and persists what the person creates to scoped
+  localStorage: the bare key `axiom-ui-preview-v1` for the anonymous scope,
+  `axiom-ui-preview-v1:<scope>` otherwise. There is no seeded sample content;
+  an empty preview renders each screen's designed empty state.
 
   `WorkspaceProvider` wraps the whole shell, so the store is readable on every
   route, and two shell components read it unconditionally: `FocusDock` and
@@ -122,6 +124,35 @@ reconciliation cost paid to avoid a temporary prop.
   shipped to the browser to open a menu.
 - A client component receives typed props. It does not fetch, and it does not
   import a domain's query.
+
+### Calling `/api/v1` from a client island
+
+Use `requestJson` from `src/lib/client-request.ts`. Never call `fetch` directly;
+the raw version drifts on what a network failure, a 401 and a 500 each say.
+
+It returns `{ ok: true, data }` or `{ ok: false, failure }`, and `failure.kind`
+is one of:
+
+| Kind | Meaning | What the surface does |
+|---|---|---|
+| `unauthenticated` | No session | Name the sign-in and keep the work |
+| `forbidden` | Role cannot do this | Say so; do not retry |
+| `not_found` | Record is gone | Offer a refresh to the current list |
+| `conflict` | Another write won | Ask for a refresh before reapplying |
+| `validation` | Fields rejected | Point at the field |
+| `rate_limited` | Too many requests | Wait, then retry |
+| `server` | Server answered with a failure | Retry; say it is not the person's fault |
+| `network` | Never reached the server | Say nothing was submitted |
+| `aborted` | The caller cancelled | Say nothing; the person knows |
+| `malformed` | Answered, body unreadable | Retry, then reload |
+
+`failure.title` is safe copy for the surface. `failure.code` carries the server's
+stable problem code where it sent one, for a caller that must branch on the exact
+cause. Never render a raw body, stack trace or provider payload.
+
+A caller that passes an `AbortSignal` treats `aborted` as "do nothing", not as an
+error. A polling loop must stop on `unauthenticated`, `forbidden` and `not_found`
+rather than retrying, and must bound `rate_limited` to consecutive attempts.
 
 ## Forms
 
