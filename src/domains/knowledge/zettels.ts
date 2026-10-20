@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { currentExtractionIdSubquery } from "./versions";
 import { openRouterZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { embedArtifact } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
 
 /*
@@ -256,6 +257,15 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       metadata: { conceptId: concept.id, claimId: claim.id, documentId: proposal.documentId, artifactId: card.id },
     });
     return { conceptId: concept.id, claimId: claim.id, artifactId: card.id };
+  }).then(async (value) => {
+    // The new card joins the semantic graph best-effort; a failed or
+    // unconfigured embedding pass never blocks an accept.
+    try {
+      await embedArtifact(auth, { artifactId: value.artifactId });
+    } catch (cause) {
+      console.error(`embedArtifact after accept failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+    return value;
   });
 }
 

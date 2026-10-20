@@ -103,6 +103,7 @@ export function NoteEditor({
   versions,
   outlinks,
   backlinks,
+  related,
 }: {
   noteId: string;
   initialTitle: string;
@@ -112,6 +113,7 @@ export function NoteEditor({
   versions: VersionItem[];
   outlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   backlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
+  related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
@@ -399,6 +401,22 @@ export function NoteEditor({
                 {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
               </ul>
             </div>
+          </div>
+        )}
+        {related.filter((r) => !r.alreadyLinked).length > 0 && (
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Related by meaning</p>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {related.filter((r) => !r.alreadyLinked).map((r) => (
+                <li key={r.id} className="rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40">
+                  <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${r.id}`}>
+                    {r.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
+                    {r.title}
+                  </Link>
+                  {r.excerpt && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{r.excerpt}</p>}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}

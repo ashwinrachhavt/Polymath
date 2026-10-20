@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
+import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
@@ -49,6 +50,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
   const versions = selected ? await listNoteVersions(auth, selected.id) : [];
   const outlinks = selected ? await listNoteOutlinks(auth, selected.id) : [];
   const backlinks = selected ? await listNoteBacklinks(auth, selected.id) : [];
+  const related = selected ? await relatedNotes(auth, selected.id) : [];
 
   return (
     <Screen
@@ -105,6 +107,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
             versions={versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
             outlinks={outlinks}
             backlinks={backlinks}
+            related={related}
           />
         ) : (
           <Panel>

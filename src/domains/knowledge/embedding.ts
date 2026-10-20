@@ -9,7 +9,7 @@ import {
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { chunkText } from "./chunking";
-import { documentExtractions, embeddings } from "./schema";
+import { artifacts, artifactVersions, documentExtractions, embeddings } from "./schema";
 
 /*
  * The embedding pass: chunk the text a succeeded extraction already holds and
@@ -126,3 +126,99 @@ export async function embedExtraction(
 }
 
 export { vectorLiteral };
+
+/*
+ * Card embeddings (ASH-174/ASH-184): a note or zettel embeds like a document
+ * extraction, with the artifact's current version as the embedded text.
+ * Owner is the artifact row; `source_version_id` records which version the
+ * vectors describe, so an edit followed by a re-embed replaces the old
+ * version's chunks instead of mixing them. Best-effort like the extraction
+ * pass: an unconfigured provider or a failed call lands on
+ * `artifacts.embed_error` and never blocks a save.
+ */
+export const ARTIFACT_EMBEDDING_OWNER_TYPE = "artifact";
+
+export type ArtifactEmbedOutcome =
+  | { status: "succeeded"; chunks: number }
+  | { status: "skipped"; reason: "not_found" | "no_text" }
+  | { status: "failed"; error: string };
+
+export async function embedArtifact(
+  auth: AuthContext,
+  input: { artifactId: string; provider?: EmbeddingProvider },
+): Promise<ArtifactEmbedOutcome> {
+  const [row] = await db
+    .select({
+      id: artifacts.id,
+      currentVersionId: artifacts.currentVersionId,
+      plainText: artifactVersions.plainText,
+    })
+    .from(artifacts)
+    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+    .limit(1);
+  if (!row || !row.currentVersionId) return { status: "skipped", reason: "not_found" };
+  const text = row.plainText ?? "";
+  if (!text.trim()) return { status: "skipped", reason: "no_text" };
+
+  const record = (error: string | null) =>
+    db.update(artifacts)
+      .set({ embedError: error })
+      .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)));
+
+  let provider: EmbeddingProvider;
+  try {
+    provider = input.provider ?? embeddingProvider();
+  } catch (cause) {
+    const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : "The embedding provider could not be set up.";
+    await record(error);
+    return { status: "failed", error };
+  }
+
+  const chunks = chunkText(text);
+  let vectors: number[][];
+  try {
+    vectors = [];
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
+      const out = await provider.embed(batch);
+      if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
+      vectors.push(...out);
+    }
+    if (vectors.some((v) => v.length !== EMBEDDING_DIMENSIONS)) {
+      throw new Error(`The provider returned vectors that are not ${EMBEDDING_DIMENSIONS} wide.`);
+    }
+  } catch (cause) {
+    console.error(`embedding failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    const error = "Embedding could not complete. Retry to try again.";
+    await record(error);
+    return { status: "failed", error };
+  }
+
+  await withTransaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${row.id}, 0))`);
+    await tx.delete(embeddings).where(and(
+      eq(embeddings.workspaceId, auth.workspaceId),
+      eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+      eq(embeddings.ownerId, row.id),
+    ));
+    for (let i = 0; i < chunks.length; i += 100) {
+      await tx.insert(embeddings).values(
+        chunks.slice(i, i + 100).map((chunk, offset) => ({
+          workspaceId: auth.workspaceId,
+          ownerType: ARTIFACT_EMBEDDING_OWNER_TYPE,
+          ownerId: row.id,
+          sourceVersionId: row.currentVersionId,
+          chunkIndex: chunk.index,
+          content: chunk.text,
+          spanStart: chunk.start,
+          spanEnd: chunk.end,
+          embedding: vectors[i + offset],
+          model: provider.model,
+        })),
+      );
+    }
+    await record(null);
+  });
+  return { status: "succeeded", chunks: chunks.length };
+}
