@@ -42,18 +42,30 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
   default rather than throwing on a hand-edited URL; `listHref` writes a patch
   and drops only empty values and `page === 1`, so a default page size or a
   default filter value stays in the URL once set. Most list screens already use
-  it; the `apps/*/[screen]` preview screens still hold search, status, priority,
-  project, and sort in `useState`, so treat this as the convention to move
-  toward, not a description of every screen today.
+  it. Treat this as the convention to move toward, not a description of every
+  screen today: the `apps/*/[screen]` preview screens and the command-center
+  apps screens still hold their search, status, selection, and paging in
+  `useState`, and individual screens vary in which of those they keep there.
 - **Component state owns what is not yet a fact.** A draft, an open dialog, a
   hover. It disappears on unmount, which is the correct lifetime.
 - **The browser-preview store is not production data.**
   `src/components/workspace/workspace-provider.tsx` holds a sample workspace and
   persists it to scoped localStorage: the bare key `axiom-ui-preview-v1` for the
-  anonymous scope, `axiom-ui-preview-v1:<scope>` otherwise. `isBrowserPreviewPath`
-  in `src/lib/navigation.ts` defines where it is read: every `/apps/*` path, plus
-  `/activity` and `/settings`. Canonical reads and writes go through the domain
-  layer, never through `useWorkspace`.
+  anonymous scope, `axiom-ui-preview-v1:<scope>` otherwise.
+
+  `WorkspaceProvider` wraps the whole shell, so the store is readable on every
+  route, and two shell components read it unconditionally: `FocusDock` and
+  `CommandLayer`. `isBrowserPreviewPath` in `src/lib/navigation.ts` does not
+  describe where the store is read. It describes where the preview UI renders:
+  the banner, the storage warning, and the hydration skeleton, on every `/apps/*`
+  path plus `/activity` and `/settings`.
+
+  Canonical data never comes from `useWorkspace`, and canonical writes never go
+  through it. What the shell does read on every route is preview chrome, not
+  records: the focus dock shows a preview focus session when one exists, and the
+  command layer posts preview notices. Both are preview state, labelled as such,
+  and neither stands in for a canonical read. A page's own content still comes
+  from its domain query.
 
 Preview and canonical writes are separate operations. A preview mutation never
 stands in for a canonical one, and a preview success says nothing about what
@@ -62,16 +74,24 @@ Postgres holds.
 Every preview mutation reports whether the write landed. Most return
 `{ ok, persisted }`. The add paths return the created record or `undefined`, and
 `clarifyCapture` returns the derived id or `undefined`; `undefined` means the
-input was invalid or the write was refused. `ok: false` means the write was
-refused, for any of several reasons: another tab moved first, the record was
-missing, the attachment was a duplicate, the event belonged to a provider, the
-reorder changed nothing, or the reward was already earned. `persisted: false`
-means nothing was written, whatever the cause; it is a storage failure only when
-the storage write itself threw. A refused write must never be reported as saved:
-no success notice, no record handed back, no optimistic row kept.
-`PreviewStorageWarning` owns that message. It carries three cases (refused write,
-storage unavailable, incompatible saved format) and is mounted only on preview
-paths, so do not add a second one.
+input was invalid or the write was refused.
+
+`ok: false` means the write was refused. Not every operation guards existence:
+`updateTask`, `updateContact`, `updateCapture`, `updateCompany`,
+`updateOpportunity`, and `updateProject` commit an `ok: true` no-op for an
+unknown id. The refusals that do occur: another tab moved first, a guarded
+operation found no record, the attachment was a duplicate, the event belonged to
+a provider, the reorder changed nothing, or the reward was already earned.
+
+`persisted: false` means nothing reached storage, whatever the cause; the change
+is visible in this tab only and is lost on refresh. It is a storage failure only
+when the storage write itself threw. A refused write must never be reported as
+saved: no success notice, no record handed back, no optimistic row kept.
+`PreviewStorageWarning` owns that message. It carries four distinct cases: an
+incompatible saved format, storage unavailable on read, a stale-tab refusal, and
+a storage write that could not save. The last two are different conditions and
+must not share a message. It is mounted only on preview paths, so do not add a
+second one.
 
 Do not add a second global store without a measured need. The server, the URL,
 and component state cover the cases that exist, and a store is a permanent
