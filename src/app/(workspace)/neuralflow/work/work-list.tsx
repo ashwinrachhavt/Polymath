@@ -5,6 +5,7 @@ import { useOptimistic, useRef, useState, useTransition, type FormEvent } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
+import { parseQuickAdd } from "@/domains/work/quick-add";
 import { completeTaskAction, createTaskAction, moveTaskAction } from "./actions";
 
 /*
@@ -79,11 +80,12 @@ export function WorkList({
   const [optimisticItems, change] = useOptimistic(items, apply);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  const [reward, setReward] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
 
-  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string }>, applyChange: Change) {
+  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; quartzEarned?: boolean }>, applyChange: Change) {
     setError(null);
     startTransition(async () => {
       change(applyChange);
@@ -94,6 +96,7 @@ export function WorkList({
           setError({ id, message: result.error ?? "The write failed." });
         } else {
           intent.current = null;
+          if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
         }
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
@@ -106,7 +109,8 @@ export function WorkList({
     event.preventDefault();
     const form = event.currentTarget;
     const input = form.elements.namedItem("title") as HTMLInputElement;
-    const title = input.value.trim();
+    const parsed = parseQuickAdd(input.value);
+    const title = parsed.title;
     if (!title) return;
     setAddError(null);
     startTransition(async () => {
@@ -116,8 +120,8 @@ export function WorkList({
           id: `optimistic-${key()}`,
           title,
           status: "inbox",
-          priority: "none",
-          dueAt: null,
+          priority: parsed.priority ?? "none",
+          dueAt: parsed.dueAt ? parsed.dueAt.toISOString() : null,
           version: 1,
           subtaskCount: 0,
           subtasksDone: 0,
@@ -125,7 +129,14 @@ export function WorkList({
         },
       });
       try {
-        const result = await createTaskAction({ title, idempotencyKey: key() });
+        const result = await createTaskAction({
+          title,
+          priority: parsed.priority,
+          estimateMinutes: parsed.estimateMinutes,
+          tags: parsed.tags.length ? parsed.tags : undefined,
+          dueAt: parsed.dueAt?.toISOString(),
+          idempotencyKey: key(),
+        });
         if (!result.ok) {
           intent.current = null;
           setAddError(result.error);
@@ -144,11 +155,12 @@ export function WorkList({
       {showQuickAdd ? (
         <form onSubmit={submit} className="mb-4 flex flex-col gap-1.5">
           <div className="flex gap-2">
-            <Input name="title" aria-label="New task title" placeholder="Add a task" maxLength={300} />
+            <Input name="title" aria-label="New task title" placeholder="Add a task  (!high ~30m #tag due friday)" maxLength={300} />
             <Button type="submit" disabled={pending}>
               Add task
             </Button>
           </div>
+          {reward ? <p role="status" className="text-xs text-muted-foreground">{reward}</p> : null}
           {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
         </form>
       ) : null}

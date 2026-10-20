@@ -43,6 +43,9 @@ export async function createTask(
     title: string;
     description?: string;
     dueAt?: Date;
+    priority?: (typeof tasks.$inferSelect)["priority"];
+    estimateMinutes?: number;
+    tags?: string[];
     rank?: string;
     links?: TaskLinkInput[];
   },
@@ -70,6 +73,9 @@ export async function createTask(
       title: input.title,
       description: input.description ?? null,
       dueAt: input.dueAt ?? null,
+      ...(input.priority ? { priority: input.priority } : {}),
+      ...(input.estimateMinutes ? { estimateMinutes: input.estimateMinutes } : {}),
+      ...(input.tags?.length ? { tags: input.tags } : {}),
       rank,
       createdBy: auth.userId,
       updatedBy: auth.userId,
@@ -99,7 +105,15 @@ export async function createTask(
 /** Owner-created task: createTask in its own transaction plus the task.created audit row. */
 export async function createOwnerTask(
   auth: AuthContext,
-  input: { title: string; dueAt?: Date; personId?: string; organizationId?: string; idempotencyKey?: string },
+  input: {
+    title: string;
+    dueAt?: Date;
+    priority?: (typeof tasks.$inferSelect)["priority"];
+    estimateMinutes?: number;
+    tags?: string[];
+    personId?: string; organizationId?: string;
+    idempotencyKey?: string;
+  },
 ): Promise<{ id: string }> {
   return withTransaction(async (tx) => {
     const { idempotencyKey, ...request } = input;
@@ -132,7 +146,18 @@ export async function createOwnerTask(
       links.push({ targetType: "organization", targetId: org.id, label: "Organization" });
     }
 
-    const task = await createTask(auth, { title: input.title, dueAt: input.dueAt, links }, tx);
+    const task = await createTask(
+      auth,
+      {
+        title: input.title,
+        dueAt: input.dueAt,
+        priority: input.priority,
+        estimateMinutes: input.estimateMinutes,
+        tags: input.tags,
+        links,
+      },
+      tx,
+    );
 
     await recordAudit(
       auth,
@@ -184,7 +209,7 @@ export async function listOpenTasks(auth: AuthContext) {
 export async function completeTask(
   auth: AuthContext,
   input: { taskId: string },
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; quartzEarned: boolean } | null> {
   return withTransaction(async (tx) => {
     const [task] = await tx
       .update(tasks)
@@ -222,7 +247,7 @@ export async function completeTask(
     );
     // A10 Quartz rule: first completed task of the day earns the daily
     // Quartz. Same transaction, skip-silent when the day already has one.
-    await recordDailyQuartz(tx, auth, task.id);
-    return { id: task.id };
+    const quartzEarned = await recordDailyQuartz(tx, auth, task.id);
+    return { id: task.id, quartzEarned };
   });
 }
