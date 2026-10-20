@@ -3,11 +3,11 @@ import { expect, test } from "@playwright/test";
 import { destinations } from "../../src/lib/navigation";
 import { waitSettled } from "./helpers/settled";
 
-test("home opens the Today briefing", async ({ page }) => {
+test("home opens Assistant", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveURL("/command-center/briefing");
-  await expect(page.locator("#content h1")).toContainText("Briefing");
-  // The briefing reads canonical tasks; the preview banner must not claim otherwise.
+  await expect(page).toHaveURL("/alfred");
+  await expect(page.locator("#content h1")).toContainText("Assistant");
+  // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
 });
 
@@ -22,8 +22,8 @@ test("canonical routes render", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page).toHaveURL("/command-center/briefing");
-  await expect(page.locator("#content h1")).toContainText("Briefing");
+  await expect(page).toHaveURL("/alfred");
+  await expect(page.locator("#content h1")).toContainText("Assistant");
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],

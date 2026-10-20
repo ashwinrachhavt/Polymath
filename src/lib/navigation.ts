@@ -44,7 +44,15 @@ export type Destination = {
   group: AppSlug | "shared";
 };
 
+/** Array order is rail order. Assistant leads because a conversation is the first move. */
 export const destinations: Destination[] = [
+  {
+    href: "/alfred",
+    label: "Assistant",
+    purpose: "Start or continue a conversation.",
+    icon: Sparkles,
+    group: "alfred",
+  },
   {
     href: "/command-center/briefing",
     label: "Today",
@@ -78,13 +86,6 @@ export const destinations: Destination[] = [
     label: "Library",
     purpose: "Write, retrieve, and connect.",
     icon: BookOpen,
-    group: "alfred",
-  },
-  {
-    href: "/alfred",
-    label: "Assistant",
-    purpose: "Hand off work and inspect what it did.",
-    icon: Sparkles,
     group: "alfred",
   },
   {
@@ -235,4 +236,4 @@ export const moreDestination = {
 };
 
 /** Where the wordmark sends you. */
-export const homeHref = "/command-center/briefing";
+export const homeHref = "/alfred";
