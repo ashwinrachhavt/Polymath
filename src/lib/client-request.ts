@@ -6,17 +6,27 @@
  * raw payload.
  */
 
-export type RequestFailure =
-  | { kind: "unauthenticated"; title: string }
-  | { kind: "forbidden"; title: string }
-  | { kind: "not_found"; title: string }
-  | { kind: "conflict"; title: string }
-  | { kind: "validation"; title: string }
-  | { kind: "rate_limited"; title: string }
-  | { kind: "server"; title: string }
-  | { kind: "network"; title: string };
+export type RequestFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "validation"
+  | "rate_limited"
+  | "server"
+  | "network"
+  | "aborted"
+  | "malformed";
 
-const STATUS_KIND: Record<number, RequestFailure["kind"]> = {
+export type RequestFailure = {
+  /** Coarse class, chosen for the copy the person should see. */
+  kind: RequestFailureKind;
+  title: string;
+  /** Stable machine code from a problem+json body, when the server sent one. */
+  code?: string;
+};
+
+const STATUS_KIND: Record<number, RequestFailureKind> = {
   401: "unauthenticated",
   403: "forbidden",
   404: "not_found",
@@ -25,7 +35,7 @@ const STATUS_KIND: Record<number, RequestFailure["kind"]> = {
   429: "rate_limited",
 };
 
-const KIND_COPY: Record<RequestFailure["kind"], string> = {
+const KIND_COPY: Record<RequestFailureKind, string> = {
   unauthenticated: "Your session has expired. Sign in again, then retry.",
   forbidden: "Your role does not allow this action.",
   not_found: "That record no longer exists. Refresh to see the current list.",
@@ -34,10 +44,41 @@ const KIND_COPY: Record<RequestFailure["kind"], string> = {
   rate_limited: "Too many requests. Wait a moment and try again.",
   server: "The server could not complete this. Try again; if it keeps failing, wait and retry later.",
   network: "The request did not reach the server. Check your connection, then retry — nothing was submitted yet.",
+  aborted: "The request was cancelled. Nothing was submitted; start again when you are ready.",
+  malformed: "The server answered, but the response could not be read. Retry; if it keeps happening, reload the page.",
 };
 
-function copyFor(kind: RequestFailure["kind"], title: string | null): string {
+function copyFor(kind: RequestFailureKind, title: string | null): string {
   return title ?? KIND_COPY[kind];
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+/*
+ * Read the body once, as text, so an empty body is distinguishable from a
+ * malformed one. The parsed value is untrusted; callers narrow it.
+ */
+async function readBody(
+  response: Response,
+): Promise<{ parsed: true; value: unknown } | { parsed: false }> {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    return { parsed: false };
+  }
+  if (text.trim() === "") return { parsed: false };
+  try {
+    return { parsed: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { parsed: false };
+  }
 }
 
 export async function requestJson<T>(
@@ -56,16 +97,37 @@ export async function requestJson<T>(
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
     });
-  } catch {
+  } catch (error) {
+    // A caller's AbortSignal firing rejects fetch with an AbortError. That is
+    // a cancellation, not a broken connection; telling the person their
+    // network failed would be a lie about something they did themselves.
+    if (isAbortError(error)) {
+      return { ok: false, failure: { kind: "aborted", title: KIND_COPY.aborted } };
+    }
     return { ok: false, failure: { kind: "network", title: KIND_COPY.network } };
   }
   if (response.ok) {
-    const data = (await response.json().catch(() => null)) as T | null;
-    return data === null
-      ? { ok: false, failure: { kind: "server", title: KIND_COPY.server } }
-      : { ok: true, data };
+    const body = await readBody(response);
+    // Every caller expects a JSON object of its declared type. An empty or
+    // unparseable success body (a proxy page, a 204 from an endpoint that
+    // should have returned a record) is not `server`: the server answered,
+    // the response could not be read.
+    if (!body.parsed || body.value === null) {
+      return { ok: false, failure: { kind: "malformed", title: KIND_COPY.malformed } };
+    }
+    return { ok: true, data: body.value as T };
   }
-  const problem = (await response.json().catch(() => null)) as { title?: string } | null;
+  const body = await readBody(response);
+  const problem =
+    body.parsed && typeof body.value === "object" && body.value !== null
+      ? (body.value as { title?: unknown; code?: unknown })
+      : null;
   const kind = STATUS_KIND[response.status] ?? "server";
-  return { ok: false, failure: { kind, title: copyFor(kind, problem?.title ?? null) } };
+  const title =
+    typeof problem?.title === "string" && problem.title.trim() !== "" ? problem.title : null;
+  const code =
+    typeof problem?.code === "string" && problem.code !== "" ? problem.code : undefined;
+  const failure: RequestFailure = { kind, title: copyFor(kind, title) };
+  if (code !== undefined) failure.code = code;
+  return { ok: false, failure };
 }
