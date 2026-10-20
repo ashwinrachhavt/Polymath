@@ -41,40 +41,64 @@ export const TERMINAL_POLL_KINDS = new Set<RequestFailure["kind"]>(["unauthentic
 // throttle occasionally is never mistaken for a sustained block.
 export const RATE_LIMIT_CEILING = 20;
 
-export type PollDecision = { action: "stop"; message: string } | { action: "continue"; rateLimited: boolean };
+// A server or connection that never recovers should be named, not guessed at.
+// Counting consecutive failures of these kinds bounds an outage in ~30s rather
+// than 120 attempts and three minutes, after which the exhaustion copy blamed
+// the queue worker for a fault that was never about the queue.
+export const TRANSIENT_FAILURE_CEILING = 20;
 
-/** Classify a failed poll: stop with the cause, retry, or retry and count a rate limit. */
+// Kinds that mean "the server or the connection is not answering right now".
+// They stay retryable - a single blip is not a verdict - but a sustained run of
+// them is, and the person needs the real cause rather than the worker guess.
+const TRANSIENT_FAILURE_KINDS = new Set<RequestFailure["kind"]>(["server", "network", "timeout"]);
+
+export type PollDecision =
+  | { action: "stop"; message: string }
+  | { action: "continue"; countsToward: "rate_limit" | "transient" | null };
+
+/** Classify a failed poll: stop with the cause, retry, or retry and count it. */
 export function shouldStopPolling(failure: RequestFailure): PollDecision {
   if (TERMINAL_POLL_KINDS.has(failure.kind)) return { action: "stop", message: failure.title };
   // A cancellation is not a blip: retrying a request the caller aborted would
   // repeat work nobody asked for. The loop passes no signal today, so this
   // guards the behaviour before one arrives.
   if (failure.kind === "aborted") return { action: "stop", message: failure.title };
-  // An unknown future kind retries: a blip costs one more poll, while stopping
-  // on a healthy poll would abandon a document that was about to finish.
-  return { action: "continue", rateLimited: failure.kind === "rate_limited" };
+  if (failure.kind === "rate_limited") return { action: "continue", countsToward: "rate_limit" };
+  if (TRANSIENT_FAILURE_KINDS.has(failure.kind)) return { action: "continue", countsToward: "transient" };
+  // An unknown future kind retries uncounted: a blip costs one more poll, while
+  // stopping on a healthy poll would abandon a document that was about to finish.
+  return { action: "continue", countsToward: null };
 }
 
 export type PollStep =
   | { action: "stop"; message: string }
-  | { action: "continue"; rateLimitStreak: number };
+  | { action: "continue"; rateLimitStreak: number; transientStreak: number };
 
 /**
- * One poll's effect on the loop: a terminal cause stops, any non-throttle
- * outcome clears the throttle streak, and consecutive throttles stop at the
- * ceiling.
+ * One poll's effect on the loop. A terminal cause stops. A success clears both
+ * streaks, because the server just proved it is answering. A count of one kind
+ * clears the other's streak: alternating throttles and 5xxs must not add up to
+ * a stop neither cause alone would produce.
  */
 export function advancePoll(
   outcome: { ok: true } | { ok: false; failure: RequestFailure },
   rateLimitStreak: number,
+  transientStreak = 0,
 ): PollStep {
-  if (outcome.ok) return { action: "continue", rateLimitStreak: 0 };
+  if (outcome.ok) return { action: "continue", rateLimitStreak: 0, transientStreak: 0 };
   const decision = shouldStopPolling(outcome.failure);
   if (decision.action === "stop") return decision;
-  if (!decision.rateLimited) return { action: "continue", rateLimitStreak: 0 };
-  const streak = rateLimitStreak + 1;
-  if (streak >= RATE_LIMIT_CEILING) return { action: "stop", message: outcome.failure.title };
-  return { action: "continue", rateLimitStreak: streak };
+  if (decision.countsToward === "rate_limit") {
+    const streak = rateLimitStreak + 1;
+    if (streak >= RATE_LIMIT_CEILING) return { action: "stop", message: outcome.failure.title };
+    return { action: "continue", rateLimitStreak: streak, transientStreak: 0 };
+  }
+  if (decision.countsToward === "transient") {
+    const streak = transientStreak + 1;
+    if (streak >= TRANSIENT_FAILURE_CEILING) return { action: "stop", message: outcome.failure.title };
+    return { action: "continue", rateLimitStreak: 0, transientStreak: streak };
+  }
+  return { action: "continue", rateLimitStreak: 0, transientStreak: 0 };
 }
 
 function Ring({ percent, indeterminate, done }: { percent: number; indeterminate?: boolean; done?: boolean }) {
@@ -157,6 +181,7 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   // terminal status, then stop. A long silence is reported, not spun forever.
   const poll = useCallback(async (id: string, documentId: string) => {
     let throttleStreak = 0;
+    let transientStreak = 0;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
@@ -164,12 +189,15 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
       );
       // A network blip is not a verdict; a 401/403/404 is, and the person
       // needs the cause now rather than a queue-worker guess in three minutes.
-      const step = advancePoll(result, throttleStreak);
+      // A sustained run of 5xx/network/timeout stops the same way and shows
+      // that cause instead of the worker guess.
+      const step = advancePoll(result, throttleStreak, transientStreak);
       if (step.action === "stop") {
         patch(id, { kind: "error", message: step.message });
         return;
       }
       throttleStreak = step.rateLimitStreak;
+      transientStreak = step.transientStreak;
       if (!result.ok) continue;
       const body = result.data;
       if (body.extractionStatus === "succeeded") {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RATE_LIMIT_CEILING,
   TERMINAL_POLL_KINDS,
+  TRANSIENT_FAILURE_CEILING,
   advancePoll,
   failureCopy,
   phaseLabel,
@@ -27,6 +28,7 @@ const ALL_KINDS: RequestFailureKind[] = [
   "rate_limited",
   "server",
   "network",
+  "timeout",
   "aborted",
   "malformed",
 ];
@@ -54,11 +56,18 @@ describe("shouldStopPolling", () => {
     expect(shouldStopPolling(failure(kind)).action).toBe("continue");
   });
 
-  it("flags only rate_limited for counting", () => {
-    for (const kind of NON_TERMINAL) {
+  it("counts throttles and transient outages against separate streaks", () => {
+    const counted = (kind: RequestFailureKind) => {
       const decision = shouldStopPolling(failure(kind));
-      expect(decision.action === "continue" && decision.rateLimited).toBe(kind === "rate_limited");
-    }
+      return decision.action === "continue" ? decision.countsToward : "stop";
+    };
+    expect(counted("rate_limited")).toBe("rate_limit");
+    expect(counted("server")).toBe("transient");
+    expect(counted("network")).toBe("transient");
+    expect(counted("timeout")).toBe("transient");
+    expect(counted("conflict")).toBeNull();
+    expect(counted("validation")).toBeNull();
+    expect(counted("malformed")).toBeNull();
   });
 
   it("stops on a cancellation instead of retrying a request the caller aborted", () => {
@@ -81,10 +90,11 @@ describe("advancePoll", () => {
     expect(advancePoll({ ok: false, failure: failure("not_found") }, 0)).toEqual(stop("not_found"));
   });
 
-  it("a network blip keeps the loop going and does not accrue a throttle", () => {
+  it("a single network blip keeps the loop going", () => {
     expect(advancePoll({ ok: false, failure: failure("network") }, 0)).toEqual({
       action: "continue",
       rateLimitStreak: 0,
+      transientStreak: 1,
     });
   });
 
@@ -99,6 +109,24 @@ describe("advancePoll", () => {
     expect(advancePoll({ ok: false, failure: failure("rate_limited") }, streak)).toEqual(stop("rate_limited"));
   });
 
+  it("stops on a sustained run of 5xx and names that cause, not the queue worker", () => {
+    let streak = 0;
+    for (let i = 1; i < TRANSIENT_FAILURE_CEILING; i += 1) {
+      const step = advancePoll({ ok: false, failure: failure("server") }, 0, streak);
+      expect(step.action).toBe("continue");
+      if (step.action === "continue") streak = step.transientStreak;
+      expect(streak).toBe(i);
+    }
+    expect(advancePoll({ ok: false, failure: failure("server") }, 0, streak)).toEqual(stop("server"));
+
+    let netStreak = 0;
+    for (let i = 1; i < TRANSIENT_FAILURE_CEILING; i += 1) {
+      const step = advancePoll({ ok: false, failure: failure("network") }, 0, netStreak);
+      if (step.action === "continue") netStreak = step.transientStreak;
+    }
+    expect(advancePoll({ ok: false, failure: failure("network") }, 0, netStreak)).toEqual(stop("network"));
+  });
+
   it("a successful poll resets an accrued throttle streak", () => {
     let streak = 0;
     for (let i = 0; i < RATE_LIMIT_CEILING - 1; i += 1) {
@@ -107,17 +135,46 @@ describe("advancePoll", () => {
     }
     expect(streak).toBe(RATE_LIMIT_CEILING - 1);
     const reset = advancePoll({ ok: true }, streak);
-    expect(reset).toEqual({ action: "continue", rateLimitStreak: 0 });
+    expect(reset).toEqual({ action: "continue", rateLimitStreak: 0, transientStreak: 0 });
     // One more throttle after the reset must not tip over the ceiling.
     expect(advancePoll({ ok: false, failure: failure("rate_limited") }, 0)).toEqual({
       action: "continue",
       rateLimitStreak: 1,
+      transientStreak: 0,
     });
   });
 
-  it("a non-throttle failure between throttles also breaks the streak", () => {
-    const step = advancePoll({ ok: false, failure: failure("server") }, RATE_LIMIT_CEILING - 1);
-    expect(step).toEqual({ action: "continue", rateLimitStreak: 0 });
+  it("a success also clears a transient streak", () => {
+    const step = advancePoll({ ok: true }, 0, TRANSIENT_FAILURE_CEILING - 1);
+    expect(step).toEqual({ action: "continue", rateLimitStreak: 0, transientStreak: 0 });
+  });
+
+  it("alternating throttles and outages never add up to a stop", () => {
+    // Neither streak alone reaches its ceiling, so the loop must keep going;
+    // counting both into one accumulator would stop the loop on healthy-ish
+    // retries in half the time the ceiling promises.
+    let rateLimitStreak = 0;
+    let transientStreak = 0;
+    for (let i = 0; i < 15; i += 1) {
+      const throttle = advancePoll({ ok: false, failure: failure("rate_limited") }, rateLimitStreak, transientStreak);
+      expect(throttle.action).toBe("continue");
+      if (throttle.action !== "continue") return;
+      rateLimitStreak = throttle.rateLimitStreak;
+      transientStreak = throttle.transientStreak;
+      expect(transientStreak).toBe(0);
+
+      const outage = advancePoll({ ok: false, failure: failure("server") }, rateLimitStreak, transientStreak);
+      expect(outage.action).toBe("continue");
+      if (outage.action !== "continue") return;
+      rateLimitStreak = outage.rateLimitStreak;
+      transientStreak = outage.transientStreak;
+      expect(rateLimitStreak).toBe(0);
+    }
+  });
+
+  it("a non-counting failure breaks both streaks", () => {
+    const step = advancePoll({ ok: false, failure: failure("conflict") }, RATE_LIMIT_CEILING - 1, 5);
+    expect(step).toEqual({ action: "continue", rateLimitStreak: 0, transientStreak: 0 });
   });
 });
 
