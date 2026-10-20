@@ -54,7 +54,7 @@ export async function TodaysFlow({ auth }: { auth: Pick<AuthContext, "workspaceI
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" aria-label="Today's Flow">
       <div className="flex flex-col gap-5">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Today&apos;s Flow</h1>
+          <h2 className="text-3xl font-semibold tracking-tight">Today&apos;s Flow</h2>
           <p className="text-sm text-muted-foreground">
             {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
           </p>
