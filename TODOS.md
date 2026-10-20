@@ -3,6 +3,28 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Frontend reliability (ASH-186)
+
+**Priority:** P2
+
+- **TanStack Query was scoped out.** ASH-186 §3 asks for it, but `agents/agent.md` §9
+  says stop before adding a runtime dependency. Server components plus Server Actions
+  already cover the canonical reads and writes; the library would buy caching and
+  background revalidation on the interactive surfaces. Decide whether to adopt it
+  before migrating any domain to it.
+- **Client request layer and the preview store are now the two error paths.** Any new
+  client island calls `requestJson` (`src/lib/client-request.ts`), never raw `fetch`;
+  any new preview mutation returns `{ ok, persisted }` and never reports a refused
+  write as saved. Both are documented in `agents/frontend.md`.
+
+**Priority:** P3
+
+- **Clamped failure copy is hover-only.** `upload-dropzone.tsx` clamps a long failure
+  cause to two lines with the full sentence in `title`, which a keyboard or touch user
+  cannot reach. An `aria-describedby` reveal would fix it.
+
+
+
 ## Notebooks (NotebookLM parity)
 
 **Priority:** P2

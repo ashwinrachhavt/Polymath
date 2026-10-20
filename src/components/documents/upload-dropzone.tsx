@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, FileText, FileUp, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { requestJson, type RequestFailure } from "@/lib/client-request";
 
 /*
  * The one upload affordance: drop one or many files, watch each store, then
@@ -21,13 +22,84 @@ import { Badge } from "@/components/ui/badge";
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 
-type FilePhase =
+export type FilePhase =
   | { kind: "uploading"; percent: number }
   | { kind: "reading" }
   | { kind: "done"; documentId: string }
   | { kind: "error"; message: string };
 
 type Entry = { id: string; file: File; phase: FilePhase };
+
+// A poll can outlast a session. These kinds say the request will keep failing
+// for the same reason, so waiting out the full ceiling would turn a clear cause
+// into three minutes of silence and the wrong diagnosis at the end.
+export const TERMINAL_POLL_KINDS = new Set<RequestFailure["kind"]>(["unauthenticated", "forbidden", "not_found"]);
+
+// A throttle is transient, so it stays retryable. Counting consecutive 429s
+// bounds a server that keeps refusing at ~30s instead of 120 attempts. The
+// counter resets on any successful poll, so a slow extraction that trips one
+// throttle occasionally is never mistaken for a sustained block.
+export const RATE_LIMIT_CEILING = 20;
+
+// A server or connection that never recovers should be named, not guessed at.
+// Counting consecutive failures of these kinds bounds an outage in ~30s rather
+// than 120 attempts and three minutes, after which the exhaustion copy blamed
+// the queue worker for a fault that was never about the queue.
+export const TRANSIENT_FAILURE_CEILING = 20;
+
+// Kinds that mean "the server or the connection is not answering right now".
+// They stay retryable - a single blip is not a verdict - but a sustained run of
+// them is, and the person needs the real cause rather than the worker guess.
+const TRANSIENT_FAILURE_KINDS = new Set<RequestFailure["kind"]>(["server", "network", "timeout"]);
+
+export type PollDecision =
+  | { action: "stop"; message: string }
+  | { action: "continue"; countsToward: "rate_limit" | "transient" | null };
+
+/** Classify a failed poll: stop with the cause, retry, or retry and count it. */
+export function shouldStopPolling(failure: RequestFailure): PollDecision {
+  if (TERMINAL_POLL_KINDS.has(failure.kind)) return { action: "stop", message: failure.title };
+  // A cancellation is not a blip: retrying a request the caller aborted would
+  // repeat work nobody asked for. The loop passes no signal today, so this
+  // guards the behaviour before one arrives.
+  if (failure.kind === "aborted") return { action: "stop", message: failure.title };
+  if (failure.kind === "rate_limited") return { action: "continue", countsToward: "rate_limit" };
+  if (TRANSIENT_FAILURE_KINDS.has(failure.kind)) return { action: "continue", countsToward: "transient" };
+  // An unknown future kind retries uncounted: a blip costs one more poll, while
+  // stopping on a healthy poll would abandon a document that was about to finish.
+  return { action: "continue", countsToward: null };
+}
+
+export type PollStep =
+  | { action: "stop"; message: string }
+  | { action: "continue"; rateLimitStreak: number; transientStreak: number };
+
+/**
+ * One poll's effect on the loop. A terminal cause stops. A success clears both
+ * streaks, because the server just proved it is answering. A count of one kind
+ * clears the other's streak: alternating throttles and 5xxs must not add up to
+ * a stop neither cause alone would produce.
+ */
+export function advancePoll(
+  outcome: { ok: true } | { ok: false; failure: RequestFailure },
+  rateLimitStreak: number,
+  transientStreak = 0,
+): PollStep {
+  if (outcome.ok) return { action: "continue", rateLimitStreak: 0, transientStreak: 0 };
+  const decision = shouldStopPolling(outcome.failure);
+  if (decision.action === "stop") return decision;
+  if (decision.countsToward === "rate_limit") {
+    const streak = rateLimitStreak + 1;
+    if (streak >= RATE_LIMIT_CEILING) return { action: "stop", message: outcome.failure.title };
+    return { action: "continue", rateLimitStreak: streak, transientStreak: 0 };
+  }
+  if (decision.countsToward === "transient") {
+    const streak = transientStreak + 1;
+    if (streak >= TRANSIENT_FAILURE_CEILING) return { action: "stop", message: outcome.failure.title };
+    return { action: "continue", rateLimitStreak: 0, transientStreak: streak };
+  }
+  return { action: "continue", rateLimitStreak: 0, transientStreak: 0 };
+}
 
 function Ring({ percent, indeterminate, done }: { percent: number; indeterminate?: boolean; done?: boolean }) {
   const radius = 20;
@@ -57,7 +129,8 @@ function PhaseIcon({ phase }: { phase: FilePhase }) {
   return null;
 }
 
-function phaseLabel(phase: FilePhase): string {
+/** The row's metadata line: what the phase is doing, or why it failed. */
+export function phaseLabel(phase: FilePhase): string {
   switch (phase.kind) {
     case "uploading":
       return `Uploading ${phase.percent}%`;
@@ -66,8 +139,19 @@ function phaseLabel(phase: FilePhase): string {
     case "done":
       return "Read";
     case "error":
-      return "Failed";
+      // The badge already says "Failed"; this line carries the cause, which is
+      // the only part the person can act on.
+      return phase.message;
   }
+}
+
+/*
+ * The badge is text a screen reader would reach only by leaving the live
+ * region, and the cause is the actionable half; announce it with the counts.
+ */
+export function failureCopy(entries: { phase: FilePhase }[]): string {
+  const failure = entries.find((entry) => entry.phase.kind === "error")?.phase;
+  return failure?.kind === "error" ? `, failed: ${failure.message}` : "";
 }
 
 export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHref?: string }) {
@@ -78,6 +162,7 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   const [dragging, setDragging] = useState(false);
   const [openText, setOpenText] = useState<string | null>(null); // documentId of the expanded entry
   const [openBody, setOpenBody] = useState<string | null>(null); // extracted text once loaded
+  const [openError, setOpenError] = useState<string | null>(null); // preview failure copy
   const [openPending, setOpenPending] = useState(false);
   const liveId = useId();
 
@@ -95,23 +180,34 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   // The reading ring is honest only if it ends: poll the document until a
   // terminal status, then stop. A long silence is reported, not spun forever.
   const poll = useCallback(async (id: string, documentId: string) => {
+    let throttleStreak = 0;
+    let transientStreak = 0;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      try {
-        const response = await fetch(`/api/v1/files?documentId=${encodeURIComponent(documentId)}`);
-        if (!response.ok) continue;
-        const body = (await response.json()) as { extractionStatus?: string | null; extractionError?: string | null };
-        if (body.extractionStatus === "succeeded") {
-          patch(id, { kind: "done", documentId });
-          router.refresh();
-          return;
-        }
-        if (body.extractionStatus === "failed") {
-          patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
-          return;
-        }
-      } catch {
-        // A blip is not a verdict.
+      const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
+        `/api/v1/files?documentId=${encodeURIComponent(documentId)}`,
+      );
+      // A network blip is not a verdict; a 401/403/404 is, and the person
+      // needs the cause now rather than a queue-worker guess in three minutes.
+      // A sustained run of 5xx/network/timeout stops the same way and shows
+      // that cause instead of the worker guess.
+      const step = advancePoll(result, throttleStreak, transientStreak);
+      if (step.action === "stop") {
+        patch(id, { kind: "error", message: step.message });
+        return;
+      }
+      throttleStreak = step.rateLimitStreak;
+      transientStreak = step.transientStreak;
+      if (!result.ok) continue;
+      const body = result.data;
+      if (body.extractionStatus === "succeeded") {
+        patch(id, { kind: "done", documentId });
+        router.refresh();
+        return;
+      }
+      if (body.extractionStatus === "failed") {
+        patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
+        return;
       }
     }
     patch(id, {
@@ -181,35 +277,31 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
     if (openText === documentId) {
       setOpenText(null);
       setOpenBody(null);
+      setOpenError(null);
       return;
     }
     setOpenText(documentId);
     setOpenPending(true);
     setOpenBody(null);
-    try {
-      const detail = await fetch(`/api/v1/documents/${documentId}/preview`);
-      if (detail.ok) {
-        const data = (await detail.json()) as { excerpt?: string | null };
-        // The preview route returns an excerpt by design; the full text lives
-        // in the library's reader. Link there rather than shipping the body twice.
-        setOpenBody(data.excerpt ?? "");
-      } else {
-        setOpenBody("");
-      }
-    } catch {
-      setOpenBody("");
-    } finally {
-      setOpenPending(false);
-    }
+    setOpenError(null);
+    const detail = await requestJson<{ excerpt?: string | null }>(`/api/v1/documents/${documentId}/preview`);
+    // The preview route returns an excerpt by design; the full text lives in
+    // the library's reader. Link there rather than shipping the body twice.
+    // An empty panel on failure would read as "no text", so the panel carries
+    // the failure's own copy instead; a cancelled request just closes quietly.
+    if (detail.ok) setOpenBody(detail.data.excerpt ?? "");
+    else if (detail.failure.kind !== "aborted") setOpenError(detail.failure.title);
+    setOpenPending(false);
   };
 
   const busy = entries.some((entry) => entry.phase.kind === "uploading" || entry.phase.kind === "reading");
   const anyDone = entries.some((entry) => entry.phase.kind === "done");
+  const failureAnnouncement = failureCopy(entries);
 
   return (
     <div className="flex flex-col gap-3">
       <div aria-live="polite" id={liveId} className="sr-only">
-        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done`}
+        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done${failureAnnouncement}`}
       </div>
 
       <div
@@ -256,7 +348,14 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium">{entry.file.name}</p>
-                  <p className="text-muted-foreground text-xs">{phaseLabel(entry.phase)}</p>
+                  {/* Recovery copy can be a full sentence; two clamped lines keeps
+                      the row height stable while the title attribute keeps it whole. */}
+                  <p
+                    className={`text-muted-foreground text-xs ${entry.phase.kind === "error" ? "line-clamp-2" : "truncate"}`}
+                    title={entry.phase.kind === "error" ? entry.phase.message : undefined}
+                  >
+                    {phaseLabel(entry.phase)}
+                  </p>
                 </div>
                 {entry.phase.kind === "done" ? (
                   <Badge variant="outline">Read</Badge>
@@ -291,6 +390,8 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
           </div>
           {openPending ? (
             <p role="status" className="text-muted-foreground text-xs">Loading the extracted text…</p>
+          ) : openError ? (
+            <p role="alert" className="text-[13px] text-destructive">{openError}</p>
           ) : openBody ? (
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[13px] leading-relaxed">
               {openBody}

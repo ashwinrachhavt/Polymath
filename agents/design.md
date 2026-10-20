@@ -164,9 +164,13 @@ genuine status dot. This is the "documented rule" that lets a mixed ladder stand
   is currently in `package.json`, so this is an open migration, not a rule
   already met. One family per tree, one global `strokeWidth`, never a hand-rolled
   icon path.
-- **Motion:** the `motion` package (`motion/react`) is the skill's default at
-  this dial, and is **not yet installed**. Until it is, `MOTION_INTENSITY: 4` is
-  satisfied by CSS transitions alone, which need no dependency. Every animation
+- **Motion:** the `motion` package (`motion/react`) is installed and the root
+  layout wraps the tree in `MotionConfig reducedMotion="user"`
+  (`src/components/motion-config.tsx`), so every JS animation honours the OS
+  reduced-motion setting. Reuse its exported `motionTransition` (180ms) rather
+  than declaring a local config; the in-app Reduce motion preference is not
+  wired into that provider, so JS-driven animation must still read it where the
+  surface owns it. Every animation
   must answer "what does this communicate?" in one sentence (§5). No fade-and-
   slide-up entrances per section, no hover-scale on every card, no decorative
   loop. Animate `transform` and `opacity` only. `useState` never tracks a

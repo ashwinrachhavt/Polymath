@@ -1,3 +1,5 @@
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
 import { capabilityStatus } from "@/lib/capability-config";
@@ -15,9 +17,25 @@ export const metadata = { title: "Settings · Polymath" };
  * missing variables instead of rendering a control that silently does nothing
  * (ASH-193). Only variable names cross to the client, never values.
  */
-export default async function SettingsPage() {
+
+async function Preferences() {
+  await connection();
   const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
   const capabilities = capabilityStatus();
   return <Settings serverPreferences={serverPreferences} capabilities={capabilities} />;
+}
+
+/*
+ * connection() has to sit inside a Suspense boundary, not just inside the
+ * route: cacheComponents prerenders the shell and rejects uncached data that
+ * blocks it. Bare `await connection()` in the page default still logs
+ * "encountered uncached data during prerendering" and stalls navigation.
+ */
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading settings…</p>}>
+      <Preferences />
+    </Suspense>
+  );
 }

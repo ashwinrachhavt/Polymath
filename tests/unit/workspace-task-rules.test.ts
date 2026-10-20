@@ -112,7 +112,7 @@ describe("preview workspace task mutations", () => {
     const workspace = createPreviewWorkspace("attachment-owner", memoryStorage());
     const record = workspace.addTask("Has a brief")!;
     workspace.addAttachment(record.id, { kind: "url", label: "Spec", value: "https://example.test/spec" });
-    workspace.addAttachment(record.id, { kind: "url", label: "Spec again", value: "https://example.test/spec" });
+    expect(workspace.addAttachment(record.id, { kind: "url", label: "Spec again", value: "https://example.test/spec" })).toEqual({ ok: false, persisted: true });
     expect(workspace.getSnapshot().tasks.find((item) => item.id === record.id)?.attachments).toHaveLength(1);
   });
 });

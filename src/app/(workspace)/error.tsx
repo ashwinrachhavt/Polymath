@@ -23,6 +23,9 @@ export default function WorkspaceError({ error, reset }: { error: Error & { dige
       <Button onClick={reset} variant="outline" className="mt-4 w-fit">
         Retry
       </Button>
+      {error.digest ? (
+        <span className="mt-3 font-mono text-xs text-muted-foreground">{error.digest}</span>
+      ) : null}
     </div>
   );
 }

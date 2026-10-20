@@ -39,13 +39,17 @@ export function EventDialog({ event, date, trigger = "Add work block", defaultTy
     const recurrence = recurrenceForPreset(String(data.get("recurrence") || "none"));
     const payload = { title, date: blockDate, start, endDate, duration, recurrence, taskId: String(data.get("task") || "") || undefined, provider: "local" as const, type: String(data.get("type")) as CalendarEvent["type"], location: String(data.get("location") || ""), tags: String(data.get("tags") || "").split(",").map((tag) => tag.trim()).filter(Boolean) };
     const record = event || addEvent(payload);
+    if (!record) return;
     let notesArtifactId = event?.notesArtifactId;
     if (linkedNote) updateArtifact(linkedNote.id, { body: noteBody });
     else if (noteBody.trim() || payload.type === "Meeting") {
       const note = addArtifact(`${title}: notes`, "note", noteBody);
       if (note) { notesArtifactId = note.id; updateArtifact(note.id, { links: [record.id], tags: payload.type === "Meeting" ? ["Meeting notes"] : ["Event notes"] }); }
     }
-    updateEvent(record.id, { ...payload, notesArtifactId, notes: undefined });
+    // On the edit path updateEvent is the only write, so a refusal there means
+    // nothing was saved and the dialog must not claim otherwise.
+    const saved = updateEvent(record.id, { ...payload, notesArtifactId, notes: undefined });
+    if (!saved.ok || !saved.persisted) return;
     setOpen(false); notify("Work block and linked canonical notes saved locally. No provider event was created or changed.");
   }
   return <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) { setOriginal(event); setNoteVersion(linkedNote?.version); setError(""); } }}><DialogTrigger asChild><Button variant="outline" className={triggerClassName} size={event ? "sm" : "default"}>{trigger}</Button></DialogTrigger><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{event ? "Work block details" : "Create a local work block"}</DialogTitle><DialogDescription>{event?.provider === "google" ? "Read-only provider event. Changes require a connected account and exact-payload review." : "Browser-local planning only. This does not reserve time on a provider calendar."}</DialogDescription></DialogHeader>{open && <form onSubmit={save} className="space-y-4"><fieldset disabled={event?.provider === "google"} className="space-y-4 disabled:opacity-70"><Field label="Block title"><Input name="title" defaultValue={event?.title} required /></Field><Field label="Block type"><Select name="type" defaultValue={event?.type || defaultType}>{["Focus", "Meeting", "Personal", "Break"].map((type) => <option key={type}>{type}</option>)}</Select></Field><Field label="Starts (browser local)"><Input type="datetime-local" name="start" defaultValue={`${event?.date || date}T${event?.start || "09:00"}`} required /></Field><Field label="Ends (browser local)"><Input type="datetime-local" name="end" defaultValue={`${end.date}T${end.time}`} required /></Field><Field label="Location"><Input name="location" defaultValue={event?.location} /></Field><Field label="Tags (comma-separated)"><Input name="tags" defaultValue={event?.tags?.join(", ")} /></Field><Field label="Canonical event notes"><Textarea name="notes" rows={5} defaultValue={linkedNote?.body || event?.notes || ""} /></Field><Field label="Linked task"><Select name="task" defaultValue={event?.taskId || ""}><option value="">No linked task</option>{state.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</Select></Field><Field label="Repeats"><Select name="recurrence" defaultValue={presetForRecurrence(event?.recurrence)}>{recurrencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</Select></Field><label className="flex items-center gap-2 text-[13px]"><input type="checkbox" name="overlap" className="size-4" />Allow overlap with another local block</label></fieldset>{error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="outline" type="button" onClick={() => setOpen(false)}>Close</Button>{event?.provider !== "google" && <Button type="submit">Save block locally</Button>}</div></form>}</DialogContent></Dialog>;
@@ -102,8 +106,16 @@ export function SchedulerScreen() {
       const task = state.tasks.find((item) => item.id === proposal.taskId);
       if (task?.version !== proposal.taskVersion || !["READY", "IN_PROGRESS"].includes(task.status) || hasConflict(state.events, proposal.date, proposal.start, proposal.duration) || state.events.some((event) => event.taskId === proposal.taskId && event.date === proposal.date)) { setError("A task or local calendar block changed after this proposal was prepared. Refresh proposals before accepting; no blocks were added."); return; }
     }
-    chosen.forEach((proposal) => addEvent({ title: proposal.title, taskId: proposal.taskId, date: proposal.date, start: proposal.start, duration: proposal.duration, provider: "local" }));
-    setProposals((proposals || []).filter((proposal) => !selected.includes(proposal.taskId))); setSelected([]); setError(""); notify(`${chosen.length} reviewed work blocks added to this browser only. No provider writes were performed.`);
+    const savedTaskIds = new Set(chosen.filter((proposal) => addEvent({ title: proposal.title, taskId: proposal.taskId, date: proposal.date, start: proposal.start, duration: proposal.duration, provider: "local" })).map((proposal) => proposal.taskId));
+    const saved = savedTaskIds.size;
+    // Refused proposals stay listed so a partial accept does not discard the
+    // blocks it failed to save.
+    setProposals((proposals || []).filter((proposal) => !savedTaskIds.has(proposal.taskId))); setSelected([]); setError("");
+    // A bulk accept can be partially refused; the notice must report what
+    // landed, not what was attempted.
+    if (saved === chosen.length) notify(`${chosen.length} reviewed work blocks added to this browser only. No provider writes were performed.`);
+    else if (saved > 0) notify(`${saved} of ${chosen.length} reviewed work blocks added to this browser only; the rest were not saved. No provider writes were performed.`);
+    else setError("No reviewed work blocks were saved. Inspect the latest calendar and prepare fresh proposals.");
   }
   return <Screen title="Scheduler" description="Prepare, inspect, and deliberately accept a small local schedule. Deterministic rules—not AI—use priority, estimates, and the blocks already in this preview." actions={<Button variant="outline" asChild><Link href="/apps/neuralflow/calendar">Open calendar</Link></Button>}>
     <Unavailable feature="Provider free/busy and external scheduling">Suggestions only avoid local preview blocks. They do not check meetings from a real account. Accepting below creates local blocks, not approved or successful provider events.</Unavailable>
