@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { registerAccount, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
+import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -101,5 +102,20 @@ export async function startConnectionAction(input: { provider: string; alias: st
     return { ok: true, redirectUrl: link.redirectUrl };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The connection could not start." };
+  }
+}
+
+/* Read-only pull of the owner's Google Calendar into the week view. Nothing is written to Google. */
+export async function syncGoogleCalendarAction(input: { accountId: string }): Promise<
+  { ok: true; summary: string } | { ok: false; error: string }
+> {
+  const auth = await authorize();
+  try {
+    const r = await syncGoogleCalendarAccount(auth, { externalAccountId: input.accountId });
+    revalidatePath("/apps/neuralflow/tasks");
+    revalidate();
+    return { ok: true, summary: `${r.created} new, ${r.updated} updated, ${r.cancelled} cancelled` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The calendar sync failed." };
   }
 }
