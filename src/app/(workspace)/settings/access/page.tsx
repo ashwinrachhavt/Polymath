@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listInvitations, listMembers } from "@/domains/identity/members";
 import { ForbiddenRoleError } from "@/lib/auth/guards";
@@ -8,7 +9,7 @@ export const metadata = { title: "Access · Polymath" };
 
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 
-export default async function AccessPage() {
+async function Access() {
   await connection();
   const description = "Who belongs to this workspace and which invitations are open. Read-only for now.";
   if (!process.env.DATABASE_URL?.trim()) {
@@ -81,5 +82,14 @@ export default async function AccessPage() {
         )}
       </Panel>
     </Screen>
+  );
+}
+
+/* connection() must sit inside a Suspense boundary; see settings/page.tsx. */
+export default function AccessPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading access…</p>}>
+      <Access />
+    </Suspense>
   );
 }
