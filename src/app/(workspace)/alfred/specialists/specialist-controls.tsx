@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 import { createCustomSpecialistAction, installSpecialistAction } from "./actions";
 
 /*
@@ -57,23 +58,20 @@ export function HireForm({ profileName, disabled }: { profileName: string; disab
   async function hire() {
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch("/api/v1/runs", {
-        method: "POST",
-        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ objective, profileName }),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `Run failed to start (${response.status}).`);
-      }
-      setObjective("");
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Run failed to start.");
-    } finally {
-      setPending(false);
+    // Same engine path as Alfred's own runs; the idempotency key keeps a
+    // retried click from starting a second run.
+    const result = await requestJson("/api/v1/runs", {
+      method: "POST",
+      body: { objective, profileName },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    setObjective("");
+    router.refresh();
   }
 
   return (

@@ -28,7 +28,11 @@ import { createOpenAI } from "@ai-sdk/openai";
  * gpt-oss-120b advertises a 128k context.
  */
 function alfredModel() {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY ?? "";
+  // An empty-string OPENAI_API_KEY (set-but-blank in a deployment env) must
+  // not shadow a real OpenRouter key: ?? only skips null/undefined, so fall
+  // through blank keys explicitly.
+  const apiKey =
+    [process.env.OPENAI_API_KEY, process.env.OPENROUTER_API_KEY].find((key) => key && key.length > 0) ?? "";
   // Without an explicit OPENAI_BASE_URL, route by the key's shape: an
   // OpenRouter key (sk-or-…) against the Groq default is exactly the deployed
   // failure this fixes, so infer OpenRouter for it instead of failing there.

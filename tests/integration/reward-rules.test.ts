@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";

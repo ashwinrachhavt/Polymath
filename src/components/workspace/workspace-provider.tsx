@@ -27,6 +27,14 @@ const schema = z.object({
 });
 
 /*
+ * Bump when the schema changes incompatibly. On a mismatch the saved payload is
+ * kept untouched under its raw key with the old version appended, so export or
+ * manual recovery stays possible; the preview falls back to the sample state
+ * rather than silently resetting user work.
+ */
+const PREVIEW_FORMAT_VERSION = 1;
+
+/*
  * localStorage is reachable as both a global and a window property depending
  * on the runtime, and reading it can throw in a locked-down privacy mode, so
  * every access goes through here.
@@ -69,7 +77,12 @@ function getSnapshot() {
         if (raw) {
           const parsed = schema.safeParse(JSON.parse(raw));
           if (parsed.success) snapshot = parsed.data;
-          else storageWarning = "Saved preview data has an incompatible format. Export any open work before resetting this preview.";
+          else {
+            // The incompatible payload stays in storage under its own key so
+            // it can be exported or inspected; nothing overwrites it here.
+            try { store.setItem(`${key}:incompatible-v${PREVIEW_FORMAT_VERSION}`, raw); } catch { /* best-effort backup */ }
+            storageWarning = "Saved preview data has an incompatible format. Your saved data was kept aside; export any open work before resetting this preview.";
+          }
         } else snapshot = sampleState;
       }
     } catch { storageWarning = "Browser storage is unavailable. Preview changes will last only until refresh."; }

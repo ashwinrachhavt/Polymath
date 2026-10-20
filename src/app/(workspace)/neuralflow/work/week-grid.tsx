@@ -27,6 +27,10 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// Pinned locale: this component renders during SSR too, and an undefined
+// locale makes the server's locale race the browser's (hydration mismatch).
+const LOCALE = "en-US";
+
 export function WeekGrid({
   weekStartMs,
   events,
@@ -72,7 +76,7 @@ export function WeekGrid({
           <div />
           {days.map((day) => (
             <div key={day.toISOString()} className="border-b border-border px-1 pb-1.5 text-center text-xs">
-              <span className="text-muted-foreground">{day.toLocaleDateString(undefined, { weekday: "short" })}</span>{" "}
+              <span className="text-muted-foreground">{day.toLocaleDateString(LOCALE, { weekday: "short" })}</span>{" "}
               <span className={sameDay(day, now) ? "rounded-full bg-foreground px-1.5 py-0.5 text-background" : "font-medium"}>
                 {day.getDate()}
               </span>
@@ -81,7 +85,7 @@ export function WeekGrid({
           <div className="relative" style={{ height: hours.length * HOUR_PX }}>
             {hours.map((h, i) => (
               <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-muted-foreground" style={{ top: i * HOUR_PX }}>
-                {new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: "numeric" })}
+                {new Date(2000, 0, 1, h).toLocaleTimeString(LOCALE, { hour: "numeric" })}
               </span>
             ))}
           </div>
@@ -109,10 +113,10 @@ export function WeekGrid({
                       key={e.id}
                       className="group absolute inset-x-0.5 overflow-hidden rounded-md border border-border bg-muted/70 px-1.5 py-1 text-[11px] leading-tight"
                       style={{ top, height }}
-                      title={`${e.title} ${s.toLocaleTimeString(undefined, { timeStyle: "short" })} to ${end.toLocaleTimeString(undefined, { timeStyle: "short" })}`}
+                      title={`${e.title} ${s.toLocaleTimeString(LOCALE, { timeStyle: "short" })} to ${end.toLocaleTimeString(LOCALE, { timeStyle: "short" })}`}
                     >
                       <p className="truncate font-medium">{e.title}</p>
-                      <p className="text-muted-foreground">{s.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</p>
+                      <p className="text-muted-foreground">{s.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" })}</p>
                       <button
                         type="button"
                         aria-label={`Remove ${e.title} from calendar`}

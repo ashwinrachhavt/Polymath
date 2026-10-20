@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
 const CandidateFacts = dynamic(() => import("./candidate-facts"), { loading: () => <p role="status">Loading candidate fact controls…</p> });
@@ -79,6 +79,62 @@ function useActiveSection() {
   return active;
 }
 
+/*
+ * Settings section nav, on the cal.com settings-shell pattern
+ * (VerticalTabs + horizontal collapse): grouped links in a sticky w-56
+ * column from lg, a scrollable tab strip below it with the active tab
+ * scrolled into view. Plain anchors with aria-current; no tab component
+ * dependency, because sections scroll in place instead of routing.
+ */
+function SettingsNav({ groups, active }: { groups: readonly [{ readonly label: string; readonly items: readonly { readonly id: string; readonly label: string }[] }, ...{ readonly label: string; readonly items: readonly { readonly id: string; readonly label: string }[] }[]]; active: string }) {
+  const stripRef = useRef<HTMLElement | null>(null);
+  const lastScrolledRef = useRef<string | null>(null);
+  const currentItem = groups.flatMap((group) => group.items).find((item) => item.id === active);
+  useEffect(() => {
+    const nav = stripRef.current;
+    if (!nav || nav.scrollWidth <= nav.clientWidth) return;
+    if (lastScrolledRef.current === active) return;
+    const activeElement = nav.querySelector<HTMLElement>("[aria-current='true']");
+    if (!activeElement) return;
+    activeElement.scrollIntoView({ behavior: "auto", block: "nearest", inline: "center" });
+    lastScrolledRef.current = active;
+  }, [active]);
+  return (
+    <>
+      <nav aria-label="Settings sections" className="no-scrollbar hidden w-56 shrink-0 flex-col gap-1 lg:sticky lg:top-16 lg:flex lg:h-fit lg:overflow-y-auto">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <p className="px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0">{group.label}</p>
+            {group.items.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                aria-current={active === item.id ? "true" : undefined}
+                className="flex min-h-8 w-full items-center rounded-md px-2 py-1.5 text-[13px] font-medium text-foreground transition hover:bg-muted [&[aria-current='true']]:bg-muted [&[aria-current='true']]:text-foreground"
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <nav aria-label="Settings sections" ref={stripRef} className="no-scrollbar flex gap-0.5 overflow-x-auto rounded-md lg:hidden">
+        {groups.flatMap((group) => group.items).map((item) => (
+          <a
+            key={item.id}
+            href={`#${item.id}`}
+            aria-current={active === item.id ? "true" : undefined}
+            className="flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-[13px] text-muted-foreground transition hover:bg-muted hover:text-foreground [&[aria-current='true']]:bg-muted [&[aria-current='true']]:font-medium [&[aria-current='true']]:text-foreground"
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
+      <p className="sr-only" aria-live="polite">{currentItem ? `${currentItem.label} section` : ""}</p>
+    </>
+  );
+}
+
 function Section({ id, children }: { id: string; children: React.ReactNode }) {
   return <div id={id} className="scroll-mt-6">{children}</div>;
 }
@@ -100,26 +156,11 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
   const [factsOpen, setFactsOpen] = useState(false);
   const active = useActiveSection();
   return <Screen title="Settings" description="Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels describe this browser preview or name what is not built yet." actions={<Destination screen="integrations">Connection catalog</Destination>}>
-    <div className="grid gap-6 lg:grid-cols-[minmax(160px,220px)_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-16 lg:h-fit lg:flex-col lg:overflow-visible lg:pb-0">
-        {SECTION_GROUPS.map((group) => (
-          <div key={group.label} className="contents lg:block">
-            <p className="hidden px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0 lg:block">{group.label}</p>
-            {group.items.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                aria-current={active === item.id ? "true" : undefined}
-                className="min-h-8 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:text-foreground aria-current:bg-muted aria-current:font-medium aria-current:text-foreground lg:whitespace-nowrap"
-              >
-                {item.label}
-              </a>
-            ))}
-          </div>
-        ))}
-      </nav>
+    <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+      <SettingsNav groups={SECTION_GROUPS} active={active} />
 
-      <div className="flex min-w-0 flex-col gap-6">
+
+      <div className="flex min-w-0 flex-1 flex-col gap-6">
         <Section id="planning">
           <Panel title="Planning preferences">
             <form key={`${saved.timezone}-${saved.weekStart}`} className="grid gap-4" onSubmit={(e) => {

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 
 /*
  * Create a dossier: a name plus the documents it holds. The POST goes to
@@ -34,24 +35,19 @@ export function CreateDossierForm({ documents }: { documents: Array<{ id: string
   async function create() {
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch("/api/v1/dossiers", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, documentIds: [...selected] }),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `The dossier could not be created (${response.status}).`);
-      }
-      setName("");
-      setSelected(new Set());
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The dossier could not be created.");
-    } finally {
-      setPending(false);
+    const result = await requestJson("/api/v1/dossiers", {
+      method: "POST",
+      body: { name, documentIds: [...selected] },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    setName("");
+    setSelected(new Set());
+    router.refresh();
   }
 
   return (

@@ -1,6 +1,5 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import {
   contactPoints,
@@ -40,6 +39,14 @@ type CsvRow = Record<string, string>;
  */
 const MAX_ROWS = 5000;
 
+/** A second import for this workspace is already running. */
+export class ImportBusyError extends Error {
+  constructor() {
+    super("An import is already running for this workspace. Wait for it to finish and try again.");
+    this.name = "ImportBusyError";
+  }
+}
+
 /** Raised before any write; the action turns it into a message the owner can act on. */
 export class ImportLimitError extends Error {
   constructor(readonly rowCount: number) {
@@ -59,9 +66,6 @@ export type ImportSummary = {
 };
 
 const MAX_PROBLEMS = 30;
-/* One page per render for people and organizations; paginate past this when the
- * lists outgrow one screen. */
-const LIST_PAGE = 200;
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** RFC 4180-ish CSV: quoted fields, doubled quotes, CRLF. One pass, no dependency. */
@@ -165,6 +169,19 @@ export async function importConnections(
     rows.map((row) => (row["email address"] ?? "").toLowerCase()).filter(Boolean),
   )];
   await withTransaction(async (tx) => {
+    // One import per workspace at a time. Two concurrent files would both
+    // pass the pre-pass and insert the same people and organizations twice:
+    // contact_points has no unique index on value by design, and
+    // organizations key on name, which has no unique index either. A
+    // transaction-scoped advisory lock is the cheapest correct gate; the
+    // second import fails with a message instead of double-writing.
+    const [lock] = await tx
+      .select({ acquired: sql<boolean>`pg_try_advisory_xact_lock(hashtextextended(${auth.workspaceId} || ':parties.import', 0))` })
+      .from(sql`(select 1) as t`);
+    if (!lock?.acquired) {
+      throw new ImportBusyError();
+    }
+
     const knownPeople = new Map<string, string>();
     if (emails.length) {
       const points = await tx
@@ -348,116 +365,5 @@ function businessDomain(email: string): string | null {
   const domain = email.slice(at + 1).toLowerCase();
   if (!domain.includes(".") || CONSUMER_DOMAINS.has(domain)) return null;
   return domain;
-}
-
-export type PersonRow = {
-  id: string;
-  displayName: string;
-  title: string | null;
-  email: string | null;
-  organizations: { id: string; name: string; title: string | null }[];
-};
-
-/*
- * The Relationships read: one page of people, then two batched reads for their
- * emails and current org edges. Three queries regardless of page size — the
- * correlated-subquery version scanned contact_points once per person.
- *
- * `ponytail:` three queries in sequence, not one join. The join would fan out
- * over both emails and employments and need the same collapse in JS anyway.
- */
-export async function listPeople(auth: AuthContext): Promise<PersonRow[]> {
-  const page = await db
-    .select({ id: people.id, displayName: people.displayName, title: people.title })
-    .from(people)
-    .where(and(eq(people.workspaceId, auth.workspaceId), isNull(people.archivedAt)))
-    .orderBy(people.displayName)
-    .limit(LIST_PAGE);
-  if (page.length === 0) return [];
-
-  const ids = page.map((person) => person.id);
-  const [emails, edges] = await Promise.all([
-    db
-      .select({ personId: contactPoints.personId, value: contactPoints.value })
-      .from(contactPoints)
-      .where(
-        and(
-          eq(contactPoints.workspaceId, auth.workspaceId),
-          eq(contactPoints.kind, "email"),
-          inArray(contactPoints.personId, ids),
-          isNull(contactPoints.archivedAt),
-        ),
-      )
-      .orderBy(desc(contactPoints.isPrimary)),
-    db
-      .select({
-        personId: partyEmployment.personId,
-        organizationId: organizations.id,
-        name: organizations.name,
-        title: partyEmployment.title,
-      })
-      .from(partyEmployment)
-      .innerJoin(organizations, eq(organizations.id, partyEmployment.organizationId))
-      .where(
-        and(
-          eq(partyEmployment.workspaceId, auth.workspaceId),
-          inArray(partyEmployment.personId, ids),
-          isNull(partyEmployment.endedAt),
-        ),
-      ),
-  ]);
-
-  // Primary first, so the first row seen for a person is the one shown; the
-  // schema allows only one primary per person per kind.
-  const emailByPerson = new Map<string, string>();
-  for (const email of emails) {
-    if (email.personId && !emailByPerson.has(email.personId)) {
-      emailByPerson.set(email.personId, email.value);
-    }
-  }
-  const orgsByPerson = new Map<string, PersonRow["organizations"]>();
-  for (const edge of edges) {
-    const list = orgsByPerson.get(edge.personId) ?? [];
-    list.push({ id: edge.organizationId, name: edge.name, title: edge.title });
-    orgsByPerson.set(edge.personId, list);
-  }
-
-  return page.map((person) => ({
-    ...person,
-    email: emailByPerson.get(person.id) ?? null,
-    organizations: orgsByPerson.get(person.id) ?? [],
-  }));
-}
-
-export type OrganizationRow = {
-  id: string;
-  name: string;
-  domain: string | null;
-  peopleCount: number;
-};
-
-export async function listOrganizations(auth: AuthContext): Promise<OrganizationRow[]> {
-  const rows = await db
-    .select({
-      id: organizations.id,
-      name: organizations.name,
-      domain: organizations.domain,
-      peopleCount: sql<number>`count(distinct ${partyEmployment.personId})::int`,
-    })
-    .from(organizations)
-    .leftJoin(
-      partyEmployment,
-      and(
-        eq(partyEmployment.organizationId, organizations.id),
-        eq(partyEmployment.workspaceId, organizations.workspaceId),
-        isNull(partyEmployment.endedAt),
-      ),
-    )
-    .where(and(eq(organizations.workspaceId, auth.workspaceId), isNull(organizations.archivedAt)))
-    .groupBy(organizations.id)
-    .orderBy(organizations.name)
-    .limit(LIST_PAGE);
-
-  return rows;
 }
 

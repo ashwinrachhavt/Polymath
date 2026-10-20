@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
  * happened and offers the way out. It never apologises, and it never renders an
  * empty screen that looks like success.
  *
+ * The copy never asserts what was or was not saved: a render failure says
+ * nothing about the outcome of any earlier write, which may have committed.
+ *
  * `error.digest` is the only handle that ties this screen to the server log, so
  * it is shown rather than swallowed.
  */
@@ -21,8 +24,8 @@ export default function Error({
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-3 p-6">
       <h1 className="text-lg font-medium tracking-tight">This screen did not load</h1>
       <p className="text-muted-foreground max-w-prose text-[13px]">
-        Something failed on the server. Nothing was saved, and no action was taken on your
-        behalf.
+        Something failed while loading this screen. Any change you already submitted may
+        still have gone through; check the list before submitting it again.
       </p>
       <div className="flex items-center gap-3">
         <Button size="sm" onClick={reset}>

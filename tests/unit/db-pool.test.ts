@@ -19,7 +19,8 @@ describe("shared Postgres pool", () => {
     const work = vi.fn(async (tx: object) => tx);
     expect(await withTransaction(work)).toEqual({ marker: "transaction" });
     expect(db.transaction).toHaveBeenCalledWith(work);
-    expect(mocks.pools).toEqual([[expect.any(String), { max: 5 }]]);
+    // prepare:false keeps the pool safe behind Neon's transaction-mode pooler.
+    expect(mocks.pools).toEqual([[expect.any(String), { max: 5, prepare: false }]]);
     expect(mocks.adapters).toBe(1);
   });
   it("propagates callback rejection rather than swallowing a rollback", async () => {

@@ -172,7 +172,7 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       id: row.id,
       label: row.name,
       context: "Contact",
-      href: `/command-center/relationships?id=${row.id}`,
+      href: `/command-center/relationships/contacts?id=${row.id}`,
     })),
     ...captureRows.map((row) => ({
       kind: "inbox" as const,

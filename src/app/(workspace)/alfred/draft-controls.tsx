@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { requestJson } from "@/lib/client-request";
 
 /*
  * The generated-draft control under a run. A run with output and no artifact
@@ -26,22 +27,13 @@ export function DraftControls({
   async function call(path: string, body?: unknown) {
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-        throw new Error(problem?.title ?? `Request failed (${response.status}).`);
-      }
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Request failed.");
-    } finally {
-      setPending(false);
+    const result = await requestJson(path, { method: "POST", body, idempotencyKey: crypto.randomUUID() });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.failure.title);
+      return;
     }
+    router.refresh();
   }
 
   if (!draft) {
