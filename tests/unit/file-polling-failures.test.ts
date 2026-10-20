@@ -3,6 +3,7 @@ import {
   RATE_LIMIT_CEILING,
   TERMINAL_POLL_KINDS,
   advancePoll,
+  phaseLabel,
   shouldStopPolling,
 } from "@/components/documents/upload-dropzone";
 import type { RequestFailure, RequestFailureKind } from "@/lib/client-request";
@@ -108,5 +109,18 @@ describe("advancePoll", () => {
   it("a non-throttle failure between throttles also breaks the streak", () => {
     const step = advancePoll({ ok: false, failure: failure("server") }, RATE_LIMIT_CEILING - 1);
     expect(step).toEqual({ action: "continue", rateLimitStreak: 0 });
+  });
+});
+
+describe("phaseLabel", () => {
+  it("renders the failure's cause, not a bare status word", () => {
+    const copy = "Your session has expired. Sign in again, then retry.";
+    expect(phaseLabel({ kind: "error", message: copy })).toBe(copy);
+  });
+
+  it("keeps the progress labels", () => {
+    expect(phaseLabel({ kind: "uploading", percent: 42 })).toBe("Uploading 42%");
+    expect(phaseLabel({ kind: "reading" })).toBe("Reading the text…");
+    expect(phaseLabel({ kind: "done", documentId: "d1" })).toBe("Read");
   });
 });

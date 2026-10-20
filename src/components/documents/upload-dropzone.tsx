@@ -22,7 +22,7 @@ import { requestJson, type RequestFailure } from "@/lib/client-request";
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 
-type FilePhase =
+export type FilePhase =
   | { kind: "uploading"; percent: number }
   | { kind: "reading" }
   | { kind: "done"; documentId: string }
@@ -101,7 +101,8 @@ function PhaseIcon({ phase }: { phase: FilePhase }) {
   return null;
 }
 
-function phaseLabel(phase: FilePhase): string {
+/** The row's metadata line: what the phase is doing, or why it failed. */
+export function phaseLabel(phase: FilePhase): string {
   switch (phase.kind) {
     case "uploading":
       return `Uploading ${phase.percent}%`;
@@ -141,7 +142,7 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
   // The reading ring is honest only if it ends: poll the document until a
   // terminal status, then stop. A long silence is reported, not spun forever.
   const poll = useCallback(async (id: string, documentId: string) => {
-    let rateLimited = 0;
+    let throttleStreak = 0;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
@@ -149,12 +150,12 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
       );
       // A network blip is not a verdict; a 401/403/404 is, and the person
       // needs the cause now rather than a queue-worker guess in three minutes.
-      const step = advancePoll(result, rateLimited);
+      const step = advancePoll(result, throttleStreak);
       if (step.action === "stop") {
         patch(id, { kind: "error", message: step.message });
         return;
       }
-      rateLimited = step.rateLimitStreak;
+      throttleStreak = step.rateLimitStreak;
       if (!result.ok) continue;
       const body = result.data;
       if (body.extractionStatus === "succeeded") {
@@ -248,11 +249,15 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
 
   const busy = entries.some((entry) => entry.phase.kind === "uploading" || entry.phase.kind === "reading");
   const anyDone = entries.some((entry) => entry.phase.kind === "done");
+  // The badge is text a screen reader would reach only by leaving the live
+  // region, and the cause is the actionable half; announce it with the counts.
+  const failure = entries.find((entry) => entry.phase.kind === "error")?.phase;
+  const failureCopy = failure?.kind === "error" ? `, failed: ${failure.message}` : "";
 
   return (
     <div className="flex flex-col gap-3">
       <div aria-live="polite" id={liveId} className="sr-only">
-        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done`}
+        {`${entries.filter((entry) => entry.phase.kind === "uploading").length} uploading, ${entries.filter((entry) => entry.phase.kind === "reading").length} reading, ${entries.filter((entry) => entry.phase.kind === "done").length} done${failureCopy}`}
       </div>
 
       <div
