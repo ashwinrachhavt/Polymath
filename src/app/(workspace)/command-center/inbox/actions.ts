@@ -21,19 +21,22 @@ async function authorize() {
   return auth;
 }
 
-function fail(error: unknown): Result {
+function fail(error: unknown): { ok: false; error: string } {
   return { ok: false, error: error instanceof Error ? error.message : "The inbox write failed." };
 }
 
-export async function captureTextAction(input: { text: string }): Promise<Result> {
+export async function captureTextAction(input: { text: string }): Promise<
+  { ok: true; id: string } | { ok: false; error: string }
+> {
   const auth = await authorize();
+  let capture: { id: string };
   try {
-    await createCapture(auth, input);
+    capture = await createCapture(auth, input);
   } catch (error) {
     return fail(error);
   }
   revalidate(auth);
-  return { ok: true };
+  return { ok: true, id: capture.id };
 }
 
 export async function makeTaskAction(input: { captureId: string; expectedVersion: number }): Promise<Result> {

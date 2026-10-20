@@ -3,6 +3,8 @@ import type {
   ExtractionProvider,
   ExtractionResult,
 } from "./provider";
+import { normalizeExtractedText } from "./cleanup";
+import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 
 /*
  * docling-serve running in docker locally (the official docling-project image).
@@ -26,6 +28,15 @@ export function createDoclingDockerProvider(
   return {
     async extract(input: ExtractionInput): Promise<ExtractionResult> {
       const extractor = "docling-serve@local";
+      // Defense-in-depth: intake enforces this at the upload and URL-fetch
+      // boundaries; a future caller must not bypass it silently.
+      if (input.bytes.byteLength > MAX_UPLOAD_BYTES) {
+        return {
+          ok: false,
+          error: "The document is too large to read.",
+          extractor,
+        };
+      }
       const form = new FormData();
       form.append(
         "files",
@@ -48,7 +59,17 @@ export function createDoclingDockerProvider(
         const body = (await res.json()) as {
           document?: { md_content?: string; text_content?: string; page_count?: number };
         };
-        const text = body.document?.md_content ?? body.document?.text_content ?? "";
+        const raw = body.document?.md_content ?? body.document?.text_content ?? "";
+        // An empty conversion is a failed extraction, never an empty success:
+        // the honest row names the failure and offers a retry.
+        if (!raw.trim()) {
+          return {
+            ok: false,
+            error: "docling-serve returned no readable text",
+            extractor,
+          };
+        }
+        const text = normalizeExtractedText(raw, "markdown");
         return {
           ok: true,
           text,

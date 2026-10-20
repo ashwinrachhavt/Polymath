@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createDoclingDockerProvider } from "@/integrations/extraction/docling-docker";
 import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
 import { createPdfTextLayerProvider } from "@/integrations/extraction/pdf-text-layer";
+import { createReductoProvider } from "@/integrations/extraction/reducto";
 import { createPlainTextProvider } from "@/integrations/extraction/plain-text";
 import type {
   ExtractedField,
@@ -38,6 +39,8 @@ import { clearRestoreOnNewExtraction } from "./versions";
 export async function extractionProvider(): Promise<ExtractionProvider> {
   const doclingUrl = process.env.DOCLING_SERVE_URL;
   if (doclingUrl) return createDoclingDockerProvider(doclingUrl);
+  const reductoKey = process.env.REDUCTO_API_KEY;
+  if (reductoKey) return createReductoProvider(reductoKey);
   const llamaKey = process.env.LLAMAPARSE_API_KEY;
   if (llamaKey) return createLlamaParseProvider(llamaKey);
   // The in-process reader is the floor in every environment: it needs no

@@ -1,4 +1,5 @@
 import type { ExtractionInput, ExtractionProvider, ExtractionResult } from "./provider";
+import { normalizeExtractedText } from "./cleanup";
 
 /*
  * A text file is its own extraction: the bytes are the reading text, in every
@@ -10,8 +11,12 @@ export function createPlainTextProvider(): ExtractionProvider {
   return {
     async extract(input: ExtractionInput): Promise<ExtractionResult> {
       const extractor = "plain-text@local";
-      const text = new TextDecoder("utf-8").decode(input.bytes);
-      if (!text.trim()) {
+      const raw = new TextDecoder("utf-8").decode(input.bytes);
+      if (!raw.trim()) {
+        return { ok: false, error: "The file has no readable text.", extractor };
+      }
+      const text = normalizeExtractedText(raw, "plain");
+      if (!text) {
         return { ok: false, error: "The file has no readable text.", extractor };
       }
       return {

@@ -51,7 +51,7 @@ that both be verified working.
   docling, before LlamaParse (free/local first, hosted fallback). Cleanup
   seam applies (plain or markdown per its output). Sanitized-fixture
   contract test in CI; never live calls in CI (coding.md).
-- **Live smoke script (local only).** `scripts/smoke/extraction-providers.ts`:
+- **Live smoke script (local only).** `scripts/smoke/extraction-providers.mts`:
   runs one real PDF through every configured provider (docling if
   `DOCLING_SERVE_URL`, Reducto, LlamaParse), prints extractor id, page
   count, char count, and the first 200 chars of cleaned text. Never part of
@@ -273,7 +273,7 @@ plain-text) with no second pass in the domain.
 | `src/integrations/extraction/llamaparse.ts` | apply cleanup (markdown) |
 | `src/integrations/extraction/pdf-text-layer.ts` | apply cleanup (plain) |
 | `src/integrations/extraction/plain-text.ts` | apply cleanup (plain) |
-| `scripts/smoke/extraction-providers.ts` | new: local-only live smoke over configured providers (D13) |
+| `scripts/smoke/extraction-providers.mts` | new: local-only live smoke over configured providers (D13) |
 | `tests/unit/extraction-cleanup.test.ts` | new: cleanup rules table-driven |
 | `tests/integration/document-extraction.test.ts` | extend: empty docling result fails; Reducto sanitized-fixture contract test |
 
@@ -285,7 +285,7 @@ plain-text) with no second pass in the domain.
 - Integration: extraction stores cleaned text; a docling empty response is a
   failed extraction with the named error (fixture-level, no live docling in CI);
   Reducto adapter against a sanitized fixture (D13).
-- Live smoke (D13, local only, never in CI): `scripts/smoke/extraction-providers.ts`
+- Live smoke (D13, local only, never in CI): `scripts/smoke/extraction-providers.mts`
   over the configured providers with one real PDF — verifies the owner's new
   LlamaParse and Reducto keys end to end.
 - E2E: extend `shared-command-layer.spec.ts` journey — capture → row appears
@@ -355,7 +355,7 @@ from the eng review remain in force).
   - Verify: axe scan + keyboard-only journey
 - [ ] **T9 (P1, human: ~4h / CC: ~30min)** — extraction — Reducto adapter + provider priority + live smoke script (D13)
   - Surfaced by: Pass 7 — D13; owner provisioned REDUCTO_API_KEY
-  - Files: src/integrations/extraction/reducto.ts, src/domains/knowledge/extraction.ts, scripts/smoke/extraction-providers.ts
+  - Files: src/integrations/extraction/reducto.ts, src/domains/knowledge/extraction.ts, scripts/smoke/extraction-providers.mts
   - Verify: run smoke script locally against LlamaParse + Reducto keys
 - [ ] **T10 (P2, human: ~1h / CC: ~10min)** — inbox — detail pane URL-capture rendering + state-exact action wording (D14, D15)
   - Surfaced by: Pass 7 — D14, D15

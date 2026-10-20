@@ -27,16 +27,19 @@ test("global capture and search open the exact shared task without losing the or
 
   // The durable inbox proves the same retain-the-original contract against
   // Postgres: capture, convert to a canonical task, original text survives.
+  // The two-pane inbox: the composer expands on focus, capture selects the
+  // new row (?id=), and actions live in the detail pane.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await page.getByLabel("Original material").fill(`Inbox original ${tag}\nKeep this original context`);
+  await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(`Inbox original ${tag}\nKeep this original context`);
   await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
-  const inboxOriginal = page.getByRole("article").filter({ hasText: `Inbox original ${tag}` });
-  await expect(inboxOriginal).toContainText("Keep this original context");
-  await inboxOriginal.getByRole("button", { name: "Make task", exact: true }).click();
+  await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
+  const detail = page.getByRole("article");
+  await expect(detail).toContainText(`Inbox original ${tag}`);
+  await expect(detail).toContainText("Keep this original context");
+  await detail.getByRole("button", { name: "Make task", exact: true }).click();
   await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Converted", exact: true }).click();
-  await expect(inboxOriginal).toContainText("Keep this original context");
-  await expect(inboxOriginal.getByRole("link", { name: "Open task in Work" })).toBeVisible();
+  await expect(page.getByRole("article").getByRole("link", { name: "Open task in Work" })).toBeVisible();
 });
 
 test("the header capture dialog validates pasted URLs and a captured item survives reload in the durable inbox", async ({ page }) => {
@@ -58,11 +61,59 @@ test("the header capture dialog validates pasted URLs and a captured item surviv
   await expect(page.getByRole("dialog")).toBeHidden();
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
+  await expect(page.getByRole("list").getByText("Preserve these bytes")).toBeVisible();
   await page.reload();
   await waitSettled(page);
-  await expect(page.getByRole("article").filter({ hasText: "Preserve these bytes" })).toBeVisible();
+  await expect(page.getByRole("list").getByText("Preserve these bytes")).toBeVisible();
 });
+test("bulk archive moves two captures in one pass with per-row errors visible on conflict", async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const first = `Bulk one ${tag}`;
+  const second = `Bulk two ${tag}`;
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  for (const body of [first, second]) {
+    await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(body);
+    await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+    await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
+    await expect(page.getByRole("article")).toContainText(body);
+  }
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await page.getByRole("checkbox", { name: `Select capture: ${first}` }).check();
+  await page.getByRole("checkbox", { name: `Select capture: ${second}` }).check();
+  const toolbar = page.getByRole("toolbar", { name: "Bulk actions" });
+  await expect(toolbar).toContainText("2 selected");
+  await toolbar.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(toolbar).toBeHidden();
+  await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Archived", exact: true }).click();
+  await expect(page.getByRole("list").getByText(first)).toBeVisible();
+  await expect(page.getByRole("list").getByText(second)).toBeVisible();
+});
+
+test("a capture outside the current filter still renders in the detail pane and the filtered-empty state is distinct", async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const body = `Filter edge ${tag}`;
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(body);
+  await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+  const detailUrl = page.url();
+  expect(detailUrl).toMatch(/id=[0-9a-f-]{36}$/);
+
+  // From the converted tab the capture is outside the filter, but ?id= still
+  // renders it: the detail pane is a view of the record, not of the view.
+  await page.goto(detailUrl.replace("inbox?", "inbox?filter=converted&"));
+  await waitSettled(page);
+  await expect(page.getByRole("article")).toContainText(body);
+
+  // An impossible search yields the filtered-empty state, not the zero state.
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await page.getByPlaceholder("Search captures").fill(`no-such-capture-${tag}`);
+  await expect(page.getByText("Nothing in this view")).toBeVisible();
+});
+
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
   // The representative preview route: notebook handed off to the canonical
   // /alfred/notebook surface (B04), so this leg uses the dictionary preview.
