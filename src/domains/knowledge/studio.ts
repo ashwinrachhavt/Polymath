@@ -18,12 +18,25 @@ import { documents } from "./schema";
 
 export class StudioError extends Error {
   constructor(
-    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked",
+    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind",
     message: string,
   ) {
     super(message);
     this.name = "StudioError";
   }
+}
+
+/*
+ * The kinds Studio generates and can reopen. A report, a deck and an
+ * infographic are the same container with a different shape, so every guard
+ * below reads this one set. Hardcoding "report" here is what filed a generated
+ * deck as a report and then refused to open it (eng review, 2026-10-19).
+ */
+export const GENERATABLE_KINDS = ["report", "deck", "infographic"] as const;
+export type GeneratableKind = (typeof GENERATABLE_KINDS)[number];
+
+export function isGeneratableKind(value: string): value is GeneratableKind {
+  return (GENERATABLE_KINDS as readonly string[]).includes(value);
 }
 
 /** Starts the run. The objective names the dossier, and the run is bound to it so search stays inside it. */
@@ -52,7 +65,9 @@ export async function startStudioGenerate(
  * per run (one artifact per run). Links the dossier's documents with the
  * content hash each was pinned at, and the run itself.
  */
-export async function saveGeneratedDraft(auth: AuthContext, input: { runId: string; title?: string }) {
+export async function saveGeneratedDraft(auth: AuthContext, input: { runId: string; title?: string; kind?: GeneratableKind }) {
+  const kind = input.kind ?? "report";
+  if (!isGeneratableKind(kind)) throw new StudioError("unsupported_kind", "That artifact kind is not generated here.");
   return withTransaction(async (tx) => {
     const [run] = await tx
       .select({ id: agentRuns.id, subjects: agentRuns.subjects, objective: agentRuns.objective })
@@ -82,7 +97,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       .insert(artifacts)
       .values({
         workspaceId: auth.workspaceId,
-        kind: "report",
+        kind,
         title: (input.title?.trim() || run.objective).slice(0, 200),
         status: "draft",
         producedByRunId: run.id,
@@ -192,7 +207,7 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     .from(artifacts)
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
-  if (!artifact || artifact.kind !== "report") throw new StudioError("draft_not_found", "No such draft.");
+  if (!artifact || !isGeneratableKind(artifact.kind)) throw new StudioError("draft_not_found", "No such draft.");
 
   const [version] = artifact.currentVersionId
     ? await db
@@ -251,7 +266,7 @@ export async function editGeneratedDraft(
             eq(artifacts.id, input.artifactId),
             eq(artifacts.workspaceId, auth.workspaceId),
             eq(artifacts.version, input.expectedVersion),
-            eq(artifacts.kind, "report"),
+            inArray(artifacts.kind, GENERATABLE_KINDS),
             inArray(artifacts.status, ["draft", "reviewed"]),
           ),
         )

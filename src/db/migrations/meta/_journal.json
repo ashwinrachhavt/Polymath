@@ -295,6 +295,13 @@
       "tag": "0213_provider_quota_ledger",
       "when": 1792480430000,
       "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "tag": "0214_artifact_kinds",
+      "when": 1792480440000,
+      "breakpoints": true
     }
   ]
 }

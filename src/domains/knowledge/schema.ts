@@ -46,6 +46,8 @@ export const artifactKind = pgEnum("artifact_kind", [
   "report",
   "diagram",
   "transcript",
+  "deck",
+  "infographic",
   "other",
 ]);
 export const artifactStatus = pgEnum("artifact_status", [
