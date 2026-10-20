@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Readout } from "@/components/readout";
 import { getAuthContext } from "@/lib/auth";
 import { getReadableDocument } from "@/domains/knowledge/reading";
+import { listPassages, segmentText } from "@/domains/knowledge/passages";
 import { ReadingShell } from "./reading-tracker";
 
 export const metadata = { title: "Read · Polymath" };
@@ -24,6 +25,7 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
   const doc = await getReadableDocument(auth, documentId);
   if (!doc) notFound();
 
+  const passages = await listPassages(auth, doc.id);
   const progress = doc.state?.furthestProgress ?? 0;
 
   return (
@@ -71,7 +73,11 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
             extraction from Knowledge.
           </p>
         ) : (
-          <ReadingShell documentId={doc.id}>{doc.extraction.text ?? ""}</ReadingShell>
+          <ReadingShell
+            documentId={doc.id}
+            segments={segmentText(doc.extraction.text ?? "", passages)}
+            canSave={auth.role !== "viewer"}
+          />
         )}
       </div>
     </div>

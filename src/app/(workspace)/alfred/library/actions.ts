@@ -1,6 +1,8 @@
 "use server";
 
 import { z } from "zod";
+import { PassageError, savePassageAsZettel } from "@/domains/knowledge/passages";
+import { revalidatePath } from "next/cache";
 import { recordReadingEvent, ReadingDocumentMissingError } from "@/domains/knowledge/reading";
 import { restoreDocumentVersion, VersionRestoreError } from "@/domains/knowledge/versions";
 import { archiveDocument, DocumentLifecycleError } from "@/domains/knowledge/documents";
@@ -97,6 +99,30 @@ export async function archiveDocumentAction(raw: z.infer<typeof archiveSchema>) 
       if (cause.code === "already_archived") return { ok: false as const, error: "That document is already archived." };
       if (cause.code === "stale_write") return { ok: false as const, error: "That document changed. Reload to see the current state." };
     }
+    throw cause;
+  }
+}
+
+/*
+ * Keep a selected passage as a zettel with a source edge to the document. A
+ * write, so member or above; a viewer reads but does not add cards.
+ */
+const passageSchema = z.object({
+  documentId: z.string().uuid(),
+  quote: z.string().min(1).max(4000),
+  comment: z.string().max(2000).optional(),
+});
+
+export async function savePassageAction(raw: z.infer<typeof passageSchema>) {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = passageSchema.parse(raw);
+  try {
+    const result = await savePassageAsZettel(auth, input);
+    revalidatePath(`/alfred/library/${input.documentId}`);
+    return { ok: true as const, ...result };
+  } catch (cause) {
+    if (cause instanceof PassageError) return { ok: false as const, error: cause.message };
     throw cause;
   }
 }

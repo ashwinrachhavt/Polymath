@@ -2,7 +2,7 @@
 
 import { RELATION_GROUPS, RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relation-vocabulary";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Panel, Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for the canonical notebook. The body is Markdown inside
@@ -200,6 +200,10 @@ export function NoteEditor({
   backlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
 }) {
+  const findLinkTargets = useCallback(
+    (query: string, mode: "keyword" | "hybrid") => findLinkTargetsAction({ query, mode, excludeId: noteId }),
+    [noteId],
+  );
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [markdown, setMarkdown] = useState(initialMarkdown);
@@ -491,7 +495,7 @@ export function NoteEditor({
             <dd className="text-xs">v{initialVersion}</dd>
           </span>
         </dl>
-        <RichEditor content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
+        <RichEditor findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
         {ai && (
           <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <div className="flex items-center gap-2">

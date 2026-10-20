@@ -13,7 +13,7 @@ import { useAlfredPreview } from "./preview-state";
 export default function Dossiers({ initialId }: { initialId?: string }) {
   const { state, addArtifact, updateArtifact, notify } = useWorkspace();
   const preview = useAlfredPreview();
-  const [id, setId] = useState(initialId || "dossier-axiom");
+  const [id, setId] = useState(initialId || "");
   const records = state.artifacts.filter((item) => item.kind === "dossier");
   const record = records.find((item) => item.id === id);
   const sources = state.artifacts.filter((item) => ["source", "document"].includes(item.kind));

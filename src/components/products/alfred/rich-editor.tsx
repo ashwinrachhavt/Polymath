@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -17,6 +17,11 @@ import { SearchField, Unavailable } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
 
+/** A card the `[[` picker can offer. `version` only comes from the local preview store. */
+export type LinkTarget = { id: string; title: string; kind: string; version?: number };
+/** Search the workspace's cards. "keyword" answers fast; "hybrid" adds meaning and takes longer. */
+export type FindLinkTargets = (query: string, mode: "keyword" | "hybrid") => Promise<LinkTarget[]>;
+
 export type RichEditorAI = {
   pending: boolean;
   onAction: (request: NoteAIRequest) => void;
@@ -25,7 +30,7 @@ export type RichEditorAI = {
   onOpenChange?: (open: boolean) => void;
 };
 
-export default function RichEditor({ content, onChange, ai }: { content: string; onChange: (content: string) => void; ai?: RichEditorAI }) {
+export default function RichEditor({ content, onChange, ai, findLinkTargets }: { content: string; onChange: (content: string) => void; ai?: RichEditorAI; findLinkTargets?: FindLinkTargets }) {
   const [preferred, setPreferred] = useState<MarkdownEditorMode>(() => markdownEditorMode(content));
   const reason = markdownSourceReason(content);
   const mode = markdownEditorMode(content, preferred);
@@ -35,7 +40,7 @@ export default function RichEditor({ content, onChange, ai }: { content: string;
   const readTextareaSelection = (textarea: HTMLTextAreaElement) => {
     setSelection(textarea.selectionStart === textarea.selectionEnd ? "" : textarea.value.slice(textarea.selectionStart, textarea.selectionEnd));
   };
-  return <div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><Button type="button" variant={mode === "rich" ? "secondary" : "outline"} aria-pressed={mode === "rich"} disabled={!!reason} onClick={() => setPreferred("rich")}>Rich text</Button><Button type="button" variant={mode === "source" ? "secondary" : "outline"} aria-pressed={mode === "source"} onClick={() => setPreferred("source")}>Markdown source</Button>{ai ? <NoteAIMenu selection={selection} pending={ai.pending} onAction={ai.onAction} open={ai.open} onOpenChange={ai.onOpenChange} /> : null}</div>{reason && <p role="status" className="text-[13px] leading-relaxed text-muted-foreground">This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those constructs in source.</p>}{mode === "source" ? <Textarea aria-label="Markdown source" className="min-h-72 font-mono text-[13px]" value={content} onChange={(event) => onChange(event.target.value)} onSelect={(event) => readTextareaSelection(event.currentTarget)} onKeyUp={(event) => readTextareaSelection(event.currentTarget)} /> : <RichMarkdownEditor content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined} />}</div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><Button type="button" variant={mode === "rich" ? "secondary" : "outline"} aria-pressed={mode === "rich"} disabled={!!reason} onClick={() => setPreferred("rich")}>Rich text</Button><Button type="button" variant={mode === "source" ? "secondary" : "outline"} aria-pressed={mode === "source"} onClick={() => setPreferred("source")}>Markdown source</Button>{ai ? <NoteAIMenu selection={selection} pending={ai.pending} onAction={ai.onAction} open={ai.open} onOpenChange={ai.onOpenChange} /> : null}</div>{reason && <p role="status" className="text-[13px] leading-relaxed text-muted-foreground">This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those constructs in source.</p>}{mode === "source" ? <Textarea aria-label="Markdown source" className="min-h-72 font-mono text-[13px]" value={content} onChange={(event) => onChange(event.target.value)} onSelect={(event) => readTextareaSelection(event.currentTarget)} onKeyUp={(event) => readTextareaSelection(event.currentTarget)} /> : <RichMarkdownEditor findLinkTargets={findLinkTargets} content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined} />}</div>;
 }
 
 /*
@@ -74,16 +79,34 @@ function SlashMenu({ items, active, onPick }: { items: BlockCommand[]; active: n
   </div>;
 }
 
-function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI, onEmptySpace }: { content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean; onEmptySpace?: () => void }) {
+function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI, onEmptySpace, findLinkTargets }: { findLinkTargets?: FindLinkTargets; content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean; onEmptySpace?: () => void }) {
   const { state, notify } = useWorkspace();
   const [slash, setSlash] = useState<{ query: string; from: number; to: number } | null>(null);
   const [link, setLink] = useState<{ query: string; from: number; to: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [linkActive, setLinkActive] = useState(0);
   const [slashActive, setSlashActive] = useState(0);
   const [url, setUrl] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [recordQuery, setRecordQuery] = useState("");
   const [recordOpen, setRecordOpen] = useState(false);
+  // With a finder, candidates come from the workspace's own cards: the fast
+  // keyword answer first, then the meaning-aware ranking once typing pauses.
+  const [remote, setRemote] = useState<LinkTarget[]>([]);
+  const wanted = link ? link.query : recordOpen ? recordQuery.toLowerCase() : null;
+  useEffect(() => {
+    if (!findLinkTargets || wanted === null) return;
+    let live = true;
+    const query = wanted;
+    void findLinkTargets(query, "keyword").then((rows) => { if (live) setRemote(rows); });
+    const timer = query.trim() ? setTimeout(() => { void findLinkTargets(query, "hybrid").then((rows) => { if (live) setRemote(rows); }); }, 250) : undefined;
+    return () => { live = false; if (timer) clearTimeout(timer); };
+  }, [findLinkTargets, wanted]);
+  const candidates = (query: string): LinkTarget[] =>
+    findLinkTargets ? remote : state.artifacts.filter((artifact) => artifact.id !== undefined && artifact.title.toLowerCase().includes(query)).slice(0, 8);
+  const candidatesRef = useRef(candidates);
+  useEffect(() => { candidatesRef.current = candidates; });
   const editor = useEditor({ extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "Write a working note. Press space for AI, / for a block, [[ to link a record." }), Markdown], content, contentType: "markdown", immediatelyRender: false, editorProps: { handleKeyDown: (_view, event) => {
     // Space on an empty paragraph is the AI affordance (Notion-style): open
     // the menu instead of inserting a space into a blank line.
@@ -98,7 +121,7 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
     // The link menu is handled before the slash menu so the two never both
     // respond to the same key. Enter inserts the active record's [[title]].
     if (link) {
-      const matches = state.artifacts.filter((artifact) => artifact.id !== undefined && artifact.title.toLowerCase().includes(link.query)).slice(0, 8);
+      const matches = candidatesRef.current(link.query);
       if (matches.length > 0) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setLinkActive((current) => (current + (event.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length); return true; }
         if (event.key === "Enter" || event.key === "Escape") {
@@ -132,10 +155,23 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
     if (linkText !== undefined) setLinkActive(0);
   } });
   const slashMatches = slash ? filterBlockCommands(slash.query) : [];
-  const linkMatches = link ? state.artifacts.filter((artifact) => artifact.id !== undefined && artifact.title.toLowerCase().includes(link.query)).slice(0, 8) : [];
+  const linkMatches = link ? candidates(link.query) : [];
   const formatting = useEditorState({ editor, selector: ({ editor }) => ({ bold: editor?.isActive("bold"), italic: editor?.isActive("italic"), bulletList: editor?.isActive("bulletList"), orderedList: editor?.isActive("orderedList"), blockquote: editor?.isActive("blockquote"), heading: editor?.isActive("heading", { level: 2 }), canUndo: editor?.can().undo(), canRedo: editor?.can().redo() }) });
+  // Menus open under the caret line, inside the panel, so they never cover the text being typed.
+  const menuAnchor = link?.to ?? slash?.to ?? null;
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!editor || !panel || menuAnchor === null) return;
+    try {
+      const caret = editor.view.coordsAtPos(menuAnchor);
+      const box = panel.getBoundingClientRect();
+      setMenuPos({ top: caret.bottom - box.top + 4, left: Math.max(8, Math.min(caret.left - box.left, box.width - 296)) });
+    } catch {
+      setMenuPos(null);
+    }
+  }, [editor, menuAnchor]);
   useEffect(() => { if (editor && editor.getMarkdown() !== content) editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false }); }, [content, editor]);
-  return <div className="relative panel overflow-hidden rounded-lg">{slash && slashMatches.length > 0 && <div className="absolute top-12 left-4"><SlashMenu items={slashMatches} active={slashActive} onPick={(command) => { editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (editor) applyBlock(editor, command); setSlash(null); }} /></div>}{link && linkMatches.length > 0 && <div className="absolute top-12 left-4"><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${artifact.title}]] `).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind} / v{artifact.version}</span></button>)}</div></div>}<div role="toolbar" aria-label="Formatting" className="flex flex-wrap gap-1 border-b border-border p-2">{[
+  return <div ref={panelRef} className="relative panel overflow-hidden rounded-lg">{slash && slashMatches.length > 0 && <div className="absolute z-50 top-12 left-4" style={menuPos ?? undefined}><SlashMenu items={slashMatches} active={slashActive} onPick={(command) => { editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (editor) applyBlock(editor, command); setSlash(null); }} /></div>}{link && linkMatches.length > 0 && <div className="absolute z-50 top-12 left-4" style={menuPos ?? undefined}><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${artifact.title}]] `).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind}{artifact.version !== undefined ? ` / v${artifact.version}` : ""}</span></button>)}</div></div>}<div role="toolbar" aria-label="Formatting" className="flex flex-wrap gap-1 border-b border-border p-2">{[
     { label: "Bold", icon: Bold, active: formatting?.bold, run: () => editor?.chain().focus().toggleBold().run() },
     { label: "Italic", icon: Italic, active: formatting?.italic, run: () => editor?.chain().focus().toggleItalic().run() },
     { label: "Bullet list", icon: List, active: formatting?.bulletList, run: () => editor?.chain().focus().toggleBulletList().run() },
@@ -143,5 +179,7 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
     { label: "Quote", icon: Quote, active: formatting?.blockquote, run: () => editor?.chain().focus().toggleBlockquote().run() },
     { label: "Undo", icon: Undo2, disabled: !formatting?.canUndo, run: () => editor?.chain().focus().undo().run() },
     { label: "Redo", icon: Redo2, disabled: !formatting?.canRedo, run: () => editor?.chain().focus().redo().run() },
-  ].map(({ label, icon: Icon, active, disabled, run }) => <Button type="button" key={label} size="icon" variant={active ? "secondary" : "ghost"} aria-label={label} title={label} aria-pressed={active} onClick={run} disabled={!editor || disabled}><Icon aria-hidden /></Button>)}<Button type="button" variant="ghost" aria-pressed={formatting?.heading} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} disabled={!editor}>Heading</Button><Dialog open={linkOpen} onOpenChange={setLinkOpen}><DialogTrigger asChild><Button type="button" variant="ghost">Link</Button></DialogTrigger><DialogContent><DialogTitle>Link selected text</DialogTitle><DialogDescription>Select text in the editor first. Enter an http, https or relative Polymath URL; leave blank to remove a link.</DialogDescription><form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (url && !/^(https?:\/\/|\/apps\/)/.test(url)) { notify("Use an http, https or /apps/ link. Other schemes are not allowed."); return; } if (url) editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run(); else editor?.chain().focus().unsetLink().run(); setLinkOpen(false); }}><Input aria-label="Link URL" value={url} onChange={(e) => setUrl(e.target.value)} /><Button type="submit">Apply link</Button></form></DialogContent></Dialog><Dialog open={recordOpen} onOpenChange={setRecordOpen}><DialogTrigger asChild><Button type="button" variant="ghost">Link an artifact</Button></DialogTrigger><DialogContent className="sm:max-w-lg"><DialogTitle>Insert canonical artifact link</DialogTitle><DialogDescription>Equivalent to linking a knowledge page: inserts a Markdown link to an existing artifact identity. Save in Notebook to capture its backlink.</DialogDescription><SearchField value={recordQuery} onChange={setRecordQuery} placeholder="Search notes and knowledge" /><div className="max-h-72 space-y-1 overflow-y-auto">{state.artifacts.filter((item) => item.title.toLowerCase().includes(recordQuery.toLowerCase())).map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent({ type: "text", text: item.title, marks: [{ type: "link", attrs: { href: artifactHref(item) } }] }).run(); setRecordOpen(false); }}>{item.title}</Button>)}</div></DialogContent></Dialog>{hidePlaceholderAI ? null : <Dialog><DialogTrigger asChild><Button type="button" variant="ghost">Ask AI</Button></DialogTrigger><DialogContent><DialogTitle>Contextual writing assistance</DialogTitle><DialogDescription>Inline assistance controls are represented here, but no model-generated edits are simulated.</DialogDescription><Unavailable feature="Inline writing AI" /><div className="grid grid-cols-2 gap-2">{["Improve writing", "Fix spelling", "Make shorter", "Make longer", "Simplify", "Continue", "Summarize", "Extract action items", "Translate", "Change tone"].map((label) => <Button type="button" key={label} disabled variant="outline">{label}</Button>)}</div><p className="text-xs text-muted-foreground">Production edits must be staged as a reviewable proposal before acceptance. No generated text has been inserted.</p></DialogContent></Dialog>}</div><EditorContent editor={editor} /></div>;
+  ].map(({ label, icon: Icon, active, disabled, run }) => <Button type="button" key={label} size="icon" variant={active ? "secondary" : "ghost"} aria-label={label} title={label} aria-pressed={active} onClick={run} disabled={!editor || disabled}><Icon aria-hidden /></Button>)}<Button type="button" variant="ghost" aria-pressed={formatting?.heading} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} disabled={!editor}>Heading</Button><Dialog open={linkOpen} onOpenChange={setLinkOpen}><DialogTrigger asChild><Button type="button" variant="ghost">Link</Button></DialogTrigger><DialogContent><DialogTitle>Link selected text</DialogTitle><DialogDescription>Select text in the editor first. Enter an http, https or relative Polymath URL; leave blank to remove a link.</DialogDescription><form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (url && !/^(https?:\/\/|\/apps\/)/.test(url)) { notify("Use an http, https or /apps/ link. Other schemes are not allowed."); return; } if (url) editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run(); else editor?.chain().focus().unsetLink().run(); setLinkOpen(false); }}><Input aria-label="Link URL" value={url} onChange={(e) => setUrl(e.target.value)} /><Button type="submit">Apply link</Button></form></DialogContent></Dialog><Dialog open={recordOpen} onOpenChange={setRecordOpen}><DialogTrigger asChild><Button type="button" variant="ghost">Link an artifact</Button></DialogTrigger><DialogContent className="sm:max-w-lg"><DialogTitle>Insert canonical artifact link</DialogTitle><DialogDescription>Equivalent to linking a knowledge page: inserts a Markdown link to an existing artifact identity. Save in Notebook to capture its backlink.</DialogDescription><SearchField value={recordQuery} onChange={setRecordQuery} placeholder="Search notes and knowledge" /><div className="max-h-72 space-y-1 overflow-y-auto">{findLinkTargets
+      ? remote.map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent(`[[${item.title}]] `).run(); setRecordOpen(false); }}>{item.title}</Button>)
+      : state.artifacts.filter((item) => item.title.toLowerCase().includes(recordQuery.toLowerCase())).map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent({ type: "text", text: item.title, marks: [{ type: "link", attrs: { href: artifactHref(item) } }] }).run(); setRecordOpen(false); }}>{item.title}</Button>)}</div></DialogContent></Dialog>{hidePlaceholderAI ? null : <Dialog><DialogTrigger asChild><Button type="button" variant="ghost">Ask AI</Button></DialogTrigger><DialogContent><DialogTitle>Contextual writing assistance</DialogTitle><DialogDescription>Inline assistance controls are represented here, but no model-generated edits are simulated.</DialogDescription><Unavailable feature="Inline writing AI" /><div className="grid grid-cols-2 gap-2">{["Improve writing", "Fix spelling", "Make shorter", "Make longer", "Simplify", "Continue", "Summarize", "Extract action items", "Translate", "Change tone"].map((label) => <Button type="button" key={label} disabled variant="outline">{label}</Button>)}</div><p className="text-xs text-muted-foreground">Production edits must be staged as a reviewable proposal before acceptance. No generated text has been inserted.</p></DialogContent></Dialog>}</div><EditorContent editor={editor} /></div>;
 }

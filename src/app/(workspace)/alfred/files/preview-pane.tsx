@@ -115,7 +115,7 @@ export function PreviewPane({
   ];
 
   return (
-    <aside aria-label="Preview" className="border-border bg-background flex w-full shrink-0 flex-col border-t md:w-[22rem] md:border-t-0 md:border-l">
+    <aside aria-label="Preview" className="border-border bg-background flex w-full shrink-0 flex-col border-t min-[1400px]:w-[22rem] min-[1400px]:border-t-0 min-[1400px]:border-l">
       <div className="border-border flex items-start justify-between gap-2 border-b px-4 py-3">
         <div className="min-w-0">
           <h2 className="font-display truncate text-lg leading-tight">{row.title}</h2>
@@ -129,7 +129,7 @@ export function PreviewPane({
           <X aria-hidden className="size-4" />
         </button>
       </div>
-      <div className="border-border flex items-center gap-2 border-b px-4 py-2">
+      <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
         <Button asChild size="sm">
           <Link href={`/alfred/library/${row.id}`}>Open</Link>
         </Button>
