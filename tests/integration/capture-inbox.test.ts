@@ -117,4 +117,33 @@ suite("capture inbox", () => {
       commands.setCaptureState(auth, { captureId: after.id, expectedVersion: after.version, state: "discarded" }),
     ).rejects.toMatchObject({ code: "stale_write" });
   });
+
+  // Two-pane inbox reads (2026-10-20): the detail pane and the tab counts.
+  it("getCapture never returns another workspace's capture", async () => {
+    const auth = await seed("get-capture");
+    const capture = await commands.createCapture(auth, { text: "Mine only" });
+    const other = await seedWorkspace(db, `get-capture-other-${Date.now()}`);
+    const otherAuth = ownerAuth(other.userId, other.workspaceId);
+    expect(await queries.getCapture(auth, capture.id)).toMatchObject({ id: capture.id });
+    expect(await queries.getCapture(otherAuth, capture.id)).toBeNull();
+  });
+
+  it("countInboxTabs matches the state set searchCaptures uses", async () => {
+    const auth = await seed("tab-counts");
+    const open = await commands.createCapture(auth, { text: "Open one" });
+    await commands.createCapture(auth, { text: "Open two" });
+    const converted = await commands.createCapture(auth, { text: "Going to work" });
+    await commands.convertCaptureToTask(auth, { captureId: converted.id, expectedVersion: converted.version });
+    const discardable = await commands.createCapture(auth, { text: "Going away" });
+    await commands.setCaptureState(auth, { captureId: discardable.id, expectedVersion: discardable.version, state: "discarded" });
+    void open;
+
+    const tabs = await queries.countInboxTabs(auth);
+    expect(tabs.unprocessed).toBe(2);
+    expect(tabs.converted).toBe(1);
+    expect(tabs.discarded).toBe(1);
+    expect(tabs.all).toBe(4);
+    expect((await queries.searchCaptures(auth, { filter: "converted", limit: 10, offset: 0 })).total).toBe(tabs.converted);
+    expect((await queries.searchCaptures(auth, { filter: "all", limit: 10, offset: 0 })).total).toBe(tabs.all);
+  });
 });

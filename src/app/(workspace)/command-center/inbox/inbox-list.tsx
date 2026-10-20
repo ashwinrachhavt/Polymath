@@ -51,18 +51,18 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
       ? current.map((row) => (row.id === decision.id ? { ...row, processingState: decision.next } : row))
       : current.filter((row) => row.id !== decision.id),
   );
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [bulkErrors, setBulkErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
 
   const bulk = selected.size > 0;
+  // Converted rows cannot transition; every other selected row is sent and
+  // non-permitting rows fail through the setCaptureState domain guard (D15).
   const bulkTargets = optimisticRows.filter(
-    (row) => selected.has(row.id) && (row.processingState === "discarded" ? true : row.processingState !== "converted"),
+    (row) => selected.has(row.id) && row.processingState !== "converted",
   );
 
   function bulkAct(next: "discarded" | "unprocessed") {
-    setError(null);
     const targets = bulkTargets;
     startTransition(async () => {
       const failures: Array<{ id: string; title: string; message: string }> = [];
@@ -127,9 +127,6 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
                   </p>
                 </Link>
               </div>
-              {error?.id === capture.id ? (
-                <p className="px-8 pb-2 text-destructive text-[13px]" role="alert">{error.message}</p>
-              ) : null}
             </li>
           );
         })}

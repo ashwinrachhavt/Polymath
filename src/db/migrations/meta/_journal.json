@@ -295,6 +295,13 @@
       "tag": "0213_provider_quota_ledger",
       "when": 1792480430000,
       "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "tag": "0214_captures_inbox_tabs_index",
+      "when": 1792484565232,
+      "breakpoints": true
     }
   ]
 }

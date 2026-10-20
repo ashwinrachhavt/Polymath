@@ -20,6 +20,15 @@ function when(iso: string): string {
   return iso.slice(0, 16).replace("T", " ") + "Z";
 }
 
+/** Only http(s) may render as a live anchor; createCapture enforces this today, the render guard keeps it true regardless of future producers. */
+function isHttpUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "http:" || new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> & { text: string | null }) | null }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -63,7 +72,7 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
     <article className="min-w-0">
       <header className="flex flex-wrap items-center gap-2">
         <h2 ref={headingRef} tabIndex={-1} className="text-[13px] font-medium focus-visible:outline-none">
-          {capture.kind === "url" && capture.url ? (
+          {capture.kind === "url" && capture.url && isHttpUrl(capture.url) ? (
             <a href={capture.url} target="_blank" rel="noreferrer" className="readout break-all underline-offset-4 hover:underline">
               {capture.url}
             </a>

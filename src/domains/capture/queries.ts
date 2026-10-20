@@ -95,10 +95,6 @@ export async function countInboxTabs(auth: AuthContext): Promise<Record<InboxFil
 }
 
 export async function countToClarify(auth: AuthContext): Promise<number> {
-  const rows = await db.execute(sql`
-    select count(*)::int as n from captures
-    where workspace_id = ${auth.workspaceId}
-      and processing_state in ('unprocessed', 'classifying', 'enriched', 'failed')
-  `);
-  return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
+  const tabs = await countInboxTabs(auth);
+  return tabs.unprocessed;
 }

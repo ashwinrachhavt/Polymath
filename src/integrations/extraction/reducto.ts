@@ -4,7 +4,7 @@ import type {
   ExtractionProvider,
   ExtractionResult,
 } from "./provider";
-import { normalizePageText, normalizeExtractedText } from "./cleanup";
+import { normalizePageText } from "./cleanup";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 
 /*
@@ -123,8 +123,10 @@ export function createReductoProvider(
         });
         const PAGE_BREAK = "\n\n";
         let text = "";
-        // Cleanup per page, before the join: offsets stay correct for the
-        // spans accumulated over the joined text.
+        // Pages are already normalizePageText'd above, so the span offsets
+        // computed over the join match the returned text exactly. No second
+        // normalize pass here: collapsing blank lines after the join would
+        // shift every later span (cleanup.ts's own rule).
         const spans = pages.map((page, index) => {
           if (index > 0) text += PAGE_BREAK;
           const start = text.length;
@@ -136,7 +138,7 @@ export function createReductoProvider(
         }
         return {
           ok: true,
-          text: normalizeExtractedText(text, "markdown"),
+          text,
           spans,
           pageCount: pages.length,
           extractor,
