@@ -222,3 +222,78 @@ function firstLine(text: string | null): string | null {
   const line = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
   return line ? line.slice(0, 240) : null;
 }
+
+/* ---------------------------------------------------------------------------
+ * Canvas reads and writes. The graph canvas shows the same one store: nodes
+ * are notes and zettels, edges are artifact_links rows (explicit or semantic).
+ * ------------------------------------------------------------------------- */
+
+export type GraphNode = { id: string; title: string; kind: string; excerpt: string | null };
+export type GraphEdge = { id: string; source: string; target: string; linkType: string; score: number | null };
+
+const GRAPH_NODE_LIMIT = 150;
+
+export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  const result = await db.execute(sql`
+    select a.id, a.title, a.kind,
+           (select v.plain_text from artifact_versions v where v.id = a.current_version_id) as excerpt
+    from artifacts a
+    where a.workspace_id = ${auth.workspaceId}
+      and a.kind in ('note', 'zettel')
+      and a.archived_at is null
+    order by a.updated_at desc
+    limit ${GRAPH_NODE_LIMIT}
+  `);
+  const nodes = (result as unknown as { id: string; title: string; kind: string; excerpt: string | null }[]).map((r) => ({
+    id: r.id, title: r.title, kind: r.kind, excerpt: firstLine(r.excerpt),
+  }));
+  if (!nodes.length) return { nodes, edges: [] };
+  const ids = nodes.map((n) => n.id);
+  const rows = await db
+    .select({ id: artifactLinks.id, source: artifactLinks.artifactId, target: artifactLinks.targetId, linkType: artifactLinks.linkType, score: artifactLinks.score })
+    .from(artifactLinks)
+    .where(and(
+      eq(artifactLinks.workspaceId, auth.workspaceId),
+      inArray(artifactLinks.artifactId, ids),
+      inArray(artifactLinks.targetId, ids),
+    ));
+  return { nodes, edges: rows };
+}
+
+/** Tie two cards with an explicit 'related' edge, upgrading a suggestion when one exists. */
+export async function linkCards(auth: AuthContext, input: { artifactId: string; targetId: string }): Promise<void> {
+  if (input.artifactId === input.targetId) return;
+  if (await promoteSemanticLink(auth, input)) return;
+  await withTransaction(async (tx) => {
+    const found = await tx
+      .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
+      .from(artifacts)
+      .where(and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        inArray(artifacts.id, [input.artifactId, input.targetId]),
+        inArray(artifacts.kind, ["note", "zettel"]),
+      ));
+    const target = found.find((c) => c.id === input.targetId);
+    if (found.length !== 2 || !target) throw new Error("Both cards must be notes or zettels in this workspace.");
+    const existing = await tx
+      .select({ id: artifactLinks.id })
+      .from(artifactLinks)
+      .where(and(
+        eq(artifactLinks.workspaceId, auth.workspaceId),
+        ne(artifactLinks.linkType, "semantic"),
+        or(
+          and(eq(artifactLinks.artifactId, input.artifactId), eq(artifactLinks.targetId, input.targetId)),
+          and(eq(artifactLinks.artifactId, input.targetId), eq(artifactLinks.targetId, input.artifactId)),
+        ),
+      ));
+    if (existing.length) return;
+    await tx.insert(artifactLinks).values({
+      workspaceId: auth.workspaceId,
+      artifactId: input.artifactId,
+      targetType: target.kind,
+      targetId: input.targetId,
+      label: target.title,
+      linkType: "related",
+    }).onConflictDoNothing();
+  });
+}

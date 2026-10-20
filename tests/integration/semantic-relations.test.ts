@@ -22,8 +22,8 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
-import { autosaveNoteDraft, commitNoteSnapshot, createNote, listNoteBacklinks, listNoteOutlinks } from "@/domains/knowledge/notes";
-import { materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
+import { autosaveNoteDraft, commitNoteSnapshot, createNote, listNoteBacklinks, listNoteOutlinks, synthesizeZettel } from "@/domains/knowledge/notes";
+import { linkCards, listCardGraph, materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
 
 /** Deterministic 1536-wide vectors: basis directions per key. */
 function vec(dims: number[]): number[] {
@@ -177,5 +177,23 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     const rows = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
     expect(rows.filter((r) => r.linkType === "reference")).toHaveLength(1);
     expect(await materializeSemanticEdges(auth, b.id)).toBe(0);
+  });
+
+  it("tying two cards on the canvas creates one related edge, and combining makes a zettel with lineage", async () => {
+    const auth = await workspace();
+    const a = await writeNote(auth, "Idea A", "a");
+    const b = await writeNote(auth, "Idea B", "b");
+    await linkCards(auth, { artifactId: a.id, targetId: b.id });
+    await linkCards(auth, { artifactId: b.id, targetId: a.id });
+    const graph = await listCardGraph(auth);
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges.filter((e) => e.linkType === "related")).toHaveLength(1);
+
+    const merged = await synthesizeZettel(auth, { sourceIds: [a.id, b.id], title: "A meets B" });
+    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, merged.id));
+    expect(card.kind).toBe("zettel");
+    expect((await listNoteOutlinks(auth, merged.id)).map((l) => l.id).sort()).toEqual([a.id, b.id].sort());
+    expect((await listNoteBacklinks(auth, a.id)).map((l) => l.id)).toContain(merged.id);
+    await expect(synthesizeZettel(auth, { sourceIds: [a.id] })).rejects.toThrow("at least two");
   });
 });

@@ -674,3 +674,60 @@ export async function listNoteSources(auth: AuthContext, artifactId: string) {
       .orderBy(desc(artifactLinks.createdAt));
   });
 }
+
+/*
+ * Synthesis: combine two or more cards into one new zettel. The new card is a
+ * first-class zettel (same store, same editor) whose lineage is recorded as
+ * explicit 'source' edges to every parent, so each parent shows it as a
+ * backlink and the new card lists its parents as outlinks.
+ */
+export async function synthesizeZettel(
+  auth: AuthContext,
+  input: Keyed & { sourceIds: string[]; title?: string; body?: string },
+): Promise<{ id: string; version: number }> {
+  const ids = [...new Set(input.sourceIds)];
+  if (ids.length < 2) throw new SynthesisError("Pick at least two cards to combine.");
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "synthesizeZettel", ...input }, async () => {
+      const parents = await tx
+        .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
+        .from(artifacts)
+        .where(and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.id, ids),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+        ));
+      if (parents.length !== ids.length) throw new SynthesisError("Those cards are not all available.");
+      const ordered = ids.map((id) => parents.find((p) => p.id === id)!);
+      const title = (input.title?.trim() || ordered.map((p) => p.title).join(" + ")).slice(0, 300);
+      const text = input.body?.trim() || `Combines: ${ordered.map((p) => p.title).join("; ")}.\n\nWrite the idea that only exists because these two meet.`;
+      const created = await createNoteInTx(tx, auth, {
+        title,
+        kind: "zettel",
+        content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+        plainText: text,
+      });
+      await tx.insert(artifactLinks).values(
+        ordered.map((p) => ({
+          workspaceId: auth.workspaceId,
+          artifactId: created.id,
+          targetType: p.kind,
+          targetId: p.id,
+          label: p.title,
+          linkType: "source" as const,
+          context: "Synthesized from this card.",
+        })),
+      );
+      return { id: created.id, version: created.version };
+    });
+    return value;
+  });
+}
+
+export class SynthesisError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SynthesisError";
+  }
+}
