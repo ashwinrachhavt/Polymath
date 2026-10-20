@@ -75,3 +75,45 @@ suite("calendar time blocks", () => {
     expect(y).toEqual(x);
   });
 });
+
+suite("agent calendar proposals", () => {
+  it("an agent proposal changes nothing until approved, then executes once", async () => {
+    const auth = await seed("cal-proposal");
+    const proposals = await import("@/domains/calendar/proposals");
+    const task = await work.createOwnerTask(auth, { title: "Deep work", estimateMinutes: 60 });
+    const proposed = await proposals.proposeCalendarChange(auth, {
+      change: { kind: "block", taskId: task.id, minutes: 60 },
+      dedupeKey: "agent-run-1:block",
+    });
+    const again = await proposals.proposeCalendarChange(auth, {
+      change: { kind: "block", taskId: task.id, minutes: 60 },
+      dedupeKey: "agent-run-1:block",
+    });
+    expect(again).toEqual({ proposalId: proposed.proposalId, deduplicated: true });
+
+    const horizon = new Date(Date.now() + 30 * 86_400_000);
+    expect(await queries.listEventsBetween(auth, new Date(Date.now() - 86_400_000), horizon)).toHaveLength(0);
+    const [pending] = await proposals.listPendingCalendarProposals(auth);
+    expect(pending.id).toBe(proposed.proposalId);
+
+    await proposals.approveCalendarProposal(auth, { proposalId: pending.id, expectedVersion: pending.version, revisionId: pending.revisionId });
+    // A retry after approval must not book a second block.
+    await proposals.approveCalendarProposal(auth, { proposalId: pending.id, expectedVersion: pending.version, revisionId: pending.revisionId });
+    const events = await queries.listEventsBetween(auth, new Date(Date.now() - 86_400_000), horizon);
+    expect(events).toHaveLength(1);
+    expect(events[0].taskId).toBe(task.id);
+    expect(await proposals.listPendingCalendarProposals(auth)).toHaveLength(0);
+  });
+
+  it("a rejected proposal never executes", async () => {
+    const auth = await seed("cal-reject");
+    const proposals = await import("@/domains/calendar/proposals");
+    const { proposalId } = await proposals.proposeCalendarChange(auth, {
+      change: { kind: "create", title: "Nope", startsAt: from.toISOString(), endsAt: new Date(from.getTime() + 3_600_000).toISOString() },
+      dedupeKey: "reject-1",
+    });
+    const [p] = await proposals.listPendingCalendarProposals(auth);
+    await proposals.rejectCalendarProposal(auth, { proposalId, expectedVersion: p.version, revisionId: p.revisionId });
+    expect(await queries.listEventsBetween(auth, from, new Date(from.getTime() + 7 * 86_400_000))).toHaveLength(0);
+  });
+});

@@ -4,6 +4,8 @@ import { Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { listEventsBetween } from "@/domains/calendar/queries";
 import { listTasksDueBetweenForPage } from "./data";
+import { listPendingCalendarProposals } from "@/domains/calendar/proposals";
+import { CalendarToolbar } from "./calendar-assist";
 import { WeekGrid } from "./week-grid";
 
 /*
@@ -31,6 +33,7 @@ export async function NeonCalendar({ date }: { date?: string }) {
   const rows = await listTasksDueBetweenForPage(auth, iso(days[0]), iso(days[6]));
   // Pad a day each side so blocks near midnight survive any browser zone.
   const events = await listEventsBetween(auth, new Date(start.getTime() - DAY), new Date(start.getTime() + 8 * DAY));
+  const proposals = await listPendingCalendarProposals(auth);
   const blocked = new Set(events.map((e) => e.taskId).filter(Boolean));
   const unscheduled = rows
     .filter((r) => r.status !== "done" && r.status !== "cancelled" && !blocked.has(r.id))
@@ -56,6 +59,10 @@ export async function NeonCalendar({ date }: { date?: string }) {
           {iso(days[0])} to {iso(days[6])}
         </span>
       </div>
+      <CalendarToolbar
+        events={events.map((e) => ({ title: e.title, startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(), taskId: e.taskId }))}
+        proposals={proposals}
+      />
       <WeekGrid
         weekStartMs={start.getTime()}
         events={events.map((e) => ({
