@@ -50,7 +50,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
     <Link
       key={label}
       href={listHref(BASE, raw, patch)}
-      aria-pressed={active}
+      aria-current={active ? "true" : undefined}
       className={`rounded-full border px-3 py-1 text-xs ${active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
     >
       {label}
