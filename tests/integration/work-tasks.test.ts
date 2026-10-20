@@ -37,7 +37,7 @@ suite("work tasks", () => {
     expect(open.map((t) => t.id)).toContain(id);
     expect(open[0].status).toBe("inbox");
 
-    expect(await work.completeTask(a, { taskId: id })).toEqual({ id });
+    expect(await work.completeTask(a, { taskId: id })).toEqual({ id, quartzEarned: true });
     expect(await work.listOpenTasks(a)).toHaveLength(0);
 
     // A second click is a no-op, not a second completion — and writes no

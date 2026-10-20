@@ -103,3 +103,19 @@ suite("reward rules", () => {
     expect(ledger.filter((row) => row.idempotencyKey.startsWith("shard-claim:"))).toHaveLength(1);
   });
 });
+
+suite("quartz from every completion path", () => {
+  it("updateTask to done earns the daily Quartz once, and reports it from completeTask", async () => {
+    const auth = await seed("quartz-update");
+    const tasks = await import("@/domains/work/task-commands");
+    const a = await work.createOwnerTask(auth, { title: "Board card", priority: "high", estimateMinutes: 25, tags: ["ui"] });
+    const done = await tasks.updateTask(auth, { taskId: a.id, expectedVersion: 1, patch: { status: "done" } });
+    expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
+    // Re-saving as done is not a new completion.
+    await tasks.updateTask(auth, { taskId: a.id, expectedVersion: done.version, patch: { status: "done" } });
+    const b = await work.createOwnerTask(auth, { title: "Later" });
+    const result = await work.completeTask(auth, { taskId: b.id });
+    expect(result?.quartzEarned).toBe(false);
+    expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
+  });
+});

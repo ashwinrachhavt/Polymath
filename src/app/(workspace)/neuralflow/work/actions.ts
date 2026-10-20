@@ -45,6 +45,9 @@ async function authorize(): Promise<AuthContext> {
 const createInput = z.object({
   title: z.string().trim().min(1).max(300),
   dueAt: z.coerce.date().optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  estimateMinutes: z.number().int().min(1).max(1440).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
   personId: z.string().uuid().optional(),
   organizationId: z.string().uuid().optional(),
   idempotencyKey: z.string().uuid().optional(),
@@ -53,6 +56,9 @@ const createInput = z.object({
 export async function createTaskAction(input: {
   title: string;
   dueAt?: string;
+  priority?: "low" | "medium" | "high" | "urgent";
+  estimateMinutes?: number;
+  tags?: string[];
   personId?: string;
   organizationId?: string;
   idempotencyKey?: string;
@@ -68,7 +74,7 @@ export async function createTaskAction(input: {
 
 export async function completeTaskAction(
   taskId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; quartzEarned: boolean } | { ok: false; error: string }> {
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) return { ok: false, error: "That task no longer exists." };
 
@@ -78,7 +84,7 @@ export async function completeTaskAction(
   // Already done leaves the row alone and says so, rather than pretending the
   // second click did something.
   return done
-    ? { ok: true }
+    ? { ok: true, quartzEarned: done.quartzEarned }
     : { ok: false, error: "This task was already completed. Reload to see it." };
 }
 

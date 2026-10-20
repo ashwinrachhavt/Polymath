@@ -3,6 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { organizations, people } from "@/domains/identity/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { rankBetween } from "./rank";
@@ -86,6 +87,17 @@ export async function updateTask(
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "updateTask", ...input }, async () => {
       const p = input.patch;
+      // Finishing a task from the board or detail view must earn the same
+      // daily Quartz as the list's Done button, so note the prior status.
+      let finishing = false;
+      if (p.status === "done") {
+        const [before] = await tx
+          .select({ status: tasks.status })
+          .from(tasks)
+          .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
+          .limit(1);
+        finishing = !!before && before.status !== "done";
+      }
       const set: Record<string, unknown> = {
         updatedAt: new Date(),
         updatedBy: auth.userId,
@@ -124,6 +136,7 @@ export async function updateTask(
         throw exists ? new VersionConflictError() : new TaskNotFoundError();
       }
 
+      if (finishing) await recordDailyQuartz(tx, auth, row.id);
       if (p.status === "done" || p.status === "cancelled") await settleBlockers(tx, auth, row.id, true);
       else if (p.status !== undefined) await settleBlockers(tx, auth, row.id, false);
 
