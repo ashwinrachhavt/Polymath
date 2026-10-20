@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { FileText, Image, Layers, NotebookPen, Presentation } from "lucide-react";
+import { useState, useTransition } from "react";
+import { BookmarkPlus, FileText, Image, Layers, Loader2, NotebookPen, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status, Unavailable } from "@/components/workspace/ui";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/alfred/artifact-views";
+import { CitedAnswer } from "@/components/products/alfred/cited-answer";
+import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
+import { saveAnswerAction } from "../../../save-answer-actions";
 
 /*
  * The notebook surface, laid out the way NotebookLM reads: sources on the left,
@@ -48,16 +51,39 @@ export default function NotebookSurface({
   sources,
   artifacts,
   chatAvailable,
+  lastAnswer,
 }: {
   notebook: { dossierId: string; title: string };
   sources: SourceRow[];
   artifacts: GeneratedArtifact[];
   chatAvailable: boolean;
+  /** The most recent grounded answer, when one exists. */
+  lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
 }) {
   const [selected, setSelected] = useState<StudioOutput>("report");
   const [brief, setBrief] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [saving, startSave] = useTransition();
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
+
+  function saveAnswer() {
+    if (!lastAnswer) return;
+    setMessage(null);
+    startSave(async () => {
+      try {
+        await saveAnswerAction({
+          runId: lastAnswer.runId,
+          title: `${notebook.title}: saved answer`,
+          answer: lastAnswer.answer,
+          citations: lastAnswer.citations,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        setMessage("Saved to your notes.");
+      } catch (cause) {
+        setMessage(cause instanceof Error ? cause.message : "The answer could not be saved.");
+      }
+    });
+  }
 
   return (
     <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
@@ -92,6 +118,18 @@ export default function NotebookSurface({
       <section aria-label="Chat" className="panel flex min-h-[60vh] flex-col rounded-xl p-4">
         <h2 className="text-[13px] font-medium">{notebook.title}</h2>
         <div className="mt-3 flex-1">
+          {lastAnswer && (
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-xs font-medium text-muted-foreground">Last answer</h3>
+                <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
+                  {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
+                  Save to notes
+                </Button>
+              </div>
+              <CitedAnswer answer={lastAnswer.answer} citations={lastAnswer.citations} />
+            </div>
+          )}
           {chatAvailable ? (
             // The shared surface takes over here once it is on the branch.
             <Unavailable feature="Chat surface">
