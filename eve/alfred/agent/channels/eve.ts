@@ -43,6 +43,9 @@ const localDevWithStubs: AuthFn<Request> = async (request) => {
   return caller ? { ...caller, allowToolStubs: true } : null;
 };
 
-export default eveChannel({
-  auth: [bridgeAuth, ...(process.env.NODE_ENV !== "production" ? [localDevWithStubs] : [])],
-});
+// The authenticators, in order. `localDevWithStubs` is dev-only and never
+// mounted in production; the bridge token path is the only production caller.
+const authenticators: AuthFn<Request>[] = [bridgeAuth];
+if (process.env.NODE_ENV !== "production") authenticators.push(localDevWithStubs);
+
+export default eveChannel({ auth: authenticators });
