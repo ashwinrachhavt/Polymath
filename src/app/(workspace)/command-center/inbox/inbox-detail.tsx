@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/workspace/ui";
-import { makeTaskAction, setCaptureStateAction } from "./actions";
+import { makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
 import type { InboxRow } from "./inbox-list";
 
 /*
@@ -59,6 +59,15 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
 
+  function saveAsNote() {
+    setError(null);
+    startTransition(async () => {
+      decide("converted");
+      const result = await makeNoteAction({ captureId: capture!.id, expectedVersion: capture!.version });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
   function act(next: "converted" | "discarded" | "unprocessed") {
     setError(null);
     startTransition(async () => {
@@ -110,7 +119,10 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
       <div className="mt-6 flex flex-wrap items-center gap-2">
         {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
           <>
-            <Button size="sm" disabled={pending} onClick={() => act("converted")}>
+            <Button size="sm" disabled={pending} onClick={saveAsNote}>
+              Save as note
+            </Button>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
               Make task
             </Button>
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => act("discarded")}>
@@ -121,6 +133,11 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
         {state === "discarded" ? (
           <Button size="sm" variant="outline" disabled={pending} onClick={() => act("unprocessed")}>
             Restore capture
+          </Button>
+        ) : null}
+        {state === "converted" && capture.convertedType === "note" && capture.convertedId ? (
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/alfred/notebook?id=${encodeURIComponent(capture.convertedId)}`}>Open note</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
