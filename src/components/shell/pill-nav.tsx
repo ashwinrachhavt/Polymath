@@ -9,6 +9,7 @@ import {
   appForPath,
   apps,
   destinationForPath,
+  destinationsIn,
   type AppDefinition,
   type Destination,
 } from "@/lib/navigation";
