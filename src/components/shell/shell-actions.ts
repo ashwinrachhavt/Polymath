@@ -6,7 +6,8 @@ import { createCapture, convertCaptureToTask } from "@/domains/capture/commands"
 import { captures } from "@/domains/capture/schema";
 import { contacts } from "@/domains/crm/schema";
 import { createNote } from "@/domains/knowledge/notes";
-import { artifacts } from "@/domains/knowledge/schema";
+import { artifacts, documents } from "@/domains/knowledge/schema";
+import { opportunities } from "@/domains/opportunities/schema";
 import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -71,7 +72,7 @@ export async function quickCreate(
 }
 
 export type WorkspaceRecord = {
-  kind: "task" | "note" | "contact" | "inbox";
+  kind: "task" | "note" | "contact" | "inbox" | "opportunity" | "document";
   id: string;
   label: string;
   context: string;
@@ -84,7 +85,7 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
   if (q.length < 2) return [];
   const pattern = `%${q}%`;
 
-  const [taskRows, captureRows, noteRows, contactRows] = await Promise.all([
+  const [taskRows, captureRows, noteRows, contactRows, opportunityRows, documentRows] = await Promise.all([
     db
       .select({ id: tasks.id, title: tasks.title, status: tasks.status })
       .from(tasks)
@@ -123,9 +124,35 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       .where(and(eq(contacts.workspaceId, auth.workspaceId), ilike(contacts.fullName, pattern)))
       .orderBy(desc(contacts.updatedAt))
       .limit(4),
+    db
+      .select({ id: opportunities.id, title: opportunities.title, stage: opportunities.stage })
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, auth.workspaceId), isNull(opportunities.archivedAt), ilike(opportunities.title, pattern)))
+      .orderBy(desc(opportunities.updatedAt))
+      .limit(4),
+    db
+      .select({ id: documents.id, title: documents.title })
+      .from(documents)
+      .where(and(eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt), ilike(documents.title, pattern)))
+      .orderBy(desc(documents.updatedAt))
+      .limit(4),
   ]);
 
-  return [
+  const found: WorkspaceRecord[] = [
+    ...opportunityRows.map((row) => ({
+      kind: "opportunity" as const,
+      id: row.id,
+      label: row.title,
+      context: `Opportunity · ${row.stage.replace("_", " ")}`,
+      href: `/command-center/opportunities?id=${row.id}`,
+    })),
+    ...documentRows.map((row) => ({
+      kind: "document" as const,
+      id: row.id,
+      label: row.title,
+      context: "Document in Files",
+      href: `/alfred/files?doc=${row.id}`,
+    })),
     ...taskRows.map((row) => ({
       kind: "task" as const,
       id: row.id,
@@ -155,4 +182,27 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       href: "/command-center/inbox",
     })),
   ];
+  return rankRecords(found, q);
+}
+
+
+/*
+ * Best match first across every kind: exact title, then prefix, then a word
+ * prefix, then any substring. Stable within a tier, so each query's own
+ * recency order is kept.
+ */
+function matchTier(label: string, q: string): number {
+  const l = label.toLowerCase();
+  const needle = q.toLowerCase();
+  if (l === needle) return 0;
+  if (l.startsWith(needle)) return 1;
+  if (l.split(/[^a-z0-9]+/).some((w) => w.startsWith(needle))) return 2;
+  return 3;
+}
+
+function rankRecords(records: WorkspaceRecord[], q: string): WorkspaceRecord[] {
+  return records
+    .map((record, index) => ({ record, index, tier: matchTier(record.label, q) }))
+    .sort((a, b) => a.tier - b.tier || a.index - b.index)
+    .map((entry) => entry.record);
 }
