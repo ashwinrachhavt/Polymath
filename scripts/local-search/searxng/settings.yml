@@ -36,12 +36,16 @@ ui:
 
 # Engines that need no key and work from a local instance. `json` results are
 # what the Polymath adapter and Firecrawl read; HTML is the human page.
+# Google is disabled, not deleted: it answers "Suspended: access denied" from
+# this network, and a suspended engine makes every otherwise-good response look
+# partial. Flip `disabled` back to false if that changes. Mirrored in
+# compose.yaml's SEARXNG_ENGINES, which Firecrawl reads.
 engines:
   - name: google
     engine: google
     categories: [general]
     shortcut: g
-    disabled: false
+    disabled: true
 
   - name: duckduckgo
     engine: duckduckgo

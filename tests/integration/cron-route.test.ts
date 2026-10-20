@@ -1,0 +1,84 @@
+import { sql } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { outboxEvents } from "@/domains/audit/schema";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
+
+/*
+ * ASH-178: the scheduler trigger.
+ *
+ * The route is the deployed half of the drain; the local worker is the other.
+ * What matters is that it is not an open endpoint and that it actually runs a
+ * pass:
+ *
+ * - no bearer secret configured -> 404, so an unset secret does not advertise
+ *   the endpoint to a scanner
+ * - wrong bearer -> 401
+ * - correct bearer -> recovered + claimed/dispatched counts, and the row moved
+ */
+
+const handle = makeTestDb();
+const suite = handle ? describe : describe.skip;
+let db: NonNullable<typeof handle>["db"];
+let route: typeof import("@/app/api/internal/cron/route");
+let outbox: typeof import("@/domains/audit/outbox");
+
+const SECRET = "test-cron-secret";
+
+beforeAll(async () => {
+  if (!handle) return;
+  ({ db } = handle);
+  route = await import("@/app/api/internal/cron/route");
+  outbox = await import("@/domains/audit/outbox");
+});
+
+afterAll(async () => {
+  await handle?.client.end();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+function post(headers: Record<string, string> = {}) {
+  return route.POST(new Request("http://localhost/api/internal/cron", { method: "POST", headers }));
+}
+
+async function seedPending(workspaceId: string) {
+  return db.transaction((tx) =>
+    outbox.enqueueOutbox(tx, { workspaceId }, { topic: "document.extraction_requested", payload: { documentId: null } }),
+  );
+}
+
+suite("cron route (real Postgres)", () => {
+  it("answers 404 when the dispatch secret is not configured", async () => {
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", "");
+    const response = await post({ authorization: `Bearer ${SECRET}` });
+    expect(response.status).toBe(404);
+  });
+
+  it("answers 401 without the right bearer", async () => {
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", SECRET);
+    expect((await post()).status).toBe(401);
+    expect((await post({ authorization: "Bearer wrong" })).status).toBe(401);
+  });
+
+  it("drains a pass and reports its counts", async () => {
+    if (!handle) return;
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", SECRET);
+    vi.stubEnv("DATABASE_URL", process.env.TEST_DATABASE_URL!);
+    await db.execute(sql`delete from outbox_events`);
+
+    const seeded = await seedWorkspace(db, `cron-${Date.now()}`);
+    void ownerAuth(seeded.userId, seeded.workspaceId);
+    const enqueued = await seedPending(seeded.workspaceId);
+    expect(enqueued.enqueued).toBe(true);
+
+    const response = await post({ authorization: `Bearer ${SECRET}` });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ recovered: 0, claimed: 1, dispatched: 1, failed: 0, dead: 0 });
+
+    const [row] = await db.select().from(outboxEvents);
+    expect(row.status).toBe("dispatched");
+  });
+});

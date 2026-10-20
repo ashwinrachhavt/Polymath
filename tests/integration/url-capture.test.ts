@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documentExtractions, documents, files } from "@/domains/knowledge/schema";
+import { documentExtractions, documents, files, sources } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -175,6 +175,34 @@ suite("URL capture (real Postgres)", () => {
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not a PDF, an image, or a web page") });
     const [doc] = await docsFor(auth.workspaceId);
     expect(doc.fileId).toBeNull();
+  });
+
+  it("records a source row so a captured page is citable, not just readable", async () => {
+    const auth = await workspace();
+    const result = await captureUrl(auth, { url: `${base}/page.html`, fetchOptions });
+    expect(result).toMatchObject({ ok: true });
+
+    const rows = await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "web", url: `${base}/page.html` });
+    expect(rows[0].contentHash).not.toBeNull();
+    expect(rows[0].fetchedAt).not.toBeNull();
+  });
+
+  it("capturing the same page twice keeps one source row", async () => {
+    const auth = await workspace();
+    await captureUrl(auth, { url: `${base}/page.html`, fetchOptions });
+    await captureUrl(auth, { url: `${base}/page.html#top`, fetchOptions });
+    const rows = await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("a PDF capture is recorded as a document source", async () => {
+    const auth = await workspace();
+    await captureUrl(auth, { url: `${base}/lease.pdf`, fetchOptions });
+    const rows = await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("document");
   });
 
   it("refuses a private address before creating anything", async () => {

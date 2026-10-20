@@ -23,7 +23,7 @@ export type IntakeInput = {
   verdict: FileValidationResult;
   /** sha256 hex of the bytes when the caller already has it. */
   contentHash?: string;
-  origin: "upload" | "url";
+  origin: "upload" | "url" | "crawl";
   /** Captured documents carry where they came from. */
   sourceUrl?: string;
   /** Attach the file to this existing document row (a URL document whose first fetch failed) instead of inserting one. */
@@ -140,12 +140,16 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       actorId: auth.userId,
       actorKind: "user",
       action: input.verdict.ok
-        ? input.origin === "url" ? "file.captured" : "file.uploaded"
+        ? input.origin === "url" ? "file.captured" : input.origin === "crawl" ? "file.crawled" : "file.uploaded"
         : "file.quarantined",
       subjectType: input.verdict.ok ? "document" : "file",
       subjectId: input.verdict.ok ? documentId : fileRow.id,
       summary: input.verdict.ok
-        ? input.origin === "url" ? `Captured ${input.sourceUrl ?? input.filename}` : `Uploaded ${input.filename}`
+        ? input.origin === "url"
+          ? `Captured ${input.sourceUrl ?? input.filename}`
+          : input.origin === "crawl"
+            ? `Crawled ${input.sourceUrl ?? input.filename}`
+            : `Uploaded ${input.filename}`
         : `Quarantined ${input.filename}: content did not match the allowlist`,
     });
 

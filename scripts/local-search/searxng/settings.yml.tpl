@@ -33,11 +33,12 @@ ui:
   infinite_scroll: false
 
 engines:
+  # Suspended on this network ("access denied"); see settings.yml.
   - name: google
     engine: google
     categories: [general]
     shortcut: g
-    disabled: false
+    disabled: true
 
   - name: duckduckgo
     engine: duckduckgo

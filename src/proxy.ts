@@ -21,6 +21,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks(.*)",
   // Own bearer secret (OUTBOX_DISPATCH_SECRET); 404 when unset.
   "/api/internal/outbox",
+  "/api/internal/cron",
 ]);
 
 export default clerkConfigured

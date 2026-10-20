@@ -77,6 +77,10 @@ If a name needs explaining in two sentences, it is the wrong name.
 - **First-party mutations are server actions**, in this order: authenticate →
   resolve `AuthContext` → parse input → idempotency + expected-version checks →
   domain command → audit/outbox in the same transaction → invalidate cache tags.
+  A new outbox topic **needs a handler in the same change** (`outbox-handlers.ts`),
+  or its rows are released unread forever and nothing looks broken. Long work
+  (a crawl) parks itself between passes with `OutboxParkedError`; do not hold a
+  request open waiting for a provider.
 - **Route handlers** exist for `/api/v1`, webhooks, SSE, signed file URLs, health,
   and workflow kickoff. Nothing else. They return stable problem-detail errors.
 - Client components are islands at the leaves, and only when interaction demands it.

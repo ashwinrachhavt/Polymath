@@ -16,6 +16,9 @@ Read the relevant section instead of grepping the repo or reading `package.json`
 | `make search-up` | Starts SearXNG + Firecrawl | First run generates a local SearXNG secret. Loopback-bound. |
 | `make search-down` | Removes the search stack | |
 | `make search-logs` | Tails search stack logs | |
+| `make queue-up` | Starts the outbox worker | Uploads and crawls queue work; nothing drains it without this. Logs to `.run/outbox-worker.log`. |
+| `make queue-down` | Stops the outbox worker | |
+| `make queue-logs` | Tails the outbox worker log | |
 | `pnpm db:migrate` | Applies migrations | |
 | `pnpm db:generate` | Generates a migration from schema changes | |
 | `pnpm db:studio` | Drizzle Studio | |

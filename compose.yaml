@@ -102,7 +102,10 @@ services:
       USE_DB_AUTHENTICATION: "false"
       NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
       SEARXNG_ENDPOINT: http://searxng:8080
-      SEARXNG_ENGINES: google,duckduckgo,brave
+      # Google was removed 2026-10-19: it answers "Suspended: access denied",
+      # and Firecrawl's search inherits this list, so leaving it in degraded
+      # both the agent's search and the crawler's. duckduckgo and brave carry it.
+      SEARXNG_ENGINES: duckduckgo,brave
       SEARXNG_CATEGORIES: general
       NUM_WORKERS_PER_QUEUE: "4"
       CRAWL_CONCURRENT_REQUESTS: "5"

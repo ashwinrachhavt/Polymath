@@ -221,6 +221,8 @@ export type DocumentInboxRow = {
   extractionStatus: string | null;
   /** That extraction's proposal-pass status; null when it has not run. */
   proposalStatus: string | null;
+  /** When that attempt started, so a row can say it is waiting rather than reading. */
+  extractionCreatedAt: Date | null;
   /** Field proposals still awaiting a decision. */
   undecidedProposals: number;
   /** Resolved party names — the people and companies the document is about. */
@@ -281,6 +283,7 @@ export async function getDocumentInbox(auth: AuthContext, limitOrInput: number |
       fetchedAt: files.createdAt,
       extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
       proposalStatus: sql<string | null>`${currentExtractionSql("proposal_status")}`,
+      extractionCreatedAt: sql<Date | null>`${currentExtractionSql("created_at")}::timestamptz`,
     })
     .from(documents)
     .leftJoin(files, eq(files.id, documents.fileId))

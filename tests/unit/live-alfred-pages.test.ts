@@ -40,7 +40,8 @@ vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.f
 
 const document = {
   id: "doc-fixture", title: "Existing document", filename: "fixture.pdf", mimeType: "application/pdf", createdAt: new Date(),
-  extractionStatus: "succeeded", proposalStatus: "succeeded", undecidedProposals: 0, partyNames: [],
+  extractionStatus: "succeeded",
+        extractionCreatedAt: null, proposalStatus: "succeeded", undecidedProposals: 0, partyNames: [],
   sourceUrl: null, kind: "file" as const, fetchedAt: null,
 };
 beforeEach(() => {

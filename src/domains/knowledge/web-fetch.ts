@@ -1,16 +1,23 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { crawlSite, FirecrawlError, scrapeToMarkdown, type FirecrawlCrawlResult, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
+import { scrapeToMarkdown, FirecrawlError, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
+import { withTransaction } from "@/lib/db-transaction";
+import { canonicalCaptureUrl } from "@/lib/safe-fetch";
+import { enqueueOutbox } from "@/domains/audit/outbox";
 
 /*
- * What the agents' `web.fetch` tool calls. Like web-search.ts this is a read
- * that stores nothing: the event bridge writes the tool result into the run's
- * tool_calls row, which is the same audit treatment every tool gets.
+ * What the agents' `web.fetch` tool calls.
  *
- * The URL a model supplies is not trusted. Safe-fetch in the app's capture path
- * guards against loopback and private ranges; this path goes through Firecrawl,
- * which runs in a container, so the check that matters is that we never send a
- * private address to it and never let it reach one. `assertPublicUrl` is the
- * same address-family rule the app uses, applied before the request leaves.
+ * Reading one page is a read: nothing is stored beyond the run's tool_calls
+ * row, which the event bridge writes.
+ *
+ * Crawling is different. A crawl outlives a request, so this does not fetch —
+ * it enqueues `crawl.requested` in the same shape every other producer uses,
+ * and the outbox worker submits, polls and lands the pages as documents. The
+ * tool returns "queued" rather than a partial page set, because a truncated
+ * crawl reported as success is the failure this replaced.
+ *
+ * The URL a model supplies is not trusted. `assertPublicUrl` is the same
+ * address-family rule the app uses, applied before anything leaves.
  */
 
 export const WEB_FETCH_CAPABILITY = "web.fetch";
@@ -21,7 +28,7 @@ export type AgentWebFetchResult =
   | { ok: false; error: string };
 
 export type AgentWebCrawlResult =
-  | { ok: true; jobId: string; status: string; pages: Array<{ url: string; title: string | null; markdown: string }> }
+  | { ok: true; queued: true; url: string; limit: number; maxDepth: number; note: string }
   | { ok: false; error: string };
 
 /** Reject anything that is not a normal http(s) URL to a public host name. */
@@ -66,19 +73,33 @@ export async function fetchPageForAgent(
 }
 
 export async function crawlSiteForAgent(
-  _auth: Pick<AuthContext, "workspaceId">,
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
   input: { url: string; limit?: number; maxDepth?: number },
 ): Promise<AgentWebCrawlResult> {
   const url = assertPublicUrl(input.url.trim());
   if (!url) return { ok: false, error: "url must be a public http(s) address" };
+  const target = canonicalCaptureUrl(url);
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
+  const maxDepth = Math.min(Math.max(input.maxDepth ?? 1, 1), 3);
   try {
-    const result: FirecrawlCrawlResult = await crawlSite(url.toString(), {
-      limit: Math.min(Math.max(input.limit ?? 10, 1), 50),
-      maxDepth: Math.min(Math.max(input.maxDepth ?? 1, 1), 3),
-    });
-    return { ok: true, jobId: result.jobId, status: result.status, pages: result.pages };
-  } catch (cause) {
-    if (cause instanceof FirecrawlError) return { ok: false, error: "crawl failed, try again" };
-    return { ok: false, error: "crawl failed, try again" };
+    await withTransaction((tx) =>
+      enqueueOutbox(tx, auth, {
+        topic: "crawl.requested",
+        payload: { url: target, limit, maxDepth, request: url.toString() },
+        // The canonical URL is the key, so asking twice while one is running
+        // joins the first job instead of starting a second crawl of the site.
+        dispatchKey: `crawl:${target}`,
+      }),
+    );
+  } catch {
+    return { ok: false, error: "crawl could not be queued, try again" };
   }
+  return {
+    ok: true,
+    queued: true,
+    url: target,
+    limit,
+    maxDepth,
+    note: "Queued. Pages land in the Library as documents as they arrive; search them there once the crawl finishes.",
+  };
 }
