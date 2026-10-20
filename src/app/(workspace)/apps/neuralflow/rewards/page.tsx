@@ -6,6 +6,7 @@ import { getAuthContext } from "@/lib/auth";
 import { CoachMark } from "@/components/shell/coach-mark";
 import { ClaimShardButton } from "./claim-button";
 import { DefinitionForm } from "./definition-form";
+import { Jewels } from "./jewels";
 
 export const metadata = { title: "Stones & rewards · Polymath" };
 
@@ -33,6 +34,8 @@ async function Rewards() {
       title="Stone collection"
       description="The ledger is the truth: every stone, streak and badge is a row, and the totals below are derived from it at render. The first task you finish each day earns the Quartz; five stones fuse into a shard you claim by hand."
     >
+      <Jewels overview={overview} />
+
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="relative">
           <Stat label="Points earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
