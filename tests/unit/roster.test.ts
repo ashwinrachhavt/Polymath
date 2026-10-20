@@ -13,7 +13,7 @@ import {
  * capability) is a test failure, not a runtime surprise in the bench UI.
  */
 
-const KNOWN_CAPABILITIES = new Set(["tasks.read", "documents.search", "web.search", "web.fetch", "gmail.send"]);
+const KNOWN_CAPABILITIES = new Set(["tasks.read", "documents.search", "web.search", "web.fetch", "gmail.send", "calendar.propose"]);
 
 describe("specialist roster", () => {
   it("covers the seven teams from the owner's reference tree", () => {
@@ -53,6 +53,15 @@ describe("specialist roster", () => {
         expect(["support-responder"]).toContain(specialist.slug);
       }
     }
+  });
+
+  it("only the calendar assistant may propose calendar changes", () => {
+    for (const specialist of SPECIALIST_ROSTER) {
+      if (specialist.allowedTools.includes("calendar.propose")) {
+        expect(specialist.slug).toBe("calendar-assist");
+      }
+    }
+    expect(specialistBySlug("calendar-assist")?.allowedTools).toContain("calendar.propose");
   });
 
   it("profile names round-trip through the slug", () => {
