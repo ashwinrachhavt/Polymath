@@ -44,7 +44,8 @@ commit a real value.
 |---|---|---|
 | `DATABASE_URL` | App Postgres | App cannot start |
 | `TEST_DATABASE_URL` | Integration suite database | Integration tests skip. **Never** point at the app database. |
-| `DOCLING_SERVE_URL` | Local Docling extraction provider | Falls through to LlamaParse |
+| `DOCLING_SERVE_URL` | Local Docling extraction provider | Falls through to Reducto |
+| `REDUCTO_API_KEY` | Hosted Reducto extraction provider | Falls through to LlamaParse |
 | `LLAMAPARSE_API_KEY` | Hosted extraction provider | Falls through to PDF text layer |
 | `SEARCH_PROVIDER` | `searxng`, `brave`, `tavily`, `exa`, `duckduckgo` | Resolution order applies |
 | `SEARXNG_URL` | Private metasearch endpoint | Falls back to keyed providers |

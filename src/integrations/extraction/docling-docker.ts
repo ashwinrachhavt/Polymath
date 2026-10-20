@@ -14,7 +14,7 @@ import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
  *
  * Compliance note: this adapter is for local development only. The deployed
  * Vercel app cannot reach a developer's docker; there, the hosted adapter in
- * llamaparse.ts is resolved instead (see provider-resolution in the knowledge
+ * llamaparse.ts or reducto.ts is resolved instead (see provider-resolution in the knowledge
  * domain). An unavailable local docling is a failed extraction, not a silent
  * empty result.
  */

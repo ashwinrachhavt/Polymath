@@ -67,13 +67,33 @@ export function createReductoProvider(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
+        // Reducto accepts pdf, docx, xlsx, pptx, and images; the extension
+        // hint must match the bytes or the parse mislabels them. Anything
+        // else is refused here rather than uploaded as a wrong type.
+        const EXTENSIONS: Record<string, string> = {
+          "application/pdf": "pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+          "image/jpeg": "jpeg",
+          "image/png": "png",
+          "image/webp": "webp",
+        };
+        const extension = EXTENSIONS[input.mimeType];
+        if (!extension) {
+          return {
+            ok: false,
+            error: `reducto does not read ${input.mimeType}`,
+            extractor,
+          };
+        }
         const form = new FormData();
         form.append(
           "file",
           new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }),
           input.filename,
         );
-        const uploadRes = await fetch(`${baseUrl.replace(/\/$/, "")}/upload?extension=pdf`, {
+        const uploadRes = await fetch(`${baseUrl.replace(/\/$/, "")}/upload?extension=${extension}`, {
           method: "POST",
           body: form,
           headers,

@@ -41,6 +41,9 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
   useEffect(() => {
     if (capture && capture.id !== lastFocusedId.current) {
       lastFocusedId.current = capture.id;
+      // A decision error belongs to the capture it failed on; selecting
+      // another capture clears it rather than showing it under a new header.
+      setError(null);
       headingRef.current?.focus();
     }
   }, [capture]);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/workspace/ui";
+import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 
 /*
@@ -45,7 +46,7 @@ function rowTitle(row: InboxRow): string {
   return body.slice(0, 80);
 }
 
-export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: InboxView; selectedId: string | null }) {
+export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow[]; view: InboxView; selectedId: string | null; rawQuery: Record<string, string | string[] | undefined> }) {
   const [optimisticRows, decide] = useOptimistic(rows, (current: InboxRow[], decision: Decision) =>
     view === "all"
       ? current.map((row) => (row.id === decision.id ? { ...row, processingState: decision.next } : row))
@@ -72,10 +73,18 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
           (row) =>
             new Promise<void>((resolve) => {
               decide({ id: row.id, next });
-              setCaptureStateAction({ captureId: row.id, expectedVersion: row.version, state: next }).then((result) => {
-                if (!result.ok) failures.push({ id: row.id, title: rowTitle(row), message: result.error });
-                resolve();
-              });
+              setCaptureStateAction({ captureId: row.id, expectedVersion: row.version, state: next }).then(
+                (result) => {
+                  if (!result.ok) failures.push({ id: row.id, title: rowTitle(row), message: result.error });
+                  resolve();
+                },
+                () => {
+                  // A transport rejection must settle too, or Promise.all
+                  // hangs and the toolbar stays pending forever.
+                  failures.push({ id: row.id, title: rowTitle(row), message: "The inbox write failed." });
+                  resolve();
+                },
+              );
             }),
         ),
       );
@@ -118,7 +127,7 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
                   className="mt-1 size-4 accent-[var(--primary)] max-sm:size-[18px] max-sm:my-2"
                 />
                 <Link
-                  href={`/command-center/inbox?${view === "unprocessed" ? "" : `filter=${view}&`}id=${capture.id}`}
+                  href={listHref("/command-center/inbox", rawQuery, { id: capture.id })}
                   className={`group block min-w-0 flex-1 rounded-md px-2 py-1.5 transition-colors duration-150 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${
                     isHighlighted ? "bg-muted" : ""
                   }`}
@@ -126,7 +135,7 @@ export function InboxList({ rows, view, selectedId }: { rows: InboxRow[]; view: 
                   <div className="flex flex-wrap items-center gap-2">
                     <Status>{capture.processingState}</Status>
                     <span className="text-xs text-muted-foreground">{capture.kind}</span>
-                    <time className="readout ml-auto text-xs text-muted-foreground" dateTime={capture.createdAt}>
+                    <time suppressHydrationWarning className="readout ml-auto text-xs text-muted-foreground" dateTime={capture.createdAt}>
                       {when(capture.createdAt)}
                     </time>
                   </div>

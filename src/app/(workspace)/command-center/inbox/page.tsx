@@ -113,6 +113,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
           <InboxList
             view={filter}
             selectedId={selectedId}
+            rawQuery={query}
             rows={rows.map((capture) => ({
               id: capture.id,
               processingState: capture.processingState,

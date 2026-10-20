@@ -31,8 +31,8 @@ import { clearRestoreOnNewExtraction } from "./versions";
  * re-running an improved extractor is a new row and every span that pointed at
  * the old extraction stays answerable.
  *
- * Provider resolution: docling-serve in docker locally; LlamaParse on Vercel
- * where the docker is unreachable. Env decides — the presence of each
+ * Provider resolution: docling-serve in docker locally; Reducto or LlamaParse
+ * on Vercel where the docker is unreachable. Env decides — the presence of each
  * provider's URL/key picks the adapter; the text-layer reader is the floor.
  */
 

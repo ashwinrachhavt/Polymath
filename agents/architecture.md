@@ -192,7 +192,7 @@ Adapters, one folder each, no UI imports.
 
 | Adapter | Path | Selected by |
 |---|---|---|
-| Document extraction | `src/integrations/extraction/` | `DOCLING_SERVE_URL` → Docling; else `LLAMAPARSE_API_KEY` → LlamaParse; else PDF text layer |
+| Document extraction | `src/integrations/extraction/` | `DOCLING_SERVE_URL` → Docling; else `REDUCTO_API_KEY` → Reducto; else `LLAMAPARSE_API_KEY` → LlamaParse; else PDF text layer |
 | Web search | `src/integrations/search/` | `SEARCH_PROVIDER` or `SEARXNG_URL`; also brave, tavily, exa, duckduckgo |
 | Crawl/scrape | `src/integrations/firecrawl/` | `FIRECRAWL_API_URL` + key |
 | Embeddings | `src/integrations/embeddings/` | — |
