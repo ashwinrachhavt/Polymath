@@ -99,9 +99,44 @@ work rather than new Axiom subsystems. Proposed shape, per package:
   read/prepare before consequential execution, deny-by-default rollback,
   incident drill (compromised tool, leaked grant, UNKNOWN provider outcome).
 
+## Owner decision: Eve runtime (2026-10-19, iMessage)
+
+Answer to open question 1 (owner, paraphrased from his message): Eve works
+with Next.js. On Vercel it runs on the free Vercel platform; locally it runs
+on the user's own computer.
+
+Design consequences (proposal, to be built against the adapter boundary):
+
+- **Two modes, one contract.** `hosted` (Vercel free tier, serverless
+  functions) and `local` (same app on the user's machine). Same
+  `AgentRuntime` port, same grants, same gateway; only the executor host
+  differs. No separate always-on Eve service is assumed.
+- **Vercel free-tier limits are a hard constraint.** A function invocation
+  cannot be assumed to live longer than its plan limit, so no run may depend
+  on a single long invocation. A run is a sequence of short steps; each step
+  claims a lease on the canonical `jobs`/`attempts` rows (ASH-134 Q04:
+  lease + generation fencing), does bounded work, checkpoints to run events,
+  and either finishes or re-enqueues itself. A killed invocation is
+  indistinguishable from a slow one until its lease expires, then another
+  invocation resumes from the last checkpoint; the generation fence rejects a
+  zombie's late writes.
+- **Driving the steps.** Hosted: the outbox dispatch route (ASH-134 Q03) and
+  Vercel cron, within free-tier cron and invocation quotas; no per-run
+  polling loops. Local: an in-process loop over the same job table. Both call
+  the same step function.
+- **Unknown outcomes** (a step died after an external call) follow the
+  existing attempt `unknown` + reconciliation rule; never blind retry.
+- **Local mode** runs with the same Axiom authority checks: the local
+  process authenticates as the signed-in user's workspace, grants and the
+  decision log still apply, and external effects still need approval. Local
+  mode must not widen authority because it is on the user's machine.
+- **Open follow-ups:** concrete step time budget per mode, cron cadence that
+  fits free-tier quotas, and where local mode keeps its database (Neon vs a
+  local Postgres).
+
 ## Open questions for the owner
 
-1. **Which runtime does Eve run in?** (ASH-115's unanswered half.) The
+1. **ANSWERED 2026-10-19** (see "Owner decision: Eve runtime" above; follow-ups listed there). Was: which runtime does Eve run in? (ASH-115's unanswered half.) The
    adapter boundary above is runtime-agnostic, but GA06/GA08/GA09 need the
    concrete dispatch/callback/resume semantics to bind against.
 2. **Catalog v2:** the gateway records that `tasks.read` has no honest
