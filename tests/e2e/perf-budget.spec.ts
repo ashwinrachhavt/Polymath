@@ -56,10 +56,13 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
   }
 
   // Client-side transitions: click the in-shell link, time to new content.
-  // The rail is app-scoped by design (#59): same-app routes are one rail click
-  // away, cross-app routes go through the top-right launcher grid.
+  // The pill nav is app-scoped: same-app routes are one pill click away,
+  // cross-app routes go through the top-right launcher grid, and the shared
+  // Reviews surface lives in the header.
   for (const route of HERO_ROUTES) {
-    let link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
+    let link = route.path === "/reviews"
+      ? page.getByRole("link", { name: "Open shared reviews" })
+      : page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
     let started = Date.now();
     if (!(await link.isVisible())) {
       // The rail is app-scoped by design (#59): switch to the route's app via
@@ -78,7 +81,9 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
         report[route.path] = { ...report[route.path], clientNavMs: Date.now() - started };
         continue;
       }
-      link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
+      link = route.path === "/reviews"
+        ? page.getByRole("link", { name: "Open shared reviews" })
+        : page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
       await expect(link, `shell link to ${route.path}`).toBeVisible();
       started = Date.now();
     }
