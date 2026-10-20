@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -103,7 +103,7 @@ describe("eval-summary", () => {
       env: { ...process.env, GITHUB_STEP_SUMMARY: summary },
     });
     expect(out.status).toBe(0);
-    const written = require("node:fs").readFileSync(summary, "utf8");
+    const written = readFileSync(summary, "utf8");
     expect(written).toContain("Agent evals: 1/1 passed");
   });
 });

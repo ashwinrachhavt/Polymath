@@ -133,14 +133,36 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     const a = await workspace();
     await ensureProfile(a.workspaceId);
     const [p] = await holder.db!.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, a.workspaceId));
-    expect(p.allowedTools).toEqual(["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint", "gmail.send"]);
+    // A closed list on purpose: a capability the profile does not grant is
+    // denied on every call, so any addition here is a deliberate widening and
+    // deserves this diff.
+    expect(p.allowedTools).toEqual([
+      "tasks.read",
+      "documents.search",
+      "wiki.read",
+      "wiki.ingest",
+      "wiki.lint",
+      "gmail.send",
+      "gmail.read",
+      "calendar.read",
+      "notion.read",
+    ]);
     const b = await workspace();
     await ensureProfile(b.workspaceId);
     await holder.db!.update(agentProfiles).set({ allowedTools: ["tasks.read"] }).where(eq(agentProfiles.workspaceId, b.workspaceId));
     await ensureProfile(b.workspaceId);
     await ensureProfile(b.workspaceId);
     const [old] = await holder.db!.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, b.workspaceId));
-    expect(old.allowedTools).toEqual(["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint"]);
+    expect(old.allowedTools).toEqual([
+      "tasks.read",
+      "documents.search",
+      "wiki.read",
+      "wiki.ingest",
+      "wiki.lint",
+      "gmail.read",
+      "calendar.read",
+      "notion.read",
+    ]);
   });
 
   it("recorded search results come back per run, inside the workspace", async () => {
