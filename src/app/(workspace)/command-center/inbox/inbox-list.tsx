@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/workspace/ui";
 import { listHref } from "@/lib/list-params";
@@ -55,6 +55,8 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
   const [bulkErrors, setBulkErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const lastToggledId = useRef<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const bulk = selected.size > 0;
   // Converted rows cannot transition; every other selected row is sent and
@@ -64,10 +66,13 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
   );
 
   function bulkAct(next: "discarded" | "unprocessed") {
-    const originRow = document.activeElement?.closest("li") ?? null;
+    // Focus origin is tracked explicitly: on click the toolbar button (not
+    // the row) holds focus, so activeElement cannot identify the row.
+    const originId = lastToggledId.current;
     const targets = bulkTargets;
     startTransition(async () => {
       const failures: Array<{ id: string; title: string; message: string }> = [];
+      setBulkErrors([]);
       await Promise.all(
         targets.map(
           (row) =>
@@ -94,13 +99,16 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
       // it is ever seen.
       if (!failures.length) {
         setSelected(new Set());
-        // Focus returns to the originating row link when the selection clears (D12).
-        originRow?.querySelector("a")?.focus();
+        // Focus returns to the originating row link when the selection clears
+        // (D12); only when that row still exists after the transition.
+        const row = originId ? listRef.current?.querySelector<HTMLAnchorElement>(`li[data-capture-id="${originId}"] a`) : null;
+        row?.focus();
       }
     });
   }
 
   function toggle(id: string) {
+    lastToggledId.current = id;
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -111,12 +119,12 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
 
   return (
     <div className="relative">
-      <ul className="divide-y divide-border" role="list">
+      <ul ref={listRef} className="divide-y divide-border" role="list">
         {optimisticRows.map((capture) => {
           const isSelected = selected.has(capture.id);
           const isHighlighted = capture.id === selectedId;
           return (
-            <li key={capture.id} className={isSelected ? "bg-muted" : undefined}>
+            <li key={capture.id} data-capture-id={capture.id} className={isSelected ? "bg-muted" : undefined}>
               <div className="flex items-start gap-2 py-2">
                 <input
                   type="checkbox"
@@ -163,7 +171,7 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
           <Button size="sm" variant="ghost" disabled={pending} onClick={() => bulkAct("unprocessed")}>
             Restore capture
           </Button>
-          <Button size="sm" variant="ghost" disabled={pending} onClick={() => setSelected(new Set())}>
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setSelected(new Set()); setBulkErrors([]); }}>
             Clear
           </Button>
           {bulkErrors.length ? (

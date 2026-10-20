@@ -72,9 +72,9 @@ export function createReductoProvider(
         // else is refused here rather than uploaded as a wrong type.
         const EXTENSIONS: Record<string, string> = {
           "application/pdf": "pdf",
+          // validateFile returns the single zip-container MIME for the whole
+          // Office family; Reducto's server-side sniff refines the subtype.
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-          "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
           "image/jpeg": "jpeg",
           "image/png": "png",
           "image/webp": "webp",
