@@ -17,6 +17,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const VIEWER_READS: Record<string, string> = {
   searchWorkspace: "read-only search; membership alone authorizes viewing",
   getNoteAIRunOutputAction: "read-only poll of a run's output",
+  loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
 };
 
