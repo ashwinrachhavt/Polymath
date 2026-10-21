@@ -351,6 +351,13 @@
       "tag": "0223_connector_catalog_expansion",
       "when": 1792480530000,
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "tag": "0224_connector_permissions",
+      "when": 1792480540000,
+      "breakpoints": true
     }
   ]
 }
