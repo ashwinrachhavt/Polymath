@@ -48,7 +48,7 @@ export default function Chat({ initialId }: { initialId?: string }) {
   return (
     <Screen
       title="Ask Polymath"
-      description="Ask about a dossier, a document, or your library. Answers cite the passages they use, and consequential actions become proposals rather than happening."
+      description="Answers cite the passages they use, and consequential actions become proposals rather than happening."
     >
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="panel min-h-[520px] rounded-xl p-5">
