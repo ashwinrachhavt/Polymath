@@ -58,7 +58,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
   return (
     <Screen
       title="Connectors"
-      description="What Polymath can talk to, and which accounts are wired. External writes always require an explicit account and your approval; nothing connects or sends by default."
+      description="External writes always require an explicit account and your approval; nothing connects or sends by default."
     >
       {resultMessage ? (
         <p

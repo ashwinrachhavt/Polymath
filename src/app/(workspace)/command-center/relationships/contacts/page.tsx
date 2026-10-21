@@ -82,7 +82,6 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
     return (
       <Screen
         title="Contacts"
-        description="Observations, follow-ups and correspondence for this contact."
         actions={
           <Link href="/command-center/relationships/contacts" className="text-[13px] font-medium underline-offset-4 hover:underline">
             Open contact list
@@ -132,7 +131,6 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   return (
     <Screen
       title="Contacts"
-      description="The relationship workspace: observations, follow-ups and correspondence per contact. The People table holds the full directory."
       actions={
         <a href="/command-center/relationships/people" className="text-[13px] font-medium underline-offset-4 hover:underline">
           Open People table
@@ -196,7 +194,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                 filtered={Boolean(q || status)}
                 clearHref={listHref("/command-center/relationships/contacts", query, { q: undefined, status: undefined, page: undefined })}
                 emptyTitle="No contacts yet"
-                emptyDescription="Create a contact above. Imported LinkedIn connections live in the identity domain until the two records merge."
+                emptyDescription="Imported LinkedIn connections live in the identity domain until the two records merge."
               />
             ) : null}
             <Pagination
@@ -229,7 +227,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
               ))}
             </div>
             {!companyPageData.items.length ? (
-              <Empty title="No companies yet" description="Add a company above, then link contacts to it." />
+              <Empty title="No companies yet" />
             ) : null}
             <Pagination
               basePath="/command-center/relationships/contacts"
@@ -245,7 +243,6 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
         <div>
           <Empty
             title="Choose a contact"
-            description="Select a contact to see its companies, observations and follow-ups."
           />
         </div>
       </div>
@@ -326,7 +323,7 @@ function ContactDetailPanel({
         </div>
       </Panel>
 
-      <Panel title="Follow-ups" description="Commitments to return to this relationship.">
+      <Panel title="Follow-ups">
         <div className="mb-4 divide-y divide-border">
           {detail.followUps.map((followUp) => (
             <div key={followUp.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0">

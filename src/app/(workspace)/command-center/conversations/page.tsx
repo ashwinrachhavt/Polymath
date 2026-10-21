@@ -39,7 +39,6 @@ async function Conversations({ searchParams }: { searchParams: Promise<RawSearch
   return (
     <Screen
       title="Conversations"
-      description="Durable threads with your agents. The timeline lives in Postgres, not the browser - reload and the same conversation is here."
     >
       <ListToolbar
         searchPlaceholder="Search thread titles"
@@ -49,7 +48,7 @@ async function Conversations({ searchParams }: { searchParams: Promise<RawSearch
         total={found.total}
         noun={found.total === 1 ? "thread" : "threads"}
       />
-      <Panel title="Threads" description="Most recently active first.">
+      <Panel title="Threads">
         <div className="divide-y divide-border">
           {conversations.map((conversation) => (
             <div key={conversation.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
@@ -74,13 +73,12 @@ async function Conversations({ searchParams }: { searchParams: Promise<RawSearch
             filtered={Boolean(list.q || list.filters.agent)}
             clearHref={listHref(BASE, raw, { q: undefined, agent: undefined, page: undefined })}
             emptyTitle="No conversations yet"
-            emptyDescription="Start one below; it persists in Postgres from the first message."
           />
         ) : null}
         <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
       </Panel>
 
-      <Panel title="Start a conversation" description="A title, an opening message, or both.">
+      <Panel title="Start a conversation">
         <ConversationForm />
       </Panel>
     </Screen>
