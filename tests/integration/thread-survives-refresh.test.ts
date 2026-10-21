@@ -79,6 +79,31 @@ suite("thread survives refresh", () => {
     expect((await listThreads(b.workspaceId, [runId])).size).toBe(0);
   });
 
+  it("keeps visible reasoning and the compaction boundary on reload", async () => {
+    const runId = await start("Summarize my leases");
+    await recordRoundEvent({
+      runId,
+      workspaceId: a.workspaceId,
+      type: "reasoning",
+      data: { text: "The leases are filed by month.", turnId: "t1", stepIndex: 0 },
+    });
+    await recordRoundEvent({ runId, workspaceId: a.workspaceId, type: "message", data: { role: "assistant", content: "Done." } });
+    await recordRoundEvent({
+      runId,
+      workspaceId: a.workspaceId,
+      type: "compaction",
+      data: { turnId: "t1", stepIndex: 2, modelId: "gemini-3.5-flash-lite" },
+    });
+
+    const thread = (await listThreads(a.workspaceId, [runId])).get(runId)!;
+    expect(thread.map((t) => [t.kind, t.text])).toEqual([
+      ["user", "Summarize my leases"],
+      ["reasoning", "The leases are filed by month."],
+      ["assistant", "Done."],
+      ["status", "Earlier turns were summarized to keep the conversation in the model's window."],
+    ]);
+  });
+
   it("a follow-up on a live run is stored and signalled to Eve", async () => {
     const runId = await start("Start");
     const res = await follow(json({ message: "Also check the deposit" }), ctx(runId));

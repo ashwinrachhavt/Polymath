@@ -215,6 +215,41 @@ suite("event bridge", () => {
     expect(rows[0].result).toEqual({ ok: true, authorization: "[redacted]" });
   });
 
+  it("keeps tool call latency and records reasoning and compaction on the timeline", async () => {
+    const { workspaceId, runId } = await seedRun("bridge-trace");
+
+    await bridge.recordToolCall({
+      workspaceId,
+      runId,
+      toolName: "documents_search",
+      ok: true,
+      durationMs: 312,
+      args: { query: "lease" },
+      result: { results: [{ documentId: "d1" }] },
+    });
+    await bridge.recordRoundEvent({
+      runId,
+      workspaceId,
+      type: "reasoning",
+      data: { text: "The leases are in the March folder.", turnId: "t1", stepIndex: 0 },
+    });
+    await bridge.recordRoundEvent({
+      runId,
+      workspaceId,
+      type: "compaction",
+      data: { turnId: "t1", stepIndex: 2, modelId: "gemini-3.5-flash-lite" },
+    });
+
+    const [call] = await db.select().from(toolCalls).where(eq(toolCalls.runId, runId));
+    expect(call.durationMs).toBe(312);
+
+    const events = await db
+      .select()
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), inArray(runEvents.type, ["reasoning", "compaction"])));
+    expect(events.map((e) => e.type).sort()).toEqual(["compaction", "reasoning"]);
+  });
+
   it("mirrors the transcript and reuses the run's thread", async () => {
     const { workspaceId, runId } = await seedRun("bridge-msg");
 

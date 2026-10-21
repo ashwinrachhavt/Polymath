@@ -132,6 +132,30 @@ export async function listRunEvents(workspaceId: string, runId: string) {
     .orderBy(asc(runEvents.sequence));
 }
 
+/**
+ * One run's tool calls, oldest first, for the conversation page's Details
+ * disclosure. Rows are already redacted at the write points (the bridge's
+ * `recordToolCall` and the gateway's settlement), so this read needs no second
+ * pass — arguments and results are safe to show the owner.
+ */
+export async function listRunToolCalls(workspaceId: string, runId: string) {
+  return db
+    .select({
+      id: toolCalls.id,
+      toolName: toolCalls.toolName,
+      accountAlias: toolCalls.accountAlias,
+      arguments: toolCalls.arguments,
+      result: toolCalls.result,
+      ok: toolCalls.ok,
+      errorCode: toolCalls.errorCode,
+      durationMs: toolCalls.durationMs,
+      createdAt: toolCalls.createdAt,
+    })
+    .from(toolCalls)
+    .where(and(eq(toolCalls.workspaceId, workspaceId), eq(toolCalls.runId, runId)))
+    .orderBy(asc(toolCalls.createdAt));
+}
+
 /** Tool names a documents search is recorded under (the capability and the tool file name). */
 const DOCUMENT_SEARCH_TOOLS = ["documents_search", "documents.search"];
 

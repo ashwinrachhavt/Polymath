@@ -9,7 +9,7 @@ import { Markdown } from "@/components/markdown";
 import { ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
-import { getRun, getRunPolicySnapshot, listDocumentSearchResults, listRunEvents } from "@/domains/agents/queries";
+import { getRun, getRunPolicySnapshot, listDocumentSearchResults, listRunEvents, listRunToolCalls } from "@/domains/agents/queries";
 import { listThreads } from "@/domains/agents/thread";
 import { collectCitations } from "@/domains/knowledge/agent-search";
 import { draftsForRuns } from "@/domains/knowledge/studio";
@@ -41,12 +41,13 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [threads, searchResults, events, policy, drafts] = await Promise.all([
+  const [threads, searchResults, events, policy, drafts, toolCalls] = await Promise.all([
     listThreads(auth.workspaceId, [run.id]),
     listDocumentSearchResults(auth.workspaceId, [run.id]),
     listRunEvents(auth.workspaceId, run.id),
     getRunPolicySnapshot(run.id, auth.workspaceId),
     draftsForRuns(auth, [run.id]),
+    listRunToolCalls(auth.workspaceId, run.id),
   ]);
 
   const thread = threads.get(run.id) ?? [];
@@ -120,7 +121,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             thread.map((entry) => (
               <article key={entry.sequence} className="flex flex-col gap-1.5">
                 <p className="text-muted-foreground text-xs">
-                  {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Polymath" : "Run"}
+                  {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Polymath" : entry.kind === "reasoning" ? "Thinking" : "Run"}
                   {" · "}
                   {timeAgo(entry.at)}
                 </p>
@@ -128,6 +129,16 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   <div className="text-[13px] leading-relaxed">
                     <Markdown text={entry.text} />
                   </div>
+                ) : entry.kind === "reasoning" ? (
+                  // The model's visible rationale, kept from the live stream. A
+                  // quiet disclosure, not a transcript body: it is evidence for
+                  // the answer above it, not the thing being read.
+                  <details className="max-w-[72ch]">
+                    <summary className="text-muted-foreground cursor-pointer text-[13px] hover:text-foreground">
+                      Show thinking
+                    </summary>
+                    <p className="text-muted-foreground mt-2 text-[13px] whitespace-pre-wrap">{entry.text}</p>
+                  </details>
                 ) : (
                   <p className="text-[13px] whitespace-pre-wrap">{entry.text}</p>
                 )}
@@ -140,6 +151,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             policy={policy}
             citations={citations}
             events={events}
+            toolCalls={toolCalls}
             draft={drafts.get(run.id) ?? null}
             unavailable={unavailable}
           />

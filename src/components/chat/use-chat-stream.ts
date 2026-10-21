@@ -26,7 +26,7 @@ export type ChatConnection = "connecting" | "streaming" | "waiting" | "done" | "
 
 export type ChatState = {
   blocks: ChatBlock[];
-  tools: { callId: string; label: string; status: "running" | "ok" | "error" }[];
+  tools: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string }[];
   citations: ChatCitation[];
   connection: ChatConnection;
   error: string | null;
@@ -127,7 +127,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             if (frame.type === "tool") {
               setState((prev) => ({
                 ...prev,
-                tools: mergeTool(prev.tools, { callId: frame.callId, label: frame.label, status: frame.status }),
+                tools: mergeTool(prev.tools, {
+                  callId: frame.callId,
+                  label: frame.label,
+                  status: frame.status,
+                  detail: frame.detail,
+                }),
               }));
             }
             if (frame.type === "turn") {
@@ -196,10 +201,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
 
 function mergeTool(
   tools: ChatState["tools"],
-  next: { callId: string; label: string; status: "running" | "ok" | "error" },
+  next: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string },
 ): ChatState["tools"] {
   const index = tools.findIndex((tool) => tool.callId === next.callId);
   if (index === -1) return [...tools, next];
+  // A settled frame replaces the running one wholesale; its `detail` (or its
+  // absence) is the outcome, never a leftover from the running frame.
   const copy = tools.slice();
   copy[index] = next;
   return copy;
