@@ -37,7 +37,6 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
   return (
     <Screen
       title="Companies"
-      description="Organizations your people belong to, keyed by the company column of an import or added by hand."
     >
       <ListToolbar searchPlaceholder="Search name or domain" />
 
@@ -81,10 +80,7 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
                 emptyDescription="No company fits the current search."
               />
             ) : (
-              <Empty
-                title="No companies yet"
-                description="Import a LinkedIn connections CSV on the People page, or add a company from a contact record."
-              />
+              <Empty title="No companies yet" />
             )}
           </div>
         ) : null}

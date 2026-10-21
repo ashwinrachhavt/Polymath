@@ -70,7 +70,6 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
   return (
     <Screen
       title="People"
-      description="Everyone in your workspace, with companies from their current role. Status comes from the linked contact record."
       actions={
         <ImportDialog>
           <Button variant="outline">Import connections</Button>
@@ -166,7 +165,6 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
               filtered={Boolean(list.q || status)}
               clearHref={listHref(BASE, query, { q: undefined, status: undefined, page: undefined })}
               emptyTitle="No people yet"
-              emptyDescription="Import your LinkedIn connections CSV to add the people you already know."
             />
           </div>
         ) : null}

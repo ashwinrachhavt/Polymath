@@ -48,7 +48,6 @@ async function Briefing() {
   return (
     <Screen
       title="Briefing"
-      description={`Capture, clarify, commit, focus, review, learn. Here is where ${briefing.today} stands.`}
       actions={
         <>
           <Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Clarify inbox</Link></Button>
@@ -58,7 +57,7 @@ async function Briefing() {
     >
       <Panel
         title="Three outcomes"
-        description="Deterministic suggestions ordered by due date and priority. Accepting tags the canonical task for this day; it does not schedule or start work."
+        description="Accepting tags the canonical task for this day; it does not schedule or start work."
       >
         <div className="divide-y divide-border">
           {briefing.outcomes.map((task) => <TaskRow key={task.id} task={task} outcomeTag={outcomeTag} mode="replace" />)}
@@ -67,7 +66,6 @@ async function Briefing() {
         {!briefing.outcomes.length && !briefing.suggested.length ? (
           <Empty
             title="No open outcome candidates"
-            description="Create a commitment, then accept it as an outcome."
             action={<Button size="sm" asChild><Link href="/neuralflow/work">Create a commitment</Link></Button>}
           />
         ) : null}
@@ -80,7 +78,7 @@ async function Briefing() {
       {briefing.dueTodayOrOverdue.length || briefing.waiting.length ? (
         <div className="grid items-start gap-6 xl:grid-cols-2">
           {briefing.dueTodayOrOverdue.length ? (
-            <Panel title="Today and overdue" description="Open work with a due date on or before today.">
+            <Panel title="Today and overdue">
               <div className="divide-y divide-border">
                 {briefing.dueTodayOrOverdue.map((task) => (
                   <div key={task.id} className="py-3 first:pt-0">
@@ -94,7 +92,7 @@ async function Briefing() {
             </Panel>
           ) : null}
           {briefing.waiting.length ? (
-            <Panel title="Waiting commitments" description="Open work currently waiting on someone or something.">
+            <Panel title="Waiting commitments">
               <div className="divide-y divide-border">
                 {briefing.waiting.map((task) => (
                   <div key={task.id} className="py-3 first:pt-0">

@@ -55,7 +55,6 @@ async function Spending({ searchParams }: { searchParams: Promise<RawSearchParam
   return (
     <Screen
       title="Spending"
-      description="Real accounting for paid agent work: a budget is reserved before a run spends and settled from provider usage after. Nothing here estimates or invents costs."
     >
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Reserved today" value={usd(overview.openReservedToday)} hint="Open claims against the budget" />
@@ -70,7 +69,7 @@ async function Spending({ searchParams }: { searchParams: Promise<RawSearchParam
 
       <Panel
         title="Spending policy"
-        description="The ceilings the reserve path enforces. Leave a field empty for no ceiling; empty is not zero - zero would block every run."
+        description="Leave a field empty for no ceiling; empty is not zero - zero would block every run."
       >
         <PolicyForm
           policy={
@@ -100,7 +99,7 @@ async function Spending({ searchParams }: { searchParams: Promise<RawSearchParam
       />
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Panel title="Open reservations" description="Money claimed by runs that have not settled.">
+        <Panel title="Open reservations">
           <div className="divide-y divide-border">
             {overview.openReservations.map((reservation) => (
               <div key={reservation.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
@@ -115,11 +114,11 @@ async function Spending({ searchParams }: { searchParams: Promise<RawSearchParam
             ))}
           </div>
           {!overview.openReservations.length ? (
-            <Empty title="No open reservations" description="A reservation appears when a run starts paid work." />
+            <Empty title="No open reservations" />
           ) : null}
         </Panel>
 
-        <Panel title="Recent settlements" description="The append-only ledger of actual spend.">
+        <Panel title="Recent settlements">
           <div className="divide-y divide-border">
             {settlements.items.map((settlement) => (
               <div key={settlement.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
@@ -135,7 +134,6 @@ async function Spending({ searchParams }: { searchParams: Promise<RawSearchParam
               filtered={filtered}
               clearHref={clearHref}
               emptyTitle="No settlements yet"
-              emptyDescription="A settlement lands when a run's provider usage is reconciled."
             />
           ) : null}
           <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={settlements.total} />

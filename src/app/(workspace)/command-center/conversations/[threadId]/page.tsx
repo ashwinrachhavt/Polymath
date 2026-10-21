@@ -50,7 +50,7 @@ async function Timeline({ threadId }: { threadId: string }) {
           ))}
         </div>
         {!conversation.entries.length ? (
-          <Empty title="No messages yet" description="The thread is saved; its first message will appear here." />
+          <Empty title="No messages yet" />
         ) : null}
       </Panel>
     </Screen>

@@ -172,7 +172,6 @@ async function Opportunities({ searchParams }: { searchParams: SearchParams }) {
           filtered={Boolean(q || stage)}
           clearHref={listHref("/command-center/opportunities", query, { q: undefined, stage: undefined, cpage: undefined })}
           emptyTitle="No opportunities yet"
-          emptyDescription="Create an opportunity above to start the pipeline."
         />
       ) : null}
 

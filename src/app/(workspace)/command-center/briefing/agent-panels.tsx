@@ -85,7 +85,6 @@ export async function AgentPanels() {
 
       <Panel
         title="Agents overnight"
-        description="The last 24 hours of runs, from the canonical run record."
         actions={
           <Status>
             {overnight.total} {overnight.total === 1 ? "run" : "runs"} · {overnight.failed > 0 ? `${overnight.failed} failed` : "nothing failed"}

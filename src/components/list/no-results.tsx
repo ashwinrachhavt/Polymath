@@ -11,7 +11,7 @@ export function NoResults({
   filtered: boolean;
   clearHref: string;
   emptyTitle: string;
-  emptyDescription: string;
+  emptyDescription?: string;
 }) {
   if (!filtered) return <Empty title={emptyTitle} description={emptyDescription} />;
   return (
