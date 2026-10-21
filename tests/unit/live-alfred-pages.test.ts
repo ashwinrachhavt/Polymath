@@ -37,6 +37,9 @@ vi.mock("@/domains/knowledge/library", async (importOriginal) => ({
   listFolders: vi.fn(async () => []),
 }));
 vi.mock("@/domains/knowledge/classify", () => ({ getOpenClassification: vi.fn(async () => null) }));
+// The statement panel is its own domain read; the page test is about the
+// document workbench, so it stubs the lookup rather than opening a database.
+vi.mock("@/domains/knowledge/statement-import", () => ({ statementForDocument: vi.fn(async () => null) }));
 vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
   listRecentRuns: vi.fn(async () => []),

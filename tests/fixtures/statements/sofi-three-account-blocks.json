@@ -1,0 +1,1016 @@
+{
+ "source": "sanitized docling output",
+ "tables": [
+  {
+   "page": 1,
+   "numRows": 5,
+   "numCols": 5,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "DATE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "TYPE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "DESCRIPTION",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "BALANCE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Dec 31, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "Interest Earned",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "Interest earned Transaction ID: 161-1 Amount before withholding: $0.22 Tax withheld: -$0.05",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "$0.17",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "$521.35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Dec 22, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "GYM CLUB CLUB FEES Transaction ID: 159-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "-$10.70",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "$521.18",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Dec 8, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "GYM CLUB CLUB FEES Transaction ID: 150-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "-$10.70",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "$531.88",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Dec 1, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "Zelle\u00ae Payment to Person Kurani Transaction ID: 148-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 3,
+     "text": "-$500.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "$542.58",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "numRows": 13,
+   "numCols": 2,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Participating banks",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "% of program deposits",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Citizens Bank, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "City National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "The Huntington National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Renasant Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "HSBC Bank USA, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "Bell Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "Peapack-Gladstone Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "Western Alliance Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "Sallie Mae Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 0,
+     "text": "Metropolitan Commercial Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 0,
+     "text": "Comerica Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 0,
+     "text": "Bravera Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 3,
+   "numRows": 6,
+   "numCols": 5,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "DATE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "TYPE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "DESCRIPTION",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "BALANCE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Dec 31, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "Interest Earned",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "Interest earned Transaction ID: 229-1 Amount before withholding: $3.28 Tax withheld: -$0.79",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "$2.49",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "$1,050.75",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Dec 30, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "AMEX EPAYMENT ACH PMT Transaction ID: 228-92560001",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "-$500.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "$1,048.26",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Dec 22, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "CHASE CREDIT CRD AUTOPAY Transaction ID: 226-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "-$9.99",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "$1,548.26",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Dec 16, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "JPMorgan Chase Ext Trnsfr Transaction ID: 224-6294001",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 3,
+     "text": "-$425.31",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "$1,558.25",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Dec 15, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "Robinhood Card Payment Transaction ID: 222-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 3,
+     "text": "-$2.57",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "$1,983.56",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 4,
+   "numRows": 3,
+   "numCols": 5,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Dec 4, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "COMCAST-XFINITY CABLE SVCS Transaction ID: 217-6741001",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "-$45.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "$1,986.13",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Dec 3, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "Robinhood Card Payment Transaction ID: 216-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "-$2.50",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "$2,031.13",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Dec 1, 2025",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "AMEX EPAYMENT ACH PMT Transaction ID: 214-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "-$500.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "$2,033.63",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 5,
+   "numRows": 13,
+   "numCols": 2,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Participating banks",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "% of program deposits",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Citizens Bank, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "City National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "The Huntington National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Renasant Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "HSBC Bank USA, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "Bell Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "Peapack-Gladstone Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "Western Alliance Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "Sallie Mae Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 0,
+     "text": "Metropolitan Commercial Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 0,
+     "text": "Comerica Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 0,
+     "text": "Bravera Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  }
+ ]
+}

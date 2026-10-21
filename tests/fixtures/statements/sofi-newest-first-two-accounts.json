@@ -1,0 +1,937 @@
+{
+ "source": "sanitized docling output",
+ "tables": [
+  {
+   "page": 1,
+   "numRows": 6,
+   "numCols": 5,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "DATE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "TYPE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "DESCRIPTION",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "BALANCE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Jan 31, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "Interest Earned",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "Interest earned Transaction ID: 171-1 Amount before withholding: $0.20 Tax withheld: -$0.05",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "$0.15",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "$470.20",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Jan 20, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "GYM CLUB CLUB FEES Transaction ID: 169-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "-$10.65",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "$470.05",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Jan 5, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "GYM CLUB CLUB FEES Transaction ID: 167-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "-$10.65",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "$480.70",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Jan 4, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "Zelle\u00ae Payment to Person Khandelwal Transaction ID: 166-49210001",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 3,
+     "text": "-$50.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "$491.35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Jan 1, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "Zelle\u00ae Payment to Person Kurani Transaction ID: 163-32991001",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 3,
+     "text": "-$780.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "$541.35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 3,
+   "numRows": 13,
+   "numCols": 2,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Participating banks",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "% of program deposits",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "HSBC Bank USA, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Renasant Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Peapack-Gladstone Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Comerica Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Citizens Bank, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "Western Alliance Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "Bell Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "The Huntington National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "Sallie Mae Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 0,
+     "text": "City National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 0,
+     "text": "Metropolitan Commercial Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 0,
+     "text": "Bravera Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 4,
+   "numRows": 7,
+   "numCols": 5,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Savings Account - 3030",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 2
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "DATE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "TYPE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "DESCRIPTION",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "BALANCE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Jan 31, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "Interest Earned",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "Interest earned Transaction ID: 240-1 Amount before withholding: $0.17 Tax withheld: -$0.04",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "$0.13",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "$182.30",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Jan 27, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "Deposit",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "LOAN LABS GLOBAL _ BVC Transaction ID: 237-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "$0.01",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "$182.17",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Jan 20, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "CHASE CREDIT CRD AUTOPAY Transaction ID: 236-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 3,
+     "text": "-$23.59",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "$182.16",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Jan 5, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "Direct Payment",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "COMCAST-XFINITY CABLE SVCS Transaction ID: 232-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 3,
+     "text": "-$45.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "$205.75",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "Jan 1, 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "Withdrawal",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 2,
+     "text": "To Checking - 0625 Transaction ID: 230-000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 3,
+     "text": "-$800.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 4,
+     "text": "$250.75",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 6,
+   "numRows": 13,
+   "numCols": 2,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Participating banks",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "% of program deposits",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "HSBC Bank USA, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Renasant Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Peapack-Gladstone Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Comerica Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Citizens Bank, National Association",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "Western Alliance Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "Bell Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "The Huntington National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "Sallie Mae Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 0,
+     "text": "City National Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 0,
+     "text": "Metropolitan Commercial Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 11,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 0,
+     "text": "Bravera Bank",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 12,
+     "col": 1,
+     "text": "8.33%",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  }
+ ]
+}
