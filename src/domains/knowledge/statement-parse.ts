@@ -61,6 +61,17 @@ export type ReconciliationMismatch = {
   difference: string;
 };
 
+/**
+ * A second, independent check: totals the statement prints about itself. It
+ * only speaks when the statement states a figure exactly once, because a file
+ * holding several accounts prints several totals and none of them is "the"
+ * total for the rows we read.
+ */
+export type TotalsCheck = {
+  status: "match" | "mismatch" | "absent" | "ambiguous";
+  checks: Array<{ label: string; stated: string; computed: string; ok: boolean }>;
+};
+
 export type ParseResult =
   | {
       status: "parsed";
@@ -72,6 +83,8 @@ export type ParseResult =
       closingBalance: string | null;
       reconciled: boolean;
       mismatches: ReconciliationMismatch[];
+      totals: TotalsCheck;
+      moneyFormat: MoneyFormat;
       mappings: MappingReport[];
       unsupportedTables: number;
     }
@@ -79,8 +92,21 @@ export type ParseResult =
 
 const CENT = 0.01;
 
+/**
+ * Number format of a whole document. "1.234,56" read with the dot-decimal rule
+ * becomes 1.23456, a wrong number no balance check is guaranteed to catch, so
+ * the format is decided once per document and anything that does not fit it is
+ * rejected (null) instead of guessed.
+ */
+export type MoneyFormat = "dot" | "comma";
+
+let activeFormat: MoneyFormat = "dot";
+
+const DOT_FORMAT = /^-?(?:\d+|\d{1,3}(?:,\d{2})*,\d{3})(?:\.\d+)?$/;
+const COMMA_FORMAT = /^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?$/;
+
 /** Amount and balance values stay strings in the public shape; math is internal. */
-function money(value: string): number | null {
+function money(value: string, format: MoneyFormat = activeFormat): number | null {
   let text = value.trim();
   if (!text) return null;
   let sign = 1;
@@ -94,9 +120,34 @@ function money(value: string): number | null {
     .replace(/\b(dr|cr)\b/gi, "")
     .replace(/[₹$€£]/g, "")
     .replace(/\b(inr|usd|eur|gbp)\b/gi, "")
-    .replace(/[\s,]/g, "");
-  if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
-  return sign * Number.parseFloat(text);
+    .replace(/[\s\u00a0\u202f]/g, "");
+  if (format === "comma") {
+    if (!COMMA_FORMAT.test(text)) return null;
+    return sign * Number.parseFloat(text.replace(/\./g, "").replace(",", "."));
+  }
+  if (!DOT_FORMAT.test(text)) return null;
+  return sign * Number.parseFloat(text.replace(/,/g, ""));
+}
+
+const COMMA_MONEY_CELL = /^[-(]?\s*[₹$€£]?\s*\d[\d. \u00a0\u202f]*,\d{2}\)?(?:\s*(?:dr|cr))?$/i;
+const DOT_MONEY_CELL = /^[-(]?\s*[₹$€£]?\s*\d[\d, ]*\.\d{2}\)?(?:\s*(?:dr|cr))?$/i;
+
+/**
+ * Decimal-comma only when the document shows it and never shows the dot form:
+ * a statement with both is ambiguous, stays on the dot rule, and the comma
+ * values are rejected so the balance gate refuses loudly.
+ */
+export function detectMoneyFormat(tables: ParsedTable[]): MoneyFormat {
+  let comma = 0;
+  let dot = 0;
+  for (const table of tables) {
+    for (const cell of table.cells) {
+      const text = cell.text.trim();
+      if (COMMA_MONEY_CELL.test(text)) comma += 1;
+      else if (DOT_MONEY_CELL.test(text)) dot += 1;
+    }
+  }
+  return comma > 0 && dot === 0 ? "comma" : "dot";
 }
 
 function fixed(value: number): string {
@@ -173,13 +224,37 @@ function isoDate(date: RawDate, dayFirst: boolean): string | null {
   return `${date.year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/**
+ * Applies the spans Docling reports. A cell with colSpan fills the columns it
+ * covers; a cell with rowSpan repeats into the rows below it. Real statements
+ * that print a date once for a group of rows would otherwise lose every row but
+ * the first. Covered positions never overwrite a cell that has its own entry.
+ */
 function grid(table: ParsedTable): string[][] {
   const rows: string[][] = Array.from({ length: table.numRows }, () =>
     Array.from({ length: table.numCols }, () => ""),
   );
+  const owned = new Set<number>();
+  const inBounds = (row: number, col: number) =>
+    row >= 0 && row < table.numRows && col >= 0 && col < table.numCols;
   for (const cell of table.cells) {
-    if (cell.row < 0 || cell.row >= table.numRows || cell.col < 0 || cell.col >= table.numCols) continue;
+    if (!inBounds(cell.row, cell.col)) continue;
     rows[cell.row][cell.col] = cell.text.trim();
+    owned.add(cell.row * table.numCols + cell.col);
+  }
+  for (const cell of table.cells) {
+    if (!inBounds(cell.row, cell.col)) continue;
+    const text = cell.text.trim();
+    const rowSpan = Math.max(1, cell.rowSpan ?? 1);
+    const colSpan = Math.max(1, cell.colSpan ?? 1);
+    if (rowSpan === 1 && colSpan === 1) continue;
+    for (let r = cell.row; r < Math.min(table.numRows, cell.row + rowSpan); r += 1) {
+      for (let c = cell.col; c < Math.min(table.numCols, cell.col + colSpan); c += 1) {
+        if (r === cell.row && c === cell.col) continue;
+        if (owned.has(r * table.numCols + c)) continue;
+        rows[r][c] = text;
+      }
+    }
   }
   return rows;
 }
@@ -555,7 +630,7 @@ function accountLabelFrom(rows: string[][], titleRows: number[], headerRow: numb
   return titled ? titled.trim().slice(0, 120) : "Account";
 }
 
-export function parseStatementTables(tables: ParsedTable[], statementText?: string): ParseResult {
+function parseWithFormat(tables: ParsedTable[], statementText?: string): ParseResult {
   type Block = {
     page: number | null;
     accountLabel: string;
@@ -763,6 +838,8 @@ export function parseStatementTables(tables: ParsedTable[], statementText?: stri
     };
   }
 
+  const totals = checkTotals(statementText, built);
+  const moneyFormat = activeFormat;
   return {
     status: "parsed",
     rows: built,
@@ -771,9 +848,68 @@ export function parseStatementTables(tables: ParsedTable[], statementText?: stri
     periodEnd,
     openingBalance,
     closingBalance,
-    reconciled: mismatches.length === 0,
+    reconciled: mismatches.length === 0 && totals.status !== "mismatch",
     mismatches,
+    totals,
+    moneyFormat,
     mappings,
     unsupportedTables,
   };
+}
+
+const TOTAL_PATTERNS: Array<{ label: string; side: "out" | "in" | "count"; pattern: RegExp }> = [
+  {
+    label: "total money out",
+    side: "out",
+    pattern: /total\s+(?:withdrawals?|debits?|paid\s+out|money\s+out)\b[^\d\n]{0,24}([\d][\d.,]*)/gi,
+  },
+  {
+    label: "total money in",
+    side: "in",
+    pattern: /total\s+(?:deposits?|credits?|paid\s+in|money\s+in)\b[^\d\n]{0,24}([\d][\d.,]*)/gi,
+  },
+  {
+    label: "transaction count",
+    side: "count",
+    pattern: /(?:total\s+(?:number\s+of\s+)?transactions?|no\.?\s+of\s+transactions?|transactions?\s+count)\b[^\d\n]{0,16}(\d+)\b/gi,
+  },
+];
+
+/** Compares figures the statement prints about itself with the rows we read. */
+export function checkTotals(statementText: string | undefined, rows: LedgerRow[]): TotalsCheck {
+  if (!statementText) return { status: "absent", checks: [] };
+  const out = rows.filter((row) => Number(row.amount) < 0).reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+  const into = rows.filter((row) => Number(row.amount) > 0).reduce((sum, row) => sum + Number(row.amount), 0);
+  const checks: TotalsCheck["checks"] = [];
+  let ambiguous = false;
+  for (const { label, side, pattern } of TOTAL_PATTERNS) {
+    const found = [...statementText.matchAll(pattern)].map((m) => m[1].replace(/[.,]+$/, ""));
+    if (found.length === 0) continue;
+    if (new Set(found).size > 1) {
+      ambiguous = true;
+      continue;
+    }
+    const stated = side === "count" ? Number(found[0]) : money(found[0]);
+    if (stated === null || !Number.isFinite(stated)) continue;
+    const computed = side === "count" ? rows.length : side === "out" ? out : into;
+    const ok = side === "count" ? stated === computed : Math.abs(stated - computed) <= CENT + 1e-9;
+    checks.push({
+      label,
+      stated: side === "count" ? String(stated) : fixed(stated),
+      computed: side === "count" ? String(computed) : fixed(computed),
+      ok,
+    });
+  }
+  if (checks.length === 0) return { status: ambiguous ? "ambiguous" : "absent", checks };
+  return { status: checks.every((c) => c.ok) ? "match" : "mismatch", checks };
+}
+
+export function parseStatementTables(tables: ParsedTable[], statementText?: string): ParseResult {
+  const previous = activeFormat;
+  activeFormat = detectMoneyFormat(tables);
+  try {
+    return parseWithFormat(tables, statementText);
+  } finally {
+    activeFormat = previous;
+  }
 }

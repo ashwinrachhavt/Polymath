@@ -1,4 +1,5 @@
 import type { StatementTransaction } from "./statement-import";
+import { classifyTransactions, type ClassifyOptions } from "./transaction-classify";
 
 /*
  * The ledger CSV. One artefact, three columns: Date, Description, Amount.
@@ -43,4 +44,30 @@ export function ledgerCsvFilename(accountLabel: string, periodStart: string | nu
     .slice(0, 80) || "Statement";
   const period = periodStart && periodEnd ? ` ${periodStart} to ${periodEnd}` : periodStart ? ` ${periodStart}` : "";
   return `${label}${period}.csv`;
+}
+
+export const CLASSIFIED_CSV_COLUMNS = ["Date", "Description", "Amount", "Category", "Confidence", "Needs review"] as const;
+
+/**
+ * The ledger plus a category per row. Kept as a separate export so the plain
+ * three-column ledger stays the contract. Rows the classifier is unsure of are
+ * flagged "yes" rather than given a confident-looking guess.
+ */
+export function buildClassifiedLedgerCsv(transactions: StatementTransaction[], options: ClassifyOptions = {}): string {
+  const judgments = classifyTransactions(transactions, options);
+  const lines = [CLASSIFIED_CSV_COLUMNS.join(",")];
+  transactions.forEach((row, index) => {
+    const judgment = judgments[index];
+    lines.push(
+      [
+        field(row.occurredOn),
+        field(row.description),
+        money(row.amount),
+        field(judgment.category),
+        judgment.confidence.toFixed(2),
+        judgment.route === "review" ? "yes" : "no",
+      ].join(","),
+    );
+  });
+  return `\ufeff${lines.join("\r\n")}\r\n`;
 }
