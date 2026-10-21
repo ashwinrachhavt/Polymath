@@ -115,10 +115,27 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-/** Header-keyed rows, lowercased and trimmed. Unknown columns are kept. */
-function rowsFromCsv(csvRows: string[][]): CsvRow[] {
-  const [header, ...body] = csvRows;
-  if (!header) return [];
+/**
+ * Header-keyed rows, lowercased and trimmed. Unknown columns are kept.
+ *
+ * LinkedIn's export does not start with the header: it opens with a `Notes:`
+ * block explaining why some email addresses are missing, then a blank line, and
+ * only then the real header. Taking row 1 as the header made every real row
+ * lookup a column that did not exist, so the whole file read as "No name on
+ * this row" — the failure looked like bad data rather than a misread file.
+ *
+ * The header is therefore the first row that names a person: a row containing
+ * both a `first name` and a `last name` column. A file with neither is not a
+ * connections export, and yields no rows rather than a silent zero.
+ */
+export function rowsFromCsv(csvRows: string[][]): CsvRow[] {
+  const headerIndex = csvRows.findIndex((cells) => {
+    const keys = cells.map((cell) => cell.trim().toLowerCase());
+    return keys.includes("first name") && keys.includes("last name");
+  });
+  if (headerIndex === -1) return [];
+  const header = csvRows[headerIndex];
+  const body = csvRows.slice(headerIndex + 1);
   const keys = header.map((h) => h.trim().toLowerCase());
   return body.map((cells) => {
     const row: CsvRow = {};
