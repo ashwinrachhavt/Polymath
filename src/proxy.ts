@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
+import { clerkConfigured } from "@/lib/clerk";
 
 /*
  * Next 16 renamed middleware to proxy; this file is the old middleware.ts.
@@ -24,10 +24,12 @@ const isPublicRoute = createRouteMatcher([
   "/api/internal/cron",
 ]);
 
-// devAuthBypass is the local no-Clerk path: the proxy stays out of the way and
-// getAuthContext resolves the dev owner instead. Guarded to non-production in
-// src/lib/clerk.ts.
-export default clerkConfigured && !devAuthBypass
+// The proxy enforces whenever Clerk is configured, regardless of
+// devAuthBypass. The bypass only selects which owner data writes resolve to
+// (src/lib/auth.ts); letting it also switch protection off here left every
+// route open, and under cacheComponents a statically prerendered route never
+// re-runs its layout guard, so nothing else would have caught it.
+export default clerkConfigured
   ? clerkMiddleware(async (auth, request) => {
       // A CORS preflight carries no credentials by design (the browser has not
       // sent the token yet), so protecting it makes every cross-origin call

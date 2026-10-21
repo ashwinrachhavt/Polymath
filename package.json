@@ -18,6 +18,7 @@
     "db:studio": "drizzle-kit studio",
     "seed:personal": "tsx --env-file=.env scripts/seed/companies.ts",
     "seed:parties": "tsx --env-file=.env scripts/seed/parties.ts",
+    "seed:inventory": "tsx --env-file=.env scripts/seed/inventory.ts",
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
