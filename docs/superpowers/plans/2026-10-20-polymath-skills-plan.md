@@ -48,7 +48,7 @@ consumes Tasks 1, 2, 4. Task 7 is the acceptance gate.
 ## Task 1: The skills table, schema module, and domain queries
 
 **Files created:** `src/domains/skills/schema.ts`, `src/domains/skills/queries.ts`,
-`src/domains/skills/commands.ts`, `src/db/migrations/0222_skills.sql`.
+`src/domains/skills/commands.ts`, `src/db/migrations/0225_skills.sql` (numbered 0222 when written; renumbered 0225 at merge because main landed 0222–0224 first).
 **Files touched:** `src/db/migrations/meta/_journal.json`.
 
 Add the `skills` table exactly as the spec's Data model section defines it, using
@@ -109,7 +109,7 @@ export type InspectedSkill = {
 For this task `InspectedSkill` may be declared in `manifest.ts` with no producer yet;
 Task 2 supplies `inspectSource()` which returns `InspectedSkill[]`.
 
-**Migration:** `0222_skills.sql` with the DDL from the spec, statements separated by
+**Migration:** `0225_skills.sql` with the DDL from the spec, statements separated by
 `--> statement-breakpoint` as in `0221_hybrid_search_ontology.sql`. Journal entry `idx:
 222`.
 

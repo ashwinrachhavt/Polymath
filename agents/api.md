@@ -23,7 +23,7 @@ cards  links  tasks  sessions  areas  runs
 | Tasks | `/v1/tasks` | `GET /v1/tasks?state=open` |
 | Sessions | `/v1/sessions` | `POST /v1/sessions`, `POST /v1/sessions/:id/complete` |
 | Areas | `/v1/areas` | `GET /v1/areas/:id/progress` |
-| Runs | `/v1/runs` | `POST /v1/runs`, `POST /v1/runs/:id/cancel` |
+| Runs | `/v1/runs` | `POST /v1/runs` (optional `skillId` pins the run to an enabled skill), `POST /v1/runs/:id/cancel`, `POST /v1/runs/:id/retry` |
 
 Everything else is a capability over these. A proposal is `POST /v1/proposals`
 with a `target`; a stone is a session outcome, not a resource with its own

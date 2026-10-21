@@ -64,7 +64,7 @@ Checked against the installed tree, not memory:
 
 ## Data model
 
-New domain `src/domains/skills/`. One migration, `src/db/migrations/0222_skills.sql`.
+New domain `src/domains/skills/`. One migration, `src/db/migrations/0225_skills.sql` (renumbered from 0222 at merge; main landed 0222–0224 first).
 
 ```sql
 create table skills (

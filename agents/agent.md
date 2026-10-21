@@ -80,8 +80,12 @@ escape hatch.
 
 ## 4. Skills
 
-Skills are versioned Markdown plus typed tool schemas, stored under the agent's
-directory and **pinned to runs**.
+Skills are versioned Markdown stored in the `skills` table (one row per
+workspace per source identity) and served to Eve through a dynamic resolver
+(`eve/alfred/agent/skills/polymath_skill.ts`) that returns exactly the run's
+pinned revision. **Pinned to runs**: the policy snapshot freezes
+`{id, revision, contentHash}` at start, so a later edit or disable cannot
+change what a live run follows.
 
 - A skill may describe how to do a task; it may never grant authority, approve a
   fact, or widen a tool list.
