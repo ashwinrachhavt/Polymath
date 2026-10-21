@@ -21,7 +21,15 @@ import { requireRole } from "@/lib/auth/guards";
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export async function loadPreferencesAction(): Promise<Result<{ preferences: LoadedPreferences }>> {
-  const auth = await getAuthContext();
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    // A deployment without sign-in (no Clerk keys) still renders /settings as
+    // a browser preview; the load failing must be a named result, not an
+    // unhandled server-action rejection (ASH-193).
+    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+  }
   try {
     return { ok: true, preferences: await getPreferences(auth) };
   } catch (error) {
@@ -36,7 +44,12 @@ export async function savePreferencesAction(input: {
   appearance?: AppearanceValue;
   motion?: MotionValue;
 }): Promise<Result<{ preferences: LoadedPreferences }>> {
-  const auth = await getAuthContext();
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+  }
   requireRole(auth, "member");
   const patch: Partial<Preferences> = {};
   if (input.timezone !== undefined) patch.timezone = String(input.timezone).slice(0, 64);
