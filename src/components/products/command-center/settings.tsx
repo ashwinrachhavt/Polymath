@@ -233,7 +233,7 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="appearance">
-          <Panel title="Appearance" description="Adopted from the shared shell so every product lens matches.">
+          <Panel title="Appearance" description="No appearance overrides.">
             <p className="text-[13px] leading-relaxed text-muted-foreground">The header toggle cycles light, dark and system, and saves the choice to your account, so a new browser adopts it on first load. One accent colour is used across all three products; per-surface palette switching is not offered.</p>
           </Panel>
         </Section>
@@ -253,7 +253,7 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="connectors">
-          <Panel title="Connector state" description="Connected accounts, aliases and sync health live in the connection catalog.">
+          <Panel title="Connector state" description="See the connection catalog.">
             <Unavailable feature="Connector credentials">Provider secrets never reach this browser. Account connection, aliasing and revocation are server-side domain commands against Composio.</Unavailable>
             <div className="mt-4"><Destination screen="integrations">Open connection catalog</Destination></div>
           </Panel>

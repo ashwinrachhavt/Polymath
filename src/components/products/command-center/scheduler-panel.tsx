@@ -25,7 +25,7 @@ export function SchedulerPanel() {
   function set(patch: Partial<SchedulerPreferences>) {
     setDraft((current) => ({ ...current, ...patch }));
   }
-  return <Panel title="Scheduling preferences" description="Bounds the window focus and planning suggestions may use. No calendar provider is read or written from here." actions={<Status>{dirty ? "Unsaved changes" : "Saved locally"}</Status>}>
+  return <Panel title="Scheduling preferences" description="No calendar provider is read or written from here." actions={<Status>{dirty ? "Unsaved changes" : "Saved locally"}</Status>}>
     <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); if (problems.length) { notify(problems[0]); return; } const saved = updatePreferences({ scheduler: draft }); if (!saved.ok || !saved.persisted) return; notify("Scheduling preferences saved locally. Focus suggestions use the earliest start hour."); }}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Earliest focus start">
@@ -79,7 +79,7 @@ export function SchedulerPanel() {
               onClick={() => set({ topics: selected ? draft.topics.filter((item) => item !== topic) : [...draft.topics, topic] })}>{topic}</Button>;
           })}
         </div>
-        <p className="text-xs text-muted-foreground">Used to rank suggestions that match. Unmatched work is still suggested.</p>
+        <p className="text-xs text-muted-foreground">No preferences set.</p>
       </fieldset>
 
       {problems.length > 0 && <ul role="alert" className="grid gap-1 text-[13px] text-destructive">{problems.map((problem) => <li key={problem}>{problem}</li>)}</ul>}

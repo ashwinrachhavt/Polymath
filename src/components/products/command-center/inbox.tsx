@@ -18,8 +18,8 @@ export default function Inbox() {
   const captures = state.captures.filter((capture) => filter === "All" || capture.status === filter);
   const pending = state.captures.filter((capture) => capture.status === "UNPROCESSED").length;
 
-  return <Screen title="Inbox" description="Clarify before committing. Original text and attachments stay here after conversion. This inbox is a browser preview, not a connected mailbox." actions={<><Status>{pending} to clarify</Status><Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Open durable inbox</Link></Button></>}>
-    <Panel title="Capture material" description="Paste text or a URL. Remote content is not fetched.">
+  return <Screen title="Inbox" description="Original text and attachments stay here after conversion. This inbox is a browser preview, not a connected mailbox." actions={<><Status>{pending} to clarify</Status><Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Open durable inbox</Link></Button></>}>
+    <Panel title="Capture material" description="Remote content is not fetched.">
       <form className="grid gap-3" onSubmit={(event) => {
         event.preventDefault();
         if (addCapture(text, /^https?:\/\//i.test(text.trim()) ? "url" : "text")) { setText(""); setFilter("UNPROCESSED"); notify("Item added to the preview inbox."); }
@@ -46,7 +46,7 @@ export default function Inbox() {
         {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/alfred/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in Work" : "Open note in the assistant"}</Link></Button>}
         {capture.status === "ARCHIVED" && <Button className="mt-3" size="sm" variant="outline" onClick={() => updateCapture(capture.id, { status: "UNPROCESSED" })}>Restore capture</Button>}
       </article>)}</div>
-      {!captures.length && <Empty title="Nothing in this view" description="Capture material above or choose another triage status." />}
+      {!captures.length && <Empty title="Nothing in this view" description="Nothing in this view." />}
     </Panel>
     <Unavailable feature="Mailbox acquisition">No messages are pulled on arrival. Explicit mailbox reads require a configured account and authenticated read adapter.</Unavailable>
   </Screen>;
