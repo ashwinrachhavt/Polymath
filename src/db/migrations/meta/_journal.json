@@ -337,6 +337,13 @@
       "tag": "0221_hybrid_search_ontology",
       "when": 1792480490000,
       "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "tag": "0222_skills",
+      "when": 1792480500000,
+      "breakpoints": true
     }
   ]
 }
