@@ -48,7 +48,10 @@ export const skills = pgTable(
       "skills_source_kind_check",
       sql.raw(`"source_kind" in (${skillSourceKinds.map((kind) => `'${kind}'`).join(", ")})`),
     ),
-    uniqueIndex("skills_identity_key").on(t.workspaceId, t.sourceKind, t.sourceRef, t.sourcePath),
+    uniqueIndex("skills_identity_key")
+      .on(t.workspaceId, t.sourceKind, t.sourceRef, t.sourcePath)
+      // Live rows only: a tombstone must not block a re-install of the same source.
+      .where(sql`${t.archivedAt} is null`),
     index("skills_workspace_enabled_idx").on(t.workspaceId, t.enabled),
   ],
 );

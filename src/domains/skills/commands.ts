@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
@@ -57,6 +57,10 @@ export async function installSkill(
             eq(skills.sourceKind, input.sourceKind),
             eq(skills.sourceRef, input.sourceRef),
             eq(skills.sourcePath, input.sourcePath),
+            // The identity index is partial over live rows, so the conflict
+            // that brought us here is a live row; a tombstone beside it is a
+            // past removal, not the row that won.
+            isNull(skills.archivedAt),
           ),
         )
         .limit(1);
@@ -130,10 +134,9 @@ export async function setSkillEnabled(
  * not the body, and loadPinnedSkill still resolves the id, so archiving keeps
  * an in-flight pinned run's procedure alive for its whole life — which is the
  * contract the skills page states. Archived rows are hidden from every list
- * and picker by the archivedAt filter, and the identity index still holds the
- * (workspace, kind, ref, path) key, so re-installing the same source needs the
- * tombstone gone first; that refusal is the honest answer until a real update
- * path exists.
+ * and picker by the archivedAt filter. The identity index is partial over
+ * live rows, so re-installing the same source later creates a fresh row with a
+ * fresh id; the tombstone still serves the runs that pinned the old one.
  */
 export async function removeSkill(
   auth: AuthContext,

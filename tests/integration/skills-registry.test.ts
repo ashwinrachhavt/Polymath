@@ -165,6 +165,33 @@ suite("skills registry", () => {
     expect(audits).toHaveLength(1);
   });
 
+  it("re-installs a removed skill as a fresh row while the tombstone keeps its id", async () => {
+    const seeded = await seedWorkspace(db, `skills6-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const input = {
+      ...inspected("Returnable", "packages/returnable"),
+      sourceKind: "local" as const,
+      sourceRef: "/tmp/skills",
+      sourcePath: "packages/returnable",
+    };
+
+    const first = await commands.installSkill(auth, input);
+    expect(first.created).toBe(true);
+    expect(await commands.removeSkill(auth, { id: first.skillId })).toEqual({ removed: true });
+
+    // The tombstone holds the id, not the identity: a re-install of the same
+    // source must produce a new visible row, not silently point at the
+    // archived one.
+    const second = await commands.installSkill(auth, input);
+    expect(second.created).toBe(true);
+    expect(second.skillId).not.toBe(first.skillId);
+    expect(await queries.listSkills({ workspaceId: auth.workspaceId })).toHaveLength(1);
+
+    // A double submit on the fresh row still lands on that one row.
+    const third = await commands.installSkill(auth, input);
+    expect(third).toEqual({ skillId: second.skillId, created: false });
+  });
+
   it("refuses a re-install when the source moved to a new revision", async () => {
     const seeded = await seedWorkspace(db, `skills5-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);

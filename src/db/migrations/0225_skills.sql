@@ -4,7 +4,7 @@
 -- only. Identity is (workspace, source_kind, source_ref, source_path) and is
 -- separate from the display slug, because two packages in one repo may share a
 -- name. Rows are a copy of something that still exists at its source, so a
--- removal is a hard delete; provenance for a run lives in
+-- removal is a tombstone (archived_at); provenance for a run lives in
 -- agent_runs.policy_snapshot.skill, which is frozen at run start.
 CREATE TABLE "skills" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -32,5 +32,8 @@ ALTER TABLE "skills" ADD CONSTRAINT "skills_workspace_id_workspaces_id_fk" FOREI
 -- Source kinds are a closed vocabulary; the constraint is what stops a typo
 -- from inventing a fourth adapter nobody implemented.
 ALTER TABLE "skills" ADD CONSTRAINT "skills_source_kind_check" CHECK ("source_kind" in ('github', 'local', 'bundled'));--> statement-breakpoint
-CREATE UNIQUE INDEX "skills_identity_key" ON "skills" USING btree ("workspace_id","source_kind","source_ref","source_path");--> statement-breakpoint
+-- Identity holds among live rows only: a removal tombstones (archived_at) so an
+-- in-flight pinned run keeps its procedure, and a re-install of the same source
+-- gets a fresh row instead of reviving or colliding with the tombstone.
+CREATE UNIQUE INDEX "skills_identity_key" ON "skills" USING btree ("workspace_id","source_kind","source_ref","source_path") WHERE "archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "skills_workspace_enabled_idx" ON "skills" USING btree ("workspace_id","enabled");
