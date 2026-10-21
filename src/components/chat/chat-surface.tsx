@@ -236,9 +236,14 @@ export function ChatSurface({
         )}
 
         {chat.error && (
-          <p role="status" className="mt-3 text-[12px] text-destructive">
-            {chat.error}
-          </p>
+          <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
+            <p>{chat.error}</p>
+            {chat.connection === "error" && chat.retryable ? (
+              <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
         )}
       </div>
 

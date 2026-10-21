@@ -8,6 +8,7 @@ import {
   type ChatBlock,
   type ChatCitation,
 } from "@/domains/agents/stream-contract";
+import { StreamHttpError, describeStreamFailure } from "./stream-errors";
 
 /*
  * The browser half of the chat stream.
@@ -30,6 +31,8 @@ export type ChatState = {
   citations: ChatCitation[];
   connection: ChatConnection;
   error: string | null;
+  /** Whether Retry can help once the connection is in the error state. */
+  retryable: boolean;
 };
 
 const MAX_BACKOFF_MS = 8_000;
@@ -58,7 +61,13 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     citations: [],
     connection: runId && options.enabled !== false ? "connecting" : "waiting",
     error: null,
+    retryable: true,
   }));
+
+  // Bumped by retry(): a new value restarts the connection effect with a fresh
+  // failure count, so a stream that gave up can be reopened without a reload.
+  const [retryKey, setRetryKey] = useState(0);
+  const retry = useCallback(() => setRetryKey((key) => key + 1), []);
 
   const cursorRef = useRef(options.initial?.cursor ?? 0);
   const accRef = useRef(new ChatAccumulator());
@@ -89,14 +98,14 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     const connect = async () => {
       if (cancelled) return;
       controller = new AbortController();
-      setState((prev) => ({ ...prev, connection: "connecting", error: null }));
+      setState((prev) => ({ ...prev, connection: "connecting", error: null, retryable: true }));
       try {
         const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/stream`, {
           headers: { "x-chat-cursor": String(cursorRef.current) },
           signal: controller.signal,
         });
         if (!response.ok || !response.body) {
-          throw new Error(`stream returned ${response.status}`);
+          throw new StreamHttpError(response.status);
         }
         setState((prev) => ({ ...prev, connection: "streaming" }));
 
@@ -142,7 +151,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               setState((prev) => ({ ...prev, error: frame.message }));
               // These mean retrying cannot help: the run is gone or finished.
               if (frame.code === "run_not_found" || frame.code === "run_finished") {
-                setState((prev) => ({ ...prev, connection: "error" }));
+                setState((prev) => ({ ...prev, connection: "error", retryable: false }));
                 return;
               }
             }
@@ -162,7 +171,13 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
         if (cancelled) return;
         // An abort is our own teardown, not a failure to show.
         if (cause instanceof DOMException && cause.name === "AbortError") return;
-        schedule(cause instanceof Error ? cause.message : undefined);
+        const failure = describeStreamFailure(cause);
+        // Access and not-found never recover by retrying; say so at once.
+        if (!failure.retryable) {
+          setState((prev) => ({ ...prev, connection: "error", error: failure.message, retryable: false }));
+          return;
+        }
+        schedule(failure.message);
       }
     };
 
@@ -176,7 +191,8 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
         setState((prev) => ({
           ...prev,
           connection: "error",
-          error: message ?? "The chat connection failed. Reload to try again.",
+          error: message ?? "The connection failed.",
+          retryable: true,
         }));
         return;
       }
@@ -194,9 +210,9 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
       controller?.abort();
     };
     // runId and enabled are the identity of a stream; options.initial is mount-time.
-  }, [runId, options.enabled, flush]);
+  }, [runId, options.enabled, flush, retryKey]);
 
-  return state;
+  return { ...state, retry };
 }
 
 function mergeTool(
