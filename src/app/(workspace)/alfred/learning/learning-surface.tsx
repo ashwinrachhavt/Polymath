@@ -130,7 +130,7 @@ export default function LearningSurface({
         <div className="flex flex-col gap-4">
           <Panel title="Decks">
             {decks.length === 0 ? (
-              <Empty title="No decks yet" description="Create a deck, then generate questions from a source." />
+              <Empty title="No decks yet" />
             ) : (
               <ul className="flex flex-col">
                 {decks.map((deck) => (
@@ -259,7 +259,6 @@ export default function LearningSurface({
             {due.length === 0 ? (
               <Empty
                 title="Nothing due"
-                description="Approve a generated question, or come back when a scheduled one is due."
               />
             ) : (
               <ul className="flex flex-col gap-4">

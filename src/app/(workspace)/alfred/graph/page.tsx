@@ -24,7 +24,7 @@ async function GraphSurface({ searchParams }: { searchParams: Promise<{ focus?: 
   const nodes = near ? all.nodes.filter((n) => near.has(n.id)) : all.nodes;
   const edges = near ? all.edges.filter((e) => near.has(e.source) && near.has(e.target)) : all.edges;
   return nodes.length === 0 ? (
-    <Empty title="No cards yet" description="Write a note or a zettel and it appears here, linked to what it resembles." />
+    <Empty title="No cards yet" />
   ) : (
     <GraphCanvas nodes={nodes} edges={edges} />
   );
@@ -32,7 +32,7 @@ async function GraphSurface({ searchParams }: { searchParams: Promise<{ focus?: 
 
 export default function AlfredGraphPage({ searchParams }: { searchParams: Promise<{ focus?: string | string[] }> }) {
   return (
-    <Screen title="Graph" description="Tie ideas together. Drag from one card to another to link them, or select several and combine them into a new zettel.">
+    <Screen title="Graph">
       <Suspense fallback={<Skeleton className="h-[70vh] min-h-96 rounded-xl" />}>
         <GraphSurface searchParams={searchParams} />
       </Suspense>

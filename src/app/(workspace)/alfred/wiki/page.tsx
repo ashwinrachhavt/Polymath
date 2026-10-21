@@ -56,14 +56,12 @@ export async function WikiSurface({
     <div className="flex flex-col">
       <PageHeader
         title="Wiki"
-        purpose="The maintained layer over your documents: index, topics, articles, log."
         actions={<LintButton />}
       />
       <div className="flex flex-col gap-8 page-content">
         {!overview ? (
           <EmptyState
             title="No wiki yet"
-            description="Ingest a read document and Polymath starts the wiki: an article per document, a hub per topic, a master index, and a log of every ingest. Documents stay the immutable sources; the wiki is what's maintained."
           />
         ) : (
           <>

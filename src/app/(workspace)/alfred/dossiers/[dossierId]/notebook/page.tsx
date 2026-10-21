@@ -77,7 +77,7 @@ async function NotebookData({ dossierId }: { dossierId: string }) {
 
   return (
     <>
-      <PageHeader title={dossier.title} purpose="Sources, grounded answers, and everything this notebook has generated." />
+      <PageHeader title={dossier.title} />
       <NotebookSurface
         notebook={{ dossierId: dossier.id, title: dossier.title }}
         sources={sources}

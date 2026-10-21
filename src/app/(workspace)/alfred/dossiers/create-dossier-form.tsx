@@ -82,7 +82,7 @@ export function CreateDossierForm({ documents }: { documents: Array<{ id: string
           ))}
         </div>
       ) : (
-        <p className="text-muted-foreground text-[13px]">File a document in Knowledge first and it can join a dossier here.</p>
+        <p className="text-muted-foreground text-[13px]">No filed documents yet.</p>
       )}
       {error ? <p className="text-destructive text-[13px]">{error}</p> : null}
     </form>

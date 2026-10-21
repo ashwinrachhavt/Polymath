@@ -167,7 +167,6 @@ export async function ZettelsSurface({ searchParams }: { searchParams: Promise<R
   return (
     <Screen
       title="Zettels"
-      description="Every accepted zettel card, decomposed from your sources. Four views over the same store - pick the one that answers today's question."
       actions={<Link href="/alfred/knowledge" className="text-[13px] text-muted-foreground underline-offset-2 hover:underline">Back to Knowledge</Link>}
     >
       <Panel>
@@ -207,7 +206,6 @@ export async function ZettelsSurface({ searchParams }: { searchParams: Promise<R
           ) : (
             <Empty
               title="No zettels yet"
-              description="Accept proposed zettels from a document in Knowledge and each one lands here as a card you can link, tag and view four ways."
             />
           )
         ) : view === "table" ? (

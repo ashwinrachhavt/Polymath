@@ -511,7 +511,7 @@ export function NoteEditor({
                     <DialogTitle>Version history</DialogTitle>
                     <DialogDescription>Every checkpoint is immutable - this is what the note said, when.</DialogDescription>
                     {history.length === 0 ? (
-                      <p className="text-[13px] text-muted-foreground">No checkpoints yet. Save one to start the history.</p>
+                      <p className="text-[13px] text-muted-foreground">No checkpoints yet.</p>
                     ) : (
                       <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
                         {history.map((v) => (

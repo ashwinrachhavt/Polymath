@@ -25,7 +25,7 @@ export async function SourcesData() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Sources" purpose="Find and bring in the material you will study." />
+        <PageHeader title="Sources" />
         <EmptyState
           title="No database configured"
           description="Set DATABASE_URL to read and capture sources."
