@@ -64,6 +64,19 @@ suite("skills registry", () => {
       .from(skillsTable)
       .where(eq(skillsTable.workspaceId, auth.workspaceId));
     expect(rows).toHaveLength(1);
+
+    // The install is audited once; the losing double submit does not add a row.
+    const audits = await db
+      .select()
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.subjectId, first.skillId),
+          eq(auditEvents.action, "skill.installed"),
+        ),
+      );
+    expect(audits).toHaveLength(1);
   });
 
   it("installs a second row when the source path differs", async () => {
@@ -115,7 +128,7 @@ suite("skills registry", () => {
     expect(await queries.getSkill({ workspaceId: b.workspaceId }, installedA.skillId)).toBeNull();
   });
 
-  it("removes the row and writes a skill.removed audit row in the same transaction", async () => {
+  it("removes the row and writes a skill.removed audit row", async () => {
     const seeded = await seedWorkspace(db, `skills3-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const installed = await commands.installSkill(auth, {
@@ -173,13 +186,48 @@ suite("skills registry", () => {
     const disabled = await queries.listSkills({ workspaceId: auth.workspaceId }, { enabled: false });
     expect(disabled.map((s) => s.id)).toEqual([drop.skillId]);
 
+    // The disable/enable write is audited with the action matching the new state.
+    const disableAudits = await db
+      .select()
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.subjectId, drop.skillId),
+          eq(auditEvents.action, "skill.disabled"),
+        ),
+      );
+    expect(disableAudits).toHaveLength(1);
+
     // An unknown id is a no-op, not a write to another workspace.
     expect(await commands.setSkillEnabled(auth, { id: keep.skillId, enabled: false })).toEqual({
       updated: true,
     });
+    const keepDisables = await db
+      .select()
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.subjectId, keep.skillId),
+          eq(auditEvents.action, "skill.disabled"),
+        ),
+      );
+    expect(keepDisables).toHaveLength(1);
+
     expect(
       await commands.setSkillEnabled(auth, { id: crypto.randomUUID(), enabled: false }),
     ).toEqual({ updated: false });
+    const allAudits = await db
+      .select()
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.action, "skill.disabled"),
+        ),
+      );
+    expect(allAudits).toHaveLength(2);
   });
 
   it("returns null from loadPinnedSkill for an id in another workspace", async () => {

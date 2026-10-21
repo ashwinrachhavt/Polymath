@@ -120,8 +120,8 @@ export async function setSkillEnabled(
  * A hard delete, because the row is a copy of something that still exists at
  * its source. Provenance for past runs lives in agent_runs.policy_snapshot,
  * not here, so the run history survives the row. The audit row is written
- * before the delete, in the same transaction, so the record of removal cannot
- * outlive its own commit.
+ * before the delete only so the delete is the last thing that can fail; both
+ * statements share the transaction, so a rollback drops the audit row too.
  */
 export async function removeSkill(
   auth: AuthContext,

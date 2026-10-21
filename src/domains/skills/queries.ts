@@ -1,4 +1,4 @@
-import { and, asc, eq, type SQL } from "drizzle-orm";
+import { and, asc, eq, isNull, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { skills, type Skill, type SkillFile } from "./schema";
 
@@ -10,12 +10,15 @@ import { skills, type Skill, type SkillFile } from "./schema";
  * import here would drag the request runtime into that bundle.
  */
 
-/** The workspace's installed skills, newest first. Feed the library surface. */
+/** The workspace's installed skills, by name. Feed the library surface. */
 export async function listSkills(
   auth: { workspaceId: string },
   filter?: { enabled?: boolean },
 ): Promise<Skill[]> {
-  const conditions: SQL[] = [eq(skills.workspaceId, auth.workspaceId)];
+  const conditions: SQL[] = [
+    eq(skills.workspaceId, auth.workspaceId),
+    isNull(skills.archivedAt),
+  ];
   if (filter?.enabled !== undefined) conditions.push(eq(skills.enabled, filter.enabled));
   return db
     .select()
@@ -29,7 +32,9 @@ export async function getSkill(auth: { workspaceId: string }, id: string): Promi
   const [row] = await db
     .select()
     .from(skills)
-    .where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, id)))
+    .where(
+      and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, id), isNull(skills.archivedAt)),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -46,7 +51,13 @@ export async function getSkillBySlug(
   const [row] = await db
     .select()
     .from(skills)
-    .where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.slug, slug)))
+    .where(
+      and(
+        eq(skills.workspaceId, auth.workspaceId),
+        eq(skills.slug, slug),
+        isNull(skills.archivedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
