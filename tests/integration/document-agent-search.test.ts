@@ -144,6 +144,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "wiki.lint",
       "gmail.send",
       "gmail.read",
+      "gmail.thread.read",
       "calendar.read",
       "notion.read",
     ]);
@@ -160,6 +161,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "wiki.ingest",
       "wiki.lint",
       "gmail.read",
+      "gmail.thread.read",
       "calendar.read",
       "notion.read",
     ]);

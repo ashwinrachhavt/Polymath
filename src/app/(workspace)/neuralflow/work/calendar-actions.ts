@@ -12,14 +12,19 @@ import {
   cancelEvent,
   moveEvent,
 } from "@/domains/calendar/commands";
-import { approveCalendarProposal, rejectCalendarProposal } from "@/domains/calendar/proposals";
+import {
+  CalendarExecuteNotAllowedError,
+  approveCalendarProposal,
+  rejectCalendarProposal,
+} from "@/domains/calendar/proposals";
+import { AttemptAlreadyClaimedError } from "@/domains/actions/attempts";
 import { ProposalConflictError, ProposalNotFoundError, StaleRevisionError } from "@/domains/actions/commands";
 import { createEvent } from "@/domains/calendar/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-const known = [EventNotFoundError, EventVersionConflictError, InvalidRangeError, NoFreeSlotError, IdempotencyConflictError, ProposalConflictError, ProposalNotFoundError, StaleRevisionError];
+const known = [EventNotFoundError, EventVersionConflictError, InvalidRangeError, NoFreeSlotError, IdempotencyConflictError, ProposalConflictError, ProposalNotFoundError, StaleRevisionError, CalendarExecuteNotAllowedError, AttemptAlreadyClaimedError];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {

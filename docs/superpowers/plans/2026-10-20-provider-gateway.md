@@ -480,7 +480,7 @@ comes back with `truncated: true`.
 `src/domains/actions/executor.ts`; new
 `src/domains/integrations/gmail/send.ts`; `src/domains/actions/schema.ts`;
 `src/domains/integrations/composio.ts`; new migration
-`src/db/migrations/0214_action_attempt_idempotency.sql` and its
+`src/db/migrations/0222_action_attempt_idempotency.sql` and its
 `meta/_journal.json` entry; `src/app/(workspace)/reviews/actions.ts`;
 `src/app/(workspace)/reviews/reviews-queue.tsx`; new
 `tests/integration/effect-executor.test.ts`.

@@ -31,7 +31,13 @@ export function CalendarToolbar({ events, proposals }: { events: AssistEvent[]; 
     startTransition(async () => {
       const input = { proposalId: p.id, expectedVersion: p.version, revisionId: p.revisionId };
       const result = approve ? await approveProposalAction(input) : await rejectProposalAction(input);
-      setNote(result.ok ? (approve ? "Approved and added to your calendar." : "Rejected.") : result.error);
+      if (!result.ok) return setNote(result.error);
+      // An unknown outcome is not success: the change may have landed, and the
+      // owner must not be told it did until reconciliation says so.
+      if (approve && "status" in result && result.status === "unknown") {
+        return setNote("Approved. The result is unknown; reconcile before retrying.");
+      }
+      setNote(approve ? "Approved and added to your calendar." : "Rejected.");
     });
   }
 
