@@ -179,7 +179,9 @@ export async function installBundledSkillAction(input: { slug: string }): Promis
       error: cause instanceof Error ? cause.message : "The skill did not install. Try again.",
     };
   }
-}export async function setSkillEnabledAction(input: {
+}
+
+export async function setSkillEnabledAction(input: {
   id: string;
   enabled: boolean;
 }): Promise<SkillWriteAction> {
