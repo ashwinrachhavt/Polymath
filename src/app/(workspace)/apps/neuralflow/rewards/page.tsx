@@ -32,7 +32,6 @@ async function Rewards() {
   return (
     <Screen
       title="Stone collection"
-      description="The ledger is the truth: every stone, streak and badge is a row, and the totals below are derived from it at render. The first task you finish each day earns the Quartz; five stones fuse into a shard you claim by hand."
     >
       <Jewels overview={overview} />
 
@@ -60,7 +59,7 @@ async function Rewards() {
         <ClaimShardButton claimable={overview.shards.claimable} />
       </Panel>
 
-      <Panel title="Definitions" description="What a reward is. Defining one changes no balances and awards nothing.">
+      <Panel title="Definitions" description="Defining one changes no balances and awards nothing.">
         <div className="flex flex-col gap-4">
           {overview.definitions.map((definition) => (
             <div key={definition.id} className="flex flex-wrap items-center justify-between gap-3">
@@ -77,7 +76,7 @@ async function Rewards() {
             </div>
           ))}
           {!overview.definitions.length ? (
-            <Empty title="No rewards defined" description="Define the catalog the earning rules will reference." />
+            <Empty title="No rewards defined" />
           ) : null}
         </div>
       </Panel>
@@ -86,7 +85,7 @@ async function Rewards() {
         <DefinitionForm />
       </Panel>
 
-      <Panel title="Ledger" description="Newest entries first. The ledger is append-only; a reversal is a new negative row, never a delete.">
+      <Panel title="Ledger" description="The ledger is append-only; a reversal is a new negative row, never a delete.">
         <div className="flex flex-col gap-4">
           {overview.ledger.map((entry) => (
             <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3">
@@ -100,7 +99,7 @@ async function Rewards() {
             </div>
           ))}
           {!overview.ledger.length ? (
-            <Empty title="Nothing earned yet" description="Finish your first task of the day and the Quartz lands here." />
+            <Empty title="Nothing earned yet" />
           ) : null}
         </div>
       </Panel>
