@@ -19,7 +19,7 @@ export function IngestForm({ documents }: { documents: { id: string; title: stri
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   if (documents.length === 0) {
-    return <p className="text-muted-foreground text-sm">No read documents yet. Capture or upload one in Knowledge first.</p>;
+    return <p className="text-muted-foreground text-sm">No read documents yet.</p>;
   }
 
   return (

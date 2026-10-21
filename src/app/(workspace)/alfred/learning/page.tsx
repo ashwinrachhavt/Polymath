@@ -29,7 +29,7 @@ export async function LearningData() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Learning" purpose="Approved questions come back on a schedule." />
+        <PageHeader title="Learning" />
         <EmptyState title="No database configured" description="Set DATABASE_URL to read and review decks." />
       </>
     );

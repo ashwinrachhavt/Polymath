@@ -188,8 +188,7 @@ export async function NotebookSurface({ searchParams }: { searchParams: Promise<
           />
         ) : (
           <div className="mx-auto max-w-[720px] px-3 py-12">
-            <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>A place to think</h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">Choose a note from the list, or start a new one.</p>
+            <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h2>
             <div className="mt-5"><NewNoteButton /></div>
           </div>
         )}

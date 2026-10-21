@@ -22,7 +22,7 @@ export default function MorePage() {
 
   return (
     <>
-      <PageHeader title="More" purpose="Every destination, in one place." />
+      <PageHeader title="More" />
       <div className="flex flex-col gap-6 page-content">
         {sections.map(({ key, label, items }) => (
           items.length > 0 ? (

@@ -26,7 +26,7 @@ async function FilesSurface() {
 export default function FilesPage() {
   return (
     <div className="flex flex-col">
-      <PageHeader title="Files" purpose="Every document you have added, organised for finding, reading and reviewing." />
+      <PageHeader title="Files" />
       <Suspense
         fallback={
           <div className="flex flex-col gap-3 page-content">

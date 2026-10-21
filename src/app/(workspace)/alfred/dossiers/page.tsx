@@ -39,7 +39,7 @@ export async function DossiersSurface({
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
+        <PageHeader title="Dossiers" />
         <div className="page-content">
           <EmptyState
             title="Dossier storage is not configured"
@@ -80,13 +80,12 @@ export async function DossiersSurface({
 
   return (
     <>
-      <PageHeader title="Dossiers" purpose="Named sets of documents an agent works inside." />
+      <PageHeader title="Dossiers" />
       <div className="flex flex-col gap-8 page-content">
-        <Section title="Your dossiers" description="A dossier scopes search and generation to the documents pinned inside it.">
+        <Section title="Your dossiers">
           {dossiers.length === 0 ? (
             <EmptyState
               title="No dossiers yet"
-              description="Create one below, attach the documents it should cover, then generate a draft that stays inside those documents."
             />
           ) : (
             <>
@@ -138,7 +137,7 @@ export async function DossiersSurface({
         {detail ? (
           <Section title={detail.title} description="The documents this dossier holds, each pinned at the version it was attached at.">
             {detail.documents.length === 0 ? (
-              <p className="text-muted-foreground text-[13px]">No documents yet. Create a dossier with documents, or ask the assistant to attach them.</p>
+              <p className="text-muted-foreground text-[13px]">No documents yet.</p>
             ) : (
               <ul className="flex flex-col gap-1">
                 {docsPaged!.items.map((doc) => (
@@ -181,7 +180,7 @@ export async function DossiersSurface({
         ) : null}
 
         {draftDetail && linkTitles && linkable ? (
-          <Section title="Draft workbench" description="Read the draft with the documents it stands on, edit it into a new version, and attach it to the record it informs.">
+          <Section title="Draft workbench">
             <DraftWorkbench
               artifact={draftDetail.artifact}
               text={draftDetail.text}
@@ -193,7 +192,7 @@ export async function DossiersSurface({
           </Section>
         ) : null}
 
-        <Section title="New dossier" description="Pick the documents it should cover. You can attach more later.">
+        <Section title="New dossier">
           <CreateDossierForm documents={attachable} />
         </Section>
       </div>

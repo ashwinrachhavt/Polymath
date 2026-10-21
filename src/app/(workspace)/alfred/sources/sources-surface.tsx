@@ -91,10 +91,9 @@ export default function SourcesSurface({ initialSources }: { initialSources: Sou
   return (
     <Screen
       title="Sources"
-      description="Find and bring in the material you will study. Everything is queued, so this page never waits on a fetch."
     >
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel title="Find sources" description="Search the web, then import the results you want.">
+        <Panel title="Find sources">
           <form
             className="flex flex-wrap items-end gap-2"
             onSubmit={(e) => {
@@ -149,7 +148,7 @@ export default function SourcesSurface({ initialSources }: { initialSources: Sou
         </Panel>
 
         <div className="flex flex-col gap-6">
-          <Panel title="Paste a link" description="A web page, a PDF, or a YouTube video.">
+          <Panel title="Paste a link">
             <form
               className="flex flex-col gap-2"
               onSubmit={(e) => {
@@ -192,11 +191,10 @@ export default function SourcesSurface({ initialSources }: { initialSources: Sou
         </p>
       )}
 
-      <Panel title="Your sources" description="Newest first. A stuck row names the reason instead of spinning.">
+      <Panel title="Your sources" description="A stuck row names the reason instead of spinning.">
         {initialSources.length === 0 ? (
           <Empty
             title="No sources yet"
-            description="Search above, or paste a link. A source is ready to study once it says Ready."
           />
         ) : (
           <ul className="divide-y divide-border">

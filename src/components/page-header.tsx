@@ -15,7 +15,7 @@ export function PageHeader({
   actions,
 }: {
   title: string;
-  purpose: string;
+  purpose?: string;
   actions?: ReactNode;
 }) {
   return (
@@ -23,7 +23,7 @@ export function PageHeader({
       <div className="screen-heading">
         <div className="min-w-0 flex-1">
           <h1 className="screen-title">{title}</h1>
-          <p className="screen-description">{purpose}</p>
+          {purpose ? <p className="screen-description">{purpose}</p> : null}
         </div>
         {actions ? <div className="screen-actions">{actions}</div> : null}
       </div>

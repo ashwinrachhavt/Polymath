@@ -75,7 +75,6 @@ async function LibrarySurface() {
       <div className="page-content">
         <EmptyState
           title="Nothing to read yet"
-          description="Documents you add in Knowledge land here once they are readable: saved pages, uploaded files, captured sources. Open one and your place, time and history are kept here."
         />
       </div>
     );
@@ -131,7 +130,6 @@ export default function LibraryPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Library"
-        purpose="Your reading over the documents you saved - place, time and history kept."
       />
       <Suspense
         fallback={
