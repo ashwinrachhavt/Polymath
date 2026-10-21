@@ -24,7 +24,7 @@ const { getPreferences, updatePreferences } = vi.hoisted(() => ({
   updatePreferences: vi.fn(),
 }));
 vi.mock("@/domains/identity/preferences", () => ({ getPreferences, updatePreferences }));
-const settingsProps = vi.hoisted(() => ({ fn: vi.fn(() => null) }));
+const settingsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
 vi.mock("@/components/products/command-center/settings", () => ({
   default: (props: unknown) => {
     settingsProps.fn(props);
