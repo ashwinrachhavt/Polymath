@@ -106,11 +106,14 @@ export function eveBridgeUnavailableReason(): string | null {
 }
 
 /** The Authorization header for one Eve call, minted from the caller's verified context. */
-function bridgeHeaders(auth: AuthContext): Record<string, string> {
+function bridgeHeaders(
+  auth: AuthContext,
+  claims: { runId?: string; skillId?: string } = {},
+): Record<string, string> {
   const secret = bridgeSecret();
   if (!secret) throw new Error(eveBridgeUnavailableReason() ?? "Eve bridge is not configured.");
   const token = signBridgeToken(
-    { userId: auth.userId, workspaceId: auth.workspaceId, role: auth.role },
+    { userId: auth.userId, workspaceId: auth.workspaceId, role: auth.role, ...claims },
     { secret },
   );
   return { authorization: `Bearer ${token}` };
@@ -118,10 +121,18 @@ function bridgeHeaders(auth: AuthContext): Record<string, string> {
 
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
-    async start({ sessionId, objective, auth, instructions }) {
+    async start({ sessionId, objective, auth, instructions, policy }) {
+      // The run id and the skill pin ride in the signed token rather than in a
+      // row written after the session exists: the skill resolver runs at
+      // session.started, before this driver could write session_ref, so a
+      // lookup there would race the create call.
+      const headers = bridgeHeaders(auth, {
+        runId: sessionId,
+        ...(policy.skill?.id ? { skillId: policy.skill.id } : {}),
+      });
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...bridgeHeaders(auth) },
+        headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify({
           // The objective IS the first message: eve only starts a turn when
           // the create request carries one (message-free create parks the
