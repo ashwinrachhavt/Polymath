@@ -67,18 +67,65 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   const selectedId = rawId && /^[0-9a-fA-F-]{36}$/.test(rawId) ? rawId : undefined;
   const invalidSelection = !!rawId && !selectedId;
 
-  const [contactsPage, companyPageData, allCompanies, detail, contactDuplicates, companyDuplicates] = await Promise.all([
+  // A selected contact is its own surface: the management screen around it is
+  // chrome the detail does not need, and fetching the list to render it wastes
+  // the request. Only the detail and the company picker load here.
+  if (selectedId || invalidSelection) {
+    const [detail, allCompanies] = await Promise.all([
+      selectedId ? getContactDetail(auth, { contactId: selectedId }) : Promise.resolve(null),
+      // The edit form's picker needs every company, not just a visible page.
+      listCompanies(auth),
+    ]);
+    const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
+    const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
+
+    return (
+      <Screen
+        title="Contacts"
+        description="Observations, follow-ups and correspondence for this contact."
+        actions={
+          <Link href="/command-center/relationships/contacts" className="text-[13px] font-medium underline-offset-4 hover:underline">
+            Open contact list
+          </Link>
+        }
+      >
+        {invalidSelection ? (
+          <Empty
+            title="Contact not found"
+            description="This record link is not a valid contact id. No contact was selected."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/command-center/relationships/contacts">Open contact list</Link>
+              </Button>
+            }
+          />
+        ) : detail ? (
+          <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} />
+        ) : (
+          <Empty
+            title="Contact not found"
+            description="This record link does not match a contact in this workspace. No other contact was selected."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/command-center/relationships/contacts">Open contact list</Link>
+              </Button>
+            }
+          />
+        )}
+      </Screen>
+    );
+  }
+
+  const [contactsPage, companyPageData, allCompanies, contactDuplicates, companyDuplicates] = await Promise.all([
     listContacts(auth, { query: q, status, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
     pageCompanies(auth, { limit: list.pageSize, offset: offsetFor(companyPage, list.pageSize) }),
     // The pickers in the forms need every company, not just the visible page.
     listCompanies(auth),
-    selectedId ? getContactDetail(auth, { contactId: selectedId }) : Promise.resolve(null),
     findContactDuplicates(auth),
     findCompanyDuplicates(auth),
   ]);
   redirectPastEnd("/command-center/relationships/contacts", query, list.page, list.pageSize, contactsPage.total);
   redirectPastEnd("/command-center/relationships/contacts", query, companyPage, list.pageSize, companyPageData.total, "cpage");
-  const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
 
   const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
 
@@ -196,34 +243,10 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
         </div>
 
         <div>
-          {invalidSelection ? (
-            <Empty
-              title="Contact not found"
-              description="This record link is not a valid contact id. No contact was selected."
-              action={
-                <Button asChild variant="outline">
-                  <Link href="/command-center/relationships/contacts">Open contact list</Link>
-                </Button>
-              }
-            />
-          ) : selectedId && !detail ? (
-            <Empty
-              title="Contact not found"
-              description="This record link does not match a contact in this workspace. No other contact was selected."
-              action={
-                <Button asChild variant="outline">
-                  <Link href="/command-center/relationships/contacts">Open contact list</Link>
-                </Button>
-              }
-            />
-          ) : detail ? (
-            <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} />
-          ) : (
-            <Empty
-              title="Choose a contact"
-              description="Select a contact to see its companies, observations and follow-ups."
-            />
-          )}
+          <Empty
+            title="Choose a contact"
+            description="Select a contact to see its companies, observations and follow-ups."
+          />
         </div>
       </div>
     </Screen>

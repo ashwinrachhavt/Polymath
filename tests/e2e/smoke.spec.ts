@@ -1,14 +1,62 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { destinations } from "../../src/lib/navigation";
+import { removeSeededRuns, seedRun } from "./helpers/runs";
 import { waitSettled } from "./helpers/settled";
 
-test("home opens the Today briefing", async ({ page }) => {
+test.afterAll(async () => {
+  await removeSeededRuns();
+});
+
+test("home opens Assistant", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveURL("/command-center/briefing");
-  await expect(page.locator("#content h1")).toContainText("Briefing");
-  // The briefing reads canonical tasks; the preview banner must not claim otherwise.
+  await expect(page).toHaveURL("/alfred");
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
+  // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
+});
+
+/*
+ * The home is a conversation surface now: greeting, one composer, then history.
+ * The copy that described the old run-launcher screen must be gone from the
+ * rendered page, not merely absent from the source — a stale branch in a
+ * conditional would still ship it.
+ */
+test("the Assistant home carries only the new conversation copy", async ({ page }) => {
+  await page.goto("/alfred");
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
+  const composer = page.getByRole("textbox", { name: "Start a conversation" });
+  await expect(composer).toHaveAttribute("placeholder", "Ask anything or describe a task…");
+
+  const body = page.locator("body");
+  for (const gone of [
+    "Hand off work and inspect what it did",
+    "Start a run",
+    "No threads yet",
+    "Recent runs",
+    "You:",
+    "Assistant:",
+  ]) {
+    await expect(body, gone).not.toContainText(gone);
+  }
+});
+
+test("the rail leads with Assistant, then Today", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/alfred");
+  // The home streams: the shell hydrates and the Suspense boundary swaps its
+  // content in. Reading the DOM before that settles throws "Execution context
+  // was destroyed, most likely because of a navigation" — the page was still
+  // replacing itself, not changing route.
+  await waitSettled(page);
+  // Destination links carry their label as an accessible name; the wordmark's
+  // name comes from its visible text, so it does not match a[aria-label] and is
+  // excluded by the query itself.
+  const labels = await page
+    .getByRole("navigation", { name: "Workspace", exact: true })
+    .locator("a[aria-label]")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")));
+  expect(labels.slice(0, 2)).toEqual(["Assistant", "Today"]);
 });
 
 /*
@@ -22,8 +70,8 @@ test("canonical routes render", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page).toHaveURL("/command-center/briefing");
-  await expect(page.locator("#content h1")).toContainText("Briefing");
+  await expect(page).toHaveURL("/alfred");
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],
@@ -78,6 +126,74 @@ test("the destination launcher is keyboard reachable and closes on escape", asyn
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(trigger).toBeFocused();
+});
+
+/*
+ * A run that needs the owner carries exactly one status, in the words of the
+ * screen. `waiting_approval` is only reachable after a model asks for a
+ * proposal, so the row is seeded directly.
+ */
+test("a waiting run shows one status, and only that one", async ({ page }) => {
+  const objective = `Approve the renewal letter ${Date.now().toString(36)}`;
+  const run = await seedRun({ objective, state: "waiting_approval" });
+  test.skip(!run, "Seeding a waiting run needs DATABASE_URL.");
+
+  await page.goto("/alfred");
+  const row = page.getByRole("link", { name: new RegExp(objective) });
+  await expect(row).toBeVisible();
+  await expect(row.getByText("Needs your reply", { exact: true })).toHaveCount(1);
+  for (const second of ["Running", "In progress", "Queued", "Succeeded", "Waiting for your reply"]) {
+    await expect(row, second).not.toContainText(second);
+  }
+  // The row is a conversation, not a debug line: no model, no transcript prefix.
+  await expect(row).not.toContainText("You:");
+  await expect(row).not.toContainText("Assistant:");
+});
+
+/*
+ * The conversation page: the transcript is the page, instrumentation is one
+ * disclosure away, and a run id that is not this workspace's is the same
+ * answer as one that never existed. The shell's loading.tsx commits before
+ * notFound() runs, so the response is 200 with not-found content — assert the
+ * content, never the status.
+ */
+test("a run opens its conversation, with details behind a disclosure", async ({ page }) => {
+  const objective = `Draft the renewal letter ${Date.now().toString(36)}`;
+  const run = await seedRun({ objective, state: "waiting_approval" });
+  test.skip(!run, "Opening a conversation needs DATABASE_URL.");
+
+  await page.goto(`/alfred/${run!.id}`);
+  // The streaming shell can leave the streamed subtree mounted twice in dev;
+  // every locator below is scoped to the first content main so strict mode
+  // sees one page.
+  const content = page.locator("#content").first();
+  await expect(content.locator("h1")).toHaveText(objective);
+  const conversation = content.getByRole("region", { name: "Conversation" });
+  await expect(conversation).toBeVisible();
+  await expect(conversation.getByText("This conversation has no messages yet.")).toBeVisible();
+  // The attention badge links to Reviews rather than growing a decision surface.
+  const reply = content.getByRole("link", { name: "Needs your reply" });
+  await expect(reply).toBeVisible();
+  await expect(reply).toHaveAttribute("href", "/reviews");
+  // Exactly one status on the page: the header badge, nothing repeated below.
+  await expect(content.getByText("Needs your reply")).toHaveCount(1);
+
+  // Details are collapsed: model, tools, and the timeline are not on the page
+  // until asked for.
+  const details = content.locator("details");
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(content.getByText("Run timeline")).toBeHidden();
+  await details.locator("summary").click();
+  await expect(content.getByText("Run timeline")).toBeVisible();
+});
+
+test("a conversation that does not exist says so, without a 404 page", async ({ page }) => {
+  await page.goto("/alfred/00000000-0000-4000-8000-000000000000");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
+  await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
+  // A malformed id takes the same path as a missing one, never a uuid cast error.
+  await page.goto("/alfred/not-a-uuid");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
 });
 
 test("old Polymath paths redirect and unknown screens render a noindex not-found state", async ({ page }) => {

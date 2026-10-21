@@ -77,6 +77,9 @@ inside the pillars, not a fourth structure.
   microservices.
 - **Alfred is one first-party agent** plus a fixed sub-agent roster. Not a
   persona zoo.
+- **A conversation is home.** The root lands on the Assistant; the first move is
+  to say what you want, not to browse. Today is one click away and still where
+  the day is decided.
 - **Donor repos are frozen.** `~/Projects/{command-center,alfred,neuralflow}` are
   read-only references. Never edit them.
 

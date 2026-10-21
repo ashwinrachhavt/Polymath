@@ -1,5 +1,6 @@
 import { SignUp } from "@clerk/nextjs";
 import { notFound } from "next/navigation";
+import { afterAuthUrl } from "@/lib/clerk-appearance";
 import { clerkConfigured } from "@/lib/clerk";
 
 export const metadata = { title: "Create account · Polymath" };
@@ -9,7 +10,7 @@ export default function SignUpPage() {
   if (!clerkConfigured) notFound();
   return (
     <main className="flex flex-1 items-center justify-center p-6">
-      <SignUp />
+      <SignUp forceRedirectUrl={afterAuthUrl} />
     </main>
   );
 }

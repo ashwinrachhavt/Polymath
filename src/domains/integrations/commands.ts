@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { externalAccounts, integrationCatalog } from "./schema";
 
@@ -101,6 +102,108 @@ export async function setAccountStatus(
     );
     return updated;
   });
+}
+
+/**
+ * What an account may do. Write means "may file a proposal", never "may send",
+ * so these flags narrow the effect of a connection without granting an effect
+ * of their own. Both flags move together under one version check because they
+ * are read as a pair by the gateway; two separate writes could leave the
+ * account in a state nobody chose.
+ */
+export async function setAccountPermissions(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; allowRead: boolean; allowWrite: boolean },
+) {
+  return withTransaction(async (tx) => {
+    const [updated] = await tx
+      .update(externalAccounts)
+      .set({
+        allowRead: input.allowRead,
+        allowWrite: input.allowWrite,
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.id, input.accountId),
+          eq(externalAccounts.version, input.expectedVersion),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      {
+        action: "integration.account_permissions_set",
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector ${updated.alias}: read ${input.allowRead ? "on" : "off"}, write ${input.allowWrite ? "on" : "off"}`,
+        metadata: { allowRead: input.allowRead, allowWrite: input.allowWrite },
+      },
+      tx,
+    );
+    return updated;
+  });
+}
+
+/**
+ * Revoking is the owner's stop button: the row stays (history, audit, and the
+ * alias keep pointing at something real), but every read and every send looks
+ * up `status = 'active'` live, so a revoked account stops being usable the
+ * moment this commits. The provider connection is deliberately left alone -
+ * this slice stops Polymath from using it, not the provider from holding it.
+ *
+ * Idempotent on purpose: revoking an already-revoked row is a no-op success,
+ * not a stale-version error, so a double click or a retried action does not
+ * read as a failure. Any other status change still requires the version the
+ * caller loaded.
+ */
+export async function revokeConnectedAccount(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number },
+) {
+  // Read first, write second. The read is not in the write's transaction on
+  // purpose: the version predicate in `setAccountStatus` is what makes the
+  // write safe, and a read-only precheck inside a second transaction would
+  // nest one transaction in another for no gain.
+  const [account] = await db
+    .select({ status: externalAccounts.status, version: externalAccounts.version })
+    .from(externalAccounts)
+    .where(
+      and(
+        eq(externalAccounts.workspaceId, auth.workspaceId),
+        eq(externalAccounts.id, input.accountId),
+      ),
+    )
+    .limit(1);
+  if (!account) {
+    throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+  }
+  // A half-opened handshake has no credential to take away and no row worth
+  // keeping; revoking it would hide a flow the owner may still finish.
+  if (account.status === "connecting") {
+    throw new ConflictError("That account is still connecting. Finish or abandon the connection first.");
+  }
+  // The caller's copy is out of date, so its intent cannot be trusted even if
+  // the row happens to be revoked already.
+  if (account.version !== input.expectedVersion) {
+    throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+  }
+  // Idempotent: a repeat with the same view is a success and writes nothing,
+  // so a double click does not produce a second audit row.
+  if (account.status === "revoked") return { revoked: false, version: account.version };
+
+  const updated = await setAccountStatus(auth, {
+    accountId: input.accountId,
+    expectedVersion: input.expectedVersion,
+    status: "revoked",
+  });
+  return { revoked: true, version: updated.version };
 }
 
 /**

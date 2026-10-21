@@ -341,8 +341,29 @@
     {
       "idx": 222,
       "version": "7",
-      "tag": "0222_skills",
-      "when": 1792480500000,
+      "tag": "0222_action_attempt_idempotency",
+      "when": 1792480520000,
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "tag": "0223_connector_catalog_expansion",
+      "when": 1792480530000,
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "tag": "0224_connector_permissions",
+      "when": 1792480540000,
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "tag": "0225_skills",
+      "when": 1792480550000,
       "breakpoints": true
     }
   ]

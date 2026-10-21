@@ -98,6 +98,9 @@ export const externalAccounts = pgTable(
     status: accountStatus("status").notNull().default("connecting"),
     /** Selection for writes is explicit; nothing picks an account by default. */
     isDefaultForWrites: boolean("is_default_for_writes").notNull().default(false),
+    /** What the agent may do with this account. Write means "may file a proposal", never "may send". */
+    allowRead: boolean("allow_read").notNull().default(true),
+    allowWrite: boolean("allow_write").notNull().default(false),
     lastHealthyAt: timestamp("last_healthy_at", { withTimezone: true }),
     lastError: text("last_error"),
     ...mutable,

@@ -32,9 +32,15 @@ export async function countInboxTabsForPage(auth: AuthContext): Promise<Record<I
   return countInboxTabs(auth);
 }
 
+/*
+ * Detail is deliberately NOT cached.
+ *
+ * This was `"use cache"` with `cacheLife("default")`, which outlives a
+ * navigation. Selecting a second capture re-rendered the pane with the first
+ * one's row for the life of that entry — the list highlighted row B while the
+ * pane showed A. A detail view of one row costs one indexed read; a stale
+ * detail view costs the owner's trust in every row they click.
+ */
 export async function getCaptureForPage(auth: AuthContext, id: string) {
-  "use cache";
-  cacheLife("default");
-  cacheTag(capturesTag(auth));
   return getCapture(auth, id);
 }

@@ -6,7 +6,14 @@ import { signBridgeToken } from "@/domains/agents/bridge-token";
 const mocks = vi.hoisted(() => ({ update: vi.fn(), localDev: vi.fn(() => async () => null) }));
 const SECRET = "t".repeat(40);
 const auth = { userId: "user-1", workspaceId: "ws-1", role: "member" as const };
-vi.mock("@/domains/identity/resolve", () => ({ resolveAuthContext: vi.fn(), verifyWorkspaceBinding: vi.fn() }));
+// Every export the channel and driver reach. A mock factory replaces the whole
+// module, so an export missing here is `undefined` at the call site rather than
+// a link error — which is how a stale mock breaks a test that never changed.
+vi.mock("@/domains/identity/resolve", () => ({
+  resolveAuthContext: vi.fn(),
+  verifyWorkspaceBinding: vi.fn(),
+  activeMembershipRole: vi.fn(),
+}));
 vi.mock("@/lib/db", () => ({ db: { update: mocks.update } }));
 vi.mock("eve/channels/eve", () => ({ eveChannel: (config: unknown) => config }));
 vi.mock("eve/channels/auth", () => ({ localDev: mocks.localDev }));
@@ -53,9 +60,8 @@ describe("verified workspace binding to Eve", () => {
 
   it("the Eve channel refuses spike headers, missing tokens and unverifiable members", async () => {
     vi.resetModules();
-    const { default: definition } = await import("../../eve/alfred/agent/channels/eve");
-    const channel = definition as unknown as { auth: Array<(request: Request) => Promise<unknown>> };
-    const bridge = channel.auth[0];
+    const { authenticators } = await import("../../eve/alfred/agent/channels/eve");
+    const bridge = authenticators[0];
     const { verifyWorkspaceBinding: verify } = await import("@/domains/identity/resolve");
     expect(await bridge(new Request("https://eve.test/s", { headers: { "x-spike-clerk-user-id": "dev-user" } }))).toBeNull();
     expect(verify).not.toHaveBeenCalled();
@@ -73,8 +79,8 @@ describe("verified workspace binding to Eve", () => {
   it("production never mounts localDev", async () => {
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "production");
-    const { default: definition } = await import("../../eve/alfred/agent/channels/eve");
-    expect((definition as unknown as { auth: unknown[] }).auth).toHaveLength(1);
+    const { authenticators } = await import("../../eve/alfred/agent/channels/eve");
+    expect(authenticators).toHaveLength(1);
     expect(mocks.localDev).not.toHaveBeenCalled();
   });
 });

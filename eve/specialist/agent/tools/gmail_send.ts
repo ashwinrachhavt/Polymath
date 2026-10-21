@@ -3,6 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../lib/policy";
 import { withTransaction } from "../../../../src/lib/db-transaction";
 import { createProposal } from "../../../../src/domains/actions/commands";
+import { actionRevisions } from "../../../../src/domains/actions/schema";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
@@ -27,7 +28,9 @@ export default defineTool({
   }),
   async execute(input, ctx) {
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
+    const userId = ctx.session.auth.current?.principalId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
+    if (typeof userId !== "string") return { ok: false as const, error: "no user in session" };
 
     const run = await getRunBySessionRef(ctx.session.id, workspaceId);
     if (!run || run.state !== "running") {
@@ -41,8 +44,8 @@ export default defineTool({
     // same key and resolves the existing proposal rather than a second send.
     const dedupeKey = `gmail.send:${workspaceId}:${input.messageId}`;
 
-    const { proposalId, deduplicated } = await withTransaction((tx) =>
-      createProposal(
+    const result = await withTransaction(async (tx) => {
+      const proposal = await createProposal(
         tx,
         { workspaceId },
         {
@@ -57,9 +60,24 @@ export default defineTool({
           // An external write the owner has not decided on inside a day is stale.
           expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
         },
-      ),
-    );
+      );
+      // Without revision 1 the proposal cannot be decided at all: decideProposal
+      // reads the newest revision and throws ProposalNotFoundError when there is
+      // none. A replayed intent already has one, and appending a second would ask
+      // the owner to approve the same intent twice.
+      if (!proposal.deduplicated) {
+        await tx.insert(actionRevisions).values({
+          workspaceId,
+          proposalId: proposal.proposalId,
+          revisionNumber: 1,
+          payload: { to: input.to, subject: input.subject, body: input.body, inReplyTo: input.messageId, accountAlias: input.accountAlias },
+          preview: { to: input.to, subject: input.subject, body: input.body },
+          createdBy: userId,
+        });
+      }
+      return proposal;
+    });
 
-    return { ok: true as const, proposalId, deduplicated, status: "awaiting review" };
+    return { ok: true as const, proposalId: result.proposalId, deduplicated: result.deduplicated, status: "awaiting review" };
   },
 });

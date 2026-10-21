@@ -26,8 +26,10 @@ export const metadata = { title: "Reviews · Polymath" };
  * The canonical Reviews queue: every external effect an agent wants lands
  * here as a proposal, and the owner's decision binds the exact revision they
  * inspected (CAS on the rendered version, idempotent on the minted key).
- * Approving never executes - the attempt step is a separate, still-unwired
- * gate. The browser-preview rehearsal stays under /apps/command-center.
+ * Approving a capability with a provider executor runs that exact revision
+ * once; the attempt, not the proposal, carries the outcome. Calendar changes
+ * keep their own one-tap screen and are only decided here. The browser-preview
+ * rehearsal stays under /apps/command-center.
  */
 
 const BASE = "/reviews";
@@ -119,7 +121,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   return (
     <Screen
       title="Reviews"
-      description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; nothing here sends, schedules, or executes.`}
+      description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected and runs it once.`}
     >
       <ListToolbar
         searchPlaceholder="Search proposals"

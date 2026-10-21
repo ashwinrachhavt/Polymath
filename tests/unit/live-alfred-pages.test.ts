@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAuthContext } from "@/lib/auth";
 import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
-import { pageRuns } from "@/domains/agents/queries";
+import { listRecentRuns } from "@/domains/agents/queries";
 import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
@@ -39,8 +39,11 @@ vi.mock("@/domains/knowledge/library", async (importOriginal) => ({
 vi.mock("@/domains/knowledge/classify", () => ({ getOpenClassification: vi.fn(async () => null) }));
 vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
-  pageRuns: vi.fn(),
+  listRecentRuns: vi.fn(async () => []),
   listDocumentSearchResults: vi.fn(async () => new Map()),
+  // The Assistant reads the profile's model for its picker; these tests render
+  // the page without a database, so the read is stubbed like its neighbours.
+  getProfileModelPolicy: vi.fn(async () => null),
 }));
 vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
@@ -63,7 +66,7 @@ beforeEach(() => {
   vi.mocked(getDocumentReview).mockResolvedValue(null);
   vi.mocked(getVaultDocuments).mockResolvedValue([]);
   vi.mocked(listFolders).mockResolvedValue([]);
-  vi.mocked(pageRuns).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(listRecentRuns).mockResolvedValue([]);
   vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -131,15 +134,55 @@ describe("live Alfred route functionality", () => {
     expect(agents).not.toContain("Start a run");
     expect(getAuthContext).not.toHaveBeenCalled();
     expect(getDocumentInbox).not.toHaveBeenCalled();
-    expect(pageRuns).not.toHaveBeenCalled();
+    expect(listRecentRuns).not.toHaveBeenCalled();
   });
 
-  it("keeps recorded runs viewable but exposes no start control when verified Eve identity is unavailable", async () => {
+  it("opens on the greeting and composer, and says when the agent bridge is unavailable", async () => {
     vi.mocked(eveBridgeUnavailableReason).mockReturnValue("Eve does not support verified Clerk identity yet.");
     const html = renderToStaticMarkup(await AlfredSurface());
+    expect(html).toContain("What would you like to work on?");
+    expect(html).toContain("Ask anything or describe a task…");
     expect(html).toContain("verified Clerk identity");
-    expect(html).not.toContain("Start a run");
-    expect(pageRuns).toHaveBeenCalledWith("workspace", expect.objectContaining({ limit: 10, offset: 0 }));
+    // Every phrase the retired run-launcher screen carried. One list, so a
+    // string that creeps back onto the home fails here and in the browser.
+    for (const gone of [
+      "Hand off work and inspect what it did",
+      "Start a run",
+      "No threads yet",
+      "Recent runs",
+      "You:",
+      "Assistant:",
+    ]) {
+      expect(html, gone).not.toContain(gone);
+    }
+    // A fresh workspace gets no "Recent" heading and no empty-state box.
+    expect(html).not.toContain(">Recent<");
+    expect(html).not.toContain("No runs yet");
+    // One query feeds both the five under the composer and the history menu,
+    // so the limit is the menu's, not the glance's.
+    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50);
+  });
+
+  it("lists recent runs with a badge only where the run needs the person", async () => {
+    vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
+    vi.mocked(listRecentRuns).mockResolvedValue([
+      { id: "run-waiting", state: "waiting_approval", objective: "Draft the renewal letter", model: "m", summary: null, error: null, createdAt: new Date() },
+      { id: "run-done", state: "succeeded", objective: "Reconcile the invoices", model: "m", summary: "Done.", error: null, createdAt: new Date() },
+    ] as never);
+    const html = renderToStaticMarkup(await AlfredSurface());
+    expect(html).toContain(">Recent<");
+    expect(html).toContain('href="/alfred/run-waiting"');
+    expect(html).toContain("Draft the renewal letter");
+    expect(html).toContain("Reconcile the invoices");
+    expect(html.match(/Needs your reply/g)).toHaveLength(1);
+    // One status, in the owner's words: no enum label or second badge beside it.
+    for (const other of ["Running", "In progress", "Queued", "Succeeded", "waiting_approval", "succeeded"]) {
+      expect(html, other).not.toContain(other);
+    }
+    // No model names, summaries, or transcript prefixes on a recent row.
+    expect(html).not.toContain("You:");
+    expect(html).not.toContain("Assistant:");
+    expect(html).not.toContain("Done.");
   });
 });
 

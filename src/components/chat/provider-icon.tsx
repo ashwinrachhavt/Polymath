@@ -1,4 +1,24 @@
-import { CalendarDays, FileText, Mail, MessageSquare, MessageSquareCode, SquareKanban } from "lucide-react";
+import {
+  Briefcase,
+  CalendarClock,
+  CalendarDays,
+  Cloud,
+  Contact,
+  CreditCard,
+  Database,
+  FileSpreadsheet,
+  FileText,
+  FolderOpen,
+  HardDrive,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  MessageSquareCode,
+  Palette,
+  SquareKanban,
+  UserRound,
+  Video,
+} from "lucide-react";
 
 /*
  * Provider marks for the connector catalog and the chat's tool activity.
@@ -11,11 +31,31 @@ import { CalendarDays, FileText, Mail, MessageSquare, MessageSquareCode, SquareK
  */
 const ICONS: Record<string, typeof Mail> = {
   gmail: Mail,
-  slack: MessageSquare,
   "google-calendar": CalendarDays,
+  "google-drive": FolderOpen,
+  "google-docs": FileText,
+  "google-sheets": FileSpreadsheet,
+  slack: MessageSquare,
+  discord: MessageCircle,
+  zoom: Video,
+  calendly: CalendarClock,
   notion: FileText,
-  linear: SquareKanban,
   github: MessageSquareCode,
+  linear: SquareKanban,
+  jira: SquareKanban,
+  asana: SquareKanban,
+  trello: SquareKanban,
+  airtable: Database,
+  figma: Palette,
+  canva: Palette,
+  dropbox: HardDrive,
+  hubspot: Contact,
+  salesforce: Cloud,
+  stripe: CreditCard,
+  // Not shipped, but the catalog may still show a row for a provider added
+  // before its config existed.
+  vercel: Briefcase,
+  people: UserRound,
 };
 
 export function ProviderIcon({ provider, displayName }: { provider: string; displayName: string }) {
@@ -27,9 +67,10 @@ export function ProviderIcon({ provider, displayName }: { provider: string; disp
 /** Tool name to a readable label and glyph for chat tool activity. */
 export function toolGlyph(toolName: string) {
   if (toolName.startsWith("documents") || toolName.startsWith("documents.")) return FileText;
-  if (toolName === "gmail_send" || toolName.startsWith("gmail.")) return Mail;
+  // Gmail now arrives as `polymath-gateway__gmail_search` (an MCP connection
+  // tool), and capability labels still read `gmail.…`.
+  if (toolName.includes("gmail")) return Mail;
   if (toolName.startsWith("calendar")) return CalendarDays;
   if (toolName.startsWith("notion") || toolName.startsWith("wiki")) return FileText;
-  if (toolName === "connected_read") return MessageSquareCode;
   return MessageSquare;
 }

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccountControls, ConnectButton } from "./connector-controls";
+import { AccountControls, AccountPermissions, ConnectButton } from "./connector-controls";
 
 /*
  * The catalog view follows the dark Connectors reference the owner sent
@@ -20,6 +20,8 @@ export type CatalogAccount = {
   status: string;
   displayName: string | null;
   isDefaultForWrites: boolean;
+  allowRead: boolean;
+  allowWrite: boolean;
   lastHealthyAt: string | null;
   lastError: string | null;
   version: number;
@@ -56,10 +58,26 @@ function connectorState(connector: CatalogConnector): "connected" | "connecting"
   return "available";
 }
 
+/* The person's word for the state, not the column's. */
+function accountLabel(status: string): string {
+  if (status === "revoked") return "Disconnected";
+  return status;
+}
+
 function capabilitySummary(connector: CatalogConnector): string {
   return connector.capabilities
     .map((capability) => `${capability.replaceAll("_", " ")} (${connector.riskByCapability[capability] ?? "read"})`)
     .join(" · ");
+}
+
+/*
+ * A provider can accept an external write only if the catalog lists a
+ * capability classified `external_write`. The classification carries the
+ * answer; the capability name does not ("send_mail", "write_pages",
+ * "post_messages" all mean the same risk), so this reads the map, not a list.
+ */
+function hasWriteCapability(connector: CatalogConnector): boolean {
+  return connector.capabilities.some((capability) => connector.riskByCapability[capability] === "external_write");
 }
 
 export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[] }) {
@@ -140,7 +158,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                         <div key={account.id} className="py-3">
                           <div className="mb-1.5 flex flex-wrap items-center gap-2">
                             <p className="text-[13px] font-medium">{account.alias}</p>
-                            <Status>{account.status}</Status>
+                            <Status>{accountLabel(account.status)}</Status>
                             {account.isDefaultForWrites ? <Status>write default</Status> : null}
                           </div>
                           <p className="mb-2 text-xs text-muted-foreground">
@@ -155,11 +173,32 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                             version={account.version}
                             status={account.status}
                             isDefault={account.isDefaultForWrites}
+                            alias={account.alias}
                           />
-                          {account.status === "connecting" ? (
+                          {/* Permissions are only meaningful once a credential
+                              exists; a connecting or revoked row has nothing to
+                              grant. */}
+                          {account.status === "active" ? (
+                            <AccountPermissions
+                              key={account.version}
+                              accountId={account.id}
+                              version={account.version}
+                              allowRead={account.allowRead}
+                              allowWrite={account.allowWrite}
+                              writeCapable={hasWriteCapability(connector)}
+                            />
+                          ) : null}                          {account.status === "connecting" ? (
                             <div className="mt-2">
                               <ConnectButton provider={connector.provider} defaultAlias={account.alias} />
                             </div>
+                          ) : null}
+                          {account.status === "revoked" ? (
+                            // A revoked alias cannot be reopened (beginConnection
+                            // refuses to reuse it), so the only honest next step
+                            // is a new name for a fresh connection.
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Register a new alias to connect this provider again.
+                            </p>
                           ) : null}
                         </div>
                       ))}

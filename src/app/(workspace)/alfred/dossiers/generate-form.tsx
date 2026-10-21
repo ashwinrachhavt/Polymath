@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { requestJson } from "@/lib/client-request";
@@ -56,7 +57,7 @@ export function GenerateForm({ dossierId }: { dossierId: string }) {
       </div>
       {runId ? (
         <p className="text-muted-foreground text-[13px]">
-          Run started. It writes a draft for review, nothing publishes. <a className="underline" href="/alfred">Watch it in the assistant</a>.
+          Run started. It writes a draft for review, nothing publishes. <Link className="underline" href="/alfred">Watch it in the assistant</Link>.
         </p>
       ) : null}
       {error ? <p className="text-destructive text-[13px]">{error}</p> : null}

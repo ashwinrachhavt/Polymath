@@ -62,4 +62,15 @@ describe("navigation", () => {
       expect(destination.label).not.toMatch(/Command Center|NeuralFlow|Alfred/);
     }
   });
+
+  /*
+   * The rail's first two entries are the product's opening move (agents/
+   * product.md: a conversation is home). Order is behaviour, not styling, so it
+   * gets an assertion rather than a review note.
+   */
+  it("opens the rail with Assistant, then Today", () => {
+    expect(destinations[0].href).toBe("/alfred");
+    expect(destinations[0].label).toBe("Assistant");
+    expect(destinations[1].href).toBe("/command-center/briefing");
+  });
 });

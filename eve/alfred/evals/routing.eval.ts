@@ -3,6 +3,11 @@ import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
 import { MODEL_ROUTING_OPTIONS, ROUTING_FALLBACK } from "./axiom-policy";
 import { fixtureDecider } from "./harness";
+import { assertEvalEnvironment } from "./stubs";
+
+// This eval is fixture-only, but the environment gate is unconditional: a repo
+// credential in the shell is how an eval stops being fixture-only one edit off.
+assertEvalEnvironment();
 
 /*
  * Model routing, through the same `decide` call `auto()` makes.

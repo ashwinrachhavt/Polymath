@@ -76,10 +76,36 @@ suite("cron route (real Postgres)", () => {
     const response = await post({ authorization: `Bearer ${SECRET}` });
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({ recovered: 0, claimed: 1, dispatched: 1, failed: 0, dead: 0 });
+    // `reconciled` is whatever the shared test database happens to hold: the sweep
+    // scans every workspace, and another suite may have left an unknown attempt.
+    // Asserting a number, not a zero, keeps this test independent of run order.
+    expect(body).toMatchObject({ recovered: 0, claimed: 1, dispatched: 1, failed: 0, dead: 0, reconciled: expect.any(Number) });
 
     const [row] = await db.select().from(outboxEvents);
     expect(row.status).toBe("dispatched");
+  });
+
+  it("reports how many unknown attempts it settled", async () => {
+    if (!handle) return;
+    vi.stubEnv("OUTBOX_DISPATCH_SECRET", SECRET);
+    vi.stubEnv("DATABASE_URL", process.env.TEST_DATABASE_URL!);
+    await db.execute(sql`delete from outbox_events`);
+
+    // A body counting 3 is the assertion: the route wires reconciliation into
+    // the same pass. The sweep itself is proven in reconciliation.test.ts.
+    const reconciliation = await import("@/domains/actions/reconciliation");
+    const spy = vi
+      .spyOn(reconciliation, "reconcileUnknownAttempts")
+      .mockResolvedValue({ reconciled: 3 });
+    try {
+      const response = await post({ authorization: `Bearer ${SECRET}` });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.reconciled).toBe(3);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   /*
