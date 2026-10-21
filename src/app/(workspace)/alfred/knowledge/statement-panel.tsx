@@ -26,6 +26,10 @@ export type StatementPanelData = {
   transactionCount: number;
   reconciled: boolean;
   error: string | null;
+  /** Which reading reconciled; absent for imports made before the router existed. */
+  strategy?: string;
+  totalsStatus?: string;
+  categoryTotals?: Array<{ category: string; count: number; spent: string; received: string }>;
   mismatches: Array<{
     occurredOn: string;
     description: string;
@@ -176,10 +180,22 @@ export function StatementPanel({
       </dl>
 
       {statement.reconciled ? (
-        <p className="text-muted-foreground mt-3 text-xs">
-          Every row carries the running balance forward. The CSV has three columns:
-          date, description, amount — money out is negative.
-        </p>
+        <div className="mt-3">
+          <p className="text-muted-foreground text-xs">
+            Every row carries the running balance forward. The CSV has three columns:
+            date, description, amount — money out is negative.
+          </p>
+          {statement.totalsStatus === "match" ? (
+            <p className="text-muted-foreground mt-1 text-xs">
+              The totals printed on the statement match the rows.
+            </p>
+          ) : null}
+          {statement.strategy && statement.strategy !== "default" ? (
+            <p className="text-muted-foreground mt-1 text-xs">
+              Read with {statement.strategy}: the first reading did not add up, this one does.
+            </p>
+          ) : null}
+        </div>
       ) : (
         <div className="mt-3">
           <p role="alert" className="text-destructive text-xs">
@@ -200,6 +216,20 @@ export function StatementPanel({
           </ul>
         </div>
       )}
+
+      {statement.categoryTotals && statement.categoryTotals.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-xs font-medium">Spending by category</p>
+          <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+            {statement.categoryTotals.map((entry) => (
+              <li key={entry.category} className="flex justify-between gap-2">
+                <span className="text-muted-foreground">{entry.category.replace(/_/g, " ")}</span>
+                <span className="tabular-nums">{money(entry.spent)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {reviewRows.length > 0 ? (
         <div className="mt-3">
