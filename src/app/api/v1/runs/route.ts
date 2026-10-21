@@ -49,7 +49,31 @@ export const POST = authedHandler(async (auth, request) => {
   requireRole(auth, "member");
   const parsed = startRun.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return problemResponse(422, "invalid_input", "Give an objective (and optionally an estimateUsd).");
+    // Name the field that failed, so a malformed skillId is not reported as a
+    // missing objective the caller cannot find.
+    const field = parsed.error.issues[0]?.path[0];
+    const message =
+      field === "objective"
+        ? "Give an objective for this run."
+        : field === "estimateUsd"
+          ? "estimateUsd must be a decimal amount, like 0.50."
+          : field === "dossierId"
+            ? "dossierId must be the UUID of a dossier in this workspace."
+            : field === "skillId"
+              ? "skillId must be the UUID of an installed skill."
+              : field === "profileName"
+                ? "profileName must be the name of an installed agent profile."
+                : "Give an objective (and optionally an estimateUsd).";
+    return problemResponse(422, "invalid_input", message);
+  }
+  // Only alfred's agent declares the skill resolver, so a pin on any other
+  // profile would be accepted and then silently ignored.
+  if (parsed.data.skillId && parsed.data.profileName !== "alfred") {
+    return problemResponse(
+      422,
+      "invalid_input",
+      "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+    );
   }
   const key = request.headers.get("idempotency-key");
   if (key !== null && !z.string().uuid().safeParse(key).success) {

@@ -164,14 +164,78 @@ suite("skill run pinning", () => {
     const b = await seedWorkspace(db, `pin-d-b-${Date.now()}`);
     const foreignId = await installSkill(a.workspaceId, a.userId, "Foreign");
     await commands.ensureProfile(b.workspaceId);
-    const before = await countRuns(b.workspaceId);
+    // Both tenants are counted: a bug that wrote the run into the skill's
+    // workspace while throwing would pass a check on B alone.
+    const beforeA = await countRuns(a.workspaceId);
+    const beforeB = await countRuns(b.workspaceId);
 
     await expect(startRun(b.userId, b.workspaceId, foreignId)).rejects.toThrow(
       "That skill is not available. Enable it in Skills and try again.",
     );
 
-    const after = await countRuns(b.workspaceId);
-    expect(after).toBe(before);
+    expect(await countRuns(a.workspaceId)).toBe(beforeA);
+    expect(await countRuns(b.workspaceId)).toBe(beforeB);
+  });
+
+  it("a retry of a pinned run starts a new run pinned to the same skill", async () => {
+    const seeded = await seedWorkspace(db, `pin-f-${Date.now()}`);
+    const skillId = await installSkill(seeded.workspaceId, seeded.userId, "Retry me");
+    const first = await startRun(seeded.userId, seeded.workspaceId, skillId);
+    // Retry is only offered on a finished run; close it the way a clean finish would.
+    await db.update(agentRuns).set({ state: "succeeded" }).where(eq(agentRuns.id, first.runId));
+
+    const retried = await (await import("@/domains/agents/thread")).retryRun(
+      ownerAuth(seeded.userId, seeded.workspaceId),
+      first.runId,
+    );
+    if (!retried.ok) throw new Error(`retry failed: ${retried.code}`);
+
+    const run = await runRow(retried.runId);
+    expect((run.policySnapshot as { skill?: { id: string } }).skill?.id).toBe(skillId);
+    expect(run.retryOfRunId).toBe(first.runId);
+  });
+
+  it("rejects a skill pin on a specialist profile, which has no resolver", async () => {
+    const seeded = await seedWorkspace(db, `pin-g-${Date.now()}`);
+    holder.auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const skillId = await installSkill(seeded.workspaceId, seeded.userId, "Alfred only");
+    const before = await countRuns(seeded.workspaceId);
+
+    const res = await POST(
+      new Request("https://axiom.test/api/v1/runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ objective: "Pinned", profileName: "researcher", skillId }),
+      }),
+      undefined as never,
+    );
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      code: "invalid_input",
+      title: "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+    });
+    expect(await countRuns(seeded.workspaceId)).toBe(before);
+  });
+
+  it("names skillId, not the objective, when the pin is malformed", async () => {
+    const seeded = await seedWorkspace(db, `pin-h-${Date.now()}`);
+    holder.auth = ownerAuth(seeded.userId, seeded.workspaceId);
+
+    const res = await POST(
+      new Request("https://axiom.test/api/v1/runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ objective: "Pinned", skillId: "not-a-uuid" }),
+      }),
+      undefined as never,
+    );
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      code: "invalid_input",
+      title: "skillId must be the UUID of an installed skill.",
+    });
   });
 
   it("re-using an Idempotency-Key with a different skillId is a 422 and starts nothing", async () => {
@@ -192,8 +256,10 @@ suite("skill run pinning", () => {
       );
 
     expect((await post(first)).status).toBe(201);
+    const afterFirst = await countRuns(seeded.workspaceId);
     const conflict = await post(second);
     expect(conflict.status).toBe(422);
     expect(await conflict.json()).toMatchObject({ code: "idempotency_conflict" });
+    expect(await countRuns(seeded.workspaceId)).toBe(afterFirst);
   });
 });
