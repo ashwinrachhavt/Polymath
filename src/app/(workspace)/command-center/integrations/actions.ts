@@ -104,15 +104,19 @@ export async function startConnectionAction(input: { provider: string; alias: st
       provider: input.provider,
       alias: input.alias.trim(),
     });
+    // The state token is what lets the callback find this attempt. Without it
+    // every OAuth return landed on "missing-state" and the account sat in
+    // `connecting` forever, which is what a connect that "did nothing" was.
     const callbackUrl = new URL(
       "/api/integrations/callback",
       process.env.APP_ORIGIN ?? "http://localhost:3000",
-    ).toString();
+    );
+    callbackUrl.searchParams.set("state", attempt.stateToken);
     const link = await createHostedConnectLink({
       provider: input.provider,
       userId: auth.workspaceId,
       alias: input.alias.trim(),
-      callbackUrl,
+      callbackUrl: callbackUrl.toString(),
     });
     await attachProviderLink(auth, {
       attemptId: attempt.id,
