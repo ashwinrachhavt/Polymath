@@ -18,18 +18,30 @@ const API_BASE = "https://backend.composio.dev/api/v3.1";
  */
 const EXECUTE_PROXY_URL = "https://backend.composio.dev/api/v3/tools/execute/proxy";
 
-/**
- * Methods a *read* capability may use. Anything that could change state on the
+/** Methods a *read* capability may use. Anything that could change state on the
  * provider is refused here rather than trusted to a tool author: the policy
  * layer decides whether a capability is allowed at all, and this decides whether
  * it is safe to run inline. Writes go through action proposals, never this path.
  */
 const READ_METHODS = new Set(["GET", "HEAD"]);
 
+/**
+ * The only method the write path accepts. Narrow on purpose: a write executor
+ * that also took DELETE would make "an approved send" mean anything.
+ */
+const WRITE_METHOD = "POST";
+
 export class ComposioReadOnlyViolationError extends Error {
   readonly code = "composio_read_only_violation";
   constructor(method: string) {
     super(`Composio inline execution refused a ${method} call: only reads may run inside a turn.`);
+  }
+}
+
+export class ComposioWriteMethodError extends Error {
+  readonly code = "composio_write_method";
+  constructor(method: string) {
+    super(`Composio write execution refused a ${method} call: the write path is POST-only.`);
   }
 }
 
@@ -167,5 +179,74 @@ export async function executeComposioRead(call: ComposioCall): Promise<ComposioC
   }
   const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
   if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
+  return { ok: true, data: "data" in body ? body.data : body };
+}
+
+/** A write call: the method is fixed at the type level, and guarded at runtime. */
+export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
+
+export type ComposioWriteResult =
+  | { ok: true; data: unknown }
+  // `ambiguous` is the important one: the request may have reached the provider.
+  // Anything that cannot prove "not sent" belongs here, and the executor turns
+  // it into UNKNOWN rather than a retry.
+  | { ok: false; code: "not_configured" | "provider_error" | "ambiguous"; message: string; status?: number };
+
+/**
+ * Runs one write through Composio. Reachable only from the approved-effect
+ * executor — nothing in a turn can call it, and nothing should: a model that
+ * could reach this would be a model that can send mail without review.
+ *
+ * POST only. The read path refuses writes; this refuses everything that is not
+ * a write, so neither path can quietly widen into the other.
+ *
+ * The timeout exists to bound the executor's request, not to make the send
+ * safe: a timeout is `ambiguous`, because the provider may have accepted the
+ * request before the socket died.
+ */
+const WRITE_TIMEOUT_MS = 30_000;
+
+export async function executeComposioWrite(call: ComposioWriteCall): Promise<ComposioWriteResult> {
+  if (call.method !== WRITE_METHOD) throw new ComposioWriteMethodError(String(call.method));
+  const apiKey = process.env.COMPOSIO_API_KEY;
+  if (!apiKey) {
+    return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
+  }
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  for (const [name, value] of Object.entries(call.query ?? {})) {
+    parameters.push({ name, value, type: "query" });
+  }
+  let response: Response;
+  try {
+    response = await fetch(EXECUTE_PROXY_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+      body: JSON.stringify({
+        connected_account_id: call.connectedAccountId,
+        endpoint: call.endpoint,
+        method: call.method,
+        ...(call.body === undefined ? {} : { body: call.body }),
+        parameters,
+      }),
+    });
+  } catch {
+    return { ok: false, code: "ambiguous", message: "The connected service did not answer; the outcome is unknown." };
+  }
+  if (!response.ok) {
+    const status = response.status;
+    // A 5xx may mean the provider accepted the request and failed afterwards.
+    // Only a 4xx proves the call was refused before it took effect.
+    return status >= 400 && status < 500
+      ? { ok: false, code: "provider_error", status, message: `The connected service rejected the call (${status}).` }
+      : { ok: false, code: "ambiguous", status, message: `The connected service returned ${status}.` };
+  }
+  // A 2xx whose body cannot be parsed is still a success at the provider with
+  // no id we can record, which the caller cannot distinguish from a lost
+  // response. Say so rather than inventing an outcome.
+  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  if (body === null) {
+    return { ok: false, code: "ambiguous", status: response.status, message: "The connected service returned no parseable body." };
+  }
   return { ok: true, data: "data" in body ? body.data : body };
 }

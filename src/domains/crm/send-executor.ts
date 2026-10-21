@@ -141,6 +141,10 @@ async function prepare(auth: AuthContext, correspondenceId: string): Promise<Pre
         workspaceId: auth.workspaceId,
         proposalId: proposal.id,
         revisionId: latest.id,
+        // Scoped by attempt number: a refused send may legitimately be retried
+        // as a new attempt, while two claimers racing on the same number still
+        // collide on the unique key.
+        idempotencyKey: `send:${proposal.id}:${(prior[0]?.attemptNumber ?? 0) + 1}`,
         attemptNumber: (prior[0]?.attemptNumber ?? 0) + 1,
         status: "unknown",
         reconciliation: "pending",
