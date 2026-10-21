@@ -107,6 +107,11 @@ async function reconcileOne(input: {
 }): Promise<boolean> {
   const { attempt, auth, transport, now } = input;
 
+  // Calendar is genuinely terminal here. Its commands are replay-safe, but an
+  // event row carries no marker tying it back to the attempt that made it, so
+  // the sweep cannot tell "landed" from "never ran" without guessing. It stays
+  // UNKNOWN for a person to inspect rather than being settled on a coin flip.
+  //
   // Reconciliation only knows how to ask Gmail. Another capability's UNKNOWN
   // needs its own reader before this sweep can truthfully settle it.
   if (attempt.capability !== "gmail.send") return false;

@@ -90,9 +90,9 @@ suite("calendar proposal execution checks", () => {
   it("refuses when the run's snapshot does not grant the capability", async () => {
     const { auth, userId, workspaceId } = await seed("cal-exec-cap");
     // The snapshot is frozen at run start and the database rejects edits to it,
-    // so execution must honour what it actually says: a proposal whose
-    // capability is absent (a narrower grant, a gateway bug) never executes.
-    const runId = await seedRun(workspaceId, userId, ["calendar.event.create"]);
+    // so execution must honour what it actually says: a run granted calendar
+    // reads but not calendar.propose never executes a proposal.
+    const runId = await seedRun(workspaceId, userId, ["calendar.read"]);
     const task = await work.createOwnerTask(auth, { title: "Deep work", estimateMinutes: 60 });
     const { proposalId, pending } = await proposeWithRun(auth, runId, { kind: "block", taskId: task.id, minutes: 60 });
 
@@ -106,7 +106,7 @@ suite("calendar proposal execution checks", () => {
 
   it("refuses when the run that proposed it is cancelled", async () => {
     const { auth, userId, workspaceId } = await seed("cal-exec-run");
-    const runId = await seedRun(workspaceId, userId, ["calendar.event.create"]);
+    const runId = await seedRun(workspaceId, userId, ["calendar.propose"]);
     const { proposalId, pending } = await proposeWithRun(auth, runId, {
       kind: "create",
       title: "Review",

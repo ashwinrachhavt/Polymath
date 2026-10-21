@@ -50,6 +50,9 @@ export type CalendarChange =
   | { kind: "move"; eventId: string; expectedVersion: number; startsAt: string; endsAt: string; title?: string }
   | { kind: "cancel"; eventId: string; expectedVersion: number; title?: string };
 
+/** The capability a profile must grant to propose a calendar change at all. */
+const CALENDAR_PROPOSE_CAPABILITY = "calendar.propose";
+
 const CAPABILITY = {
   block: "calendar.block",
   create: "calendar.event.create",
@@ -173,8 +176,12 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<void> {
     if (!NON_TERMINAL_RUN_STATES.has(run.state)) {
       throw new CalendarExecuteNotAllowedError("The run that proposed this change is no longer active.");
     }
-    if (!toolAllowed(run.policySnapshot, proposal.capability)) {
-      throw new CalendarExecuteNotAllowedError(`The run's policy snapshot does not include ${proposal.capability}.`);
+    // The proposing capability is `calendar.propose`; the change-specific names
+    // (calendar.event.create and friends) are effect identity, not what an
+    // agent was granted. Checking those would deny every real proposal, because
+    // no profile ever receives them.
+    if (!toolAllowed(run.policySnapshot, CALENDAR_PROPOSE_CAPABILITY)) {
+      throw new CalendarExecuteNotAllowedError(`The run's policy snapshot does not include ${CALENDAR_PROPOSE_CAPABILITY}.`);
     }
   }
 

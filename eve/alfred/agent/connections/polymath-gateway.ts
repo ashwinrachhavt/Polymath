@@ -22,7 +22,7 @@ import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 const GATEWAY_URL = `${(process.env.POLYMATH_GATEWAY_URL?.trim() || "http://127.0.0.1:3000").replace(/\/+$/, "")}/api/mcp`;
 
 /** The connection slug, as eve derives it from this filename. */
-const CONNECTION_NAME = "polymath_gateway";
+const CONNECTION_NAME = "polymath-gateway";
 
 export default defineMcpClientConnection({
   url: GATEWAY_URL,

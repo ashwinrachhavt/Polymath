@@ -18,7 +18,7 @@ import {
   settleAttempt,
 } from "./attempts";
 import { StaleRevisionError } from "./commands";
-import { actionAttempts, actionProposals, actionRevisions, actionReviews } from "./schema";
+import { actionAttempts, actionProposals, actionRevisions, actionReviews, executionSettings } from "./schema";
 
 /*
  * The approved-effect executor: the only code in Polymath allowed to cause an
@@ -137,6 +137,21 @@ type Checked = Omit<Prepared, "connectedAccountId">;
 /** Steps 1–4: every check that must pass before an intent key is claimed. */
 async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared> {
   const checked: Checked = await withTransaction(async (tx) => {
+    // The workspace kill switch, read before anything else so a paused
+    // workspace fails without touching proposal or attempt state. The column
+    // existed and nothing consulted it, which made an emergency stop look
+    // available when it was not.
+    const [settings] = await tx
+      .select({ paused: executionSettings.paused, reason: executionSettings.pausedReason })
+      .from(executionSettings)
+      .where(eq(executionSettings.workspaceId, auth.workspaceId))
+      .limit(1);
+    if (settings?.paused) {
+      throw new SendNotAllowedError(
+        `Execution is paused for this workspace${settings.reason ? `: ${settings.reason}` : "."}`,
+      );
+    }
+
     const [proposal] = await tx
       .select()
       .from(actionProposals)
