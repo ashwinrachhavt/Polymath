@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { workspaces } from "@/domains/identity/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -6,9 +7,10 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 /*
  * 0229 access tiers: the catalog carries per-connector tier offers (the
  * capability lists are the enforcement source, this column is what the UI
- * reads) and every pre-existing account backfills to read_only. Migrations
- * are applied by the harness (psql over src/db/migrations/*.sql), so these
- * tests only read the columns' end state.
+ * reads) and every pre-existing account backfills to read_only. The catalog is
+ * global reference data wiped by the truncating suites, so the seed files are
+ * re-applied here (idempotent, same pattern as connectors.test.ts); these
+ * tests then read the columns' end state.
  */
 
 const handle = makeTestDb();
@@ -19,6 +21,13 @@ let workspaceId: string;
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  for (const file of [
+    "src/db/migrations/0031_seed_integration_catalog.sql",
+    "src/db/migrations/0223_connector_catalog_expansion.sql",
+    "src/db/migrations/0229_access_tiers.sql",
+  ]) {
+    await handle.client.unsafe(readFileSync(file, "utf8"));
+  }
   ({ workspaceId } = await seedWorkspace(db, `access-tiers-${Date.now()}`));
 });
 
