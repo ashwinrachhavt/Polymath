@@ -183,9 +183,9 @@ Agent definitions live in `eve/alfred/agent/` and `eve/specialist/agent/`, with
 tools in `agent/tools/`. Authored tools: `documents_search`, `tasks_read`,
 `web_fetch`, `web_search`, `wiki_ingest`, `wiki_lint`, `wiki_read`.
 
-Provider tools are not authored: they arrive through the `polymath_gateway` MCP
-connection (`eve/alfred/agent/connections/polymath_gateway.ts`) as
-`polymath_gateway__gmail_search`, `…__gmail_read_thread`, and `…__gmail_send`,
+Provider tools are not authored: they arrive through the `polymath-gateway` MCP
+connection (`eve/alfred/agent/connections/polymath-gateway.ts`) as
+`polymath-gateway__gmail_search`, `…__gmail_read_thread`, and `…__gmail_send`,
 and every call is authorized and recorded by `POST /api/mcp`. The agent holds no
 provider credential and has no other route to one.
 
