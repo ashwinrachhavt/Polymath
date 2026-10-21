@@ -60,6 +60,9 @@ function failureDetail(event: { data: { code?: string; message?: string } }): st
  */
 const pendingInputs = new Map<string, unknown>();
 
+/** When each call was requested, so the result can carry a real latency. */
+const pendingStarts = new Map<string, number>();
+
 async function guarded(label: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     await fn();
@@ -123,6 +126,7 @@ export default defineHook({
       for (const action of event.data.actions) {
         if (action.kind === "tool-call") {
           pendingInputs.set(action.callId, action.input);
+          pendingStarts.set(action.callId, Date.now());
         }
       }
     },
@@ -138,6 +142,8 @@ export default defineHook({
       const callId = "callId" in result ? result.callId : null;
       const args = callId ? pendingInputs.get(callId) : undefined;
       if (callId) pendingInputs.delete(callId);
+      const startedAt = callId ? pendingStarts.get(callId) : undefined;
+      if (callId) pendingStarts.delete(callId);
       const output = "output" in result ? result.output : undefined;
       await guarded("action.result", () =>
         recordToolCall({
@@ -150,6 +156,7 @@ export default defineHook({
           errorCode: event.data.error?.code ?? (event.data.status === "rejected" ? "hitl_denied" : undefined),
           args,
           result: output,
+          durationMs: startedAt === undefined ? undefined : Date.now() - startedAt,
         }),
       );
     },
@@ -184,6 +191,41 @@ export default defineHook({
           role: "user",
           content: event.data.message,
           parts: event.data.parts ?? null,
+        }),
+      );
+    },
+
+    async "reasoning.completed"(event, ctx) {
+      const workspaceId = workspaceIdOf(ctx);
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
+      // The chat surface renders reasoning live from the stream; persisting the
+      // completed block here is what keeps a reload from dropping it. Visible
+      // reasoning only — this event carries the model's shown rationale, and
+      // hidden chain-of-thought never reaches a hook.
+      await guarded("reasoning.completed", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "reasoning",
+          data: { text: event.data.reasoning, turnId: event.data.turnId, stepIndex: event.data.stepIndex },
+        }),
+      );
+    },
+
+    async "compaction.completed"(event, ctx) {
+      const workspaceId = workspaceIdOf(ctx);
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
+      // The timeline states that the transcript was summarized so a reloaded
+      // page explains why earlier turns collapsed, instead of silently losing
+      // them.
+      await guarded("compaction.completed", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "compaction",
+          data: { turnId: event.data.turnId, stepIndex: event.data.stepIndex, modelId: event.data.modelId },
         }),
       );
     },

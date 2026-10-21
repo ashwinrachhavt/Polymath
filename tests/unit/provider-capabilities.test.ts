@@ -27,11 +27,11 @@ const capabilities = Object.keys(CAPABILITIES) as Capability[];
 const UNCLASSIFIED: string[] = [];
 
 describe("provider capability catalog", () => {
-  it("has entries and every one is a gmail capability", () => {
+  it("has entries and every one is named for its own provider", () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const [capability, spec] of entries) {
-      expect(spec.provider, capability).toBe("gmail");
-      expect(capability.startsWith("gmail."), capability).toBe(true);
+      expect(["gmail", "github", "slack"]).toContain(spec.provider);
+      expect(capability.startsWith(`${spec.provider}.`), capability).toBe(true);
     }
   });
 

@@ -65,4 +65,46 @@ describe("run Details disclosure", () => {
     const html = renderDetails({ policy: null });
     expect(html).toContain("none recorded");
   });
+
+  it("lists tool calls with status and latency, results behind a nested disclosure", () => {
+    const html = renderDetails({
+      toolCalls: [
+        {
+          id: "call-1",
+          toolName: "documents_search",
+          accountAlias: null,
+          arguments: { query: "lease" },
+          result: { results: [{ documentId: "d1", title: "Lease" }] },
+          ok: true,
+          errorCode: null,
+          durationMs: 312,
+          createdAt: new Date("2026-10-20T08:01:00Z"),
+        },
+        {
+          id: "call-2",
+          toolName: "gmail_search",
+          accountAlias: "work-gmail",
+          arguments: { query: "rent" },
+          result: null,
+          ok: false,
+          errorCode: "provider_error",
+          durationMs: null,
+          createdAt: new Date("2026-10-20T08:01:10Z"),
+        },
+      ],
+    });
+    expect(html).toContain("documents_search");
+    expect(html).toContain("312 ms");
+    expect(html).toContain("provider_error");
+    expect(html).toContain("account work-gmail");
+    // The result text hides behind its own details element, and no result row
+    // renders for a call that produced nothing.
+    expect(html).toContain("<details");
+    expect(html).toContain("Lease");
+  });
+
+  it("says no tools were called rather than showing an empty row", () => {
+    const html = renderDetails({ toolCalls: [] });
+    expect(html).toContain("No tools were called.");
+  });
 });

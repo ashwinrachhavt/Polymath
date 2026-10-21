@@ -31,6 +31,29 @@ type TimelineEvent = {
   createdAt: Date;
 };
 
+/**
+ * One persisted tool call. Arguments and results arrive already redacted from
+ * the write points, so the disclosure can show them to the owner verbatim.
+ */
+export type ToolCallRow = {
+  id: string;
+  toolName: string;
+  accountAlias: string | null;
+  arguments: unknown;
+  result: unknown;
+  ok: boolean | null;
+  errorCode: string | null;
+  durationMs: number | null;
+  createdAt: Date;
+};
+
+/** The call's arguments as one short line: JSON, but truncated for scanning. */
+function argsSummary(args: unknown): string {
+  if (args === null || args === undefined) return "";
+  const text = JSON.stringify(args);
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+}
+
 /** The state in the owner's words, not the enum's. */
 const STATE_LABEL: Record<string, string> = {
   queued: "Queued",
@@ -91,6 +114,7 @@ export function RunDetails({
   policy,
   citations,
   events,
+  toolCalls = [],
   draft,
   unavailable,
 }: {
@@ -98,6 +122,7 @@ export function RunDetails({
   policy: unknown;
   citations: DocumentCitation[];
   events: TimelineEvent[];
+  toolCalls?: ToolCallRow[];
   draft: { artifactId: string; status: string } | null;
   unavailable: string | null;
 }) {
@@ -161,6 +186,41 @@ export function RunDetails({
             </ol>
           ) : (
             <span className="text-muted-foreground">Nothing was read from the library.</span>
+          )}
+        </Row>
+        <Row label="Tool calls">
+          {toolCalls.length > 0 ? (
+            <ol className="flex flex-col gap-2">
+              {toolCalls.map((call) => (
+                <li key={call.id} className="text-xs">
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 truncate font-medium">{call.toolName}</span>
+                    <span className={call.ok === false ? "text-destructive shrink-0" : "text-muted-foreground shrink-0"}>
+                      {call.ok === false ? (call.errorCode ?? "failed") : call.ok === null ? "reserved" : "done"}
+                    </span>
+                    {call.durationMs !== null ? (
+                      <span className="text-muted-foreground shrink-0">{call.durationMs} ms</span>
+                    ) : null}
+                  </div>
+                  {call.accountAlias ? (
+                    <p className="text-muted-foreground">account {call.accountAlias}</p>
+                  ) : null}
+                  <p className="text-muted-foreground truncate">{argsSummary(call.arguments)}</p>
+                  {call.result !== null && call.result !== undefined ? (
+                    <details className="mt-1">
+                      <summary className="text-muted-foreground hover:text-foreground cursor-pointer">
+                        Result
+                      </summary>
+                      <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted px-2 py-1 text-[11px] whitespace-pre-wrap">
+                        {JSON.stringify(call.result, null, 2)}
+                      </pre>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <span className="text-muted-foreground">No tools were called.</span>
           )}
         </Row>
         <Row label="Run timeline">

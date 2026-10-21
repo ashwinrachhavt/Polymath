@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { agentAuthorizationDecisions, agentProfiles, agentRuns, toolCalls } from "@/domains/agents/schema";
+import { agentAuthorizationDecisions, agentProfiles, agentRuns, runEvents, toolCalls } from "@/domains/agents/schema";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { issueDelegationGrant } from "@/domains/agents/delegation";
 import { registerAgentPrincipal } from "@/domains/agents/principals";
@@ -127,6 +127,7 @@ async function seedAccount(
   seed: Seeded,
   values: {
     alias: string;
+    provider?: string;
     status?: "active" | "revoked" | "connecting";
     allowRead?: boolean;
     allowWrite?: boolean;
@@ -135,7 +136,7 @@ async function seedAccount(
   const id = `ca_${crypto.randomUUID()}`;
   await holder.db!.insert(externalAccounts).values({
     workspaceId: seed.workspaceId,
-    provider: "gmail",
+    provider: values.provider ?? "gmail",
     alias: values.alias,
     status: values.status ?? "active",
     composioConnectedAccountId: id,
@@ -187,9 +188,13 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
     expect(body.result.tools.map((tool) => tool.name).sort()).toEqual([
+      "github_read_issue",
+      "github_search",
       "gmail_read_thread",
       "gmail_search",
       "gmail_send",
+      "slack_list_channels",
+      "slack_read_channel",
     ]);
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
   });
@@ -476,6 +481,56 @@ suite("tools/call dispatch (real Postgres)", () => {
     expect(reads).toHaveLength(1);
   });
 
+  it("parks the run on the third identical call and refuses it", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    install([{ ...searchRoute, body: { messages: [] } }]);
+
+    // Two identical calls are a retry and go through.
+    await toolText(await call(seed, "gmail_search", { query: "same query" }));
+    await toolText(await call(seed, "gmail_search", { query: "same query" }));
+    expect(reads).toHaveLength(2);
+
+    // The third is a loop: refused, no third provider call, run parked.
+    const third = await call(seed, "gmail_search", { query: "same query" });
+    expect(third.status).toBe(429);
+    const body = (await third.json()) as { code: string };
+    expect(body.code).toBe("loop_detected");
+    expect(reads).toHaveLength(2);
+
+    const [run] = await holder.db!.select().from(agentRuns).where(eq(agentRuns.id, seed.runId));
+    expect(run.state).toBe("waiting_approval");
+
+    // A different query from the parked run: the route refuses a run that is no
+    // longer running, before the gateway is reached at all.
+    const fourth = await call(seed, "gmail_search", { query: "other query" });
+    expect(fourth.status).toBe(409);
+
+    const loopEvents = await holder.db!
+      .select()
+      .from(runEvents)
+      .where(eq(runEvents.runId, seed.runId));
+    expect(loopEvents.filter((e) => e.type === "loop.detected")).toHaveLength(1);
+  });
+
+  it("counts failed calls toward the loop: three failed identical calls park the run", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    // The provider 500s. A model hammering a down provider with the same call
+    // is spinning too, so the third attempt parks the run instead of the
+    // provider seeing a fourth.
+    install([{ ...searchRoute, status: 500, body: {} }]);
+
+    const first = await call(seed, "gmail_search", { query: "x" });
+    expect(first.status).toBe(502);
+    const second = await call(seed, "gmail_search", { query: "x" });
+    expect(second.status).toBe(502);
+    const third = await call(seed, "gmail_search", { query: "x" });
+    expect(third.status).toBe(429);
+    const body = (await third.json()) as { code: string };
+    expect(body.code).toBe("loop_detected");
+  });
+
   it("creates one proposal and one revision for gmail_send, and never calls the transport", async () => {
     const seed = await seedRun({ allowedTools: ["gmail.send"] });
     await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
@@ -618,6 +673,51 @@ suite("tools/call dispatch (real Postgres)", () => {
     const body = (await response.json()) as { code: string };
     expect(body.code).toBe("run_capability_limit");
     expect(reads).toHaveLength(0);
+  });
+
+  it("reads GitHub and Slack through the same gates, and an unconnected provider fails closed", async () => {
+    const seed = await seedRun();
+    // No GitHub account yet: the Gmail connection must not satisfy a GitHub tool.
+    await seedAccount(seed);
+    install([]);
+    const denied = await call(seed, "github_search", { query: "repo:o/r is:open" });
+    expect(denied.status).toBe(403);
+    expect(((await denied.json()) as { code: string }).code).toBe("account_not_connected");
+    expect(reads).toHaveLength(0);
+
+    await seedAccount(seed, { alias: "work-github", provider: "github" });
+    await seedAccount(seed, { alias: "team-slack", provider: "slack" });
+    install([
+      {
+        method: "GET",
+        endpointPrefix: "https://api.github.com/search/issues",
+        status: 200,
+        body: { items: [{ number: 3, title: "Bug", state: "open", html_url: "https://github.com/o/r/issues/3" }] },
+      },
+      {
+        method: "GET",
+        endpointPrefix: "https://slack.com/api/conversations.history",
+        status: 200,
+        body: { ok: false, error: "not_in_channel" },
+      },
+    ]);
+    const search = await call(seed, "github_search", { query: "repo:o/r is:open" });
+    expect(search.status).toBe(200);
+    const searchBody = JSON.parse(((await search.json()) as { result: { content: Array<{ text: string }> } }).result.content[0].text) as {
+      items: Array<{ number: number }>;
+    };
+    expect(searchBody.items[0].number).toBe(3);
+
+    // Slack's HTTP-200 ok:false is a labelled failure, never an empty success.
+    const history = await call(seed, "slack_read_channel", { channel: "C0123ABCD" });
+    expect(history.status).toBe(502);
+    expect(((await history.json()) as { code: string }).code).toBe("provider_error");
+
+    // A path-shaped repository name never reaches the transport.
+    const before = reads.length;
+    const bad = await call(seed, "github_read_issue", { owner: "..", repo: "r", number: 1 });
+    expect(bad.status).toBe(400);
+    expect(reads).toHaveLength(before);
   });
 
   it("truncates a 70 KB thread at the last whole message with an explicit marker", async () => {

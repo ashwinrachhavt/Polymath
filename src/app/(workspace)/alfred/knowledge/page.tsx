@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { listFolders } from "@/domains/knowledge/library";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
+import { statementForDocument } from "@/domains/knowledge/statement-import";
+import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { DocumentVault } from "./vault";
 
 
@@ -126,6 +128,7 @@ export async function KnowledgeSurface({
           ]),
       ),
     );
+    const statement = await statementForDocument(auth, review.document.id);
     return (
       <ReviewWorkbench
         review={review}
@@ -133,6 +136,7 @@ export async function KnowledgeSurface({
         partyOptions={partyOptions as never}
         suggestedTitle={suggestedTitle && suggestedTitle !== review.document.title ? suggestedTitle : null}
         classification={classificationValue}
+        statement={statement}
       />
     );
   }
@@ -178,18 +182,57 @@ export async function KnowledgeSurface({
 }
 
 /** Three zones: document info on the left, field and party decisions center, obligations right. */
+/*
+ * The domain returns database rows; the panel renders a small view model. This
+ * is the one place the two shapes meet, so a column rename stays inside the
+ * domain instead of reaching into the component.
+ */
+function statementPanelData(
+  statement: Awaited<ReturnType<typeof statementForDocument>>,
+): StatementPanelData | null {
+  if (!statement) return null;
+  const reconciliation = statement.import.reconciliation as {
+    mismatches?: Array<{
+      occurredOn: string;
+      description: string;
+      amount: string;
+      expectedBalance: string;
+      actualBalance: string;
+    }>;
+  };
+  return {
+    status: statement.import.status,
+    accountLabel: statement.import.accountLabel,
+    periodStart: statement.import.periodStart,
+    periodEnd: statement.import.periodEnd,
+    openingBalance: statement.import.openingBalance,
+    closingBalance: statement.import.closingBalance,
+    transactionCount: statement.import.transactionCount,
+    reconciled: statement.import.reconciled,
+    error: statement.import.error,
+    mismatches: reconciliation.mismatches ?? [],
+    rows: statement.transactions.map((row) => ({
+      occurredOn: row.occurredOn,
+      description: row.description,
+      amount: row.amount,
+    })),
+  };
+}
+
 function ReviewWorkbench({
   review,
   partyOptions,
   suggestedTitle,
   classification,
   zettels,
+  statement,
 }: {
   zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
   partyOptions: Map<string, { kind: "contact" | "company"; id: string; name: string; via: string }[]>;
   suggestedTitle: string | null;
   classification: Awaited<ReturnType<typeof getOpenClassification>> | null;
+  statement: Awaited<ReturnType<typeof statementForDocument>>;
 }) {
   const { document: doc, extraction, fieldProposals, parties, obligations } = review;
   const status = documentStatus(extraction, fieldProposals.filter((p) => p.status === "proposed").length);
@@ -253,6 +296,11 @@ function ReviewWorkbench({
               label={extraction.proposalStatus === null ? "Propose fields" : "Retry proposing fields"}
             />
           ) : null}
+          <StatementPanel
+            documentId={doc.id}
+            extractionSucceeded={extraction?.status === "succeeded"}
+            statement={statementPanelData(statement)}
+          />
           {extraction?.status === "failed" && doc.sourceUrl ? (
             <RetryCaptureButton url={doc.sourceUrl} />
           ) : null}

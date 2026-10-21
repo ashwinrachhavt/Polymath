@@ -192,7 +192,7 @@ export function ChatSurface({
                       tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""
                     }
                   >
-                    {tool.status === "running" ? "running" : tool.status === "ok" ? "done" : "failed"}
+                    {tool.status === "running" ? "running" : tool.status === "ok" ? (tool.detail ?? "done") : (tool.detail ?? "failed")}
                   </span>
                 </li>
               );

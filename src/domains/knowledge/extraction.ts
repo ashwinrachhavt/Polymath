@@ -220,6 +220,10 @@ export async function extractDocument(
       status: result.ok ? "succeeded" : "failed",
       text: result.ok ? result.text : null,
       spans: result.ok ? result.spans : [],
+      // The table grid is only stored when the provider returned one; a
+      // provider that yields prose alone leaves it null and the statement
+      // parse reports the document as unsupported rather than guessing.
+      tables: result.ok ? (result.tables ?? null) : null,
       extractor: result.extractor,
       error: result.ok ? null : result.error,
     })

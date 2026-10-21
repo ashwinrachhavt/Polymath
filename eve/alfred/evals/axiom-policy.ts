@@ -39,6 +39,10 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   // Reading one thread is the same authority as searching them. Without a row
   // here `approvalForCapability` fails closed and the tool can never be granted.
   "gmail.thread.read": "read",
+  "github.read": "read",
+  "github.issue.read": "read",
+  "slack.channels.read": "read",
+  "slack.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",

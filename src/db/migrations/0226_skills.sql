@@ -1,4 +1,4 @@
--- 0222 (ASH-200): a skills library replaces the specialist roster.
+-- 0226 (ASH-200): a skills library replaces the specialist roster.
 --
 -- A skill is a stored instruction package: a SKILL.md body plus its files, text
 -- only. Identity is (workspace, source_kind, source_ref, source_path) and is

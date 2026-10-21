@@ -40,6 +40,9 @@ describe("executeComposioRead", () => {
   });
 
   it("reports not-configured without the API key", async () => {
+    // A developer's .env leaks into the runner; the case under test is the
+    // absent key, so it is removed explicitly rather than assumed absent.
+    delete process.env.COMPOSIO_API_KEY;
     const { executeComposioRead } = await import("@/domains/integrations/composio");
     const result = await executeComposioRead({
       connectedAccountId: "ca_1",
