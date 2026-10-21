@@ -260,9 +260,25 @@ function safeSlug(url: URL): string {
   return (base || "page").slice(0, 80);
 }
 
-export const outboxHandlers: Record<string, OutboxHandler> = {
-  "document.extraction_requested": extractionRequestedHandler,
-  [CRAWL_TOPIC]: crawlRequestedHandler,
-  ...youtubeHandlers,
-  [THREAD_CHANGED_TOPIC]: threadChangedHandler(workspaceOwnerAuth),
-};
+/*
+ * Built on first use, not at module evaluation.
+ *
+ * `youtube-handler.ts` imports `workspaceOwnerAuth` from this file, so spreading
+ * `youtubeHandlers` into an eagerly-evaluated object is a cycle: whichever module
+ * loads second reads the other's binding while it is still uninitialised
+ * ("Cannot access 'youtubeHandlers' before initialization"). Deferring the spread
+ * to the first dispatch costs one call and removes the ordering dependency
+ * entirely.
+ */
+let handlers: Record<string, OutboxHandler> | null = null;
+
+export function outboxHandlers(): Record<string, OutboxHandler> {
+  if (handlers) return handlers;
+  handlers = {
+    "document.extraction_requested": extractionRequestedHandler,
+    [CRAWL_TOPIC]: crawlRequestedHandler,
+    ...youtubeHandlers,
+    [THREAD_CHANGED_TOPIC]: threadChangedHandler(workspaceOwnerAuth),
+  };
+  return handlers;
+}

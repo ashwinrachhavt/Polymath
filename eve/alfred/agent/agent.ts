@@ -1,6 +1,8 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "./lib/gemini-openai";
+// Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
+import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
 
 /*
  * Alfred: one first-party agent (agents/product.md — not a persona zoo).
@@ -43,16 +45,39 @@ const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/ope
  */
 const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
-function alfredModel() {
-  // A set-but-blank key must not shadow a real fallback: ?? only skips
-  // null/undefined, so a blank GEMINI_API_KEY would otherwise win over a
-  // populated GOOGLE_GENERATIVE_AI_API_KEY.
-  const apiKey =
-    [process.env.GEMINI_API_KEY, process.env.GOOGLE_GENERATIVE_AI_API_KEY].find((key) => key && key.length > 0) ?? "";
-  // `fetch` repairs Gemini's streaming tool-call deltas, which omit the `index`
-  // the OpenAI schema requires; see lib/gemini-openai.ts.
-  const provider = createOpenAI({ apiKey, baseURL: GEMINI_OPENAI_BASE, name: "gemini", fetch: geminiFetch() });
-  return provider.chat(process.env.GEMINI_AGENT_MODEL || GEMINI_DEFAULT_MODEL);
+/*
+ * The model for one step.
+ *
+ * The run freezes its model at start (`agent_runs.model`, copied from the
+ * profile's `model_policy.primary`), so a conversation cannot change model
+ * mid-thread and the spend row and the executing model are the same value.
+ * Before this, the run recorded one model for pricing and the agent always ran
+ * Gemini — two numbers that disagreed and only one of them was billed.
+ *
+ * `runModel` is passed by the session context (`axiom-run-model`); when it is
+ * absent the env var decides, which is what evals and the local TUI use.
+ */
+function alfredModel(runModel?: string | null) {
+  const wanted = runModel ?? process.env.GEMINI_AGENT_MODEL ?? DEFAULT_MODEL_ID;
+  const entry = modelById(wanted) ?? modelById(DEFAULT_MODEL_ID)!;
+
+  const apiKey = (process.env[entry.keyEnv] ?? "").trim();
+  if (!apiKey) {
+    // A model whose key vanished from the deployment must not silently fall back
+    // to a different provider: the run's frozen model is a spend and behaviour
+    // contract, and quietly running another one makes the run row a lie.
+    throw new Error(`${entry.keyEnv} is not set, so ${entry.label} cannot run. Choose another model or set the key.`);
+  }
+
+  // Gemini's OpenAI-compatible surface needs the streaming repair; the other
+  // providers are OpenAI-shaped already.
+  const provider = createOpenAI({
+    apiKey,
+    baseURL: entry.baseUrl,
+    name: entry.provider,
+    ...(entry.provider === "gemini" ? { fetch: geminiFetch() } : {}),
+  });
+  return provider.chat(entry.id);
 }
 
 export default defineAgent({
@@ -70,7 +95,13 @@ export default defineAgent({
   // (session/turn selections must be serializable gateway id strings).
   model: defineDynamic({
     events: {
-      "step.started": () => ({ model: alfredModel(), modelContextWindowTokens: 128_000 }),
+      // The driver prepends the run's frozen model as session context in the
+      // first user message; eve has no per-run config channel. The env var is
+      // the fallback for evals and the TUI, which have no run row.
+      "step.started": () => ({
+        model: alfredModel(process.env.AXIOM_RUN_MODEL),
+        modelContextWindowTokens: 128_000,
+      }),
     },
   }),
 });

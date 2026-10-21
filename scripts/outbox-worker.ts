@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         const recovered = await recoverStrandedOutbox(client);
         if (recovered.length > 0) console.log(`[${stamp()}] recovered ${recovered.length} stranded lease(s)`);
       }
-      const result = await dispatchPendingOutbox(client, outboxHandlers, { workerId });
+      const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId });
       if (result.claimed > 0) {
         console.log(
           `[${stamp()}] claimed ${result.claimed} dispatched ${result.dispatched} failed ${result.failed} ` +

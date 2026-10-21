@@ -94,7 +94,7 @@ async function queuedRow(workspaceId: string) {
   return row;
 }
 
-const crawlHandlers = () => handlers.outboxHandlers;
+const crawlHandlers = () => handlers.outboxHandlers();
 
 suite("crawl queue (real Postgres)", () => {
   it("the agent tool enqueues a crawl and returns queued, not a partial page set", async () => {
