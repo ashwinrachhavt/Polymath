@@ -420,6 +420,13 @@ export const documentExtractions = pgTable(
     text: text("text"),
     /** [{ page, start, end }] — offsets let a search result open the exact evidence. */
     spans: jsonb("spans").notNull().default([]),
+    /*
+     * Table cell grids from the provider, when it reports coordinates. Kept
+     * beside the text so a statement can be re-parsed against a better mapper
+     * without paying for the conversion again. Null for providers that only
+     * return prose.
+     */
+    tables: jsonb("tables"),
     extractor: text("extractor"),
     error: text("error"),
     /*

@@ -1,0 +1,354 @@
+{
+ "source": "sanitized docling output",
+ "tables": [
+  {
+   "page": 1,
+   "numRows": 2,
+   "numCols": 6,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "EARNINGS",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "RATE",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "CURRENT HOURS",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "CURRENT PERIOD",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "YTD HOURS",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 5,
+     "text": "YTD AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Salary",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "-",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "86.67",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "$6,666.67",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "196.97",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 5,
+     "text": "$15,151.52",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "numRows": 4,
+   "numCols": 3,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "EMPLOYEE TAXES",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "CURRENT PERIOD",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "YTD AMOUNT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Federal Income Tax",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "$1,130.58",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "$2,697.53",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "California SDI",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "$86.67",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "$196.97",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "California State Tax",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "$494.45",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "$1,174.90",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "numRows": 6,
+   "numCols": 3,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "SUMMARY",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "CURRENT",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "YTD",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "Gross Pay",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "$6,666.67",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "$15,151.52",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Deductions",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "$0.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "$0.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Taxes",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "$1,711.70",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "$4,069.40",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "Net Pay",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "$4,954.97",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "$11,082.12",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "Acct# ...030 Trace: 000000000000",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "$4,954.97",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  }
+ ]
+}

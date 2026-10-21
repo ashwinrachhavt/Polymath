@@ -12,6 +12,19 @@ export type ExtractionInput = {
 
 export type ExtractionSpan = { page: number; start: number; end: number };
 
+/*
+ * A table as the provider saw it, in our own shape. Only providers that return
+ * cell coordinates can fill this; the statement ledger depends on the grid, so
+ * a provider that cannot produce it leaves `tables` off and the statement parse
+ * reports the document as unsupported rather than guessing.
+ */
+export type ExtractedTable = {
+  page: number | null;
+  numRows: number;
+  numCols: number;
+  cells: Array<{ row: number; col: number; text: string; header: boolean; rowSpan: number; colSpan: number }>;
+};
+
 /** A structured field a provider already reported. Normalization is the domain's job.
  * fieldKind is derived from the schema enum so the two lists cannot drift. */
 import type { FieldKind, documentPartyRole } from "@/domains/knowledge/schema";
@@ -38,6 +51,8 @@ export type ExtractionResult =
       extractor: string;
       /** Optional structured output; adapters that do not produce it leave it off. */
       fields?: ExtractedField[];
+      /** Optional table grid, for consumers that need cell coordinates. */
+      tables?: ExtractedTable[];
     }
   | { ok: false; error: string; extractor: string };
 

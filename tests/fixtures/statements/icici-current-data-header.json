@@ -1,0 +1,1881 @@
+{
+ "source": "sanitized docling output",
+ "tables": [
+  {
+   "page": 1,
+   "numRows": 6,
+   "numCols": 8,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "S.no",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "Transaction ID",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "Transaction date",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "Cheque No",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "Description",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 5,
+     "text": "Withdrawal (Dr)",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 6,
+     "text": "Deposit (Cr)",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 7,
+     "text": "Available Balance",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "1",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "S4792319",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "01-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SERV+GS T_EP09191 3_JUL26",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 5,
+     "text": "59.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 7,
+     "text": "726719.48",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "2",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "S4792319",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "01-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "EZY/ICICIPO S_BATCH+ GST_EP091 913_JUL26",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 5,
+     "text": "22.42",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 7,
+     "text": "726697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "3",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "M343412",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "01-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "630",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "CLG/VENDOR ARE DENTAL LAB PVT L/UTI",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 5,
+     "text": "150000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 7,
+     "text": "576697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "4",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "S6577109",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "02-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 7,
+     "text": "476697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "5",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "S6577191",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "02-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 5,
+     "text": "90000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 7,
+     "text": "386697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "numRows": 10,
+   "numCols": 8,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "6",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "S6577541",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "03-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 5,
+     "text": "86000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 7,
+     "text": "300697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "7",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "S7839605",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "03-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 7,
+     "text": "200697.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "8",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "S9627619",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "05-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "BIL/Home Loan XX43868 EMI Owner",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 5,
+     "text": "29043.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 7,
+     "text": "171654.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "9",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "S9670336",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "05-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "BIL/Home Loan XX48603 EMI Owner",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 5,
+     "text": "5044.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 7,
+     "text": "166610.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "10",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "M362775",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "10-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 3,
+     "text": "631",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "CLG/DENTA L TECHNOLO GIES/BOB",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 5,
+     "text": "7700.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 7,
+     "text": "158910.06",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "11",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "S7761808",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "12-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "CMS/ TBPUN0000 7843868C3 73734147S WAPNIL KEDARI2 01",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 6,
+     "text": "2.01",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 7,
+     "text": "158912.07",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "12",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "S8185653",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 2,
+     "text": "13-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_1 30826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 6,
+     "text": "41895.28",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 7,
+     "text": "200807.35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "13",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "S8935255",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 2,
+     "text": "13-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 4,
+     "text": "UPI/110431 604896/UPI Pay/nseclea ring.nse//ICI bd82c",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 7,
+     "text": "100807.35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "14",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "S9136728",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 2,
+     "text": "14-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_1 40826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 6,
+     "text": "81189.60",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 7,
+     "text": "181996.95",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "15",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "S202141",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 2,
+     "text": "15-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_1 50826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 6,
+     "text": "111614.64",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 7,
+     "text": "293611.59",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 3,
+   "numRows": 11,
+   "numCols": 8,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "16",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "S808890",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "16-Aug- 2026",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_1 60826",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 6,
+     "text": "112813.84",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 7,
+     "text": "406425.43",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "17",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "S964722",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "16-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 7,
+     "text": "306425.43",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "18",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "S2493771",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "18-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "FT-ICICIPOS SET 10XX15280 3 180826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 6,
+     "text": "98130.28",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 7,
+     "text": "404555.71",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "19",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "M331693",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "18-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "615",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "CLG/VENDOR NJALI ENTERPRIS ES/UTI",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 5,
+     "text": "25000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 7,
+     "text": "379555.71",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "20",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "S3440768",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "19-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_1 90826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 6,
+     "text": "100264.84",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 7,
+     "text": "479820.55",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "21",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "S4399218",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "20-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 00826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 6,
+     "text": "54153.22",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 7,
+     "text": "533973.77",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "22",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "M329705",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 2,
+     "text": "20-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 3,
+     "text": "632",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 4,
+     "text": "CLG/DIYA ENTERPRIS ES/KMB",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 5,
+     "text": "13822.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 7,
+     "text": "520151.77",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "23",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "S5397861",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 2,
+     "text": "21-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 10826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 6,
+     "text": "61055.30",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 7,
+     "text": "581207.07",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "24",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "S6439266",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 2,
+     "text": "22-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 20826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 6,
+     "text": "60182.60",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 7,
+     "text": "641389.67",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "25",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "S7089045",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 2,
+     "text": "23-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 30826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 6,
+     "text": "114193.14",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 7,
+     "text": "755582.81",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 0,
+     "text": "26",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 1,
+     "text": "S8864121",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 2,
+     "text": "25-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 50826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 6,
+     "text": "71127.04",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 10,
+     "col": 7,
+     "text": "826709.85",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  },
+  {
+   "page": 4,
+   "numRows": 10,
+   "numCols": 8,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "27",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "S9974228",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "26-Aug- 2026",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 60826",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 6,
+     "text": "44814.62",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 0,
+     "col": 7,
+     "text": "871524.47",
+     "header": true,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "28",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "S753961",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "27-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 70826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 6,
+     "text": "97934.82",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 1,
+     "col": 7,
+     "text": "969459.29",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "29",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "M347619",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "27-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "633",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 4,
+     "text": "CLG/VENDOR ARE DENTAL LAB PVT L/UTI",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 2,
+     "col": 7,
+     "text": "869459.29",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "30",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "S1917596",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "28-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 80826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 6,
+     "text": "22233.62",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 3,
+     "col": 7,
+     "text": "891692.91",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 0,
+     "text": "31",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 1,
+     "text": "S2825452",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 2,
+     "text": "29-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 5,
+     "text": "100000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 4,
+     "col": 7,
+     "text": "791692.91",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 0,
+     "text": "32",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 1,
+     "text": "S2911048",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 2,
+     "text": "29-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_2 90826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 6,
+     "text": "72720.40",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 5,
+     "col": 7,
+     "text": "864413.31",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 0,
+     "text": "33",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 1,
+     "text": "M323196",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 2,
+     "text": "29-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 3,
+     "text": "634",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 4,
+     "text": "CLG/SURGI SQUARE/K MB",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 5,
+     "text": "4960.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 6,
+     "col": 7,
+     "text": "859453.31",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 0,
+     "text": "34",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 1,
+     "text": "S3746507",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 2,
+     "text": "30-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 4,
+     "text": "EZY/ICICIPO S_SET_10X X152803_3 00826",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 6,
+     "text": "48257.72",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 7,
+     "col": 7,
+     "text": "907711.03",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 0,
+     "text": "35",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 1,
+     "text": "S3822973",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 2,
+     "text": "30-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 4,
+     "text": "INF/INFT/04 000000000000 1/Ownerici ci",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 5,
+     "text": "400000.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 8,
+     "col": 7,
+     "text": "507711.03",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 0,
+     "text": "36",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 1,
+     "text": "M357540",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 2,
+     "text": "31-Aug- 2026",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 3,
+     "text": "635",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 4,
+     "text": "CLG/SHREE DENTAL AND MEDICAL/B OM",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 5,
+     "text": "19550.00",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    },
+    {
+     "row": 9,
+     "col": 7,
+     "text": "488161.03",
+     "header": false,
+     "rowSpan": 1,
+     "colSpan": 1
+    }
+   ]
+  }
+ ]
+}

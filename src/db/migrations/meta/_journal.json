@@ -358,6 +358,13 @@
       "tag": "0224_connector_permissions",
       "when": 1792480540000,
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "tag": "0225_bank_statement_ledger",
+      "when": 1792480550000,
+      "breakpoints": true
     }
   ]
 }
