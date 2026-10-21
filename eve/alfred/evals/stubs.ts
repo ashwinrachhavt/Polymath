@@ -77,10 +77,17 @@ function isSet(value: string | undefined): boolean {
  * the agent's behaviour rather than the provider's answer. A tool absent here is
  * a tool that runs for real.
  */
+/*
+ * The provider tools arrive through the `polymath_gateway` MCP connection, so
+ * eve exposes them as `<connection>__<tool>` (connections/ownership.js:
+ * `connectionToolName`). Stubbing the bare `gmail_search` would match nothing
+ * and the real tool would run — the failure this file exists to prevent.
+ */
 export const STUBBED_TOOLS = {
-  connected_read: { response: { ok: false, error: "not connected in this eval" } },
   documents_search: { response: { ok: true, query: "", results: [] } },
-  gmail_send: { response: { ok: false, error: "not connected in this eval" } },
+  polymath_gateway__gmail_read_thread: { response: { ok: false, error: "not connected in this eval" } },
+  polymath_gateway__gmail_search: { response: { ok: false, error: "not connected in this eval" } },
+  polymath_gateway__gmail_send: { response: { ok: false, error: "not connected in this eval" } },
   tasks_read: { response: { ok: true, tasks: [] } },
   web_fetch: { response: { ok: true, text: "" } },
   web_search: { response: { ok: true, results: [] } },

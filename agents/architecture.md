@@ -180,8 +180,14 @@ All agent execution goes through the `AgentEngine` contract in
 - External writes become action proposals, never a direct tool call.
 
 Agent definitions live in `eve/alfred/agent/` and `eve/specialist/agent/`, with
-tools in `*_tools/`. Tools: `documents_search`, `gmail_send`, `tasks_read`,
+tools in `agent/tools/`. Authored tools: `documents_search`, `tasks_read`,
 `web_fetch`, `web_search`, `wiki_ingest`, `wiki_lint`, `wiki_read`.
+
+Provider tools are not authored: they arrive through the `polymath_gateway` MCP
+connection (`eve/alfred/agent/connections/polymath_gateway.ts`) as
+`polymath_gateway__gmail_search`, `…__gmail_read_thread`, and `…__gmail_send`,
+and every call is authorized and recorded by `POST /api/mcp`. The agent holds no
+provider credential and has no other route to one.
 
 Domain code never imports a model SDK or a workflow platform directly. Only
 `AgentEngine` implementations do.
