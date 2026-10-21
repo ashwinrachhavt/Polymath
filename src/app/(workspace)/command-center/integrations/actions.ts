@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { registerAccount, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
+import { registerAccount, revokeConnectedAccount, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
@@ -62,6 +62,25 @@ export async function setWriteDefaultAction(input: { accountId: string; expected
   const auth = await authorize();
   try {
     await setDefaultForWrites(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/*
+ * Disconnect is an admin decision: it takes a credential away from every agent
+ * and every read in the workspace, not just from the person clicking. The read
+ * and send paths re-check `status = 'active'` per call, so this needs no cache
+ * invalidation to take effect - only the page refresh below so the card
+ * reflects it.
+ */
+export async function revokeAccountAction(input: { accountId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "admin");
+  try {
+    await revokeConnectedAccount(auth, input);
   } catch (error) {
     return fail(error);
   }
