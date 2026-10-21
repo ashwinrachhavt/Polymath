@@ -1,7 +1,7 @@
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
-import { buildLedgerCsv, ledgerCsvFilename } from "@/domains/knowledge/statement-csv";
+import { buildClassifiedLedgerCsv, buildLedgerCsv, ledgerCsvFilename } from "@/domains/knowledge/statement-csv";
 import { statementForDocument } from "@/domains/knowledge/statement-import";
 
 /*
@@ -13,7 +13,7 @@ import { statementForDocument } from "@/domains/knowledge/statement-import";
  * check, and once it is in a spreadsheet the error is invisible. 409 names the
  * row that broke the chain so the download can be retried after a correction.
  */
-export const GET = authedHandler(async (auth, _request, ctx: { params: Promise<{ documentId: string }> }) => {
+export const GET = authedHandler(async (auth, request, ctx: { params: Promise<{ documentId: string }> }) => {
   requireRole(auth, "viewer");
   const { documentId } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
@@ -44,7 +44,9 @@ export const GET = authedHandler(async (auth, _request, ctx: { params: Promise<{
     );
   }
 
-  const csv = buildLedgerCsv(found.transactions);
+  // ?categories=1 adds a local category per row. The default stays three columns.
+  const withCategories = new URL(request.url).searchParams.get("categories") === "1";
+  const csv = withCategories ? buildClassifiedLedgerCsv(found.transactions) : buildLedgerCsv(found.transactions);
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

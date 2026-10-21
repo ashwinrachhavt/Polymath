@@ -111,12 +111,19 @@ export async function importStatement(
         reconciled: parsed.reconciled,
         reconciliation: {
           mismatches: parsed.mismatches,
+          totals: parsed.totals,
+          moneyFormat: parsed.moneyFormat,
           unsupportedTables: parsed.unsupportedTables,
         },
         mapping: parsed.mappings,
         error: parsed.reconciled
           ? null
-          : `${parsed.mismatches.length} row${parsed.mismatches.length === 1 ? "" : "s"} do not carry the running balance forward.`,
+          : parsed.mismatches.length > 0
+            ? `${parsed.mismatches.length} row${parsed.mismatches.length === 1 ? "" : "s"} do not carry the running balance forward.`
+            : `The statement's own totals disagree with the rows read: ${parsed.totals.checks
+                .filter((check) => !check.ok)
+                .map((check) => `${check.label} says ${check.stated}, rows give ${check.computed}`)
+                .join("; ")}.`,
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
