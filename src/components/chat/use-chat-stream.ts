@@ -86,6 +86,24 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     setState((prev) => ({ ...prev, blocks: accRef.current.list() }));
   }, []);
 
+  /*
+   * One flush per animation frame, not one per network chunk. A burst of deltas
+   * coalesces into a single render, so text flows instead of strobing; the
+   * trailing flush guarantees the final chunk lands even if the tab is
+   * backgrounded and rAF stops firing.
+   */
+  const flushScheduled = useRef(false);
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  const scheduleFlush = useCallback(() => {
+    if (flushScheduled.current) return;
+    flushScheduled.current = true;
+    requestAnimationFrame(() => {
+      flushScheduled.current = false;
+      flushRef.current();
+    });
+  }, []);
+
   useEffect(() => {
     if (!runId || options.enabled === false) return;
     let cancelled = false;
@@ -159,7 +177,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               terminal = true;
             }
           }
-          flush();
+          scheduleFlush();
           if (terminal) {
             setState((prev) => ({ ...prev, connection: "done" }));
             return;
@@ -210,7 +228,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
       controller?.abort();
     };
     // runId and enabled are the identity of a stream; options.initial is mount-time.
-  }, [runId, options.enabled, flush, retryKey]);
+  }, [runId, options.enabled, scheduleFlush, retryKey]);
 
   return { ...state, retry };
 }
