@@ -20,7 +20,7 @@ Status values: **Guarded** (a test asserts the effect or state), **Partial** (a 
 | G27 | Retry save is idempotent | Guarded | `tests/integration/action-proposals.test.ts` "replaying a dedupe key yields one proposal row" |
 | G28 | Skill edited during a run keeps the run's pin | Guarded | `tests/integration/skills-run-pin.test.ts` "leaves the stored pin alone after the skill's body is edited" |
 | G17 | Imported skill says ignore policy | Needs live eval | gateway authorization is deterministic (`tool-authorization.test.ts`); the model's refusal is not |
-| G18 | Pasted `npx skills add ... && ...` | Not covered | no test of unsafe command form rejection found |
+| G18 | Pasted `npx skills add ... && ...` | Guarded | `tests/unit/skills-command.test.ts` (rejects `;`, `&&`, `\|`, `$(`, backticks, other executables, extra flags, URLs, `..` paths) |
 | F1, F2, F3, F4 | Fixture scenarios | Needs live eval | fixtures are not materialized; F2 (ask which Jordan) and F3 (local date) are model behavior |
 | G01-G08, G13-G16, G21, G23, G24, G26, P01-P* | Output quality, grounding, planning, personalization | Needs live eval | require a model run and human rubric scoring |
 
@@ -31,4 +31,3 @@ as Blocked, not Passed.
 ## Next steps
 1. Add `GEMINI_API_KEY` as a repository secret so main's eval gate can run (it fails today with "GEMINI_API_KEY is absent on main").
 2. Materialize F1-F4 and G01-G14 as eval cases under `eve/alfred/evals/` with frozen clocks and stubbed tools, one PR, run with the key.
-3. Add a deterministic test for G18 (unsafe skill install command forms).
