@@ -126,3 +126,49 @@ describe("StatementPanel categories", () => {
     expect(html).not.toContain("to categorise");
   });
 });
+
+describe("StatementPanel verification and totals", () => {
+  const parsed = { ...base, status: "parsed" as const, reconciled: true, error: null, mismatches: [] };
+
+  it("says when the statement's own totals match and when a later reading was needed", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatementPanel, {
+        documentId: "doc-1",
+        extractionSucceeded: true,
+        statement: { ...parsed, totalsStatus: "match", strategy: "month-first dates" },
+      }),
+    );
+    expect(html).toContain("totals printed on the statement match");
+    expect(html).toContain("Read with month-first dates");
+  });
+
+  it("stays quiet about the strategy when the default reading worked", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatementPanel, {
+        documentId: "doc-1",
+        extractionSucceeded: true,
+        statement: { ...parsed, strategy: "default" },
+      }),
+    );
+    expect(html).not.toContain("Read with");
+  });
+
+  it("lists spending by category, largest first as given", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatementPanel, {
+        documentId: "doc-1",
+        extractionSucceeded: true,
+        statement: {
+          ...parsed,
+          categoryTotals: [
+            { category: "housing", count: 1, spent: "1200.00", received: "0.00" },
+            { category: "fees_interest", count: 2, spent: "30.00", received: "0.00" },
+          ],
+        },
+      }),
+    );
+    expect(html).toContain("Spending by category");
+    expect(html).toContain("housing");
+    expect(html).toContain("fees interest");
+  });
+});

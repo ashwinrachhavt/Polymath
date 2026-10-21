@@ -31,7 +31,7 @@ import { listFolders } from "@/domains/knowledge/library";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { statementForDocument } from "@/domains/knowledge/statement-import";
 import { judgeTransactions } from "@/domains/knowledge/transaction-rules";
-import type { Judgment } from "@/domains/knowledge/transaction-classify";
+import { summarize, type Judgment } from "@/domains/knowledge/transaction-classify";
 import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { DocumentVault } from "./vault";
 
@@ -197,6 +197,8 @@ function statementPanelData(
 ): StatementPanelData | null {
   if (!statement) return null;
   const reconciliation = statement.import.reconciliation as {
+    strategy?: string;
+    totals?: { status?: string; checks?: Array<{ label: string; stated: string; computed: string; ok: boolean }> };
     mismatches?: Array<{
       occurredOn: string;
       description: string;
@@ -216,6 +218,15 @@ function statementPanelData(
     reconciled: statement.import.reconciled,
     error: statement.import.error,
     mismatches: reconciliation.mismatches ?? [],
+    strategy: reconciliation.strategy,
+    totalsStatus: reconciliation.totals?.status,
+    categoryTotals: Object.entries(
+      summarize(statement.transactions, judgments.length === statement.transactions.length ? judgments : []).byCategory,
+    )
+      .map(([category, value]) => ({ category, ...value! }))
+      .filter((entry) => entry.category !== "unknown" && Number(entry.spent) > 0)
+      .sort((a, b) => Number(b.spent) - Number(a.spent))
+      .slice(0, 8),
     rows: statement.transactions.map((row, index) => ({
       id: row.id,
       occurredOn: row.occurredOn,
