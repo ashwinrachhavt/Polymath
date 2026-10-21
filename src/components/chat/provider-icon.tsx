@@ -27,9 +27,10 @@ export function ProviderIcon({ provider, displayName }: { provider: string; disp
 /** Tool name to a readable label and glyph for chat tool activity. */
 export function toolGlyph(toolName: string) {
   if (toolName.startsWith("documents") || toolName.startsWith("documents.")) return FileText;
-  if (toolName === "gmail_send" || toolName.startsWith("gmail.")) return Mail;
+  // Gmail now arrives as `polymath-gateway__gmail_search` (an MCP connection
+  // tool), and capability labels still read `gmail.…`.
+  if (toolName.includes("gmail")) return Mail;
   if (toolName.startsWith("calendar")) return CalendarDays;
   if (toolName.startsWith("notion") || toolName.startsWith("wiki")) return FileText;
-  if (toolName === "connected_read") return MessageSquareCode;
   return MessageSquare;
 }

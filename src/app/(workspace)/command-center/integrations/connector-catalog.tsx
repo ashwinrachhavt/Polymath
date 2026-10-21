@@ -56,6 +56,12 @@ function connectorState(connector: CatalogConnector): "connected" | "connecting"
   return "available";
 }
 
+/* The person's word for the state, not the column's. */
+function accountLabel(status: string): string {
+  if (status === "revoked") return "Disconnected";
+  return status;
+}
+
 function capabilitySummary(connector: CatalogConnector): string {
   return connector.capabilities
     .map((capability) => `${capability.replaceAll("_", " ")} (${connector.riskByCapability[capability] ?? "read"})`)
@@ -140,7 +146,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                         <div key={account.id} className="py-3">
                           <div className="mb-1.5 flex flex-wrap items-center gap-2">
                             <p className="text-[13px] font-medium">{account.alias}</p>
-                            <Status>{account.status}</Status>
+                            <Status>{accountLabel(account.status)}</Status>
                             {account.isDefaultForWrites ? <Status>write default</Status> : null}
                           </div>
                           <p className="mb-2 text-xs text-muted-foreground">
@@ -155,11 +161,20 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                             version={account.version}
                             status={account.status}
                             isDefault={account.isDefaultForWrites}
+                            alias={account.alias}
                           />
                           {account.status === "connecting" ? (
                             <div className="mt-2">
                               <ConnectButton provider={connector.provider} defaultAlias={account.alias} />
                             </div>
+                          ) : null}
+                          {account.status === "revoked" ? (
+                            // A revoked alias cannot be reopened (beginConnection
+                            // refuses to reuse it), so the only honest next step
+                            // is a new name for a fresh connection.
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Register a new alias to connect this provider again.
+                            </p>
                           ) : null}
                         </div>
                       ))}

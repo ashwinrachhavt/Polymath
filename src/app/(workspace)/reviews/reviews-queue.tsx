@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
 import { Field, Panel, Status } from "@/components/workspace/ui";
+import type { EffectOutcome } from "@/domains/actions/executor";
 import { decideProposalAction, reviseProposalAction } from "./actions";
 
 /*
@@ -55,13 +56,32 @@ const riskLabel: Record<string, string> = {
 
 type DecideInput = { proposalId: string; decision: "approved" | "rejected"; note: string };
 
+/*
+ * One line, from the executor's own outcome. The copy is fixed here rather
+ * than assembled from provider text: "unknown" exists to say the system does
+ * not know, and no wording may invite a second send. A failed effect is never
+ * presented as something to repeat; that is a new approval, not a re-run.
+ */
+function outcomeLine(outcome: EffectOutcome): string {
+  switch (outcome.status) {
+    case "sent":
+      return "Sent.";
+    case "unknown":
+      return "Checking whether this was sent.";
+    case "failed":
+      return `Not sent. ${outcome.reason}`;
+  }
+}
+
 function ProposalCard({
   item,
   error,
+  outcome,
   decide,
 }: {
   item: QueueCardData;
   error: string | null;
+  outcome: EffectOutcome | null;
   decide: (input: DecideInput) => void;
 }) {
   const [note, setNote] = useState("");
@@ -210,6 +230,11 @@ function ProposalCard({
           {error}
         </p>
       ) : null}
+      {outcome ? (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {outcomeLine(outcome)}
+        </p>
+      ) : null}
     </Panel>
   );
 }
@@ -218,6 +243,7 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>({});
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>
@@ -260,6 +286,10 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       if (!result.ok) {
         setErrors((prev) => ({ ...prev, [input.proposalId]: result.error }));
         router.refresh();
+        return;
+      }
+      if (result.outcome) {
+        setOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
       }
     });
   }
@@ -267,7 +297,13 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   return (
     <div className="flex flex-col gap-4">
       {optimisticItems.map((item) => (
-        <ProposalCard key={`${item.id}-${item.version}`} item={item} error={errors[item.id] ?? null} decide={decide} />
+        <ProposalCard
+          key={`${item.id}-${item.version}`}
+          item={item}
+          error={errors[item.id] ?? null}
+          outcome={outcomes[item.id] ?? null}
+          decide={decide}
+        />
       ))}
     </div>
   );

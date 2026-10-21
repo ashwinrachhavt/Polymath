@@ -1,4 +1,5 @@
 import type { Appearance } from "@clerk/types";
+import { homeHref } from "@/lib/navigation";
 
 /*
  * Clerk UI follows Polymath tokens (globals.css) so sign-in, sign-up, and the
@@ -46,5 +47,9 @@ export const clerkAppearance = {
   },
 } satisfies Appearance;
 
-/** Post-auth landing — briefing before browsing (agents/product.md). */
-export const afterAuthUrl = "/apps/command-center/briefing";
+/*
+ * Post-auth landing. Imported rather than repeated: the sign-in screen is a
+ * client component and the nav model is client-safe, so `homeHref` stays the one
+ * source of truth for where home is (agents/product.md: a conversation is home).
+ */
+export const afterAuthUrl = homeHref;

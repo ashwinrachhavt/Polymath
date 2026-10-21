@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Field } from "@/components/workspace/ui";
-import { registerAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction, syncNotionAction } from "./actions";
+import { registerAccountAction, revokeAccountAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction, syncNotionAction } from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
 
@@ -56,12 +56,14 @@ export function AccountControls({
   status,
   isDefault,
   provider,
+  alias,
 }: {
   provider?: string;
   accountId: string;
   version: number;
   status: string;
   isDefault: boolean;
+  alias: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -91,9 +93,14 @@ export function AccountControls({
           size="sm"
           variant="ghost"
           disabled={pending}
-          onClick={() => act(setAccountStatusAction, { accountId, expectedVersion: version, status: "revoked" })}
+          onClick={() => {
+            // The confirmation names the consequence, not the button: nothing
+            // in this workspace can use the account afterwards.
+            if (!window.confirm(`Disconnect ${alias}? Nothing in Polymath will be able to read or send with it.`)) return;
+            act(revokeAccountAction, { accountId, expectedVersion: version });
+          }}
         >
-          Revoke
+          Disconnect
         </Button>
       ) : null}
       {status === "active" && !isDefault ? (

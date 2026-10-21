@@ -1,5 +1,20 @@
 import { Experimental_DecisionMockModelV4 } from "ai/test";
 import { AXIOM_APPROVAL_POLICY_TEXT, approvalForCapability } from "./axiom-policy";
+import { installNetworkGuard } from "./network-guard";
+
+/*
+ * The eval-side wiring for the network guard.
+ *
+ * `target.url` is the agent process the harness drives; it is loopback and it is
+ * the harness's own control plane, not a provider, so the guard is told about it
+ * and about nothing else. Every provider host still fails closed.
+ */
+export function installEvalGuard(
+  target: { readonly url: string },
+  label: string,
+): () => void {
+  return installNetworkGuard({ controlPlaneOrigin: target.url, label });
+}
 
 /*
  * The decider seam, with a deterministic fixture behind it.

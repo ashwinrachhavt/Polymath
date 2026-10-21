@@ -36,6 +36,9 @@ export const AXIOM_APPROVAL_POLICY_TEXT =
 export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "tasks.read": "read",
   "gmail.read": "read",
+  // Reading one thread is the same authority as searching them. Without a row
+  // here `approvalForCapability` fails closed and the tool can never be granted.
+  "gmail.thread.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",

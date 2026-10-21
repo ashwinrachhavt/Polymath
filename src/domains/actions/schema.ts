@@ -170,6 +170,12 @@ export const actionAttempts = pgTable(
       .notNull()
       .references(() => actionRevisions.id, { onDelete: "restrict" }),
     attemptNumber: integer("attempt_number").notNull(),
+    /**
+     * The duplicate-send guard. A claim is one INSERT of this key; a second
+     * executor run for the same intent loses the unique index on purpose and
+     * returns the attempt that already exists instead of sending again.
+     */
+    idempotencyKey: text("idempotency_key").notNull(),
     status: attemptStatus("status").notNull(),
     /** Redacted provider response summary — never the raw body. */
     responseSummary: jsonb("response_summary"),
@@ -183,6 +189,9 @@ export const actionAttempts = pgTable(
   },
   (t) => [
     uniqueIndex("action_attempts_number_key").on(t.proposalId, t.attemptNumber),
+    // Scoped to the workspace so a foreign key from another tenant collides
+    // with itself rather than with this one's intent.
+    uniqueIndex("action_attempts_idempotency_key").on(t.workspaceId, t.idempotencyKey),
     // Partial index: the reconciliation sweep reads UNKNOWN rows that still matter.
     index("action_attempts_unresolved_idx")
       .on(t.workspaceId, t.startedAt)

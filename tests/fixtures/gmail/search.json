@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "id": "msg_fixture_alpha",
+      "threadId": "thr_fixture_alpha",
+      "labelIds": ["INBOX", "UNREAD"],
+      "snippet": "Fixture snippet alpha. Nothing here is real."
+    },
+    {
+      "id": "msg_fixture_beta",
+      "threadId": "thr_fixture_beta",
+      "labelIds": ["INBOX"],
+      "snippet": "Fixture snippet beta. Nothing here is real."
+    }
+  ],
+  "nextPageToken": "page_fixture_next",
+  "resultSizeEstimate": 2
+}

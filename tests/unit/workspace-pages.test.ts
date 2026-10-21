@@ -15,6 +15,8 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../..");
 
 const PAGE_SHELLS = [
+  "src/app/(workspace)/alfred/page.tsx",
+  "src/app/(workspace)/alfred/[runId]/page.tsx",
   "src/app/(workspace)/alfred/dossiers/page.tsx",
   "src/app/(workspace)/alfred/knowledge/page.tsx",
   "src/app/(workspace)/command-center/briefing/page.tsx",
@@ -37,9 +39,9 @@ describe("workspace page shells", () => {
     }
   });
 
-  it("the root redirects to Command Center's briefing", () => {
+  it("the root redirects to the Assistant", () => {
     const source = fs.readFileSync(path.join(ROOT, "src/app/page.tsx"), "utf8");
-    expect(source).toContain('redirect("/command-center/briefing")');
+    expect(source).toContain('redirect("/alfred")');
   });
 
   it("page shells do not hardcode legacy /apps routes", () => {

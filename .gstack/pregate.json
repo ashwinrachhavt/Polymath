@@ -21,15 +21,7 @@
     "eve/alfred/agent/lib/gemini-openai.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
-    "eve/alfred/agent/tools/connected_read.ts": [
-      "tests/unit/composio-read.test.ts",
-      "tests/unit/connected-read-capabilities.test.ts",
-      "tests/unit/connected-read-grant.test.ts"
-    ],
-    "eve/alfred/evals/axiom-policy.ts": [
-      "tests/unit/connected-read-capabilities.test.ts",
-      "tests/unit/connected-read-grant.test.ts"
-    ],
+    "eve/alfred/evals/axiom-policy.ts": [],
     "eve/alfred/agent/agent.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
@@ -37,15 +29,6 @@
       "tests/unit/gemini-openai-shim.test.ts"
     ],
     "eve/alfred/evals/chat-grounding.eval.ts": [],
-    "eve/alfred/evals/evals.config.ts": [],
-    "scripts/smoke/extraction-providers.mts": [
-      "tests/unit/extraction-providers-smoke.test.ts"
-    ],
-    "src/db/migrations/*.sql": [
-      "tests/unit/migration-journal.test.ts"
-    ]
-  },
-  "empty_lanes": [
-    "src/db/migrations/*.sql"
-  ]
+    "eve/alfred/evals/evals.config.ts": []
+  }
 }

@@ -24,6 +24,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // be granted: the policy snapshot copies this list verbatim, so the tool is
   // advertised to the model and denied on every call.
   "gmail.read",
+  // Same authority as searching mail; without a row the thread tool is a
+  // dead 403 on every call.
+  "gmail.thread.read",
   "calendar.read",
   "notion.read",
   // NotebookLM parity. Opening a notebook reads; grading a review writes an
@@ -48,12 +51,15 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
     // Connected reads are here for the same reason as the wiki ones: an
     // existing profile's frozen list would otherwise never gain them, and the
     // tool would fail closed forever with "not in this run's policy snapshot".
+    // `gmail.thread.read` is in this list for the same reason: it ships as a
+    // gateway tool, so a profile without it makes the tool a dead 403.
     const gained = [
       "documents.search",
       "wiki.read",
       "wiki.ingest",
       "wiki.lint",
       "gmail.read",
+      "gmail.thread.read",
       "calendar.read",
       "notion.read",
       "notebook.open",

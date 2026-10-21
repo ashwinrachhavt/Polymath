@@ -1,7 +1,9 @@
 import postgres from "postgres";
 import { timingSafeEqual } from "node:crypto";
+import { reconcileUnknownAttempts } from "@/domains/actions/reconciliation";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
+import { composioTransport } from "@/domains/integrations/transport";
 import { problemResponse } from "@/lib/problems";
 
 /*
@@ -20,7 +22,14 @@ import { problemResponse } from "@/lib/problems";
  *     the schedule silently 405-ing every night (ASH-189).
  *
  * Deployed, this is only as useful as the plan's cron cadence: Vercel's free
- * plan runs crons at most daily, which is what vercel.json schedules.
+ * plan runs crons at most daily, which is what vercel.json schedules. Locally
+ * the worker (`make queue-up`) is the trigger.
+ *
+ * Reconciliation follows the drain in the same pass. An UNKNOWN attempt is a
+ * send the provider never answered, and it blocks its proposal until someone
+ * asks the provider what happened; riding the same tick is what turns that from
+ * a manual repair into a background fact. It settles nothing on a guess, so a
+ * slow provider degrades to "still unknown" rather than a wrong answer.
  */
 
 function secrets(): string[] {
@@ -47,7 +56,10 @@ async function drain(): Promise<Response> {
   try {
     const recovered = await recoverStrandedOutbox(client);
     const result = await dispatchPendingOutbox(client, outboxHandlers, { workerId: `cron:${crypto.randomUUID()}` });
-    return Response.json({ recovered: recovered.length, ...result });
+    // After the drain: a send that just went UNKNOWN is too young to reconcile,
+    // and the row it left is why this runs at all.
+    const reconciliation = await reconcileUnknownAttempts({ transport: composioTransport });
+    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled });
   } finally {
     await client.end({ timeout: 5 });
   }
