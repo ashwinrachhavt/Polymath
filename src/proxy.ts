@@ -22,6 +22,10 @@ const isPublicRoute = createRouteMatcher([
   // Own bearer secret (OUTBOX_DISPATCH_SECRET); 404 when unset.
   "/api/internal/outbox",
   "/api/internal/cron",
+  // The provider gateway authenticates a run-scoped HMAC token, minted by the
+  // agent, not a Clerk session. Clerk here would 307 the agent's own tool call
+  // to the sign-in page, which is what "fetch failed" looked like from eve.
+  "/api/mcp",
 ]);
 
 // The proxy enforces whenever Clerk is configured, regardless of
