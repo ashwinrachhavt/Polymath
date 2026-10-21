@@ -37,14 +37,13 @@ beforeEach(() => {
 afterEach(() => warn.mockRestore());
 
 describe("the pinned-skill resolver", () => {
-  it("returns null without a skillId and does not touch the database", async () => {
+  it("returns null without a skillId, quietly: an unpinned run is the normal path", async () => {
     expect(await resolve(ctx({ attributes: { workspaceId: "ws-1", runId: "run-1" } }))).toBeNull();
     expect(mocks.loadPinnedSkill).not.toHaveBeenCalled();
-    // A run id with no pin is a broken binding; it is logged, not silent.
-    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("returns null when the skill does not resolve here (a foreign id behaves the same)", async () => {
+  it("returns null and warns when a pinned skill no longer resolves (a foreign id behaves the same)", async () => {
     mocks.loadPinnedSkill.mockResolvedValueOnce(null);
     expect(await resolve(ctx({ attributes: { workspaceId: "ws-1", runId: "run-1", skillId: "s1" } }))).toBeNull();
     expect(mocks.loadPinnedSkill).toHaveBeenCalledWith("ws-1", "s1");

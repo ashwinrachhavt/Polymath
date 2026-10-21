@@ -39,21 +39,16 @@ export default defineDynamic({
       const attrs = pinnedAttributes(ctx);
       const skillId = attrs?.skillId;
       const workspaceId = attrs?.workspaceId;
-      const runId = attrs?.runId;
       // Non-string attributes cannot name a skill; treat them as no pin rather
-      // than coercing a value the resolver never signed.
-      if (typeof skillId !== "string" || typeof workspaceId !== "string") {
-        // A known run with no resolvable pin is a broken binding, not a session
-        // that never had one: say so, or the skill vanishes with no trace.
-        if (typeof runId === "string") {
-          console.warn(`skills: run ${runId} is pinned but its token carries no usable skillId; serving no skill`);
-        }
-        return null;
-      }
+      // than coercing a value the resolver never signed. A token without skid
+      // may simply be an unpinned run — the signature cannot say which, so no
+      // warning here; a pin that fails to resolve below is the loss worth
+      // surfacing.
+      if (typeof skillId !== "string" || typeof workspaceId !== "string") return null;
       try {
         const skill = await loadPinnedSkill(workspaceId, skillId);
         if (!skill) {
-          console.warn(`skills: run ${String(runId ?? "unknown")} pinned skill ${skillId}, which did not resolve in ${workspaceId}; serving no skill`);
+          console.warn(`skills: pinned skill ${skillId} did not resolve in ${workspaceId}; serving no skill`);
           return null;
         }
         return defineSkill({
