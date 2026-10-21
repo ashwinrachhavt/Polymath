@@ -1,18 +1,29 @@
 import Link from "next/link";
 import { listEventsBetween } from "@/domains/calendar/queries";
+import { getPreferences } from "@/domains/identity/preferences";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { applyFlowFilter, FLOW_PRIORITIES, parseFlowFilter, topicsOf } from "@/domains/work/flow-filters";
 import { listTasksDueBetween } from "@/domains/work/queries";
+import {
+  dateFromKey,
+  dateKeyInTimezone,
+  keyOfPinnedDate,
+  monthWindowOf,
+  shiftDateKey,
+  todayKeyInTimezone,
+  weekdayOfKey,
+} from "@/lib/local-date";
 import { listHref, type RawSearchParams } from "@/lib/list-params";
 
 /*
  * Today's Flow (ASH-185, Dao layout): Upcoming, Focus Windows and Next Events
  * cards beside a month calendar. Every card reads the same canonical tasks and
- * events the week view uses. Days compare in UTC, like the Work calendar.
+ * events the week view uses. Days compare in the user's saved timezone, so
+ * "today" stays today through the user's evening; date-only task due dates are
+ * stored on the noon-UTC pin, which names the same local day.
  */
 
 const DAY = 86_400_000;
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -23,23 +34,25 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function when(d: Date) {
-  return d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+function when(d: Date, timeZone: string) {
+  return d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone });
 }
 
 const BASE = "/neuralflow/work";
 
-export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "workspaceId">; raw?: RawSearchParams }) {
+export async function TodaysFlow({ auth, raw = {} }: { auth: AuthContext; raw?: RawSearchParams }) {
+  const { timezone } = await getPreferences(auth);
   const now = new Date();
-  const today = iso(now);
-  const weekEnd = iso(new Date(now.getTime() + 7 * DAY));
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const today = todayKeyInTimezone(timezone, now);
+  const weekEnd = shiftDateKey(today, 7);
+  const { startKey: monthKey, nextStartKey: nextMonthKey } = monthWindowOf(today);
+  const monthStart = dateFromKey(monthKey);
+  const nextMonth = dateFromKey(nextMonthKey);
   const [due, events, monthEvents, monthDue] = await Promise.all([
     listTasksDueBetween(auth, today, weekEnd),
     listEventsBetween(auth, new Date(now.getTime() - DAY), new Date(now.getTime() + 8 * DAY)),
     listEventsBetween(auth, monthStart, nextMonth),
-    listTasksDueBetween(auth, iso(monthStart), iso(new Date(nextMonth.getTime() - DAY))),
+    listTasksDueBetween(auth, monthKey, shiftDateKey(nextMonthKey, -1)),
   ]);
 
   const filter = parseFlowFilter({ ft: raw.ft, fp: raw.fp });
@@ -56,14 +69,14 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
       {label}
     </Link>
   );
-  const windows = events.filter((e) => e.taskId && iso(e.startsAt) === today && e.endsAt > now);
+  const windows = events.filter((e) => e.taskId && dateKeyInTimezone(e.startsAt, timezone) === today && e.endsAt > now);
   const next = events.filter((e) => !e.taskId && e.endsAt > now).slice(0, 5);
 
   const marked = new Set<string>([
-    ...monthEvents.map((e) => iso(e.startsAt)),
-    ...monthDue.filter((t) => t.status !== "done").map((t) => iso(t.dueAt)),
+    ...monthEvents.map((e) => dateKeyInTimezone(e.startsAt, timezone)),
+    ...monthDue.filter((t) => t.status !== "done").map((t) => keyOfPinnedDate(t.dueAt)),
   ]);
-  const lead = monthStart.getUTCDay();
+  const lead = weekdayOfKey(monthKey);
   const daysInMonth = Math.round((nextMonth.getTime() - monthStart.getTime()) / DAY);
   const cells = [...Array.from({ length: lead }, () => null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
 
@@ -71,7 +84,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" aria-label="Today's Flow">
       <div className="flex flex-col gap-5">
         <p className="text-sm text-muted-foreground">
-          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
+          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: timezone })}
         </p>
         <nav aria-label="Quick Filters" className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">Quick Filters</span>
@@ -89,7 +102,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
               {upcoming.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3">
                   <Link href={`/neuralflow/work?view=saved&task=${t.id}`} className="min-w-0 truncate hover:underline">{t.title}</Link>
-                  <span className="shrink-0 text-xs text-muted-foreground">{iso(t.dueAt) === today ? "Today" : iso(t.dueAt)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{keyOfPinnedDate(t.dueAt) === today ? "Today" : keyOfPinnedDate(t.dueAt)}</span>
                 </li>
               ))}
             </ul>
@@ -103,7 +116,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
               {windows.map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate">{e.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{when(e.startsAt)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{when(e.startsAt, timezone)}</span>
                 </li>
               ))}
             </ul>
@@ -117,7 +130,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
               {next.map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate">{e.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{when(e.startsAt)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{when(e.startsAt, timezone)}</span>
                 </li>
               ))}
             </ul>
@@ -142,7 +155,7 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: Pick<AuthContext, "
             ))}
             {cells.map((day, i) => {
               if (day === null) return <span key={`e${i}`} />;
-              const key = iso(new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), day)));
+              const key = shiftDateKey(monthKey, day - 1);
               const isToday = key === today;
               return (
                 <span key={key} className="relative flex h-8 items-center justify-center">
