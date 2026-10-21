@@ -231,8 +231,10 @@ hover, focus-visible, active, disabled.
 
 An empty state is a designed screen, not an absence of data dressed as data.
 
-- It says what the space is, why it is empty, and names the one action that
-  fills it. The action is a real control, not a suggestion.
+- It says what the space is in one short line. The action that fills it is a
+  real control, not a coaching sentence; instruction copy does not ship in the
+  interface. Descriptions are reserved for real state, such as which
+  connection is missing.
 - It never contains fabricated records: no sample tasks, fictional contacts,
   demo zettels, placeholder cards, or invented numbers. A count of zero is
   honest; a demo value is a defect, whatever its label.

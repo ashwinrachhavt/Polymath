@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 /*
  * An empty screen is an invitation to act, never a mood (agents/product.md).
- * The description says what will fill the space and how it gets there; if the
+ * The title names the space in one short line; coaching sentences do not
+ * belong in the interface. A description is reserved for real state - if the
  * screen cannot show data yet, the action area says which connection is
  * missing rather than rendering an empty list as though the answer were none.
  *
@@ -16,15 +17,17 @@ export function EmptyState({
   action,
 }: {
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="panel-empty flex flex-col items-start gap-1.5 rounded-lg px-3.5 py-4">
       <p className="text-[13px] font-medium">{title}</p>
-      <p className="text-muted-foreground max-w-prose text-[13px] leading-relaxed">
-        {description}
-      </p>
+      {description ? (
+        <p className="text-muted-foreground max-w-prose text-[13px] leading-relaxed">
+          {description}
+        </p>
+      ) : null}
       {action}
     </div>
   );
