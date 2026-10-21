@@ -44,7 +44,6 @@ export async function NeonCalendar({ date }: { date?: string }) {
   return (
     <Screen
       title="Week"
-      description="Your week as time blocks. Block time for a task and it lands in the first free slot of your working hours."
     >
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <Link className="rounded-md border border-border px-2.5 py-1 hover:bg-accent" href={`${base}&date=${shiftDateKey(startKey, -7)}`}>

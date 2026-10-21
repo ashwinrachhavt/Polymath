@@ -90,7 +90,6 @@ export async function NeonTasks({
   return (
     <Screen
       title="Work"
-      description="Today shows the work you moved to Ready. Everything saved is in rank order."
     >
       {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
@@ -125,7 +124,6 @@ export async function NeonTasks({
                 filtered={filtered}
                 clearHref={listHref(BASE, raw, { q: undefined, status: undefined, priority: undefined, page: undefined })}
                 emptyTitle={scope === "today" ? "Nothing committed for today" : scope === "done" ? "No finished tasks yet" : "No open tasks"}
-                emptyDescription={scope === "today" ? "Open a task from the list and set it to Ready to put it here." : "Add a task above."}
               />
             }
             items={rows.map((row, i) => ({
@@ -168,7 +166,7 @@ export async function NeonTasks({
               candidates={candidates}
             />
           ) : (
-            <Empty title="Select a task" description="Open a task to edit it, split it into subtasks, or record what blocks it." />
+            <Empty title="Select a task" />
           )}
           {detail ? (
             <div className="mt-4 border-t border-border pt-4">

@@ -41,7 +41,6 @@ export function Jewels({ overview }: { overview: RewardsOverview }) {
 
       <section aria-label="All stones">
         <h2 className="text-[15px] font-medium">All stones</h2>
-        <p className="text-muted-foreground mt-1 text-[13px]">Every stone in the catalog. Locked ones have no earning rule yet.</p>
         <ul className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {stoneCatalog.map((stone) => {
             const open = earnedKeys.has(stone.slug);

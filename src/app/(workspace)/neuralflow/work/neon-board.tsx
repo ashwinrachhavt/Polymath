@@ -41,7 +41,7 @@ export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
   return (
     <Screen
       title="Work board"
-      description="One task model in status lanes. Moving a card changes its saved status; reordering a lane writes the same rank the list sorts by."
+      description="Moving a card changes its saved status; reordering a lane writes the same rank the list sorts by."
     >
       <ListToolbar
         searchPlaceholder="Search tasks"
@@ -59,7 +59,7 @@ export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
               description={`${rows.length} ${rows.length === 1 ? "task" : "tasks"}${lane.id === "in_progress" && rows.length > 3 ? "; above the suggested WIP limit of 3" : ""}`}
             >
               {rows.length === 0 ? (
-                <Empty title="No tasks in this lane" description="Move a task here from its card, or add one from the list." />
+                <Empty title="No tasks in this lane" />
               ) : (
                 <ul className="flex flex-col gap-2">
                   {rows.map((row, i) => (

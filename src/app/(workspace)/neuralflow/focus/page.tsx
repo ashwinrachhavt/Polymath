@@ -41,7 +41,6 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
   return (
     <Screen
       title="Focus"
-      description="One durable session at a time."
     >
       {active ? (
         <Panel
@@ -73,7 +72,7 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
         </Panel>
       )}
 
-      <Panel title="Recent sessions" description="Finished, interrupted and abandoned sessions, newest first.">
+      <Panel title="Recent sessions">
         <div className="divide-y divide-border">
           {history.map((session) => (
             <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
@@ -90,7 +89,7 @@ async function Focus({ searchParams }: { searchParams: FocusQuery }) {
           ))}
         </div>
         {!history.length ? (
-          <Empty title="No sessions yet" description="Finished sessions land here with their real durations." />
+          <Empty title="No sessions yet" />
         ) : null}
       </Panel>
     </Screen>

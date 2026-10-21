@@ -57,7 +57,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
-      <Screen title="Reviews" description="Decide what happens next.">
+      <Screen title="Reviews">
         <EmptyState
           title="Proposal storage is not configured"
           description="Set DATABASE_URL and apply the database migrations to review agent proposals."
