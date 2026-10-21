@@ -14,14 +14,30 @@ import { MAX_UPLOAD_BYTES } from "./file-validation";
  * is checked again. The body is streamed and cut off at the upload ceiling.
  */
 
+/**
+ * `error` is the sentence shown to a person. The optional fields exist for
+ * callers that must branch on why a request failed (a missing repository and a
+ * private one are different messages); they are only filled when
+ * `failureDetails` is set, so the plain result stays exactly two fields.
+ */
 export type SafeFetchResult =
   | { ok: true; bytes: Uint8Array; finalUrl: string; contentType: string | null }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** HTTP status of the answer that failed, when there was one. */
+      status?: number;
+      timedOut?: true;
+      rateLimited?: true;
+      tooLarge?: true;
+    };
 
 export type SafeFetchOptions = {
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
+  /** Fill the machine-readable failure fields on the error result. */
+  failureDetails?: boolean;
   /** Tests only: let the loopback fixture server through. Never set in app code. */
   allowPrivateAddresses?: boolean;
 };
@@ -109,10 +125,19 @@ export function canonicalCaptureUrl(input: URL): string {
   return url.href;
 }
 
+type OnceFailure = {
+  kind: "error";
+  error: string;
+  status?: number;
+  timedOut?: true;
+  rateLimited?: true;
+  tooLarge?: true;
+};
+
 function once(url: URL, options: Required<SafeFetchOptions>): Promise<
   | { kind: "body"; bytes: Uint8Array; contentType: string | null }
   | { kind: "redirect"; location: string }
-  | { kind: "error"; error: string }
+  | OnceFailure
 > {
   return new Promise((resolve) => {
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
@@ -143,13 +168,27 @@ function once(url: URL, options: Required<SafeFetchOptions>): Promise<
           return resolve({ kind: "redirect", location: response.headers.location });
         }
         if (status < 200 || status >= 300) {
+          // GitHub answers a throttled request with 403 and `x-ratelimit-remaining: 0`;
+          // a private repository is a plain 403. Reading the header keeps the two
+          // apart without guessing from a body we do not download.
+          const limited =
+            status === 429 ||
+            (status === 403 && response.headers["x-ratelimit-remaining"] === "0");
           response.resume();
-          return resolve({ kind: "error", error: `The site answered with status ${status}.` });
+          return resolve(
+            options.failureDetails
+              ? { kind: "error", error: `The site answered with status ${status}.`, status, ...(limited ? { rateLimited: true as const } : {}) }
+              : { kind: "error", error: `The site answered with status ${status}.` },
+          );
         }
         const declared = Number(response.headers["content-length"]);
         if (Number.isFinite(declared) && declared > options.maxBytes) {
           response.destroy();
-          return resolve({ kind: "error", error: "That file is larger than the 4 MB limit." });
+          return resolve(
+            options.failureDetails
+              ? { kind: "error", error: "That file is larger than the 4 MB limit.", tooLarge: true }
+              : { kind: "error", error: "That file is larger than the 4 MB limit." },
+          );
         }
         const chunks: Buffer[] = [];
         let size = 0;
@@ -157,7 +196,11 @@ function once(url: URL, options: Required<SafeFetchOptions>): Promise<
           size += chunk.length;
           if (size > options.maxBytes) {
             response.destroy();
-            return resolve({ kind: "error", error: "That file is larger than the 4 MB limit." });
+            return resolve(
+              options.failureDetails
+                ? { kind: "error", error: "That file is larger than the 4 MB limit.", tooLarge: true }
+                : { kind: "error", error: "That file is larger than the 4 MB limit." },
+            );
           }
           chunks.push(chunk);
         });
@@ -173,7 +216,11 @@ function once(url: URL, options: Required<SafeFetchOptions>): Promise<
     );
     request.on("timeout", () => {
       request.destroy();
-      resolve({ kind: "error", error: "The site took too long to answer." });
+      resolve(
+        options.failureDetails
+          ? { kind: "error", error: "The site took too long to answer.", timedOut: true }
+          : { kind: "error", error: "The site took too long to answer." },
+      );
     });
     request.on("error", (error) =>
       resolve({
@@ -192,13 +239,24 @@ export async function safeFetch(rawUrl: string, input: SafeFetchOptions = {}): P
     timeoutMs: input.timeoutMs ?? 10_000,
     maxBytes: input.maxBytes ?? MAX_UPLOAD_BYTES,
     maxRedirects: input.maxRedirects ?? 3,
+    failureDetails: input.failureDetails ?? false,
     allowPrivateAddresses: input.allowPrivateAddresses ?? false,
   };
   let current = parseCaptureUrl(rawUrl, options.allowPrivateAddresses);
   for (let hop = 0; hop <= options.maxRedirects; hop++) {
     if (!current.ok) return current;
     const result = await once(current.url, options);
-    if (result.kind === "error") return { ok: false, error: result.error };
+    if (result.kind === "error") {
+      if (!options.failureDetails) return { ok: false, error: result.error };
+      return {
+        ok: false,
+        error: result.error,
+        ...(result.status !== undefined ? { status: result.status } : {}),
+        ...(result.timedOut ? { timedOut: true as const } : {}),
+        ...(result.rateLimited ? { rateLimited: true as const } : {}),
+        ...(result.tooLarge ? { tooLarge: true as const } : {}),
+      };
+    }
     if (result.kind === "body") {
       return { ok: true, bytes: result.bytes, finalUrl: current.url.href, contentType: result.contentType };
     }

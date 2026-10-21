@@ -1,4 +1,6 @@
 import { parseSkillCommand } from "./sources/command";
+import { inspectGithub } from "./sources/github";
+import { inspectLocal } from "./sources/local";
 import type { InspectResult, SourceRequest } from "./sources/types";
 
 /*
@@ -169,16 +171,12 @@ export function parseSource(input: string): SourceRequest | { error: string } {
   return { kind: "local", root: value };
 }
 
-/*
- * Task 3 fills each branch with its adapter (sources/github.ts,
- * sources/local.ts). Until then the failure is loud on purpose: a quiet empty
- * result would look like a repository with no skills.
- */
-export async function inspectSource(request: SourceRequest): Promise<InspectResult> {
+/** Every adapter answers with an `InspectResult`; none of them throws. */
+export function inspectSource(request: SourceRequest): Promise<InspectResult> {
   switch (request.kind) {
     case "github":
-      throw new Error("adapter not implemented");
+      return inspectGithub(request);
     case "local":
-      throw new Error("adapter not implemented");
+      return inspectLocal(request);
   }
 }
