@@ -137,3 +137,44 @@ describe("totals printed by the statement", () => {
     expect(result.totals.status).toBe("absent");
   });
 });
+
+describe("reconciliation as router", () => {
+  const us = table(HEADER, [
+    ["01/02/2026", "Salary", "", "1,000.00", "2,000.00"],
+    ["01/10/2026", "Rent", "400.00", "", "1,600.00"],
+    ["02/03/2026", "Groceries", "100.00", "", "1,500.00"],
+  ]);
+
+  it("tries month-first dates when day-first does not reconcile, and says which reading won", () => {
+    const result = parseStatementTables([us]);
+    if (result.status !== "parsed") throw new Error("expected parsed");
+    expect(result.reconciled).toBe(true);
+    expect(result.strategy).toBe("month-first dates");
+    expect(result.rows.map((r) => r.occurredOn)).toEqual(["2026-01-02", "2026-01-10", "2026-02-03"]);
+    expect(result.attempts[0]).toMatchObject({ strategy: "default", reconciled: false });
+  });
+
+  it("keeps the default reading when it already reconciles", () => {
+    const eu = table(HEADER, [
+      ["01-08-2026", "Salary", "", "100.00", "1,100.00"],
+      ["02-08-2026", "Rent", "40.00", "", "1,060.00"],
+    ]);
+    const result = parseStatementTables([eu]);
+    if (result.status !== "parsed") throw new Error("expected parsed");
+    expect(result.strategy).toBe("default");
+    expect(result.attempts).toHaveLength(1);
+  });
+
+  it("returns the default result, with its named broken row, when no reading reconciles", () => {
+    const broken = table(HEADER, [
+      ["01-08-2026", "Salary", "", "100.00", "1,100.00"],
+      ["02-08-2026", "Rent", "40.00", "", "999.00"],
+    ]);
+    const result = parseStatementTables([broken]);
+    if (result.status !== "parsed") throw new Error("expected parsed");
+    expect(result.reconciled).toBe(false);
+    expect(result.strategy).toBe("default");
+    expect(result.mismatches[0]).toMatchObject({ description: "Rent" });
+    expect(result.attempts.length).toBeGreaterThan(1);
+  });
+});

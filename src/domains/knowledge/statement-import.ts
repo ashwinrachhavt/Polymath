@@ -113,6 +113,8 @@ export async function importStatement(
           mismatches: parsed.mismatches,
           totals: parsed.totals,
           moneyFormat: parsed.moneyFormat,
+          strategy: parsed.strategy,
+          attempts: parsed.attempts,
           unsupportedTables: parsed.unsupportedTables,
         },
         mapping: parsed.mappings,
