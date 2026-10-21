@@ -386,6 +386,13 @@
       "tag": "0228_onboarding_supervisor_brief",
       "when": 1792621200000,
       "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "tag": "0229_access_tiers",
+      "when": 1792621300000,
+      "breakpoints": true
     }
   ]
 }
