@@ -119,6 +119,16 @@ function bridgeHeaders(
   return { authorization: `Bearer ${token}` };
 }
 
+/**
+ * The skill id in a run's frozen policy snapshot, if it pinned one. The column
+ * is provider-shaped jsonb, so this is a narrow read, not a cast: anything that
+ * is not a string id is treated as no pin.
+ */
+function skillIdOfSnapshot(snapshot: unknown): string | undefined {
+  const skill = (snapshot as { skill?: { id?: unknown } } | null | undefined)?.skill;
+  return typeof skill?.id === "string" ? skill.id : undefined;
+}
+
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
     async start({ sessionId, objective, auth, instructions, policy }) {
@@ -126,9 +136,10 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       // row written after the session exists: the skill resolver runs at
       // session.started, before this driver could write session_ref, so a
       // lookup there would race the create call.
+      const skillId = skillIdOfSnapshot(policy);
       const headers = bridgeHeaders(auth, {
         runId: sessionId,
-        ...(policy.skill?.id ? { skillId: policy.skill.id } : {}),
+        ...(skillId ? { skillId } : {}),
       });
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
@@ -160,7 +171,7 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
     },
     async signal(sessionId, signal, auth) {
       const [run] = await db
-        .select({ sessionRef: agentRuns.sessionRef })
+        .select({ sessionRef: agentRuns.sessionRef, policySnapshot: agentRuns.policySnapshot })
         .from(agentRuns)
         .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)))
         .limit(1);
@@ -168,9 +179,17 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
       if (!ref) throw new Error("run has no Eve session yet");
       // "resume" carries no text to send; a follow-up is the message itself.
       if (signal === "resume") return;
+      // A follow-up is an ACTIVE INBOUND TURN, and the skill resolver reads the
+      // turn's auth: a token minted without the pin would let the resolver fall
+      // back to no skill and the run would lose it for the rest of the session.
+      // Same run, same frozen pin, same claims as start.
+      const skillId = skillIdOfSnapshot(run.policySnapshot);
       const response = await fetch(`${eveMount(agentName)}/session/${ref}`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...bridgeHeaders(auth) },
+        headers: {
+          "content-type": "application/json",
+          ...bridgeHeaders(auth, { runId: sessionId, ...(skillId ? { skillId } : {}) }),
+        },
         body: JSON.stringify({ message: signal }),
       });
       if (!response.ok) throw new Error(`eve follow-up failed: ${response.status}`);

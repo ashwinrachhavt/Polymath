@@ -44,7 +44,9 @@ describe("verified workspace binding to Eve", () => {
     const headers = init.headers as Record<string, string>;
     expect(headers["x-spike-clerk-user-id"]).toBeUndefined();
     const claims = verifyBridgeToken(headers.authorization.replace("Bearer ", ""), { secret: SECRET });
-    expect(claims).toEqual(auth);
+    // Every token for a run names it: the skill resolver needs the run even
+    // when the run pinned no skill.
+    expect(claims).toEqual({ ...auth, runId: "run-uuid" });
     expect(JSON.parse(String(init.body))).toMatchObject({ message: "Read tasks", operationId: "axiom-run-run-uuid" });
     expect(mocks.update).toHaveBeenCalledOnce();
   });

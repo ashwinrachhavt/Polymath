@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signBridgeToken, verifyBridgeToken } from "@/domains/agents/bridge-token";
 
 const secret = "s".repeat(40);
@@ -58,5 +58,63 @@ describe("bridge token skill claims", () => {
     expect(verifyBridgeToken(token, { secret, now })).toBeNull();
     const runToken = signPayload({ ...basePayload, rid: { id: "run_1" } });
     expect(verifyBridgeToken(runToken, { secret, now })).toBeNull();
+  });
+});
+
+/*
+ * The driver half: every token minted for a run must carry the same pin. A
+ * follow-up is an active inbound turn, so a claim-less signal token would let
+ * the skill resolver fall back to no skill mid-session.
+ */
+const mocks = vi.hoisted(() => ({ select: vi.fn(), update: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { select: mocks.select, update: mocks.update } }));
+vi.mock("eve/channels/eve", () => ({ eveChannel: (config: unknown) => config }));
+vi.mock("eve/channels/auth", () => ({ localDev: () => async () => null }));
+
+const { createEveDriver } = await import("@/domains/agents/eve-driver");
+
+const auth = { userId: claims.userId, workspaceId: claims.workspaceId, role: claims.role };
+const policy = {
+  profileId: "profile",
+  model: "m",
+  allowedTools: [],
+  allowedAccounts: [],
+  budgetUsd: {},
+  auth,
+  skill: { id: "skill_1", revision: "r1", contentHash: "h1", name: "Release" },
+};
+
+/** The run row the driver's signal read returns, shaped for drizzle's chain. */
+function runRow(row: { sessionRef: string; policySnapshot: unknown }) {
+  return { from: () => ({ where: () => ({ limit: async () => [row] }) }) };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("EVE_BASE_URL", "http://eve.fixture");
+  vi.stubEnv("EVE_BRIDGE_SECRET", secret);
+  mocks.update.mockReturnValue({ set: () => ({ where: async () => [] }) });
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe("the driver's run pin", () => {
+  it("start and signal mint the same runId and skillId for the same run", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ sessionId: "wrun_1" }, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetch);
+    mocks.select.mockReturnValue(runRow({ sessionRef: "wrun_1", policySnapshot: policy }));
+
+    const driver = createEveDriver();
+    await driver.start({ sessionId: "run_1", auth, policy, instructions: null, objective: "Go" });
+    await driver.signal("run_1", "Keep going", auth);
+
+    const tokenAt = (call: number) => {
+      const [, init] = fetch.mock.calls[call] as [string, RequestInit];
+      return (init.headers as Record<string, string>).authorization.replace("Bearer ", "");
+    };
+    expect(verifyBridgeToken(tokenAt(0), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
+    expect(verifyBridgeToken(tokenAt(1), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
+    vi.unstubAllGlobals();
   });
 });
