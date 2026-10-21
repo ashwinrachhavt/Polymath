@@ -49,7 +49,7 @@ export async function installSkill(
       // The unique index is the guarantee, this read-back is how a double
       // submit finds the row that won; losing the race is not an error.
       const [existing] = await tx
-        .select({ id: skills.id })
+        .select({ id: skills.id, revision: skills.revision, name: skills.name })
         .from(skills)
         .where(
           and(
@@ -61,6 +61,15 @@ export async function installSkill(
         )
         .limit(1);
       if (!existing) throw new Error("The skill did not persist. Try installing it again.");
+      // Identity does not include the revision, so a re-install after the
+      // source moved would otherwise return the stale row as success. There
+      // is no update path in v1 (spec: update/diff is deferred), so a moved
+      // revision is a refusal, not a silent keep.
+      if (existing.revision !== input.revision) {
+        throw new Error(
+          `${existing.name} is already installed at a different revision. Remove it in Skills, then install the new revision.`,
+        );
+      }
       return { skillId: existing.id, created: false };
     }
 
@@ -117,11 +126,14 @@ export async function setSkillEnabled(
 }
 
 /*
- * A hard delete, because the row is a copy of something that still exists at
- * its source. Provenance for past runs lives in agent_runs.policy_snapshot,
- * not here, so the run history survives the row. The audit row is written
- * before the delete only so the delete is the last thing that can fail; both
- * statements share the transaction, so a rollback drops the audit row too.
+ * A tombstone, not a hard delete: a run pins {id, revision, contentHash} but
+ * not the body, and loadPinnedSkill still resolves the id, so archiving keeps
+ * an in-flight pinned run's procedure alive for its whole life — which is the
+ * contract the skills page states. Archived rows are hidden from every list
+ * and picker by the archivedAt filter, and the identity index still holds the
+ * (workspace, kind, ref, path) key, so re-installing the same source needs the
+ * tombstone gone first; that refusal is the honest answer until a real update
+ * path exists.
  */
 export async function removeSkill(
   auth: AuthContext,
@@ -145,7 +157,10 @@ export async function removeSkill(
       },
       tx,
     );
-    await tx.delete(skills).where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, row.id)));
+    await tx
+      .update(skills)
+      .set({ archivedAt: new Date(), updatedBy: auth.userId, updatedAt: new Date() })
+      .where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, row.id)));
     return { removed: true };
   });
 }

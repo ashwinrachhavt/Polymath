@@ -128,7 +128,7 @@ suite("skills registry", () => {
     expect(await queries.getSkill({ workspaceId: b.workspaceId }, installedA.skillId)).toBeNull();
   });
 
-  it("removes the row and writes a skill.removed audit row", async () => {
+  it("tombstones the row and writes a skill.removed audit row", async () => {
     const seeded = await seedWorkspace(db, `skills3-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const installed = await commands.installSkill(auth, {
@@ -141,9 +141,12 @@ suite("skills registry", () => {
     const removed = await commands.removeSkill(auth, { id: installed.skillId });
     expect(removed).toEqual({ removed: true });
 
-    expect(
-      await db.select().from(skillsTable).where(eq(skillsTable.id, installed.skillId)),
-    ).toHaveLength(0);
+    // The row is archived, not deleted: an in-flight pinned run keeps its
+    // procedure, while every list hides the tombstone.
+    const [row] = await db.select().from(skillsTable).where(eq(skillsTable.id, installed.skillId));
+    expect(row?.archivedAt).not.toBeNull();
+    expect(await queries.listSkills({ workspaceId: auth.workspaceId })).toHaveLength(0);
+    expect(await queries.getSkill({ workspaceId: auth.workspaceId }, installed.skillId)).toBeNull();
     const audits = await db
       .select()
       .from(auditEvents)
@@ -156,8 +159,40 @@ suite("skills registry", () => {
       );
     expect(audits).toHaveLength(1);
 
-    // Removing again is not an error, and does not invent a second audit row.
-    expect(await commands.removeSkill(auth, { id: installed.skillId })).toEqual({ removed: false });
+    // Removing a tombstone is a no-op success: the row is already gone from
+    // every view, and no second audit row is invented.
+    expect(await commands.removeSkill(auth, { id: installed.skillId })).toEqual({ removed: true });
+    expect(audits).toHaveLength(1);
+  });
+
+  it("refuses a re-install when the source moved to a new revision", async () => {
+    const seeded = await seedWorkspace(db, `skills5-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const first = await commands.installSkill(auth, {
+      ...inspected("Movable", "packages/movable"),
+      sourceKind: "github" as const,
+      sourceRef: "owner/repo",
+      sourcePath: "packages/movable",
+      revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+    expect(first.created).toBe(true);
+
+    await expect(
+      commands.installSkill(auth, {
+        ...inspected("Movable", "packages/movable"),
+        sourceKind: "github" as const,
+        sourceRef: "owner/repo",
+        sourcePath: "packages/movable",
+        revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      }),
+    ).rejects.toThrow(/different revision/);
+    // The refusal leaves the original row as the only copy.
+    const rows = await db
+      .select({ revision: skillsTable.revision })
+      .from(skillsTable)
+      .where(eq(skillsTable.id, first.skillId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.revision).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   });
 
   it("filters disabled skills out of the enabled list", async () => {

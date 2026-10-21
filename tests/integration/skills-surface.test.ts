@@ -42,6 +42,7 @@ vi.mock("@/lib/auth", () => ({
 
 import { agentRuns } from "@/domains/agents/schema";
 import { skills as skillsTable } from "@/domains/skills/schema";
+import { listSkills } from "@/domains/skills/queries";
 import { createEngine, type SessionDriver } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import {
@@ -210,7 +211,14 @@ suite("skills surface actions (integration)", () => {
 
     const removed = await removeSkillAction({ id: installed.skillId });
     expect(removed).toEqual({ ok: true });
-    expect(await skillRows(seeded.workspaceId)).toHaveLength(0);
+    // Tombstoned, not deleted: the row stays so the pinned run below keeps
+    // its procedure, and listSkills (archivedAt-filtered) hides it.
+    const [tombstone] = await db
+      .select()
+      .from(skillsTable)
+      .where(eq(skillsTable.id, installed.skillId));
+    expect(tombstone?.archivedAt).not.toBeNull();
+    expect(await listSkills({ workspaceId: seeded.workspaceId }, { enabled: true })).toHaveLength(0);
 
     // The run still exists and still names the revision it was given.
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));

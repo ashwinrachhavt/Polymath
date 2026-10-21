@@ -42,6 +42,11 @@ export async function startChatRun(input: {
 }): Promise<StartChatResult> {
   const objective = input.objective?.trim();
   if (!objective) return { ok: false, message: "Write a message first." };
+  // A malformed id would reach Postgres's uuid cast and put raw database
+  // error text in the composer; the API route validates the same shape.
+  if (input.skillId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.skillId)) {
+    return { ok: false, message: "That skill could not be found. Pick it from the list again." };
+  }
 
   let auth;
   try {

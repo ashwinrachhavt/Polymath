@@ -39,29 +39,6 @@ export async function getSkill(auth: { workspaceId: string }, id: string): Promi
   return row ?? null;
 }
 
-/*
- * Slug is a display key, not identity (two sources may share one), so this is a
- * lookup, not a uniqueness guarantee — callers that need a single row handle
- * the ambiguity themselves.
- */
-export async function getSkillBySlug(
-  auth: { workspaceId: string },
-  slug: string,
-): Promise<Skill | null> {
-  const [row] = await db
-    .select()
-    .from(skills)
-    .where(
-      and(
-        eq(skills.workspaceId, auth.workspaceId),
-        eq(skills.slug, slug),
-        isNull(skills.archivedAt),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 /** Used by the Eve resolver. Returns the body, description and files for one workspace-scoped id. */
 export async function loadPinnedSkill(
   workspaceId: string,
