@@ -126,7 +126,7 @@ describe("extractPackages", () => {
     ]);
 
     expect(codeOf(() => extractPackages(files))).toBe("too_large");
-    expect(() => extractPackages(files)).toThrow(/at most 512.0 KB/);
+    expect(() => extractPackages(files)).toThrow(/at most 512 KB/);
   });
 
   it("rejects two packages that slug to the same name", () => {
@@ -160,7 +160,7 @@ describe("extractPackages", () => {
     const files = new Map([
       ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", big)],
     ]);
-    expect(() => extractPackages(files)).toThrow(/over the 128.0 KB limit/);
+    expect(() => extractPackages(files)).toThrow(/over the 128 KB limit/);
     expect(() => extractPackages(files)).not.toThrow(/needs a description/);
   });
 });
@@ -236,8 +236,8 @@ describe("contentHashOf", () => {
   it("orders by code units, so NFC and NFD paths hash the same everywhere", () => {
     // "é" as one code point vs "e" + combining acute. `localeCompare` calls
     // these equal, which makes the sort dependent on insertion order.
-    const nfc = "é.md";
-    const nfd = "é.md";
+    const nfc = "\u00e9.md";
+    const nfd = "e\u0301.md";
     const build = (paths: string[]) =>
       extractPackages(
         new Map([

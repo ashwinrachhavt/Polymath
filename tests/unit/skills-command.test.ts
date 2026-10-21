@@ -87,6 +87,9 @@ describe("parseSkillCommand", () => {
     expect(errorOf("npx skills add x/y --path %2e%2e/etc")).toContain("..");
     expect(errorOf("npx skills add x/y --path ..%2Fetc")).toContain("..");
     expect(errorOf("npx skills add x/y --path ..\\etc")).toContain("backslash");
+    expect(errorOf("npx skills add x/y --path ..%5Cetc")).toContain("backslash");
+    expect(errorOf("npx skills add x/y --path a%5C..%5C..%5Cetc")).toContain("backslash");
+    expect(errorOf("npx skills add x/y --path C:%5CWindows")).toContain("drive");
   });
 
   it("normalises empty and dot segments in --path", () => {

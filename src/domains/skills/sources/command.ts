@@ -46,10 +46,6 @@ function isTraversal(segment: string): boolean {
  * `p/x` name the same folder.
  */
 function cleanRelativePath(value: string): { path: string } | { error: string } {
-  if (value.startsWith("/") || value.includes("\\")) {
-    return { error: "must be relative to the repository and cannot start with a slash or contain a backslash" };
-  }
-
   let decoded: string;
   try {
     decoded = decodeURIComponent(value);
@@ -57,8 +53,23 @@ function cleanRelativePath(value: string): { path: string } | { error: string } 
     return { error: "is not a readable folder path" };
   }
 
+  // The decoded value is the one a later consumer joins with, so the checks
+  // run on it: `..%5Cetc` is a backslash traversal only after decoding.
+  if (
+    decoded.startsWith("/") ||
+    decoded.includes("\\") ||
+    /^[A-Za-z]:/.test(decoded)
+  ) {
+    return {
+      error: "must be relative to the repository and cannot start with a slash, a drive letter, or contain a backslash",
+    };
+  }
+  if (decoded.includes("\0")) {
+    return { error: "is not a readable folder path" };
+  }
+
   const segments = decoded.split("/");
-  if (segments.includes("..") || segments.some((segment) => segment.includes("\0"))) {
+  if (segments.includes("..")) {
     return { error: 'must stay inside the repository and cannot contain ".."' };
   }
   const path = segments.filter((segment) => segment !== "" && segment !== ".").join("/");

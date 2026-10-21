@@ -34,10 +34,10 @@ const utf8 = new TextDecoder("utf-8", { fatal: true });
 const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
 
 function bytesLabel(bytes: number): string {
-  // One decimal, so "128 KB + 100 B" never prints as a flat 128 KB while the
-  // message says the file is over the limit.
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
+  // Ceiling, not rounding: 128 KB + 1 byte must never print as "128 KB" in a
+  // message that says the file is over the 128 KB limit.
+  if (bytes >= 1024 * 1024) return `${Math.ceil(bytes / (1024 * 1024))} MB`;
+  return `${Math.ceil(bytes / 1024)} KB`;
 }
 
 function assertSafePath(path: string): void {
