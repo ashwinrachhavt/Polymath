@@ -28,6 +28,11 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // Same authority as searching mail; without a row the thread tool is a
   // dead 403 on every call.
   "gmail.thread.read",
+  // GitHub and Slack reads, advertised through the same gateway.
+  "github.read",
+  "github.issue.read",
+  "slack.channels.read",
+  "slack.read",
   "calendar.read",
   "notion.read",
   // NotebookLM parity. Opening a notebook reads; grading a review writes an
@@ -61,6 +66,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "wiki.lint",
       "gmail.read",
       "gmail.thread.read",
+      "github.read",
+      "github.issue.read",
+      "slack.channels.read",
+      "slack.read",
       "calendar.read",
       "notion.read",
       "notebook.open",

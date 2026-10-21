@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Field } from "@/components/workspace/ui";
 import { cn } from "cn";
-import { registerAccountAction, revokeAccountAction, setAccountPermissionAction, setAccountStatusAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction, syncNotionAction } from "./actions";
+import { registerAccountAction, revokeAccountAction, setAccountPermissionAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction, syncNotionAction } from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
 
@@ -198,16 +198,6 @@ export function AccountControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {status === "connecting" ? (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() => act(setAccountStatusAction, { accountId, expectedVersion: version, status: "active" })}
-        >
-          Mark connected
-        </Button>
-      ) : null}
       {status !== "revoked" ? (
         <Button
           size="sm"

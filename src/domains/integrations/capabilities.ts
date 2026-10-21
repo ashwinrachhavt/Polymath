@@ -26,7 +26,7 @@
  * connect screen. Nothing gates on it.
  */
 
-export type Provider = "gmail";
+export type Provider = "gmail" | "github" | "slack";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -38,8 +38,9 @@ export type CapabilitySpec = {
 };
 
 /*
- * Only Gmail ships in this slice. Linear, GitHub, Vercel, and Notion rows are
- * owned by later slices; leaving them out is what keeps this catalog honest
+ * Gmail, GitHub and Slack ship in this slice (GitHub and Slack read-only).
+ * Linear needs a POST-shaped GraphQL read the transport cannot express yet,
+ * and Vercel and Notion rows are owned by later slices; leaving them out is what keeps this catalog honest
  * about what the gateway can actually route today.
  *
  * `gmail.read` and `gmail.send` are fixed names: they are in
@@ -50,6 +51,12 @@ export const CAPABILITIES = {
   "gmail.read": { provider: "gmail", kind: "read", riskClass: "read", tool: "gmail_search" },
   "gmail.thread.read": { provider: "gmail", kind: "read", riskClass: "read", tool: "gmail_read_thread" },
   "gmail.send": { provider: "gmail", kind: "proposal", riskClass: "external_write", tool: "gmail_send" },
+  // GitHub and Slack ship reads only. Their writes would be proposals through
+  // the same approved-effect executor Gmail uses, and are not wired yet.
+  "github.read": { provider: "github", kind: "read", riskClass: "read", tool: "github_search" },
+  "github.issue.read": { provider: "github", kind: "read", riskClass: "read", tool: "github_read_issue" },
+  "slack.channels.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_list_channels" },
+  "slack.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_read_channel" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -64,6 +71,10 @@ export const PROVIDER_TOOLS = {
   gmail_search: "gmail.read",
   gmail_read_thread: "gmail.thread.read",
   gmail_send: "gmail.send",
+  github_search: "github.read",
+  github_read_issue: "github.issue.read",
+  slack_list_channels: "slack.channels.read",
+  slack_read_channel: "slack.read",
 } as const satisfies Record<string, Capability>;
 
 /*

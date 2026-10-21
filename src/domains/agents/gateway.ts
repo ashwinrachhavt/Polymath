@@ -12,6 +12,8 @@ import { toolCalls } from "./schema";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
 import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/domains/integrations/gmail/reads";
+import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
+import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
@@ -78,7 +80,18 @@ type ParsedThread = {
 };
 type ParsedSend = { ok: true; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
 
-type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | { ok: false; message: string };
+const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel"] as const;
+type OtherRead = (typeof OTHER_READS)[number];
+type ParsedOther = {
+  ok: true;
+  tool: OtherRead;
+  args: Record<string, unknown>;
+  accountAlias?: string;
+  destination?: undefined;
+  resourceRef?: string;
+};
+
+type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedOther | { ok: false; message: string };
 
 function invalidArguments(message: string): GatewayOutcome {
   return { ok: false, status: 400, code: "invalid_arguments", message };
@@ -118,6 +131,20 @@ function parseCall(tool: string, input: unknown): ParsedCall {
           resourceRef: `thread:${parsed.data.threadId}`,
         }
       : { ok: false, message: firstIssue(parsed.error) };
+  }
+  if ((OTHER_READS as readonly string[]).includes(tool)) {
+    const name = tool as OtherRead;
+    const parsed = TOOL_SCHEMAS[name].safeParse(raw);
+    if (!parsed.success) return { ok: false, message: firstIssue(parsed.error) };
+    const args = parsed.data as Record<string, unknown>;
+    return {
+      ok: true,
+      tool: name,
+      args,
+      accountAlias: typeof args.accountAlias === "string" ? args.accountAlias : undefined,
+      // A named issue narrows a grant the same way a named thread does.
+      resourceRef: name === "github_read_issue" ? `issue:${args.owner}/${args.repo}#${args.number}` : undefined,
+    };
   }
   const parsed = TOOL_SCHEMAS.gmail_send.safeParse(raw);
   return parsed.success
@@ -171,7 +198,7 @@ async function recordGrantDecision(
       request: {
         operation: capability,
         accountAlias,
-        resourceRef: parsed.tool === "gmail_read_thread" ? parsed.resourceRef : undefined,
+        resourceRef: "resourceRef" in parsed ? parsed.resourceRef : undefined,
         destination: parsed.destination,
         profileCeiling,
         now,
@@ -234,7 +261,7 @@ async function reserveCall(
           ok: false as const,
           status: 429,
           code: "run_capability_limit",
-          message: "This run has used its provider calls for Gmail.",
+          message: `This run has used its provider calls for ${provider === "gmail" ? "Gmail" : provider === "github" ? "GitHub" : "Slack"}.`,
         },
       };
     }
@@ -273,6 +300,12 @@ async function reserveCall(
 function redactArguments(parsed: ParsedCall & { ok: true }): Record<string, unknown> {
   if (parsed.tool === "gmail_search") return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_read_thread") return { threadId: parsed.args.threadId };
+  if (parsed.tool !== "gmail_send") {
+    // Reads of other providers: the arguments are queries and ids, never bodies.
+    const { accountAlias: _alias, ...rest } = parsed.args;
+    void _alias;
+    return rest;
+  }
   return {
     to: parsed.args.to,
     subject: parsed.args.subject,
@@ -339,6 +372,23 @@ function truncateMessages(messages: readonly unknown[], maxBytes: number): { tex
     returnedBytes = size;
   }
   return { text: JSON.stringify({ messages: kept, truncated: true, returnedBytes }), truncated: true };
+}
+
+/*
+ * Same rule as truncateMessages, for any list under a named key: whole records
+ * only, with the marker inside the payload the model reads.
+ */
+function truncateList(key: string, items: readonly unknown[], extra: Record<string, unknown>, maxBytes: number) {
+  const build = (kept: readonly unknown[], truncated: boolean) =>
+    JSON.stringify({ ...extra, [key]: kept, ...(truncated ? { truncated: true } : {}) });
+  const full = build(items, false);
+  if (Buffer.byteLength(full, "utf8") <= maxBytes) return { text: full, truncated: false };
+  const kept: unknown[] = [];
+  for (const item of items) {
+    if (Buffer.byteLength(build([...kept, item], true), "utf8") > maxBytes) break;
+    kept.push(item);
+  }
+  return { text: build(kept, true), truncated: true };
 }
 
 /** A provider failure is never a 200 with an empty list: it is a labelled failure the model can act on. */
@@ -482,11 +532,14 @@ export function createGateway({ transport }: { transport: Transport }) {
 
   async function read(
     context: GatewayContext,
-    parsed: ParsedSearch | ParsedThread,
+    parsed: ParsedSearch | ParsedThread | ParsedOther,
     accountAlias: string,
     connectedAccountId: string,
     reservation: { reservationId: string; startedAt: number },
   ): Promise<GatewayOutcome> {
+    if (parsed.tool !== "gmail_search" && parsed.tool !== "gmail_read_thread") {
+      return readOther(parsed, connectedAccountId, reservation);
+    }
     const result =
       parsed.tool === "gmail_search"
         ? await searchGmailMessages(transport, {
@@ -513,6 +566,63 @@ export function createGateway({ transport }: { transport: Transport }) {
       durationMs: Date.now() - reservation.startedAt,
     });
     return { ok: true, result: { content: [{ type: "text", text }] } };
+  }
+
+  async function readOther(
+    parsed: ParsedOther,
+    connectedAccountId: string,
+    reservation: { reservationId: string; startedAt: number },
+  ): Promise<GatewayOutcome> {
+    const limit = typeof parsed.args.limit === "number" ? parsed.args.limit : LIMITS.defaultResults;
+    let outcome: { ok: true; text: string; truncated: boolean; count: number } | { ok: false; code: string; message: string };
+    switch (parsed.tool) {
+      case "github_search": {
+        const r = await searchGithub(transport, { connectedAccountId, query: String(parsed.args.query), limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        break;
+      }
+      case "github_read_issue": {
+        const r = await readGithubIssue(transport, {
+          connectedAccountId,
+          owner: String(parsed.args.owner),
+          repo: String(parsed.args.repo),
+          number: Number(parsed.args.number),
+        });
+        if (!r.ok) {
+          outcome = r;
+          break;
+        }
+        const { comments, ...issue } = r.item;
+        outcome = { ok: true, ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes), count: comments.length + 1 };
+        break;
+      }
+      case "slack_list_channels": {
+        const r = await listSlackChannels(transport, { connectedAccountId, limit });
+        outcome = r.ok ? { ok: true, ...truncateList("channels", r.channels, {}, LIMITS.maxResponseBytes), count: r.channels.length } : r;
+        break;
+      }
+      case "slack_read_channel": {
+        const r = await readSlackChannel(transport, { connectedAccountId, channel: String(parsed.args.channel), limit });
+        outcome = r.ok
+          ? { ok: true, ...truncateList("messages", r.messages, { hasMore: r.hasMore }, LIMITS.maxResponseBytes), count: r.messages.length }
+          : r;
+        break;
+      }
+    }
+    if (!outcome.ok) {
+      await settleCall(reservation.reservationId, {
+        ok: false,
+        errorCode: outcome.code,
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      return readFailure(outcome);
+    }
+    await settleCall(reservation.reservationId, {
+      ok: true,
+      result: { records: outcome.count, truncated: outcome.truncated },
+      durationMs: Date.now() - reservation.startedAt,
+    });
+    return { ok: true, result: { content: [{ type: "text", text: outcome.text }] } };
   }
 
   /*

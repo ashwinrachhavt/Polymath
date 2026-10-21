@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { registerAccount, revokeConnectedAccount, setAccountPermissions, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
+import { registerAccount, revokeConnectedAccount, setAccountPermissions, setDefaultForWrites } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
@@ -36,21 +36,6 @@ export async function registerAccountAction(input: { provider: string; alias: st
   if (!input.alias.trim()) return { ok: false, error: "An alias is required - models choose accounts by alias." };
   try {
     await registerAccount(auth, { provider: input.provider, alias: input.alias.trim() });
-  } catch (error) {
-    return fail(error);
-  }
-  revalidate();
-  return { ok: true };
-}
-
-export async function setAccountStatusAction(input: {
-  accountId: string;
-  expectedVersion: number;
-  status: "active" | "revoked" | "error";
-}): Promise<Result> {
-  const auth = await authorize();
-  try {
-    await setAccountStatus(auth, input);
   } catch (error) {
     return fail(error);
   }
