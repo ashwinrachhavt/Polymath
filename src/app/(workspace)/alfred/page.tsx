@@ -7,6 +7,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { listDocumentSearchResults, pageRuns, RUN_STATES, type RunStateFilter } from "@/domains/agents/queries";
+import { listSkills } from "@/domains/skills/queries";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
@@ -91,6 +92,12 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
   const runs = found.items;
   const runsFiltered = Boolean(list.q || list.filters.state);
   const dossierList = await listDossiers(auth);
+  // Only enabled skills can be pinned; the engine refuses anything else.
+  const skillList = (await listSkills(auth, { enabled: true })).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+  }));
   const threads = await listThreads(auth.workspaceId, runs.map((r) => r.id));
   const searchResults = await listDocumentSearchResults(auth.workspaceId, runs.map((r) => r.id));
   const runDrafts = await draftsForRuns(auth, runs.map((r) => r.id));
@@ -111,7 +118,7 @@ export async function AlfredSurface({ searchParams = Promise.resolve({}) }: { se
       <div className="flex flex-col gap-6 page-content">
         {unavailable ? <p role="status" className="text-muted-foreground text-[13px]">{unavailable}</p> : (
           <Section title="Start a run" description="One agent, with a stated model, tools, and budget before it starts.">
-            <StartRunForm dossiers={dossierList} />
+            <StartRunForm dossiers={dossierList} skills={skillList} />
           </Section>
         )}
 

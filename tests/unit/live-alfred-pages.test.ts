@@ -44,6 +44,9 @@ vi.mock("@/domains/agents/queries", async (importOriginal) => ({
 }));
 vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
+// The composer's skill picker reads the workspace's enabled skills; static
+// markup has no database, so the read is stubbed like every other one here.
+vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
 
 const document = {
   id: "doc-fixture", title: "Existing document", filename: "fixture.pdf", mimeType: "application/pdf", createdAt: new Date(),

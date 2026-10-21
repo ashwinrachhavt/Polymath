@@ -250,6 +250,11 @@ function inspectPackage(root: string, packageFiles: PackageFile[]): {
     files: kept,
     warnings,
     contentHash: "",
+    // Identity in the skills table is the folder, not the display name: two
+    // packages in one repository can share a slug only in the sense that the
+    // extractor already refuses duplicates; the path is what tells a re-import
+    // of a moved package from a second install of the same one.
+    sourcePath: root,
   };
   skill.contentHash = contentHashOf(skill);
   return { skill, warnings };

@@ -3,7 +3,6 @@ import { products, productHref } from "@/lib/products";
 import {
   Activity,
   BookOpen,
-  Bot,
   Briefcase,
   CalendarClock,
   GraduationCap,
@@ -117,10 +116,10 @@ export const destinations: Destination[] = [
     group: "alfred",
   },
   {
-    href: "/alfred/specialists",
-    label: "Specialists",
-    purpose: "Hire an agent for the job.",
-    icon: Bot,
+    href: "/alfred/skills",
+    label: "Skills",
+    purpose: "Give the assistant a procedure to follow.",
+    icon: Library,
     group: "alfred",
   },
   {

@@ -14,4 +14,11 @@ export type InspectedSkill = {
   files: SkillFile[];
   warnings: string[];
   contentHash: string;
+  /**
+   * The folder inside the source the package was read from. Set by
+   * `extractPackages`, and part of the install identity. Optional because a
+   * test may assemble an `InspectedSkill` by hand; the install action refuses
+   * one without it rather than inventing a path.
+   */
+  sourcePath?: string;
 };
