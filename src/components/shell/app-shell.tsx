@@ -24,7 +24,7 @@ const subscribeToHydration = () => () => {};
 export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  // Browser-preview records live in localStorage; rendering the server's sample
+  // Browser-preview records live in localStorage; rendering the server's empty
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
 
@@ -37,7 +37,8 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
           <TopBar clerkConfigured={clerkConfigured} />
           <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
             <Suspense fallback={null}><PreviewBanner /></Suspense>
-            {isBrowserPreviewPath(pathname) ? <PreviewStorageWarning /> : null}
+            {/* Preview mutations are reachable from canonical routes, so the storage warning must be too. It renders null when empty. */}
+            <PreviewStorageWarning />
             {waitingForStorage ? <PreviewSkeleton /> : null}
             {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
             <div hidden={waitingForStorage} className="flex min-w-0 flex-1 flex-col">{children}</div>

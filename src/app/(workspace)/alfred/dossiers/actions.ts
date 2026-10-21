@@ -24,17 +24,33 @@ async function authorize(): Promise<AuthContext> {
 
 const revalidate = () => revalidatePath("/alfred/dossiers");
 
-export async function editStudioDraftAction(input: { artifactId: string; expectedVersion: number; text: string; idempotencyKey: string }) {
+export async function editStudioDraftAction(input: {
+  artifactId: string;
+  expectedVersion: number;
+  /** A report's body. Exactly one of text/structured is required. */
+  text?: string;
+  /** A deck's or infographic's structure. */
+  structured?: unknown;
+  idempotencyKey: string;
+}) {
   const auth = await authorize();
   const parsed = z
     .object({
       artifactId: z.uuid(),
       expectedVersion: z.number().int().min(1),
-      text: z.string().min(1).max(100_000),
+      text: z.string().min(1).max(100_000).optional(),
+      structured: z.unknown().optional(),
       idempotencyKey: z.uuid(),
     })
+    .refine((v) => Boolean(v.text) !== Boolean(v.structured), { message: "Send either text or structured content, not both." })
     .parse(input);
-  const result = await editGeneratedDraft(auth, parsed);
+  const result = await editGeneratedDraft(auth, {
+    artifactId: parsed.artifactId,
+    expectedVersion: parsed.expectedVersion,
+    text: parsed.text,
+    structured: parsed.structured as Parameters<typeof editGeneratedDraft>[1]["structured"],
+    idempotencyKey: parsed.idempotencyKey,
+  });
   revalidate();
   return result;
 }

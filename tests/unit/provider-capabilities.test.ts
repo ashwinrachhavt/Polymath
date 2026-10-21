@@ -94,7 +94,17 @@ describe("provider capability catalog", () => {
  * here. Listing them explicitly keeps the gap visible instead of widening the
  * rule.
  */
-const NATIVE_TOOLS = ["tasks.read", "documents.search", "wiki.read", "wiki.ingest", "wiki.lint"];
+// Polymath-native capabilities: they reach no provider, so they have no
+// catalog row and never will.
+const NATIVE_TOOLS = [
+  "tasks.read",
+  "documents.search",
+  "wiki.read",
+  "wiki.ingest",
+  "wiki.lint",
+  "notebook.open",
+  "learning.review",
+];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read", "notion.read"];
 
 describe("the default profile's tools all resolve", () => {

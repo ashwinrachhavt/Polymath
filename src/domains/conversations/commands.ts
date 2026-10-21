@@ -2,6 +2,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { ensureProfile } from "@/domains/agents/commands";
 import { messages, threads } from "@/domains/agents/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { withTransaction } from "@/lib/db-transaction";
 
 /*
@@ -36,6 +37,7 @@ export async function createConversation(
         role: "user",
         content: input.openingMessage,
       });
+      await queueThreadSync(tx, auth.workspaceId, thread.id);
     }
     await recordAudit(
       auth,

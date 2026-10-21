@@ -12,7 +12,7 @@ import { ArtifactEditor, ArtifactList, NewArtifact, RecordLinks } from "./artifa
 
 export default function Zettels({ initialId }: { initialId?: string }) {
   const { state } = useWorkspace();
-  const [id, setId] = useState(initialId || "zettel-canonical");
+  const [id, setId] = useState(initialId || "");
   const [filter, setFilter] = useState("all");
   const [view, setView] = useState("list");
   const [sort, setSort] = useState("recent");

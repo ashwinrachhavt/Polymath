@@ -44,7 +44,7 @@ The product must run with `docker compose up -d && pnpm db:migrate && pnpm dev`.
 | Concern | Local default | Hosted option |
 |---|---|---|
 | Database | `pgvector/pgvector:pg17` on loopback | Any Postgres 17 with pgvector |
-| Extraction | Docling container | LlamaParse, selected by env |
+| Extraction | Docling container | Reducto or LlamaParse, selected by env |
 | Search | SearXNG container | Keyed provider, selected by env |
 | Crawl | Firecrawl container | Hosted Firecrawl |
 | Identity | Clerk dev instance | Clerk production |
@@ -178,7 +178,8 @@ Heavy work runs in containers, chosen by the user's hardware.
 laptop may not have the memory and the product must still work without it.
 
 **Degradation is explicit.** If Docling is not running, extraction falls through
-to the PDF text layer or LlamaParse and says which was used. If Firecrawl is not
+to Reducto or LlamaParse (env-selected) and then the PDF text layer, and says
+which was used. If Firecrawl is not
 running, crawl is unavailable and says so. Nothing silently pretends to work.
 
 # 10. Agents
@@ -362,13 +363,15 @@ What a deployment actually does today:
 | Web search | falls through the resolver to keyed providers or DuckDuckGo |
 | Page fetch | Firecrawl unreachable; the tool reports "fetch failed" |
 | Crawl | queues and never submits; the row stays `pending` |
-| Document extraction | LlamaParse when `LLAMAPARSE_API_KEY` is set, else the PDF text layer |
+| Document extraction | Reducto when `REDUCTO_API_KEY` is set, else LlamaParse when `LLAMAPARSE_API_KEY` is set, else the PDF text layer |
 
-Draining the queue is likewise local. `make queue-up` runs
-`scripts/outbox-worker.ts` against the database. The deployed trigger
-(`POST /api/internal/cron`, bearer `OUTBOX_DISPATCH_SECRET`) exists and is
-tested, but registering it in `vercel.json` buys nothing on the free plan: its
-cron cadence is at most daily, so an upload would sit at "Waiting for the
-queue" for a day. Deployed extraction is a manual operation until the plan
-changes or a hosted adapter covers it. The inbox says so rather than showing
-"Reading" indefinitely.
+Draining the queue is local by default. `make queue-up` runs
+`scripts/outbox-worker.ts` against the database. A deployment also has a
+scheduled trigger: `vercel.json` registers `/api/internal/cron` daily, and the
+route accepts either `OUTBOX_DISPATCH_SECRET` (operator or script) or
+`CRON_SECRET` (what Vercel Cron signs) on both `POST` and `GET`. The free plan's
+cadence is at most daily, so that trigger is a safety net rather than a prompt
+one: an upload can sit at "Waiting for the queue" for up to a day. Deployed
+extraction is still effectively manual until the cadence improves or a hosted
+adapter covers it. The inbox says so rather than showing "Reading"
+indefinitely.

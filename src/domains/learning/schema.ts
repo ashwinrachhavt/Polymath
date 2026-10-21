@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   date,
   index,
   integer,
@@ -72,6 +73,21 @@ export const learningItems = pgTable(
     sourceType: text("source_type"),
     sourceId: uuid("source_id"),
     sourceQuote: text("source_quote"),
+    /*
+     * A quiz question is a prompt, four options and one correct index. They are
+     * columns, not JSON in `answer`, because the quiz UI reads answerIndex and
+     * the approval surface counts options. A flashcard leaves all three null.
+     */
+    options: jsonb("options").$type<string[]>(),
+    answerIndex: integer("answer_index"),
+    /** Why the correct answer is correct, shown after an attempt. */
+    explanation: text("explanation"),
+    /*
+     * Dedupe key for a generated item, hashed the way zettelDedupeKey is: the
+     * source quote can exceed the 2704-byte btree row limit, so the index is on
+     * a digest, not on the text.
+     */
+    dedupeKey: text("dedupe_key"),
     status: learningItemStatus("status").notNull().default("proposed"),
     /** Review scheduling (SM-2 style). Null until first reviewed. */
     dueOn: date("due_on"),
@@ -89,6 +105,16 @@ export const learningItems = pgTable(
       .on(t.workspaceId, t.dueOn)
       .where(sql`status = 'approved'`),
     index("learning_items_deck_idx").on(t.deckId),
+    // Regenerating a quiz must not duplicate an item. Null keys (a hand-written
+    // flashcard) are outside the rule, so the index is partial.
+    uniqueIndex("learning_items_dedupe_key")
+      .on(t.deckId, t.dedupeKey)
+      .where(sql`dedupe_key is not null`),
+    // A quiz question without options and an answer index cannot be taken.
+    check(
+      "learning_items_quiz_shape",
+      sql`kind <> 'quiz_question' or (options is not null and answer_index is not null)`,
+    ),
   ],
 );
 

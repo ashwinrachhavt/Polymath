@@ -54,3 +54,20 @@ describe("validateFile", () => {
     });
   });
 });
+
+describe("validateFile binary-extension quarantine", () => {
+  it("quarantines text bytes carrying a binary extension", () => {
+    expect(validateFile(TEXT, "notes.pdf")).toEqual({ ok: false, reason: "unidentified" });
+    expect(validateFile(TEXT, "photo.png")).toEqual({ ok: false, reason: "unidentified" });
+  });
+
+  it("still accepts text bytes with a text extension or no extension", () => {
+    expect(validateFile(TEXT, "notes.csv")).toEqual({ ok: true, mimeType: "text/plain" });
+    expect(validateFile(TEXT, "notes.txt")).toEqual({ ok: true, mimeType: "text/plain" });
+    expect(validateFile(TEXT)).toEqual({ ok: true, mimeType: "text/plain" });
+  });
+
+  it("content still wins: a real PDF named .png stays a PDF", () => {
+    expect(validateFile(PDF, "renamed.png")).toEqual({ ok: true, mimeType: "application/pdf" });
+  });
+});

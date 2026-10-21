@@ -69,16 +69,19 @@ describe("preview workspace task mutations", () => {
 
   it("ranks a new task inside its own column only", () => {
     const { workspace, starting } = seeded();
-    const ready = workspace.getSnapshot().tasks.filter((item) => item.status === "READY");
+    workspace.addTask("Existing ready task", { status: "READY" });
     workspace.addTask("Ranked task", { status: "READY" });
     const created = workspace.getSnapshot().tasks.find((item) => item.title === "Ranked task");
-    expect(created?.rank).toBe(Math.max(...ready.map((item) => item.rank ?? 0)) + 1 || 1);
-    expect(workspace.getSnapshot().tasks.length).toBe(starting + 1);
+    const first = workspace.getSnapshot().tasks.find((item) => item.title === "Existing ready task");
+    expect(created?.rank).toBe((first?.rank ?? 0) + 1);
+    expect(workspace.getSnapshot().tasks.length).toBe(starting + 2);
   });
 
   it("lands a status change at the end of the target column rather than keeping its old rank", () => {
     const { workspace } = seeded();
-    const source = workspace.getSnapshot().tasks.find((item) => item.status === "READY");
+    workspace.addTask("Already waiting", { status: "WAITING" });
+    workspace.addTask("Source task", { status: "READY" });
+    const source = workspace.getSnapshot().tasks.find((item) => item.title === "Source task");
     workspace.updateTask(source!.id, { status: "WAITING" });
     const moved = workspace.getSnapshot().tasks.find((item) => item.id === source!.id);
     const waiting = workspace.getSnapshot().tasks.filter((item) => item.status === "WAITING" && item.id !== moved!.id);
@@ -109,7 +112,7 @@ describe("preview workspace task mutations", () => {
     const workspace = createPreviewWorkspace("attachment-owner", memoryStorage());
     const record = workspace.addTask("Has a brief")!;
     workspace.addAttachment(record.id, { kind: "url", label: "Spec", value: "https://example.test/spec" });
-    workspace.addAttachment(record.id, { kind: "url", label: "Spec again", value: "https://example.test/spec" });
+    expect(workspace.addAttachment(record.id, { kind: "url", label: "Spec again", value: "https://example.test/spec" })).toEqual({ ok: false, persisted: true });
     expect(workspace.getSnapshot().tasks.find((item) => item.id === record.id)?.attachments).toHaveLength(1);
   });
 });

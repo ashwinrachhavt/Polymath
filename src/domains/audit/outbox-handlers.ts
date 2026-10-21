@@ -6,6 +6,8 @@ import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
+import { THREAD_CHANGED_TOPIC, threadChangedHandler } from "@/domains/knowledge/thread-graph";
+import { youtubeHandlers } from "@/domains/knowledge/youtube-handler";
 import { isTerminalCrawlStatus, pollCrawl, submitCrawl } from "@/integrations/firecrawl/client";
 import { memberships } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -261,4 +263,6 @@ function safeSlug(url: URL): string {
 export const outboxHandlers: Record<string, OutboxHandler> = {
   "document.extraction_requested": extractionRequestedHandler,
   [CRAWL_TOPIC]: crawlRequestedHandler,
+  ...youtubeHandlers,
+  [THREAD_CHANGED_TOPIC]: threadChangedHandler(workspaceOwnerAuth),
 };

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
-import { sampleState } from "./sample-state";
+import { emptyWorkspaceState } from "./empty-state";
 import { completionPatch, nextRank, reorderTasks, statusLabels } from "./tasks";
 import type { Artifact, ArtifactKind, CalendarEvent, Capture, Company, Contact, Focus, Opportunity, Preferences, Project, Review, Task, TaskAttachment, TaskStatus, WorkspaceState } from "./types";
 
@@ -29,7 +29,7 @@ const schema = z.object({
 /*
  * Bump when the schema changes incompatibly. On a mismatch the saved payload is
  * kept untouched under its raw key with the old version appended, so export or
- * manual recovery stays possible; the preview falls back to the sample state
+ * manual recovery stays possible; the preview falls back to the empty state
  * rather than silently resetting user work.
  */
 const PREVIEW_FORMAT_VERSION = 1;
@@ -50,7 +50,7 @@ function resolveStorage(injected?: Pick<Storage, "getItem" | "setItem">) {
  */
 export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Storage, "getItem" | "setItem">) {
 const key = scope === "anonymous" ? "axiom-ui-preview-v1" : `axiom-ui-preview-v1:${scope}`;
-let snapshot: WorkspaceState = sampleState;
+let snapshot: WorkspaceState = emptyWorkspaceState;
 let loaded = false;
 let observedRaw: string | null = null;
 let notice = "";
@@ -83,7 +83,7 @@ function getSnapshot() {
             try { store.setItem(`${key}:incompatible-v${PREVIEW_FORMAT_VERSION}`, raw); } catch { /* best-effort backup */ }
             storageWarning = "Saved preview data has an incompatible format. Your saved data was kept aside; export any open work before resetting this preview.";
           }
-        } else snapshot = sampleState;
+        } else snapshot = emptyWorkspaceState;
       }
     } catch { storageWarning = "Browser storage is unavailable. Preview changes will last only until refresh."; }
   }
@@ -124,8 +124,9 @@ function addTask(title: string, extras: Partial<Omit<Task, "id" | "title" | "ver
   const status = extras.status || "INBOX";
   const record: Task = { id: crypto.randomUUID(), title: title.trim(), priority: "Medium", estimate: 25, description: "", tags: [], ...extras, status, rank: nextRank(snapshot.tasks, status), version: 1 };
   if (!record.title) return undefined;
-  commit({ ...getSnapshot(), tasks: [record, ...snapshot.tasks] }, "Task captured", record.title);
-  return record;
+  // A refused commit (another tab moved first) saved nothing, so handing the
+  // record back would claim a write that never happened.
+  return commit({ ...getSnapshot(), tasks: [record, ...snapshot.tasks] }, "Task captured", record.title).ok ? record : undefined;
 }
 function updateTask(id: string, patch: Partial<Task>) {
   const current = getSnapshot().tasks.find((task) => task.id === id);
@@ -133,40 +134,42 @@ function updateTask(id: string, patch: Partial<Task>) {
   // caller supplied an explicit index, so a status change never inherits a
   // rank that belongs to the lane it just left.
   const moved = current && patch.status && patch.status !== current.status && patch.rank === undefined ? { ...patch, rank: nextRank(snapshot.tasks.filter((task) => task.id !== id), patch.status) } : patch;
-  commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...moved, id: record.id, version: record.version + 1 } : record) }, "Task updated");
+  return commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...moved, id: record.id, version: record.version + 1 } : record) }, "Task updated");
 }
 function reorderTask(id: string, status: TaskStatus, index: number) {
   const changed = reorderTasks(snapshot.tasks, id, status, index);
-  if (!changed.length) return;
+  if (!changed.length) return { ok: false, persisted: false };
   const ranks = new Map(changed.map((entry) => [entry.id, entry.rank]));
-  commit({ ...snapshot, tasks: snapshot.tasks.map((record) => ranks.has(record.id) ? { ...record, rank: ranks.get(record.id), version: record.version + 1 } : record) }, "Task order changed", `${changed.length} tasks renumbered in ${statusLabels[status]}`);
+  return commit({ ...snapshot, tasks: snapshot.tasks.map((record) => ranks.has(record.id) ? { ...record, rank: ranks.get(record.id), version: record.version + 1 } : record) }, "Task order changed", `${changed.length} tasks renumbered in ${statusLabels[status]}`);
 }
 function completeTask(id: string) {
   const task = getSnapshot().tasks.find((record) => record.id === id);
-  if (!task) return;
+  if (!task) return { ok: false, persisted: false };
   const patch = completionPatch(task);
   const label = task.recurrence && patch.status !== "DONE" ? `${task.title} moves to ${patch.dueDate}` : task.title;
-  commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...patch, id: record.id, version: record.version + 1 } : record) }, task.recurrence ? "Recurring task advanced" : "Task completed", label);
+  return commit({ ...getSnapshot(), tasks: snapshot.tasks.map((record) => record.id === id ? { ...record, ...patch, id: record.id, version: record.version + 1 } : record) }, task.recurrence ? "Recurring task advanced" : "Task completed", label);
 }
 function addAttachment(id: string, attachment: Omit<TaskAttachment, "id" | "addedAt">) {
   const task = getSnapshot().tasks.find((record) => record.id === id);
-  if (!task) return;
+  if (!task) return { ok: false, persisted: false };
   const record: TaskAttachment = { ...attachment, id: crypto.randomUUID(), addedAt: new Date().toISOString() };
   const existing = task.attachments || [];
   // Same URL or file name twice in one task is a duplicate, not a second copy.
-  if (existing.some((item) => item.value === record.value && item.kind === record.kind)) { notify("That attachment is already on this task."); return; }
-  updateTask(id, { attachments: [...existing, record] });
+  // persisted is true: nothing was written and nothing needed writing, so this
+  // refusal says nothing about storage health.
+  if (existing.some((item) => item.value === record.value && item.kind === record.kind)) { notify("That attachment is already on this task."); return { ok: false, persisted: true }; }
+  return updateTask(id, { attachments: [...existing, record] });
 }
 function removeAttachment(id: string, attachmentId: string) {
   const task = getSnapshot().tasks.find((record) => record.id === id);
-  if (!task) return;
-  updateTask(id, { attachments: (task.attachments || []).filter((item) => item.id !== attachmentId) });
+  if (!task) return { ok: false, persisted: false };
+  return updateTask(id, { attachments: (task.attachments || []).filter((item) => item.id !== attachmentId) });
 }
 function addArtifact(title: string, kind: ArtifactKind, body = "") {
   const record: Artifact = { id: crypto.randomUUID(), title: title.trim(), kind, body, tags: [], links: [], version: 1, updatedAt: new Date().toISOString() };
   if (!record.title) return undefined;
-  commit({ ...getSnapshot(), artifacts: [record, ...snapshot.artifacts], artifactVersions: [...snapshot.artifactVersions, { id: crypto.randomUUID(), artifactId: record.id, version: 1, title: record.title, body, links: [], tags: [], createdAt: record.updatedAt }] }, `${kind} created`, record.title);
-  return record;
+  const result = commit({ ...getSnapshot(), artifacts: [record, ...snapshot.artifacts], artifactVersions: [...snapshot.artifactVersions, { id: crypto.randomUUID(), artifactId: record.id, version: 1, title: record.title, body, links: [], tags: [], createdAt: record.updatedAt }] }, `${kind} created`, record.title);
+  return result.ok ? record : undefined;
 }
 function updateArtifact(id: string, patch: Partial<Artifact>) {
   // Capture before the read: getSnapshot() refreshes observedRaw to the
@@ -208,29 +211,29 @@ function clarifyCapture(id: string, kind: "task" | "note") {
   }
   return commit(next, "Capture clarified", `Original ${id} retained; ${kind} ${derivedId} created`).ok ? derivedId : undefined;
 }
-function updateCapture(id: string, patch: Partial<Capture>) { commit({ ...getSnapshot(), captures: snapshot.captures.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Capture clarified"); }
-function addContact(contact: Omit<Contact, "id">) { const record = { ...contact, id: crypto.randomUUID() }; commit({ ...getSnapshot(), contacts: [record, ...snapshot.contacts] }, "Contact created", record.name); return record; }
-function updateContact(id: string, patch: Partial<Contact>) { commit({ ...getSnapshot(), contacts: snapshot.contacts.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Contact updated"); }
-function addCompany(company: Omit<Company, "id">) { const record = { ...company, id: crypto.randomUUID() }; commit({ ...getSnapshot(), companies: [record, ...snapshot.companies] }, "Company created", record.name); return record; }
-function addOpportunity(opportunity: Omit<Opportunity, "id">) { const record = { ...opportunity, id: crypto.randomUUID() }; commit({ ...getSnapshot(), opportunities: [record, ...snapshot.opportunities] }, "Opportunity created", record.title); return record; }
-function updateCompany(id: string, patch: Partial<Company>) { commit({ ...getSnapshot(), companies: snapshot.companies.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Company updated"); }
-function deleteContact(id: string) { commit({ ...getSnapshot(), contacts: snapshot.contacts.filter((r) => r.id !== id) }, "Contact removed from preview"); }
-function deleteCompany(id: string) { commit({ ...getSnapshot(), companies: snapshot.companies.filter((r) => r.id !== id) }, "Company removed from preview"); }
-function updateProject(id: string, patch: Partial<Project>) { commit({ ...getSnapshot(), projects: snapshot.projects.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Project updated"); }
-function addReview(review: Omit<Review, "id" | "status" | "revision">) { const record: Review = { ...review, id: crypto.randomUUID(), status: "Pending", revision: 1 }; commit({ ...getSnapshot(), reviews: [record, ...snapshot.reviews] }, "Local proposal created", "No external action was performed"); return record; }
-function updateOpportunity(id: string, patch: Partial<Opportunity>) { commit({ ...getSnapshot(), opportunities: snapshot.opportunities.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Opportunity updated"); }
+function updateCapture(id: string, patch: Partial<Capture>) { return commit({ ...getSnapshot(), captures: snapshot.captures.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Capture clarified"); }
+function addContact(contact: Omit<Contact, "id">) { const record = { ...contact, id: crypto.randomUUID() }; return commit({ ...getSnapshot(), contacts: [record, ...snapshot.contacts] }, "Contact created", record.name).ok ? record : undefined; }
+function updateContact(id: string, patch: Partial<Contact>) { return commit({ ...getSnapshot(), contacts: snapshot.contacts.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Contact updated"); }
+function addCompany(company: Omit<Company, "id">) { const record = { ...company, id: crypto.randomUUID() }; return commit({ ...getSnapshot(), companies: [record, ...snapshot.companies] }, "Company created", record.name).ok ? record : undefined; }
+function addOpportunity(opportunity: Omit<Opportunity, "id">) { const record = { ...opportunity, id: crypto.randomUUID() }; return commit({ ...getSnapshot(), opportunities: [record, ...snapshot.opportunities] }, "Opportunity created", record.title).ok ? record : undefined; }
+function updateCompany(id: string, patch: Partial<Company>) { return commit({ ...getSnapshot(), companies: snapshot.companies.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Company updated"); }
+function deleteContact(id: string) { return commit({ ...getSnapshot(), contacts: snapshot.contacts.filter((r) => r.id !== id) }, "Contact removed from preview"); }
+function deleteCompany(id: string) { return commit({ ...getSnapshot(), companies: snapshot.companies.filter((r) => r.id !== id) }, "Company removed from preview"); }
+function updateProject(id: string, patch: Partial<Project>) { return commit({ ...getSnapshot(), projects: snapshot.projects.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Project updated"); }
+function addReview(review: Omit<Review, "id" | "status" | "revision">) { const record: Review = { ...review, id: crypto.randomUUID(), status: "Pending", revision: 1 }; return commit({ ...getSnapshot(), reviews: [record, ...snapshot.reviews] }, "Local proposal created", "No external action was performed").ok ? record : undefined; }
+function updateOpportunity(id: string, patch: Partial<Opportunity>) { return commit({ ...getSnapshot(), opportunities: snapshot.opportunities.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Opportunity updated"); }
 function updateReview(id: string, patch: Partial<Review>) {
-  commit({ ...getSnapshot(), reviews: snapshot.reviews.map((r) => r.id === id ? { ...r, ...patch, id: r.id, ...(patch.payload !== undefined && patch.payload !== r.payload ? { revision: r.revision + 1, status: "Pending" as const } : {}) } : r) }, "Review updated locally", "No external action was performed");
+  return commit({ ...getSnapshot(), reviews: snapshot.reviews.map((r) => r.id === id ? { ...r, ...patch, id: r.id, ...(patch.payload !== undefined && patch.payload !== r.payload ? { revision: r.revision + 1, status: "Pending" as const } : {}) } : r) }, "Review updated locally", "No external action was performed");
 }
-function updateFocus(focus: Focus | null) { commit({ ...getSnapshot(), focus }, focus ? "Focus session updated" : "Focus session ended"); }
-function updatePreferences(patch: Partial<Preferences>) { commit({ ...getSnapshot(), preferences: { ...snapshot.preferences, ...patch } }, "Preview preferences updated"); }
-function addEvent(event: Omit<CalendarEvent, "id">) { const record = { ...event, id: crypto.randomUUID() }; commit({ ...getSnapshot(), events: [...snapshot.events, record] }, "Local work block created"); return record; }
+function updateFocus(focus: Focus | null) { return commit({ ...getSnapshot(), focus }, focus ? "Focus session updated" : "Focus session ended"); }
+function updatePreferences(patch: Partial<Preferences>) { return commit({ ...getSnapshot(), preferences: { ...snapshot.preferences, ...patch } }, "Preview preferences updated"); }
+function addEvent(event: Omit<CalendarEvent, "id">) { const record = { ...event, id: crypto.randomUUID() }; return commit({ ...getSnapshot(), events: [...snapshot.events, record] }, "Local work block created").ok ? record : undefined; }
 function deleteEvent(id: string) {
   const event = getSnapshot().events.find((item) => item.id === id);
   // A provider event is not ours to delete locally; it would reappear on the
   // next sync and the local record would silently disagree with the provider.
-  if (!event || event.provider !== "local") { notify("Provider events are read-only in this preview. Removing one requires a reviewed provider write."); return; }
-  commit({ ...getSnapshot(), events: snapshot.events.filter((item) => item.id !== id) }, "Local work block removed", event.title);
+  if (!event || event.provider !== "local") { notify("Provider events are read-only in this preview. Removing one requires a reviewed provider write."); return { ok: false, persisted: false }; }
+  return commit({ ...getSnapshot(), events: snapshot.events.filter((item) => item.id !== id) }, "Local work block removed", event.title);
 }
 /*
  * Cancelling one occurrence of a repeating block records the date as an
@@ -238,16 +241,22 @@ function deleteEvent(id: string) {
  */
 function cancelOccurrence(id: string, date: string) {
   const event = getSnapshot().events.find((item) => item.id === id);
-  if (!event) return;
-  commit({ ...getSnapshot(), events: snapshot.events.map((item) => item.id === id ? { ...item, exceptionDates: [...new Set([...(item.exceptionDates || []), date])] } : item) }, "Occurrence cancelled", `${event.title} on ${date}`);
+  if (!event) return { ok: false, persisted: false };
+  return commit({ ...getSnapshot(), events: snapshot.events.map((item) => item.id === id ? { ...item, exceptionDates: [...new Set([...(item.exceptionDates || []), date])] } : item) }, "Occurrence cancelled", `${event.title} on ${date}`);
 }
-function updateEvent(id: string, patch: Partial<CalendarEvent>) { commit({ ...getSnapshot(), events: snapshot.events.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Local work block updated"); }
-function addProject(project: Omit<Project, "id">) { const record = { ...project, id: crypto.randomUUID() }; commit({ ...getSnapshot(), projects: [...snapshot.projects, record] }, "Project created", record.title); return record; }
+function updateEvent(id: string, patch: Partial<CalendarEvent>) { return commit({ ...getSnapshot(), events: snapshot.events.map((r) => r.id === id ? { ...r, ...patch, id: r.id } : r) }, "Local work block updated"); }
+function addProject(project: Omit<Project, "id">) { const record = { ...project, id: crypto.randomUUID() }; return commit({ ...getSnapshot(), projects: [...snapshot.projects, record] }, "Project created", record.title).ok ? record : undefined; }
 function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
-  if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return;
-  commit({ ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: crypto.randomUUID() }] }, "Preview reward earned");
+  if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return { ok: false, persisted: false };
+  return commit({ ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: crypto.randomUUID() }] }, "Preview reward earned");
 }
-function resetPreview() { commit(sampleState, "Sample workspace reset"); notify("Sample workspace reset. Your previous browser preview changes were replaced."); }
+function resetPreview() {
+  const result = commit(emptyWorkspaceState, "Browser preview cleared");
+  // A refused reset wrote nothing, so the notice must not claim the previous
+  // preview was replaced; commit already published the refusal warning.
+  if (result.ok) notify("Browser preview cleared. Your previous local changes were replaced with an empty workspace.");
+  return result;
+}
 
 return { storageScope: scope, subscribe, getSnapshot, getNotice: () => notice, getStorageWarning: () => storageWarning, addTask, updateTask, reorderTask, completeTask, addAttachment, removeAttachment, addArtifact, updateArtifact, addCapture, clarifyCapture, updateCapture, addContact, updateContact, deleteContact, addCompany, updateCompany, deleteCompany, updateProject, addReview, addOpportunity, updateOpportunity, updateReview, updateFocus, updatePreferences, addEvent, updateEvent, deleteEvent, cancelOccurrence, addProject, awardReward, resetPreview, notify };
 }
@@ -255,7 +264,7 @@ export const previewWorkspace = createPreviewWorkspace();
 const WorkspaceContext = createContext(previewWorkspace);
 export function useWorkspace() {
   const workspace = useContext(WorkspaceContext);
-  const state = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot, () => sampleState);
+  const state = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot, () => emptyWorkspaceState);
   return { state, ...workspace };
 }
 export function PreviewStorageWarning() {

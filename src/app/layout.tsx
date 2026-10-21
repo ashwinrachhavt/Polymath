@@ -3,6 +3,7 @@ import { Geist_Mono, Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
+import { MotionProvider } from "@/components/motion-config";
 import { ThemeProvider } from "@/components/theme-provider";
 import { clerkConfigured } from "@/lib/clerk";
 import "./globals.css";
@@ -57,7 +58,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             enableSystem
             disableTransitionOnChange
           >
-            {children}
+            <MotionProvider>{children}</MotionProvider>
           </ThemeProvider>
         </AuthProvider>
         {/*

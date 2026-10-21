@@ -3,6 +3,51 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Frontend reliability (ASH-186)
+
+**Priority:** P2
+
+- **TanStack Query was scoped out.** ASH-186 §3 asks for it, but `agents/agent.md` §9
+  says stop before adding a runtime dependency. Server components plus Server Actions
+  already cover the canonical reads and writes; the library would buy caching and
+  background revalidation on the interactive surfaces. Decide whether to adopt it
+  before migrating any domain to it.
+- **Client request layer and the preview store are now the two error paths.** Any new
+  client island calls `requestJson` (`src/lib/client-request.ts`), never raw `fetch`;
+  any new preview mutation returns `{ ok, persisted }` and never reports a refused
+  write as saved. Both are documented in `agents/frontend.md`.
+
+**Priority:** P3
+
+- **Clamped failure copy is hover-only.** `upload-dropzone.tsx` clamps a long failure
+  cause to two lines with the full sentence in `title`, which a keyboard or touch user
+  cannot reach. An `aria-describedby` reveal would fix it.
+
+
+
+## Notebooks (NotebookLM parity)
+
+**Priority:** P2
+
+- **Unify the two citation models.** The chat stream emits `citations` frames
+  carrying full `DocumentCitation` objects as structured tool output
+  (`feat/eve-agents-chat-composio`). The notebook renderer parses `[[n]]`
+  markers out of the model's prose (`src/domains/knowledge/inline-citations.ts`).
+  Both are correct for their seam, and forcing one through the other means
+  inventing markers the model never wrote. The open decision: does the agent
+  generate markers, or does the renderer number structured output? Decide that,
+  then delete the losing path. Until then a saved note uses the marker form and
+  a streamed answer uses the frame form, and the two do not share numbering.
+
+**Priority:** P3
+
+- **Learning eval for answer leakage.** `tests/unit/teaching-contract.test.ts`
+  pins that a teaching card carries no `answer`, `answerIndex` or `explanation`.
+  That is not the same as proving the model cannot leak what it was never shown.
+  The eval needs a real turn with `learning_next` as the only tool, and belongs
+  next to `chat-grounding.eval.ts`. Note: evals run serially
+  (`maxConcurrency: 1`) because concurrent Gemini sessions intermittently 429.
+
 ## Identity / authorization
 
 **Priority:** P1
@@ -69,3 +114,37 @@ AssertionError: expected 201 to be 200
 
 - ASH-120 F01–F03 (scope ADR, glossary, canonical identity schema, auth
   spine): **v-unversioned** (2026-10-18), PR #10.
+
+## CRM / outreach
+
+**Priority:** P1
+
+- **Ship a `MailSender` adapter.** The send executor is complete — it refuses
+  unapproved sends, binds approval to a revision, and leaves an `unknown`
+  attempt that blocks retry until reconciled. But there is no implementation of
+  the port anywhere in `src/`; `unconfiguredSender` (`src/domains/crm/send-executor.ts`)
+  always throws, so no approved message can leave the workspace. The settings
+  capability panel reports "Email sending is not implemented" for exactly this
+  reason, and the release claim excludes sending until it is untrue. **What:**
+  one adapter over a connected account (Composio Gmail first), wired through the
+  existing `sendApprovedCorrespondence` path with an idempotency key per
+  attempt. **Why:** without it the approval-gated send story is untestable
+  outside unit tests, and the `action_attempts` reconciliation work has no live
+  producer. **Depends on:** an explicit go-ahead before any real send.
+
+## Inbox / command center
+
+**Priority:** P3
+
+- Arrow-key roving through inbox list rows. **What:** roving tabindex or
+  arrow-key navigation across capture rows, complementing the plain-link
+  navigation shipped with the two-pane redesign. **Why:** keyboard-first
+  users clear a 50-row queue without tabbing through every row; the design
+  review (D12, 2026-10-20) deferred it to keep the keyboard model minimal.
+  **Pros:** power-user speed through the queue; consistent with Linear-style
+  keyboard workflows. **Cons:** a new a11y pattern to maintain and test;
+  focus-management edge cases with the detail pane. **Context:** rows are
+  plain links per the a11y spec in
+  `docs/superpowers/specs/2026-10-20-inbox-redesign-and-extraction-cleanup.md`;
+  revisit when the first keyboard-first feedback arrives. **Depends on:**
+  the two-pane inbox shipping first.

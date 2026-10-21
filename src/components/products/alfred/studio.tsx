@@ -29,7 +29,7 @@ const types = [
 export default function Studio({ initialId }: { initialId?: string }) {
   const { state, addArtifact, updateArtifact, notify } = useWorkspace();
   const preview = useAlfredPreview();
-  const [dossierId, setDossierId] = useState(initialId || "dossier-axiom");
+  const [dossierId, setDossierId] = useState(initialId || "");
   const [type, setType] = useState("briefing");
   const [instructions, setInstructions] = useState("");
   const [selectedPins, setSelectedPins] = useState<string[] | null>(null);

@@ -1,5 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
-import { actionAttempts, actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { actionAttempts, actionProposals, actionReviews, actionRevisions, providerObservations } from "@/domains/actions/schema";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { externalAccounts } from "@/domains/integrations/schema";
@@ -227,5 +227,133 @@ export async function sendApprovedCorrespondence(
       tx,
     );
     return { state: unknown ? ("unknown" as const) : ("failed" as const) };
+  });
+}
+
+/*
+ * Closes an UNKNOWN send attempt (ASH-191). An unknown outcome blocks every
+ * retry until it is resolved, which is correct — but without this command the
+ * block was permanent and the only exit was editing the database by hand.
+ *
+ * The caller supplies what the provider shows: a message exists (`sent` with its
+ * id) or it does not (`absent`). Observation is recorded, so the decision is
+ * auditable rather than a state flip. A `sent` observation settles the attempt
+ * and marks the draft sent; an `absent` observation settles the attempt as
+ * failed and leaves the draft editable for a fresh, separately approved send.
+ *
+ * Resolution is guarded on the attempt still being unknown-and-pending, so two
+ * operators cannot both settle it and a late resolution cannot rewrite history.
+ */
+export async function resolveUnknownSend(
+  auth: AuthContext,
+  input: {
+    attemptId: string;
+    observation: { observedState: "sent"; providerObjectId: string } | { observedState: "absent" };
+    /** How the caller learned it: a provider read, or a person checking their mailbox. */
+    source: "provider_read" | "human_check";
+  },
+): Promise<{ resolved: boolean; settledAs?: "sent" | "absent" }> {
+  return withTransaction(async (tx) => {
+    const [attempt] = await tx
+      .select()
+      .from(actionAttempts)
+      .where(and(eq(actionAttempts.workspaceId, auth.workspaceId), eq(actionAttempts.id, input.attemptId)))
+      .limit(1);
+    if (!attempt) throw new SendNotAllowedError("That send attempt is not in this workspace.");
+
+    const provider = input.source === "provider_read" ? "provider" : "human";
+
+    /*
+     * A later observer who finds evidence contrary to the settlement still gets
+     * recorded. Dropping it is the invisible work this table exists to prevent —
+     * someone looked at the provider, decided something, and the system forgot.
+     * The settlement itself stays closed: observations are append-only evidence,
+     * not a second decision.
+     */
+    if (attempt.status !== "unknown" || attempt.reconciliation !== "pending") {
+      await tx.insert(providerObservations).values({
+        workspaceId: auth.workspaceId,
+        attemptId: attempt.id,
+        proposalId: attempt.proposalId,
+        provider,
+        providerObjectId: input.observation.observedState === "sent" ? input.observation.providerObjectId : null,
+        observedState: input.observation.observedState,
+        detail: { resolvedBy: auth.userId, arrivedAfterSettlement: true, settledStatus: attempt.status },
+      });
+      return { resolved: false };
+    }
+
+    const sent = input.observation.observedState === "sent";
+    const providerObjectId =
+      input.observation.observedState === "sent" ? input.observation.providerObjectId : attempt.providerObjectId;
+    const settled = await tx
+      .update(actionAttempts)
+      .set({
+        status: sent ? "succeeded" : "failed",
+        reconciliation: "resolved",
+        providerObjectId,
+        // Kept, not replaced: the original unknown-outcome summary is the record
+        // of what the provider did, and the resolution is a separate column's story.
+        responseSummary: {
+          ...(typeof attempt.responseSummary === "object" && attempt.responseSummary !== null
+            ? (attempt.responseSummary as Record<string, unknown>)
+            : {}),
+          resolution: { resolvedBy: input.source, observedState: input.observation.observedState },
+        },
+        endedAt: new Date(),
+      })
+      .where(and(eq(actionAttempts.id, attempt.id), eq(actionAttempts.reconciliation, "pending")))
+      .returning({ id: actionAttempts.id });
+    if (settled.length === 0) return { resolved: false };
+
+    await tx.insert(providerObservations).values({
+      workspaceId: auth.workspaceId,
+      attemptId: attempt.id,
+      proposalId: attempt.proposalId,
+      provider,
+      providerObjectId,
+      observedState: input.observation.observedState,
+      detail: { resolvedBy: auth.userId },
+    });
+
+    if (input.observation.observedState === "sent") {
+      // State-guarded and row-counted. An earlier reconciliation could have run
+      // while this attempt was still pending, so the update must not resurrect a
+      // cancelled draft or claim a draft it did not actually move.
+      const moved = await tx
+        .update(correspondence)
+        .set({
+          state: "sent",
+          providerObjectId: input.observation.providerObjectId,
+          occurredAt: new Date(),
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+        })
+        .where(
+          and(
+            eq(correspondence.workspaceId, auth.workspaceId),
+            eq(correspondence.actionProposalId, attempt.proposalId),
+            inArray(correspondence.state, ["planned", "drafted", "sent"]),
+          ),
+        )
+        .returning({ id: correspondence.id });
+      if (moved.length === 0) {
+        throw new SendNotAllowedError(
+          "The message was found, but its draft is no longer in a state that can record a send. Reconcile the draft by hand.",
+        );
+      }
+    }
+
+    await recordAudit(
+      auth,
+      {
+        action: sent ? "correspondence.send_reconciled_sent" : "correspondence.send_reconciled_absent",
+        subjectType: "action_attempt",
+        subjectId: attempt.id,
+        summary: sent ? "Unknown send reconciled: the message exists" : "Unknown send reconciled: nothing was sent",
+      },
+      tx,
+    );
+    return { resolved: true, settledAs: sent ? "sent" : "absent" };
   });
 }

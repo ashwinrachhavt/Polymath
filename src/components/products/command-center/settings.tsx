@@ -12,6 +12,7 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Check, Destination, DisabledAction, Select } from "./controls";
 import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
 import type { LoadedPreferences } from "@/domains/identity/preferences";
+import type { CapabilityStatus } from "@/lib/capability-config";
 import { SchedulerPanel } from "./scheduler-panel";
 
 /*
@@ -139,7 +140,26 @@ function Section({ id, children }: { id: string; children: React.ReactNode }) {
   return <div id={id} className="scroll-mt-6">{children}</div>;
 }
 
-export default function Settings({ serverPreferences }: { serverPreferences?: LoadedPreferences }) {
+/*
+ * Which integrations this deployment can actually run, named. A missing key used
+ * to render as an empty list that looked like "nothing to show" — this panel is
+ * the difference between "no results" and "not switched on" (ASH-193). Variable
+ * names only; a value never reaches the browser.
+ */
+function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }) {
+  if (!capabilities || capabilities.length === 0) return null;
+  const missing = capabilities.filter((c) => !c.configured);
+  const ready = capabilities.filter((c) => c.configured);
+  return (
+    <Panel title="Configured capabilities" description="What this deployment can run right now, read from its environment. Names only — never values.">
+      {missing.length > 0 ? <div className="flex flex-col gap-3">{missing.map((c) => <Unavailable key={c.id} feature={c.label}>{c.reason} <span className="readout mt-1 block text-xs">{c.missingEnv.join(", ")}</span></Unavailable>)}</div> : null}
+      {ready.length > 0 ? <div className="mt-4 flex flex-wrap gap-2">{ready.map((c) => <Status key={c.id}>{c.label} ready</Status>)}</div> : null}
+      {missing.length === 0 ? <p className="mt-3 text-[13px] text-muted-foreground">Every integration this release claims is configured.</p> : <p className="mt-3 text-[13px] text-muted-foreground">{missing.length} of {capabilities.length} are not configured. Each one is listed above with the variable that turns it on.</p>}
+    </Panel>
+  );
+}
+
+export default function Settings({ serverPreferences, capabilities }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[] }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
   // The server row is the record; `saved` mirrors it here so a form always
   // submits against the version it rendered (compare-and-set on the server).
@@ -237,6 +257,7 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
             <Unavailable feature="Connector credentials">Provider secrets never reach this browser. Account connection, aliasing and revocation are server-side domain commands against Composio.</Unavailable>
             <div className="mt-4"><Destination screen="integrations">Open connection catalog</Destination></div>
           </Panel>
+          <CapabilityPanel capabilities={capabilities} />
         </Section>
 
         <Section id="documents">
@@ -257,7 +278,7 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
             <dl className="grid gap-3 text-[13px]">
               <div><dt className="text-muted-foreground">Stored</dt><dd>Tasks, notes and checkpoints, captures, contacts, reviews, preferences and activity, in this browser&apos;s local storage.</dd></div>
               <div><dt className="text-muted-foreground">Sent anywhere</dt><dd>Nothing. No provider, model or analytics call is made from this preview.</dd></div>
-              <div><dt className="text-muted-foreground">Retention</dt><dd>Until you reset the sample workspace, or your browser clears site data.</dd></div>
+              <div><dt className="text-muted-foreground">Retention</dt><dd>Until you clear the browser preview, or your browser clears site data.</dd></div>
             </dl>
           </Panel>
         </Section>
@@ -270,12 +291,12 @@ export default function Settings({ serverPreferences }: { serverPreferences?: Lo
         </Section>
 
         <Section id="reset">
-          <Panel title="Reset browser preview" description="Replace local edits, notes, checkpoints, tasks and review decisions with the fictional sample workspace. No production or provider data is affected.">
+          <Panel title="Reset browser preview" description="Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected.">
             <Dialog open={resetOpen} onOpenChange={(open) => { setResetOpen(open); setConfirmation(""); }}>
-              <DialogTrigger asChild><Button variant="outline">Reset sample workspace</Button></DialogTrigger>
+              <DialogTrigger asChild><Button variant="outline">Clear preview data</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>Replace all preview changes?</DialogTitle>
-                <DialogDescription>This resets the shared browser workspace used by all three products. Your local edits and saved notes will be lost. Download any notes you need first.</DialogDescription>
+                <DialogDescription>This clears the shared browser workspace used by all three products. Your local edits and saved notes will be lost. Download any notes you need first.</DialogDescription>
                 <Field label="Type RESET to confirm"><Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off"/></Field>
                 <Button disabled={confirmation !== "RESET"} onClick={() => { resetPreview(); setResetOpen(false); setConfirmation(""); }}>Confirm reset</Button>
               </DialogContent>

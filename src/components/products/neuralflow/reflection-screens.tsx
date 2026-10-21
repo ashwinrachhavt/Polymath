@@ -39,7 +39,7 @@ export function BrainDumpScreen() {
     const capture = addCapture(source); if (!capture) return;
     const created = chosen.flatMap((draft) => { const record = addTask(draft.title, { status: "INBOX", description: draft.description, priority: draft.priority, estimate: draft.estimate, projectId: draft.projectId || undefined, tags: ["Brain dump"] }); return record ? [record] : []; });
     const provenance = addArtifact("Brain dump: accepted local plan", "note", `Original capture: ${capture.id}\n\n${source}\n\nPrepared by a deterministic newline splitter, not AI. Selected tasks were edited and accepted by the owner into Inbox.`);
-    if (provenance) updateArtifact(provenance.id, { links: created.map((task) => task.id), tags: ["Planning", "Original capture"] });
+    if (provenance) { const saved = updateArtifact(provenance.id, { links: created.map((task) => task.id), tags: ["Planning", "Original capture"] }); if (!saved.ok || !saved.persisted) return; }
     updateCapture(capture.id, { status: "TASK" });
     setDrafts((drafts || []).filter((draft) => !draft.selected)); setError(""); notify(`${created.length} canonical tasks captured locally. Original text retained in Inbox and a linked planning note. No AI ran.`);
   }
@@ -81,12 +81,13 @@ export function ReportsScreen() {
   const minutes = focusRecords(records).reduce((sum, record) => sum + record.minutes, 0);
   const streak = focusStreak(state.rewards, localDate());
   const blocks = state.events.filter((event) => event.provider === "local" && event.date >= start && event.date <= end && (project === "all" || tasks.some((task) => task.id === event.taskId)));
-  const summary = `Local reflection snapshot\nWindow: ${start} to ${end}\nScope: ${project === "all" ? "All projects" : state.projects.find((item) => item.id === project)?.title || "Project"}\n\nRecorded completed focus intervals: ${records.length}\nRecorded focus minutes: ${minutes}\nPlanned local blocks: ${blocks.length}\n\nCurrent task states (not completions during this window):\nActive: ${tasks.filter((task) => task.status !== "DONE").length}\nDone: ${tasks.filter((task) => task.status === "DONE").length}\nWaiting: ${tasks.filter((task) => task.status === "WAITING").length}\n\nOwner reflection\n${reflection || "Not entered."}\n\nFictional/browser-local preview data only. Task completion timestamps and production sessions are not available. No AI analysis ran.`;
+  const summary = `Local reflection snapshot\nWindow: ${start} to ${end}\nScope: ${project === "all" ? "All projects" : state.projects.find((item) => item.id === project)?.title || "Project"}\n\nRecorded completed focus intervals: ${records.length}\nRecorded focus minutes: ${minutes}\nPlanned local blocks: ${blocks.length}\n\nCurrent task states (not completions during this window):\nActive: ${tasks.filter((task) => task.status !== "DONE").length}\nDone: ${tasks.filter((task) => task.status === "DONE").length}\nWaiting: ${tasks.filter((task) => task.status === "WAITING").length}\n\nOwner reflection\n${reflection || "Not entered."}\n\nBrowser-local preview data only. Task completion timestamps and production sessions are not available. No AI analysis ran.`;
   function changePeriod(days: number) { setStart(shiftDate(start, days)); setEnd(shiftDate(end, days)); }
   function saveSnapshot() {
     if (!validDate(start) || !validDate(end) || start > end) { setError("Choose valid dates with the end on or after the start."); return; }
     const note = addArtifact(`Work reflection: ${start} to ${end}`, "note", summary);
-    if (note) updateArtifact(note.id, { tags: ["Weekly review", "Local snapshot"], links: project === "all" ? [] : [project] });
+    if (!note) return;
+    const saved = updateArtifact(note.id, { tags: ["Weekly review", "Local snapshot"], links: project === "all" ? [] : [project] }); if (!saved.ok || !saved.persisted) return;
     notify("Report snapshot saved as a canonical local note. No AI analysis ran."); setError("");
   }
   function exportSnapshot() {

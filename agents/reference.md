@@ -16,7 +16,7 @@ Read the relevant section instead of grepping the repo or reading `package.json`
 | `make search-up` | Starts SearXNG + Firecrawl | First run generates a local SearXNG secret. Loopback-bound. |
 | `make search-down` | Removes the search stack | |
 | `make search-logs` | Tails search stack logs | |
-| `make queue-up` | Starts the outbox worker | Uploads and crawls queue work; nothing drains it without this. Logs to `.run/outbox-worker.log`. |
+| `make queue-up` | Starts the outbox worker | In local development nothing drains the queue without this; a deployment also has the daily `vercel.json` cron, which is far too slow to develop against. Logs to `.run/outbox-worker.log`. |
 | `make queue-down` | Stops the outbox worker | |
 | `make queue-logs` | Tails the outbox worker log | |
 | `pnpm db:migrate` | Applies migrations | |
@@ -44,14 +44,24 @@ commit a real value.
 |---|---|---|
 | `DATABASE_URL` | App Postgres | App cannot start |
 | `TEST_DATABASE_URL` | Integration suite database | Integration tests skip. **Never** point at the app database. |
-| `DOCLING_SERVE_URL` | Local Docling extraction provider | Falls through to LlamaParse |
+| `DOCLING_SERVE_URL` | Local Docling extraction provider | Falls through to Reducto |
+| `REDUCTO_API_KEY` | Hosted Reducto extraction provider | Falls through to LlamaParse |
 | `LLAMAPARSE_API_KEY` | Hosted extraction provider | Falls through to PDF text layer |
 | `SEARCH_PROVIDER` | `searxng`, `brave`, `tavily`, `exa`, `duckduckgo` | Resolution order applies |
 | `SEARXNG_URL` | Private metasearch endpoint | Falls back to keyed providers |
 | `FIRECRAWL_API_URL` | Firecrawl endpoint | Crawl unavailable |
 | `FIRECRAWL_API_KEY` | Firecrawl auth | |
+| `OUTBOX_DISPATCH_SECRET` | Bearer for `/api/internal/cron` and `/api/internal/outbox` | Both routes answer 404 |
+| `CRON_SECRET` | Bearer Vercel Cron sends on GET | Scheduled ticks answer 404; run the drain by hand or locally |
 | Clerk keys | Identity | App cannot authenticate |
 | Object storage keys | File blobs | Uploads unavailable |
+
+`OUTBOX_DISPATCH_SECRET` and `CRON_SECRET` are both accepted by
+`/api/internal/cron`: the first is for an operator or local script, the second is
+what Vercel Cron signs with. Set both in a deployment — `vercel.json` schedules
+the GET once a day. With neither set the route answers 404 (it does not advertise
+itself); with one set but the wrong bearer it answers 401. Either way the tick
+drains nothing, which is indistinguishable from a quiet queue.
 
 Provider selection is **in code**, in `src/integrations/*/provider.ts`. Reading
 the env var alone does not tell you which adapter is active; read the resolver.
@@ -93,6 +103,26 @@ before debugging the CSS.
 example, from a directly-invoked handler in a test. The pattern in
 `src/app/api/v1/files/route.ts` is to catch and fall back to fire-and-forget.
 Do not assume `after()` is always available.
+
+### `connection()` must sit inside a Suspense boundary
+
+Under `cacheComponents`, calling `await connection()` at the top of an async page
+default does not satisfy the prerender check. The call has to live in a
+component that is itself inside a `<Suspense>` boundary, which is why every
+working route (briefing, inbox, spending) extracts the data-reading body into a
+child and wraps it. The symptom is the uncached-data error at navigation, not a
+type error, so `tsc` never catches it and a page can look correct in `next dev`
+while failing the build. Two settings routes were broken this way and fixed by
+extracting the body.
+
+### A passing build is evidence about the tree, not the commit
+
+`pnpm build` reads the working tree. Whenever anything is uncommitted, "the
+build passed" says nothing about the commit you are about to push: it measured
+whatever edits happen to be on disk. Commit first, then build, or state plainly
+that the build covered a dirty tree. The same distinction applies to `tsc` and
+to grepping rendered HTML for a console-only string, which is not evidence of
+behaviour at all.
 
 ### Migration numbering is not sequential
 

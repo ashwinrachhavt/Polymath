@@ -7,11 +7,17 @@ for (const width of [390, 1440, 1920]) {
   test(`shared page edges and controls align at ${width}px`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width, height: 960 });
-    for (const path of ["/settings", "/reviews", "/command-center/relationships", "/alfred/knowledge", "/alfred/dossiers", "/more"]) {
+    // The bare /command-center/relationships index redirects to People by
+    // design, so measure the canonical screen it lands on rather than a
+    // route that never paints.
+    for (const path of ["/settings", "/reviews", "/command-center/relationships/people", "/alfred/knowledge", "/alfred/dossiers", "/more"]) {
       await page.goto(path);
       await waitSettled(page);
       // Scope to the shell's content main: route-level loading.tsx renders a
-      // second skeleton main, and streamed pages swap it in late.
+      // second skeleton main, and streamed pages swap it in late. Suspense
+      // boundaries deliver the real tree after that swap, so wait for the
+      // heading to land rather than sampling whichever shell is on screen.
+      await expect(page.locator("#content h1").first(), path).toBeVisible();
       const screen = page.locator("#content .suite-screen").first();
       const canonical = page.locator("#content .page-header").first();
       if (await screen.count()) {

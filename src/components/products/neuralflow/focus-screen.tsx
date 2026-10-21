@@ -63,7 +63,7 @@ export function FocusScreen({ initialTask }: { initialTask?: string }) {
   }
   function reset() {
     const current = getSnapshot().focus; if (!current) return;
-    const time = Date.now(); updateFocus({ ...current, startedAt: time, remaining: current.duration * 60, status: "paused" }); setNow(time); setResetOpen(false); notify("Session reset and paused. No reward was granted.");
+    const time = Date.now(); const paused = updateFocus({ ...current, startedAt: time, remaining: current.duration * 60, status: "paused" }); if (!paused.ok || !paused.persisted) return; setNow(time); setResetOpen(false); notify("Session reset and paused. No reward was granted.");
   }
   function recordOutcome(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,7 +78,7 @@ export function FocusScreen({ initialTask }: { initialTask?: string }) {
         const note = addArtifact(`Focus reflection: ${task?.title || "Task"}`, "note", `${completed ? "Completed focus interval" : "Ended early"}\n\nOutcome\n${outcome || "No reflection entered."}\n\nNext step\n${next || "Not recorded."}`);
         if (note) updateArtifact(note.id, { links: [current.taskId], tags: ["Focus reflection", sessionId] });
       }
-      if (data.get("done")) updateTask(current.taskId, { status: "DONE" });
+      if (data.get("done")) { const done = updateTask(current.taskId, { status: "DONE" }); if (!done.ok || !done.persisted) return; }
       // The stone follows the ledger: it shows only when this save added the entry.
       const hadReward = getSnapshot().rewards.some((reward) => reward.sessionId === sessionId);
       if (completed) awardReward({ title: "Clarity stone", earnedAt: new Date().toISOString(), sessionId });
@@ -86,7 +86,7 @@ export function FocusScreen({ initialTask }: { initialTask?: string }) {
       const stoneEarned = completed && !hadReward && snapshot.rewards.some((reward) => reward.sessionId === sessionId);
       setFinished({ sessionId, taskId: current.taskId, completed, taskDone: !!data.get("done"), stoneEarned, animate: stoneEarned && snapshot.preferences.celebrations && !snapshot.preferences.reducedMotion });
     }
-    updateFocus(null); setOutcomeOpen(false);
+    const ended = updateFocus(null); if (!ended.ok || !ended.persisted) return; setOutcomeOpen(false);
     notify(current.taskId === "neuralflow-break" ? "Break ended locally. Breaks do not earn focus stones." : completed ? "Focus interval recorded locally. One clarity stone was added for this session." : "Early outcome recorded locally. No completion reward was granted.");
   }
 

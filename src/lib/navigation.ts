@@ -6,6 +6,7 @@ import {
   Bot,
   Briefcase,
   CalendarClock,
+  GraduationCap,
   Inbox,
   LayoutList,
   Library,
@@ -82,6 +83,13 @@ export const destinations: Destination[] = [
     group: "neuralflow",
   },
   {
+    href: "/alfred/sources",
+    label: "Sources",
+    purpose: "Find and bring in the material you will study.",
+    icon: Inbox,
+    group: "alfred",
+  },
+  {
     href: "/alfred/knowledge",
     label: "Library",
     purpose: "Write, retrieve, and connect.",
@@ -100,6 +108,13 @@ export const destinations: Destination[] = [
     label: "Dossiers",
     purpose: "Research with a bounded set of sources.",
     icon: NotebookPen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/learning",
+    label: "Learning",
+    purpose: "Review what you are trying to retain.",
+    icon: GraduationCap,
     group: "alfred",
   },
   {

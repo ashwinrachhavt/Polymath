@@ -1,6 +1,7 @@
 "use server";
 
 import { cancelCorrespondence, draftCorrespondence, requestSendApproval } from "@/domains/crm/correspondence";
+import { resolveUnknownSend } from "@/domains/crm/send-executor";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ImportBusyError, ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
@@ -258,6 +259,47 @@ export async function requestSendApprovalAction(input: { correspondenceId: strin
   requireRole(auth, "member");
   try {
     await requestSendApproval(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/*
+ * ASH-191: close a send whose outcome the provider never confirmed. Without
+ * this the draft stayed blocked forever and the only exit was editing the
+ * database by hand. The caller reports what the provider actually holds — the
+ * message, or nothing — and the command records that as evidence.
+ */
+export async function resolveUnknownSendAction(input: {
+  attemptId: string;
+  outcome: "sent" | "absent";
+  providerObjectId?: string;
+}): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const parsed = z
+    .object({
+      attemptId: z.uuid(),
+      outcome: z.enum(["sent", "absent"]),
+      providerObjectId: z.string().trim().min(1).optional(),
+    })
+    .refine((value) => value.outcome !== "sent" || Boolean(value.providerObjectId), {
+      message: "Give the provider's message id when the message exists.",
+      path: ["providerObjectId"],
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details and try again." };
+  try {
+    await resolveUnknownSend(auth, {
+      attemptId: parsed.data.attemptId,
+      observation:
+        parsed.data.outcome === "sent"
+          ? { observedState: "sent", providerObjectId: parsed.data.providerObjectId! }
+          : { observedState: "absent" },
+      source: "human_check",
+    });
   } catch (error) {
     return fail(error);
   }

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { addConversationToKnowledgeAction } from "../actions";
 import { getConversation } from "@/domains/conversations/queries";
+import { Button } from "@/components/ui/button";
 import { getAuthContext } from "@/lib/auth";
 
 export const metadata = { title: "Conversation · Polymath" };
@@ -21,6 +23,12 @@ async function Timeline({ threadId }: { threadId: string }) {
     <Screen
       title={conversation.thread.title || "Untitled conversation"}
       description={`With ${conversation.thread.profileName} · started ${conversation.thread.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z`}
+      actions={conversation.entries.length ? (
+        <form action={addConversationToKnowledgeAction}>
+          <input type="hidden" name="threadId" value={threadId} />
+          <Button type="submit" variant="outline" size="sm">Add to knowledge</Button>
+        </form>
+      ) : undefined}
     >
       <p className="text-[13px]">
         <Link href="/command-center/conversations" className="text-muted-foreground underline-offset-4 hover:underline">

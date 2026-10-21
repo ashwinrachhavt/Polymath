@@ -38,7 +38,7 @@ src/components/   presentation only; no data access
 src/domains/      17 domains, each owning its tables
 src/integrations/ embeddings, extraction, firecrawl, notion, object-store,
                   search, wiki, zettels
-src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, crons
+src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, capability-config
 src/db/           migrations, schema root
 src/proxy.ts      request proxy
 extensions/chrome/  browser companion
@@ -198,7 +198,7 @@ Adapters, one folder each, no UI imports.
 
 | Adapter | Path | Selected by |
 |---|---|---|
-| Document extraction | `src/integrations/extraction/` | `DOCLING_SERVE_URL` → Docling; else `LLAMAPARSE_API_KEY` → LlamaParse; else PDF text layer |
+| Document extraction | `src/integrations/extraction/` | `DOCLING_SERVE_URL` → Docling; else `REDUCTO_API_KEY` → Reducto; else `LLAMAPARSE_API_KEY` → LlamaParse; else PDF text layer |
 | Web search | `src/integrations/search/` | `SEARCH_PROVIDER` or `SEARXNG_URL`; also brave, tavily, exa, duckduckgo |
 | Crawl/scrape | `src/integrations/firecrawl/` | `FIRECRAWL_API_URL` + key |
 | Embeddings | `src/integrations/embeddings/` | — |

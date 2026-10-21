@@ -45,7 +45,11 @@ const localDevWithStubs: AuthFn<Request> = async (request) => {
 
 // The authenticators, in order. `localDevWithStubs` is dev-only and never
 // mounted in production; the bridge token path is the only production caller.
-const authenticators: AuthFn<Request>[] = [bridgeAuth];
+//
+// Exported because the acceptance test needs to call one directly, and reading
+// it back out of the channel object depends on a shape eve owns. Testing the
+// array we build is testing the thing that decides who gets in.
+export const authenticators: AuthFn<Request>[] = [bridgeAuth];
 if (process.env.NODE_ENV !== "production") authenticators.push(localDevWithStubs);
 
 export default eveChannel({ auth: authenticators });

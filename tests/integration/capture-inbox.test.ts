@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
+import { artifactLinks, artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -86,6 +87,49 @@ suite("capture inbox", () => {
     expect(await auditCount(auth, capture.id)).toBe(2);
   });
 
+  it("converts to a notebook note in one transaction, resolves wiki links, and refuses a second conversion", async () => {
+    const auth = await seed("capture-note");
+    // An existing note to link to: the capture body names it in [[...]].
+    const { createNote } = await import("@/domains/knowledge/notes");
+    const target = await createNote(auth, { title: "Atomic notes", content: { format: "markdown", text: "One idea per note." }, plainText: "One idea per note.", idempotencyKey: crypto.randomUUID() });
+
+    const capture = await commands.createCapture(auth, { text: "Zettelkasten is a web of [[Atomic notes]] - links are the thinking" });
+    const { note, capture: converted } = await commands.convertCaptureToNote(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
+    expect(converted.processingState).toBe("converted");
+    expect(converted.convertedType).toBe("note");
+    expect(converted.convertedId).toBe(note.id);
+    expect(converted.text).toBe(capture.text);
+
+    // The note landed as a normal notebook artifact: kind note, version 1 is
+    // the capture text, title from the first line.
+    const [artifact] = await db.select().from(artifacts).where(and(eq(artifacts.id, note.id), eq(artifacts.workspaceId, auth.workspaceId)));
+    expect(artifact.kind).toBe("note");
+    expect(artifact.status).not.toBe("inbox");
+    expect(artifact.title).toContain("Zettelkasten");
+    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    expect(version.plainText).toBe(capture.text);
+
+    // The wiki link resolved in the same commit.
+    const links = await db.select().from(artifactLinks).where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, note.id)));
+    expect(links.map((l) => l.targetId)).toContain(target.id);
+
+    // Converting again is a conflict, never a second note.
+    await expect(
+      commands.convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: converted.version }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    const stillOne = await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")));
+    expect(stillOne.filter((a) => a.title.includes("Zettelkasten")).length).toBe(1);
+
+    // A wrong version on an open capture is the stale-write path.
+    const fresh = await commands.createCapture(auth, { text: "Another open capture" });
+    await expect(
+      commands.convertCaptureToNote(auth, { captureId: fresh.id, expectedVersion: fresh.version + 9 }),
+    ).rejects.toMatchObject({ code: "stale_write" });
+  });
+
   it("archives and restores, version-checked, and never un-converts", async () => {
     const auth = await seed("capture-archive");
     const capture = await commands.createCapture(auth, { text: "Maybe read this later" });
@@ -116,5 +160,81 @@ suite("capture inbox", () => {
     await expect(
       commands.setCaptureState(auth, { captureId: after.id, expectedVersion: after.version, state: "discarded" }),
     ).rejects.toMatchObject({ code: "stale_write" });
+  });
+
+  it("edits the working text while rawPayload keeps the original", async () => {
+    const auth = await seed("capture-edit");
+    const capture = await commands.createCapture(auth, { text: "Call the acccountant about Q3" });
+    const raw = JSON.stringify(capture.rawPayload);
+
+    const edited = await commands.updateCaptureText(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      text: "  Call the accountant about Q4  ",
+    });
+    expect(edited.text).toBe("Call the accountant about Q4");
+    expect(edited.version).toBe(capture.version + 1);
+    // The immutable original is untouched by the edit.
+    expect(JSON.stringify(edited.rawPayload)).toBe(raw);
+
+    const [audit] = (await db.select().from(auditEvents).where(eq(auditEvents.subjectId, capture.id))).filter(
+      (row) => row.action === "capture.edited",
+    );
+    expect(audit).toBeTruthy();
+    expect(audit.summary).not.toContain("Q4");
+
+    // The same key replays the first result instead of a second write.
+    const key = crypto.randomUUID();
+    const a = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
+    const b = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
+    expect(b.version).toBe(a.version);
+    expect((await queries.getCapture(auth, capture.id))?.version).toBe(a.version);
+  });
+
+  it("refuses to edit a converted, emptied or stale capture", async () => {
+    const auth = await seed("capture-edit-refuse");
+    const capture = await commands.createCapture(auth, { text: "Turn me into work" });
+    const converted = await commands.convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: converted.capture.version, text: "Rewritten" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    const open = await commands.createCapture(auth, { text: "Still open" });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: open.id, expectedVersion: open.version, text: "   " }),
+    ).rejects.toMatchObject({ code: "conflict", message: "A capture cannot be emptied. Archive it instead." });
+    await expect(
+      commands.updateCaptureText(auth, { captureId: open.id, expectedVersion: open.version + 9, text: "Newer" }),
+    ).rejects.toMatchObject({ code: "stale_write" });
+    expect((await queries.getCapture(auth, open.id))?.text).toBe("Still open");
+  });
+
+  // Two-pane inbox reads (2026-10-20): the detail pane and the tab counts.
+  it("getCapture never returns another workspace's capture", async () => {
+    const auth = await seed("get-capture");
+    const capture = await commands.createCapture(auth, { text: "Mine only" });
+    const other = await seedWorkspace(db, `get-capture-other-${Date.now()}`);
+    const otherAuth = ownerAuth(other.userId, other.workspaceId);
+    expect(await queries.getCapture(auth, capture.id)).toMatchObject({ id: capture.id });
+    expect(await queries.getCapture(otherAuth, capture.id)).toBeNull();
+  });
+
+  it("countInboxTabs matches the state set searchCaptures uses", async () => {
+    const auth = await seed("tab-counts");
+    const open = await commands.createCapture(auth, { text: "Open one" });
+    await commands.createCapture(auth, { text: "Open two" });
+    const converted = await commands.createCapture(auth, { text: "Going to work" });
+    await commands.convertCaptureToTask(auth, { captureId: converted.id, expectedVersion: converted.version });
+    const discardable = await commands.createCapture(auth, { text: "Going away" });
+    await commands.setCaptureState(auth, { captureId: discardable.id, expectedVersion: discardable.version, state: "discarded" });
+    void open;
+
+    const tabs = await queries.countInboxTabs(auth);
+    expect(tabs.unprocessed).toBe(2);
+    expect(tabs.converted).toBe(1);
+    expect(tabs.discarded).toBe(1);
+    expect(tabs.all).toBe(4);
+    expect((await queries.searchCaptures(auth, { filter: "converted", limit: 10, offset: 0 })).total).toBe(tabs.converted);
+    expect((await queries.searchCaptures(auth, { filter: "all", limit: 10, offset: 0 })).total).toBe(tabs.all);
   });
 });
