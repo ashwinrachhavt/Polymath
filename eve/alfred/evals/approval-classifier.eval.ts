@@ -3,6 +3,11 @@ import { defineEval } from "eve/evals";
 import { equals, satisfies } from "eve/evals/expect";
 import { AXIOM_APPROVAL_POLICY_TEXT, approvalForRisk, CAPABILITY_RISK, type PolymathRiskClass } from "./axiom-policy";
 import { APPROVAL_QUESTION, classifierAgrees, expectedOutcome, fixtureDecider, type ClassifierOutcome } from "./harness";
+import { assertEvalEnvironment } from "./stubs";
+
+// Unconditional, like routing: the eval must not start in a shell that could
+// make a fixture-only path reach a provider one edit later.
+assertEvalEnvironment();
 
 /*
  * The HITL approval classifier, driven by Polymath's policy text.
