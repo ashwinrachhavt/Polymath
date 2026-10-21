@@ -6,7 +6,9 @@
  * listing but most return 410 end-of-life or 404 not-found; LLM7 lists 70 and
  * returns "Insufficient balance" on every call. Shipping an entry that does not
  * answer is worse than omitting it — the owner picks it, the turn fails, and the
- * failure looks like a bug in Polymath rather than in the account.
+ * failure looks like a bug in Polymath rather than in the account. Provider
+ * account state (balance, quota) stays operator data: it never renders on a
+ * product page.
  *
  * The `probe` field records how each entry was verified, so a later reader can
  * tell a live model from one carried forward on a listing alone.
@@ -36,14 +38,6 @@ export type ModelOption = {
  * Providers whose every model failed a live probe. Listed so the UI can say why
  * they are absent rather than pretending the workspace never added them.
  */
-export const UNUSABLE_PROVIDERS: ReadonlyArray<{ id: string; label: string; reason: string }> = [
-  {
-    id: "llm7",
-    label: "LLM7",
-    reason: "The key is set but every call returns “Insufficient balance”. Top up the account to use it.",
-  },
-];
-
 export const MODEL_CATALOG: readonly ModelOption[] = [
   {
     id: "gemini-3.5-flash-lite",

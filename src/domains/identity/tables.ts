@@ -29,6 +29,8 @@ export const workspaces = pgTable("workspaces", {
   slug: text("slug").notNull().unique(),
   /** One owner in v1; the column exists so tenancy is never retrofitted. */
   isPersonal: boolean("is_personal").notNull().default(true),
+  /** Set when the workspace's onboarding conversation completes. */
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdBy: uuid("created_by"),
   updatedBy: uuid("updated_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

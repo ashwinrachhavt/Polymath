@@ -379,6 +379,13 @@
       "tag": "0227_transaction_category_rules",
       "when": 1792480560000,
       "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "tag": "0228_onboarding_supervisor_brief",
+      "when": 1792621200000,
+      "breakpoints": true
     }
   ]
 }

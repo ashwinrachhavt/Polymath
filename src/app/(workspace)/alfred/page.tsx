@@ -1,10 +1,11 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { Badge } from "@/components/ui/badge";
+import { redirect } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
+import { isWorkspaceOnboarded } from "@/domains/agents/onboarding";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { listSkills } from "@/domains/skills/queries";
 import { timeAgo, timeAgoShort } from "@/lib/time";
@@ -13,9 +14,9 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
 import { HistoryMenu } from "./history-menu";
 import { ModelPicker } from "./model-picker";
-import type { PickableSkill } from "./skills/skill-picker";
+import type { PickableSkill } from "./skills/slash-skill-menu";
 import { getProfileModelPolicy } from "@/domains/agents/queries";
-import { availableModels, resolveModelId, UNUSABLE_PROVIDERS } from "@/domains/agents/models";
+import { availableModels, resolveModelId } from "@/domains/agents/models";
 
 export const metadata = { title: "Assistant · Polymath" };
 
@@ -29,8 +30,6 @@ export const metadata = { title: "Assistant · Polymath" };
  * empty "Recent" block would be chrome promising history the person has not
  * written yet; the composer is already the invitation.
  */
-
-const ATTENTION_STATES = new Set(["waiting_input", "waiting_approval"]);
 
 export async function AlfredSurface() {
   // Per-request data: auth resolution upserts identity and stamps now().
@@ -49,6 +48,12 @@ export async function AlfredSurface() {
   }
 
   const auth = await getAuthContext();
+  // First run goes to the interview: the workspace's supervisor agent is the
+  // person's own representation, shaped by what onboarding learns. A workspace
+  // that skipped it meets a placeholder agent, so the gate sends it there once.
+  if (!(await isWorkspaceOnboarded(auth.workspaceId))) {
+    redirect("/onboarding");
+  }
   // One query feeds both views: the menu is the history, so it needs more than
   // the five rows shown under the composer. Fifty is a bounded read, not the
   // whole table, so the page stays cheap as history grows.
@@ -89,11 +94,7 @@ export async function AlfredSurface() {
           </div>
         ) : null}
         <NewConversation skills={skills} />
-        <ModelPicker
-          models={models}
-          current={currentModel}
-          unavailable={UNUSABLE_PROVIDERS}
-        />
+        <ModelPicker models={models} current={currentModel} />
         {unavailable ? (
           <p role="status" className="text-muted-foreground text-[12px]">
             {unavailable}
@@ -103,7 +104,6 @@ export async function AlfredSurface() {
 
       {recent.length > 0 ? (
         <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          <h2 className="text-[13px] font-medium">Recent</h2>
           <ul className="divide-border flex flex-col divide-y border-t">
             {recent.map((run) => (
               <li key={run.id}>
@@ -115,11 +115,6 @@ export async function AlfredSurface() {
                   <span className="text-muted-foreground shrink-0 text-[11px]">
                     {timeAgo(run.createdAt)}
                   </span>
-                  {ATTENTION_STATES.has(run.state) ? (
-                    <Badge variant="secondary" className="font-normal">
-                      Needs your reply
-                    </Badge>
-                  ) : null}
                 </Link>
               </li>
             ))}

@@ -203,33 +203,70 @@ export function ChatSurface({
           </div>
         )}
 
-        {chat.tools.length > 0 && (
-          <ul className="mt-4 space-y-1" aria-label="Tool activity">
-            {chat.tools.map((tool) => {
-              const Glyph = toolGlyph(tool.label);
-              return (
-                <li key={tool.callId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <Glyph aria-hidden className="size-3.5 shrink-0" />
-                  <span>{tool.label}</span>
-                  <span
-                    className={
-                      tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""
-                    }
-                  >
-                    {tool.status === "running" ? "running" : tool.status === "ok" ? (tool.detail ?? "done") : (tool.detail ?? "failed")}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        {(() => {
+          /*
+           * The activity line is evidence, not telemetry: a reader should learn
+           * what the assistant looked at, in the product's vocabulary, without
+           * seeing tool plumbing. Internal lookups with nothing to say (a
+           * registry search, a self-check) are dropped entirely; the rest get
+           * a human label and a count, and errors stay visible in red.
+           */
+          const INTERNAL_TOOLS = /^(eve__|search_models|search_registry|notebook_open)/;
+          const TOOL_LABELS: Array<[RegExp, string]> = [
+            [/tasks_recent/i, "Checked completed tasks"],
+            [/tasks_read|tasks\./i, "Checked open tasks"],
+            [/documents_search|documents\./i, "Searched your documents"],
+            [/wiki_read|wiki\./i, "Checked the wiki"],
+            [/wiki_ingest/i, "Updated the wiki"],
+            [/wiki_lint/i, "Wiki health check"],
+            [/gmail/i, "Checked Gmail"],
+            [/calendar/i, "Checked calendar"],
+            [/web_search/i, "Searched the web"],
+            [/web_fetch/i, "Read a web page"],
+            [/learning/i, "Checked learning deck"],
+          ];
+          const visible = chat.tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
+          if (visible.length === 0) return null;
+          const labelOf = (raw: string) =>
+            TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
+          return (
+            <ul className="mt-4 space-y-1" aria-label="Tool activity">
+              {visible.map((tool) => {
+                const Glyph = toolGlyph(tool.label);
+                const count = /^\d+$/.test(tool.detail ?? "");
+                return (
+                  <li key={tool.callId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Glyph aria-hidden className="size-3.5 shrink-0" />
+                    <span>{labelOf(tool.label)}</span>
+                    <span
+                      className={
+                        tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""
+                      }
+                    >
+                      {tool.status === "running"
+                        ? "…"
+                        : tool.status === "ok"
+                          ? count
+                            ? `${tool.detail} matches`
+                            : ""
+                          : (tool.detail ?? "failed")}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          );
+        })()}
 
         {chat.citations.length > 0 && (
           <ul className="mt-4 space-y-2 border-t border-border pt-3" aria-label="Citations">
             {chat.citations.map((citation) => (
               <li key={`${citation.documentId}:${citation.span.start}`} className="text-[12px]">
+                {/* The passage is evidence for the answer, so it leads; the
+                    title is the pointer. Chunks arrive mid-sentence, so the
+                    line is trimmed to a readable start before clamping. */}
+                <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
                 <p className="font-medium">{citation.title}</p>
-                <p className="line-clamp-2 text-muted-foreground">{citation.text}</p>
               </li>
             ))}
           </ul>
@@ -301,4 +338,18 @@ export function ChatCancel({ runId }: { runId: string }) {
       Stop
     </Button>
   );
+}
+
+/**
+ * A search chunk starts wherever the span started, often mid-word. Trim to the
+ * first full word so a citation opens with prose instead of a fragment like
+ * "ion patterns of SMBs".
+ */
+function trimPassage(text: string): string {
+  const trimmed = text.trimStart();
+  // A fragment begins lowercase or mid-token; drop the partial first word.
+  const firstBreak = trimmed.search(/[\s,.;:]/);
+  const firstWord = firstBreak === -1 ? trimmed : trimmed.slice(0, firstBreak);
+  const startsClean = /^[A-Z"“('[]/.test(firstWord) && firstWord.length > 2;
+  return startsClean ? trimmed : firstBreak === -1 ? trimmed : trimmed.slice(firstBreak + 1).trimStart();
 }

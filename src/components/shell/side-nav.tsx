@@ -81,7 +81,7 @@ export function SideNav() {
     <nav
       aria-label="Workspace"
       className={cn(
-        "border-sidebar-border bg-sidebar sticky top-0 hidden h-dvh shrink-0 border-r md:block",
+        "group/nav border-sidebar-border bg-sidebar sticky top-0 hidden h-dvh shrink-0 border-r md:block",
         collapsed ? "w-[52px]" : "w-60",
       )}
     >
@@ -116,6 +116,13 @@ export function SideNav() {
            * aria-expanded reports the rail, the label reports the action: a
            * name that restates the current state ("Collapsed") tells a screen
            * reader where it is, not what pressing the button does.
+           *
+           * Invisible until hover: the collapse control is chrome, not content,
+           * so it stays out of the rail's reading order until the pointer is
+           * over the rail. Keyboard focus and the expanded state keep it
+           * visible (focus-visible for keyboard, aria-expanded for the state);
+           * on touch there is no hover, so the expanded rail keeps its opacity
+           * and the collapsed rail shows the expand arrow outright.
            */}
           <button
             type="button"
@@ -126,6 +133,7 @@ export function SideNav() {
             className={cn(
               "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground flex shrink-0 items-center justify-center rounded-md transition-colors outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
+              "opacity-0 group-hover/nav:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
               collapsed ? "size-6" : "size-8",
             )}
           >

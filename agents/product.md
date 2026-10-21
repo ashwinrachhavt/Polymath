@@ -75,8 +75,13 @@ inside the pillars, not a fourth structure.
   a queue that drains — then phases 1 to 4 in parallel.
 - **Next.js 16 modular monolith on Neon Postgres.** Not FastAPI, not SQLite, not
   microservices.
-- **Alfred is one first-party agent** plus a fixed sub-agent roster. Not a
-  persona zoo.
+- **One supervisor agent per workspace, personified by the operator**
+  (revised 2026-10-21, supersedes "Alfred is one first-party agent plus a fixed
+  sub-agent roster"). The workspace's supervisor is the user's own
+  representation — named, shaped, and aimed by them, learned at onboarding from
+  who they are and what they want done — not a fixed "Chief of staff" persona
+  shipped from the factory. The roster of sub-agents it may delegate to stays
+  fixed; still not a persona zoo.
 - **A conversation is home.** The root lands on the Assistant; the first move is
   to say what you want, not to browse. Today is one click away and still where
   the day is decided.

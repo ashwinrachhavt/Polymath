@@ -121,6 +121,15 @@ If a name needs explaining in two sentences, it is the wrong name.
   of its delegator's. This is a test, not a convention.
 - Tool availability is bounded by profile, feature, account, policy, and run; the
   full catalog is never handed to a model.
+- **Progressive disclosure is the default for anything that enters a context.**
+  Skills, tools, and documents load on demand — a name and one line until they
+  are needed, full content only when invoked. Design every agent surface against
+  context bloat: the failure mode is not running out of window, it is a model
+  attending to hundreds of tokens of unread inventory on every turn. Slash-menu
+  over always-visible pickers; load-at-invocation over preload; the eval suite
+  checks that a run without a skill carries no skill text. The same discipline
+  applies to the multi-agent system as a whole: scope the roster, scope the
+  tool catalog, scope what a sub-agent is told.
 - Runs are durable. Retries create new runs; terminal states are immutable; tool
   results are append-only. Reload reconstructs the timeline from events.
 - Persist visible summaries, decisions, evidence, redacted tool arguments, and

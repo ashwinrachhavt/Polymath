@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type HistoryMenuRow = { id: string; objective: string; time: string };
@@ -60,13 +60,13 @@ export function HistoryMenu({ groups }: { groups: HistoryMenuGroup[] }) {
         ref={trigger}
         type="button"
         variant="outline"
-        size="default"
+        size="icon"
+        aria-label="New chat"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
       >
-        New chat
-        <ChevronDown aria-hidden className="size-3.5" />
+        <Plus aria-hidden />
       </Button>
 
       {open ? (
