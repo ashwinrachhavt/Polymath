@@ -29,7 +29,23 @@ export const GET = authedHandler(async (auth, _request, ctx: { params: Promise<{
     .limit(1);
   if (!row) return problemResponse(404, "not_found", "This document has no stored file — it may be a captured web page.");
 
-  const bytes = await readBlob(row.storageKey);
+  // A read failure is a storage fault, not a missing document. Left unhandled
+  // it becomes a 500 the <iframe> renders as an empty white pane, which looks
+  // identical to "this file has no pages" — so it is answered with a problem
+  // the viewer can surface as text.
+  let bytes: Uint8Array;
+  try {
+    bytes = await readBlob(row.storageKey);
+  } catch (error) {
+    const missing = (error as NodeJS.ErrnoException)?.code === "ENOENT";
+    return problemResponse(
+      missing ? 404 : 500,
+      missing ? "file_unavailable" : "file_read_failed",
+      missing
+        ? "The stored file for this document is not reachable from this server."
+        : "The stored file for this document could not be read.",
+    );
+  }
   return new Response(Buffer.from(bytes), {
     headers: {
       "Content-Type": row.mimeType ?? "application/octet-stream",

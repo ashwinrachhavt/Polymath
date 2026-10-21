@@ -47,7 +47,15 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
   await connection();
   // Same dev fallback as getAnyAuthContext below: without Clerk keys the
   // proxy is a no-op and auth() throws. See the longer note there.
-  if ((!clerkConfigured || devAuthBypass) && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+  const devFallback = !clerkConfigured || devAuthBypass;
+  if (devFallback && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+    // A real session beats the fixed dev owner. Without this the bypass
+    // silently rerouted a signed-in browser to dev-user's workspace, so the
+    // app rendered one owner's records on a page another owner signed in for.
+    if (clerkConfigured) {
+      const { userId } = await auth();
+      if (userId) return resolveAuthContext(userId);
+    }
     return resolveAuthContext("dev-user");
   }
   const { userId } = await auth();
@@ -104,7 +112,15 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
   // in a shared dev env — then delete this branch. Tests mock the Clerk module
   // without touching clerkConfigured's env read, so the flag gates the branch:
   // configured keys always take the real path below.
-  if ((!clerkConfigured || devAuthBypass) && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+  const devFallback = !clerkConfigured || devAuthBypass;
+  if (devFallback && process.env.NODE_ENV !== "production" && process.env.VITEST !== "true") {
+    // A real session beats the fixed dev owner. Without this the bypass
+    // silently rerouted a signed-in browser to dev-user's workspace, so the
+    // app rendered one owner's records on a page another owner signed in for.
+    if (clerkConfigured) {
+      const { userId } = await auth();
+      if (userId) return resolveAuthContext(userId);
+    }
     return resolveAuthContext("dev-user");
   }
   const session = await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
