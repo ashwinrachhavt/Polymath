@@ -85,6 +85,10 @@ export type ParseResult =
       mismatches: ReconciliationMismatch[];
       totals: TotalsCheck;
       moneyFormat: MoneyFormat;
+      /** Which reading reconciled, or the default one when none did. */
+      strategy: string;
+      /** Every reading tried, in order, with its verdict. */
+      attempts: Array<{ strategy: string; reconciled: boolean; mismatches: number; rows: number }>;
       mappings: MappingReport[];
       unsupportedTables: number;
     }
@@ -159,7 +163,7 @@ const MONTHS: Record<string, number> = {
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-type RawDate = { year: number; month: number; day: number; dayFirst: boolean };
+type RawDate = { year: number; month: number; day: number; dayFirst: boolean; numeric?: true };
 
 /**
  * Parses the date shapes the real statements use, without deciding the
@@ -192,7 +196,7 @@ function readDate(value: string): RawDate | null {
     if (numeric[1].length === 4 || a > 31) {
       return { year: Number(numeric[1]), month: b, day: Number(numeric[2]), dayFirst: true };
     }
-    return { year, month: b, day: a, dayFirst: true };
+    return { year, month: b, day: a, dayFirst: true, numeric: true };
   }
 
   const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -201,7 +205,16 @@ function readDate(value: string): RawDate | null {
   return null;
 }
 
+/**
+ * Reading overrides the reconciliation router sets when the default reading did
+ * not reconcile. Null means "decide from the document", which is the normal
+ * path. Set only inside parseStatementTables, restored in its finally.
+ */
+let activeDayFirst: boolean | null = null;
+let activeSpans = true;
+
 function resolveDayFirst(dates: RawDate[], text: string[]): boolean {
+  if (activeDayFirst !== null) return activeDayFirst;
   // A component above 12 can only be a day, which settles the whole document.
   for (const value of text) {
     const numeric = value.replace(/\s+/g, " ").trim().match(/^(\d{1,2})[./-](\d{1,2})[./-]\d{2,4}$/);
@@ -213,6 +226,12 @@ function resolveDayFirst(dates: RawDate[], text: string[]): boolean {
 
 function isoDate(date: RawDate, dayFirst: boolean): string | null {
   let { day, month } = date;
+  if (date.numeric && activeDayFirst === false) {
+    // Forced month-first: "03/04/2026" is March 4, not April 3.
+    [day, month] = [month, day];
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    return `${date.year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
   if (!dayFirst) {
     // Already unambiguous: the month name supplied the month.
     if (date.day > 12) return null;
@@ -242,6 +261,7 @@ function grid(table: ParsedTable): string[][] {
     rows[cell.row][cell.col] = cell.text.trim();
     owned.add(cell.row * table.numCols + cell.col);
   }
+  if (!activeSpans) return rows;
   for (const cell of table.cells) {
     if (!inBounds(cell.row, cell.col)) continue;
     const text = cell.text.trim();
@@ -852,6 +872,8 @@ function parseWithFormat(tables: ParsedTable[], statementText?: string): ParseRe
     mismatches,
     totals,
     moneyFormat,
+    strategy: "default",
+    attempts: [],
     mappings,
     unsupportedTables,
   };
@@ -904,12 +926,56 @@ export function checkTotals(statementText: string | undefined, rows: LedgerRow[]
   return { status: checks.every((c) => c.ok) ? "match" : "mismatch", checks };
 }
 
+type Reading = { name: string; format: MoneyFormat | null; dayFirst: boolean | null; spans: boolean };
+
+/**
+ * Reconciliation is the router. The default reading goes first. When it does
+ * not reconcile, other readings of the same grid are tried, and the first one
+ * that carries the running balance forward and agrees with any printed totals
+ * wins. A reading is never kept because it looks plausible, only because the
+ * bank's own arithmetic accepts it; when none does, the default result is
+ * returned unchanged so the owner sees the original, named broken row.
+ */
 export function parseStatementTables(tables: ParsedTable[], statementText?: string): ParseResult {
-  const previous = activeFormat;
-  activeFormat = detectMoneyFormat(tables);
+  const detected = detectMoneyFormat(tables);
+  const readings: Reading[] = [
+    { name: "default", format: detected, dayFirst: null, spans: true },
+    { name: "month-first dates", format: detected, dayFirst: false, spans: true },
+    { name: "without span fill", format: detected, dayFirst: null, spans: false },
+    { name: "alternate number format", format: detected === "dot" ? "comma" : "dot", dayFirst: null, spans: true },
+  ];
+
+  const attempts: Array<{ strategy: string; reconciled: boolean; mismatches: number; rows: number }> = [];
+  let first: ParseResult | null = null;
+  for (const reading of readings) {
+    const result = runReading(tables, statementText, reading);
+    if (result.status !== "parsed") {
+      first ??= result;
+      continue;
+    }
+    attempts.push({
+      strategy: reading.name,
+      reconciled: result.reconciled,
+      mismatches: result.mismatches.length,
+      rows: result.rows.length,
+    });
+    if (first === null || first.status !== "parsed") first = result;
+    if (result.reconciled) return { ...result, strategy: reading.name, attempts };
+  }
+  if (first && first.status === "parsed") return { ...first, strategy: "default", attempts };
+  return first as ParseResult;
+}
+
+function runReading(tables: ParsedTable[], statementText: string | undefined, reading: Reading): ParseResult {
+  const previous = { format: activeFormat, dayFirst: activeDayFirst, spans: activeSpans };
+  activeFormat = reading.format ?? "dot";
+  activeDayFirst = reading.dayFirst;
+  activeSpans = reading.spans;
   try {
     return parseWithFormat(tables, statementText);
   } finally {
-    activeFormat = previous;
+    activeFormat = previous.format;
+    activeDayFirst = previous.dayFirst;
+    activeSpans = previous.spans;
   }
 }
