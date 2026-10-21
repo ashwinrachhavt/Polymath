@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+app/__init__.py
+app/auth.py
+app/config.py
+app/db.py
+app/main.py
+app/models.py
+polymath_sidecar.egg-info/PKG-INFO
+polymath_sidecar.egg-info/SOURCES.txt
+polymath_sidecar.egg-info/dependency_links.txt
+polymath_sidecar.egg-info/requires.txt
+polymath_sidecar.egg-info/top_level.txt
+tests/test_auth.py
+tests/test_embeddings_pg.py
+tests/test_health.py
+tests/test_jobs.py
