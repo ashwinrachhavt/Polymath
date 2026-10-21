@@ -1,9 +1,10 @@
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
+import type { Dirent, Stats } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { sha256Hex } from "@/lib/hash";
-import { extractPackages, type PackageFile } from "../package";
-import { InspectError, type InspectResult, type SourceRequest } from "./types";
+import { extractPackages, selectSubtree, type PackageFile } from "../package";
+import { failureResult, InspectError, type InspectResult, type SourceRequest } from "./types";
 
 /*
  * Reading a folder on this machine is the one source that can reach outside
@@ -59,13 +60,15 @@ async function walk(
   // ceiling to each folder instead of the tree.
   budget: { bytes: number },
 ): Promise<void> {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch {
+    // A listing failure is a permissions problem, not an unsafe path; saying
+    // "unsafe" would blame the person's path for something they cannot see.
     throw new InspectError(
-      "unsafe_path",
-      `A folder inside the skill could not be read, so the folder was not inspected.`,
+      "unreadable",
+      `A folder inside the skill could not be listed. Check that you can read it, then try again.`,
     );
   }
 
@@ -77,8 +80,10 @@ async function walk(
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
 
     // `withFileTypes` reports the link itself, but `lstat` is the fact the
-    // decision rests on; a dirent can still be a mount point or a race.
-    let stats;
+    // decision rests on; a dirent can still be a mount point or a race. The
+    // tree was designated by the person, so a file changing mid-walk is theirs
+    // to retry, not an escape attempt.
+    let stats: Stats;
     try {
       stats = await lstat(full);
     } catch {
@@ -117,7 +122,16 @@ async function walk(
       );
     }
 
-    files.set(relative, { path: relative, bytes: new Uint8Array(await readFile(full)) });
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await readFile(full));
+    } catch {
+      throw new InspectError(
+        "unreadable",
+        `"${relative}" exists but could not be read. Check its permissions, then try again.`,
+      );
+    }
+    files.set(relative, { path: relative, bytes });
   }
 }
 
@@ -136,16 +150,6 @@ function underFolder(name: string, files: Map<string, PackageFile>): Map<string,
   return rooted;
 }
 
-function selectSubtree(files: Map<string, PackageFile>, subtree?: string): Map<string, PackageFile> {
-  const prefix = subtree?.replace(/^\/+|\/+$/g, "");
-  if (!prefix) return files;
-  const selected = new Map<string, PackageFile>();
-  for (const [key, file] of files) {
-    if (key === prefix || key.startsWith(`${prefix}/`)) selected.set(key, file);
-  }
-  return selected;
-}
-
 /**
  * One digest for the whole inspection. Skills are content-addressed already,
  * so hashing `slug` plus `contentHash` in a fixed order gives the install
@@ -155,13 +159,6 @@ function selectSubtree(files: Map<string, PackageFile>, subtree?: string): Map<s
 async function revisionOf(skills: { slug: string; contentHash: string }[]): Promise<string> {
   const sorted = [...skills].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
   return sha256Hex(sorted.map((skill) => `${skill.slug}:${skill.contentHash}`).join("\n"));
-}
-
-function failure(error: unknown): InspectResult {
-  if (error instanceof InspectError) {
-    return { ok: false, code: error.code, message: error.message };
-  }
-  return { ok: false, code: "not_found", message: "That folder could not be read. Check the path and try again." };
 }
 
 export async function inspectLocal(request: LocalRequest): Promise<InspectResult> {
@@ -206,6 +203,9 @@ export async function inspectLocal(request: LocalRequest): Promise<InspectResult
       warnings,
     };
   } catch (error) {
-    return failure(error);
+    return failureResult(
+      error,
+      "Polymath could not finish reading that folder. Try again.",
+    );
   }
 }

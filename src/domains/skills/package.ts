@@ -255,6 +255,22 @@ function inspectPackage(root: string, packageFiles: PackageFile[]): {
   return { skill, warnings };
 }
 
+/**
+ * Restricts a tree to the subtree a `--path` or folder selection asked for.
+ * Keys keep their full depth so the folder that owns each SKILL.md is still
+ * visible to `extractPackages`; only files outside the subtree are dropped.
+ * Both adapters use this, so the trimming rule exists once.
+ */
+export function selectSubtree(files: Map<string, PackageFile>, path?: string): Map<string, PackageFile> {
+  const prefix = path?.replace(/^\/+|\/+$/g, "");
+  if (!prefix) return files;
+  const selected = new Map<string, PackageFile>();
+  for (const [key, file] of files) {
+    if (key === prefix || key.startsWith(`${prefix}/`)) selected.set(key, file);
+  }
+  return selected;
+}
+
 export function extractPackages(files: Map<string, PackageFile>): {
   skills: InspectedSkill[];
   warnings: string[];

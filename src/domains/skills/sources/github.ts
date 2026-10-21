@@ -1,7 +1,7 @@
 import { unpackTar } from "modern-tar";
-import { safeFetch, type SafeFetchResult } from "@/lib/safe-fetch";
-import { extractPackages, type PackageFile } from "../package";
-import { InspectError, type InspectResult, type SourceRequest } from "./types";
+import { safeFetch, type SafeFetchOptions, type SafeFetchResult } from "@/lib/safe-fetch";
+import { extractPackages, selectSubtree, type PackageFile } from "../package";
+import { failureResult, InspectError, type InspectResult, type SourceRequest } from "./types";
 
 /*
  * A GitHub repository arrives as one codeload tarball, pinned to a commit so
@@ -16,13 +16,27 @@ const MAX_ARCHIVE_BYTES = 5 * 1024 * 1024;
 // compression bomb from turning a 5 MB download into an unbounded buffer.
 const MAX_EXPANDED_BYTES = 20 * 1024 * 1024;
 const MAX_ENTRIES = 200;
-const MAX_API_BYTES = 256 * 1024;
+// With `Accept: application/vnd.github.sha` the commit call answers with the
+// 40-byte sha and nothing else. Without it GitHub serialises the whole commit,
+// every changed file and its patch, which a large merge can push past any
+// sensible cap — and a cap failure there would be reported against the wrong
+// download.
+const MAX_API_BYTES = 1024;
 const API_TIMEOUT_MS = 15_000;
 const ARCHIVE_TIMEOUT_MS = 30_000;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 type GithubRequest = Extract<SourceRequest, { kind: "github" }>;
 type FetchFailure = Extract<SafeFetchResult, { ok: false }>;
+
+/** Overridable so the status mapping can be tested against a fixture server. */
+function apiBase(): string {
+  return process.env.GITHUB_API_BASE ?? "https://api.github.com";
+}
+
+function archiveBase(): string {
+  return process.env.GITHUB_ARCHIVE_BASE ?? "https://codeload.github.com";
+}
 
 function megabytes(bytes: number): string {
   return `${Math.ceil(bytes / (1024 * 1024))} MB`;
@@ -130,13 +144,16 @@ async function gunzipCapped(gzip: Uint8Array): Promise<Uint8Array> {
 export async function archiveToFiles(gzip: Uint8Array): Promise<Map<string, PackageFile>> {
   const tar = await gunzipCapped(gzip);
 
-  let entries;
+  let entries: Awaited<ReturnType<typeof unpackTar>>;
   try {
     entries = await unpackTar(tar);
   } catch {
     throw new InspectError("unsupported_input", "GitHub returned an archive that is not a readable tar file. Try again.");
   }
 
+  // The expansion cap above bounds this: 200 entries can only be exceeded by an
+  // archive that unpacked under MAX_EXPANDED_BYTES, so the cap is a count on a
+  // buffer already in memory, not a second download bound.
   if (entries.length > MAX_ENTRIES) {
     throw new InspectError(
       "too_large",
@@ -163,22 +180,15 @@ export async function archiveToFiles(gzip: Uint8Array): Promise<Map<string, Pack
   return files;
 }
 
-/**
- * Restricts an archive to the subtree a `--path` asked for. Paths keep their
- * full depth so the folder that owns each SKILL.md is still visible to
- * `extractPackages`; only files outside the subtree are dropped.
- */
-export function selectSubtree(files: Map<string, PackageFile>, path?: string): Map<string, PackageFile> {
-  const prefix = path?.replace(/^\/+|\/+$/g, "");
-  if (!prefix) return files;
-  const selected = new Map<string, PackageFile>();
-  for (const [key, file] of files) {
-    if (key === prefix || key.startsWith(`${prefix}/`)) selected.set(key, file);
-  }
-  return selected;
-}
-
-function githubFailure(failure: FetchFailure, label: string): InspectError {
+/** Exported so every status branch is asserted directly, with no network. */
+export function githubFailure(
+  failure: FetchFailure,
+  label: string,
+  limit: string,
+  // A 404 always means the repository, never the ref (that is a 422), so the
+  // sentence names the repository and not the "at <ref>" detail.
+  repository = label,
+): InspectError {
   if (failure.timedOut) {
     return new InspectError("timeout", `GitHub did not answer in time for ${label}. Try again.`);
   }
@@ -188,8 +198,13 @@ function githubFailure(failure: FetchFailure, label: string): InspectError {
       "GitHub is limiting requests from this server. Try again in a few minutes.",
     );
   }
+  // Unauthenticated GitHub hides a private repository behind a 404, so "does
+  // not exist" and "exists but is private" are one answer and one sentence.
   if (failure.status === 404) {
-    return new InspectError("not_found", `GitHub has no ${label}. Check the link.`);
+    return new InspectError(
+      "not_found",
+      `GitHub has no ${repository}, or it is private. Private repositories are not supported yet.`,
+    );
   }
   if (failure.status === 401 || failure.status === 403) {
     return new InspectError(
@@ -197,60 +212,66 @@ function githubFailure(failure: FetchFailure, label: string): InspectError {
       `GitHub would not show ${label} without a sign-in. Private repositories are not supported yet.`,
     );
   }
-  if (failure.tooLarge) {
+  // A ref that does not resolve is a 422 ("No commit found for SHA"), not a
+  // 404, so it is the missing-branch case and needs the branch named.
+  if (failure.status === 422) {
     return new InspectError(
-      "too_large",
-      `${label} is larger than the ${megabytes(MAX_ARCHIVE_BYTES)} limit for one repository.`,
+      "not_found",
+      `GitHub has no branch or commit called that in ${label}. Check the branch name or use the default branch.`,
     );
   }
-  return new InspectError("not_found", `GitHub could not be reached for ${label}. ${failure.error}`);
+  if (failure.tooLarge) {
+    return new InspectError("too_large", `${label} is larger than ${limit}.`);
+  }
+  return new InspectError("unavailable", `GitHub could not be reached for ${label}. Try again.`);
 }
 
-async function resolveCommit(owner: string, repo: string, ref?: string): Promise<string> {
+export async function resolveCommit(
+  owner: string,
+  repo: string,
+  ref?: string,
+  // The seam a test uses to point at a fixture server. The timeout and the
+  // private-address allowance are the only things it may change.
+  fetchOptions: Pick<SafeFetchOptions, "timeoutMs" | "allowPrivateAddresses"> = {},
+): Promise<string> {
   // `HEAD` is the repository's default branch, so an unqualified link costs one
   // request instead of two.
   const target = encodeURIComponent(ref ?? "HEAD");
   const label = `${owner}/${repo}${ref ? ` at "${ref}"` : ""}`;
-  const result = await safeFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${target}`, {
-    timeoutMs: API_TIMEOUT_MS,
+  const result = await safeFetch(`${apiBase()}/repos/${owner}/${repo}/commits/${target}`, {
+    timeoutMs: fetchOptions.timeoutMs ?? API_TIMEOUT_MS,
     maxBytes: MAX_API_BYTES,
+    headers: { accept: "application/vnd.github.sha" },
     failureDetails: true,
+    allowPrivateAddresses: fetchOptions.allowPrivateAddresses,
   });
-  if (!result.ok) throw githubFailure(result, label);
+  // The answer is a 40-byte sha; anything past this is not the answer we asked for.
+  if (!result.ok) {
+    throw githubFailure(result, label, `the ${MAX_API_BYTES}-byte limit for a commit lookup`, `${owner}/${repo}`);
+  }
 
-  const body: unknown = (() => {
-    try {
-      return JSON.parse(new TextDecoder().decode(result.bytes));
-    } catch {
-      return null;
-    }
-  })();
-  const sha = typeof body === "object" && body !== null ? (body as { sha?: unknown }).sha : undefined;
-  if (typeof sha !== "string" || !SHA_PATTERN.test(sha)) {
-    throw new InspectError("not_found", `GitHub did not return a commit for ${label}.`);
+  const sha = new TextDecoder().decode(result.bytes).trim();
+  if (!SHA_PATTERN.test(sha)) {
+    throw new InspectError("unavailable", `GitHub did not return a commit for ${label}. Try again.`);
   }
   return sha;
 }
 
 async function fetchArchive(owner: string, repo: string, sha: string): Promise<Uint8Array> {
-  const result = await safeFetch(`https://codeload.github.com/${owner}/${repo}/tar.gz/${sha}`, {
+  const result = await safeFetch(`${archiveBase()}/${owner}/${repo}/tar.gz/${sha}`, {
     timeoutMs: ARCHIVE_TIMEOUT_MS,
     maxBytes: MAX_ARCHIVE_BYTES,
     failureDetails: true,
   });
-  if (!result.ok) throw githubFailure(result, `${owner}/${repo} at ${sha.slice(0, 7)}`);
-  return result.bytes;
-}
-
-function failure(error: unknown): InspectResult {
-  if (error instanceof InspectError) {
-    return { ok: false, code: error.code, message: error.message };
+  if (!result.ok) {
+    throw githubFailure(
+      result,
+      `${owner}/${repo} at ${sha.slice(0, 7)}`,
+      `the ${megabytes(MAX_ARCHIVE_BYTES)} limit for one repository`,
+      `${owner}/${repo}`,
+    );
   }
-  return {
-    ok: false,
-    code: "not_found",
-    message: "GitHub could not be read. Try again, or paste the repository link again.",
-  };
+  return result.bytes;
 }
 
 export async function inspectGithub(request: GithubRequest): Promise<InspectResult> {
@@ -275,6 +296,9 @@ export async function inspectGithub(request: GithubRequest): Promise<InspectResu
 
     return { ok: true, sourceKind: "github", sourceRef: `${owner}/${repo}`, revision: sha, skills, warnings };
   } catch (error) {
-    return failure(error);
+    return failureResult(
+      error,
+      `Polymath could not finish reading ${owner}/${repo}. Try again.`,
+    );
   }
 }

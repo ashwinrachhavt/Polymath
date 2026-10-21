@@ -9,8 +9,8 @@ import type { InspectResult, SourceRequest } from "./sources/types";
  * applies, so the order is fixed: an install command, then a GitHub URL, then
  * anything left is a folder on this machine.
  *
- * Parsing is pure. Nothing here reads a file or opens a connection; the
- * adapters do that, and they are added in Task 3.
+ * `parseSource` is pure. Nothing there reads a file or opens a connection;
+ * `inspectSource` hands the parsed request to the adapter for its kind.
  */
 
 const OWNER_SEGMENT = /^[A-Za-z0-9_.-]+$/;

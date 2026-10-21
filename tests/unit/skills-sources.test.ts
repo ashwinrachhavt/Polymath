@@ -1,11 +1,14 @@
+import { gzipSync } from "node:zlib";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { packTar } from "modern-tar";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { archiveToFiles, selectSubtree } from "@/domains/skills/sources/github";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { archiveToFiles, githubFailure, resolveCommit } from "@/domains/skills/sources/github";
 import { inspectLocal } from "@/domains/skills/sources/local";
-import { extractPackages } from "@/domains/skills/package";
+import { extractPackages, selectSubtree } from "@/domains/skills/package";
 
 /*
  * The adapters are tested against bytes and folders they were handed, never
@@ -34,14 +37,13 @@ async function gzipped(tar: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(Buffer.concat(chunks));
 }
 
-async function archiveOf(entries: Parameters<typeof packTar>[0]): Promise<Uint8Array> {
-  return gzipped(await packTar(entries));
+/** zgrep's counterpart: synchronous so a bomb can be built without a stream. */
+function gzipOf(bytes: Uint8Array): Uint8Array {
+  return new Uint8Array(gzipSync(bytes));
 }
 
-/** Runs the adapter and returns only the rejection code, so a test names the failure. */
-async function codeOf(run: () => Promise<{ ok: boolean; code?: string }>): Promise<string> {
-  const result = await run();
-  return result.ok ? "ok" : (result.code ?? "no-code");
+async function archiveOf(entries: Parameters<typeof packTar>[0]): Promise<Uint8Array> {
+  return gzipped(await packTar(entries));
 }
 
 describe("github archive", () => {
@@ -115,14 +117,100 @@ describe("github archive", () => {
   });
 
   it("rejects bytes that are not a gzip stream", async () => {
-    expect(await codeOf(async () => {
-      try {
-        await archiveToFiles(encoder.encode("not a tarball"));
-        return { ok: true };
-      } catch (error) {
-        return error as { ok: false; code: string };
+    await expect(archiveToFiles(encoder.encode("not a tarball"))).rejects.toMatchObject({
+      code: "unsupported_input",
+    });
+  });
+
+  it("refuses an archive that expands past the decompression cap", async () => {
+    // 30 MB of zeros compress to a few KB. The cap is what stops that ratio
+    // from becoming a 30 MB buffer; the entry count never gets a say.
+    const bomb = gzipOf(new Uint8Array(30 * 1024 * 1024));
+    await expect(archiveToFiles(bomb)).rejects.toMatchObject({ code: "too_large", message: expect.stringContaining("20 MB") });
+  });
+});
+
+describe("github api status map", () => {
+  const fixture = new TextEncoder().encode("a".repeat(40));
+  let server: Server;
+  let base: string;
+  let lastAccept = "";
+  const previousBase = process.env.GITHUB_API_BASE;
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      if (request.url === "/repos/acme/missing/commits/HEAD") return void response.writeHead(404).end();
+      if (request.url === "/repos/acme/secret/commits/HEAD") return void response.writeHead(404).end();
+      if (request.url === "/repos/acme/limited/commits/HEAD") {
+        return void response.writeHead(403, { "x-ratelimit-remaining": "0" }).end();
       }
-    })).toBe("unsupported_input");
+      if (request.url === "/repos/acme/throttled/commits/HEAD") return void response.writeHead(429).end();
+      if (request.url === "/repos/acme/forbidden/commits/HEAD") return void response.writeHead(403).end();
+      if (request.url === "/repos/acme/nobranch/commits/nope") return void response.writeHead(422).end();
+      if (request.url === "/repos/acme/slow/commits/HEAD") return; // never answers
+      if (request.url === "/repos/acme/ok/commits/HEAD") {
+        lastAccept = request.headers.accept ?? "";
+        return void response.writeHead(200, { "content-type": "application/vnd.github.sha" }).end(fixture);
+      }
+      response.writeHead(500).end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    process.env.GITHUB_API_BASE = base;
+  });
+
+  afterAll(() => {
+    server.closeAllConnections();
+    server.close();
+    if (previousBase === undefined) delete process.env.GITHUB_API_BASE;
+    else process.env.GITHUB_API_BASE = previousBase;
+  });
+
+  const lookup = (repo: string, ref?: string, timeoutMs?: number) =>
+    resolveCommit("acme", repo, ref, { allowPrivateAddresses: true, timeoutMs }).then(
+      (sha) => ({ ok: true as const, sha }),
+      // `message` is non-enumerable on an Error, so it is copied by hand.
+      (error: { code: string; message: string }) => ({ ok: false as const, code: error.code, message: error.message }),
+    );
+
+  it("returns the sha GitHub answers with, asking only for the sha", async () => {
+    expect(await lookup("ok")).toEqual({ ok: true, sha: "a".repeat(40) });
+    // Without the sha media type the same call returns the whole commit with
+    // every patch, which is what the 1 KB cap would then cut off.
+    expect(lastAccept).toBe("application/vnd.github.sha");
+  });
+
+  it("treats a 404 as missing or private, and says so", async () => {
+    const result = await lookup("secret");
+    expect(result).toMatchObject({ ok: false, code: "not_found" });
+    if (result.ok) return;
+    expect(result.message).toContain("or it is private");
+  });
+
+  it("treats an unknown branch's 422 as a missing branch, not an outage", async () => {
+    const result = await lookup("nobranch", "nope");
+    expect(result).toMatchObject({ ok: false, code: "not_found" });
+    if (result.ok) return;
+    expect(result.message).toContain("branch or commit");
+  });
+
+  it("tells a rate-limited 403 and a 429 apart from a plain 403", async () => {
+    expect(await lookup("limited")).toMatchObject({ ok: false, code: "rate_limited" });
+    expect(await lookup("throttled")).toMatchObject({ ok: false, code: "rate_limited" });
+    expect(await lookup("forbidden")).toMatchObject({ ok: false, code: "private_repo" });
+  });
+
+  it("times out", async () => {
+    expect(await lookup("slow", undefined, 200)).toMatchObject({ ok: false, code: "timeout" });
+  });
+
+  it("does not present an unmodelled answer as a missing repository", async () => {
+    const failure = githubFailure(
+      { ok: false, error: "The site answered with status 500.", status: 500 },
+      "acme/ok",
+      "the 5 MB limit",
+    );
+    expect(failure.code).toBe("unavailable");
   });
 });
 
@@ -196,6 +284,36 @@ describe("local folder", () => {
   it("reports a missing folder as not_found rather than an empty result", async () => {
     const result = await inspectLocal({ kind: "local", root: path.join(root, "absent") });
     expect(result).toMatchObject({ ok: false, code: "not_found" });
+  });
+
+  it("stops at the 200-file cap", async () => {
+    const directory = path.join(root, "many");
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "SKILL.md"), "---\ndescription: Many files.\n---\n\nBody.\n");
+    for (let index = 0; index < 201; index += 1) {
+      await writeFile(path.join(directory, `note-${index}.md`), "x");
+    }
+    expect(await inspectLocal({ kind: "local", root: directory })).toMatchObject({
+      ok: false,
+      code: "too_large",
+      message: expect.stringContaining("200"),
+    });
+  });
+
+  it("stops at the 5 MB budget across the tree, not per folder", async () => {
+    const directory = path.join(root, "heavy");
+    await mkdir(path.join(directory, "part-a"), { recursive: true });
+    await mkdir(path.join(directory, "part-b"), { recursive: true });
+    await writeFile(path.join(directory, "SKILL.md"), "---\ndescription: Heavy.\n---\n\nBody.\n");
+    // Each folder is under 5 MB; together they are over it. A per-folder
+    // counter would let this through.
+    await writeFile(path.join(directory, "part-a", "blob.bin"), Buffer.alloc(3 * 1024 * 1024));
+    await writeFile(path.join(directory, "part-b", "blob.bin"), Buffer.alloc(3 * 1024 * 1024));
+    expect(await inspectLocal({ kind: "local", root: directory })).toMatchObject({
+      ok: false,
+      code: "too_large",
+      message: expect.stringContaining("5 MB"),
+    });
   });
 
   it("reports a folder with no SKILL.md as no_skill_found", async () => {

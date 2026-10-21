@@ -36,6 +36,8 @@ export type SafeFetchOptions = {
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
+  /** Extra request headers, merged over the defaults (a caller may need an API's media type). */
+  headers?: Record<string, string>;
   /** Fill the machine-readable failure fields on the error result. */
   failureDetails?: boolean;
   /** Tests only: let the loopback fixture server through. Never set in app code. */
@@ -144,7 +146,11 @@ function once(url: URL, options: Required<SafeFetchOptions>): Promise<
       url,
       {
         method: "GET",
-        headers: { accept: "application/pdf,image/png,image/jpeg;q=0.9,*/*;q=0.1", "user-agent": "PolymathCapture/1.0" },
+        headers: {
+          accept: "application/pdf,image/png,image/jpeg;q=0.9,*/*;q=0.1",
+          "user-agent": "PolymathCapture/1.0",
+          ...options.headers,
+        },
         timeout: options.timeoutMs,
         lookup: (hostname, lookupOptions, callback) => {
           dnsLookup(hostname, { ...lookupOptions, all: true }, (error, addresses) => {
@@ -239,6 +245,7 @@ export async function safeFetch(rawUrl: string, input: SafeFetchOptions = {}): P
     timeoutMs: input.timeoutMs ?? 10_000,
     maxBytes: input.maxBytes ?? MAX_UPLOAD_BYTES,
     maxRedirects: input.maxRedirects ?? 3,
+    headers: input.headers ?? {},
     failureDetails: input.failureDetails ?? false,
     allowPrivateAddresses: input.allowPrivateAddresses ?? false,
   };
