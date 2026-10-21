@@ -13,7 +13,7 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
 import { HistoryMenu } from "./history-menu";
 import { ModelPicker } from "./model-picker";
-import { SkillPicker, type PickableSkill } from "./skills/skill-picker";
+import type { PickableSkill } from "./skills/skill-picker";
 import { getProfileModelPolicy } from "@/domains/agents/queries";
 import { availableModels, resolveModelId, UNUSABLE_PROVIDERS } from "@/domains/agents/models";
 
