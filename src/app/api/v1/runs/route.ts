@@ -36,6 +36,8 @@ const startRun = z.object({
   profileName: z.string().default("alfred"),
   /** Keep this run inside one dossier: documents.search then only reads its documents. */
   dossierId: z.string().uuid().optional(),
+  /** Pin the run to one installed skill; the pin is frozen into the run's policy snapshot. */
+  skillId: z.string().uuid().optional(),
 });
 
 export const GET = authedHandler(async (auth) => {
@@ -47,7 +49,31 @@ export const POST = authedHandler(async (auth, request) => {
   requireRole(auth, "member");
   const parsed = startRun.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return problemResponse(422, "invalid_input", "Give an objective (and optionally an estimateUsd).");
+    // Name the field that failed, so a malformed skillId is not reported as a
+    // missing objective the caller cannot find.
+    const field = parsed.error.issues[0]?.path[0];
+    const message =
+      field === "objective"
+        ? "Give an objective for this run."
+        : field === "estimateUsd"
+          ? "estimateUsd must be a decimal amount, like 0.50."
+          : field === "dossierId"
+            ? "dossierId must be the UUID of a dossier in this workspace."
+            : field === "skillId"
+              ? "skillId must be the UUID of an installed skill."
+              : field === "profileName"
+                ? "profileName must be the name of an installed agent profile."
+                : "Give an objective (and optionally an estimateUsd).";
+    return problemResponse(422, "invalid_input", message);
+  }
+  // Only alfred's agent declares the skill resolver, so a pin on any other
+  // profile would be accepted and then silently ignored.
+  if (parsed.data.skillId && parsed.data.profileName !== "alfred") {
+    return problemResponse(
+      422,
+      "invalid_input",
+      "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+    );
   }
   const key = request.headers.get("idempotency-key");
   if (key !== null && !z.string().uuid().safeParse(key).success) {
@@ -61,7 +87,7 @@ export const POST = authedHandler(async (auth, request) => {
   }
 
   const receipt = key
-    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd, parsed.data.dossierId ?? null])) }
+    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd, parsed.data.dossierId ?? null, parsed.data.skillId ?? null])) }
     : null;
   if (receipt) {
     const [claimed] = await db
@@ -108,6 +134,7 @@ export const POST = authedHandler(async (auth, request) => {
       objective: parsed.data.objective,
       subjects: parsed.data.dossierId ? [{ type: "dossier", id: parsed.data.dossierId }] : [],
       estimateUsd: parsed.data.estimateUsd,
+      skillId: parsed.data.skillId,
     });
     if (receipt) {
       await db
@@ -126,6 +153,11 @@ export const POST = authedHandler(async (auth, request) => {
     // A failed start is a problem response, never a bare 500 with no body.
     if (cause instanceof Error && cause.message.startsWith("Unknown agent profile")) {
       return problemResponse(404, "not_found", "No such agent profile. Install the specialist first.");
+    }
+    // A skill the caller cannot use is their problem to fix in Skills, not a
+    // provider failure: answer with the engine's own actionable sentence.
+    if (cause instanceof Error && cause.message.startsWith("That skill is not available")) {
+      return problemResponse(404, "not_found", cause.message);
     }
     console.error("run start failed", cause);
     return problemResponse(502, "agent_start_failed", "The run could not be started. Try again.");

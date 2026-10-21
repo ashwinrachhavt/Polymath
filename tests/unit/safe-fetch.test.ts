@@ -14,6 +14,10 @@ beforeAll(async () => {
     if (req.url === "/loop") return void res.writeHead(302, { location: "/loop" }).end();
     if (req.url === "/big") return void res.writeHead(200).end(Buffer.alloc(2048));
     if (req.url === "/slow") return; // never answers
+    if (req.url === "/limited") {
+      return void res.writeHead(403, { "x-ratelimit-remaining": "0" }).end();
+    }
+    if (req.url === "/forbidden") return void res.writeHead(403).end();
     res.writeHead(404).end();
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -74,6 +78,30 @@ describe("safeFetch", () => {
   it("reports a non-200 answer", async () => {
     expect(await safeFetch(`${base}/missing`, { allowPrivateAddresses: true })).toEqual({
       ok: false, error: "The site answered with status 404.",
+    });
+  });
+  it("reports the status and the reason only when asked, and never changes the sentence", async () => {
+    const plain = await safeFetch(`${base}/missing`, { allowPrivateAddresses: true });
+    expect(plain).toEqual({ ok: false, error: "The site answered with status 404." });
+
+    expect(await safeFetch(`${base}/missing`, { allowPrivateAddresses: true, failureDetails: true })).toEqual({
+      ok: false, error: "The site answered with status 404.", status: 404,
+    });
+  });
+  it("tells a rate-limited 403 from a private-resource 403", async () => {
+    expect(await safeFetch(`${base}/limited`, { allowPrivateAddresses: true, failureDetails: true })).toMatchObject({
+      status: 403, rateLimited: true,
+    });
+    expect(await safeFetch(`${base}/forbidden`, { allowPrivateAddresses: true, failureDetails: true })).toEqual({
+      ok: false, error: "The site answered with status 403.", status: 403,
+    });
+  });
+  it("marks a timeout and an oversized body when asked", async () => {
+    expect(await safeFetch(`${base}/slow`, { allowPrivateAddresses: true, timeoutMs: 200, failureDetails: true })).toMatchObject({
+      timedOut: true,
+    });
+    expect(await safeFetch(`${base}/big`, { allowPrivateAddresses: true, maxBytes: 1024, failureDetails: true })).toMatchObject({
+      tooLarge: true,
     });
   });
   it("times out a site that never answers", async () => {

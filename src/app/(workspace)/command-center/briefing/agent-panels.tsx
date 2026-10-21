@@ -106,7 +106,7 @@ export async function AgentPanels() {
           ))}
         </div>
         {overnight.items.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">No runs yet. Start work with the assistant or hire a specialist.</p>
+          <p className="text-[13px] text-muted-foreground">No runs yet. Start work with the assistant.</p>
         ) : null}
       </Panel>
     </div>

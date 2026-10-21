@@ -103,7 +103,12 @@ export type RetryResult =
 /** Retry creates a NEW run id from a finished run's objective; the old thread is left as it was. */
 export async function retryRun(auth: AuthContext, runId: string): Promise<RetryResult> {
   const [run] = await db
-    .select({ state: agentRuns.state, objective: agentRuns.objective, subjects: agentRuns.subjects })
+    .select({
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      subjects: agentRuns.subjects,
+      policySnapshot: agentRuns.policySnapshot,
+    })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, auth.workspaceId)))
     .limit(1);
@@ -111,6 +116,10 @@ export async function retryRun(auth: AuthContext, runId: string): Promise<RetryR
   if (!isFinished(run.state)) {
     return { ok: false, code: "run_active", message: "This run is still active. Cancel it or wait for it to finish." };
   }
+  // A retry must run under the same skill as the run it replaces; dropping the
+  // pin would silently change what the agent is told while the history still
+  // presents the two runs as one thread.
+  const pinnedSkillId = (run.policySnapshot as { skill?: { id?: unknown } } | null)?.skill?.id;
   const { runId: next } = await createEngine(createEveDriver()).start({
     auth,
     profileName: "alfred",
@@ -118,6 +127,7 @@ export async function retryRun(auth: AuthContext, runId: string): Promise<RetryR
     subjects: Array.isArray(run.subjects) ? run.subjects : [],
     estimateUsd: "0.50",
     retryOfRunId: runId,
+    skillId: typeof pinnedSkillId === "string" ? pinnedSkillId : undefined,
   });
   return { ok: true, runId: next };
 }

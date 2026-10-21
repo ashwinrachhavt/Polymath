@@ -413,6 +413,26 @@ terminal states, budget reserved before spend. Progress, cost, questions, and
 artifacts are visible while running. A question pauses the run rather than
 guessing.
 
+## 9.1 Skills
+
+Skills are importable procedures — a person teaches the assistant *how* to do a
+kind of work without granting it anything new. Import sources: a GitHub
+repository, a supported `npx skills add` command, or a local folder. Nothing
+imported is executed; a skill's text is data until a run loads it.
+
+- A skill is pinned to the run that invokes it: the procedure, its revision and
+  its content hash are frozen at start, so a later edit, disable, or removal
+  cannot change what a live run follows.
+- A skill never widens authority. Tools still come from the run's frozen
+  policy snapshot; skill prose can request an action but cannot authorise one.
+- Explicit invocation only: the person picks the skill (Assistant composer or
+  the skill's own page). The model is never silently switched onto one.
+- Import is inspect-first: the discovered packages, their source, revision and
+  warnings are shown before anything is stored, and the server re-verifies the
+  content at the shown revision before installing.
+- Removal keeps the record: an in-flight run keeps its procedure; the library
+  entry disappears from every list.
+
 # 10. Tenancy and access
 
 A person may belong to several workspaces. Every record carries `workspace_id`,

@@ -180,21 +180,6 @@ export async function listDocumentSearchResults(workspaceId: string, runIds: str
   return byRun;
 }
 
-/** The workspace's specialist bench: every non-default profile, for the specialists page. */
-export async function listSpecialistProfiles(workspaceId: string) {
-  return db
-    .select({
-      id: agentProfiles.id,
-      name: agentProfiles.name,
-      description: agentProfiles.description,
-      allowedTools: agentProfiles.allowedTools,
-      createdAt: agentProfiles.createdAt,
-    })
-    .from(agentProfiles)
-    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.isDefault, false)))
-    .orderBy(agentProfiles.name);
-}
-
 /** One profile by name, workspace-scoped; foreign and missing names return the same null. */
 export async function getProfileByName(workspaceId: string, name: string) {
   const [profile] = await db
@@ -213,31 +198,6 @@ export async function getProfileModelPolicy(workspaceId: string, name: string) {
     .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
     .limit(1);
   return row?.modelPolicy ?? null;
-}
-
-/**
- * Recent runs with their profile's display name, for the specialists page's
- * "who did what" list. Runs whose profile row is gone keep no name — the join
- * is a left join so a deleted profile cannot erase the run's record.
- */
-export async function listRecentRunsWithProfile(workspaceId: string, limit = 10) {
-  return db
-    .select({
-      id: agentRuns.id,
-      state: agentRuns.state,
-      objective: agentRuns.objective,
-      model: agentRuns.model,
-      summary: agentRuns.summary,
-      error: agentRuns.error,
-      createdAt: agentRuns.createdAt,
-      profileName: agentProfiles.name,
-      profileDescription: agentProfiles.description,
-    })
-    .from(agentRuns)
-    .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
-    .where(eq(agentRuns.workspaceId, workspaceId))
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(limit);
 }
 
 export const RUN_STATES = [
@@ -287,31 +247,32 @@ export async function pageRuns(workspaceId: string, input: RunPageInput) {
   return { items, total: totalRow?.total ?? 0 };
 }
 
-/** Same page, with each run's specialist name, for the "who did what" list. */
-export async function pageRunsWithProfile(workspaceId: string, input: RunPageInput) {
-  const where = runWhere(workspaceId, input);
-  const [items, [totalRow]] = await Promise.all([
-    db
-      .select({
-        id: agentRuns.id,
-        state: agentRuns.state,
-        objective: agentRuns.objective,
-        model: agentRuns.model,
-        summary: agentRuns.summary,
-        error: agentRuns.error,
-        createdAt: agentRuns.createdAt,
-        profileName: agentProfiles.name,
-        profileDescription: agentProfiles.description,
-      })
-      .from(agentRuns)
-      .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
-      .where(where)
-      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
-      .limit(input.limit)
-      .offset(input.offset),
-    db.select({ total: count() }).from(agentRuns).where(where),
-  ]);
-  return { items, total: totalRow?.total ?? 0 };
+/**
+ * Runs pinned to one skill, newest first, for the skill detail page. The pin
+ * lives inside the frozen policy snapshot (`skill.id`), so this reads jsonb
+ * rather than joining the skills table: the row may be gone and the history
+ * still has to read. Scoped by workspace as well, so a skill id from another
+ * tenant returns nothing.
+ */
+export async function listRunsForSkill(workspaceId: string, skillId: string, limit = 10) {
+  return db
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      summary: agentRuns.summary,
+      error: agentRuns.error,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.workspaceId, workspaceId),
+        sql`${agentRuns.policySnapshot}->'skill'->>'id' = ${skillId}`,
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+    .limit(limit);
 }
 
 /*

@@ -37,9 +37,16 @@ export async function startChatRun(input: {
    * default — an invented subject with an empty id would be a false link.
    */
   subject?: { type: "dossier" | "document" | "artifact"; id: string };
+  /** An enabled skill to pin the run to; the engine freezes it into the snapshot. */
+  skillId?: string;
 }): Promise<StartChatResult> {
   const objective = input.objective?.trim();
   if (!objective) return { ok: false, message: "Write a message first." };
+  // A malformed id would reach Postgres's uuid cast and put raw database
+  // error text in the composer; the API route validates the same shape.
+  if (input.skillId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.skillId)) {
+    return { ok: false, message: "That skill could not be found. Pick it from the list again." };
+  }
 
   let auth;
   try {
@@ -62,6 +69,7 @@ export async function startChatRun(input: {
       profileName,
       objective,
       subjects: input.subject ? [{ type: input.subject.type, id: input.subject.id }] : [],
+      ...(input.skillId ? { skillId: input.skillId } : {}),
       estimateUsd: "0.50",
     });
     return { ok: true, runId };

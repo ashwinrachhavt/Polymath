@@ -6,12 +6,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
 import { listRecentRuns } from "@/domains/agents/queries";
+import { listSkills } from "@/domains/skills/queries";
 import { timeAgo, timeAgoShort } from "@/lib/time";
 import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
 import { HistoryMenu } from "./history-menu";
 import { ModelPicker } from "./model-picker";
+import type { PickableSkill } from "./skills/skill-picker";
 import { getProfileModelPolicy } from "@/domains/agents/queries";
 import { availableModels, resolveModelId, UNUSABLE_PROVIDERS } from "@/domains/agents/models";
 
@@ -54,9 +56,12 @@ export async function AlfredSurface() {
   // The dropdown is the complete history; the list under the composer is the
   // five most recent. One array, two views.
   const recent = runs.slice(0, 5);
-  // The driver reports why it cannot start a session; the composer surfaces
-  // the same message when a send fails, so state it here too rather than
-  // letting the first typed sentence discover it.
+  // Only enabled skills can be pinned; the engine refuses anything else.
+  const skills: PickableSkill[] = (await listSkills(auth, { enabled: true })).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+  }));
   const unavailable = eveBridgeUnavailableReason();
   // Only models whose provider key is present: offering one that cannot run
   // would freeze a model into a run that then fails on its first step.
@@ -83,7 +88,7 @@ export async function AlfredSurface() {
             />
           </div>
         ) : null}
-        <NewConversation />
+        <NewConversation skills={skills} />
         <ModelPicker
           models={models}
           current={currentModel}

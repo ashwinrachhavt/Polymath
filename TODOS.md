@@ -75,6 +75,39 @@ Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 - Custom role definitions beyond the four fixed roles (owner/admin/member/
   viewer): post-v1 by ADR 0001; revisit when a second workspace shape exists.
 
+## Skills (ASH-200)
+
+**Priority:** P2
+
+- **Skills update path is a refusal, not a diff.** Re-installing a source that
+  moved to a new revision is refused ("remove it first"); there is no update
+  flow that shows the revision delta and applies it atomically. The spec
+  deferred update/diff; build it when the library earns its keep.
+- **Local import trusts one shared root.** `SKILLS_LOCAL_ROOT` is global, not
+  per-workspace, so in a self-hosted multi-tenant deployment any member can
+  install from the same server folders. Inert on Vercel. Gate it behind an
+  explicit flag before any multi-tenant self-host ship.
+- **Error mapping keys on English message prefixes.** `runs/route.ts` and the
+  retry route match `cause.message.startsWith("That skill is not available")`
+  to return 404; rewording the engine's message silently degrades to 502.
+  Introduce a typed error class at the throw site.
+- **`listRunsForSkill` filters on an unindexed jsonb expression.** Fine at v1
+  scale; add an expression index on `policy_snapshot->'skill'->>'id'` when
+  per-skill history becomes a hot path.
+- **Residual specialist API surface.** `POST /api/v1/runs` still accepts legacy
+  `specialist:*` profile names (hidden data, unreachable from the UI) and
+  `eveAgentForProfile` still routes to the shared specialist agent.
+
+**Priority:** P3
+
+- **Local walk bounds count files, not directories or depth.** A tree of many
+  empty directories is fully recursed before the 200-file cap fires; a very
+  deep chain can overflow the stack. Count visited directories toward the cap
+  and add a depth limit.
+- **Readiness union ships two members that cannot occur yet** (Needs account
+  selection, Restart required) — documented, speculative surface; produce them
+  or trim when the capability-mapping slice lands.
+
 ## E2E
 
 **Priority:** P3

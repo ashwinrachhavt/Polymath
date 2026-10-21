@@ -35,7 +35,7 @@ src/app/          routes, layouts, RSC pages, server actions, route handlers
 src/components/   presentation only; no data access
   products/       per-surface components (command-center, neuralflow, alfred)
   shell/          launcher, nav, shared chrome
-src/domains/      17 domains, each owning its tables
+src/domains/      20 domains, each owning its tables (skills added 2026-10: ASH-200)
 src/integrations/ embeddings, extraction, firecrawl, notion, object-store,
                   search, wiki, zettels
 src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, capability-config

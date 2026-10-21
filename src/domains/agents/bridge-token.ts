@@ -26,9 +26,28 @@ export type BridgeClaims = {
   userId: string;
   workspaceId: string;
   role: "owner" | "admin" | "member" | "viewer";
+  /*
+   * Optional because most Eve calls (the chat stream, cancel) belong to no run
+   * and pin no skill. When present they are signed, so the agent can trust them
+   * exactly as much as the workspace id: a run's skill pin travels with the
+   * request instead of through a row written after session creation, which
+   * removes the race the specialist brief has to work around.
+   */
+  runId?: string;
+  skillId?: string;
 };
 
-type Payload = { uid: string; wid: string; role: BridgeClaims["role"]; aud: string; iat: number; exp: number; jti: string };
+type Payload = {
+  uid: string;
+  wid: string;
+  role: BridgeClaims["role"];
+  aud: string;
+  iat: number;
+  exp: number;
+  jti: string;
+  rid?: string;
+  skid?: string;
+};
 
 /** The shared secret, or null when it is missing or too short to trust. */
 export function bridgeSecret(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -54,6 +73,10 @@ export function signBridgeToken(
     iat,
     exp: iat + ttl,
     jti: randomUUID(),
+    // Omitted, not set to undefined: a token without these must serialise to
+    // exactly the bytes earlier versions produced.
+    ...(claims.runId !== undefined ? { rid: claims.runId } : {}),
+    ...(claims.skillId !== undefined ? { skid: claims.skillId } : {}),
   };
   const body = `v1.${encode(JSON.stringify(payload))}`;
   return `${body}.${encode(sign(options.secret, body))}`;
@@ -86,5 +109,16 @@ export function verifyBridgeToken(
   if (payload.exp - payload.iat > BRIDGE_TOKEN_TTL_SECONDS) return null;
   if (typeof payload.uid !== "string" || typeof payload.wid !== "string") return null;
   if (!["owner", "admin", "member", "viewer"].includes(payload.role)) return null;
-  return { userId: payload.uid, workspaceId: payload.wid, role: payload.role };
+  // A claim that is present but not a string is malformed, not absent: the
+  // signer here only ever writes strings, so the payload was built by other
+  // code — refuse rather than pass a non-string into a database lookup.
+  if (payload.rid !== undefined && typeof payload.rid !== "string") return null;
+  if (payload.skid !== undefined && typeof payload.skid !== "string") return null;
+  return {
+    userId: payload.uid,
+    workspaceId: payload.wid,
+    role: payload.role,
+    ...(payload.rid !== undefined ? { runId: payload.rid } : {}),
+    ...(payload.skid !== undefined ? { skillId: payload.skid } : {}),
+  };
 }

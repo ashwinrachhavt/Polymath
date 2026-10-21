@@ -22,7 +22,14 @@ const bridgeAuth: AuthFn<Request> = async (request) => {
   const auth = await verifyWorkspaceBinding(claims);
   if (!auth) return null;
   return {
-    attributes: { workspaceId: auth.workspaceId },
+    // The run and skill pin come from the same signed claims as the workspace,
+    // so the skill resolver can read them at session.started without a
+    // database write having landed first (see skills/polymath_skill.ts).
+    attributes: {
+      workspaceId: auth.workspaceId,
+      ...(claims.runId !== undefined ? { runId: claims.runId } : {}),
+      ...(claims.skillId !== undefined ? { skillId: claims.skillId } : {}),
+    },
     authenticator: "axiom-bridge",
     principalId: auth.userId,
     principalType: "user",

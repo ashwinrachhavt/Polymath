@@ -6,6 +6,7 @@ import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
+import { SkillPicker, type PickableSkill } from "./skills/skill-picker";
 
 /*
  * The one mutation on the home screen: a sentence becomes a run.
@@ -23,9 +24,10 @@ import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
  * A failed start keeps the draft. Losing typed text on a send that did not
  * happen is the worst failure this screen can produce.
  */
-export function NewConversation() {
+export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const router = useRouter();
   const [draft, setDraft] = useState("");
+  const [skillId, setSkillId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +45,7 @@ export function NewConversation() {
     setPending(true);
     setError(null);
     try {
-      const result = await startChatRun({ objective });
+      const result = await startChatRun({ objective, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);
         return;
@@ -71,7 +73,7 @@ export function NewConversation() {
           autoFocus
           aria-label="Start a conversation"
           className="min-h-[88px] resize-none border-0 bg-transparent pr-12 text-[13px] leading-6 focus-visible:ring-0"
-          placeholder="Ask anything or describe a task…"
+          placeholder={skillId ? "Describe what to do with this skill." : "Ask anything or describe a task…"}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -81,15 +83,17 @@ export function NewConversation() {
             }
           }}
         />
-        <Button
-          type="submit"
-          size="icon-sm"
-          aria-label="Send"
-          disabled={!draft.trim() || pending}
-          className="absolute right-2 bottom-2"
-        >
-          <ArrowUp aria-hidden />
-        </Button>
+        <div className="flex items-center justify-between gap-2 px-2 pb-2">
+          <SkillPicker skills={skills} value={skillId} onChange={setSkillId} />
+          <Button
+            type="submit"
+            size="icon-sm"
+            aria-label="Send"
+            disabled={!draft.trim() || pending}
+          >
+            <ArrowUp aria-hidden />
+          </Button>
+        </div>
       </div>
       {error ? (
         <p role="status" className="text-destructive mt-2 text-[12px]">
