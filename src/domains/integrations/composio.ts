@@ -18,7 +18,6 @@ const API_BASE = "https://backend.composio.dev/api/v3.1";
  */
 const EXECUTE_PROXY_URL = "https://backend.composio.dev/api/v3/tools/execute/proxy";
 
-/** Methods a *read* capability may use. Anything that could change state on the
 /**
  * Methods a *read* capability may use. Anything that could change state on the
  * provider is refused here rather than trusted to a tool author: the policy

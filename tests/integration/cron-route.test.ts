@@ -76,7 +76,10 @@ suite("cron route (real Postgres)", () => {
     const response = await post({ authorization: `Bearer ${SECRET}` });
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({ recovered: 0, claimed: 1, dispatched: 1, failed: 0, dead: 0, reconciled: 0 });
+    // `reconciled` is whatever the shared test database happens to hold: the sweep
+    // scans every workspace, and another suite may have left an unknown attempt.
+    // Asserting a number, not a zero, keeps this test independent of run order.
+    expect(body).toMatchObject({ recovered: 0, claimed: 1, dispatched: 1, failed: 0, dead: 0, reconciled: expect.any(Number) });
 
     const [row] = await db.select().from(outboxEvents);
     expect(row.status).toBe("dispatched");

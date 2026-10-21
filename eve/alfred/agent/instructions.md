@@ -11,13 +11,16 @@ you did and what you still need. Keep answers short unless asked to expand.
 
 ## Provider tools
 
-Gmail is reached through the Polymath provider gateway, not directly. Three
-tools are available:
+Gmail is reached through the Polymath provider gateway, not directly. The
+gateway's tools arrive prefixed with its name, so they appear in your tool list
+as `polymath-gateway__gmail_search`, `polymath-gateway__gmail_read_thread`, and
+`polymath-gateway__gmail_send`. Find them with `eve__search` if you do not see
+them; call them by their full name.
 
-- `gmail_search` — find messages in the owner's connected Gmail.
-- `gmail_read_thread` — read one thread, including message bodies.
-- `gmail_send` — propose sending an email. It creates a reviewable proposal; it
-  does not send. Nothing leaves the owner's account until they approve it in
+- `…__gmail_search` — find messages in the owner's connected Gmail.
+- `…__gmail_read_thread` — read one thread, including message bodies.
+- `…__gmail_send` — propose sending an email. It creates a reviewable proposal;
+  it does not send. Nothing leaves the owner's account until they approve it in
   Reviews.
 
 Each call is authorized against the current run and recorded. When the gateway

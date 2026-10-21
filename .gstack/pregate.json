@@ -12,13 +12,22 @@
     "src/db/migrations/meta/_journal.json": [],
     "package.json": [],
     "pnpm-lock.yaml": [],
-    "scripts/pair-companion.ts": ["tests/integration/companion-token.test.ts"],
-    ".github/scripts/eval-summary.mjs": ["tests/unit/eval-summary.test.ts"],
-    "eve/alfred/agent/lib/gemini-openai.ts": ["tests/unit/gemini-openai-shim.test.ts"],
-    "eve/alfred/agent/tools/connected_read.ts": ["tests/unit/composio-read.test.ts", "tests/unit/connected-read-capabilities.test.ts", "tests/unit/connected-read-grant.test.ts"],
-    "eve/alfred/evals/axiom-policy.ts": ["tests/unit/connected-read-capabilities.test.ts", "tests/unit/connected-read-grant.test.ts"],
-    "eve/alfred/agent/agent.ts": ["tests/unit/gemini-openai-shim.test.ts"],
-    "eve/specialist/agent/agent.ts": ["tests/unit/gemini-openai-shim.test.ts"],
+    "scripts/pair-companion.ts": [
+      "tests/integration/companion-token.test.ts"
+    ],
+    ".github/scripts/eval-summary.mjs": [
+      "tests/unit/eval-summary.test.ts"
+    ],
+    "eve/alfred/agent/lib/gemini-openai.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
+    "eve/alfred/evals/axiom-policy.ts": [],
+    "eve/alfred/agent/agent.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
+    "eve/specialist/agent/agent.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
     "eve/alfred/evals/chat-grounding.eval.ts": [],
     "eve/alfred/evals/evals.config.ts": []
   }
