@@ -6,9 +6,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
 import { listRecentRuns } from "@/domains/agents/queries";
-import { timeAgo } from "@/lib/time";
+import { timeAgo, timeAgoShort } from "@/lib/time";
+import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
+import { HistoryMenu } from "./history-menu";
+import { ModelPicker } from "./model-picker";
+import { getProfileModelPolicy } from "@/domains/agents/queries";
+import { availableModels, resolveModelId, UNUSABLE_PROVIDERS } from "@/domains/agents/models";
 
 export const metadata = { title: "Assistant · Polymath" };
 
@@ -42,16 +47,48 @@ export async function AlfredSurface() {
   }
 
   const auth = await getAuthContext();
-  const runs = await listRecentRuns(auth.workspaceId, 10);
+  // One query feeds both views: the menu is the history, so it needs more than
+  // the five rows shown under the composer. Fifty is a bounded read, not the
+  // whole table, so the page stays cheap as history grows.
+  const runs = await listRecentRuns(auth.workspaceId, 50);
+  // The dropdown is the complete history; the list under the composer is the
+  // five most recent. One array, two views.
+  const recent = runs.slice(0, 5);
   // The driver reports why it cannot start a session; the composer surfaces
   // the same message when a send fails, so state it here too rather than
   // letting the first typed sentence discover it.
   const unavailable = eveBridgeUnavailableReason();
+  // Only models whose provider key is present: offering one that cannot run
+  // would freeze a model into a run that then fails on its first step.
+  const models = availableModels();
+  const modelPolicy = await getProfileModelPolicy(auth.workspaceId, "alfred");
+  const stored = (modelPolicy as { primary?: unknown } | null)?.primary;
+  const currentModel = resolveModelId(stored);
 
   return (
     <Home>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+        {runs.length > 0 ? (
+          <div className="flex">
+            <HistoryMenu
+              groups={groupByRecency(runs).map((group) => ({
+                key: group.key,
+                label: group.label,
+                rows: group.rows.map((run) => ({
+                  id: run.id,
+                  objective: run.objective,
+                  time: timeAgoShort(run.createdAt),
+                })),
+              }))}
+            />
+          </div>
+        ) : null}
         <NewConversation />
+        <ModelPicker
+          models={models}
+          current={currentModel}
+          unavailable={UNUSABLE_PROVIDERS}
+        />
         {unavailable ? (
           <p role="status" className="text-muted-foreground text-[12px]">
             {unavailable}
@@ -59,11 +96,11 @@ export async function AlfredSurface() {
         ) : null}
       </div>
 
-      {runs.length > 0 ? (
+      {recent.length > 0 ? (
         <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
           <h2 className="text-[13px] font-medium">Recent</h2>
           <ul className="divide-border flex flex-col divide-y border-t">
-            {runs.map((run) => (
+            {recent.map((run) => (
               <li key={run.id}>
                 <Link
                   href={`/alfred/${run.id}`}

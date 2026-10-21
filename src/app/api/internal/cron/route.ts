@@ -55,7 +55,7 @@ async function drain(): Promise<Response> {
   const client = postgres(process.env.DATABASE_URL ?? "", { max: 1 });
   try {
     const recovered = await recoverStrandedOutbox(client);
-    const result = await dispatchPendingOutbox(client, outboxHandlers, { workerId: `cron:${crypto.randomUUID()}` });
+    const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `cron:${crypto.randomUUID()}` });
     // After the drain: a send that just went UNKNOWN is too young to reconcile,
     // and the row it left is why this runs at all.
     const reconciliation = await reconcileUnknownAttempts({ transport: composioTransport });

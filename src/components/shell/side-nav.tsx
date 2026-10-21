@@ -86,17 +86,56 @@ export function SideNav() {
       )}
     >
       <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-2.5">
-        <Link
-          href={homeHref}
-          className={cn(
-            "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
-            "focus-visible:ring-ring focus-visible:ring-3",
-            collapsed ? "justify-center px-0" : "px-2",
-          )}
-        >
-          <span aria-hidden className="polymath-mark !size-6 !text-[15px]">P</span>
-          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Polymath</span>}
-        </Link>
+        {/*
+         * The mark and the disclosure share one row in both states, so the
+         * chevron sits where the eye already is. A 52px rail cannot hold a 24px
+         * mark and a 24px target inside the 8px gutter, so the collapsed row
+         * borrows the gutter back rather than shrinking the target below the
+         * 24px floor in agents/design.md.
+         */}
+        <div className={cn("flex items-center", collapsed ? "-mx-1.5" : "gap-1")}>
+          {/* axe's label-content-name-mismatch: when an aria-label is present,
+              the link's text content must appear inside it. The mark's "P" is
+              aria-hidden for painting but still counts as text content here, so
+              any aria-label ("Polymath", "Polymath home") fails the rule. No
+              label: the visible "Polymath" names the link, and the title covers
+              the collapsed state where the text is not rendered. */}
+          <Link
+            href={homeHref}
+            title={collapsed ? "Polymath" : undefined}
+            className={cn(
+              "text-sidebar-foreground hover:bg-sidebar-accent flex items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3",
+              collapsed ? "size-6 justify-center px-0" : "h-9 min-w-0 flex-1 px-2",
+            )}
+          >
+            <span aria-hidden className="polymath-mark !size-6 !text-[15px]">P</span>
+            {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Polymath</span>}
+          </Link>
+          {/*
+           * aria-expanded reports the rail, the label reports the action: a
+           * name that restates the current state ("Collapsed") tells a screen
+           * reader where it is, not what pressing the button does.
+           */}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
+            className={cn(
+              "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground flex shrink-0 items-center justify-center rounded-md transition-colors outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3",
+              collapsed ? "size-6" : "size-8",
+            )}
+          >
+            {collapsed ? (
+              <ChevronsRight aria-hidden className="size-4" />
+            ) : (
+              <ChevronsLeft aria-hidden className="size-4" />
+            )}
+          </button>
+        </div>
 
         <span className="flex items-center gap-1.5">
         <button
@@ -127,23 +166,10 @@ export function SideNav() {
           <div className="flex flex-col gap-px">{destinations.filter((d) => d.group !== "shared").map(itemLink)}</div>
         </div>
 
-        {/* Shared workspace services and the collapse control, at the foot. */}
+        {/* Shared workspace services, at the foot. */}
         <div className="mt-auto flex flex-col gap-0.5 pt-2">
           <div aria-hidden className="border-sidebar-border mx-2 mb-1 border-t" />
           <div className="flex flex-col gap-px">{destinations.filter((d) => d.group === "shared").map(itemLink)}</div>
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={cn(
-              "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground mt-1 flex h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors outline-none",
-              "focus-visible:ring-ring focus-visible:ring-3",
-              collapsed ? "justify-center px-0" : "px-2.5",
-            )}
-          >
-            {collapsed ? <ChevronsRight aria-hidden className="size-4 shrink-0" /> : <ChevronsLeft aria-hidden className="size-4 shrink-0" />}
-            {collapsed ? null : <span>Collapse</span>}
-          </button>
         </div>
       </div>
     </nav>

@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
+import { ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { getRun, getRunPolicySnapshot, listDocumentSearchResults, listRunEvents } from "@/domains/agents/queries";
@@ -49,26 +52,36 @@ async function ConversationSurface({ runId }: { runId: string }) {
   const thread = threads.get(run.id) ?? [];
   const citations = collectCitations(searchResults.get(run.id) ?? []);
   const unavailable = eveBridgeUnavailableReason();
+  // Mirrors the server's own terminal set: a run that has not finished may still
+  // produce events, so it streams; anything else is history.
+  const isLive = !["succeeded", "failed", "cancelled"].includes(run.state) && !unavailable;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/*
+       * One compact header, not the destination-sized one: the transcript is
+       * the page, and the objective is a label on it. The page header itself
+       * stays because app screens always name what they show; everything else
+       * about the run is in Details.
+       */}
       <header className="page-header border-border bg-background/95 sticky top-12 z-10 border-b backdrop-blur">
-        <div className="screen-heading">
+        <div className="mx-auto flex w-full max-w-[var(--page-width)] items-center gap-3">
+          <Link
+            href="/alfred"
+            aria-label="Back to recent conversations"
+            className="text-muted-foreground hover:text-foreground shrink-0 text-xs underline-offset-4 hover:underline"
+          >
+            <span aria-hidden>←</span> Recent
+          </Link>
           <div className="min-w-0 flex-1">
-            <Link
-              href="/alfred"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-            >
-              ← Recent
-            </Link>
-            <h1 className="screen-title mt-1">{run.objective}</h1>
-            <p className="screen-description">
+            <h1 className="truncate text-[14px] leading-tight font-medium">{run.objective}</h1>
+            <p className="text-muted-foreground truncate text-[11px]">
               Started {timeAgo(run.createdAt)}
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
             </p>
           </div>
           {ATTENTION_STATES.has(run.state) ? (
-            <div className="screen-actions">
+            <div className="flex shrink-0 items-center">
               <Link
                 href="/reviews"
                 className="focus-visible:ring-ring rounded-sm outline-none focus-visible:ring-3"
@@ -82,9 +95,24 @@ async function ConversationSurface({ runId }: { runId: string }) {
         </div>
       </header>
 
-      <div className="page-content flex flex-col gap-8">
-        <section aria-label="Conversation" className="flex flex-col gap-5">
-          {thread.length === 0 ? (
+      <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
+        <section aria-label="Conversation" className="flex min-h-0 flex-1 flex-col gap-3">
+          {/*
+           * A live run streams; a finished one keeps the stored transcript.
+           * Rendering the snapshot for a running run was the whole reason a new
+           * conversation appeared frozen: the server read the thread once, and
+           * nothing on the page ever asked again.
+           */}
+          {isLive ? (
+            <ChatSurface
+              runId={run.id}
+              subject={{ type: "artifact", id: run.id }}
+              optimisticMessage={run.objective}
+              placeholder="Reply to continue…"
+              showHeader={false}
+              className="min-h-0 flex-1"
+            />
+          ) : thread.length === 0 ? (
             <p className="text-muted-foreground text-[13px]">
               This conversation has no messages yet.
             </p>
@@ -122,12 +150,27 @@ async function ConversationSurface({ runId }: { runId: string }) {
 }
 
 /*
- * No Suspense boundary here on purpose: the workspace group's loading.tsx
- * already streams a shell, and a second boundary would only add a skeleton
- * the shell duplicates. Reads resolve before anything below renders, so the
- * transcript and the 404 are decided in one pass.
+ * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
+ * prerender a route that awaits `connection()` outside one, and the workspace
+ * group's loading.tsx shell does not count. The fallback matches the shell so a
+ * navigation does not flash a second skeleton.
  */
 export default async function ConversationPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
-  return <ConversationSurface runId={runId} />;
+  return (
+    <Suspense fallback={<ConversationSkeleton />}>
+      <ConversationSurface runId={runId} />
+    </Suspense>
+  );
+}
+
+function ConversationSkeleton() {
+  return (
+    <div role="status" aria-label="Loading conversation" className="page-content flex flex-col gap-4">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-6 w-2/3" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-16 w-full" />
+    </div>
+  );
 }

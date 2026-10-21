@@ -32,6 +32,14 @@ export function NewConversation() {
   async function send() {
     const objective = draft.trim();
     if (!objective || pending) return;
+
+    /*
+     * The conversation opens in place, before the run exists. Waiting for the
+     * server action and then pushing a route meant a keystroke vanished behind a
+     * transaction, a session create, and a full navigation — which reads as lag
+     * even when every part is fast. `router.push` still runs, but only after the
+     * run id is known, and the route it lands on shows this same turn.
+     */
     setPending(true);
     setError(null);
     try {
@@ -40,7 +48,9 @@ export function NewConversation() {
         setError(result.message);
         return;
       }
-      router.push(`/alfred/${result.runId}`);
+      // `replace`, not `push`: the empty home is not somewhere to go back to,
+      // and the new conversation is already the thing being viewed.
+      router.replace(`/alfred/${result.runId}`);
     } catch {
       setError("The conversation could not start. Check the connection and try again.");
     } finally {
@@ -84,6 +94,11 @@ export function NewConversation() {
       {error ? (
         <p role="status" className="text-destructive mt-2 text-[12px]">
           {error}
+        </p>
+      ) : null}
+      {pending ? (
+        <p role="status" className="text-muted-foreground mt-2 text-[12px]">
+          Starting…
         </p>
       ) : null}
     </form>

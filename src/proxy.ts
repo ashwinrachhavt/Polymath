@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { clerkConfigured } from "@/lib/clerk";
+import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 
 /*
  * Next 16 renamed middleware to proxy; this file is the old middleware.ts.
@@ -22,6 +22,10 @@ const isPublicRoute = createRouteMatcher([
   // Own bearer secret (OUTBOX_DISPATCH_SECRET); 404 when unset.
   "/api/internal/outbox",
   "/api/internal/cron",
+  // The provider gateway authenticates a run-scoped HMAC token, minted by the
+  // agent, not a Clerk session. Clerk here would 307 the agent's own tool call
+  // to the sign-in page, which is what "fetch failed" looked like from eve.
+  "/api/mcp",
 ]);
 
 // The proxy enforces whenever Clerk is configured, regardless of
@@ -29,7 +33,14 @@ const isPublicRoute = createRouteMatcher([
 // (src/lib/auth.ts); letting it also switch protection off here left every
 // route open, and under cacheComponents a statically prerendered route never
 // re-runs its layout guard, so nothing else would have caught it.
-export default clerkConfigured
+//
+// One exception: the bypass with Clerk keys present is a misconfiguration, not
+// a mode. auth.protect() would 307 every page to Clerk's hosted sign-in for a
+// session the bypass by definition does not hold, so local e2e watched every
+// page replace itself mid-stream. In development that combination answers
+// next() and lets the layout's dev-owner path decide; in production it stays
+// armed, because production never runs the bypass on purpose.
+export default clerkConfigured && !(devAuthBypass && process.env.NODE_ENV !== "production")
   ? clerkMiddleware(async (auth, request) => {
       // A CORS preflight carries no credentials by design (the browser has not
       // sent the token yet), so protecting it makes every cross-origin call

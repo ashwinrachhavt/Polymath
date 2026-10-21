@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { DEFAULT_MODEL_ID } from "./models";
 import { agentProfiles } from "./schema";
 
 /*
@@ -77,7 +78,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       workspaceId,
       name,
       description: "Chief of staff. Researches and drafts; proposes anything consequential.",
-      modelPolicy: { primary: "claude-hive-glm-5.3-flash" },
+      // The catalog's default, not a stale provider id: the run frozen from
+      // this row is what spend is priced against, so it has to name a model
+      // that exists.
+      modelPolicy: { primary: DEFAULT_MODEL_ID },
       allowedTools: DEFAULT_ALLOWED_TOOLS,
       budgetPolicy: { perRunCeilingUsd: "2.00", dailyCeilingUsd: "10.00" },
       isDefault: true,

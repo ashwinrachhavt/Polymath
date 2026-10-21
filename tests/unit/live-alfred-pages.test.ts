@@ -41,6 +41,9 @@ vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/agents/queries")>()),
   listRecentRuns: vi.fn(async () => []),
   listDocumentSearchResults: vi.fn(async () => new Map()),
+  // The Assistant reads the profile's model for its picker; these tests render
+  // the page without a database, so the read is stubbed like its neighbours.
+  getProfileModelPolicy: vi.fn(async () => null),
 }));
 vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
@@ -152,7 +155,9 @@ describe("live Alfred route functionality", () => {
     // A fresh workspace gets no "Recent" heading and no empty-state box.
     expect(html).not.toContain(">Recent<");
     expect(html).not.toContain("No runs yet");
-    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 10);
+    // One query feeds both the five under the composer and the history menu,
+    // so the limit is the menu's, not the glance's.
+    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50);
   });
 
   it("lists recent runs with a badge only where the run needs the person", async () => {

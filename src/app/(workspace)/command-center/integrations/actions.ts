@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { registerAccount, revokeConnectedAccount, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
+import { registerAccount, revokeConnectedAccount, setAccountPermissions, setAccountStatus, setDefaultForWrites } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
@@ -70,7 +70,31 @@ export async function setWriteDefaultAction(input: { accountId: string; expected
 }
 
 /*
- * Disconnect is an admin decision: it takes a credential away from every agent
+ * Each switch saves itself, so this carries both flags rather than a patch: a
+ * caller that only sent the one it flipped would race a second click on the
+ * other switch into an overwrite. `expectedVersion` makes that race a visible
+ * stale-write instead of a silent lost update.
+ */
+export async function setAccountPermissionAction(input: {
+  accountId: string;
+  expectedVersion: number;
+  allowRead: boolean;
+  allowWrite: boolean;
+}): Promise<Result> {
+  const auth = await authorize();
+  if (input.allowWrite && !input.allowRead) {
+    return { ok: false, error: "A write permission needs read: a proposal must cite what it read." };
+  }
+  try {
+    await setAccountPermissions(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/*
  * and every read in the workspace, not just from the person clicking. The read
  * and send paths re-check `status = 'active'` per call, so this needs no cache
  * invalidation to take effect - only the page refresh below so the card
@@ -104,15 +128,19 @@ export async function startConnectionAction(input: { provider: string; alias: st
       provider: input.provider,
       alias: input.alias.trim(),
     });
+    // The state token is what lets the callback find this attempt. Without it
+    // every OAuth return landed on "missing-state" and the account sat in
+    // `connecting` forever, which is what a connect that "did nothing" was.
     const callbackUrl = new URL(
       "/api/integrations/callback",
       process.env.APP_ORIGIN ?? "http://localhost:3000",
-    ).toString();
+    );
+    callbackUrl.searchParams.set("state", attempt.stateToken);
     const link = await createHostedConnectLink({
       provider: input.provider,
       userId: auth.workspaceId,
       alias: input.alias.trim(),
-      callbackUrl,
+      callbackUrl: callbackUrl.toString(),
     });
     await attachProviderLink(auth, {
       attemptId: attempt.id,

@@ -42,9 +42,16 @@ test("the Assistant home carries only the new conversation copy", async ({ page 
 });
 
 test("the rail leads with Assistant, then Today", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/alfred");
-  // Destination links carry their label as an accessible name; the wordmark
-  // link above them has none, so this list is the rail order itself.
+  // The home streams: the shell hydrates and the Suspense boundary swaps its
+  // content in. Reading the DOM before that settles throws "Execution context
+  // was destroyed, most likely because of a navigation" — the page was still
+  // replacing itself, not changing route.
+  await waitSettled(page);
+  // Destination links carry their label as an accessible name; the wordmark's
+  // name comes from its visible text, so it does not match a[aria-label] and is
+  // excluded by the query itself.
   const labels = await page
     .getByRole("navigation", { name: "Workspace", exact: true })
     .locator("a[aria-label]")

@@ -1,4 +1,24 @@
-import { CalendarDays, FileText, Mail, MessageSquare, MessageSquareCode, SquareKanban } from "lucide-react";
+import {
+  Briefcase,
+  CalendarClock,
+  CalendarDays,
+  Cloud,
+  Contact,
+  CreditCard,
+  Database,
+  FileSpreadsheet,
+  FileText,
+  FolderOpen,
+  HardDrive,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  MessageSquareCode,
+  Palette,
+  SquareKanban,
+  UserRound,
+  Video,
+} from "lucide-react";
 
 /*
  * Provider marks for the connector catalog and the chat's tool activity.
@@ -11,11 +31,31 @@ import { CalendarDays, FileText, Mail, MessageSquare, MessageSquareCode, SquareK
  */
 const ICONS: Record<string, typeof Mail> = {
   gmail: Mail,
-  slack: MessageSquare,
   "google-calendar": CalendarDays,
+  "google-drive": FolderOpen,
+  "google-docs": FileText,
+  "google-sheets": FileSpreadsheet,
+  slack: MessageSquare,
+  discord: MessageCircle,
+  zoom: Video,
+  calendly: CalendarClock,
   notion: FileText,
-  linear: SquareKanban,
   github: MessageSquareCode,
+  linear: SquareKanban,
+  jira: SquareKanban,
+  asana: SquareKanban,
+  trello: SquareKanban,
+  airtable: Database,
+  figma: Palette,
+  canva: Palette,
+  dropbox: HardDrive,
+  hubspot: Contact,
+  salesforce: Cloud,
+  stripe: CreditCard,
+  // Not shipped, but the catalog may still show a row for a provider added
+  // before its config existed.
+  vercel: Briefcase,
+  people: UserRound,
 };
 
 export function ProviderIcon({ provider, displayName }: { provider: string; displayName: string }) {

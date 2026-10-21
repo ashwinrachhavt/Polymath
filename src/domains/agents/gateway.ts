@@ -369,8 +369,10 @@ export function createGateway({ transport }: { transport: Transport }) {
       };
     }
 
-    // 2. Live account state, re-read per call: revocation has to bite at once.
-    const account = await resolveAccount(context, spec.provider, parsed.accountAlias);
+    // 2. Live account state, re-read per call: revocation and a permission
+    // flipped in Connectors have to bite at once. The kind comes from the
+    // catalog, so both the read and the proposal branch pass theirs.
+    const account = await resolveAccount(context, spec.provider, parsed.accountAlias, spec.kind);
     if (!account.ok) return account.outcome;
 
     // 3. Reserve the budget before anything is fetched. The reservation is the
@@ -402,18 +404,17 @@ export function createGateway({ transport }: { transport: Transport }) {
     context: GatewayContext,
     provider: string,
     alias: string | undefined,
+    kind: "read" | "proposal",
   ): Promise<{ ok: true; alias: string; connectedAccountId: string } | { ok: false; outcome: GatewayOutcome }> {
-    const resolved = await resolveConnectedAccount(context.auth, provider, alias);
+    const resolved = await resolveConnectedAccount(context.auth, provider, alias, kind);
     if (resolved.ok) return resolved;
-    return {
-      ok: false,
-      outcome: {
-        ok: false,
-        status: 403,
-        code: resolved.code === "ambiguous" ? "ambiguous_account" : "account_not_connected",
-        message: resolved.message,
-      },
-    };
+    const code =
+      resolved.code === "ambiguous"
+        ? "ambiguous_account"
+        : resolved.code === "permission_denied"
+          ? "permission_denied"
+          : "account_not_connected";
+    return { ok: false, outcome: { ok: false, status: 403, code, message: resolved.message } };
   }
 
   async function read(
