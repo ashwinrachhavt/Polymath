@@ -193,6 +193,8 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
       "gmail_read_thread",
       "gmail_search",
       "gmail_send",
+      "linear_read_issue",
+      "linear_search_issues",
       "slack_list_channels",
       "slack_read_channel",
     ]);
@@ -718,6 +720,23 @@ suite("tools/call dispatch (real Postgres)", () => {
     const bad = await call(seed, "github_read_issue", { owner: "..", repo: "r", number: 1 });
     expect(bad.status).toBe(400);
     expect(reads).toHaveLength(before);
+  });
+
+  it("reads Linear through a constant query and refuses an identifier that is not one", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-linear", provider: "linear" });
+    install([
+      {
+        method: "GRAPHQL",
+        endpointPrefix: "https://api.linear.app/graphql#PolymathReadIssue",
+        status: 200,
+        body: { issue: { identifier: "ASH-1", title: "T", state: { name: "Todo" }, comments: { nodes: [] }, labels: { nodes: [] } } },
+      },
+    ]);
+    const ok = await call(seed, "linear_read_issue", { identifier: "ASH-1" });
+    expect(ok.status).toBe(200);
+    const bad = await call(seed, "linear_read_issue", { identifier: "ASH-1) { id } mutation x" });
+    expect(bad.status).toBe(400);
   });
 
   it("truncates a 70 KB thread at the last whole message with an explicit marker", async () => {

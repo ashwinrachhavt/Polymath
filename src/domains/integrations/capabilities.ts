@@ -26,7 +26,7 @@
  * connect screen. Nothing gates on it.
  */
 
-export type Provider = "gmail" | "github" | "slack";
+export type Provider = "gmail" | "github" | "slack" | "linear";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -57,6 +57,8 @@ export const CAPABILITIES = {
   "github.issue.read": { provider: "github", kind: "read", riskClass: "read", tool: "github_read_issue" },
   "slack.channels.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_list_channels" },
   "slack.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_read_channel" },
+  "linear.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_search_issues" },
+  "linear.issue.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_read_issue" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -75,6 +77,8 @@ export const PROVIDER_TOOLS = {
   github_read_issue: "github.issue.read",
   slack_list_channels: "slack.channels.read",
   slack_read_channel: "slack.read",
+  linear_search_issues: "linear.read",
+  linear_read_issue: "linear.issue.read",
 } as const satisfies Record<string, Capability>;
 
 /*

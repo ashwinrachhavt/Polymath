@@ -183,6 +183,54 @@ export async function executeComposioRead(call: ComposioCall): Promise<ComposioC
   return { ok: true, data: "data" in body ? body.data : body };
 }
 
+/*
+ * GraphQL is POST on the wire, so the read-only method guard cannot admit it.
+ * This path instead refuses anything that is not a single query document, and
+ * the endpoint is fixed by the caller's module, never by a model. A document
+ * naming a mutation or subscription is refused before any request is built.
+ */
+const GRAPHQL_FORBIDDEN = /\b(mutation|subscription)\b/i;
+
+export class ComposioGraphqlNotQueryError extends Error {
+  readonly code = "composio_graphql_not_query";
+  constructor() {
+    super("Composio inline GraphQL refused a document that is not a plain query.");
+  }
+}
+
+export async function executeComposioGraphqlRead(call: {
+  connectedAccountId: string;
+  endpoint: string;
+  query: string;
+  variables?: Record<string, unknown>;
+}): Promise<ComposioCallResult> {
+  if (!/^\s*query\b/.test(call.query) || GRAPHQL_FORBIDDEN.test(call.query)) throw new ComposioGraphqlNotQueryError();
+  const apiKey = process.env.COMPOSIO_API_KEY;
+  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
+  let response: Response;
+  try {
+    response = await fetch(EXECUTE_PROXY_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        connected_account_id: call.connectedAccountId,
+        endpoint: call.endpoint,
+        method: "POST",
+        body: { query: call.query, variables: call.variables ?? {} },
+        parameters: [],
+      }),
+    });
+  } catch {
+    return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
+  }
+  if (!response.ok) {
+    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
+  }
+  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
+  return { ok: true, data: "data" in body ? body.data : body };
+}
+
 /** A write call: the method is fixed at the type level, and guarded at runtime. */
 export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
 

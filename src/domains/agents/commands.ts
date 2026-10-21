@@ -33,6 +33,8 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "github.issue.read",
   "slack.channels.read",
   "slack.read",
+  "linear.read",
+  "linear.issue.read",
   "calendar.read",
   "notion.read",
   // NotebookLM parity. Opening a notebook reads; grading a review writes an
@@ -70,6 +72,8 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "github.issue.read",
       "slack.channels.read",
       "slack.read",
+      "linear.read",
+      "linear.issue.read",
       "calendar.read",
       "notion.read",
       "notebook.open",
