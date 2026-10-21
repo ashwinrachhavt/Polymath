@@ -86,6 +86,12 @@ describe("extractPackages", () => {
     expect(warnings[0]).toContain("not UTF-8");
   });
 
+  it("rejects a path containing a NUL byte", () => {
+    const files = new Map([["repo/skills/research/\0hidden", file("repo/skills/research/\0hidden", "x")]]);
+    expect(() => extractPackages(files)).toThrow(/NUL byte/);
+    expect(codeOf(() => extractPackages(files))).toBe("unsafe_path");
+  });
+
   it("rejects a link entry instead of following it", () => {
     const files = new Map<string, PackageFile>([
       ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Linked."))],
@@ -108,12 +114,54 @@ describe("extractPackages", () => {
     expect(() => extractPackages(files)).toThrow(/at most 64/);
   });
 
+  it("rejects a package over 512 KB in total", () => {
+    const chunk = new Uint8Array(120 * 1024).fill(0x61);
+    const files = new Map<string, PackageFile>([
+      ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Too big."))],
+      ["repo/skills/research/a.txt", file("repo/skills/research/a.txt", chunk)],
+      ["repo/skills/research/b.txt", file("repo/skills/research/b.txt", chunk)],
+      ["repo/skills/research/c.txt", file("repo/skills/research/c.txt", chunk)],
+      ["repo/skills/research/d.txt", file("repo/skills/research/d.txt", chunk)],
+      ["repo/skills/research/e.txt", file("repo/skills/research/e.txt", chunk)],
+    ]);
+
+    expect(codeOf(() => extractPackages(files))).toBe("too_large");
+    expect(() => extractPackages(files)).toThrow(/at most 512.0 KB/);
+  });
+
   it("rejects two packages that slug to the same name", () => {
     const files = new Map([
       ["repo/skills/Research Notes/SKILL.md", file("repo/skills/Research Notes/SKILL.md", skill("Spaces."))],
       ["repo/skills/research-notes/SKILL.md", file("repo/skills/research-notes/SKILL.md", skill("Hyphens."))],
     ]);
-    expect(() => extractPackages(files)).toThrow(/both name themselves "research-notes"/);
+    expect(() => extractPackages(files)).toThrow(/both become the skill name "research-notes"/);
+  });
+
+  it("ignores a root-level SKILL.md rather than calling it a package", () => {
+    const { skills } = extractPackages(
+      new Map([
+        ["SKILL.md", file("SKILL.md", skill("Root readme."))],
+        ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("A package."))],
+      ]),
+    );
+    expect(skills.map((s) => s.slug)).toEqual(["research"]);
+  });
+
+  it("reads a folded description written with a chomping indicator", () => {
+    const text = "---\ndescription: >-\n  Folded over\n  two lines.\n---\n\nBody\n";
+    const { skills } = extractPackages(
+      new Map([["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", text)]]),
+    );
+    expect(skills[0].description).toBe("Folded over two lines.");
+  });
+
+  it("names an oversized SKILL.md as the problem, not a missing description", () => {
+    const big = new TextEncoder().encode(`---\ndescription: fine\n---\n${"x".repeat(200 * 1024)}`);
+    const files = new Map([
+      ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", big)],
+    ]);
+    expect(() => extractPackages(files)).toThrow(/over the 128.0 KB limit/);
+    expect(() => extractPackages(files)).not.toThrow(/needs a description/);
   });
 });
 
@@ -146,18 +194,66 @@ describe("contentHashOf", () => {
       ]),
     ).skills[0];
 
-    expect(contentHashOf(first)).toBe(first.contentHash);
     expect(first.contentHash).not.toBe(second.contentHash);
   });
 
   it("changes when only the procedure body changes", () => {
     const before = extractPackages(
-      new Map([["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Same.", "Step one."))]]),
+      new Map([
+        ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Same.", "Step one."))],
+      ]),
     ).skills[0];
     const after = extractPackages(
-      new Map([["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Same.", "Step two."))]]),
+      new Map([
+        ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Same.", "Step two."))],
+      ]),
     ).skills[0];
 
     expect(before.contentHash).not.toBe(after.contentHash);
+  });
+
+  it("cannot be collided by a NUL in file text", () => {
+    // Two different packages whose concatenation is identical if a NUL is used
+    // as the only separator: file "a" with text "x" + file "b" with "y", vs
+    // file "a" with text "x\0b\0y". Length prefixes must keep them apart.
+    const first = extractPackages(
+      new Map([
+        ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Collide."))],
+        ["repo/skills/research/a", file("repo/skills/research/a", "x")],
+        ["repo/skills/research/b", file("repo/skills/research/b", "y")],
+      ]),
+    ).skills[0];
+    const second = extractPackages(
+      new Map([
+        ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Collide."))],
+        ["repo/skills/research/a", file("repo/skills/research/a", "x\0b\0y")],
+      ]),
+    ).skills[0];
+
+    expect(first.contentHash).not.toBe(second.contentHash);
+  });
+
+  it("orders by code units, so NFC and NFD paths hash the same everywhere", () => {
+    // "é" as one code point vs "e" + combining acute. `localeCompare` calls
+    // these equal, which makes the sort dependent on insertion order.
+    const nfc = "é.md";
+    const nfd = "é.md";
+    const build = (paths: string[]) =>
+      extractPackages(
+        new Map([
+          ["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Both sorts."))],
+          ...paths.map((name) => {
+            const path = `repo/skills/research/${name}`;
+            return [path, file(path, name)] as [string, PackageFile];
+          }),
+        ]),
+      ).skills[0].contentHash;
+
+    expect(build([nfc, nfd])).toBe(build([nfd, nfc]));
+    expect(contentHashOf(
+      extractPackages(
+        new Map([["repo/skills/research/SKILL.md", file("repo/skills/research/SKILL.md", skill("Both sorts."))]]),
+      ).skills[0],
+    )).toMatch(/^[0-9a-f]{64}$/);
   });
 });

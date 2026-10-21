@@ -25,15 +25,44 @@ const SHELL_OPERATORS: Array<{ token: string; reason: string }> = [
 
 const SAFE_FORM = 'npx skills add owner/repo';
 
-/** GitHub allows letters, digits, dots, hyphens and underscores in both halves. */
+/**
+ * GitHub allows letters, digits, dots, hyphens and underscores in both halves.
+ * Dots alone are not a name: `x/..` and `x/.` are traversal, not a repository.
+ */
 const REPO_SEGMENT = /^[A-Za-z0-9_.-]+$/;
 
 function rejection(message: string): { error: string } {
   return { error: message };
 }
 
-function containsUnsafePath(value: string): boolean {
-  return value.startsWith("/") || value.split("/").includes("..");
+function isTraversal(segment: string): boolean {
+  return segment === "." || segment === "..";
+}
+
+/*
+ * The value is decoded before it is judged: `%2e%2e` is `..` to any later
+ * consumer, and a backslash is a separator on Windows even when the archive
+ * came from GitHub. Empty and `.` segments are dropped so `p//x`, `p/./x` and
+ * `p/x` name the same folder.
+ */
+function cleanRelativePath(value: string): { path: string } | { error: string } {
+  if (value.startsWith("/") || value.includes("\\")) {
+    return { error: "must be relative to the repository and cannot start with a slash or contain a backslash" };
+  }
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return { error: "is not a readable folder path" };
+  }
+
+  const segments = decoded.split("/");
+  if (segments.includes("..") || segments.some((segment) => segment.includes("\0"))) {
+    return { error: 'must stay inside the repository and cannot contain ".."' };
+  }
+  const path = segments.filter((segment) => segment !== "" && segment !== ".").join("/");
+  return path ? { path } : { error: "is not a folder name" };
 }
 
 export function parseSkillCommand(input: string): SourceRequest | { error: string } {
@@ -56,20 +85,29 @@ export function parseSkillCommand(input: string): SourceRequest | { error: strin
       `Only npx is allowed, but this command starts with "${tokens[0]}". Use "${SAFE_FORM}".`,
     );
   }
+
+  // A truncated command has no token to name; quoting an empty string would
+  // read as a bug in the message rather than in the paste.
+  const named = (value: string | undefined, fallback: string) =>
+    value === undefined ? fallback : `"${value}"`;
+
   if (tokens[1] !== "skills") {
     return rejection(
-      `Only the "skills" package is supported after npx, not "${tokens[1] ?? ""}". Use "${SAFE_FORM}".`,
+      `Only the "skills" package is supported after npx, not ${named(tokens[1], "nothing")}. Use "${SAFE_FORM}".`,
     );
   }
   if (tokens[2] !== "add") {
     return rejection(
-      `Only "add" is supported after "npx skills", not "${tokens[2] ?? ""}". Use "${SAFE_FORM}".`,
+      `Only "add" is supported after "npx skills", not ${named(tokens[2], "nothing")}. Use "${SAFE_FORM}".`,
     );
   }
 
   let repository: string | undefined;
   let path: string | undefined;
 
+  // `--path` is accepted before or after the repository: people paste both
+  // orders, and the tokens are independent, so there is nothing to gain from
+  // rejecting one of them.
   for (let i = 3; i < tokens.length; i += 1) {
     const token = tokens[i];
 
@@ -81,12 +119,11 @@ export function parseSkillCommand(input: string): SourceRequest | { error: strin
       if (value === undefined || value.startsWith("-")) {
         return rejection('Give "--path" a folder inside the repository, for example "--path skills".');
       }
-      if (containsUnsafePath(value)) {
-        return rejection(
-          `The "--path" value "${value}" must be relative to the repository and cannot contain "..".`,
-        );
+      const cleaned = cleanRelativePath(value);
+      if ("error" in cleaned) {
+        return rejection(`The "--path" value "${value}" ${cleaned.error}.`);
       }
-      path = value;
+      path = cleaned.path;
       i += 1;
       continue;
     }
@@ -110,7 +147,10 @@ export function parseSkillCommand(input: string): SourceRequest | { error: strin
   }
 
   const segments = repository.split("/");
-  if (segments.length !== 2 || segments.some((segment) => !REPO_SEGMENT.test(segment))) {
+  if (
+    segments.length !== 2 ||
+    segments.some((segment) => !REPO_SEGMENT.test(segment) || isTraversal(segment))
+  ) {
     return rejection(
       `"${repository}" is not an owner/repo pair. Use "${SAFE_FORM}" — a URL, an SSH address, or a path will not work.`,
     );

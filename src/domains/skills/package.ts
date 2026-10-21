@@ -31,10 +31,13 @@ const SKILL_FILE = "SKILL.md";
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
+const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
 
 function bytesLabel(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
+  // One decimal, so "128 KB + 100 B" never prints as a flat 128 KB while the
+  // message says the file is over the limit.
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 function assertSafePath(path: string): void {
@@ -105,13 +108,16 @@ function readFrontmatter(text: string): { description: string; body: string } | 
     if (!field) continue;
 
     const value = field[1].trim();
-    if (value === ">" || value === "|" || value === "") {
+    // `>` and `|` may carry chomping and indentation indicators (`>-`, `|2-`);
+    // the folded/literal choice is what matters here, not the chomping.
+    const block = /^([>|])([+-]?\d*|[0-9][+-]?)$/.exec(value);
+    if (block || value === "") {
       const collected: string[] = [];
       while (i + 1 < lines.length && /^[ \t]+/.test(lines[i + 1])) {
         i += 1;
         collected.push(lines[i].trim());
       }
-      description = collected.join(value === "|" ? "\n" : " ").trim();
+      description = collected.join(block?.[1] === "|" ? "\n" : " ").trim();
     } else {
       description = value.replace(/^(["'])(.*)\1$/, "$2").trim();
     }
@@ -121,9 +127,17 @@ function readFrontmatter(text: string): { description: string; body: string } | 
   return { description, body };
 }
 
-/** Every directory holding a SKILL.md. A file belongs to the nearest one. */
+/**
+ * A SKILL.md at the top of the map is not a package: the brief defines one as
+ * a *directory* holding SKILL.md, and there is no folder to name it after. It
+ * is ignored rather than fatal so a repository with a README-style root
+ * SKILL.md still yields its real packages.
+ */
 function packageRoots(paths: string[]): string[] {
-  return paths.filter((path) => baseName(path) === SKILL_FILE).map(directoryOf);
+  return paths
+    .filter((path) => baseName(path) === SKILL_FILE)
+    .map(directoryOf)
+    .filter((root) => root !== "");
 }
 
 function ownerOf(path: string, roots: string[]): string | null {
@@ -134,20 +148,31 @@ function ownerOf(path: string, roots: string[]): string | null {
   return owner;
 }
 
-/** Decodes one file, or records why it was omitted and returns null. */
-function readText(file: PackageFile, warnings: string[]): string | null {
+type Decoded = { text: string } | { reason: "oversized" | "not_text"; warning: string };
+
+/** Decodes one file or says why it cannot be used; callers decide whether that is fatal. */
+function decodeFile(file: PackageFile): Decoded {
   if (file.bytes.byteLength > MAX_FILE_BYTES) {
-    warnings.push(
-      `${file.path} is ${bytesLabel(file.bytes.byteLength)}; files over ${bytesLabel(MAX_FILE_BYTES)} are skipped.`,
-    );
-    return null;
+    return {
+      reason: "oversized",
+      warning: `${file.path} is ${bytesLabel(file.bytes.byteLength)}; files over ${bytesLabel(MAX_FILE_BYTES)} are skipped.`,
+    };
   }
   try {
-    return utf8.decode(file.bytes);
+    return { text: utf8.decode(file.bytes) };
   } catch {
-    warnings.push(`${file.path} is not UTF-8 text, so it was skipped.`);
+    return { reason: "not_text", warning: `${file.path} is not UTF-8 text, so it was skipped.` };
+  }
+}
+
+/** Decodes one file, or records why it was omitted and returns null. */
+function readText(file: PackageFile, warnings: string[]): string | null {
+  const decoded = decodeFile(file);
+  if ("warning" in decoded) {
+    warnings.push(decoded.warning);
     return null;
   }
+  return decoded.text;
 }
 
 function inspectPackage(root: string, packageFiles: PackageFile[]): {
@@ -172,13 +197,6 @@ function inspectPackage(root: string, packageFiles: PackageFile[]): {
     );
   }
 
-  if (root === "") {
-    throw new InspectError(
-      "invalid_metadata",
-      "A SKILL.md at the top of the source has no folder to name it after. Move it into a folder such as skills/<name>/.",
-    );
-  }
-
   const directoryName = baseName(root);
   const slug = slugify(directoryName);
   if (!SLUG_PATTERN.test(slug)) {
@@ -190,8 +208,23 @@ function inspectPackage(root: string, packageFiles: PackageFile[]): {
 
   const skillPath = `${root}/${SKILL_FILE}`;
   const skillFile = packageFiles.find((file) => file.path === skillPath);
-  const skillText = skillFile ? readText(skillFile, warnings) : null;
-  const metadata = skillText === null ? null : readFrontmatter(skillText);
+  if (!skillFile) {
+    throw new InspectError("invalid_metadata", `"${skillPath}" disappeared during inspection.`);
+  }
+
+  const decoded = decodeFile(skillFile);
+  if ("warning" in decoded) {
+    // Name the real problem: the file exists, so "needs a description" would
+    // send the author looking at frontmatter that is probably fine.
+    throw new InspectError(
+      "invalid_metadata",
+      decoded.reason === "oversized"
+        ? `"${skillPath}" is ${bytesLabel(skillFile.bytes.byteLength)}, over the ${bytesLabel(MAX_FILE_BYTES)} limit for one file, so it cannot be read.`
+        : `"${skillPath}" is not UTF-8 text, so it cannot be read as a skill.`,
+    );
+  }
+
+  const metadata = readFrontmatter(decoded.text);
   if (!metadata || !metadata.description) {
     throw new InspectError(
       "invalid_metadata",
@@ -236,7 +269,7 @@ export function extractPackages(files: Map<string, PackageFile>): {
     }
   }
 
-  const sorted = [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
+  const sorted = [...files.values()].sort((a, b) => compareCodeUnits(a.path, b.path));
   const roots = packageRoots(sorted.map((file) => file.path));
   const skills: InspectedSkill[] = [];
   const warnings: string[] = [];
@@ -251,7 +284,7 @@ export function extractPackages(files: Map<string, PackageFile>): {
     if (takenBy !== undefined) {
       throw new InspectError(
         "invalid_metadata",
-        `Two packages both name themselves "${skill.slug}" ("${takenBy}" and "${root}"). Rename one folder so the names differ.`,
+        `Two folders both become the skill name "${skill.slug}": "${takenBy}" and "${root}". Rename one folder so the names differ.`,
       );
     }
     slugs.set(skill.slug, root);
@@ -262,24 +295,35 @@ export function extractPackages(files: Map<string, PackageFile>): {
   return { skills, warnings };
 }
 
+/*
+ * Code-unit order, not `localeCompare`: the latter depends on the host locale
+ * and reports equal for NFC and NFD spellings of the same string, so the hash
+ * would differ between machines and could still look insertion-ordered.
+ */
+function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
- * Sorted paths and a separator that cannot occur in text make the digest
- * independent of map insertion order and of where one file's bytes end.
+ * Length-prefixed parts, so no separator choice can collide with content: the
+ * byte count is hashed before each field, then the field. Sorted paths make the
+ * digest independent of map insertion order.
  */
 export function contentHashOf(skill: InspectedSkill): string {
   const hash = createHash("sha256");
-  hash.update(skill.description);
-  hash.update("\0");
+  const part = (value: string) => {
+    hash.update(`${byteLength(value)}:`);
+    hash.update(value);
+  };
+
+  part(skill.description);
   // The body lives in SKILL.md, which is not in `files`; without it an edit to
   // the procedure would leave the hash unchanged and a re-import would look
   // identical.
-  hash.update(skill.body);
-  hash.update("\0");
-  for (const file of [...skill.files].sort((a, b) => a.path.localeCompare(b.path))) {
-    hash.update(file.path);
-    hash.update("\0");
-    hash.update(file.text);
-    hash.update("\0");
+  part(skill.body);
+  for (const file of [...skill.files].sort((a, b) => compareCodeUnits(a.path, b.path))) {
+    part(file.path);
+    part(file.text);
   }
   return hash.digest("hex");
 }

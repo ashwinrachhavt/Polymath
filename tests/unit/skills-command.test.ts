@@ -69,6 +69,36 @@ describe("parseSkillCommand", () => {
   it("rejects a --path that climbs out of the repository", () => {
     expect(errorOf("npx skills add x/y --path ../etc")).toContain("..");
   });
+
+  it("rejects each remaining shell operator", () => {
+    expect(errorOf("npx skills add x/y > out.txt")).toContain('">"');
+    expect(errorOf("npx skills add x/y < in.txt")).toContain('"<"');
+    expect(errorOf("npx skills add x/y || sh")).toContain('"||"');
+    expect(errorOf("npx skills add x/y & again")).toContain('"&"');
+  });
+
+  it("rejects a dot segment as owner or repo", () => {
+    expect(errorOf("npx skills add x/..")).toContain("owner/repo");
+    expect(errorOf("npx skills add ./y")).toContain("owner/repo");
+    expect("error" in parseSkillCommand("npx skills add x/..")).toBe(true);
+  });
+
+  it("rejects --path traversal through escape sequences and backslashes", () => {
+    expect(errorOf("npx skills add x/y --path %2e%2e/etc")).toContain("..");
+    expect(errorOf("npx skills add x/y --path ..%2Fetc")).toContain("..");
+    expect(errorOf("npx skills add x/y --path ..\\etc")).toContain("backslash");
+  });
+
+  it("normalises empty and dot segments in --path", () => {
+    expect(parseSkillCommand("npx skills add x/y --path p//x")).toMatchObject({ path: "p/x" });
+    expect(parseSkillCommand("npx skills add x/y --path p/./x")).toMatchObject({ path: "p/x" });
+  });
+
+  it("names a missing token instead of quoting an empty one", () => {
+    expect(errorOf("npx skills")).not.toContain('not ""');
+    expect(errorOf("npx skills")).toContain("nothing");
+    expect(errorOf("npx skills add")).toContain("Name the repository");
+  });
 });
 
 describe("parseSource", () => {
@@ -127,5 +157,27 @@ describe("parseSource", () => {
   it("rejects a link to a host other than github.com", () => {
     const result = parseSource("https://example.com/o/r");
     expect("error" in result && result.error).toContain("Only github.com");
+  });
+
+  it("rejects percent-encoded traversal and separators in a tree path", () => {
+    const cases = [
+      "https://github.com/o/r/tree/main/a%2F..%2F..%2Fetc",
+      "https://github.com/o/r/tree/main/%2Fetc%2Fpasswd",
+      "https://github.com/o/r/tree/main/%2F%2Fevil.example.com%2Fx",
+      "https://github.com/o/r/tree/main/%00hidden",
+      "https://github.com/o/r/tree/main/%5C%5Cunc%5Cshare",
+    ];
+    for (const link of cases) {
+      expect(parseSource(link)).toHaveProperty("error");
+    }
+  });
+
+  it("rejects percent-encoded separators in a ref", () => {
+    expect(parseSource("https://github.com/o/r/tree/feat%2Fx/skills")).toHaveProperty("error");
+    expect(parseSource("https://github.com/o/r/tree/%2e%2e/skills")).toHaveProperty("error");
+  });
+
+  it("drops empty and dot segments from a tree path", () => {
+    expect(parseSource("https://github.com/o/r/tree/main/a//./b")).toMatchObject({ path: "a/b" });
   });
 });
