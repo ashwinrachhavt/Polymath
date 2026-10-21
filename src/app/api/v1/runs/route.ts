@@ -36,6 +36,8 @@ const startRun = z.object({
   profileName: z.string().default("alfred"),
   /** Keep this run inside one dossier: documents.search then only reads its documents. */
   dossierId: z.string().uuid().optional(),
+  /** Pin the run to one installed skill; the pin is frozen into the run's policy snapshot. */
+  skillId: z.string().uuid().optional(),
 });
 
 export const GET = authedHandler(async (auth) => {
@@ -61,7 +63,7 @@ export const POST = authedHandler(async (auth, request) => {
   }
 
   const receipt = key
-    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd, parsed.data.dossierId ?? null])) }
+    ? { key, hash: await sha256Hex(JSON.stringify([parsed.data.objective, parsed.data.profileName, parsed.data.estimateUsd, parsed.data.dossierId ?? null, parsed.data.skillId ?? null])) }
     : null;
   if (receipt) {
     const [claimed] = await db
@@ -108,6 +110,7 @@ export const POST = authedHandler(async (auth, request) => {
       objective: parsed.data.objective,
       subjects: parsed.data.dossierId ? [{ type: "dossier", id: parsed.data.dossierId }] : [],
       estimateUsd: parsed.data.estimateUsd,
+      skillId: parsed.data.skillId,
     });
     if (receipt) {
       await db
@@ -126,6 +129,11 @@ export const POST = authedHandler(async (auth, request) => {
     // A failed start is a problem response, never a bare 500 with no body.
     if (cause instanceof Error && cause.message.startsWith("Unknown agent profile")) {
       return problemResponse(404, "not_found", "No such agent profile. Install the specialist first.");
+    }
+    // A skill the caller cannot use is their problem to fix in Skills, not a
+    // provider failure: answer with the engine's own actionable sentence.
+    if (cause instanceof Error && cause.message.startsWith("That skill is not available")) {
+      return problemResponse(404, "not_found", cause.message);
     }
     console.error("run start failed", cause);
     return problemResponse(502, "agent_start_failed", "The run could not be started. Try again.");

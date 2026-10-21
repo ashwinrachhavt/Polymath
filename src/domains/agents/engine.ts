@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { getSkill } from "@/domains/skills/queries";
 import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -29,6 +30,8 @@ export type PolicySnapshot = {
   allowedAccounts: unknown;
   budgetUsd: unknown;
   auth: AuthContext;
+  /** The skill this run is pinned to. Frozen at start; a later skill edit cannot change it. */
+  skill?: { id: string; revision: string; contentHash: string; name: string };
 };
 
 /**
@@ -58,6 +61,8 @@ export interface AgentEngine {
     threadId?: string;
     /** Set when this run retries a finished one. */
     retryOfRunId?: string;
+    /** Pins the run to one installed skill for its whole life. */
+    skillId?: string;
   }): Promise<{ runId: string; reservationId: string }>;
   signal(runId: string, signal: string, auth: AuthContext): Promise<void>;
   resume(runId: string, auth: AuthContext): Promise<void>;
@@ -156,6 +161,17 @@ export function createEngine(
         .limit(1);
       if (!profile) throw new Error(`Unknown agent profile: ${input.profileName}`);
 
+      /*
+       * Resolved before the row exists so a missing or disabled skill creates no
+       * run at all. The pinned fields go into the snapshot below, which is
+       * written by the same insert that creates the run — so the pin is frozen
+       * by construction and a later edit to the skill cannot reach this run.
+       */
+      const skill = input.skillId ? await getSkill(input.auth, input.skillId) : null;
+      if (input.skillId && (!skill || !skill.enabled)) {
+        throw new Error("That skill is not available. Enable it in Skills and try again.");
+      }
+
       const model = primaryModel(profile.modelPolicy);
       // The run keeps this revision even if the profile is edited afterwards.
       const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
@@ -166,6 +182,16 @@ export function createEngine(
         allowedAccounts: profile.allowedAccounts,
         budgetUsd: profile.budgetPolicy,
         auth: input.auth,
+        ...(skill
+          ? {
+              skill: {
+                id: skill.id,
+                revision: skill.revision,
+                contentHash: skill.contentHash,
+                name: skill.name,
+              },
+            }
+          : {}),
       };
 
       // The run exists before the session does, so a crash between the two
