@@ -98,3 +98,79 @@ export const LIMITS = {
   callsPerWorkspacePerMinute: 60,
   effectsPerRun: 5,
 } as const;
+
+/*
+ * Per-connector access tiers. A tier's capability list is the enforcement
+ * source for what an agent on that tier may do; the mirrored
+ * `integration_catalog.access_tiers` JSON (seeded by migration 0229) is
+ * display metadata for the connect screen. Keep the two in step —
+ * tests/unit/provider-tiers.test.ts proves they have not drifted.
+ *
+ * Ordered lowest-first; each tier strictly extends the one below it.
+ * `integration_catalog.risk_by_capability` remains display metadata only.
+ */
+export type AccessTier = {
+  id: string;
+  label: string;
+  description: string;
+  capabilities: Capability[];
+};
+
+export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
+  gmail: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search and read mail.",
+      capabilities: ["gmail.read", "gmail.thread.read"],
+    },
+    {
+      id: "read_send",
+      label: "Read + send proposals",
+      description: "Agents can also draft send proposals for your approval.",
+      capabilities: ["gmail.read", "gmail.thread.read", "gmail.send"],
+    },
+  ],
+  github: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search repositories and read issues.",
+      capabilities: ["github.read", "github.issue.read"],
+    },
+  ],
+  slack: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list channels and read messages.",
+      capabilities: ["slack.channels.read", "slack.read"],
+    },
+  ],
+  linear: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search and read issues.",
+      capabilities: ["linear.read", "linear.issue.read"],
+    },
+  ],
+};
+
+/** The capabilities a tier grants; empty for an unknown tier id or provider. */
+export function tierCapabilities(provider: Provider, tierId: string): Capability[] {
+  return PROVIDER_TIERS[provider]?.find((tier) => tier.id === tierId)?.capabilities ?? [];
+}
+
+export function tierAllows(
+  provider: Provider,
+  tierId: string,
+  capability: Capability,
+): boolean {
+  return tierCapabilities(provider, tierId).includes(capability);
+}
+
+/** The narrowest tier a provider offers, or null when it has none. */
+export function lowestTierId(provider: Provider): string | null {
+  return PROVIDER_TIERS[provider]?.[0]?.id ?? null;
+}
