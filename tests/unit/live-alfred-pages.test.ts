@@ -155,7 +155,9 @@ describe("live Alfred route functionality", () => {
     // A fresh workspace gets no "Recent" heading and no empty-state box.
     expect(html).not.toContain(">Recent<");
     expect(html).not.toContain("No runs yet");
-    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 10);
+    // One query feeds both the five under the composer and the history menu,
+    // so the limit is the menu's, not the glance's.
+    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50);
   });
 
   it("lists recent runs with a badge only where the run needs the person", async () => {

@@ -48,6 +48,14 @@ export type ChatSurfaceProps = {
   onCitation?: (citations: DocumentCitation[]) => void;
   /** Title shown in the surface header; defaults to the subject type. */
   title?: string;
+  /**
+   * Whether to render the surface's own header row. The run page already names
+   * the conversation in its page header, and two headers stacked about 150px of
+   * chrome before the first message. Presence is named explicitly rather than
+   * inferred from a missing `title` because the title is also the section's
+   * accessible name and other callers rely on the subject-type fallback.
+   */
+  showHeader?: boolean;
   className?: string;
 };
 
@@ -59,6 +67,7 @@ export function ChatSurface({
   placeholder = "Ask about this",
   onCitation,
   title,
+  showHeader = true,
   className,
 }: ChatSurfaceProps) {
   const [draft, setDraft] = useState("");
@@ -118,18 +127,31 @@ export function ChatSurface({
 
   return (
     <section className={`flex min-h-0 flex-col ${className ?? ""}`} aria-label={title ?? `Chat about this ${subject.type}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <BookOpen aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-          <p className="truncate text-[13px] font-medium">{title ?? `This ${subject.type}`}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-          {chat.connection === "waiting" && <span>Waiting for a message</span>}
-          {busy && <span>Working</span>}
-          {chat.connection === "done" && <span>Finished</span>}
-          {capabilities.length > 0 && <span className="readout">{capabilities.join(" · ")}</span>}
-        </div>
-      </header>
+      {showHeader ? (
+        <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <BookOpen aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <p className="truncate text-[13px] font-medium">{title ?? `This ${subject.type}`}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+            {chat.connection === "waiting" && <span>Waiting for a message</span>}
+            {busy && <span>Working</span>}
+            {chat.connection === "done" && <span>Finished</span>}
+            {capabilities.length > 0 && <span className="readout">{capabilities.join(" · ")}</span>}
+          </div>
+        </header>
+      ) : null}
+
+      {/*
+       * A page that hides the header still owes the reader the connection
+       * state, so it moves to a single quiet line above the transcript rather
+       * than vanishing with the chrome it used to share.
+       */}
+      {!showHeader && (busy || chat.connection === "done") ? (
+        <p className="text-muted-foreground pt-1 pb-2 text-[11px]" role="status">
+          {busy ? "Working" : "Finished"}
+        </p>
+      ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
         {transcript.length === 0 && !optimistic && !busy ? (

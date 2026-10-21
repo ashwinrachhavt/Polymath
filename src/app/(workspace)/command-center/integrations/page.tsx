@@ -47,6 +47,8 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
       status: account.status,
       displayName: account.displayName,
       isDefaultForWrites: account.isDefaultForWrites,
+      allowRead: account.allowRead,
+      allowWrite: account.allowWrite,
       lastHealthyAt: account.lastHealthyAt ? account.lastHealthyAt.toISOString() : null,
       lastError: account.lastError,
       version: account.version,

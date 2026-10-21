@@ -105,6 +105,53 @@ export async function setAccountStatus(
 }
 
 /**
+ * What an account may do. Write means "may file a proposal", never "may send",
+ * so these flags narrow the effect of a connection without granting an effect
+ * of their own. Both flags move together under one version check because they
+ * are read as a pair by the gateway; two separate writes could leave the
+ * account in a state nobody chose.
+ */
+export async function setAccountPermissions(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; allowRead: boolean; allowWrite: boolean },
+) {
+  return withTransaction(async (tx) => {
+    const [updated] = await tx
+      .update(externalAccounts)
+      .set({
+        allowRead: input.allowRead,
+        allowWrite: input.allowWrite,
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.id, input.accountId),
+          eq(externalAccounts.version, input.expectedVersion),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      {
+        action: "integration.account_permissions_set",
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector ${updated.alias}: read ${input.allowRead ? "on" : "off"}, write ${input.allowWrite ? "on" : "off"}`,
+        metadata: { allowRead: input.allowRead, allowWrite: input.allowWrite },
+      },
+      tx,
+    );
+    return updated;
+  });
+}
+
+/**
  * Revoking is the owner's stop button: the row stays (history, audit, and the
  * alias keep pointing at something real), but every read and every send looks
  * up `status = 'active'` live, so a revoked account stops being usable the

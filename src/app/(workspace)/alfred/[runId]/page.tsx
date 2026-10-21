@@ -57,24 +57,31 @@ async function ConversationSurface({ runId }: { runId: string }) {
   const isLive = !["succeeded", "failed", "cancelled"].includes(run.state) && !unavailable;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/*
+       * One compact header, not the destination-sized one: the transcript is
+       * the page, and the objective is a label on it. The page header itself
+       * stays because app screens always name what they show; everything else
+       * about the run is in Details.
+       */}
       <header className="page-header border-border bg-background/95 sticky top-12 z-10 border-b backdrop-blur">
-        <div className="screen-heading">
+        <div className="mx-auto flex w-full max-w-[var(--page-width)] items-center gap-3">
+          <Link
+            href="/alfred"
+            aria-label="Back to recent conversations"
+            className="text-muted-foreground hover:text-foreground shrink-0 text-xs underline-offset-4 hover:underline"
+          >
+            <span aria-hidden>←</span> Recent
+          </Link>
           <div className="min-w-0 flex-1">
-            <Link
-              href="/alfred"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-            >
-              ← Recent
-            </Link>
-            <h1 className="screen-title mt-1">{run.objective}</h1>
-            <p className="screen-description">
+            <h1 className="truncate text-[14px] leading-tight font-medium">{run.objective}</h1>
+            <p className="text-muted-foreground truncate text-[11px]">
               Started {timeAgo(run.createdAt)}
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
             </p>
           </div>
           {ATTENTION_STATES.has(run.state) ? (
-            <div className="screen-actions">
+            <div className="flex shrink-0 items-center">
               <Link
                 href="/reviews"
                 className="focus-visible:ring-ring rounded-sm outline-none focus-visible:ring-3"
@@ -88,8 +95,8 @@ async function ConversationSurface({ runId }: { runId: string }) {
         </div>
       </header>
 
-      <div className="page-content flex flex-col gap-8">
-        <section aria-label="Conversation" className="flex flex-col gap-5">
+      <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
+        <section aria-label="Conversation" className="flex min-h-0 flex-1 flex-col gap-3">
           {/*
            * A live run streams; a finished one keeps the stored transcript.
            * Rendering the snapshot for a running run was the whole reason a new
@@ -102,8 +109,8 @@ async function ConversationSurface({ runId }: { runId: string }) {
               subject={{ type: "artifact", id: run.id }}
               optimisticMessage={run.objective}
               placeholder="Reply to continue…"
-              title="Conversation"
-              className="min-h-[50vh]"
+              showHeader={false}
+              className="min-h-0 flex-1"
             />
           ) : thread.length === 0 ? (
             <p className="text-muted-foreground text-[13px]">
