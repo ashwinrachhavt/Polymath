@@ -9,7 +9,7 @@ import { decideAndRecordToolInvocation } from "./authorization";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
 import { parkRunForReview } from "./event-bridge";
 import { toolCalls } from "./schema";
-import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
+import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, tierAllows, type Capability } from "@/domains/integrations/capabilities";
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
 import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/domains/integrations/gmail/reads";
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
@@ -432,11 +432,21 @@ export function createGateway({ transport }: { transport: Transport }) {
       };
     }
 
-    // 2. Live account state, re-read per call: revocation and a permission
-    // flipped in Connectors have to bite at once. The kind comes from the
-    // catalog, so both the read and the proposal branch pass theirs.
-    const account = await resolveAccount(context, spec.provider, parsed.accountAlias, spec.kind);
+    // 2. Live account state, re-read per call: revocation and a tier flipped
+    // in Connectors have to bite at once.
+    const account = await resolveAccount(context, spec.provider, parsed.accountAlias);
     if (!account.ok) return account.outcome;
+
+    // 2b. The connection's tier, read live with the account. The snapshot above
+    // bounds what the run may want; the tier bounds what this connection grants.
+    if (!tierAllows(spec.provider, account.accessTier, capability)) {
+      return {
+        ok: false,
+        status: 403,
+        code: "permission_denied",
+        message: `Agent access for "${account.alias}" does not include this. Raise the tier in Connectors.`,
+      };
+    }
 
     // 3. Reserve the budget before anything is fetched. The reservation is the
     // row the next concurrent caller counts, so the cap holds under a burst;
@@ -523,16 +533,16 @@ export function createGateway({ transport }: { transport: Transport }) {
     context: GatewayContext,
     provider: string,
     alias: string | undefined,
-    kind: "read" | "proposal",
-  ): Promise<{ ok: true; alias: string; connectedAccountId: string } | { ok: false; outcome: GatewayOutcome }> {
-    const resolved = await resolveConnectedAccount(context.auth, provider, alias, kind);
+  ): Promise<
+    | { ok: true; alias: string; connectedAccountId: string; accessTier: string }
+    | { ok: false; outcome: GatewayOutcome }
+  > {
+    const resolved = await resolveConnectedAccount(context.auth, provider, alias);
     if (resolved.ok) return resolved;
-    const code =
-      resolved.code === "ambiguous"
-        ? "ambiguous_account"
-        : resolved.code === "permission_denied"
-          ? "permission_denied"
-          : "account_not_connected";
+    // permission_denied is no longer a resolution outcome: the tier gate owns
+    // it, after the account resolves. Resolution fails only on not_connected
+    // or ambiguity.
+    const code = resolved.code === "ambiguous" ? "ambiguous_account" : "account_not_connected";
     return { ok: false, outcome: { ok: false, status: 403, code, message: resolved.message } };
   }
 

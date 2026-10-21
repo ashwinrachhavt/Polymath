@@ -76,6 +76,8 @@ export const integrationCatalog = pgTable(
     capabilities: jsonb("capabilities").notNull().default([]),
     /** Read | prepare | external_write | sensitive_write per capability. */
     riskByCapability: jsonb("risk_by_capability").notNull().default({}),
+    /** The tier offers the connect screen shows, mirroring PROVIDER_TIERS. */
+    accessTiers: jsonb("access_tiers").notNull().default([]),
     requiresApproval: boolean("requires_approval").notNull().default(true),
     ...recorded,
   },
@@ -101,6 +103,13 @@ export const externalAccounts = pgTable(
     /** What the agent may do with this account. Write means "may file a proposal", never "may send". */
     allowRead: boolean("allow_read").notNull().default(true),
     allowWrite: boolean("allow_write").notNull().default(false),
+    /**
+     * Which access tier the owner granted this connection, as a
+     * `PROVIDER_TIERS[provider]` tier id. Unset is a valid state (the column
+     * predates tiers on some rows) and reads as the narrowest offer; the
+     * capability lists in PROVIDER_TIERS are the enforcement source.
+     */
+    accessTier: text("access_tier"),
     lastHealthyAt: timestamp("last_healthy_at", { withTimezone: true }),
     lastError: text("last_error"),
     ...mutable,

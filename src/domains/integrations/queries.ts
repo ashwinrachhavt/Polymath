@@ -70,18 +70,6 @@ export async function listSyncCursors(auth: AuthContext, accountId: string) {
     .limit(50);
 }
 
-/*
- * Provider ids are slugs; a refusal is read by a person, so it names the
- * provider the way a heading would. Only the gateway's providers appear here
- * today, and a two-word name is the whole reason this is not `.toUpperCase()`.
- */
-function providerLabel(provider: string): string {
-  return provider
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 /**
  * The connected account an agent tool should act through.
  *
@@ -92,30 +80,24 @@ function providerLabel(provider: string): string {
  * account for that provider is inferred; two accounts with no alias is an
  * ambiguity the tool must surface, not guess at.
  *
- * `kind` is the capability's authorization shape, not its risk class. When the
- * caller is an agent acting on the owner's behalf, it passes the kind and the
- * account's matching switch must be on: a read needs `allowRead`, a proposal
- * needs `allowWrite`. Callers that act on an effect the owner already approved
- * (the send executor, calendar execution, reconciliation) omit it: their
- * authority is the approval, not a standing agent permission, and applying the
- * switch there would let a toggle silently stop an approved send.
+ * The account's `accessTier` rides on the success result so the gateway can
+ * gate capabilities against it without a second query. Unset reads as
+ * "read_only": the narrowest offer, never "everything".
  */
 export async function resolveConnectedAccount(
   auth: AuthContext,
   provider: string,
   alias?: string,
-  kind?: "read" | "proposal",
 ): Promise<
-  | { ok: true; connectedAccountId: string; alias: string }
-  | { ok: false; code: "not_connected" | "ambiguous" | "permission_denied"; message: string }
+  | { ok: true; connectedAccountId: string; alias: string; accessTier: string }
+  | { ok: false; code: "not_connected" | "ambiguous"; message: string }
 > {
   const rows = await db
     .select({
       alias: externalAccounts.alias,
       status: externalAccounts.status,
       connectedAccountId: externalAccounts.composioConnectedAccountId,
-      allowRead: externalAccounts.allowRead,
-      allowWrite: externalAccounts.allowWrite,
+      accessTier: externalAccounts.accessTier,
     })
     .from(externalAccounts)
     .where(
@@ -152,18 +134,10 @@ export async function resolveConnectedAccount(
     return { ok: false, code: "not_connected", message: `No ${provider} account is connected.` };
   }
 
-  if (kind) {
-    const allowed = kind === "read" ? match.allowRead : match.allowWrite;
-    if (!allowed) {
-      const what = kind === "read" ? "Reading" : "Writing to";
-      const toggle = kind === "read" ? "Read" : "Write";
-      return {
-        ok: false,
-        code: "permission_denied",
-        message: `${what} ${providerLabel(provider)} is off for "${match.alias}". Turn on ${toggle} in Connectors.`,
-      };
-    }
-  }
-
-  return { ok: true, connectedAccountId: match.connectedAccountId, alias: match.alias };
+  return {
+    ok: true,
+    connectedAccountId: match.connectedAccountId,
+    alias: match.alias,
+    accessTier: match.accessTier ?? "read_only",
+  };
 }
