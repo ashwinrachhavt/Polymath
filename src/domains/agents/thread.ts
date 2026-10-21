@@ -16,7 +16,7 @@ import { agentRuns, runEvents } from "./schema";
 
 export type ThreadEntry = {
   sequence: number;
-  kind: "user" | "assistant" | "cancelled" | "status";
+  kind: "user" | "assistant" | "reasoning" | "cancelled" | "status";
   text: string;
   at: Date;
 };
@@ -25,7 +25,7 @@ const TERMINAL = ["succeeded", "failed", "cancelled"] as const;
 export const isFinished = (state: string) => (TERMINAL as readonly string[]).includes(state);
 
 function toEntry(row: { sequence: number; type: string; data: unknown; createdAt: Date }): ThreadEntry | null {
-  const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown };
+  const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown; text?: unknown };
   if (row.type === "message" && typeof data.content === "string") {
     return {
       sequence: row.sequence,
@@ -34,9 +34,22 @@ function toEntry(row: { sequence: number; type: string; data: unknown; createdAt
       at: row.createdAt,
     };
   }
+  // The model's visible rationale, persisted by the bridge so a reload keeps
+  // what the live stream already showed.
+  if (row.type === "reasoning" && typeof data.text === "string" && data.text.trim() !== "") {
+    return { sequence: row.sequence, kind: "reasoning", text: data.text, at: row.createdAt };
+  }
   if (row.type === "cancelled") return { sequence: row.sequence, kind: "cancelled", text: "Cancelled", at: row.createdAt };
   if (row.type === "step.failed") {
     return { sequence: row.sequence, kind: "status", text: "A step failed", at: row.createdAt };
+  }
+  if (row.type === "compaction") {
+    return {
+      sequence: row.sequence,
+      kind: "status",
+      text: "Earlier turns were summarized to keep the conversation in the model's window.",
+      at: row.createdAt,
+    };
   }
   return null; // usage, session lifecycle and the rest are not thread content
 }

@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, like, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
 import { db } from "@/lib/db";
@@ -7,6 +7,7 @@ import { createProposal } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { decideAndRecordToolInvocation } from "./authorization";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
+import { parkRunForReview } from "./event-bridge";
 import { toolCalls } from "./schema";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
@@ -45,6 +46,12 @@ export type GatewayContext = {
 };
 
 export type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
+/**
+ * How many identical calls one run may make before it is parked. Two is a
+ * retry; three is a loop.
+ */
+const LOOP_CALL_THRESHOLD = 3;
 
 export type GatewayOutcome =
   | { ok: true; result: ToolResult }
@@ -392,12 +399,68 @@ export function createGateway({ transport }: { transport: Transport }) {
       }
     }
 
+    // 5. Loop detection, before the budget: the third identical read in one run
+    // is the run spinning, so it is parked for review instead of spending a
+    // provider call to confirm what the first two already returned. Reads only:
+    // a send files a proposal the owner decides on — its dedupe key absorbs
+    // replays, and the redacted trace erases the body, so identical-looking
+    // sends may be legitimate wording revisions. Same tool and same redacted
+    // arguments is the identity; the redacted form is what the rows store, so
+    // the comparison cannot miss what it already recorded.
+    if (parsed.tool !== "gmail_send") {
+      const parked = await detectLoop(context, parsed);
+      if (parked) {
+        return {
+          ok: false,
+          status: 429,
+          code: "loop_detected",
+          message:
+            "This run has made the same call repeatedly. It is parked for review; approve or retry it from the run's page.",
+        };
+      }
+    }
+
     const reservation = await reserveCall(context, spec.provider, parsed, account.alias);
     if (!reservation.ok) return reservation.outcome;
 
     return parsed.tool === "gmail_send"
       ? proposeSend(context, capability, parsed, account.alias, reservation)
       : read(context, parsed, account.alias, account.connectedAccountId, reservation);
+  }
+
+  /**
+   * Two prior calls with the same tool and arguments in this run, and the run
+   * parks — settled or failed, a returned result is what the repetition is
+   * made of; a pending reservation is not (it is in flight, and parking on it
+   * would strand a call that may still succeed). Best-effort: a failed check
+   * returns false and lets the limits handle the burst.
+   */
+  async function detectLoop(context: GatewayContext, parsed: ParsedCall & { ok: true }): Promise<boolean> {
+    const args = JSON.stringify(redactArguments(parsed));
+    try {
+      const [row] = await db
+        .select({ n: count() })
+        .from(toolCalls)
+        .where(
+          and(
+            eq(toolCalls.workspaceId, context.auth.workspaceId),
+            eq(toolCalls.runId, context.run.id),
+            eq(toolCalls.toolName, parsed.tool),
+            sql`arguments is not distinct from ${args}::jsonb`,
+            isNotNull(toolCalls.ok),
+          ),
+        );
+      const prior = Number(row?.n ?? 0);
+      if (prior < LOOP_CALL_THRESHOLD - 1) return false;
+      await parkRunForReview({
+        workspaceId: context.auth.workspaceId,
+        runId: context.run.id,
+        reason: `${parsed.tool} called with identical arguments ${prior + 1} times in one run.`,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function resolveAccount(

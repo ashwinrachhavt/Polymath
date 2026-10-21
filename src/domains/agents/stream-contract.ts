@@ -30,7 +30,8 @@ export type ChatFrame =
   /** A block finished; `text` is authoritative and replaces anything accumulated. */
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
   /** A tool call started or settled. `label` is the human-readable name. */
-  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; cursor: number }
+  /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
+  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; cursor: number }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
@@ -119,6 +120,21 @@ function citationsFromToolOutput(output: unknown): ChatCitation[] {
 }
 
 /**
+ * One-line outcome for the tool activity list. Counts a list payload rather
+ * than pasting it: the line answers "what came back" in a glance, and the full
+ * redacted result lives in the conversation page's Details disclosure.
+ */
+function summaryFromToolOutput(output: unknown): string {
+  if (output === null || output === undefined) return "no result";
+  if (Array.isArray(output)) return `${output.length} result${output.length === 1 ? "" : "s"}`;
+  const list = (output as { results?: unknown } | null)?.results;
+  if (Array.isArray(list)) return `${list.length} result${list.length === 1 ? "" : "s"}`;
+  const messages = (output as { messages?: unknown } | null)?.messages;
+  if (Array.isArray(messages)) return `${messages.length} message${messages.length === 1 ? "" : "s"}`;
+  return "done";
+}
+
+/**
  * The block a delta belongs to. Eve keeps appends and the matching completion
  * together by stream coordinates (turn, step) plus type; two assistant blocks in
  * one turn come from two steps, so stepIndex is part of the identity.
@@ -204,6 +220,7 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
       // an unknown outcome as success would claim an effect that may not have
       // happened, and would emit citations from a partial result.
       const succeeded = data.status === "completed" || data.status === "succeeded";
+      const error = (data.error ?? null) as { code?: unknown } | null;
       const frames: ChatFrame[] = [
         {
           type: "tool",
@@ -211,6 +228,11 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
           callId,
           label: asString(result.toolName) ?? "tool",
           status: succeeded ? "ok" : "error",
+          // One line the surface can show without expanding anything: an error
+          // code when the call failed, a count when a list came back.
+          detail: succeeded
+            ? summaryFromToolOutput(result.output)
+            : asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed"),
           cursor,
         },
       ];
