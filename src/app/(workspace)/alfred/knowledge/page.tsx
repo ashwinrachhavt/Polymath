@@ -30,6 +30,8 @@ import {
 import { listFolders } from "@/domains/knowledge/library";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { statementForDocument } from "@/domains/knowledge/statement-import";
+import { judgeTransactions } from "@/domains/knowledge/transaction-rules";
+import type { Judgment } from "@/domains/knowledge/transaction-classify";
 import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { DocumentVault } from "./vault";
 
@@ -129,6 +131,7 @@ export async function KnowledgeSurface({
       ),
     );
     const statement = await statementForDocument(auth, review.document.id);
+    const judgments = statement ? await judgeTransactions(auth, statement.transactions) : [];
     return (
       <ReviewWorkbench
         review={review}
@@ -137,6 +140,7 @@ export async function KnowledgeSurface({
         suggestedTitle={suggestedTitle && suggestedTitle !== review.document.title ? suggestedTitle : null}
         classification={classificationValue}
         statement={statement}
+        judgments={judgments}
       />
     );
   }
@@ -189,6 +193,7 @@ export async function KnowledgeSurface({
  */
 function statementPanelData(
   statement: Awaited<ReturnType<typeof statementForDocument>>,
+  judgments: Judgment[],
 ): StatementPanelData | null {
   if (!statement) return null;
   const reconciliation = statement.import.reconciliation as {
@@ -211,10 +216,13 @@ function statementPanelData(
     reconciled: statement.import.reconciled,
     error: statement.import.error,
     mismatches: reconciliation.mismatches ?? [],
-    rows: statement.transactions.map((row) => ({
+    rows: statement.transactions.map((row, index) => ({
+      id: row.id,
       occurredOn: row.occurredOn,
       description: row.description,
       amount: row.amount,
+      category: judgments[index]?.category,
+      needsReview: judgments[index]?.route === "review",
     })),
   };
 }
@@ -226,6 +234,7 @@ function ReviewWorkbench({
   classification,
   zettels,
   statement,
+  judgments,
 }: {
   zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
@@ -233,6 +242,7 @@ function ReviewWorkbench({
   suggestedTitle: string | null;
   classification: Awaited<ReturnType<typeof getOpenClassification>> | null;
   statement: Awaited<ReturnType<typeof statementForDocument>>;
+  judgments: Judgment[];
 }) {
   const { document: doc, extraction, fieldProposals, parties, obligations } = review;
   const status = documentStatus(extraction, fieldProposals.filter((p) => p.status === "proposed").length);
@@ -299,7 +309,7 @@ function ReviewWorkbench({
           <StatementPanel
             documentId={doc.id}
             extractionSucceeded={extraction?.status === "succeeded"}
-            statement={statementPanelData(statement)}
+            statement={statementPanelData(statement, judgments)}
           />
           {extraction?.status === "failed" && doc.sourceUrl ? (
             <RetryCaptureButton url={doc.sourceUrl} />
