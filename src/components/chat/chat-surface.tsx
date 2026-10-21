@@ -8,6 +8,7 @@ import { Markdown } from "@/components/markdown";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import { useChatStream } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
+import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 
 /*
  * ChatSurface — the one chat interface.
@@ -73,7 +74,11 @@ export function ChatSurface({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Set by a send: the owner's own message always scrolls into view, even when
+  // they had scrolled up to reread something.
+  const forceScrollRef = useRef(false);
   const chat = useChatStream(runId, { onCitation });
   const busy = chat.connection === "connecting" || chat.connection === "streaming";
   // Reasoning is available in chat.blocks for a surface that wants it, but the
@@ -88,6 +93,8 @@ export function ChatSurface({
     optimisticMessage && !transcript.some((block) => block.kind === "user" && block.text === optimisticMessage)
       ? optimisticMessage
       : null;
+  const userTexts = transcript.filter((block) => block.kind === "user").map((block) => block.text);
+  const waiting = stillPending(pending, userTexts);
   const lastAssistantIndex = transcript.map((b) => b.kind).lastIndexOf("assistant");
 
   const lastText = transcript[lastAssistantIndex]?.text;
@@ -98,14 +105,27 @@ export function ChatSurface({
     const node = scrollRef.current;
     if (!node) return;
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
-    if (nearBottom) node.scrollTop = node.scrollHeight;
-  }, [transcript.length, lastText]);
+    if (nearBottom || forceScrollRef.current) node.scrollTop = node.scrollHeight;
+    forceScrollRef.current = false;
+  }, [transcript.length, lastText, waiting.length]);
 
   async function send() {
     const message = draft.trim();
     if (!message || sending) return;
     setSending(true);
     setSendError(null);
+    // Optimistic: the message shows and the composer empties now. A failure
+    // below takes it back out and returns the words to the composer, so a
+    // failed send never loses what was typed.
+    const entry = makePending(crypto.randomUUID(), message, userTexts);
+    setPending((current) => [...current, entry]);
+    setDraft("");
+    forceScrollRef.current = true;
+    const restore = (error: string) => {
+      setPending((current) => current.filter((item) => item.id !== entry.id));
+      setDraft((current) => (current.trim() === "" ? message : current));
+      setSendError(error);
+    };
     try {
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
@@ -114,12 +134,11 @@ export function ChatSurface({
       });
       if (!response.ok) {
         const problem = (await response.json().catch(() => null)) as { detail?: string; title?: string } | null;
-        setSendError(problem?.detail ?? problem?.title ?? "The message was not sent.");
+        restore(problem?.detail ?? problem?.title ?? "The message was not sent.");
         return;
       }
-      setDraft("");
     } catch {
-      setSendError("The message was not sent. Check the connection and try again.");
+      restore("The message was not sent. Check the connection and try again.");
     } finally {
       setSending(false);
     }
@@ -154,7 +173,7 @@ export function ChatSurface({
       ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
-        {transcript.length === 0 && !optimistic && !busy ? (
+        {transcript.length === 0 && !optimistic && waiting.length === 0 && !busy ? (
           <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
             Ask a question. Answers cite the {subject.type === "dossier" ? "pinned sources" : "sources"} they use.
           </p>
@@ -176,6 +195,11 @@ export function ChatSurface({
                 {optimistic}
               </div>
             ) : null}
+            {waiting.map((entry) => (
+              <div key={entry.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6 opacity-70">
+                {entry.text}
+              </div>
+            ))}
           </div>
         )}
 
@@ -232,7 +256,9 @@ export function ChatSurface({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            // Enter that confirms an IME candidate (Japanese, Chinese, Korean) is
+            // not a send.
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               void send();
             }
