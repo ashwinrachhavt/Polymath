@@ -10,7 +10,7 @@ import { signBridgeToken } from "@/domains/agents/bridge-token";
 import { signGatewayToken } from "@/domains/agents/gateway-token";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { fixtureTransport, type FixtureRoute } from "../helpers/fixture-transport";
-import type { Transport, TransportRequest } from "@/domains/integrations/transport";
+import type { GraphqlReadRequest, Transport, TransportRequest } from "@/domains/integrations/transport";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -48,6 +48,10 @@ vi.mock("@/domains/integrations/transport", async (importOriginal) => {
         reads.push(request);
         if (!transportHolder.transport) throw new Error("no fixture transport installed");
         return transportHolder.transport.read(request);
+      },
+      async graphql(request: GraphqlReadRequest) {
+        if (!transportHolder.transport?.graphql) throw new Error("no fixture graphql transport installed");
+        return transportHolder.transport.graphql(request);
       },
     } satisfies Transport,
   };
