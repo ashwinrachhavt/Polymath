@@ -27,11 +27,14 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 vi.mock("@/lib/auth", () => ({
-  authedHandler: (handler: (auth: NonNullable<typeof holder.auth>, request: Request) => Promise<Response>) =>
-    (request: Request) => handler(holder.auth!, request),
+  authedHandler:
+    (handler: (auth: NonNullable<typeof holder.auth>, request: Request, ctx: unknown) => Promise<Response>) =>
+    (request: Request, ctx: unknown) =>
+      handler(holder.auth!, request, ctx),
 }));
 
 import { POST } from "@/app/api/v1/runs/route";
+import { POST as RETRY } from "@/app/api/v1/runs/[runId]/retry/route";
 
 let db: NonNullable<typeof handle>["db"];
 let engineModule: typeof import("@/domains/agents/engine");
@@ -214,6 +217,35 @@ suite("skill run pinning", () => {
     expect(await res.json()).toMatchObject({
       code: "invalid_input",
       title: "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+    });
+    expect(await countRuns(seeded.workspaceId)).toBe(before);
+  });
+
+  it("the retry route answers a disabled pin the way the start route does, and starts nothing", async () => {
+    const seeded = await seedWorkspace(db, `pin-i-${Date.now()}`);
+    holder.auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const skillId = await installSkill(seeded.workspaceId, seeded.userId, "Disabled later");
+    const { runId } = await startRun(seeded.userId, seeded.workspaceId, skillId);
+    await db.update(agentRuns).set({ state: "succeeded" }).where(eq(agentRuns.id, runId));
+    await skillCommands.setSkillEnabled(ownerAuth(seeded.userId, seeded.workspaceId), {
+      id: skillId,
+      enabled: false,
+    });
+    const before = await countRuns(seeded.workspaceId);
+
+    const res = await RETRY(
+      new Request(`https://axiom.test/api/v1/runs/${runId}/retry`, { method: "POST" }),
+      { params: Promise.resolve({ runId }) } as never,
+    );
+
+    // Same status and shape as POST /api/v1/runs returns for this cause, not a
+    // bare 500: the body is problem-detail, and the key is still readable.
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("application/problem+json");
+    expect(await res.json()).toMatchObject({
+      code: "not_found",
+      title: "That skill is not available. Enable it in Skills and try again.",
+      status: 404,
     });
     expect(await countRuns(seeded.workspaceId)).toBe(before);
   });
