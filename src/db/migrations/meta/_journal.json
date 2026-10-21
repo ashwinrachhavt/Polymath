@@ -372,6 +372,13 @@
       "tag": "0226_skills",
       "when": 1792480551000,
       "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "tag": "0227_transaction_category_rules",
+      "when": 1792480560000,
+      "breakpoints": true
     }
   ]
 }

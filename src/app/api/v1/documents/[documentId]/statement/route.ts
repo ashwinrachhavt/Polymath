@@ -2,6 +2,7 @@ import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { buildClassifiedLedgerCsv, buildLedgerCsv, ledgerCsvFilename } from "@/domains/knowledge/statement-csv";
+import { listOwnerRules } from "@/domains/knowledge/transaction-rules";
 import { statementForDocument } from "@/domains/knowledge/statement-import";
 
 /*
@@ -46,7 +47,9 @@ export const GET = authedHandler(async (auth, request, ctx: { params: Promise<{ 
 
   // ?categories=1 adds a local category per row. The default stays three columns.
   const withCategories = new URL(request.url).searchParams.get("categories") === "1";
-  const csv = withCategories ? buildClassifiedLedgerCsv(found.transactions) : buildLedgerCsv(found.transactions);
+  const csv = withCategories
+    ? buildClassifiedLedgerCsv(found.transactions, { ownerRules: await listOwnerRules(auth) })
+    : buildLedgerCsv(found.transactions);
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

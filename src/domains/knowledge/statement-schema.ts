@@ -100,3 +100,25 @@ export const statementTransactions = pgTable(
     check("statement_transactions_amount_nonzero", sql`amount <> 0`),
   ],
 );
+
+/*
+ * An owner's correction, remembered. "QWZX TRADING is education" is stored once
+ * under the merchant key (see transaction-classify.ts) and applies to every
+ * later statement, so the review queue shrinks as the owner works through it.
+ * The category is text validated at the edge against the taxonomy, so adding a
+ * category never needs a migration.
+ */
+export const transactionCategoryRules = pgTable(
+  "transaction_category_rules",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    merchantKey: text("merchant_key").notNull(),
+    category: text("category").notNull(),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("transaction_category_rules_key").on(t.workspaceId, t.merchantKey),
+    check("transaction_category_rules_key_nonempty", sql`length(merchant_key) > 0`),
+  ],
+);

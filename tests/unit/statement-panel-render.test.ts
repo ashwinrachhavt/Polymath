@@ -91,3 +91,38 @@ describe("StatementPanel", () => {
     expect(html).not.toContain("Build ledger");
   });
 });
+
+describe("StatementPanel categories", () => {
+  const statement = {
+    ...base,
+    status: "parsed" as const,
+    reconciled: true,
+    error: null,
+    mismatches: [],
+    rows: [
+      { id: "t-1", occurredOn: "2026-01-05", description: "STARBUCKS COFFEE", amount: "-6.50", category: "dining", needsReview: false },
+      { id: "t-2", occurredOn: "2026-01-06", description: "QWZX 88 TRADING", amount: "-12.00", category: "unknown", needsReview: true },
+    ],
+  };
+
+  it("lists only the unsure rows for correction, with a category choice for each", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatementPanel, { documentId: "doc-1", extractionSucceeded: true, statement }),
+    );
+    expect(html).toContain("1 to categorise");
+    expect(html).toContain("QWZX 88 TRADING");
+    expect(html).not.toContain("Category for STARBUCKS");
+    expect(html).toContain("Category for QWZX 88 TRADING");
+  });
+
+  it("shows no category UI when the statement was not classified", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatementPanel, {
+        documentId: "doc-1",
+        extractionSucceeded: true,
+        statement: { ...statement, rows: [{ occurredOn: "2026-01-05", description: "GYM", amount: "-1.00" }] },
+      }),
+    );
+    expect(html).not.toContain("to categorise");
+  });
+});

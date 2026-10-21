@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { readStatementLedger } from "./statement-actions";
+import { correctTransactionCategory, readStatementLedger } from "./statement-actions";
+import { CATEGORY_CRITERIA } from "@/domains/knowledge/transaction-classify";
 
 /*
  * The ledger panel in the document workbench. Two states, and the difference
@@ -32,7 +33,15 @@ export type StatementPanelData = {
     expectedBalance: string;
     actualBalance: string;
   }>;
-  rows: Array<{ occurredOn: string; description: string; amount: string }>;
+  rows: Array<{
+    id?: string;
+    occurredOn: string;
+    description: string;
+    amount: string;
+    /** Absent when the caller did not classify; the panel then shows no category UI. */
+    category?: string;
+    needsReview?: boolean;
+  }>;
 };
 
 function money(value: string | null): string {
@@ -55,6 +64,19 @@ export function StatementPanel({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+
+  function correct(transactionId: string, category: string) {
+    if (!category) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await correctTransactionCategory(transactionId, category);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function build() {
     setError(null);
@@ -116,6 +138,10 @@ export function StatementPanel({
       ? `${statement.periodStart} to ${statement.periodEnd}`
       : statement.periodStart ?? "period unknown";
 
+  const reviewRows = statement.rows.filter(
+    (row): row is typeof row & { id: string } => Boolean(row.id) && row.needsReview === true,
+  );
+
   return (
     <section className="panel rounded-lg px-3.5 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -175,6 +201,47 @@ export function StatementPanel({
         </div>
       )}
 
+      {reviewRows.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-xs font-medium">
+            {reviewRows.length} to categorise
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Pick a category once and every later statement from the same merchant uses it.
+          </p>
+          <ul className="mt-2 flex max-h-56 flex-col gap-1 overflow-auto text-xs">
+            {reviewRows.slice(0, 25).map((row) => (
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span className="truncate">
+                  {row.occurredOn} · {row.description.slice(0, 50)} · {money(row.amount)}
+                </span>
+                <select
+                  aria-label={`Category for ${row.description.slice(0, 40)}`}
+                  className="bg-background border-border rounded border px-1 py-0.5"
+                  defaultValue=""
+                  disabled={pending}
+                  onChange={(event) => correct(row.id as string, event.target.value)}
+                >
+                  <option value="">Choose…</option>
+                  {Object.keys(CATEGORY_CRITERIA)
+                    .filter((key) => key !== "unknown")
+                    .map((key) => (
+                      <option key={key} value={key}>
+                        {key.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+          {error ? (
+            <p role="alert" className="text-destructive mt-2 text-xs">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {statement.rows.length > 0 ? (
         <div className="mt-3">
           <button
@@ -191,7 +258,8 @@ export function StatementPanel({
                   <tr>
                     <th className="py-1 pr-2 font-medium">Date</th>
                     <th className="py-1 pr-2 font-medium">Description</th>
-                    <th className="py-1 text-right font-medium">Amount</th>
+                    <th className="py-1 pr-2 text-right font-medium">Amount</th>
+                    <th className="py-1 font-medium">Category</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -199,7 +267,10 @@ export function StatementPanel({
                     <tr key={`${row.occurredOn}-${index}`} className="border-border/40 border-t">
                       <td className="py-1 pr-2 whitespace-nowrap tabular-nums">{row.occurredOn}</td>
                       <td className="py-1 pr-2">{row.description.slice(0, 90)}</td>
-                      <td className="py-1 text-right tabular-nums">{money(row.amount)}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{money(row.amount)}</td>
+                      <td className="text-muted-foreground py-1">
+                        {row.category && row.category !== "unknown" ? row.category.replace(/_/g, " ") : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
