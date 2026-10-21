@@ -35,6 +35,12 @@ export type ChatSubject = {
 export type ChatSurfaceProps = {
   runId: string;
   subject: ChatSubject;
+  /**
+   * A message the caller has already sent but the stream has not echoed yet.
+   * Without it the first thing the owner writes disappears for the length of a
+   * server action plus a stream open, which reads as a dropped keystroke.
+   */
+  optimisticMessage?: string;
   /** Capabilities the surface advertises; the run's frozen policy is the real gate. */
   capabilities?: string[];
   placeholder?: string;
@@ -48,6 +54,7 @@ export type ChatSurfaceProps = {
 export function ChatSurface({
   runId,
   subject,
+  optimisticMessage,
   capabilities = [],
   placeholder = "Ask about this",
   onCitation,
@@ -63,6 +70,15 @@ export function ChatSurface({
   // Reasoning is available in chat.blocks for a surface that wants it, but the
   // default transcript shows the conversation: questions and answers.
   const transcript = chat.blocks.filter((block) => block.kind === "user" || block.kind === "assistant");
+  /*
+   * The message the owner just sent but the stream has not echoed. Shown until
+   * the server's own copy arrives, matched on text so the two never both render:
+   * a duplicate question reads as a double send.
+   */
+  const optimistic =
+    optimisticMessage && !transcript.some((block) => block.kind === "user" && block.text === optimisticMessage)
+      ? optimisticMessage
+      : null;
   const lastAssistantIndex = transcript.map((b) => b.kind).lastIndexOf("assistant");
 
   const lastText = transcript[lastAssistantIndex]?.text;
@@ -116,7 +132,7 @@ export function ChatSurface({
       </header>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
-        {transcript.length === 0 && !busy ? (
+        {transcript.length === 0 && !optimistic && !busy ? (
           <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
             Ask a question. Answers cite the {subject.type === "dossier" ? "pinned sources" : "sources"} they use.
           </p>
@@ -133,6 +149,11 @@ export function ChatSurface({
                 </div>
               ),
             )}
+            {optimistic ? (
+              <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                {optimistic}
+              </div>
+            ) : null}
           </div>
         )}
 

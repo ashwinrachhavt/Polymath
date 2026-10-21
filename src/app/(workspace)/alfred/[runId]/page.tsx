@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
+import { ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { getRun, getRunPolicySnapshot, listDocumentSearchResults, listRunEvents } from "@/domains/agents/queries";
@@ -49,6 +52,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
   const thread = threads.get(run.id) ?? [];
   const citations = collectCitations(searchResults.get(run.id) ?? []);
   const unavailable = eveBridgeUnavailableReason();
+  // Mirrors the server's own terminal set: a run that has not finished may still
+  // produce events, so it streams; anything else is history.
+  const isLive = !["succeeded", "failed", "cancelled"].includes(run.state) && !unavailable;
 
   return (
     <div className="flex flex-col">
@@ -84,7 +90,22 @@ async function ConversationSurface({ runId }: { runId: string }) {
 
       <div className="page-content flex flex-col gap-8">
         <section aria-label="Conversation" className="flex flex-col gap-5">
-          {thread.length === 0 ? (
+          {/*
+           * A live run streams; a finished one keeps the stored transcript.
+           * Rendering the snapshot for a running run was the whole reason a new
+           * conversation appeared frozen: the server read the thread once, and
+           * nothing on the page ever asked again.
+           */}
+          {isLive ? (
+            <ChatSurface
+              runId={run.id}
+              subject={{ type: "artifact", id: run.id }}
+              optimisticMessage={run.objective}
+              placeholder="Reply to continue…"
+              title="Conversation"
+              className="min-h-[50vh]"
+            />
+          ) : thread.length === 0 ? (
             <p className="text-muted-foreground text-[13px]">
               This conversation has no messages yet.
             </p>
@@ -122,12 +143,27 @@ async function ConversationSurface({ runId }: { runId: string }) {
 }
 
 /*
- * No Suspense boundary here on purpose: the workspace group's loading.tsx
- * already streams a shell, and a second boundary would only add a skeleton
- * the shell duplicates. Reads resolve before anything below renders, so the
- * transcript and the 404 are decided in one pass.
+ * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
+ * prerender a route that awaits `connection()` outside one, and the workspace
+ * group's loading.tsx shell does not count. The fallback matches the shell so a
+ * navigation does not flash a second skeleton.
  */
 export default async function ConversationPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
-  return <ConversationSurface runId={runId} />;
+  return (
+    <Suspense fallback={<ConversationSkeleton />}>
+      <ConversationSurface runId={runId} />
+    </Suspense>
+  );
+}
+
+function ConversationSkeleton() {
+  return (
+    <div role="status" aria-label="Loading conversation" className="page-content flex flex-col gap-4">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-6 w-2/3" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-16 w-full" />
+    </div>
+  );
 }
