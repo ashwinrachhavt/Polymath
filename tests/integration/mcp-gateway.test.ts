@@ -127,6 +127,7 @@ async function seedAccount(
   seed: Seeded,
   values: {
     alias: string;
+    provider?: string;
     status?: "active" | "revoked" | "connecting";
     allowRead?: boolean;
     allowWrite?: boolean;
@@ -135,7 +136,7 @@ async function seedAccount(
   const id = `ca_${crypto.randomUUID()}`;
   await holder.db!.insert(externalAccounts).values({
     workspaceId: seed.workspaceId,
-    provider: "gmail",
+    provider: values.provider ?? "gmail",
     alias: values.alias,
     status: values.status ?? "active",
     composioConnectedAccountId: id,
@@ -187,9 +188,13 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
     expect(body.result.tools.map((tool) => tool.name).sort()).toEqual([
+      "github_read_issue",
+      "github_search",
       "gmail_read_thread",
       "gmail_search",
       "gmail_send",
+      "slack_list_channels",
+      "slack_read_channel",
     ]);
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
   });
@@ -668,6 +673,51 @@ suite("tools/call dispatch (real Postgres)", () => {
     const body = (await response.json()) as { code: string };
     expect(body.code).toBe("run_capability_limit");
     expect(reads).toHaveLength(0);
+  });
+
+  it("reads GitHub and Slack through the same gates, and an unconnected provider fails closed", async () => {
+    const seed = await seedRun();
+    // No GitHub account yet: the Gmail connection must not satisfy a GitHub tool.
+    await seedAccount(seed);
+    install([]);
+    const denied = await call(seed, "github_search", { query: "repo:o/r is:open" });
+    expect(denied.status).toBe(403);
+    expect(((await denied.json()) as { code: string }).code).toBe("account_not_connected");
+    expect(reads).toHaveLength(0);
+
+    await seedAccount(seed, { alias: "work-github", provider: "github" });
+    await seedAccount(seed, { alias: "team-slack", provider: "slack" });
+    install([
+      {
+        method: "GET",
+        endpointPrefix: "https://api.github.com/search/issues",
+        status: 200,
+        body: { items: [{ number: 3, title: "Bug", state: "open", html_url: "https://github.com/o/r/issues/3" }] },
+      },
+      {
+        method: "GET",
+        endpointPrefix: "https://slack.com/api/conversations.history",
+        status: 200,
+        body: { ok: false, error: "not_in_channel" },
+      },
+    ]);
+    const search = await call(seed, "github_search", { query: "repo:o/r is:open" });
+    expect(search.status).toBe(200);
+    const searchBody = JSON.parse(((await search.json()) as { result: { content: Array<{ text: string }> } }).result.content[0].text) as {
+      items: Array<{ number: number }>;
+    };
+    expect(searchBody.items[0].number).toBe(3);
+
+    // Slack's HTTP-200 ok:false is a labelled failure, never an empty success.
+    const history = await call(seed, "slack_read_channel", { channel: "C0123ABCD" });
+    expect(history.status).toBe(502);
+    expect(((await history.json()) as { code: string }).code).toBe("provider_error");
+
+    // A path-shaped repository name never reaches the transport.
+    const before = reads.length;
+    const bad = await call(seed, "github_read_issue", { owner: "..", repo: "r", number: 1 });
+    expect(bad.status).toBe(400);
+    expect(reads).toHaveLength(before);
   });
 
   it("truncates a 70 KB thread at the last whole message with an explicit marker", async () => {

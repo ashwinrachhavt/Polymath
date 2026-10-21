@@ -66,6 +66,10 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
    */
   "gmail.read": { capability: "integration.use", effectClass: "read" },
   "gmail.thread.read": { capability: "integration.use", effectClass: "read" },
+  "github.read": { capability: "integration.use", effectClass: "read" },
+  "github.issue.read": { capability: "integration.use", effectClass: "read" },
+  "slack.channels.read": { capability: "integration.use", effectClass: "read" },
+  "slack.read": { capability: "integration.use", effectClass: "read" },
   "gmail.send": {
     capability: "action.execute",
     effectClass: "external_effect",
