@@ -338,6 +338,39 @@ export async function markWaitingForInput(input: { workspaceId: string; runId: s
 }
 
 /**
+ * Parks a run that the gateway caught repeating itself: the flip to
+ * waiting_approval stops further work, and the timeline states why. Conditional
+ * on "running", so a close that landed first is never rewritten, and a run
+ * already waiting for input is not disturbed.
+ */
+export async function parkRunForReview(input: {
+  workspaceId: string;
+  runId: string;
+  reason: string;
+}): Promise<void> {
+  await withTransaction(async (tx) => {
+    const flipped = await tx
+      .update(agentRuns)
+      .set({ state: "waiting_approval", updatedAt: new Date() })
+      .where(
+        and(
+          eq(agentRuns.id, input.runId),
+          eq(agentRuns.workspaceId, input.workspaceId),
+          eq(agentRuns.state, "running"),
+        ),
+      )
+      .returning({ id: agentRuns.id });
+    if (flipped.length === 0) return;
+    await appendEvent(tx, {
+      runId: input.runId,
+      workspaceId: input.workspaceId,
+      type: "loop.detected",
+      data: { reason: redactText(input.reason) },
+    });
+  });
+}
+
+/**
  * Closes a run: terminal event, state flip, and settlement, in one transaction.
  *
  * The flip is conditional on an active state, so terminal states stay

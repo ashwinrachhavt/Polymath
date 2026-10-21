@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { agentAuthorizationDecisions, agentProfiles, agentRuns, toolCalls } from "@/domains/agents/schema";
+import { agentAuthorizationDecisions, agentProfiles, agentRuns, runEvents, toolCalls } from "@/domains/agents/schema";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { issueDelegationGrant } from "@/domains/agents/delegation";
 import { registerAgentPrincipal } from "@/domains/agents/principals";
@@ -474,6 +474,56 @@ suite("tools/call dispatch (real Postgres)", () => {
     const { parsed } = await toolText(await call(seed, "gmail_search", { query: "x" }));
     expect(parsed.messages).toEqual([]);
     expect(reads).toHaveLength(1);
+  });
+
+  it("parks the run on the third identical call and refuses it", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    install([{ ...searchRoute, body: { messages: [] } }]);
+
+    // Two identical calls are a retry and go through.
+    await toolText(await call(seed, "gmail_search", { query: "same query" }));
+    await toolText(await call(seed, "gmail_search", { query: "same query" }));
+    expect(reads).toHaveLength(2);
+
+    // The third is a loop: refused, no third provider call, run parked.
+    const third = await call(seed, "gmail_search", { query: "same query" });
+    expect(third.status).toBe(429);
+    const body = (await third.json()) as { code: string };
+    expect(body.code).toBe("loop_detected");
+    expect(reads).toHaveLength(2);
+
+    const [run] = await holder.db!.select().from(agentRuns).where(eq(agentRuns.id, seed.runId));
+    expect(run.state).toBe("waiting_approval");
+
+    // A different query from the parked run: the route refuses a run that is no
+    // longer running, before the gateway is reached at all.
+    const fourth = await call(seed, "gmail_search", { query: "other query" });
+    expect(fourth.status).toBe(409);
+
+    const loopEvents = await holder.db!
+      .select()
+      .from(runEvents)
+      .where(eq(runEvents.runId, seed.runId));
+    expect(loopEvents.filter((e) => e.type === "loop.detected")).toHaveLength(1);
+  });
+
+  it("counts failed calls toward the loop: three failed identical calls park the run", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    // The provider 500s. A model hammering a down provider with the same call
+    // is spinning too, so the third attempt parks the run instead of the
+    // provider seeing a fourth.
+    install([{ ...searchRoute, status: 500, body: {} }]);
+
+    const first = await call(seed, "gmail_search", { query: "x" });
+    expect(first.status).toBe(502);
+    const second = await call(seed, "gmail_search", { query: "x" });
+    expect(second.status).toBe(502);
+    const third = await call(seed, "gmail_search", { query: "x" });
+    expect(third.status).toBe(429);
+    const body = (await third.json()) as { code: string };
+    expect(body.code).toBe("loop_detected");
   });
 
   it("creates one proposal and one revision for gmail_send, and never calls the transport", async () => {
