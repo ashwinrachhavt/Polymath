@@ -13,6 +13,7 @@ import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
 import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/domains/integrations/gmail/reads";
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
+import { readLinearIssue, searchLinearIssues } from "@/domains/integrations/reads/linear";
 import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -80,7 +81,7 @@ type ParsedThread = {
 };
 type ParsedSend = { ok: true; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
 
-const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel"] as const;
+const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel", "linear_search_issues", "linear_read_issue"] as const;
 type OtherRead = (typeof OTHER_READS)[number];
 type ParsedOther = {
   ok: true;
@@ -143,7 +144,12 @@ function parseCall(tool: string, input: unknown): ParsedCall {
       args,
       accountAlias: typeof args.accountAlias === "string" ? args.accountAlias : undefined,
       // A named issue narrows a grant the same way a named thread does.
-      resourceRef: name === "github_read_issue" ? `issue:${args.owner}/${args.repo}#${args.number}` : undefined,
+      resourceRef:
+        name === "github_read_issue"
+          ? `issue:${args.owner}/${args.repo}#${args.number}`
+          : name === "linear_read_issue"
+            ? `issue:linear:${String(args.identifier).toUpperCase()}`
+            : undefined,
     };
   }
   const parsed = TOOL_SCHEMAS.gmail_send.safeParse(raw);
@@ -261,7 +267,7 @@ async function reserveCall(
           ok: false as const,
           status: 429,
           code: "run_capability_limit",
-          message: `This run has used its provider calls for ${provider === "gmail" ? "Gmail" : provider === "github" ? "GitHub" : "Slack"}.`,
+          message: `This run has used its provider calls for ${provider === "gmail" ? "Gmail" : provider === "github" ? "GitHub" : provider === "linear" ? "Linear" : "Slack"}.`,
         },
       };
     }
@@ -588,6 +594,21 @@ export function createGateway({ transport }: { transport: Transport }) {
           repo: String(parsed.args.repo),
           number: Number(parsed.args.number),
         });
+        if (!r.ok) {
+          outcome = r;
+          break;
+        }
+        const { comments, ...issue } = r.item;
+        outcome = { ok: true, ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes), count: comments.length + 1 };
+        break;
+      }
+      case "linear_search_issues": {
+        const r = await searchLinearIssues(transport, { connectedAccountId, term: String(parsed.args.query), limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        break;
+      }
+      case "linear_read_issue": {
+        const r = await readLinearIssue(transport, { connectedAccountId, identifier: String(parsed.args.identifier) });
         if (!r.ok) {
           outcome = r;
           break;

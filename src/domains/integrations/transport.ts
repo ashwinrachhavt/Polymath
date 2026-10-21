@@ -1,4 +1,4 @@
-import { executeComposioRead } from "./composio";
+import { executeComposioGraphqlRead, executeComposioRead } from "./composio";
 
 /*
  * The transport seam. Every gateway read tool talks to a provider through this
@@ -26,11 +26,32 @@ export type TransportResult =
   | { ok: true; status: number; data: unknown }
   | { ok: false; code: "not_configured" | "provider_error"; status?: number; message: string };
 
+/*
+ * A GraphQL query read (Linear). Separate from `read` so the GET/HEAD method
+ * union stays closed: the document is a constant built by a provider module,
+ * variables carry every caller value, and anything but a plain query is refused
+ * by the transport before a request exists.
+ */
+export type GraphqlReadRequest = {
+  connectedAccountId: string;
+  /** Absolute https URL, fixed by the provider module. */
+  endpoint: string;
+  query: string;
+  variables?: Record<string, unknown>;
+};
+
 export interface Transport {
   read(request: TransportRequest): Promise<TransportResult>;
+  graphql?(request: GraphqlReadRequest): Promise<TransportResult>;
 }
 
 export const composioTransport: Transport = {
+  async graphql(request) {
+    const result = await executeComposioGraphqlRead(request);
+    if (result.ok) return { ok: true, status: 200, data: result.data };
+    if (result.code === "not_configured") return { ok: false, code: "not_configured", message: result.message };
+    return { ok: false, code: "provider_error", status: result.status, message: result.message };
+  },
   async read(request) {
     const result = await executeComposioRead({
       connectedAccountId: request.connectedAccountId,

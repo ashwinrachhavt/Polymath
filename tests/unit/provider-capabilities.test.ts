@@ -30,7 +30,7 @@ describe("provider capability catalog", () => {
   it("has entries and every one is named for its own provider", () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const [capability, spec] of entries) {
-      expect(["gmail", "github", "slack"]).toContain(spec.provider);
+      expect(["gmail", "github", "slack", "linear"]).toContain(spec.provider);
       expect(capability.startsWith(`${spec.provider}.`), capability).toBe(true);
     }
   });

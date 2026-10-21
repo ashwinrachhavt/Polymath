@@ -43,6 +43,8 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "github.issue.read": "read",
   "slack.channels.read": "read",
   "slack.read": "read",
+  "linear.read": "read",
+  "linear.issue.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",
