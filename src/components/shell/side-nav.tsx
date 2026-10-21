@@ -94,9 +94,14 @@ export function SideNav() {
          * 24px floor in agents/design.md.
          */}
         <div className={cn("flex items-center", collapsed ? "-mx-1.5" : "gap-1")}>
+          {/* axe's label-content-name-mismatch: when an aria-label is present,
+              the link's text content must appear inside it. The mark's "P" is
+              aria-hidden for painting but still counts as text content here, so
+              any aria-label ("Polymath", "Polymath home") fails the rule. No
+              label: the visible "Polymath" names the link, and the title covers
+              the collapsed state where the text is not rendered. */}
           <Link
             href={homeHref}
-            aria-label="Polymath home"
             title={collapsed ? "Polymath" : undefined}
             className={cn(
               "text-sidebar-foreground hover:bg-sidebar-accent flex items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",

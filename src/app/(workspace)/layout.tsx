@@ -23,15 +23,24 @@ import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
  *
  * When Clerk is unconfigured the app is a local shell with no data behind it,
  * and `auth()` would throw for want of keys, so the guard stands down.
+ *
+ * The bypass therefore has one honest configuration: no Clerk keys at all.
+ * Setting POLYMATH_DEV_AUTH=1 while Clerk keys are present used to leave the
+ * guard armed with no session to satisfy it, so every page redirected to
+ * sign-in mid-stream — an e2e suite that ran against such an environment
+ * watched every page replace itself under it.
  */
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let storageScope = "anonymous";
-  const clerkSession = clerkConfigured;
-  if (clerkSession && !devAuthBypass) {
+  if (clerkConfigured && !devAuthBypass) {
     const { userId } = await auth();
     if (!userId) redirect("/sign-in");
     storageScope = createHash("sha256").update(userId).digest("hex");
   }
+  // clerkConfigured && devAuthBypass is a misconfiguration, not a mode: the
+  // bypass asks for a fixed owner, but this guard would then demand a session
+  // nobody holds and every page would redirect to sign-in mid-stream. Failing
+  // loudly beats a suite that cannot boot.
 
-  return <AppShell storageScope={storageScope} clerkConfigured={clerkSession}>{children}</AppShell>;
+  return <AppShell storageScope={storageScope} clerkConfigured={clerkConfigured}>{children}</AppShell>;
 }
