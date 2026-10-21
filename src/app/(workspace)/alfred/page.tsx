@@ -9,6 +9,9 @@ import { listRecentRuns } from "@/domains/agents/queries";
 import { timeAgo } from "@/lib/time";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
+import { ModelPicker } from "./model-picker";
+import { getProfileModelPolicy } from "@/domains/agents/queries";
+import { availableModels, resolveModelId, UNUSABLE_PROVIDERS } from "@/domains/agents/models";
 
 export const metadata = { title: "Assistant · Polymath" };
 
@@ -47,11 +50,22 @@ export async function AlfredSurface() {
   // the same message when a send fails, so state it here too rather than
   // letting the first typed sentence discover it.
   const unavailable = eveBridgeUnavailableReason();
+  // Only models whose provider key is present: offering one that cannot run
+  // would freeze a model into a run that then fails on its first step.
+  const models = availableModels();
+  const modelPolicy = await getProfileModelPolicy(auth.workspaceId, "alfred");
+  const stored = (modelPolicy as { primary?: unknown } | null)?.primary;
+  const currentModel = resolveModelId(stored);
 
   return (
     <Home>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
         <NewConversation />
+        <ModelPicker
+          models={models}
+          current={currentModel}
+          unavailable={UNUSABLE_PROVIDERS}
+        />
         {unavailable ? (
           <p role="status" className="text-muted-foreground text-[12px]">
             {unavailable}

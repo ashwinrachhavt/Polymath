@@ -181,6 +181,16 @@ export async function getProfileByName(workspaceId: string, name: string) {
   return profile ?? null;
 }
 
+/** The profile's frozen-at-start model selection, for the Assistant's picker. */
+export async function getProfileModelPolicy(workspaceId: string, name: string) {
+  const [row] = await db
+    .select({ modelPolicy: agentProfiles.modelPolicy })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
+    .limit(1);
+  return row?.modelPolicy ?? null;
+}
+
 /**
  * Recent runs with their profile's display name, for the specialists page's
  * "who did what" list. Runs whose profile row is gone keep no name — the join
