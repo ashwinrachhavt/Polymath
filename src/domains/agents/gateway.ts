@@ -13,6 +13,7 @@ import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, tierAllows, type Capability } fro
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
 import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/domains/integrations/gmail/reads";
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
+import { GENERIC_READS, genericList } from "@/domains/integrations/reads/generic";
 import { readLinearIssue, searchLinearIssues } from "@/domains/integrations/reads/linear";
 import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
@@ -70,21 +71,33 @@ type SendArgs = z.infer<typeof TOOL_SCHEMAS.gmail_send>;
  * read: without it the bound is skipped and delegation stops narrowing, which
  * is a stated invariant rather than a nicety.
  */
-type ParsedSearch = { ok: true; tool: "gmail_search"; args: SearchArgs; accountAlias?: string; destination?: string };
+type ParsedSearch = { ok: true; generic?: undefined; tool: "gmail_search"; args: SearchArgs; accountAlias?: string; destination?: string };
 type ParsedThread = {
   ok: true;
+  generic?: undefined;
   tool: "gmail_read_thread";
   args: ThreadArgs;
   accountAlias?: string;
   destination?: string;
   resourceRef: string;
 };
-type ParsedSend = { ok: true; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
+type ParsedSend = { ok: true; generic?: undefined; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
 
 const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel", "linear_search_issues", "linear_read_issue"] as const;
 type OtherRead = (typeof OTHER_READS)[number];
+type ParsedGeneric = {
+  ok: true;
+  generic: true;
+  tool: string;
+  args: { query?: string; limit?: number; accountAlias?: string };
+  accountAlias?: string;
+  destination?: undefined;
+  resourceRef?: string;
+};
+
 type ParsedOther = {
   ok: true;
+  generic?: undefined;
   tool: OtherRead;
   args: Record<string, unknown>;
   accountAlias?: string;
@@ -92,7 +105,7 @@ type ParsedOther = {
   resourceRef?: string;
 };
 
-type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedOther | { ok: false; message: string };
+type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedOther | ParsedGeneric | { ok: false; message: string };
 
 function invalidArguments(message: string): GatewayOutcome {
   return { ok: false, status: 400, code: "invalid_arguments", message };
@@ -132,6 +145,17 @@ function parseCall(tool: string, input: unknown): ParsedCall {
           resourceRef: `thread:${parsed.data.threadId}`,
         }
       : { ok: false, message: firstIssue(parsed.error) };
+  }
+  if (tool in GENERIC_READS) {
+    const parsed = z
+      .object({
+        query: z.string().min(1).max(200).optional(),
+        limit: z.number().int().min(1).max(LIMITS.maxResults).optional(),
+        accountAlias: z.string().optional(),
+      })
+      .safeParse(raw);
+    if (!parsed.success) return { ok: false, message: firstIssue(parsed.error) };
+    return { ok: true, generic: true as const, tool, args: parsed.data, accountAlias: parsed.data.accountAlias };
   }
   if ((OTHER_READS as readonly string[]).includes(tool)) {
     const name = tool as OtherRead;
@@ -304,11 +328,12 @@ async function reserveCall(
  * copy of content the proposal already owns.
  */
 function redactArguments(parsed: ParsedCall & { ok: true }): Record<string, unknown> {
+  if (parsed.generic) return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_search") return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_read_thread") return { threadId: parsed.args.threadId };
   if (parsed.tool !== "gmail_send") {
     // Reads of other providers: the arguments are queries and ids, never bodies.
-    const { accountAlias: _alias, ...rest } = parsed.args;
+    const { accountAlias: _alias, ...rest } = parsed.args as Record<string, unknown>;
     void _alias;
     return rest;
   }
@@ -489,6 +514,9 @@ export function createGateway({ transport }: { transport: Transport }) {
     const reservation = await reserveCall(context, spec.provider, parsed, account.alias);
     if (!reservation.ok) return reservation.outcome;
 
+    if (parsed.generic) {
+      return read(context, parsed, account.alias, account.connectedAccountId, reservation);
+    }
     return parsed.tool === "gmail_send"
       ? proposeSend(context, capability, parsed, account.alias, reservation)
       : read(context, parsed, account.alias, account.connectedAccountId, reservation);
@@ -548,12 +576,12 @@ export function createGateway({ transport }: { transport: Transport }) {
 
   async function read(
     context: GatewayContext,
-    parsed: ParsedSearch | ParsedThread | ParsedOther,
+    parsed: ParsedSearch | ParsedThread | ParsedOther | ParsedGeneric,
     accountAlias: string,
     connectedAccountId: string,
     reservation: { reservationId: string; startedAt: number },
   ): Promise<GatewayOutcome> {
-    if (parsed.tool !== "gmail_search" && parsed.tool !== "gmail_read_thread") {
+    if (parsed.generic || (parsed.tool !== "gmail_search" && parsed.tool !== "gmail_read_thread")) {
       return readOther(parsed, connectedAccountId, reservation);
     }
     const result =
@@ -585,24 +613,54 @@ export function createGateway({ transport }: { transport: Transport }) {
   }
 
   async function readOther(
-    parsed: ParsedOther,
+    parsed: ParsedOther | ParsedGeneric,
     connectedAccountId: string,
     reservation: { reservationId: string; startedAt: number },
   ): Promise<GatewayOutcome> {
     const limit = typeof parsed.args.limit === "number" ? parsed.args.limit : LIMITS.defaultResults;
+
+    // Registry-driven reads need no bespoke function: the spec is the whole
+    // provider slice (Tasks 8-11 add entries, never gateway code).
+    const genericSpec = GENERIC_READS[parsed.tool];
+    if (genericSpec) {
+      const r = await genericList(transport, genericSpec, {
+        connectedAccountId,
+        query: typeof parsed.args.query === "string" ? parsed.args.query : undefined,
+        limit,
+      });
+      if (!r.ok) {
+        await settleCall(reservation.reservationId, {
+          ok: false,
+          errorCode: r.code,
+          durationMs: Date.now() - reservation.startedAt,
+        });
+        return readFailure(r);
+      }
+      await settleCall(reservation.reservationId, {
+        ok: true,
+        result: { records: r.items.length, truncated: false },
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      const text = r.items.length ? r.items.join("\n") : "No results.";
+      return { ok: true, result: { content: [{ type: "text", text }] } };
+    }
+
+    // The registry branch returned above for every generic tool, so only the
+    // bespoke reads reach the switch.
+    const other = parsed as ParsedOther;
     let outcome: { ok: true; text: string; truncated: boolean; count: number } | { ok: false; code: string; message: string };
-    switch (parsed.tool) {
+    switch (other.tool) {
       case "github_search": {
-        const r = await searchGithub(transport, { connectedAccountId, query: String(parsed.args.query), limit });
+        const r = await searchGithub(transport, { connectedAccountId, query: String(other.args.query), limit });
         outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
         break;
       }
       case "github_read_issue": {
         const r = await readGithubIssue(transport, {
           connectedAccountId,
-          owner: String(parsed.args.owner),
-          repo: String(parsed.args.repo),
-          number: Number(parsed.args.number),
+          owner: String(other.args.owner),
+          repo: String(other.args.repo),
+          number: Number(other.args.number),
         });
         if (!r.ok) {
           outcome = r;
@@ -613,12 +671,12 @@ export function createGateway({ transport }: { transport: Transport }) {
         break;
       }
       case "linear_search_issues": {
-        const r = await searchLinearIssues(transport, { connectedAccountId, term: String(parsed.args.query), limit });
+        const r = await searchLinearIssues(transport, { connectedAccountId, term: String(other.args.query), limit });
         outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
         break;
       }
       case "linear_read_issue": {
-        const r = await readLinearIssue(transport, { connectedAccountId, identifier: String(parsed.args.identifier) });
+        const r = await readLinearIssue(transport, { connectedAccountId, identifier: String(other.args.identifier) });
         if (!r.ok) {
           outcome = r;
           break;
@@ -633,7 +691,7 @@ export function createGateway({ transport }: { transport: Transport }) {
         break;
       }
       case "slack_read_channel": {
-        const r = await readSlackChannel(transport, { connectedAccountId, channel: String(parsed.args.channel), limit });
+        const r = await readSlackChannel(transport, { connectedAccountId, channel: String(other.args.channel), limit });
         outcome = r.ok
           ? { ok: true, ...truncateList("messages", r.messages, { hasMore: r.hasMore }, LIMITS.maxResponseBytes), count: r.messages.length }
           : r;
