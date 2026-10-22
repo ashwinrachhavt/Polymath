@@ -18,17 +18,19 @@ import {
  * screen.
  */
 
-const migrationSql = readFileSync(
-  new URL("../../src/db/migrations/0229_access_tiers.sql", import.meta.url),
-  "utf8",
-);
+const migrationSql = [
+  "0229_access_tiers.sql",
+  "0230_google_tiers.sql",
+]
+  .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
+  .join("\n");
 
 /** Pulls the access_tiers JSON literal the migration seeds for one provider. */
 function seededTiers(provider: string): unknown {
   const match = migrationSql.match(
     new RegExp(`'(\\[.*?\\])'::jsonb\\s+WHERE provider = '${provider}'`),
   );
-  expect(match, `migration 0229 has no JSON seed for ${provider}`).toBeDefined();
+  expect(match, `the tier migrations have no JSON seed for ${provider}`).toBeDefined();
   return JSON.parse(match![1]);
 }
 
@@ -104,6 +106,23 @@ describe("tier helpers", () => {
     // is reached today only through this cast, but it is the contract.
     const notion = "notion" as Provider;
     expect(lowestTierId(notion)).toBeNull();
+  });
+});
+
+
+describe("PROVIDER_TIERS google cluster", () => {
+  it("covers google-calendar, google-drive, google-docs, google-sheets with one read_only tier", () => {
+    for (const provider of ["google-calendar", "google-drive", "google-docs", "google-sheets"] as Provider[]) {
+      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+    }
+  });
+
+  it("each google read_only tier names only real capabilities", () => {
+    for (const provider of ["google-calendar", "google-drive", "google-docs", "google-sheets"] as Provider[]) {
+      for (const capability of PROVIDER_TIERS[provider][0].capabilities) {
+        expect(capability in CAPABILITIES, `${provider} names ${capability}`).toBe(true);
+      }
+    }
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { genericList, type GenericReadSpec } from "@/domains/integrations/reads/generic";
 import type { Transport, TransportRequest, TransportResult } from "@/domains/integrations/transport";
 import { LIMITS } from "@/domains/integrations/capabilities";
+import { GENERIC_READS } from "@/domains/integrations/reads/generic";
 
 /*
  * The generic read pathway: one list-endpoint reader every registry entry
@@ -81,5 +82,56 @@ describe("genericList", () => {
     const result = await genericList(transport, spec, { connectedAccountId: "ca_1" });
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("GENERIC_READS google cluster", () => {
+  const entries = Object.entries(GENERIC_READS).filter(([tool]) => tool.startsWith("google"));
+  it("registers one spec per google provider read tool with the real endpoint and listPath", () => {
+    const expected: Array<[string, string, string]> = [
+      ["googlecalendar_list_events", "https://calendar.googleapis.com/calendar/v3/calendars/primary/events", "items"],
+      ["googledrive_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
+      ["googledocs_list_documents", "https://docs.googleapis.com/v1/documents", "documents"],
+      ["googlesheets_list_sheets", "https://sheets.googleapis.com/v4/spreadsheets", "sheets"],
+    ];
+    for (const [tool, endpoint, listPath] of expected) {
+      const spec = GENERIC_READS[tool];
+      expect(spec, tool).toBeTruthy();
+      expect(spec!.endpoint, tool).toBe(endpoint);
+      expect(spec!.listPath, tool).toBe(listPath);
+    }
+    expect(entries.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("maps a calendar fixture response to one line per event", async () => {
+    const spec = GENERIC_READS.googlecalendar_list_events;
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: {
+        items: [
+          { summary: "Standup", start: { dateTime: "2026-10-22T09:00:00Z" } },
+          { summary: "Review", start: { dateTime: "2026-10-22T14:00:00Z" } },
+        ],
+      },
+    });
+    const result = await genericList(transport, spec!, { connectedAccountId: "ca_1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items[0]).toContain("Standup");
+      expect(result.items[0]).toContain("2026-10-22");
+    }
+  });
+
+  it("maps a drive fixture response to one line per file", async () => {
+    const spec = GENERIC_READS.googledrive_search_files;
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: { files: [{ name: "Q3 plan", id: "f1", mimeType: "application/pdf" }] },
+    });
+    const result = await genericList(transport, spec!, { connectedAccountId: "ca_1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0]).toContain("Q3 plan");
   });
 });

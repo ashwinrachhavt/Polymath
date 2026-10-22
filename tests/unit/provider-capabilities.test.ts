@@ -30,8 +30,11 @@ describe("provider capability catalog", () => {
   it("has entries and every one is named for its own provider", () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const [capability, spec] of entries) {
-      expect(["gmail", "github", "slack", "linear"]).toContain(spec.provider);
-      expect(capability.startsWith(`${spec.provider}.`), capability).toBe(true);
+      expect(["gmail", "github", "slack", "linear", "google-calendar", "google-drive", "google-docs", "google-sheets"]).toContain(spec.provider);
+      // A provider's capability prefix is its name without separators
+      // ("google-calendar" → "googlecalendar."), so one provider's ids stay
+      // grouped even when the catalog row spells the provider with a dash.
+      expect(capability.startsWith(`${spec.provider.replaceAll("-", "")}.`), capability).toBe(true);
     }
   });
 

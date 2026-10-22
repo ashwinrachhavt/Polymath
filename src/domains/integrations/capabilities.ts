@@ -26,7 +26,15 @@
  * connect screen. Nothing gates on it.
  */
 
-export type Provider = "gmail" | "github" | "slack" | "linear";
+export type Provider =
+  | "gmail"
+  | "github"
+  | "slack"
+  | "linear"
+  | "google-calendar"
+  | "google-drive"
+  | "google-docs"
+  | "google-sheets";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -59,6 +67,11 @@ export const CAPABILITIES = {
   "slack.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_read_channel" },
   "linear.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_search_issues" },
   "linear.issue.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_read_issue" },
+  // Google cluster A: read-only list tools through the generic registry.
+  "googlecalendar.events.read": { provider: "google-calendar", kind: "read", riskClass: "read", tool: "googlecalendar_list_events" },
+  "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
+  "googledocs.documents.read": { provider: "google-docs", kind: "read", riskClass: "read", tool: "googledocs_list_documents" },
+  "googlesheets.sheets.read": { provider: "google-sheets", kind: "read", riskClass: "read", tool: "googlesheets_list_sheets" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -79,6 +92,10 @@ export const PROVIDER_TOOLS = {
   slack_read_channel: "slack.read",
   linear_search_issues: "linear.read",
   linear_read_issue: "linear.issue.read",
+  googlecalendar_list_events: "googlecalendar.events.read",
+  googledrive_search_files: "googledrive.files.read",
+  googledocs_list_documents: "googledocs.documents.read",
+  googlesheets_list_sheets: "googlesheets.sheets.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -153,6 +170,38 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can search and read issues.",
       capabilities: ["linear.read", "linear.issue.read"],
+    },
+  ],
+  "google-calendar": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list upcoming events on your calendar.",
+      capabilities: ["googlecalendar.events.read"],
+    },
+  ],
+  "google-drive": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search the files in your Drive.",
+      capabilities: ["googledrive.files.read"],
+    },
+  ],
+  "google-docs": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the documents in your Google Docs.",
+      capabilities: ["googledocs.documents.read"],
+    },
+  ],
+  "google-sheets": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the spreadsheets in your Google Sheets.",
+      capabilities: ["googlesheets.sheets.read"],
     },
   ],
 };

@@ -27,7 +27,53 @@ export type GenericListResult =
   | { ok: true; items: string[] }
   | { ok: false; code: string; message: string };
 
-export const GENERIC_READS: Record<string, GenericReadSpec> = {};
+export const GENERIC_READS: Record<string, GenericReadSpec> = {
+  googlecalendar_list_events: {
+    tool: "googlecalendar_list_events",
+    capability: "googlecalendar.events.read",
+    endpoint: "https://calendar.googleapis.com/calendar/v3/calendars/primary/events",
+    query: { timeMin: "{query}", singleEvents: "true", orderBy: "startTime" },
+    listPath: "items",
+    itemText: (item) => {
+      const e = item as { summary?: string; start?: { dateTime?: string; date?: string } };
+      const when = e.start?.dateTime ?? e.start?.date ?? "";
+      return [e.summary ?? "(untitled event)", when].filter(Boolean).join(" — ");
+    },
+  },
+  googledrive_search_files: {
+    tool: "googledrive_search_files",
+    capability: "googledrive.files.read",
+    endpoint: "https://www.googleapis.com/drive/v3/files",
+    query: { q: "name contains '{query}'", fields: "files(id,name,mimeType)" },
+    listPath: "files",
+    itemText: (item) => {
+      const f = item as { name?: string; mimeType?: string };
+      return [f.name ?? "(untitled file)", f.mimeType].filter(Boolean).join(" — ");
+    },
+  },
+  googledocs_list_documents: {
+    tool: "googledocs_list_documents",
+    capability: "googledocs.documents.read",
+    endpoint: "https://docs.googleapis.com/v1/documents",
+    listPath: "documents",
+    itemText: (item) => {
+      const d = item as { title?: string; documentId?: string };
+      return [d.title ?? "(untitled document)", d.documentId].filter(Boolean).join(" — ");
+    },
+  },
+  googlesheets_list_sheets: {
+    tool: "googlesheets_list_sheets",
+    capability: "googlesheets.sheets.read",
+    endpoint: "https://sheets.googleapis.com/v4/spreadsheets",
+    listPath: "sheets",
+    itemText: (item) => {
+      const s = item as { properties?: { title?: string; spreadsheetId?: string } };
+      return [s.properties?.title ?? "(untitled spreadsheet)", s.properties?.spreadsheetId]
+        .filter(Boolean)
+        .join(" — ");
+    },
+  },
+};
 
 function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<string, string> | undefined {
   if (!spec.query) return undefined;

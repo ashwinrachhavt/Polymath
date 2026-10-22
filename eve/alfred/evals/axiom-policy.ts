@@ -45,6 +45,11 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "slack.read": "read",
   "linear.read": "read",
   "linear.issue.read": "read",
+  // Google cluster A: read-only lists through the generic registry.
+  "googlecalendar.events.read": "read",
+  "googledrive.files.read": "read",
+  "googledocs.documents.read": "read",
+  "googlesheets.sheets.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",
