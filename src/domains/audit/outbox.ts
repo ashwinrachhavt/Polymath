@@ -60,6 +60,9 @@ export async function enqueueOutbox(
   auth: Pick<AuthContext, "workspaceId">,
   input: { topic: string; payload: unknown; dispatchKey?: string; availableAt?: Date },
 ): Promise<{ enqueued: boolean; id: string | null }> {
+  // The default due time is Postgres's clock, not the app server's: the
+  // dispatcher claims with available_at <= now() in the database, and the two
+  // clocks can disagree, which would leave a just-enqueued row unclaimable.
   const [row] = await tx
     .insert(outboxEvents)
     .values({
@@ -67,7 +70,9 @@ export async function enqueueOutbox(
       topic: input.topic,
       payload: input.payload,
       dispatchKey: input.dispatchKey ?? null,
-      availableAt: input.availableAt ?? new Date(),
+      ...(input.availableAt
+        ? { availableAt: input.availableAt }
+        : { availableAt: sql`now()` }),
     })
     .onConflictDoNothing({
       target: [outboxEvents.workspaceId, outboxEvents.topic, outboxEvents.dispatchKey],
