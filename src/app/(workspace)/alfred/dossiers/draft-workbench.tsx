@@ -18,6 +18,7 @@ type Pick = { id: string; title: string };
  * the draft's status only changes through Keep/Discard.
  */
 export function DraftWorkbench({
+  suggestedNextStep,
   artifact,
   text,
   sources,
@@ -25,6 +26,7 @@ export function DraftWorkbench({
   linkTitles,
   linkable,
 }: {
+  suggestedNextStep?: string | null;
   artifact: { id: string; title: string; status: string; version: number };
   text: string;
   sources: { documentId: string; title: string; pinnedHash: string | null }[];
@@ -104,6 +106,9 @@ export function DraftWorkbench({
           {artifact.status}
         </Badge>
       </div>
+      {suggestedNextStep ? (
+        <p className="text-muted-foreground text-[13px]">Suggested next step: {suggestedNextStep}</p>
+      ) : null}
 
       <textarea
         value={draftText}

@@ -12,6 +12,7 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, matchesQuery, paginate, parseListParams, parsePageNumber, type RawSearchParams } from "@/lib/list-params";
 import { getDossierDetail, listAttachableDocuments, listDossierRuns, listDossiers } from "@/domains/knowledge/dossiers";
 import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
+import { artifactNextStep, deriveContinuation } from "@/domains/knowledge/continuation";
 import { DraftControls } from "../draft-controls";
 import { Badge } from "@/components/ui/badge";
 import { CreateDossierForm } from "./create-dossier-form";
@@ -56,10 +57,11 @@ export async function DossiersSurface({
     draft: typeof raw.draft === "string" ? raw.draft : undefined,
   };
   const list = parseListParams(raw, { filters: { contents: ["with", "empty"] }, defaultPageSize: 10 });
-  const [dossiers, attachable, detail] = await Promise.all([
+  const [dossiers, attachable, detail, continuation] = await Promise.all([
     listDossiers(auth),
     listAttachableDocuments(auth),
     params.dossier ? getDossierDetail(auth, params.dossier) : Promise.resolve(null),
+    deriveContinuation(auth),
   ]);
   const matching = dossiers.filter(
     (d) =>
@@ -82,6 +84,27 @@ export async function DossiersSurface({
     <>
       <PageHeader title="Dossiers" />
       <div className="flex flex-col gap-8 page-content">
+        {continuation.length > 0 ? (
+          <Section title="Continue" description="Open work, derived from what you saved. Each next step is a suggestion, not a task you picked.">
+            <ul className="flex flex-col gap-1">
+              {continuation.map((item) => (
+                <li key={item.artifactId}>
+                  <a
+                    href={item.href}
+                    className="flex flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-accent"
+                  >
+                    <span className="font-medium">{item.title}</span>
+                    <span className="text-muted-foreground">{item.status}</span>
+                    <span className="text-muted-foreground">
+                      last change {item.updatedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    <span className="text-muted-foreground">{item.suggestedNextStep}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
         <Section title="Your dossiers">
           {dossiers.length === 0 ? (
             <EmptyState
@@ -182,6 +205,7 @@ export async function DossiersSurface({
         {draftDetail && linkTitles && linkable ? (
           <Section title="Draft workbench">
             <DraftWorkbench
+              suggestedNextStep={artifactNextStep(draftDetail.artifact.status)}
               artifact={draftDetail.artifact}
               text={draftDetail.text}
               sources={draftDetail.sources}
