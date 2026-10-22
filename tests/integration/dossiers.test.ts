@@ -135,7 +135,7 @@ suite("dossiers (real Postgres + pgvector)", () => {
     const b = await workspace();
     await seed(a, LEASE, "lease", provider);
     const empty = await createDossier(a, { name: "Empty", documentIds: [] });
-    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: true, query: "rent", results: [] });
+    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "semantic", results: [] });
     expect(await searchDocumentsForAgent(b, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: false, error: "dossier not found" });
     expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: crypto.randomUUID(), provider })).toEqual({ ok: false, error: "dossier not found" });
   });

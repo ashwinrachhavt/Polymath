@@ -1,13 +1,16 @@
 import { EmbeddingUnconfiguredError, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { dossierDocumentIds } from "./dossiers";
-import { searchChunks } from "./search";
+import { searchChunks, searchChunksFts, type ChunkHit } from "./search";
 
 /*
  * What the agent's `documents.search` tool calls. A read only: it embeds the
  * question, asks searchChunks (which scopes every row to auth.workspaceId) for
  * the nearest passages, and returns them in the shape the model and the
- * citation list both want. It has no write path on purpose. If a run wants to
+ * citation list both want. With no embedding provider configured it falls
+ * back to Postgres full-text over the same current extractions and says so
+ * (`mode: "text"`) - keyword matching instead of semantic similarity, never
+ * a silent fail-closed. It has no write path on purpose. If a run wants to
  * change a document, that goes through the existing action proposals, the one
  * review queue, never through this function.
  *
@@ -28,7 +31,7 @@ export type DocumentCitation = {
 };
 
 export type AgentSearchResult =
-  | { ok: true; query: string; results: DocumentCitation[] }
+  | { ok: true; query: string; results: DocumentCitation[]; mode: "semantic" | "text" }
   | { ok: false; error: string };
 
 export async function searchDocumentsForAgent(
@@ -47,10 +50,22 @@ export async function searchDocumentsForAgent(
       if (!ids) return { ok: false, error: "dossier not found" };
       documentIds = ids;
     }
-    const hits = await searchChunks(auth, { query, limit, provider: input.provider, documentIds });
+    let hits: ChunkHit[];
+    let mode: "semantic" | "text" = "semantic";
+    try {
+      hits = await searchChunks(auth, { query, limit, provider: input.provider, documentIds });
+    } catch (cause) {
+      if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+      // No embedding key is a deployment gap, not a reason to fail closed:
+      // answer from Postgres full-text over the same current extractions and
+      // label the mode so the model can say how the passage was found.
+      hits = await searchChunksFts(auth, { query, limit, documentIds });
+      mode = "text";
+    }
     return {
       ok: true,
       query,
+      mode,
       results: hits.map((h) => ({
         documentId: h.documentId,
         title: h.title,
