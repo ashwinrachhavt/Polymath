@@ -151,6 +151,55 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
       return [b.name ?? "(unnamed base)", b.id].filter(Boolean).join(" — ");
     },
   },
+  canva_list_designs: {
+    tool: "canva_list_designs",
+    capability: "canva.designs.read",
+    endpoint: "https://www.canva.com/api/v1/designs",
+    listPath: "items",
+    itemText: (item) => {
+      const d = item as { title?: string; design?: { id?: string } };
+      return [d.title ?? "(untitled design)", d.design?.id].filter(Boolean).join(" — ");
+    },
+  },
+  hubspot_list_contacts: {
+    tool: "hubspot_list_contacts",
+    capability: "hubspot.contacts.read",
+    endpoint: "https://api.hubapi.com/crm/v3/objects/contacts",
+    query: { limit: "25" },
+    listPath: "results",
+    itemText: (item) => {
+      const c = item as { properties?: { email?: string; firstname?: string; lastname?: string } };
+      const name = [c.properties?.firstname, c.properties?.lastname].filter(Boolean).join(" ");
+      return [name || c.properties?.email || "(unnamed contact)", c.properties?.email]
+        .filter(Boolean)
+        .join(" — ");
+    },
+  },
+  // Salesforce's host is per-org; the connected account's instance resolves it.
+  salesforce_search_records: {
+    tool: "salesforce_search_records",
+    capability: "salesforce.records.read",
+    endpoint: "https://your-instance.my.salesforce.com/services/data/v59.0/query",
+    query: { q: "{query}" },
+    listPath: "records",
+    itemText: (item) => {
+      const r = item as { attributes?: { type?: string }; Id?: string; Name?: string };
+      return [r.Name ?? "(unnamed record)", r.attributes?.type ?? "", r.Id].filter(Boolean).join(" — ");
+    },
+  },
+  stripe_list_payments: {
+    tool: "stripe_list_payments",
+    capability: "stripe.payments.read",
+    endpoint: "https://api.stripe.com/v1/charges",
+    query: { limit: "25" },
+    listPath: "data",
+    itemText: (item) => {
+      const p = item as { description?: string; amount?: number; currency?: string; created?: number };
+      const when = p.created ? new Date(p.created * 1000).toISOString().slice(0, 10) : "";
+      const amount = p.amount !== undefined ? `${(p.amount / 100).toFixed(2)} ${p.currency ?? ""}` : "";
+      return [p.description ?? "(no description)", amount, when].filter(Boolean).join(" — ");
+    },
+  },
 };
 
 function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<string, string> | undefined {

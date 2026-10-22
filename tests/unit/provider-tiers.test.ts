@@ -23,6 +23,7 @@ const migrationSql = [
   "0230_google_tiers.sql",
   "0231_comms_tiers.sql",
   "0232_workmgmt_tiers.sql",
+  "0233_crm_tiers.sql",
 ]
   .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
@@ -143,6 +144,19 @@ describe("PROVIDER_TIERS work-management cluster", () => {
     for (const provider of ["jira", "asana", "trello", "airtable"] as Provider[]) {
       expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
     }
+  });
+});
+
+
+describe("PROVIDER_TIERS crm/finance cluster", () => {
+  it("covers canva, hubspot, salesforce, stripe with one read_only tier", () => {
+    for (const provider of ["canva", "hubspot", "salesforce", "stripe"] as Provider[]) {
+      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+    }
+  });
+
+  it("stripe's tier description says charges are never agent-proposed", () => {
+    expect(PROVIDER_TIERS.stripe[0].description).toContain("never agent-proposed");
   });
 });
 

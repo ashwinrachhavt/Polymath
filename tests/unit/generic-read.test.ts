@@ -196,3 +196,36 @@ describe("GENERIC_READS work-management cluster", () => {
     }
   });
 });
+
+describe("GENERIC_READS crm/finance cluster", () => {
+  it("registers canva, hubspot, salesforce and stripe specs with their real endpoints and listPaths", () => {
+    const expected: Array<[string, string, string]> = [
+      ["canva_list_designs", "https://www.canva.com/api/v1/designs", "items"],
+      ["hubspot_list_contacts", "https://api.hubapi.com/crm/v3/objects/contacts", "results"],
+      ["salesforce_search_records", "https://your-instance.my.salesforce.com/services/data/v59.0/query", "records"],
+      ["stripe_list_payments", "https://api.stripe.com/v1/charges", "data"],
+    ];
+    for (const [tool, endpoint, listPath] of expected) {
+      const spec = GENERIC_READS[tool];
+      expect(spec, tool).toBeTruthy();
+      expect(spec!.endpoint, tool).toBe(endpoint);
+      expect(spec!.listPath, tool).toBe(listPath);
+    }
+  });
+
+  it("maps a hubspot fixture to one line per contact", async () => {
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: { results: [{ properties: { email: "a@example.test" } }] },
+    });
+    const result = await genericList(transport, GENERIC_READS.hubspot_list_contacts!, { connectedAccountId: "ca_1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0]).toContain("a@example.test");
+  });
+
+  it("figma and dropbox are absent — their list reads are not GET-expressible", () => {
+    expect(GENERIC_READS.figma_list_files).toBeUndefined();
+    expect(GENERIC_READS.dropbox_list_files).toBeUndefined();
+  });
+});

@@ -59,6 +59,11 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "asana.tasks.read": "read",
   "trello.cards.read": "read",
   "airtable.bases.read": "read",
+  // Design, CRM and finance cluster D: read-only lists through the generic registry.
+  "canva.designs.read": "read",
+  "hubspot.contacts.read": "read",
+  "salesforce.records.read": "read",
+  "stripe.payments.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",

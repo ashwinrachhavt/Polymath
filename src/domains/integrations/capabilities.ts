@@ -41,7 +41,11 @@ export type Provider =
   | "jira"
   | "asana"
   | "trello"
-  | "airtable";
+  | "airtable"
+  | "canva"
+  | "hubspot"
+  | "salesforce"
+  | "stripe";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -88,6 +92,13 @@ export const CAPABILITIES = {
   "asana.tasks.read": { provider: "asana", kind: "read", riskClass: "read", tool: "asana_list_tasks" },
   "trello.cards.read": { provider: "trello", kind: "read", riskClass: "read", tool: "trello_list_cards" },
   "airtable.bases.read": { provider: "airtable", kind: "read", riskClass: "read", tool: "airtable_list_records" },
+  // Design, CRM and finance cluster D: read-only lists through the generic
+  // registry. Figma (files list needs a project id) and Dropbox (list_folder
+  // is POST-shaped) have no GET-expressible list and stay absent.
+  "canva.designs.read": { provider: "canva", kind: "read", riskClass: "read", tool: "canva_list_designs" },
+  "hubspot.contacts.read": { provider: "hubspot", kind: "read", riskClass: "read", tool: "hubspot_list_contacts" },
+  "salesforce.records.read": { provider: "salesforce", kind: "read", riskClass: "read", tool: "salesforce_search_records" },
+  "stripe.payments.read": { provider: "stripe", kind: "read", riskClass: "read", tool: "stripe_list_payments" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -119,6 +130,10 @@ export const PROVIDER_TOOLS = {
   asana_list_tasks: "asana.tasks.read",
   trello_list_cards: "trello.cards.read",
   airtable_list_records: "airtable.bases.read",
+  canva_list_designs: "canva.designs.read",
+  hubspot_list_contacts: "hubspot.contacts.read",
+  salesforce_search_records: "salesforce.records.read",
+  stripe_list_payments: "stripe.payments.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -281,6 +296,39 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can list the bases in your Airtable workspace.",
       capabilities: ["airtable.bases.read"],
+    },
+  ],
+  canva: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your Canva designs.",
+      capabilities: ["canva.designs.read"],
+    },
+  ],
+  hubspot: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the contacts in your HubSpot CRM.",
+      capabilities: ["hubspot.contacts.read"],
+    },
+  ],
+  salesforce: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can read records from your Salesforce org with a SOQL query.",
+      capabilities: ["salesforce.records.read"],
+    },
+  ],
+  stripe: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description:
+        "Agents can list payments and charges. Read-only; charges are never agent-proposed in this tier.",
+      capabilities: ["stripe.payments.read"],
     },
   ],
 };
