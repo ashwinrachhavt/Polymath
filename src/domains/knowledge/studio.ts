@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
@@ -249,6 +250,9 @@ export type DraftDetail = {
 const RECORD_LINK_TARGETS = ["task", "contact", "company", "opportunity"] as const;
 
 export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail | null> {
+  // A malformed id would reach Postgres as a uuid cast error and 500; it is
+  // the same "no draft here" as any other miss.
+  if (!z.string().uuid().safeParse(artifactId).success) return null;
   const [artifact] = await db
     .select({
       id: artifacts.id,
