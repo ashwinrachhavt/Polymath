@@ -15,6 +15,7 @@ export type ConnectorCard = {
   capabilities: string[];
   riskByCapability: Record<string, string>;
   requiresApproval: boolean;
+  accessTiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
   accounts: Array<{
     id: string;
     alias: string;
@@ -23,6 +24,7 @@ export type ConnectorCard = {
     isDefaultForWrites: boolean;
     allowRead: boolean;
     allowWrite: boolean;
+    accessTier: string | null;
     lastHealthyAt: Date | null;
     lastError: string | null;
     version: number;
@@ -44,6 +46,7 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
     capabilities: row.capabilities as string[],
     riskByCapability: row.riskByCapability as Record<string, string>,
     requiresApproval: row.requiresApproval,
+    accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
     accounts: accounts
       .filter((account) => account.provider === row.provider)
       .map((account) => ({
@@ -54,6 +57,7 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
         isDefaultForWrites: account.isDefaultForWrites,
         allowRead: account.allowRead,
         allowWrite: account.allowWrite,
+        accessTier: account.accessTier,
         lastHealthyAt: account.lastHealthyAt,
         lastError: account.lastError,
         version: account.version,
