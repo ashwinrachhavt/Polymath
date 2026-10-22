@@ -126,11 +126,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
               {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
               <X aria-hidden className="size-3" />
             </button>
-          ) : (
-            <p className="text-muted-foreground text-[12px]">
-              <kbd className="font-sans">/</kbd> for skills
-            </p>
-          )}
+          ) : null}
           <Button
             type="submit"
             size="icon-sm"

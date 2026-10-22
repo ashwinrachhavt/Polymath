@@ -43,7 +43,6 @@ export type ChatSurfaceProps = {
    */
   optimisticMessage?: string;
   /** Capabilities the surface advertises; the run's frozen policy is the real gate. */
-  capabilities?: string[];
   placeholder?: string;
   /** Receives citations a tool produced, as the knowledge domain's own type. */
   onCitation?: (citations: DocumentCitation[]) => void;
@@ -64,7 +63,6 @@ export function ChatSurface({
   runId,
   subject,
   optimisticMessage,
-  capabilities = [],
   placeholder = "Ask about this",
   onCitation,
   title,
@@ -156,7 +154,6 @@ export function ChatSurface({
             {chat.connection === "waiting" && <span>Waiting for a message</span>}
             {busy && <span>Working</span>}
             {chat.connection === "done" && <span>Finished</span>}
-            {capabilities.length > 0 && <span className="readout">{capabilities.join(" · ")}</span>}
           </div>
         </header>
       ) : null}
@@ -311,8 +308,7 @@ export function ChatSurface({
             {sendError}
           </p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-[11px] text-muted-foreground">Enter sends, Shift+Enter adds a line.</p>
+        <div className="mt-2 flex items-center justify-end gap-2">
           <Button type="submit" size="sm" disabled={!draft.trim() || sending || chat.connection === "done"}>
             <ArrowUp aria-hidden />
             {sending ? "Sending" : "Send"}
