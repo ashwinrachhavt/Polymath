@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
-import { requireRole } from "@/lib/auth/guards";
+import { requireRole, requireScope } from "@/lib/auth/guards";
 import { preflight, withCors } from "@/lib/cors";
 import { problemResponse } from "@/lib/problems";
 import { ConflictError, createCapture } from "@/domains/capture/commands";
@@ -32,6 +32,7 @@ export const OPTIONS = async (request: Request) => preflight(request.headers.get
 
 export const GET = authedHandler(async (auth, request) => {
   requireRole(auth, "viewer");
+  requireScope(auth, "captures:read");
   const parsed = filterSchema.safeParse(new URL(request.url).searchParams.get("filter") ?? "unprocessed");
   if (!parsed.success) {
     return withCors(
@@ -45,6 +46,7 @@ export const GET = authedHandler(async (auth, request) => {
 
 export const POST = authedHandler(async (auth, request) => {
   requireRole(auth, "member");
+  requireScope(auth, "captures:write");
   const origin = request.headers.get("origin");
   const parsed = captureRequest.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

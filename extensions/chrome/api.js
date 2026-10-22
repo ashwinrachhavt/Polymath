@@ -102,7 +102,7 @@ const AlfredAPI = {
     return (await this._getStorage("axiomToken")) || null;
   },
 
-  /** Store the token printed by `pnpm companion:pair`. */
+  /** Store the API key minted in Polymath → Settings → Account and machine clients. */
   async setToken(value) {
     const clean = (value || "").trim();
     await this._setStorage("axiomToken", clean || null);
@@ -129,7 +129,7 @@ const AlfredAPI = {
       const text = await resp.text().catch(() => "");
       if (resp.status === 401 && bearer) {
         throw new Error(
-          "Polymath rejected this companion token (401). Paste a fresh token from `pnpm companion:pair` into the extension settings, or clear the token field to save without one.",
+          "Polymath rejected this API key (401). Mint a fresh one in Polymath → Settings → Account and machine clients, paste it into the extension settings, or clear the token field to save without one.",
         );
       }
       throw new Error(`Polymath API ${resp.status}: ${text}`);
