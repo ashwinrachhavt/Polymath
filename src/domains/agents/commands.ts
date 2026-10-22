@@ -45,6 +45,12 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // writes: the tool creates a prepare-risk proposal and the owner's approval
   // creates the task. Same class as wiki.ingest, which also writes locally.
   "tasks.create",
+  // Public-web reads. Query terms and fetched URLs leave the workspace (the
+  // registry's egress note), nothing is written, and the zero-key provider
+  // means no spend. web.fetch answers a clear config error until a Firecrawl
+  // URL is set; granting it keeps the refusal honest instead of a dead 403.
+  "web.search",
+  "web.fetch",
 ];
 
 export async function ensureProfile(workspaceId: string, name = "alfred") {
@@ -85,6 +91,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       // Prepare-risk proposal writes gained with the tasks_propose tool;
       // without this, existing profiles would fail closed on every call.
       "tasks.create",
+      // Public-web reads granted with the default profile; an existing
+      // profile without them makes the tools a dead 403 on every call.
+      "web.search",
+      "web.fetch",
     ];
     const missing = gained.filter((t) => !tools.includes(t));
     if (missing.length) {
