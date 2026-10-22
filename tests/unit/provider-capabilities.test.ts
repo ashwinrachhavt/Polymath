@@ -122,7 +122,6 @@ const NATIVE_TOOLS = [
   "wiki.ingest",
   "wiki.lint",
   "notebook.open",
-  "learning.review",
   "tasks.create",
   // No connected account or catalog row: the search provider is picked from
   // the environment (zero-key DuckDuckGo by default), and a fetch goes

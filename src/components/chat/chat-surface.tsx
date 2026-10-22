@@ -220,7 +220,6 @@ export function ChatSurface({
             [/calendar/i, "Checked calendar"],
             [/web_search/i, "Searched the web"],
             [/web_fetch/i, "Read a web page"],
-            [/learning/i, "Checked learning deck"],
           ];
           const visible = chat.tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
           if (visible.length === 0) return null;

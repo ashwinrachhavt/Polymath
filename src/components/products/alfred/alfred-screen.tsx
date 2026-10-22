@@ -18,7 +18,6 @@ const screens: Record<string, ComponentType<{ initialId?: string }>> = {
   chat: dynamic(() => import("./chat"), { loading }),
   blogs: dynamic(() => import("./blogs"), { loading }),
   dictionary: dynamic(() => import("./dictionary"), { loading }),
-  learning: dynamic(() => import("./learning"), { loading }),
   canvas: dynamic(() => import("./canvas"), { loading }),
   projects: dynamic(() => import("./projects"), { loading }),
   integrations: dynamic(() => import("./integrations"), { loading }),

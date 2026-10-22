@@ -37,10 +37,8 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "linear.issue.read",
   "calendar.read",
   "notion.read",
-  // NotebookLM parity. Opening a notebook reads; grading a review writes an
-  // attempt locally, the same act the owner performs in the UI.
+  // NotebookLM parity. Opening a notebook reads its sources and artifacts.
   "notebook.open",
-  "learning.review",
   // Run follow-ups become reviewable task proposals, never silent task
   // writes: the tool creates a prepare-risk proposal and the owner's approval
   // creates the task. Same class as wiki.ingest, which also writes locally.
@@ -87,7 +85,6 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "calendar.read",
       "notion.read",
       "notebook.open",
-      "learning.review",
       // Prepare-risk proposal writes gained with the tasks_propose tool;
       // without this, existing profiles would fail closed on every call.
       "tasks.create",

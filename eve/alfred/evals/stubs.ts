@@ -85,8 +85,6 @@ function isSet(value: string | undefined): boolean {
  */
 export const STUBBED_TOOLS = {
   documents_search: { response: { ok: true, query: "", results: [] } },
-  learning_grade: { response: { ok: true } },
-  learning_next: { response: { ok: true, items: [] } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_search": { response: { ok: false, error: "not connected in this eval" } },

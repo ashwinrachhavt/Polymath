@@ -27,7 +27,6 @@ export const ledgerReason = pgEnum("ledger_reason", [
   "focus_completed",
   "task_completed",
   "review_decided",
-  "learning_reviewed",
   "weekly_review",
   "adjustment",
 ]);
