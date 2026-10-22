@@ -5,18 +5,21 @@ import { destinationForPath, destinations, moreDestination } from "@/lib/navigat
 import { cn } from "cn";
 
 /*
- * The phone bottom bar: Today, Work, Library, Assistant, and More — the five
+ * The phone bottom bar: Assistant, Today, Notebook, and More — the
  * destinations a thumb reaches for most — with the full list behind More.
+ * Wired by href, not label, because /alfred/notebook resolves to the Notes
+ * destination via featureRoutes while the bar's Notebook must be the
+ * /alfred/dossiers destination.
  * Target size is 44px, above the 24px floor in agents/design.md, because a
  * thumb is not a cursor.
  */
-const bar = ["Today", "Work", "Library", "Assistant"];
+const barHrefs = ["/alfred", "/command-center/briefing", "/alfred/dossiers"];
 
 export function MobileNav() {
   const pathname = usePathname();
   const activeHref = destinationForPath(pathname)?.href;
   const items = [
-    ...destinations.filter((d) => bar.includes(d.label)),
+    ...destinations.filter((d) => barHrefs.includes(d.href)),
     moreDestination,
   ];
 

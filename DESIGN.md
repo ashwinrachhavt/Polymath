@@ -175,8 +175,8 @@ The shell is one left rail, a thin header, and the canvas.
   command layer, the reviews shield, theme, the destination launcher (a
   wayfinder for when the rail is collapsed, not a switcher), and the account
   menu.
-- **The phone** hides the rail: a bottom bar with Today, Work, Library,
-  Assistant, and More; the full list lives behind More.
+- **The phone** hides the rail: a bottom bar with Assistant, Today, Notebook,
+  and More; the full list lives behind More.
 - Desktop: flexible canvas + optional inspector (360-440px). **The inspector
   is the rule, not the exception.** Details, backlinks, activity, and Alfred
   context open beside the list so the owner never loses their place.

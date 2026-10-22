@@ -45,10 +45,14 @@ describe("navigation", () => {
   });
 
   it("prefers the exact destination over a prefix match", () => {
-    // `/alfred` is a destination and a prefix of `/alfred/knowledge`. The bare
-    // root must name Assistant; the child must name Library.
+    // `/alfred` is a destination and a prefix of `/alfred/notes`. The bare
+    // root must name Assistant; the child must name Notes.
     expect(destinationForPath("/alfred")?.label).toBe("Assistant");
-    expect(destinationForPath("/alfred/knowledge")?.label).toBe("Library");
+    expect(destinationForPath("/alfred/knowledge")?.label).toBe("Document Vault");
+    // /alfred/notebook still serves the notes surface, but the breadcrumb
+    // must already name Notes (the surface moves in a later task).
+    expect(destinationForPath("/alfred/notebook")?.label).toBe("Notes");
+    expect(destinationForPath("/alfred/dossiers")?.label).toBe("Notebook");
   });
 
   it("attributes every destination to a historic prefix or shared", () => {
