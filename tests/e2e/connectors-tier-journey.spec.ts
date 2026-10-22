@@ -27,7 +27,24 @@ function connection(): string | null {
   return process.env.DATABASE_URL ?? null;
 }
 
+// The test process does not inherit env; load the files the dev server loaded.
+// Node's loadEnvFile does not override an already-set key, so the
+// higher-precedence file loads first: .env.local wins for shared keys, .env
+// fills the rest.
+for (const file of [".env.local", ".env"]) {
+  try {
+    process.loadEnvFile(file);
+  } catch {
+    // Absent file: keep going; the gateway leg skips with a stated reason.
+  }
+}
 const GATEWAY_SECRET = process.env.EVE_GATEWAY_SECRET?.trim() ?? "";
+
+// The gateway resolves accounts per workspace, and every test shares dev-user's
+// workspace: three parallel workers would seed three active gmail accounts and
+// make every send ambiguous. One worker for the whole file.
+test.describe.configure({ mode: "serial" });
+test.slow();
 
 let client: postgres.Sql | null = null;
 let seeded: { workspaceId: string; accountId: string; alias: string; runId: string } | null = null;
@@ -120,11 +137,15 @@ async function callGateway(tool: string, args: Record<string, unknown>): Promise
       params: { name: tool, arguments: args },
     }),
   });
+  // Tool results ride inside a 200 body as content text; refusals (tier gate,
+  // policy) are problem-detail responses on the transport status. Read both.
   const body = (await response.json()) as {
     result?: { content?: Array<{ text?: string }> };
     error?: { message?: string };
+    title?: string;
   };
-  return { status: response.status, text: body.result?.content?.[0]?.text ?? body.error?.message ?? "" };
+  const text = body.result?.content?.[0]?.text ?? body.error?.message ?? body.title ?? "";
+  return { status: response.status, text };
 }
 
 test("the connectors card names the tier, offers the picker, and marks tierless providers Coming soon", async ({ page }) => {
@@ -137,9 +158,9 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
   await expect(picker).toBeVisible();
   await expect(picker).toHaveValue("read_only");
 
-  // Stripe has no shipped read tools, so it is not connectable yet.
-  const stripeCard = page.locator("article", { hasText: "Stripe" }).first();
-  await expect(stripeCard.getByText("Coming soon")).toBeVisible();
+  // Dropbox's list read is POST-shaped, so it has no tiers — not connectable.
+  const dropboxCard = page.locator("article", { hasText: "Dropbox" }).first();
+  await expect(dropboxCard.getByText("Coming soon")).toBeVisible();
 });
 
 test("raising the tier persists across a reload, and lowering it back does too", async ({ page }) => {
