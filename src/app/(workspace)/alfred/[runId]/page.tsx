@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
-import { ChatSurface } from "@/components/chat/chat-surface";
+import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { getRun } from "@/domains/agents/queries";
@@ -119,8 +119,12 @@ async function ConversationSurface({ runId }: { runId: string }) {
           {run.error ? (
             <p role="alert" className="text-destructive text-[13px]">{run.error}</p>
           ) : null}
-          {unavailable && !["succeeded", "failed", "cancelled"].includes(run.state) ? null : (
-            <RunControls runId={run.id} finished={!isLive} />
+          {/* The live composer above already sends messages; the only action it
+              lacks is stopping the run. A finished run takes Retry here. */}
+          {!isLive ? (
+            <RunControls runId={run.id} finished />
+          ) : unavailable ? null : (
+            <ChatCancel runId={run.id} />
           )}
           <DraftControls runId={run.id} draft={drafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
         </section>
