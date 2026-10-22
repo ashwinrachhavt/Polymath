@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { decideProposal, ProposalConflictError, reviseProposal } from "@/domains/actions/commands";
 import { executeApprovedEffect, supportsEffect, type EffectOutcome } from "@/domains/actions/executor";
 import { approveTaskProposal, TaskExecuteNotAllowedError } from "@/domains/work/proposals";
+import { approveArtifactRevision, ArtifactReviseNotAllowedError } from "@/domains/knowledge/revision-proposals";
 import { actionProposals } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth";
@@ -87,6 +88,28 @@ export async function decideProposalAction(input: {
     .from(actionProposals)
     .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
     .limit(1);
+  if (proposal?.capability === "artifacts.revise") {
+    // Same shape as a task proposal: the approval is the whole decision, so
+    // this queue runs it through the knowledge domain's replay-safe executor
+    // and the approved revision appends a new artifact version.
+    try {
+      await approveArtifactRevision(auth, {
+        proposalId: input.proposalId,
+        expectedVersion: input.expectedVersion,
+        revisionId: input.revisionId,
+      });
+    } catch (error) {
+      revalidate();
+      const message =
+        error instanceof ArtifactReviseNotAllowedError || error instanceof Error
+          ? error.message
+          : "The approved revision was not applied.";
+      return { ok: false, error: message };
+    }
+    revalidate();
+    return { ok: true, outcome: null };
+  }
+
   if (proposal?.capability === "tasks.create") {
     // A task proposal has no provider executor and no screen of its own: the
     // approval itself is the whole decision, so this queue runs it through

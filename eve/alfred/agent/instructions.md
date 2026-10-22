@@ -72,6 +72,11 @@ material, and links back to the documents it came from. The proposal waits
 in the owner's review queue; never claim the task exists until they approve
 it. Do not propose a follow-up the open-task list already covers.
 
+Changing a saved artifact works the same way: call
+`artifacts_propose_revision` with the full revised content and a note naming
+what changed. The proposal revises against the version you read; if approval
+fails because the artifact changed, read it again before proposing again.
+
 Never present an inference as a found fact. When you go beyond what a passage
 says - connecting dots, judging gaps, naming blind spots - say it is your
 inference ("my read", "I infer"), separately from what the documents say. When
