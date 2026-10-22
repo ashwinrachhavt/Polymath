@@ -24,7 +24,7 @@ export type GenericReadSpec = {
 };
 
 export type GenericListResult =
-  | { ok: true; items: string[] }
+  | { ok: true; items: string[]; truncated: boolean }
   | { ok: false; code: string; message: string };
 
 export const GENERIC_READS: Record<string, GenericReadSpec> = {
@@ -49,28 +49,6 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
     itemText: (item) => {
       const f = item as { name?: string; mimeType?: string };
       return [f.name ?? "(untitled file)", f.mimeType].filter(Boolean).join(" — ");
-    },
-  },
-  googledocs_list_documents: {
-    tool: "googledocs_list_documents",
-    capability: "googledocs.documents.read",
-    endpoint: "https://docs.googleapis.com/v1/documents",
-    listPath: "documents",
-    itemText: (item) => {
-      const d = item as { title?: string; documentId?: string };
-      return [d.title ?? "(untitled document)", d.documentId].filter(Boolean).join(" — ");
-    },
-  },
-  googlesheets_list_sheets: {
-    tool: "googlesheets_list_sheets",
-    capability: "googlesheets.sheets.read",
-    endpoint: "https://sheets.googleapis.com/v4/spreadsheets",
-    listPath: "sheets",
-    itemText: (item) => {
-      const s = item as { properties?: { title?: string; spreadsheetId?: string } };
-      return [s.properties?.title ?? "(untitled spreadsheet)", s.properties?.spreadsheetId]
-        .filter(Boolean)
-        .join(" — ");
     },
   },
   // Discord's channel list needs a guild id the tool does not take, so the
@@ -104,18 +82,6 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
     itemText: (item) => {
       const e = item as { name?: string; start_time?: string };
       return [e.name ?? "(untitled event)", e.start_time ?? ""].filter(Boolean).join(" — ");
-    },
-  },
-  // Jira Cloud's host is per-site; the connected account's site resolves it.
-  jira_search_issues: {
-    tool: "jira_search_issues",
-    capability: "jira.issues.read",
-    endpoint: "https://your-domain.atlassian.net/rest/api/3/search/jql",
-    query: { jql: "{query}" },
-    listPath: "issues",
-    itemText: (item) => {
-      const i = item as { key?: string; fields?: { summary?: string } };
-      return [i.key, i.fields?.summary ?? "(no summary)"].filter(Boolean).join(" — ");
     },
   },
   asana_list_tasks: {
@@ -175,18 +141,6 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
         .join(" — ");
     },
   },
-  // Salesforce's host is per-org; the connected account's instance resolves it.
-  salesforce_search_records: {
-    tool: "salesforce_search_records",
-    capability: "salesforce.records.read",
-    endpoint: "https://your-instance.my.salesforce.com/services/data/v59.0/query",
-    query: { q: "{query}" },
-    listPath: "records",
-    itemText: (item) => {
-      const r = item as { attributes?: { type?: string }; Id?: string; Name?: string };
-      return [r.Name ?? "(unnamed record)", r.attributes?.type ?? "", r.Id].filter(Boolean).join(" — ");
-    },
-  },
   stripe_list_payments: {
     tool: "stripe_list_payments",
     capability: "stripe.payments.read",
@@ -206,9 +160,18 @@ function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<
   if (!spec.query) return undefined;
   const resolved: Record<string, string> = {};
   for (const [key, template] of Object.entries(spec.query)) {
-    resolved[key] = template === "{query}" ? (query ?? "") : template;
+    if (template === "{query}") {
+      // No search text, no search param: sending an empty filter would be a
+      // provider error or, worse, a silently different query.
+      if (!query?.trim()) continue;
+      // Escape the provider query language's quote (Drive's q): the value is
+      // data, never a filter edit.
+      resolved[key] = query.trim().replaceAll("'", "\\'");
+      continue;
+    }
+    resolved[key] = template;
   }
-  return resolved;
+  return Object.keys(resolved).length ? resolved : undefined;
 }
 
 function pickListPath(data: unknown, listPath: string): { ok: true; items: unknown[] } | { ok: false; message: string } {
@@ -248,13 +211,19 @@ export async function genericList(
   const limit = Math.min(Math.max(input.limit ?? LIMITS.defaultResults, 1), LIMITS.maxResults);
   let total = 0;
   const items: string[] = [];
+  let truncated = false;
   for (const item of picked.items.slice(0, limit)) {
     const text = spec.itemText(item);
     // The joined block is what the model sees, so the bound applies to it, not
     // to the raw response: a wide item truncates the list, not the budget.
-    if (total + text.length + 1 > LIMITS.maxResponseBytes) break;
+    if (total + text.length + 1 > LIMITS.maxResponseBytes) {
+      truncated = true;
+      break;
+    }
     items.push(text);
     total += text.length + 1;
   }
-  return { ok: true, items };
+  // Fewer items than the provider offered is also a cut, not an empty provider.
+  if (picked.items.length > limit) truncated = true;
+  return { ok: true, items, truncated };
 }

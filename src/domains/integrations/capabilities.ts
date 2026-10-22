@@ -33,18 +33,14 @@ export type Provider =
   | "linear"
   | "google-calendar"
   | "google-drive"
-  | "google-docs"
-  | "google-sheets"
   | "discord"
   | "zoom"
   | "calendly"
-  | "jira"
   | "asana"
   | "trello"
   | "airtable"
   | "canva"
   | "hubspot"
-  | "salesforce"
   | "stripe";
 
 export type CapabilitySpec = {
@@ -79,25 +75,26 @@ export const CAPABILITIES = {
   "linear.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_search_issues" },
   "linear.issue.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_read_issue" },
   // Google cluster A: read-only list tools through the generic registry.
+  // Docs and Sheets have no GET list API at a static URL (listing lives in
+  // Drive), so their tools wait for a slice that can express them.
   "googlecalendar.events.read": { provider: "google-calendar", kind: "read", riskClass: "read", tool: "googlecalendar_list_events" },
   "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
-  "googledocs.documents.read": { provider: "google-docs", kind: "read", riskClass: "read", tool: "googledocs_list_documents" },
-  "googlesheets.sheets.read": { provider: "google-sheets", kind: "read", riskClass: "read", tool: "googlesheets_list_sheets" },
   // Comms and meetings cluster B: read-only lists through the generic registry.
   "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
   "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
   "calendly.events.read": { provider: "calendly", kind: "read", riskClass: "read", tool: "calendly_list_events" },
   // Work-management cluster C: read-only lists through the generic registry.
-  "jira.issues.read": { provider: "jira", kind: "read", riskClass: "read", tool: "jira_search_issues" },
+  // Jira's host is per-site and nothing resolves it statically yet, so its
+  // tool waits for a slice that can.
   "asana.tasks.read": { provider: "asana", kind: "read", riskClass: "read", tool: "asana_list_tasks" },
   "trello.cards.read": { provider: "trello", kind: "read", riskClass: "read", tool: "trello_list_cards" },
   "airtable.bases.read": { provider: "airtable", kind: "read", riskClass: "read", tool: "airtable_list_records" },
   // Design, CRM and finance cluster D: read-only lists through the generic
-  // registry. Figma (files list needs a project id) and Dropbox (list_folder
-  // is POST-shaped) have no GET-expressible list and stay absent.
+  // registry. Figma (files list needs a project id), Dropbox (list_folder is
+  // POST-shaped) and Salesforce (per-org host, unresolvable statically) have
+  // no GET-expressible list and stay absent.
   "canva.designs.read": { provider: "canva", kind: "read", riskClass: "read", tool: "canva_list_designs" },
   "hubspot.contacts.read": { provider: "hubspot", kind: "read", riskClass: "read", tool: "hubspot_list_contacts" },
-  "salesforce.records.read": { provider: "salesforce", kind: "read", riskClass: "read", tool: "salesforce_search_records" },
   "stripe.payments.read": { provider: "stripe", kind: "read", riskClass: "read", tool: "stripe_list_payments" },
 } as const satisfies Record<string, CapabilitySpec>;
 
@@ -121,18 +118,14 @@ export const PROVIDER_TOOLS = {
   linear_read_issue: "linear.issue.read",
   googlecalendar_list_events: "googlecalendar.events.read",
   googledrive_search_files: "googledrive.files.read",
-  googledocs_list_documents: "googledocs.documents.read",
-  googlesheets_list_sheets: "googlesheets.sheets.read",
   discord_list_channels: "discord.guilds.read",
   zoom_list_meetings: "zoom.meetings.read",
   calendly_list_events: "calendly.events.read",
-  jira_search_issues: "jira.issues.read",
   asana_list_tasks: "asana.tasks.read",
   trello_list_cards: "trello.cards.read",
   airtable_list_records: "airtable.bases.read",
   canva_list_designs: "canva.designs.read",
   hubspot_list_contacts: "hubspot.contacts.read",
-  salesforce_search_records: "salesforce.records.read",
   stripe_list_payments: "stripe.payments.read",
 } as const satisfies Record<string, Capability>;
 
@@ -226,22 +219,6 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       capabilities: ["googledrive.files.read"],
     },
   ],
-  "google-docs": [
-    {
-      id: "read_only",
-      label: "Read only",
-      description: "Agents can list the documents in your Google Docs.",
-      capabilities: ["googledocs.documents.read"],
-    },
-  ],
-  "google-sheets": [
-    {
-      id: "read_only",
-      label: "Read only",
-      description: "Agents can list the spreadsheets in your Google Sheets.",
-      capabilities: ["googlesheets.sheets.read"],
-    },
-  ],
   discord: [
     {
       id: "read_only",
@@ -264,14 +241,6 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can list your scheduled Calendly events.",
       capabilities: ["calendly.events.read"],
-    },
-  ],
-  jira: [
-    {
-      id: "read_only",
-      label: "Read only",
-      description: "Agents can search the issues on your Jira site.",
-      capabilities: ["jira.issues.read"],
     },
   ],
   asana: [
@@ -312,14 +281,6 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can list the contacts in your HubSpot CRM.",
       capabilities: ["hubspot.contacts.read"],
-    },
-  ],
-  salesforce: [
-    {
-      id: "read_only",
-      label: "Read only",
-      description: "Agents can read records from your Salesforce org with a SOQL query.",
-      capabilities: ["salesforce.records.read"],
     },
   ],
   stripe: [

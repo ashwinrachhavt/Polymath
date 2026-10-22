@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { externalAccounts, integrationCatalog, syncCursors } from "./schema";
@@ -32,6 +32,23 @@ export type ConnectorCard = {
 };
 
 export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]> {
+  // A connection attempt the owner never finished would leave its account in
+  // `connecting` forever — a card that says Connecting on every visit. The
+  // read sweeps the workspace's expired attempts so the card tells the truth
+  // the moment the owner looks at it.
+  await db.execute(sql`
+    with expired as (
+      update connection_attempts
+      set status = 'expired', completed_at = now()
+      where workspace_id = ${auth.workspaceId} and status = 'pending' and expires_at < now()
+      returning external_account_id
+    )
+    update external_accounts a
+    set last_error = 'That connection attempt expired. Start again.', updated_at = now()
+    from expired
+    where a.id = expired.external_account_id and a.status = 'connecting'
+  `);
+
   const [catalog, accounts] = await Promise.all([
     db.select().from(integrationCatalog).orderBy(asc(integrationCatalog.provider)),
     db

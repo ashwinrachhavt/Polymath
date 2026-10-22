@@ -114,14 +114,26 @@ describe("tier helpers", () => {
 
 
 describe("PROVIDER_TIERS google cluster", () => {
-  it("covers google-calendar, google-drive, google-docs, google-sheets with one read_only tier", () => {
-    for (const provider of ["google-calendar", "google-drive", "google-docs", "google-sheets"] as Provider[]) {
+  it("covers google-calendar and google-drive with one read_only tier", () => {
+    for (const provider of ["google-calendar", "google-drive"] as Provider[]) {
       expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
     }
   });
 
+  it("docs, sheets, jira and salesforce have no tiers — their list reads are not GET-expressible", () => {
+    // These providers stay in the catalog (rows exist) but outside the Provider
+    // union: no shipped capability, so no tier offer. Coming soon, honestly.
+    const catalog = ["0031_seed_integration_catalog.sql", "0223_connector_catalog_expansion.sql"]
+      .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
+      .join("\n");
+    for (const provider of ["google-docs", "google-sheets", "jira", "salesforce"]) {
+      expect(catalog.includes(`'${provider}'`), provider).toBe(true);
+      expect(provider in PROVIDER_TIERS, provider).toBe(false);
+    }
+  });
+
   it("each google read_only tier names only real capabilities", () => {
-    for (const provider of ["google-calendar", "google-drive", "google-docs", "google-sheets"] as Provider[]) {
+    for (const provider of ["google-calendar", "google-drive"] as Provider[]) {
       for (const capability of PROVIDER_TIERS[provider][0].capabilities) {
         expect(capability in CAPABILITIES, `${provider} names ${capability}`).toBe(true);
       }
@@ -140,8 +152,8 @@ describe("PROVIDER_TIERS comms cluster", () => {
 
 
 describe("PROVIDER_TIERS work-management cluster", () => {
-  it("covers jira, asana, trello, airtable with one read_only tier", () => {
-    for (const provider of ["jira", "asana", "trello", "airtable"] as Provider[]) {
+  it("covers asana, trello, airtable with one read_only tier", () => {
+    for (const provider of ["asana", "trello", "airtable"] as Provider[]) {
       expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
     }
   });
@@ -149,8 +161,8 @@ describe("PROVIDER_TIERS work-management cluster", () => {
 
 
 describe("PROVIDER_TIERS crm/finance cluster", () => {
-  it("covers canva, hubspot, salesforce, stripe with one read_only tier", () => {
-    for (const provider of ["canva", "hubspot", "salesforce", "stripe"] as Provider[]) {
+  it("covers canva, hubspot, stripe with one read_only tier", () => {
+    for (const provider of ["canva", "hubspot", "stripe"] as Provider[]) {
       expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
     }
   });

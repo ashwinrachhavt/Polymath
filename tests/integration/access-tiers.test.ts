@@ -25,6 +25,10 @@ beforeAll(async () => {
     "src/db/migrations/0031_seed_integration_catalog.sql",
     "src/db/migrations/0223_connector_catalog_expansion.sql",
     "src/db/migrations/0229_access_tiers.sql",
+    "src/db/migrations/0230_google_tiers.sql",
+    "src/db/migrations/0231_comms_tiers.sql",
+    "src/db/migrations/0232_workmgmt_tiers.sql",
+    "src/db/migrations/0233_crm_tiers.sql",
   ]) {
     await handle.client.unsafe(readFileSync(file, "utf8"));
   }
@@ -53,9 +57,14 @@ suite("access tiers", () => {
   });
 
   it("providers without shipped tools have empty tiers", async () => {
-    for (const provider of ["stripe", "figma", "notion"]) {
+    // Figma, dropbox, notion, docs, sheets, jira, salesforce: no GET-expressible
+    // list read, so no tier offer — the cards render Coming soon.
+    for (const provider of ["figma", "dropbox", "notion", "google-docs", "google-sheets", "jira", "salesforce"]) {
       expect(await catalogTiers(provider), provider).toEqual([]);
     }
+    // Stripe gained a read-only tier in cluster D; its charges are never proposed.
+    const stripe = (await catalogTiers("stripe")) as Array<{ id: string }>;
+    expect(stripe.map((tier) => tier.id)).toEqual(["read_only"]);
   });
 
   it("existing accounts backfill to read_only", async () => {

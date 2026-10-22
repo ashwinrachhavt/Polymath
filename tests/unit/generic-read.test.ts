@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { genericList, type GenericReadSpec } from "@/domains/integrations/reads/generic";
 import type { Transport, TransportRequest, TransportResult } from "@/domains/integrations/transport";
 import { LIMITS } from "@/domains/integrations/capabilities";
+import { CAPABILITIES, PROVIDER_TOOLS } from "@/domains/integrations/capabilities";
 import { GENERIC_READS } from "@/domains/integrations/reads/generic";
 
 /*
@@ -91,8 +92,6 @@ describe("GENERIC_READS google cluster", () => {
     const expected: Array<[string, string, string]> = [
       ["googlecalendar_list_events", "https://calendar.googleapis.com/calendar/v3/calendars/primary/events", "items"],
       ["googledrive_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
-      ["googledocs_list_documents", "https://docs.googleapis.com/v1/documents", "documents"],
-      ["googlesheets_list_sheets", "https://sheets.googleapis.com/v4/spreadsheets", "sheets"],
     ];
     for (const [tool, endpoint, listPath] of expected) {
       const spec = GENERIC_READS[tool];
@@ -100,7 +99,12 @@ describe("GENERIC_READS google cluster", () => {
       expect(spec!.endpoint, tool).toBe(endpoint);
       expect(spec!.listPath, tool).toBe(listPath);
     }
-    expect(entries.length).toBeGreaterThanOrEqual(4);
+    expect(entries.length).toBe(2);
+  });
+
+  it("docs and sheets are absent — their list reads are not GET-expressible", () => {
+    expect(GENERIC_READS.googledocs_list_documents).toBeUndefined();
+    expect(GENERIC_READS.googlesheets_list_sheets).toBeUndefined();
   });
 
   it("maps a calendar fixture response to one line per event", async () => {
@@ -167,9 +171,8 @@ describe("GENERIC_READS comms cluster", () => {
 });
 
 describe("GENERIC_READS work-management cluster", () => {
-  it("registers jira, asana, trello and airtable specs with their real endpoints and listPaths", () => {
+  it("registers asana, trello and airtable specs with their real endpoints and listPaths", () => {
     const expected: Array<[string, string, string]> = [
-      ["jira_search_issues", "https://your-domain.atlassian.net/rest/api/3/search/jql", "issues"],
       ["asana_list_tasks", "https://app.asana.com/api/1.0/tasks", "data"],
       ["trello_list_cards", "https://api.trello.com/1/members/me/cards", ""],
       ["airtable_list_records", "https://api.airtable.com/v0/meta/bases", "bases"],
@@ -182,27 +185,16 @@ describe("GENERIC_READS work-management cluster", () => {
     }
   });
 
-  it("maps a jira fixture to one line per issue", async () => {
-    const transport = fakeTransport({
-      ok: true,
-      status: 200,
-      data: { issues: [{ key: "ASH-1", fields: { summary: "Fix the gate" } }] },
-    });
-    const result = await genericList(transport, GENERIC_READS.jira_search_issues!, { connectedAccountId: "ca_1", query: "gate" });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.items[0]).toContain("ASH-1");
-      expect(result.items[0]).toContain("Fix the gate");
-    }
+  it("jira is absent — its host is per-site and nothing resolves it statically", () => {
+    expect(GENERIC_READS.jira_search_issues).toBeUndefined();
   });
 });
 
 describe("GENERIC_READS crm/finance cluster", () => {
-  it("registers canva, hubspot, salesforce and stripe specs with their real endpoints and listPaths", () => {
+  it("registers canva, hubspot and stripe specs with their real endpoints and listPaths", () => {
     const expected: Array<[string, string, string]> = [
       ["canva_list_designs", "https://www.canva.com/api/v1/designs", "items"],
       ["hubspot_list_contacts", "https://api.hubapi.com/crm/v3/objects/contacts", "results"],
-      ["salesforce_search_records", "https://your-instance.my.salesforce.com/services/data/v59.0/query", "records"],
       ["stripe_list_payments", "https://api.stripe.com/v1/charges", "data"],
     ];
     for (const [tool, endpoint, listPath] of expected) {
@@ -224,8 +216,20 @@ describe("GENERIC_READS crm/finance cluster", () => {
     if (result.ok) expect(result.items[0]).toContain("a@example.test");
   });
 
-  it("figma and dropbox are absent — their list reads are not GET-expressible", () => {
+  it("figma, dropbox and salesforce are absent — their list reads are not GET-expressible", () => {
     expect(GENERIC_READS.figma_list_files).toBeUndefined();
     expect(GENERIC_READS.dropbox_list_files).toBeUndefined();
+    expect(GENERIC_READS.salesforce_search_records).toBeUndefined();
+  });
+});
+
+describe("GENERIC_READS integrity", () => {
+  it("every spec's capability routes back through PROVIDER_TOOLS to itself", () => {
+    for (const [tool, spec] of Object.entries(GENERIC_READS)) {
+      const capability = CAPABILITIES[spec.capability as keyof typeof CAPABILITIES];
+      expect(capability, `${tool} names unknown capability ${spec.capability}`).toBeDefined();
+      expect(PROVIDER_TOOLS[capability.tool as keyof typeof PROVIDER_TOOLS], tool).toBe(spec.capability);
+      expect(capability.tool, tool).toBe(tool);
+    }
   });
 });

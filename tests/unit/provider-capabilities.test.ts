@@ -37,18 +37,14 @@ describe("provider capability catalog", () => {
         "linear",
         "google-calendar",
         "google-drive",
-        "google-docs",
-        "google-sheets",
         "discord",
         "zoom",
         "calendly",
-        "jira",
         "asana",
         "trello",
         "airtable",
         "canva",
         "hubspot",
-        "salesforce",
         "stripe",
       ]).toContain(spec.provider);
       // A provider's capability prefix is its name without separators

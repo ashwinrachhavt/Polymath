@@ -638,10 +638,11 @@ export function createGateway({ transport }: { transport: Transport }) {
       }
       await settleCall(reservation.reservationId, {
         ok: true,
-        result: { records: r.items.length, truncated: false },
+        result: { records: r.items.length, truncated: r.truncated },
         durationMs: Date.now() - reservation.startedAt,
       });
-      const text = r.items.length ? r.items.join("\n") : "No results.";
+      const marker = r.truncated ? "\n[Truncated: the result was too large to show in full.]" : "";
+      const text = r.items.length ? r.items.join("\n") + marker : "No results.";
       return { ok: true, result: { content: [{ type: "text", text }] } };
     }
 
