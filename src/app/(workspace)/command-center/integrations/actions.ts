@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { registerAccount, revokeConnectedAccount, setAccountPermissions, setDefaultForWrites } from "@/domains/integrations/commands";
+import { registerAccount, revokeConnectedAccount, setAccountAccessTier, setDefaultForWrites } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
@@ -54,24 +54,14 @@ export async function setWriteDefaultAction(input: { accountId: string; expected
   return { ok: true };
 }
 
-/*
- * Each switch saves itself, so this carries both flags rather than a patch: a
- * caller that only sent the one it flipped would race a second click on the
- * other switch into an overwrite. `expectedVersion` makes that race a visible
- * stale-write instead of a silent lost update.
- */
-export async function setAccountPermissionAction(input: {
+export async function setAccountAccessTierAction(input: {
   accountId: string;
   expectedVersion: number;
-  allowRead: boolean;
-  allowWrite: boolean;
+  tierId: string;
 }): Promise<Result> {
   const auth = await authorize();
-  if (input.allowWrite && !input.allowRead) {
-    return { ok: false, error: "A write permission needs read: a proposal must cite what it read." };
-  }
   try {
-    await setAccountPermissions(auth, input);
+    await setAccountAccessTier(auth, input);
   } catch (error) {
     return fail(error);
   }

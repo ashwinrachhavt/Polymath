@@ -1,24 +1,30 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { workspaces } from "@/domains/identity/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
- * 0224 storage only: an account the owner connected is readable by default and
- * writable only after an explicit grant. Nothing here enforces the flags — the
- * executor reads them — so these tests prove the defaults and the round trip.
+ * setAccountAccessTier (0229 + PROVIDER_TIERS): the owner's per-connection
+ * grant. The tier id must be one of the provider's offers, the write is
+ * version-checked, and the audit row lands in the same transaction.
  */
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
+let commands: typeof import("@/domains/integrations/commands");
 let workspaceId: string;
+let auth: AuthContext;
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
-  ({ workspaceId } = await seedWorkspace(db, `conn-perm-${Date.now()}`));
+  commands = await import("@/domains/integrations/commands");
+  const seeded = await seedWorkspace(db, `conn-tier-${Date.now()}`);
+  workspaceId = seeded.workspaceId;
+  auth = { ...seeded, role: "owner" };
 });
 
 afterAll(async () => {
@@ -27,59 +33,94 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-async function readBack(alias: string) {
+async function gmailAccount(alias: string) {
   const [row] = await db
-    .select()
-    .from(externalAccounts)
-    .where(and(eq(externalAccounts.workspaceId, workspaceId), eq(externalAccounts.alias, alias)));
+    .insert(externalAccounts)
+    .values({ workspaceId, provider: "gmail", alias, status: "active" })
+    .returning();
   return row;
 }
 
-suite("connector permissions", () => {
-  it("a fresh account is readable and not writable", async () => {
-    const [row] = await db
-      .insert(externalAccounts)
-      .values({ workspaceId, provider: "gmail", alias: "perm-fresh" })
-      .returning();
+async function auditCount(action: string, subjectId: string) {
+  const { auditEvents } = await import("@/domains/audit/schema");
+  const rows = await db.select().from(auditEvents).where(eq(auditEvents.workspaceId, workspaceId));
+  return rows.filter((row) => row.subjectId === subjectId && row.action === action).length;
+}
 
-    expect(row.allowRead).toBe(true);
-    expect(row.allowWrite).toBe(false);
-    expect((await readBack("perm-fresh")).allowWrite).toBe(false);
+suite("setAccountAccessTier", () => {
+  it("a fresh account sits at the lowest tier", async () => {
+    const row = await gmailAccount("tier-fresh");
+    expect(row.accessTier).toBe("read_only");
   });
 
-  it("both flags flip and read back", async () => {
-    const [row] = await db
-      .insert(externalAccounts)
-      .values({ workspaceId, provider: "gmail", alias: "perm-flip" })
-      .returning();
-
-    await db
-      .update(externalAccounts)
-      .set({ allowRead: false, allowWrite: true })
-      .where(eq(externalAccounts.id, row.id));
-
-    const flipped = await readBack("perm-flip");
-    expect(flipped.allowRead).toBe(false);
-    expect(flipped.allowWrite).toBe(true);
-
-    await db
-      .update(externalAccounts)
-      .set({ allowRead: true, allowWrite: false })
-      .where(eq(externalAccounts.id, row.id));
-
-    const restored = await readBack("perm-flip");
-    expect(restored.allowRead).toBe(true);
-    expect(restored.allowWrite).toBe(false);
+  it("raising the tier persists and audits in the same transaction", async () => {
+    const row = await gmailAccount("tier-raise");
+    const updated = await commands.setAccountAccessTier(auth, {
+      accountId: row.id,
+      expectedVersion: row.version,
+      tierId: "read_send",
+    });
+    expect(updated.accessTier).toBe("read_send");
+    expect(updated.version).toBe(row.version + 1);
+    expect(await auditCount("integration.account_tier_set", row.id)).toBe(1);
   });
 
-  it("an insert naming neither column gets the defaults", async () => {
-    await handle!.client.unsafe(
-      `insert into external_accounts (workspace_id, provider, alias) values ($1, 'notion', 'perm-raw')`,
-      [workspaceId],
-    );
+  it("an unknown tier id is a ConflictError", async () => {
+    const row = await gmailAccount("tier-unknown");
+    await expect(
+      commands.setAccountAccessTier(auth, {
+        accountId: row.id,
+        expectedVersion: row.version,
+        tierId: "tier:ceiling",
+      }),
+    ).rejects.toThrow(commands.ConflictError);
+  });
 
-    const row = await readBack("perm-raw");
-    expect(row.allowRead).toBe(true);
-    expect(row.allowWrite).toBe(false);
+  it("a stale version throws StaleWriteError", async () => {
+    const row = await gmailAccount("tier-stale");
+    await commands.setAccountAccessTier(auth, {
+      accountId: row.id,
+      expectedVersion: row.version,
+      tierId: "read_send",
+    });
+    await expect(
+      commands.setAccountAccessTier(auth, {
+        accountId: row.id,
+        expectedVersion: row.version,
+        tierId: "read_only",
+      }),
+    ).rejects.toThrow(commands.StaleWriteError);
+  });
+
+  it("a provider with no tiers cannot be changed", async () => {
+    const [row] = await db
+      .insert(externalAccounts)
+      .values({ workspaceId, provider: "stripe", alias: "tier-stripe", status: "active" })
+      .returning();
+    await expect(
+      commands.setAccountAccessTier(auth, {
+        accountId: row.id,
+        expectedVersion: row.version,
+        tierId: "read_only",
+      }),
+    ).rejects.toThrow(commands.ConflictError);
+  });
+
+  it("another workspace's account is not updatable", async () => {
+    const other = await seedWorkspace(db, `conn-tier-other-${Date.now()}`);
+    const otherAuth = { ...other, role: "owner" as const };
+    const [row] = await db
+      .insert(externalAccounts)
+      .values({ workspaceId: other.workspaceId, provider: "gmail", alias: "tier-foreign", status: "active" })
+      .returning();
+    await expect(
+      commands.setAccountAccessTier(auth, {
+        accountId: row.id,
+        expectedVersion: row.version,
+        tierId: "read_send",
+      }),
+    ).rejects.toThrow(commands.StaleWriteError);
+    expect(await auditCount("integration.account_tier_set", row.id)).toBe(0);
+    void otherAuth;
   });
 });
