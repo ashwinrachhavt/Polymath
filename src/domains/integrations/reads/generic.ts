@@ -106,6 +106,51 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
       return [e.name ?? "(untitled event)", e.start_time ?? ""].filter(Boolean).join(" — ");
     },
   },
+  // Jira Cloud's host is per-site; the connected account's site resolves it.
+  jira_search_issues: {
+    tool: "jira_search_issues",
+    capability: "jira.issues.read",
+    endpoint: "https://your-domain.atlassian.net/rest/api/3/search/jql",
+    query: { jql: "{query}" },
+    listPath: "issues",
+    itemText: (item) => {
+      const i = item as { key?: string; fields?: { summary?: string } };
+      return [i.key, i.fields?.summary ?? "(no summary)"].filter(Boolean).join(" — ");
+    },
+  },
+  asana_list_tasks: {
+    tool: "asana_list_tasks",
+    capability: "asana.tasks.read",
+    endpoint: "https://app.asana.com/api/1.0/tasks",
+    query: { assignee: "me", completed_since: "now", opt_fields: "name,due_on" },
+    listPath: "data",
+    itemText: (item) => {
+      const t = item as { name?: string; due_on?: string | null };
+      return [t.name ?? "(untitled task)", t.due_on ?? ""].filter(Boolean).join(" — ");
+    },
+  },
+  trello_list_cards: {
+    tool: "trello_list_cards",
+    capability: "trello.cards.read",
+    endpoint: "https://api.trello.com/1/members/me/cards",
+    listPath: "",
+    itemText: (item) => {
+      const c = item as { name?: string; due?: string | null };
+      return [c.name ?? "(untitled card)", c.due ?? ""].filter(Boolean).join(" — ");
+    },
+  },
+  // Airtable records need a base and a table the tool does not take, so the
+  // generic read lists the bases; the description says what it returns.
+  airtable_list_records: {
+    tool: "airtable_list_records",
+    capability: "airtable.bases.read",
+    endpoint: "https://api.airtable.com/v0/meta/bases",
+    listPath: "bases",
+    itemText: (item) => {
+      const b = item as { name?: string; id?: string };
+      return [b.name ?? "(unnamed base)", b.id].filter(Boolean).join(" — ");
+    },
+  },
 };
 
 function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<string, string> | undefined {

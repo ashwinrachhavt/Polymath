@@ -194,6 +194,8 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
     expect(body.result.tools.map((tool) => tool.name).sort()).toEqual([
+      "airtable_list_records",
+      "asana_list_tasks",
       "calendly_list_events",
       "discord_list_channels",
       "github_read_issue",
@@ -205,10 +207,12 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
       "googledocs_list_documents",
       "googledrive_search_files",
       "googlesheets_list_sheets",
+      "jira_search_issues",
       "linear_read_issue",
       "linear_search_issues",
       "slack_list_channels",
       "slack_read_channel",
+      "trello_list_cards",
       "zoom_list_meetings",
     ]);
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);

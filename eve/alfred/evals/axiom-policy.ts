@@ -54,6 +54,11 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "discord.guilds.read": "read",
   "zoom.meetings.read": "read",
   "calendly.events.read": "read",
+  // Work-management cluster C: read-only lists through the generic registry.
+  "jira.issues.read": "read",
+  "asana.tasks.read": "read",
+  "trello.cards.read": "read",
+  "airtable.bases.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",

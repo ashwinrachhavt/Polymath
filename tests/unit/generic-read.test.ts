@@ -165,3 +165,34 @@ describe("GENERIC_READS comms cluster", () => {
     }
   });
 });
+
+describe("GENERIC_READS work-management cluster", () => {
+  it("registers jira, asana, trello and airtable specs with their real endpoints and listPaths", () => {
+    const expected: Array<[string, string, string]> = [
+      ["jira_search_issues", "https://your-domain.atlassian.net/rest/api/3/search/jql", "issues"],
+      ["asana_list_tasks", "https://app.asana.com/api/1.0/tasks", "data"],
+      ["trello_list_cards", "https://api.trello.com/1/members/me/cards", ""],
+      ["airtable_list_records", "https://api.airtable.com/v0/meta/bases", "bases"],
+    ];
+    for (const [tool, endpoint, listPath] of expected) {
+      const spec = GENERIC_READS[tool];
+      expect(spec, tool).toBeTruthy();
+      expect(spec!.endpoint, tool).toBe(endpoint);
+      expect(spec!.listPath, tool).toBe(listPath);
+    }
+  });
+
+  it("maps a jira fixture to one line per issue", async () => {
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: { issues: [{ key: "ASH-1", fields: { summary: "Fix the gate" } }] },
+    });
+    const result = await genericList(transport, GENERIC_READS.jira_search_issues!, { connectedAccountId: "ca_1", query: "gate" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items[0]).toContain("ASH-1");
+      expect(result.items[0]).toContain("Fix the gate");
+    }
+  });
+});

@@ -37,7 +37,11 @@ export type Provider =
   | "google-sheets"
   | "discord"
   | "zoom"
-  | "calendly";
+  | "calendly"
+  | "jira"
+  | "asana"
+  | "trello"
+  | "airtable";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -79,6 +83,11 @@ export const CAPABILITIES = {
   "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
   "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
   "calendly.events.read": { provider: "calendly", kind: "read", riskClass: "read", tool: "calendly_list_events" },
+  // Work-management cluster C: read-only lists through the generic registry.
+  "jira.issues.read": { provider: "jira", kind: "read", riskClass: "read", tool: "jira_search_issues" },
+  "asana.tasks.read": { provider: "asana", kind: "read", riskClass: "read", tool: "asana_list_tasks" },
+  "trello.cards.read": { provider: "trello", kind: "read", riskClass: "read", tool: "trello_list_cards" },
+  "airtable.bases.read": { provider: "airtable", kind: "read", riskClass: "read", tool: "airtable_list_records" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -106,6 +115,10 @@ export const PROVIDER_TOOLS = {
   discord_list_channels: "discord.guilds.read",
   zoom_list_meetings: "zoom.meetings.read",
   calendly_list_events: "calendly.events.read",
+  jira_search_issues: "jira.issues.read",
+  asana_list_tasks: "asana.tasks.read",
+  trello_list_cards: "trello.cards.read",
+  airtable_list_records: "airtable.bases.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -236,6 +249,38 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can list your scheduled Calendly events.",
       capabilities: ["calendly.events.read"],
+    },
+  ],
+  jira: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search the issues on your Jira site.",
+      capabilities: ["jira.issues.read"],
+    },
+  ],
+  asana: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the tasks assigned to you in Asana.",
+      capabilities: ["asana.tasks.read"],
+    },
+  ],
+  trello: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the Trello cards on your boards.",
+      capabilities: ["trello.cards.read"],
+    },
+  ],
+  airtable: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the bases in your Airtable workspace.",
+      capabilities: ["airtable.bases.read"],
     },
   ],
 };
