@@ -4,6 +4,7 @@ import { getAuthContext } from "@/lib/auth";
 import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
+import { deriveContinuation } from "@/domains/knowledge/continuation";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
 import { AlfredSurface } from "@/app/(workspace)/alfred/page";
@@ -29,6 +30,10 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
+vi.mock("@/domains/knowledge/continuation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/domains/knowledge/continuation")>()),
+  deriveContinuation: vi.fn(async () => []),
+}));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/vault-queries", () => ({ getVaultDocuments: vi.fn(async () => []) }));
@@ -199,6 +204,28 @@ describe("live dossiers screen", () => {
     expect(html).toContain("No dossiers yet");
     expect(html).toContain("New dossier");
     expect(html).not.toContain("AlfredScreen");
+  });
+
+  it("shows Continue only when derived open work exists, with the next step as a suggestion", async () => {
+    vi.mocked(deriveContinuation).mockResolvedValueOnce([
+      {
+        artifactId: "a1",
+        title: "Rental market brief",
+        kind: "report",
+        status: "draft",
+        updatedAt: new Date("2026-10-20T10:00:00Z"),
+        suggestedNextStep: "Review it: keep the draft or discard it.",
+        href: "/alfred/dossiers?draft=a1",
+      },
+    ] as never);
+    const withWork = await dossiers();
+    expect(withWork).toContain("Continue");
+    expect(withWork).toContain("Rental market brief");
+    expect(withWork).toContain("suggestion, not a task you picked");
+    expect(withWork).toContain("Review it: keep the draft or discard it.");
+    expect(withWork).toContain("/alfred/dossiers?draft=a1");
+    const withoutWork = await dossiers();
+    expect(withoutWork).not.toContain("Continue");
   });
 
   it("lists dossiers with counts and renders the detail with its documents and Generate form", async () => {
