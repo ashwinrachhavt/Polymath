@@ -157,9 +157,9 @@ export const LIMITS = {
 /*
  * Per-connector access tiers. A tier's capability list is the enforcement
  * source for what an agent on that tier may do; the mirrored
- * `integration_catalog.access_tiers` JSON (seeded by migration 0229) is
- * display metadata for the connect screen. Keep the two in step —
- * tests/unit/provider-tiers.test.ts proves they have not drifted.
+ * `integration_catalog.access_tiers` JSON (seeded by migration 0229 and the
+ * cluster migrations) is display metadata for the connect screen. Keep the two
+ * in step — tests/unit/provider-tiers.test.ts proves they have not drifted.
  *
  * Ordered lowest-first; each tier strictly extends the one below it.
  * `integration_catalog.risk_by_capability` remains display metadata only.

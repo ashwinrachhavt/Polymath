@@ -69,7 +69,7 @@ Cross-domain work goes through a command or an event, never a join.
 | `actions` | action_proposals, action_attempts, action_policies, action_reviews, action_revisions, reviewed_assertions | The review pipeline for external writes. |
 | `learning` | learning_decks, learning_items, learning_attempts, learning_plans, concepts, claims, claim_evidence | Spaced repetition and study. |
 | `gamification` | reward_definitions, reward_ledger, user_progress, daily_snapshots | Rewards. Model unselected. |
-| `integrations` | external_accounts, external_identities, provider_observations, sync_cursors, connection_attempts, webhook_inbox, api_clients, triggers, integration_catalog | Provider state and credentials references. |
+| `integrations` | external_accounts, external_identities, provider_observations, sync_cursors, connection_attempts, webhook_inbox, api_clients, triggers, integration_catalog | Provider state and credentials references. Access tiers live on `external_accounts.access_tier` (enforced in the gateway, per connection, read live per call); `integration_catalog.access_tiers` mirrors `PROVIDER_TIERS` as connect-screen display data. Provider reads route through the generic registry (`src/domains/integrations/reads/generic.ts`): a provider slice is a spec — endpoint, query template, list path, item mapper — not gateway code. |
 | `audit` | audit_events, outbox_events | Append-only audit plus the transactional outbox. |
 | `applications` | application_preparations, application_materials, application_snapshots, dossiers | Application packages. Overlaps knowledge; see Known gaps. |
 | `opportunities` | opportunities, opportunity_deadlines, opportunity_extensions, opportunity_links, opportunity_stage_history | Pursuit stage machine. |

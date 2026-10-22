@@ -93,9 +93,10 @@ suite("setAccountAccessTier", () => {
   });
 
   it("a provider with no tiers cannot be changed", async () => {
+    // Dropbox's list read is POST-shaped, so it has no tiers: nothing to grant.
     const [row] = await db
       .insert(externalAccounts)
-      .values({ workspaceId, provider: "stripe", alias: "tier-stripe", status: "active" })
+      .values({ workspaceId, provider: "dropbox", alias: "tier-dropbox", status: "active" })
       .returning();
     await expect(
       commands.setAccountAccessTier(auth, {
