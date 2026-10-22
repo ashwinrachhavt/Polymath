@@ -141,3 +141,30 @@ uniqueness to prevent duplicates.
 Also required: add the Polymath origin to `host_permissions`, point
 `_defaultUrl` at it, and add a CORS/`OPTIONS` handler for the content-script
 fetches.
+
+
+---
+
+## 2026-10-22 update: implemented as Polymath-issued API keys
+
+The capture 401 is fixed and the companion authenticates with a first-class
+API key. What shipped (branch `instinct/api-key-auth`):
+
+- **Self-serve minting.** Settings → Account and machine clients creates,
+  lists and revokes API keys (`api-key-actions.ts`, owner-only, session-only —
+  a machine token cannot manage keys). The CLI (`pnpm companion:pair`)
+  remains for headless setups and mints the same token shape.
+- **Token format `axm_<keyId>.<secret>`.** The key id is the indexed
+  plaintext lookup handle; only the secret's SHA-256 digest is stored and the
+  comparison is constant-time (`timingSafeEqual`). Legacy undivided secrets
+  keep resolving by digest until re-paired. Migration 0234 adds
+  `api_clients.key_id` with a partial unique index.
+- **Scopes enforced.** Machine clients resolve to `member` (no route needs
+  more, and an API key must not mint owner authority) and carry scopes;
+  `/api/v1/captures` requires `captures:read` (GET) / `captures:write` (POST)
+  via `requireScope`. Missing scope answers 403.
+- **Audit trail.** Create/revoke write `audit_events` rows; `last_seen_at` is
+  stamped on every authenticated call; the 1,000 requests/day per-client
+  ceiling is unchanged.
+- **Extension.** The 401 message and the token-field help point at the
+  Settings panel instead of the Clerk-user-id CLI.

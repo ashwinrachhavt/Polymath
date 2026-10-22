@@ -249,6 +249,13 @@ export const apiClients = pgTable(
     name: text("name").notNull(),
     kind: apiClientKind("kind").notNull().default("companion"),
     tokenHash: text("token_hash").notNull(),
+    /**
+     * The key id half of an `axm_<keyId>.<secret>` token: the plaintext
+     * lookup handle. Null on rows minted before the split format (legacy
+     * digest-only secrets and Clerk machine subjects); they resolve by
+     * token_hash until they are re-paired.
+     */
+    keyId: text("key_id"),
     scopes: jsonb("scopes").notNull().default([]),
     status: apiClientStatus("status").notNull().default("active"),
     pairedAt: timestamp("paired_at", { withTimezone: true }).notNull().defaultNow(),
@@ -256,7 +263,12 @@ export const apiClients = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     ...mutable,
   },
-  (t) => [index("api_clients_workspace_status_idx").on(t.workspaceId, t.status)],
+  (t) => [
+    index("api_clients_workspace_status_idx").on(t.workspaceId, t.status),
+    // The per-request key-id lookup; partial so legacy null key ids do not
+    // collide with each other.
+    uniqueIndex("api_clients_key_id_key").on(t.keyId).where(sql`key_id is not null`),
+  ],
 );
 
 export const apiClientUsage = pgTable(

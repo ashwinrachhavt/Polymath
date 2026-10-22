@@ -101,6 +101,7 @@ async function companionFromBearer(request?: Request): Promise<AuthContext | nul
       userId: resolved.client.clientId,
       workspaceId: resolved.client.workspaceId,
       role: resolved.client.role,
+      scopes: resolved.client.scopes,
     };
   }
   // A malformed-but-present bearer for an unknown client is a hard no, not a
@@ -152,6 +153,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
         userId: resolved.client.clientId,
         workspaceId: resolved.client.workspaceId,
         role: resolved.client.role,
+        scopes: resolved.client.scopes,
       };
     }
   }

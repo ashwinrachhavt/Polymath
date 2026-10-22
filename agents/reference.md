@@ -24,7 +24,7 @@ Read the relevant section instead of grepping the repo or reading `package.json`
 | `pnpm db:studio` | Drizzle Studio | |
 | `pnpm check:migrations` | Migrations consistency check | Part of review, not `make check`. |
 | `pnpm seed:personal` | Seeds companies | |
-| `pnpm companion:pair` | Pairs the browser companion | |
+| `pnpm companion:pair` | Pairs the browser companion (headless path; the UI equivalent is Settings → Account and machine clients) | |
 
 Individual pieces of `make check`, when you need one of them alone:
 

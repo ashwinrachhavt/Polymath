@@ -42,6 +42,20 @@ export function requireRole(ctx: AuthContext, minimum: Role): void {
 }
 
 /**
+ * Throws when the caller is a machine client whose API key lacks the route's
+ * scope. Humans carry no scope list; their requireRole check is the whole
+ * guard, so this is a no-op for them.
+ */
+export function requireScope(ctx: AuthContext, scope: string): void {
+  if (ctx.scopes !== undefined && !ctx.scopes.includes(scope)) {
+    throw new ForbiddenRoleError(
+      "AUTH_FORBIDDEN",
+      `This API key does not carry the ${scope} scope.`,
+    );
+  }
+}
+
+/**
  * Throws if a queried row belongs to another workspace. Run it on rows that
  * arrive from an unscoped path; queries should scope at the source with
  * eq(table.workspaceId, ctx.workspaceId) so a foreign row is never fetched.

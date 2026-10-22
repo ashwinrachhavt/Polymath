@@ -18,6 +18,11 @@ export type AuthContext = {
   userId: string;
   workspaceId: string;
   role: AuthRole;
+  /**
+   * Machine clients only: the API key's scopes. Undefined for humans, whose
+   * role check is the whole guard — requireScope is a no-op for them.
+   */
+  scopes?: string[];
 };
 
 export const resolveAuthContext = cache(async (clerkUserId: string): Promise<AuthContext> => {
