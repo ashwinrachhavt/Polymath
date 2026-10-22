@@ -53,16 +53,6 @@ beforeEach(() => {
   fetchTranscript.mockReset();
 });
 
-async function lastOutboxEvent(topic: string) {
-  const [row] = await db
-    .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.topic, topic))
-    .orderBy(outboxEvents.id)
-    .limit(1);
-  return row;
-}
-
 async function runHandlerFor(captureId: string) {
   const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
   const event = events.find((e) => (e.payload as { captureId?: string }).captureId === captureId);
@@ -72,18 +62,18 @@ async function runHandlerFor(captureId: string) {
 
 suite("capture url content", () => {
   it("enqueues url_content_requested in the same transaction as the capture", async () => {
-    const capture = await commands.createCapture(auth, { text: "https://example.com/spec" });
-    const event = await lastOutboxEvent("capture.url_content_requested");
-    expect(event).toBeTruthy();
-    expect((event!.payload as { captureId?: string }).captureId).toBe(capture.id);
-    expect(event!.workspaceId).toBe(workspaceId);
+    const capture = await commands.createCapture(auth, { text: `https://example.com/enqueue-${Date.now()}` });
+    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    const mine = events.find((e) => (e.payload as { captureId?: string }).captureId === capture.id);
+    expect(mine).toBeTruthy();
+    expect(mine!.workspaceId).toBe(workspaceId);
   });
 
   it("a text capture enqueues nothing", async () => {
-    await commands.createCapture(auth, { text: "Just a thought" });
-    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    // Only the URL capture from the previous test produced an event.
-    expect(events).toHaveLength(1);
+    const before = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"))).length;
+    await commands.createCapture(auth, { text: `Just a thought ${Date.now()}` });
+    const after = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"))).length;
+    expect(after).toBe(before);
   });
 
   it("the handler scrapes a web page into the capture's text", async () => {
