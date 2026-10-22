@@ -129,11 +129,13 @@ test("the destination launcher is keyboard reachable and closes on escape", asyn
 });
 
 /*
- * A run that needs the owner carries exactly one status, in the words of the
- * screen. `waiting_approval` is only reachable after a model asks for a
- * proposal, so the row is seeded directly.
+ * A run row on home is a conversation, not a status board: the objective and
+ * its age, nothing else. The waiting-on-you vocabulary lives in Reviews by
+ * design (see the run page's comment), so no status words belong on the row.
+ * `waiting_approval` is only reachable after a model asks for a proposal, so
+ * the row is seeded directly.
  */
-test("a waiting run shows one status, and only that one", async ({ page }) => {
+test("a run row on home names the objective, and nothing else", async ({ page }) => {
   const objective = `Approve the renewal letter ${Date.now().toString(36)}`;
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Seeding a waiting run needs DATABASE_URL.");
@@ -141,9 +143,11 @@ test("a waiting run shows one status, and only that one", async ({ page }) => {
   await page.goto("/alfred");
   const row = page.getByRole("link", { name: new RegExp(objective) });
   await expect(row).toBeVisible();
-  await expect(row.getByText("Needs your reply", { exact: true })).toHaveCount(1);
-  for (const second of ["Running", "In progress", "Queued", "Succeeded", "Waiting for your reply"]) {
-    await expect(row, second).not.toContainText(second);
+  await expect(row).toHaveAttribute("href", `/alfred/${run!.id}`);
+  // No status vocabulary on the row: Reviews owns "needs you", and internal
+  // state names are never the words of the screen.
+  for (const status of ["Needs your reply", "Running", "In progress", "Queued", "Succeeded", "waiting_approval"]) {
+    await expect(row, status).not.toContainText(status);
   }
   // The row is a conversation, not a debug line: no model, no transcript prefix.
   await expect(row).not.toContainText("You:");
@@ -171,12 +175,9 @@ test("a run opens its conversation, with details behind a disclosure", async ({ 
   const conversation = content.getByRole("region", { name: "Conversation" });
   await expect(conversation).toBeVisible();
   await expect(conversation.getByText("This conversation has no messages yet.")).toBeVisible();
-  // The attention badge links to Reviews rather than growing a decision surface.
-  const reply = content.getByRole("link", { name: "Needs your reply" });
-  await expect(reply).toBeVisible();
-  await expect(reply).toHaveAttribute("href", "/reviews");
-  // Exactly one status on the page: the header badge, nothing repeated below.
-  await expect(content.getByText("Needs your reply")).toHaveCount(1);
+  // Approvals are decided in Reviews; that surface owns the waiting-on-you
+  // vocabulary, so the conversation page grows no status badge of its own.
+  await expect(content.getByText("Needs your reply")).toHaveCount(0);
 
   // Details are collapsed: model, tools, and the timeline are not on the page
   // until asked for.
