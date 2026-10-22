@@ -56,7 +56,6 @@ export default function Chat({ initialId }: { initialId?: string }) {
             <ChatSurface
               runId={runId}
               subject={subject}
-              capabilities={["documents.search"]}
               title="Polymath"
               className="h-full"
             />

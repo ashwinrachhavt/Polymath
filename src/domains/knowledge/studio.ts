@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
@@ -248,7 +249,10 @@ export type DraftDetail = {
 
 const RECORD_LINK_TARGETS = ["task", "contact", "company", "opportunity"] as const;
 
-export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail> {
+export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail | null> {
+  // A malformed id would reach Postgres as a uuid cast error and 500; it is
+  // the same "no draft here" as any other miss.
+  if (!z.string().uuid().safeParse(artifactId).success) return null;
   const [artifact] = await db
     .select({
       id: artifacts.id,
@@ -261,7 +265,10 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     .from(artifacts)
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
-  if (!artifact || !isGeneratableKind(artifact.kind)) throw new StudioError("draft_not_found", "No such draft.");
+  // A missing id, another workspace's id, or a non-Studio artifact (a note, a
+  // zettel) is all "no draft here" to the caller: the workbench simply does not
+  // open. Nothing above treats Studio artifacts as secret, so one answer covers.
+  if (!artifact || !isGeneratableKind(artifact.kind)) return null;
 
   const [version] = artifact.currentVersionId
     ? await db
