@@ -29,8 +29,7 @@ import { startNotebookRun } from "./chat-run-actions";
  *
  * Studio is this notebook's own capability panel: generate a report, deck, or
  * infographic from the pinned sources, research a company dossier-only, and
- * review what runs produced. Quiz and flashcards live in Learning, which owns
- * the review schedule.
+ * review what runs produced.
  */
 
 export type StudioOutput = "report" | "deck" | "infographic";
