@@ -135,3 +135,33 @@ describe("GENERIC_READS google cluster", () => {
     if (result.ok) expect(result.items[0]).toContain("Q3 plan");
   });
 });
+
+describe("GENERIC_READS comms cluster", () => {
+  it("registers discord, zoom and calendly specs with their real endpoints and listPaths", () => {
+    const expected: Array<[string, string, string]> = [
+      ["discord_list_channels", "https://discord.com/api/v10/users/@me/guilds", ""],
+      ["zoom_list_meetings", "https://api.zoom.us/v2/users/me/meetings", "meetings"],
+      ["calendly_list_events", "https://calendly.com/api/v1/users/me/scheduled_events", "collection"],
+    ];
+    for (const [tool, endpoint, listPath] of expected) {
+      const spec = GENERIC_READS[tool];
+      expect(spec, tool).toBeTruthy();
+      expect(spec!.endpoint, tool).toBe(endpoint);
+      if (listPath) expect(spec!.listPath, tool).toBe(listPath);
+    }
+  });
+
+  it("maps a zoom fixture to one line per meeting", async () => {
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: { meetings: [{ topic: "Weekly sync", start_time: "2026-10-23T15:00:00Z" }] },
+    });
+    const result = await genericList(transport, GENERIC_READS.zoom_list_meetings!, { connectedAccountId: "ca_1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items[0]).toContain("Weekly sync");
+      expect(result.items[0]).toContain("2026-10-23");
+    }
+  });
+});

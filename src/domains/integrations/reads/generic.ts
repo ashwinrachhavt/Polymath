@@ -73,6 +73,39 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
         .join(" — ");
     },
   },
+  // Discord's channel list needs a guild id the tool does not take, so the
+  // generic read lists the guilds (servers) the connection can see.
+  discord_list_channels: {
+    tool: "discord_list_channels",
+    capability: "discord.guilds.read",
+    endpoint: "https://discord.com/api/v10/users/@me/guilds",
+    listPath: "",
+    itemText: (item) => {
+      const g = item as { name?: string; id?: string };
+      return [g.name ?? "(unnamed server)", g.id].filter(Boolean).join(" — ");
+    },
+  },
+  zoom_list_meetings: {
+    tool: "zoom_list_meetings",
+    capability: "zoom.meetings.read",
+    endpoint: "https://api.zoom.us/v2/users/me/meetings",
+    listPath: "meetings",
+    itemText: (item) => {
+      const m = item as { topic?: string; start_time?: string };
+      return [m.topic ?? "(untitled meeting)", m.start_time ?? ""].filter(Boolean).join(" — ");
+    },
+  },
+  calendly_list_events: {
+    tool: "calendly_list_events",
+    capability: "calendly.events.read",
+    endpoint: "https://calendly.com/api/v1/users/me/scheduled_events",
+    query: { count: "25" },
+    listPath: "collection",
+    itemText: (item) => {
+      const e = item as { name?: string; start_time?: string };
+      return [e.name ?? "(untitled event)", e.start_time ?? ""].filter(Boolean).join(" — ");
+    },
+  },
 };
 
 function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<string, string> | undefined {
@@ -85,6 +118,10 @@ function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<
 }
 
 function pickListPath(data: unknown, listPath: string): { ok: true; items: unknown[] } | { ok: false; message: string } {
+  // An empty listPath means the response body itself is the array.
+  if (listPath === "") {
+    return Array.isArray(data) ? { ok: true, items: data } : { ok: false, message: "The provider response was not a list." };
+  }
   let current: unknown = data;
   for (const segment of listPath.split(".")) {
     if (current === null || typeof current !== "object" || !(segment in (current as Record<string, unknown>))) {

@@ -21,6 +21,7 @@ import {
 const migrationSql = [
   "0229_access_tiers.sql",
   "0230_google_tiers.sql",
+  "0231_comms_tiers.sql",
 ]
   .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
@@ -122,6 +123,15 @@ describe("PROVIDER_TIERS google cluster", () => {
       for (const capability of PROVIDER_TIERS[provider][0].capabilities) {
         expect(capability in CAPABILITIES, `${provider} names ${capability}`).toBe(true);
       }
+    }
+  });
+});
+
+
+describe("PROVIDER_TIERS comms cluster", () => {
+  it("covers discord, zoom, calendly with one read_only tier", () => {
+    for (const provider of ["discord", "zoom", "calendly"] as Provider[]) {
+      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
     }
   });
 });

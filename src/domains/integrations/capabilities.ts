@@ -34,7 +34,10 @@ export type Provider =
   | "google-calendar"
   | "google-drive"
   | "google-docs"
-  | "google-sheets";
+  | "google-sheets"
+  | "discord"
+  | "zoom"
+  | "calendly";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -72,6 +75,10 @@ export const CAPABILITIES = {
   "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
   "googledocs.documents.read": { provider: "google-docs", kind: "read", riskClass: "read", tool: "googledocs_list_documents" },
   "googlesheets.sheets.read": { provider: "google-sheets", kind: "read", riskClass: "read", tool: "googlesheets_list_sheets" },
+  // Comms and meetings cluster B: read-only lists through the generic registry.
+  "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
+  "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
+  "calendly.events.read": { provider: "calendly", kind: "read", riskClass: "read", tool: "calendly_list_events" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -96,6 +103,9 @@ export const PROVIDER_TOOLS = {
   googledrive_search_files: "googledrive.files.read",
   googledocs_list_documents: "googledocs.documents.read",
   googlesheets_list_sheets: "googlesheets.sheets.read",
+  discord_list_channels: "discord.guilds.read",
+  zoom_list_meetings: "zoom.meetings.read",
+  calendly_list_events: "calendly.events.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -202,6 +212,30 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can list the spreadsheets in your Google Sheets.",
       capabilities: ["googlesheets.sheets.read"],
+    },
+  ],
+  discord: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the Discord servers your connection can see.",
+      capabilities: ["discord.guilds.read"],
+    },
+  ],
+  zoom: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your scheduled Zoom meetings.",
+      capabilities: ["zoom.meetings.read"],
+    },
+  ],
+  calendly: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your scheduled Calendly events.",
+      capabilities: ["calendly.events.read"],
     },
   ],
 };
