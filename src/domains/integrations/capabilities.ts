@@ -26,7 +26,22 @@
  * connect screen. Nothing gates on it.
  */
 
-export type Provider = "gmail" | "github" | "slack" | "linear";
+export type Provider =
+  | "gmail"
+  | "github"
+  | "slack"
+  | "linear"
+  | "google-calendar"
+  | "google-drive"
+  | "discord"
+  | "zoom"
+  | "calendly"
+  | "asana"
+  | "trello"
+  | "airtable"
+  | "canva"
+  | "hubspot"
+  | "stripe";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -59,6 +74,28 @@ export const CAPABILITIES = {
   "slack.read": { provider: "slack", kind: "read", riskClass: "read", tool: "slack_read_channel" },
   "linear.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_search_issues" },
   "linear.issue.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_read_issue" },
+  // Google cluster A: read-only list tools through the generic registry.
+  // Docs and Sheets have no GET list API at a static URL (listing lives in
+  // Drive), so their tools wait for a slice that can express them.
+  "googlecalendar.events.read": { provider: "google-calendar", kind: "read", riskClass: "read", tool: "googlecalendar_list_events" },
+  "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
+  // Comms and meetings cluster B: read-only lists through the generic registry.
+  "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
+  "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
+  "calendly.events.read": { provider: "calendly", kind: "read", riskClass: "read", tool: "calendly_list_events" },
+  // Work-management cluster C: read-only lists through the generic registry.
+  // Jira's host is per-site and nothing resolves it statically yet, so its
+  // tool waits for a slice that can.
+  "asana.tasks.read": { provider: "asana", kind: "read", riskClass: "read", tool: "asana_list_tasks" },
+  "trello.cards.read": { provider: "trello", kind: "read", riskClass: "read", tool: "trello_list_cards" },
+  "airtable.bases.read": { provider: "airtable", kind: "read", riskClass: "read", tool: "airtable_list_records" },
+  // Design, CRM and finance cluster D: read-only lists through the generic
+  // registry. Figma (files list needs a project id), Dropbox (list_folder is
+  // POST-shaped) and Salesforce (per-org host, unresolvable statically) have
+  // no GET-expressible list and stay absent.
+  "canva.designs.read": { provider: "canva", kind: "read", riskClass: "read", tool: "canva_list_designs" },
+  "hubspot.contacts.read": { provider: "hubspot", kind: "read", riskClass: "read", tool: "hubspot_list_contacts" },
+  "stripe.payments.read": { provider: "stripe", kind: "read", riskClass: "read", tool: "stripe_list_payments" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -79,6 +116,17 @@ export const PROVIDER_TOOLS = {
   slack_read_channel: "slack.read",
   linear_search_issues: "linear.read",
   linear_read_issue: "linear.issue.read",
+  googlecalendar_list_events: "googlecalendar.events.read",
+  googledrive_search_files: "googledrive.files.read",
+  discord_list_channels: "discord.guilds.read",
+  zoom_list_meetings: "zoom.meetings.read",
+  calendly_list_events: "calendly.events.read",
+  asana_list_tasks: "asana.tasks.read",
+  trello_list_cards: "trello.cards.read",
+  airtable_list_records: "airtable.bases.read",
+  canva_list_designs: "canva.designs.read",
+  hubspot_list_contacts: "hubspot.contacts.read",
+  stripe_list_payments: "stripe.payments.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -98,3 +146,168 @@ export const LIMITS = {
   callsPerWorkspacePerMinute: 60,
   effectsPerRun: 5,
 } as const;
+
+/*
+ * Per-connector access tiers. A tier's capability list is the enforcement
+ * source for what an agent on that tier may do; the mirrored
+ * `integration_catalog.access_tiers` JSON (seeded by migration 0229 and the
+ * cluster migrations) is display metadata for the connect screen. Keep the two
+ * in step — tests/unit/provider-tiers.test.ts proves they have not drifted.
+ *
+ * Ordered lowest-first; each tier strictly extends the one below it.
+ * `integration_catalog.risk_by_capability` remains display metadata only.
+ */
+export type AccessTier = {
+  id: string;
+  label: string;
+  description: string;
+  capabilities: Capability[];
+};
+
+export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
+  gmail: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search and read mail.",
+      capabilities: ["gmail.read", "gmail.thread.read"],
+    },
+    {
+      id: "read_send",
+      label: "Read + send proposals",
+      description: "Agents can also draft send proposals for your approval.",
+      capabilities: ["gmail.read", "gmail.thread.read", "gmail.send"],
+    },
+  ],
+  github: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search repositories and read issues.",
+      capabilities: ["github.read", "github.issue.read"],
+    },
+  ],
+  slack: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list channels and read messages.",
+      capabilities: ["slack.channels.read", "slack.read"],
+    },
+  ],
+  linear: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search and read issues.",
+      capabilities: ["linear.read", "linear.issue.read"],
+    },
+  ],
+  "google-calendar": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list upcoming events on your calendar.",
+      capabilities: ["googlecalendar.events.read"],
+    },
+  ],
+  "google-drive": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search the files in your Drive.",
+      capabilities: ["googledrive.files.read"],
+    },
+  ],
+  discord: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the Discord servers your connection can see.",
+      capabilities: ["discord.guilds.read"],
+    },
+  ],
+  zoom: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your scheduled Zoom meetings.",
+      capabilities: ["zoom.meetings.read"],
+    },
+  ],
+  calendly: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your scheduled Calendly events.",
+      capabilities: ["calendly.events.read"],
+    },
+  ],
+  asana: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the tasks assigned to you in Asana.",
+      capabilities: ["asana.tasks.read"],
+    },
+  ],
+  trello: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the Trello cards on your boards.",
+      capabilities: ["trello.cards.read"],
+    },
+  ],
+  airtable: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the bases in your Airtable workspace.",
+      capabilities: ["airtable.bases.read"],
+    },
+  ],
+  canva: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your Canva designs.",
+      capabilities: ["canva.designs.read"],
+    },
+  ],
+  hubspot: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list the contacts in your HubSpot CRM.",
+      capabilities: ["hubspot.contacts.read"],
+    },
+  ],
+  stripe: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description:
+        "Agents can list payments and charges. Read-only; charges are never agent-proposed in this tier.",
+      capabilities: ["stripe.payments.read"],
+    },
+  ],
+};
+
+/** The capabilities a tier grants; empty for an unknown tier id or provider. */
+export function tierCapabilities(provider: Provider, tierId: string): Capability[] {
+  return PROVIDER_TIERS[provider]?.find((tier) => tier.id === tierId)?.capabilities ?? [];
+}
+
+export function tierAllows(
+  provider: Provider,
+  tierId: string,
+  capability: Capability,
+): boolean {
+  return tierCapabilities(provider, tierId).includes(capability);
+}
+
+/** The narrowest tier a provider offers, or null when it has none. */
+export function lowestTierId(provider: Provider): string | null {
+  return PROVIDER_TIERS[provider]?.[0]?.id ?? null;
+}

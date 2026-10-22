@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
+import { connectionAttempts, externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -42,6 +43,33 @@ async function auditCount(auth: { workspaceId: string }, subjectId: string) {
 }
 
 suite("connectors", () => {
+  it("an abandoned connection attempt expires on read and the card says what to do", async () => {
+    const auth = await seed("conn-expired-attempt");
+    const [account] = await db
+      .insert(externalAccounts)
+      .values({ workspaceId: auth.workspaceId, provider: "gmail", alias: "abandoned", status: "connecting" })
+      .returning();
+    await db.insert(connectionAttempts).values({
+      workspaceId: auth.workspaceId,
+      externalAccountId: account.id,
+      provider: "gmail",
+      stateToken: `st_${crypto.randomUUID()}`,
+      status: "pending",
+      expiresAt: new Date(Date.now() - 60_000),
+      createdBy: auth.userId,
+    });
+
+    const connectors = await queries.listConnectors(auth);
+    const gmail = connectors.find((c) => c.provider === "gmail");
+    const row = gmail!.accounts.find((a) => a.alias === "abandoned")!;
+
+    // The read swept the dead attempt: the account carries the expiry reason,
+    // so the card renders action_needed ("Start again"), not Connecting forever.
+    expect(row.lastError).toContain("expired");
+    const [attempt] = await db.select().from(connectionAttempts).where(eq(connectionAttempts.externalAccountId, account.id));
+    expect(attempt.status).toBe("expired");
+  });
+
   it("serves the seeded catalog and rejects unknown providers", async () => {
     const auth = await seed("conn-catalog");
     const connectors = await queries.listConnectors(auth);

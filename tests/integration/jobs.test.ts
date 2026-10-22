@@ -71,6 +71,14 @@ suite("jobs", () => {
     expect(await jobs.claimJob(client, { workerId: "w2", kinds: ["send"] })).toBeNull();
   });
 
+  it("a job enqueued without availableAt is claimable immediately", async () => {
+    // The default due time must come from Postgres's clock, not the app server's:
+    // claim compares available_at <= now() in the database, and the two clocks can
+    // disagree by more than the gap between enqueue and claim.
+    await jobs.enqueueJob(client, { workspaceId, kind: "send", input: {} });
+    expect(await jobs.claimJob(client, { workerId: "w1", kinds: ["send"] })).not.toBeNull();
+  });
+
   it("failures retry up to max_attempts then fail; cancel stops a queued job and flags a running one", async () => {
     await jobs.enqueueJob(client, { workspaceId, kind: "ocr", input: {}, maxAttempts: 2 });
     const a = (await jobs.claimJob(client, { workerId: "w", kinds: ["ocr"] }))!;

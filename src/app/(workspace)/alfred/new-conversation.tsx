@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
-import { SkillPicker, type PickableSkill } from "./skills/skill-picker";
+import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
  * The one mutation on the home screen: a sentence becomes a run.
@@ -30,6 +30,19 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [skillId, setSkillId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * "/" as the first character opens the skill menu; the rest of the draft
+   * filters it. Picking a skill pins it and clears the draft, so the slash
+   * token never reaches the run as part of the objective.
+   */
+  const slashOpen = draft.startsWith("/");
+  const slashQuery = draft.slice(1);
+
+  function pickSkill(skill: PickableSkill) {
+    setSkillId(skill.id);
+    setDraft("");
+  }
 
   async function send() {
     const objective = draft.trim();
@@ -69,11 +82,24 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
       }}
     >
       <div className="panel relative rounded-xl has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50">
+        <SlashSkillMenu
+          skills={skills}
+          open={slashOpen}
+          query={slashQuery}
+          onPick={pickSkill}
+          onClose={() => setDraft((current) => ` ${current}`)}
+        />
         <Textarea
           autoFocus
           aria-label="Start a conversation"
           className="min-h-[88px] resize-none border-0 bg-transparent pr-12 text-[13px] leading-6 focus-visible:ring-0"
-          placeholder={skillId ? "Describe what to do with this skill." : "Ask anything or describe a task…"}
+          placeholder={
+            skillId
+              ? skills.find((skill) => skill.id === skillId)?.name
+                ? `Running “${skills.find((skill) => skill.id === skillId)?.name}”. Describe what to do…`
+                : "Describe what to do with this skill."
+              : "Ask anything or describe a task…"
+          }
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -84,7 +110,27 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
           }}
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <SkillPicker skills={skills} value={skillId} onChange={setSkillId} />
+          {/*
+           * The slash menu is the only way to pin a skill; the picker dropdown
+           * is gone. When one is pinned, a chip names it and offers the
+           * unpin, so the state stays visible without a control that fronts
+           * every conversation.
+           */}
+          {skillId ? (
+            <button
+              type="button"
+              onClick={() => setSkillId("")}
+              aria-label={`Unpin skill ${skills.find((skill) => skill.id === skillId)?.name ?? skillId}`}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-6 items-center gap-1 rounded-md px-2 text-[12px] outline-none"
+            >
+              {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
+              <X aria-hidden className="size-3" />
+            </button>
+          ) : (
+            <p className="text-muted-foreground text-[12px]">
+              <kbd className="font-sans">/</kbd> for skills
+            </p>
+          )}
           <Button
             type="submit"
             size="icon-sm"

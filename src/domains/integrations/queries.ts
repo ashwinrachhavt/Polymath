@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { externalAccounts, integrationCatalog, syncCursors } from "./schema";
@@ -15,6 +15,7 @@ export type ConnectorCard = {
   capabilities: string[];
   riskByCapability: Record<string, string>;
   requiresApproval: boolean;
+  accessTiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
   accounts: Array<{
     id: string;
     alias: string;
@@ -23,6 +24,7 @@ export type ConnectorCard = {
     isDefaultForWrites: boolean;
     allowRead: boolean;
     allowWrite: boolean;
+    accessTier: string | null;
     lastHealthyAt: Date | null;
     lastError: string | null;
     version: number;
@@ -30,6 +32,23 @@ export type ConnectorCard = {
 };
 
 export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]> {
+  // A connection attempt the owner never finished would leave its account in
+  // `connecting` forever — a card that says Connecting on every visit. The
+  // read sweeps the workspace's expired attempts so the card tells the truth
+  // the moment the owner looks at it.
+  await db.execute(sql`
+    with expired as (
+      update connection_attempts
+      set status = 'expired', completed_at = now()
+      where workspace_id = ${auth.workspaceId} and status = 'pending' and expires_at < now()
+      returning external_account_id
+    )
+    update external_accounts a
+    set last_error = 'That connection attempt expired. Start again.', updated_at = now()
+    from expired
+    where a.id = expired.external_account_id and a.status = 'connecting'
+  `);
+
   const [catalog, accounts] = await Promise.all([
     db.select().from(integrationCatalog).orderBy(asc(integrationCatalog.provider)),
     db
@@ -44,6 +63,7 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
     capabilities: row.capabilities as string[],
     riskByCapability: row.riskByCapability as Record<string, string>,
     requiresApproval: row.requiresApproval,
+    accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
     accounts: accounts
       .filter((account) => account.provider === row.provider)
       .map((account) => ({
@@ -54,6 +74,7 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
         isDefaultForWrites: account.isDefaultForWrites,
         allowRead: account.allowRead,
         allowWrite: account.allowWrite,
+        accessTier: account.accessTier,
         lastHealthyAt: account.lastHealthyAt,
         lastError: account.lastError,
         version: account.version,
@@ -70,18 +91,6 @@ export async function listSyncCursors(auth: AuthContext, accountId: string) {
     .limit(50);
 }
 
-/*
- * Provider ids are slugs; a refusal is read by a person, so it names the
- * provider the way a heading would. Only the gateway's providers appear here
- * today, and a two-word name is the whole reason this is not `.toUpperCase()`.
- */
-function providerLabel(provider: string): string {
-  return provider
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 /**
  * The connected account an agent tool should act through.
  *
@@ -92,30 +101,24 @@ function providerLabel(provider: string): string {
  * account for that provider is inferred; two accounts with no alias is an
  * ambiguity the tool must surface, not guess at.
  *
- * `kind` is the capability's authorization shape, not its risk class. When the
- * caller is an agent acting on the owner's behalf, it passes the kind and the
- * account's matching switch must be on: a read needs `allowRead`, a proposal
- * needs `allowWrite`. Callers that act on an effect the owner already approved
- * (the send executor, calendar execution, reconciliation) omit it: their
- * authority is the approval, not a standing agent permission, and applying the
- * switch there would let a toggle silently stop an approved send.
+ * The account's `accessTier` rides on the success result so the gateway can
+ * gate capabilities against it without a second query. Unset reads as
+ * "read_only": the narrowest offer, never "everything".
  */
 export async function resolveConnectedAccount(
   auth: AuthContext,
   provider: string,
   alias?: string,
-  kind?: "read" | "proposal",
 ): Promise<
-  | { ok: true; connectedAccountId: string; alias: string }
-  | { ok: false; code: "not_connected" | "ambiguous" | "permission_denied"; message: string }
+  | { ok: true; connectedAccountId: string; alias: string; accessTier: string }
+  | { ok: false; code: "not_connected" | "ambiguous"; message: string }
 > {
   const rows = await db
     .select({
       alias: externalAccounts.alias,
       status: externalAccounts.status,
       connectedAccountId: externalAccounts.composioConnectedAccountId,
-      allowRead: externalAccounts.allowRead,
-      allowWrite: externalAccounts.allowWrite,
+      accessTier: externalAccounts.accessTier,
     })
     .from(externalAccounts)
     .where(
@@ -152,18 +155,10 @@ export async function resolveConnectedAccount(
     return { ok: false, code: "not_connected", message: `No ${provider} account is connected.` };
   }
 
-  if (kind) {
-    const allowed = kind === "read" ? match.allowRead : match.allowWrite;
-    if (!allowed) {
-      const what = kind === "read" ? "Reading" : "Writing to";
-      const toggle = kind === "read" ? "Read" : "Write";
-      return {
-        ok: false,
-        code: "permission_denied",
-        message: `${what} ${providerLabel(provider)} is off for "${match.alias}". Turn on ${toggle} in Connectors.`,
-      };
-    }
-  }
-
-  return { ok: true, connectedAccountId: match.connectedAccountId, alias: match.alias };
+  return {
+    ok: true,
+    connectedAccountId: match.connectedAccountId,
+    alias: match.alias,
+    accessTier: match.accessTier ?? "read_only",
+  };
 }

@@ -206,6 +206,26 @@ purchase or top-up happens without policy.
 
 *States:* within-budget, approaching-limit, exhausted, provider-unavailable.
 
+## 6.8 Connectors
+
+The connections between your workspace and the services you use. Each
+connection carries one decision: how much an agent may do through it. The
+choice is a tier — Read only, Read + send proposals, and so on — shown in plain
+language on the connection's card, changeable at any moment, and binding the
+next time the agent acts. Lowering a tier stops the agent mid-flight; it does
+not undo what you already approved.
+
+A card is in exactly one state, and each state offers only what it can honor:
+Connected (tier control, write default, Disconnect), Connecting (finish the
+handshake — no Disconnect), Available (one Connect button), Needs attention
+(the reason, one Reconnect button), and Coming soon (a provider whose tools
+have not shipped — no button, no pretending). A provider that would need setup
+this deployment cannot do says so and names what is missing.
+
+Proposals an agent drafts through a connection always land in your review
+queue; nothing is sent, posted, or created directly. Reading within the tier
+runs without asking.
+
 # 7. Pillar 2 — NeuralFlow
 
 **Answers:** what should I do next, and am I getting better?

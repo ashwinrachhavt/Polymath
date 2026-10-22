@@ -35,10 +35,16 @@ export async function enqueueJob(
   client: Client,
   input: { workspaceId: string; kind: string; input: unknown; dedupeKey?: string; priority?: number; maxAttempts?: number; availableAt?: Date; createdBy?: string },
 ): Promise<{ enqueued: boolean; id: string }> {
+  // The default due time is Postgres's clock, not the app server's: claim
+  // compares available_at <= now() in the database, and the two clocks can
+  // disagree, which would make a just-enqueued job not yet due.
+  const availableAt = input.availableAt
+    ? `${input.availableAt.toISOString()}::timestamptz`
+    : "now()";
   const [row] = await client<{ id: string }[]>`
     insert into jobs (workspace_id, kind, input, dedupe_key, priority, max_attempts, available_at, created_by, updated_by)
     values (${input.workspaceId}, ${input.kind}, ${JSON.stringify(input.input)}::jsonb, ${input.dedupeKey ?? null},
-            ${input.priority ?? 0}, ${input.maxAttempts ?? 5}, ${(input.availableAt ?? new Date()).toISOString()}::timestamptz,
+            ${input.priority ?? 0}, ${input.maxAttempts ?? 5}, ${availableAt},
             ${input.createdBy ?? null}, ${input.createdBy ?? null})
     on conflict (workspace_id, kind, dedupe_key) where dedupe_key is not null do nothing
     returning id

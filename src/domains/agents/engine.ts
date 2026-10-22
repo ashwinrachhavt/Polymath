@@ -7,6 +7,7 @@ import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
+import { SessionNotActiveError } from "./eve-driver";
 
 /*
  * The AgentEngine contract: the only shape domain code sees for agent
@@ -195,11 +196,15 @@ export function createEngine(
       };
 
       // The run exists before the session does, so a crash between the two
-      // leaves a queued row to reconcile rather than silent work.
+      // leaves a queued row to reconcile rather than silent work. created_by is
+      // not cosmetic: the gateway's ownership check (POST /api/mcp step 4)
+      // compares it against the token's user, so an ownerless run 403s every
+      // provider call the session makes.
       const [run] = await db
         .insert(agentRuns)
         .values({
           workspaceId: input.auth.workspaceId,
+          createdBy: input.auth.userId,
           threadId: input.threadId ?? null,
           agentProfileId: profile.id,
           profileRevisionId: revision.id,
@@ -262,7 +267,18 @@ export function createEngine(
     async signal(runId, signal, auth) {
       const run = await scopeCheck(runId, auth);
       if (isTerminal(run.state)) return;
-      await driver.signal(run.id, signal, auth);
+      try {
+        await driver.signal(run.id, signal, auth);
+      } catch (cause) {
+        // A session that died under a live run (eve restart, expired lease)
+        // cannot take this or any future message: close the run and hand the
+        // budget back. Retry makes a new run with a fresh session.
+        if (cause instanceof SessionNotActiveError) {
+          await failRun(run.id, cause.message, now());
+          await releaseOpenReservation(run.id, auth.workspaceId);
+        }
+        throw cause;
+      }
       // The follow-up is real work again: a parked run goes back to running.
       // Conditional, so a close that landed meanwhile is never rewritten.
       await db

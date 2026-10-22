@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { apiClients } from "@/domains/identity/schema";
+import { apiClients, workspaces } from "@/domains/identity/schema";
 import { sha256Hex } from "@/lib/hash";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -24,7 +24,7 @@ suite("companion bearer tokens", () => {
 
   beforeAll(async () => {
     holder.db = handle!.db;
-    const seeded = await seedWorkspace(handle!.db, "companion");
+    const seeded = await seedWorkspace(handle!.db, `companion-${Date.now()}`);
     workspaceId = seeded.workspaceId;
     const [client] = await handle!.db
       .insert(apiClients)
@@ -41,6 +41,9 @@ suite("companion bearer tokens", () => {
 
   afterAll(async () => {
     if (clientId) await handle!.db.delete(apiClients).where(eq(apiClients.id, clientId));
+    // The workspace's user row is unique on clerk_user_id; leaving it behind
+    // collides with the next full-suite run.
+    if (workspaceId) await handle!.db.delete(workspaces).where(eq(workspaces.id, workspaceId));
     await handle?.client.end();
   });
 

@@ -38,7 +38,11 @@ function when(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : stamp.format(date);
 }
 
-export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> & { text: string | null }) | null }) {
+export function InboxDetail({
+  capture,
+}: {
+  capture: (Omit<InboxRow, "preview"> & { text: string | null; failureReason?: string | null }) | null;
+}) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
     (_current: string | null, next: string) => next,
@@ -131,11 +135,23 @@ export function InboxDetail({ capture }: { capture: (Omit<InboxRow, "preview"> &
 
       <div className="mt-6 border-border border-t pt-6">
         {isUrlOnly ? (
-          capture.text === null ? (
-            <p className="max-w-[70ch] text-[13px] text-muted-foreground">
-              This capture holds the URL only. Open the link to read the page.
+          capture.text ? (
+            <CaptureBody
+              captureId={capture.id}
+              version={capture.version}
+              text={capture.text}
+              label="From the page"
+              editable={state === "unprocessed" || state === "classifying"}
+            />
+          ) : capture.failureReason ? (
+            <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+              {capture.failureReason}
             </p>
-          ) : null
+          ) : (
+            <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+              Reading the page now. The text lands here when it arrives.
+            </p>
+          )
         ) : (
           <CaptureBody
             captureId={capture.id}

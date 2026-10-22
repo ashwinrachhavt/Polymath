@@ -379,6 +379,48 @@
       "tag": "0227_transaction_category_rules",
       "when": 1792480560000,
       "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "tag": "0228_onboarding_supervisor_brief",
+      "when": 1792621200000,
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "tag": "0229_access_tiers",
+      "when": 1792621300000,
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "tag": "0230_google_tiers",
+      "when": 1792621400000,
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "tag": "0231_comms_tiers",
+      "when": 1792621500000,
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "tag": "0232_workmgmt_tiers",
+      "when": 1792621600000,
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "tag": "0233_crm_tiers",
+      "when": 1792621700000,
+      "breakpoints": true
     }
   ]
 }

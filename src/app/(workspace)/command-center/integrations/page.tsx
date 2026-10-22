@@ -1,10 +1,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { Panel, Screen } from "@/components/workspace/ui";
+import { Screen } from "@/components/workspace/ui";
 import { listConnectors } from "@/domains/integrations/queries";
 import { getAuthContext } from "@/lib/auth";
 import { ConnectorCatalog, type CatalogConnector } from "./connector-catalog";
-import { RegisterForm } from "./connector-controls";
 
 export const metadata = { title: "Connectors · Polymath" };
 
@@ -41,6 +40,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
     displayName: connector.displayName,
     capabilities: connector.capabilities,
     riskByCapability: connector.riskByCapability,
+    accessTiers: connector.accessTiers,
     accounts: connector.accounts.map((account) => ({
       id: account.id,
       alias: account.alias,
@@ -49,6 +49,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
       isDefaultForWrites: account.isDefaultForWrites,
       allowRead: account.allowRead,
       allowWrite: account.allowWrite,
+      accessTier: account.accessTier,
       lastHealthyAt: account.lastHealthyAt ? account.lastHealthyAt.toISOString() : null,
       lastError: account.lastError,
       version: account.version,
@@ -75,9 +76,6 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
 
       <ConnectorCatalog connectors={catalog} />
 
-      <Panel title="Register an account" description="Creates the bookkeeping row in a connecting state. The OAuth handshake arrives with the provider connection work; until then the row is bookkeeping only.">
-        <RegisterForm providers={connectors.map((c) => ({ provider: c.provider, displayName: c.displayName }))} />
-      </Panel>
     </Screen>
   );
 }

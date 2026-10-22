@@ -135,6 +135,7 @@ async function seedAccount(
     status?: "active" | "revoked" | "connecting";
     allowRead?: boolean;
     allowWrite?: boolean;
+    accessTier?: string;
   } = { alias: "work-gmail" },
 ): Promise<string> {
   const id = `ca_${crypto.randomUUID()}`;
@@ -148,6 +149,7 @@ async function seedAccount(
     // defaults remain the product's defaults, asserted in connector-permissions.
     ...(values.allowRead === undefined ? {} : { allowRead: values.allowRead }),
     ...(values.allowWrite === undefined ? {} : { allowWrite: values.allowWrite }),
+    ...(values.accessTier === undefined ? {} : { accessTier: values.accessTier }),
   });
   return id;
 }
@@ -192,15 +194,26 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
     expect(body.result.tools.map((tool) => tool.name).sort()).toEqual([
+      "airtable_list_records",
+      "asana_list_tasks",
+      "calendly_list_events",
+      "canva_list_designs",
+      "discord_list_channels",
       "github_read_issue",
       "github_search",
       "gmail_read_thread",
       "gmail_search",
       "gmail_send",
+      "googlecalendar_list_events",
+      "googledrive_search_files",
+      "hubspot_list_contacts",
       "linear_read_issue",
       "linear_search_issues",
       "slack_list_channels",
       "slack_read_channel",
+      "stripe_list_payments",
+      "trello_list_cards",
+      "zoom_list_meetings",
     ]);
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
   });
@@ -414,82 +427,17 @@ suite("tools/call dispatch (real Postgres)", () => {
   });
 
   /*
-   * The owner's per-account switches. These prove the permission narrows the
-   * snapshot rather than replacing it: the runs below carry the capability, so
-   * the only thing that can refuse them is the account. A refusal must happen
-   * before a reservation, so `reads` staying empty is the structural proof that
-   * testing a permission never calls a provider.
+   * The connection's access tier. These prove the tier narrows the snapshot
+   * rather than replacing it: the runs below carry the capability, so the only
+   * thing that can refuse them is the connection. A refusal must happen before
+   * a reservation, so `reads` staying empty is the structural proof that a
+   * tier denial never calls a provider, and an empty toolCalls table is the
+   * proof it spent no budget.
    */
-  it("403s gmail_send with write off, naming the switch, and calls no provider", async () => {
-    const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: false });
-    install([]);
-
-    const response = await call(seed, "gmail_send", {
-      to: "recipient@example.invalid",
-      subject: "Blocked",
-      body: "Body.",
-      messageId: "m1",
-      accountAlias: "work-gmail",
-    });
-    expect(response.status).toBe(403);
-    const body = (await response.json()) as { code: string; title: string };
-    expect(body.code).toBe("permission_denied");
-    expect(body.title).toBe('Writing to Gmail is off for "work-gmail". Turn on Write in Connectors.');
-    expect(reads).toHaveLength(0);
-
-    // Nothing was reserved, so the refusal spent none of the run's budget.
-    const calls = await holder.db!
-      .select()
-      .from(toolCalls)
-      .where(eq(toolCalls.runId, seed.runId));
-    expect(calls).toHaveLength(0);
-  });
-
-  it("files a proposal with write on", async () => {
-    const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
-    install([]);
-
-    const { parsed } = await toolText(
-      await call(seed, "gmail_send", {
-        to: "recipient@example.invalid",
-        subject: "Allowed",
-        body: "Body.",
-        messageId: "m1",
-        accountAlias: "work-gmail",
-      }),
-    );
-    expect(parsed.status).toBe("awaiting_review");
-    expect(reads).toHaveLength(0);
-  });
-
-  it("403s gmail_search with read off and fetches nothing", async () => {
-    const seed = await seedRun();
-    await seedAccount(seed, { alias: "work-gmail", allowRead: false });
-    install([searchRoute]);
-
-    const response = await call(seed, "gmail_search", { query: "x", accountAlias: "work-gmail" });
-    expect(response.status).toBe(403);
-    const body = (await response.json()) as { code: string; title: string };
-    expect(body.code).toBe("permission_denied");
-    expect(body.title).toBe('Reading Gmail is off for "work-gmail". Turn on Read in Connectors.');
-    expect(reads).toHaveLength(0);
-  });
-
-  it("leaves a read unchanged when both switches are on", async () => {
-    const seed = await seedRun();
-    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
-    install([{ ...searchRoute, body: { messages: [] } }]);
-
-    const { parsed } = await toolText(await call(seed, "gmail_search", { query: "x" }));
-    expect(parsed.messages).toEqual([]);
-    expect(reads).toHaveLength(1);
-  });
 
   it("parks the run on the third identical call and refuses it", async () => {
     const seed = await seedRun();
-    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     install([{ ...searchRoute, body: { messages: [] } }]);
 
     // Two identical calls are a retry and go through.
@@ -521,7 +469,7 @@ suite("tools/call dispatch (real Postgres)", () => {
 
   it("counts failed calls toward the loop: three failed identical calls park the run", async () => {
     const seed = await seedRun();
-    await seedAccount(seed, { alias: "work-gmail", allowRead: true, allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     // The provider 500s. A model hammering a down provider with the same call
     // is spinning too, so the third attempt parks the run instead of the
     // provider seeing a fourth.
@@ -539,7 +487,7 @@ suite("tools/call dispatch (real Postgres)", () => {
 
   it("creates one proposal and one revision for gmail_send, and never calls the transport", async () => {
     const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     install([searchRoute]);
 
     const args = {
@@ -579,7 +527,7 @@ suite("tools/call dispatch (real Postgres)", () => {
 
   it("replays the same send as deduplicated with one revision", async () => {
     const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     install([]);
 
     const args = { to: "recipient@example.invalid", subject: "Replay", body: "Once.", messageId: "m1" };
@@ -600,7 +548,7 @@ suite("tools/call dispatch (real Postgres)", () => {
 
   it("reports bodyChanged when a dedupe hit stored different wording", async () => {
     const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     install([]);
 
     const base = { to: "recipient@example.invalid", subject: "Wording", messageId: "m1" };
@@ -617,7 +565,7 @@ suite("tools/call dispatch (real Postgres)", () => {
 
   it("expires a gateway proposal after 24 hours", async () => {
     const seed = await seedRun({ allowedTools: ["gmail.send"] });
-    await seedAccount(seed, { alias: "work-gmail", allowWrite: true });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
     install([]);
 
     const { parsed } = await toolText(
@@ -893,5 +841,109 @@ suite("tools/call with a delegation grant (real Postgres)", () => {
       .from(agentAuthorizationDecisions)
       .where(eq(agentAuthorizationDecisions.runId, seed.runId));
     expect(decisions).toHaveLength(0);
+  });
+});
+
+
+/*
+ * Tier enforcement (0229 + PROVIDER_TIERS): the snapshot bounds what the run
+ * may want; the connection's tier bounds what this connection grants. The
+ * tier is read live with the account on every call, so a mid-run flip bites
+ * the very next call.
+ */
+suite("tools/call tier gate (real Postgres)", () => {
+  it("denies a send above the tier, pointing at the tier control, and spends nothing", async () => {
+    const seed = await seedRun({ allowedTools: ["gmail.send"] });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_only" });
+    install([]);
+
+    const response = await call(seed, "gmail_send", {
+      to: "recipient@example.invalid",
+      subject: "Blocked",
+      body: "Body.",
+      messageId: "m1",
+      accountAlias: "work-gmail",
+    });
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { code: string; title: string };
+    expect(body.code).toBe("permission_denied");
+    expect(body.title).toBe(
+      'Agent access for "work-gmail" does not include this. Raise the tier in Connectors.',
+    );
+    expect(reads).toHaveLength(0);
+
+    // The tier gate sits before budget reservation: a denial is free.
+    const calls = await holder.db!
+      .select()
+      .from(toolCalls)
+      .where(eq(toolCalls.runId, seed.runId));
+    expect(calls).toHaveLength(0);
+  });
+
+  it("passes a read within the tier through to the provider", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_only" });
+    install([{ ...searchRoute, body: { messages: [] } }]);
+
+    const { parsed } = await toolText(await call(seed, "gmail_search", { query: "x" }));
+    expect(parsed.messages).toEqual([]);
+    expect(reads).toHaveLength(1);
+  });
+
+  it("reads the tier live, so a mid-run flip bites on the next call", async () => {
+    const seed = await seedRun({ allowedTools: ["gmail.send"] });
+    await seedAccount(seed, { alias: "work-gmail", accessTier: "read_send" });
+    install([]);
+
+    const allowed = await toolText(
+      await call(seed, "gmail_send", {
+        to: "recipient@example.invalid",
+        subject: "Allowed",
+        body: "Body.",
+        messageId: "m1",
+        accountAlias: "work-gmail",
+      }),
+    );
+    expect(allowed.parsed.status).toBe("awaiting_review");
+
+    // The owner lowers the tier while the run is in flight; the next call is
+    // refused because the tier is re-read with the account, not copied into
+    // the run's snapshot.
+    await holder.db!
+      .update(externalAccounts)
+      .set({ accessTier: "read_only" })
+      .where(eq(externalAccounts.workspaceId, seed.workspaceId));
+
+    const denied = await call(seed, "gmail_send", {
+      to: "recipient@example.invalid",
+      subject: "Blocked now",
+      body: "Body.",
+      messageId: "m2",
+      accountAlias: "work-gmail",
+    });
+    expect(denied.status).toBe(403);
+    const body = (await denied.json()) as { code: string; title: string };
+    expect(body.code).toBe("permission_denied");
+    expect(body.title).toContain("Agent access");
+    expect(body.title).toContain("Connectors");
+    expect(reads).toHaveLength(0);
+  });
+
+  it("keeps two unaliased accounts of different tiers ambiguous", async () => {
+    const seed = await seedRun({ allowedTools: ["gmail.send"] });
+    await seedAccount(seed, { alias: "a-gmail", accessTier: "read_only" });
+    await seedAccount(seed, { alias: "b-gmail", accessTier: "read_send" });
+    install([]);
+
+    const response = await call(seed, "gmail_send", {
+      to: "recipient@example.invalid",
+      subject: "Which one",
+      body: "Body.",
+      messageId: "m1",
+    });
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("ambiguous_account");
+    expect(reads).toHaveLength(0);
   });
 });

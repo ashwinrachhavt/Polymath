@@ -4,14 +4,13 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccountControls, AccountPermissions, ConnectButton } from "./connector-controls";
+import { AccountControls, ConnectButton, TierPicker } from "./connector-controls";
 
 /*
- * The catalog view follows the dark Connectors reference the owner sent
- * (Perplexity): a search field, an All / Connected / Available filter, and
- * category groups of quiet cards - one per provider - with a monochrome tile,
- * the capability summary, and the account rows with their controls. Cards use
- * the shared .panel edge recipe, so both themes stay in the token system.
+ * One card per provider, and the card says what the person can do next.
+ * cardState derives the single state a card can be in from the account rows
+ * and the tier catalog; the body renders from that state, so a card never
+ * shows a control its state cannot honor.
  */
 
 export type CatalogAccount = {
@@ -22,6 +21,7 @@ export type CatalogAccount = {
   isDefaultForWrites: boolean;
   allowRead: boolean;
   allowWrite: boolean;
+  accessTier: string | null;
   lastHealthyAt: string | null;
   lastError: string | null;
   version: number;
@@ -32,16 +32,69 @@ export type CatalogConnector = {
   displayName: string;
   capabilities: string[];
   riskByCapability: Record<string, string>;
+  accessTiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
   accounts: CatalogAccount[];
 };
+
+export type CardState = "needs_config" | "coming_soon" | "available" | "connecting" | "connected" | "action_needed";
+
+/* connect.ts expires a pending attempt with this message; the card reads it. */
+const EXPIRED_ATTEMPT_MESSAGE = "That connection attempt expired. Start again.";
+
+export function cardState(connector: CatalogConnector): CardState {
+  if (connector.accounts.some((account) => account.status === "active")) return "connected";
+  const live = connector.accounts.filter((account) => account.status === "connecting");
+  if (
+    live.some(
+      (account) =>
+        account.lastError &&
+        (account.lastError === EXPIRED_ATTEMPT_MESSAGE || account.lastError.includes("not configured")),
+    )
+  ) {
+    return "action_needed";
+  }
+  if (live.length) return "connecting";
+  if (connector.accounts.some((account) => account.status !== "available")) return "action_needed";
+  if (connector.accessTiers.length) return "available";
+  return "coming_soon";
+}
 
 const CATEGORY_BY_PROVIDER: Record<string, string> = {
   gmail: "Communication",
   slack: "Communication",
+  discord: "Communication",
+  "microsoft-teams": "Communication",
+  whatsapp: "Communication",
   "google-calendar": "Planning",
   linear: "Planning",
+  jira: "Planning",
+  asana: "Planning",
+  trello: "Planning",
+  calendly: "Meetings",
+  zoom: "Meetings",
   notion: "Knowledge",
+  confluence: "Knowledge",
+  "google-docs": "Documents",
+  "google-sheets": "Documents",
+  "google-drive": "Storage",
+  dropbox: "Storage",
+  "one-drive": "Storage",
   github: "Developer",
+  gitlab: "Developer",
+  hubspot: "Finance",
+  salesforce: "Finance",
+  stripe: "Finance",
+  figma: "Design",
+  canva: "Design",
+};
+
+const STATE_LABEL: Record<CardState, string> = {
+  needs_config: "Setup needed",
+  coming_soon: "Coming soon",
+  available: "Available",
+  connecting: "Connecting",
+  connected: "Connected",
+  action_needed: "Needs attention",
 };
 
 const FILTERS = [
@@ -52,32 +105,10 @@ const FILTERS = [
 
 type Filter = (typeof FILTERS)[number]["id"];
 
-function connectorState(connector: CatalogConnector): "connected" | "connecting" | "available" {
-  if (connector.accounts.some((account) => account.status === "active")) return "connected";
-  if (connector.accounts.some((account) => account.status === "connecting")) return "connecting";
-  return "available";
-}
-
 /* The person's word for the state, not the column's. */
 function accountLabel(status: string): string {
   if (status === "revoked") return "Disconnected";
   return status;
-}
-
-function capabilitySummary(connector: CatalogConnector): string {
-  return connector.capabilities
-    .map((capability) => `${capability.replaceAll("_", " ")} (${connector.riskByCapability[capability] ?? "read"})`)
-    .join(" · ");
-}
-
-/*
- * A provider can accept an external write only if the catalog lists a
- * capability classified `external_write`. The classification carries the
- * answer; the capability name does not ("send_mail", "write_pages",
- * "post_messages" all mean the same risk), so this reads the map, not a list.
- */
-function hasWriteCapability(connector: CatalogConnector): boolean {
-  return connector.capabilities.some((capability) => connector.riskByCapability[capability] === "external_write");
 }
 
 export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[] }) {
@@ -87,14 +118,11 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return connectors.filter((connector) => {
-      const state = connectorState(connector);
+      const state = cardState(connector);
       if (filter === "connected" && state !== "connected") return false;
-      if (filter === "available" && state === "connected") return false;
+      if (filter === "available" && (state === "connected" || state === "coming_soon" || state === "needs_config")) return false;
       if (!needle) return true;
-      return (
-        connector.displayName.toLowerCase().includes(needle) ||
-        connector.capabilities.some((capability) => capability.replaceAll("_", " ").includes(needle))
-      );
+      return connector.displayName.toLowerCase().includes(needle);
     });
   }, [connectors, query, filter]);
 
@@ -136,9 +164,12 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
           <h2 className="pb-2 text-[11px] font-medium text-muted-foreground">{category}</h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((connector) => {
-              const state = connectorState(connector);
+              const state = cardState(connector);
               return (
-                <article key={connector.provider} className="panel flex flex-col gap-3 rounded-xl p-4">
+                <article
+                  key={connector.provider}
+                  className={cn("panel flex flex-col gap-3 rounded-xl p-4", state === "coming_soon" && "opacity-70")}
+                >
                   <div className="flex items-start gap-3">
                     <span className="product-mark" aria-hidden>
                       <ProviderIcon provider={connector.provider} displayName={connector.displayName} />
@@ -146,68 +177,97 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="text-[13px] font-medium">{connector.displayName}</h3>
-                        <Status>{state === "connected" ? "Connected" : state === "connecting" ? "Connecting" : "Available"}</Status>
+                        <Status>{STATE_LABEL[state]}</Status>
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{capabilitySummary(connector)}</p>
                     </div>
                   </div>
 
-                  {connector.accounts.length ? (
+                  {state === "connected" ? (
                     <div className="divide-y divide-border border-t border-border">
-                      {connector.accounts.map((account) => (
-                        <div key={account.id} className="py-3">
-                          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                            <p className="text-[13px] font-medium">{account.alias}</p>
-                            <Status>{accountLabel(account.status)}</Status>
-                            {account.isDefaultForWrites ? <Status>write default</Status> : null}
-                          </div>
-                          <p className="mb-2 text-xs text-muted-foreground">
-                            {account.lastHealthyAt
-                              ? `Healthy ${account.lastHealthyAt.slice(0, 16).replace("T", " ")}Z`
-                              : "Never connected"}
-                            {account.lastError ? ` · ${account.lastError}` : ""}
-                          </p>
-                          <AccountControls
-                            provider={connector.provider}
-                            accountId={account.id}
-                            version={account.version}
-                            status={account.status}
-                            isDefault={account.isDefaultForWrites}
-                            alias={account.alias}
-                          />
-                          {/* Permissions are only meaningful once a credential
-                              exists; a connecting or revoked row has nothing to
-                              grant. */}
-                          {account.status === "active" ? (
-                            <AccountPermissions
-                              key={account.version}
-                              accountId={account.id}
-                              version={account.version}
-                              allowRead={account.allowRead}
-                              allowWrite={account.allowWrite}
-                              writeCapable={hasWriteCapability(connector)}
-                            />
-                          ) : null}                          {account.status === "connecting" ? (
-                            <div className="mt-2">
-                              <ConnectButton provider={connector.provider} defaultAlias={account.alias} />
+                      {connector.accounts
+                        .filter((account) => account.status === "active")
+                        .map((account) => (
+                          <div key={account.id} className="py-3">
+                            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                              <p className="text-[13px] font-medium">{account.alias}</p>
+                              {account.isDefaultForWrites ? <Status>write default</Status> : null}
                             </div>
-                          ) : null}
-                          {account.status === "revoked" ? (
-                            // A revoked alias cannot be reopened (beginConnection
-                            // refuses to reuse it), so the only honest next step
-                            // is a new name for a fresh connection.
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              Register a new alias to connect this provider again.
+                            <p className="mb-2 text-xs text-muted-foreground">
+                              {account.lastHealthyAt
+                                ? `Healthy ${account.lastHealthyAt.slice(0, 16).replace("T", " ")}Z`
+                                : "Never connected"}
                             </p>
-                          ) : null}
+                            <TierPicker
+                              provider={connector.provider}
+                              accountId={account.id}
+                              expectedVersion={account.version}
+                              current={account.accessTier}
+                              tiers={connector.accessTiers}
+                            />
+                            <div className="mt-2">
+                              <AccountControls
+                                provider={connector.provider}
+                                accountId={account.id}
+                                version={account.version}
+                                status={account.status}
+                                isDefault={account.isDefaultForWrites}
+                                alias={account.alias}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      {connector.accounts
+                        .filter((account) => account.status !== "active")
+                        .map((account) => (
+                          <div key={account.id} className="py-3">
+                            <p className="text-[13px] font-medium">{account.alias}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{accountLabel(account.status)}.</p>
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
+
+                  {state === "connecting" ? (
+                    <div className="border-t border-border pt-3">
+                      {connector.accounts.map((account) => (
+                        <div key={account.id} className="mb-2">
+                          <p className="text-[13px] font-medium">{account.alias}</p>
+                          <p className="mt-1 mb-2 text-xs text-muted-foreground">Finish connecting to start using it.</p>
+                          <ConnectButton provider={connector.provider} defaultAlias={account.alias} label="Finish connecting" />
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {state === "available" ? (
+                    <div className="border-t border-border pt-3">
+                      <ConnectButton provider={connector.provider} defaultAlias="" promptForAlias />
+                    </div>
+                  ) : null}
+
+                  {state === "action_needed" ? (
+                    <div className="border-t border-border pt-3">
+                      {connector.accounts.map((account) => (
+                        <div key={account.id} className="mb-2">
+                          <p className="text-[13px] font-medium">{account.alias}</p>
+                          {account.lastError ? (
+                            <p className="mt-1 mb-2 text-xs text-muted-foreground">{account.lastError}</p>
+                          ) : null}
+                          <ConnectButton
+                            provider={connector.provider}
+                            defaultAlias={account.alias}
+                            label="Reconnect"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {state === "coming_soon" ? (
                     <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-                      No account yet. Register a {connector.displayName} account below to start a connection.
+                      Connect {connector.displayName} agents once its tools ship.
                     </p>
-                  )}
+                  ) : null}
                 </article>
               );
             })}
@@ -218,7 +278,11 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
       {!visible.length ? (
         <Empty
           title="No matching connectors"
-          description={query ? `Nothing in the catalog matches "${query}". Clear the search or the filter.` : "No connectors in this state yet."}
+          description={
+            query
+              ? `Nothing in the catalog matches "${query}". Clear the search or the filter.`
+              : "No connectors in this state yet."
+          }
         />
       ) : null}
     </div>

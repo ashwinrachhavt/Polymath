@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -20,6 +20,37 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
       notInArray(tasks.status, ["done", "cancelled"]),
     ))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id))
+    .limit(limit);
+}
+
+/**
+ * Tasks finished in the last `days`, newest first. "What did I get done" is a
+ * question about completed work, not open work — the agent read tool needs the
+ * other half of the ledger or every progress question comes back as a gap.
+ */
+export async function listRecentlyCompletedTasks(
+  auth: Pick<AuthContext, "workspaceId">,
+  options: { days?: number; limit?: number } = {},
+) {
+  const days = options.days ?? 7;
+  const limit = options.limit ?? 25;
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("Invalid days");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid task limit");
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return db.select({
+    id: tasks.id,
+    title: tasks.title,
+    status: tasks.status,
+    priority: tasks.priority,
+    completedAt: tasks.completedAt,
+  }).from(tasks)
+    .where(and(
+      eq(tasks.workspaceId, auth.workspaceId),
+      isNull(tasks.archivedAt),
+      eq(tasks.status, "done"),
+      gte(tasks.completedAt, since),
+    ))
+    .orderBy(desc(tasks.completedAt))
     .limit(limit);
 }
 

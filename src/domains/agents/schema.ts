@@ -16,6 +16,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
 import { memberships } from "../identity/schema";
+// users comes from tables, not schema: identity/schema sits in a cycle with
+// db/columns, and its partial evaluation under Turbopack drops the `export *`
+// re-export of tables — importing users from there resolves to undefined and
+// any table referencing users.id fails at module load.
+import { users } from "../identity/tables";
 import { artifacts } from "../knowledge/schema";
 
 /*
@@ -611,4 +616,39 @@ export const memoryReviews = pgTable(
     ...recorded,
   },
   (t) => [index("memory_reviews_item_idx").on(t.memoryItemId, t.createdAt)],
+);
+
+/*
+ * Onboarding: one interview that shapes the workspace's supervisor agent.
+ * The flow's state lives here so a half-finished onboarding resumes; what it
+ * learns is written to agent_profiles (name, description, instructions), never
+ * stored twice. The brief column is provenance for what onboarding produced,
+ * not a second source of truth for what the agent is.
+ */
+export const onboardingSessions = pgTable(
+  "onboarding_sessions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** in_progress | completed | abandoned. */
+    status: text("status").notNull().default("in_progress"),
+    role: text("role"),
+    /** Tool names the person lives in: Notion, Gmail, Calendly, Excel, … */
+    tools: jsonb("tools"),
+    priorities: jsonb("priorities"),
+    personifiedBrief: text("personified_brief"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    // One live onboarding per workspace; a completed or abandoned row does not
+    // block a fresh one.
+    uniqueIndex("onboarding_sessions_workspace_active_key")
+      .on(t.workspaceId)
+      .where(sql`archived_at is null and status = 'in_progress'`),
+    index("onboarding_sessions_workspace_idx").on(t.workspaceId),
+  ],
 );

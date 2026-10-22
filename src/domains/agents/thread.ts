@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { createEngine } from "./engine";
-import { createEveDriver } from "./eve-driver";
+import { createEveDriver, SessionNotActiveError } from "./eve-driver";
 import { recordRoundEvent } from "./event-bridge";
 import { agentRuns, runEvents } from "./schema";
 
@@ -92,7 +92,17 @@ export async function sendFollowUp(auth: AuthContext, runId: string, text: strin
     return { ok: false, code: "run_finished", message: "This run is finished. Retry it to start a new run." };
   }
   await recordRoundEvent({ runId, workspaceId: auth.workspaceId, type: "message", data: { role: "user", content } });
-  await createEngine(createEveDriver()).signal(runId, content, auth);
+  try {
+    await createEngine(createEveDriver()).signal(runId, content, auth);
+  } catch (cause) {
+    // The engine has already closed a run whose session died; the person's
+    // message is kept in run_events. Answer 409 so the surface tells them to
+    // retry (a new run) instead of a bare 500 that reads as "their" failure.
+    if (cause instanceof SessionNotActiveError) {
+      return { ok: false, code: "run_finished", message: "This conversation's session ended. Retry it to continue in a new run." };
+    }
+    throw cause;
+  }
   return { ok: true };
 }
 

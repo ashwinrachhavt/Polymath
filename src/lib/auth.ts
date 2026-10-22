@@ -52,9 +52,16 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
     // A real session beats the fixed dev owner. Without this the bypass
     // silently rerouted a signed-in browser to dev-user's workspace, so the
     // app rendered one owner's records on a page another owner signed in for.
+    // auth() throws rather than returning null when Clerk's middleware is not
+    // mounted (devAuthBypass without the proxy), so a throw falls through to
+    // the dev owner instead of 500ing every authed route.
     if (clerkConfigured) {
-      const { userId } = await auth();
-      if (userId) return resolveAuthContext(userId);
+      try {
+        const { userId } = await auth();
+        if (userId) return resolveAuthContext(userId);
+      } catch {
+        // No mounted middleware: the bypass owns this request.
+      }
     }
     return resolveAuthContext("dev-user");
   }
@@ -117,9 +124,16 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
     // A real session beats the fixed dev owner. Without this the bypass
     // silently rerouted a signed-in browser to dev-user's workspace, so the
     // app rendered one owner's records on a page another owner signed in for.
+    // auth() throws rather than returning null when Clerk's middleware is not
+    // mounted (devAuthBypass without the proxy), so a throw falls through to
+    // the dev owner instead of 500ing every authed route.
     if (clerkConfigured) {
-      const { userId } = await auth();
-      if (userId) return resolveAuthContext(userId);
+      try {
+        const { userId } = await auth();
+        if (userId) return resolveAuthContext(userId);
+      } catch {
+        // No mounted middleware: the bypass owns this request.
+      }
     }
     return resolveAuthContext("dev-user");
   }

@@ -90,7 +90,12 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
     .values({
       workspaceId,
       name,
-      description: "Chief of staff. Researches and drafts; proposes anything consequential.",
+      // Placeholder, not a persona: the workspace's supervisor is the user's
+      // own representation (agents/product.md, revised 2026-10-21). Onboarding
+      // or the operator replaces this description with the personified brief;
+      // shipping a fixed "Chief of staff" persona would silently contradict
+      // what the run's instructions say it is.
+      description: "Your agent. Name it and shape it in Settings to make it yours.",
       // The catalog's default, not a stale provider id: the run frozen from
       // this row is what spend is priced against, so it has to name a model
       // that exists.

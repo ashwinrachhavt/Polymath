@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 /*
  * Just enough markdown for agent transcripts: bold, italic, inline code,
@@ -63,7 +63,7 @@ function Table({ lines }: { lines: string[] }) {
 }
 
 /** Renders one message's markdown. Blocks split on blank lines. */
-export function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   const lines = text.split("\n");
   let i = 0;
@@ -118,4 +118,4 @@ export function Markdown({ text }: { text: string }) {
   }
 
   return <div className="flex flex-col gap-1.5">{blocks}</div>;
-}
+});

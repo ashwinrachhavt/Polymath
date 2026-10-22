@@ -4,13 +4,15 @@ import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * resolveConnectedAccount — which mailbox the agent reads through.
+ * resolveConnectedAccount — which mailbox the agent reads through, and at
+ * what tier.
  *
  * Value card
  * protects: the account a connected read picks: an explicit alias must name a
  *   usable account, and with no alias only a single healthy account is
  *   inferred. Ambiguity is refused rather than guessed, and another
- *   workspace's account is never visible.
+ *   workspace's account is never visible. The resolved tier rides on the
+ *   success result; an unset tier reads as read_only.
  * fails_when: an alias resolves to an account in another workspace, a
  *   "connecting" or id-less account is treated as usable, two accounts silently
  *   pick the alphabetically first (the agent would read the wrong mailbox and
@@ -39,7 +41,13 @@ const ctx = (w: { userId: string; workspaceId: string }) => ({ ...w, role: "owne
 
 async function account(
   workspaceId: string,
-  values: { alias: string; provider?: string; status?: "active" | "connecting" | "expired"; composioId?: string | null },
+  values: {
+    alias: string;
+    provider?: string;
+    status?: "active" | "connecting" | "expired";
+    composioId?: string | null;
+    accessTier?: string;
+  },
 ) {
   // Composio ids are globally unique (external_accounts_composio_key), so each
   // seeded account gets its own; the caller asserts on the returned id.
@@ -51,6 +59,7 @@ async function account(
     alias: values.alias,
     status: values.status ?? "active",
     composioConnectedAccountId,
+    ...(values.accessTier === undefined ? {} : { accessTier: values.accessTier }),
   });
   return composioConnectedAccountId ?? "";
 }
@@ -74,6 +83,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       ok: true,
       connectedAccountId: aWork,
       alias: "work-gmail",
+      accessTier: "read_only",
     });
 
     // Another workspace's identically named account (seeded above) is not
@@ -101,6 +111,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       ok: true,
       connectedAccountId: only,
       alias: "only",
+      accessTier: "read_only",
     });
 
     // No account at all is a distinct outcome from ambiguity.
@@ -123,6 +134,37 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       ok: true,
       connectedAccountId: live,
       alias: "live",
+      accessTier: "read_only",
+    });
+  });
+
+  it("returns the account's tier, and an unset tier reads as read_only", async () => {
+    // The tier rides along on the success result: the gateway gates on it
+    // without a second query, and the value is what the row says.
+    const e = await seedWorkspace(handle!.db, `rca-${crypto.randomUUID()}`);
+    const raised = await account(e.workspaceId, { alias: "raised", accessTier: "read_send" });
+    expect(await resolveConnectedAccount(ctx(e), "gmail", "raised")).toEqual({
+      ok: true,
+      connectedAccountId: raised,
+      alias: "raised",
+      accessTier: "read_send",
+    });
+
+    // Unset is a valid state per the tier contract; it means the narrowest
+    // offer, not "everything" — an unset tier must never widen access.
+    const f = await seedWorkspace(handle!.db, `rca-${crypto.randomUUID()}`);
+    await handle!.client.unsafe(
+      `insert into external_accounts (workspace_id, provider, alias, status, composio_connected_account_id, access_tier)
+       values ($1, 'gmail', 'unset-tier', 'active', $2, null)`,
+      [f.workspaceId, `ca_${crypto.randomUUID()}`],
+    );
+    const unset = await resolveConnectedAccount(ctx(f), "gmail", "unset-tier");
+    if (!unset.ok) throw new Error("unset tier should still resolve");
+    expect(unset).toEqual({
+      ok: true,
+      connectedAccountId: unset.connectedAccountId,
+      alias: "unset-tier",
+      accessTier: "read_only",
     });
   });
 });

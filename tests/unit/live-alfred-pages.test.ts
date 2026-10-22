@@ -55,6 +55,9 @@ vi.mock("@/domains/agents/queries", async (importOriginal) => ({
 }));
 vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
+// The onboarding gate is a real database read on the page; these tests render
+// the page without a database, so it is stubbed like its neighbours.
+vi.mock("@/domains/agents/onboarding", () => ({ isWorkspaceOnboarded: vi.fn(async () => true) }));
 // The composer's skill picker reads the workspace's enabled skills; static
 // markup has no database, so the read is stubbed like every other one here.
 vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
@@ -171,18 +174,19 @@ describe("live Alfred route functionality", () => {
     expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50);
   });
 
-  it("lists recent runs with a badge only where the run needs the person", async () => {
+  it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {
     vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
     vi.mocked(listRecentRuns).mockResolvedValue([
       { id: "run-waiting", state: "waiting_approval", objective: "Draft the renewal letter", model: "m", summary: null, error: null, createdAt: new Date() },
       { id: "run-done", state: "succeeded", objective: "Reconcile the invoices", model: "m", summary: "Done.", error: null, createdAt: new Date() },
     ] as never);
     const html = renderToStaticMarkup(await AlfredSurface());
-    expect(html).toContain(">Recent<");
     expect(html).toContain('href="/alfred/run-waiting"');
     expect(html).toContain("Draft the renewal letter");
     expect(html).toContain("Reconcile the invoices");
-    expect(html.match(/Needs your reply/g)).toHaveLength(1);
+    // The waiting-on-you vocabulary moved to Reviews; the home list is not a
+    // second decision surface.
+    expect(html).not.toContain("Needs your reply");
     // One status, in the owner's words: no enum label or second badge beside it.
     for (const other of ["Running", "In progress", "Queued", "Succeeded", "waiting_approval", "succeeded"]) {
       expect(html, other).not.toContain(other);

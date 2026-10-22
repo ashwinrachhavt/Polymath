@@ -45,6 +45,21 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "slack.read": "read",
   "linear.read": "read",
   "linear.issue.read": "read",
+  // Google cluster A: read-only lists through the generic registry.
+  "googlecalendar.events.read": "read",
+  "googledrive.files.read": "read",
+  // Comms and meetings cluster B: read-only lists through the generic registry.
+  "discord.guilds.read": "read",
+  "zoom.meetings.read": "read",
+  "calendly.events.read": "read",
+  // Work-management cluster C: read-only lists through the generic registry.
+  "asana.tasks.read": "read",
+  "trello.cards.read": "read",
+  "airtable.bases.read": "read",
+  // Design, CRM and finance cluster D: read-only lists through the generic registry.
+  "canva.designs.read": "read",
+  "hubspot.contacts.read": "read",
+  "stripe.payments.read": "read",
   "calendar.read": "read",
   "notion.read": "read",
   "gmail.draft": "prepare",

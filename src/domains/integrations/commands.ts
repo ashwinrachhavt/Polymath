@@ -3,6 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { PROVIDER_TIERS, type Provider } from "./capabilities";
 import { externalAccounts, integrationCatalog } from "./schema";
 
 /*
@@ -111,16 +112,27 @@ export async function setAccountStatus(
  * are read as a pair by the gateway; two separate writes could leave the
  * account in a state nobody chose.
  */
-export async function setAccountPermissions(
+export async function setAccountAccessTier(
   auth: AuthContext,
-  input: { accountId: string; expectedVersion: number; allowRead: boolean; allowWrite: boolean },
+  input: { accountId: string; expectedVersion: number; tierId: string },
 ) {
   return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select({ id: externalAccounts.id, provider: externalAccounts.provider })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
+      .limit(1);
+    if (!account) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    const tier = PROVIDER_TIERS[account.provider as Provider]?.find((t) => t.id === input.tierId);
+    if (!tier) {
+      throw new ConflictError(`"${input.tierId}" is not an access tier this connection offers.`);
+    }
     const [updated] = await tx
       .update(externalAccounts)
       .set({
-        allowRead: input.allowRead,
-        allowWrite: input.allowWrite,
+        accessTier: tier.id,
         version: sql`${externalAccounts.version} + 1`,
         updatedAt: new Date(),
         updatedBy: auth.userId,
@@ -139,11 +151,11 @@ export async function setAccountPermissions(
     await recordAudit(
       auth,
       {
-        action: "integration.account_permissions_set",
+        action: "integration.account_tier_set",
         subjectType: "external_account",
         subjectId: updated.id,
-        summary: `Connector ${updated.alias}: read ${input.allowRead ? "on" : "off"}, write ${input.allowWrite ? "on" : "off"}`,
-        metadata: { allowRead: input.allowRead, allowWrite: input.allowWrite },
+        summary: `Connector ${updated.alias}: agent access set to ${tier.label}`,
+        metadata: { tierId: tier.id },
       },
       tx,
     );

@@ -1,9 +1,7 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { z } from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { ChatSurface } from "@/components/chat/chat-surface";
@@ -24,12 +22,9 @@ export const metadata = { title: "Conversation · Polymath" };
  * The transcript is the page. Everything the home shed about the run - model,
  * tools, budget, sources, timeline, controls - sits behind the Details
  * disclosure, because those are for when the owner is auditing what happened,
- * not for reading the answer. Decisions on approvals live in Reviews: this page
- * states that a run is waiting and links there rather than growing a second
- * decision surface.
+ * not for reading the answer. Decisions on approvals live in Reviews; that
+ * surface owns the waiting-on-you vocabulary and the routes to act.
  */
-
-const ATTENTION_STATES = new Set(["waiting_input", "waiting_approval"]);
 
 async function ConversationSurface({ runId }: { runId: string }) {
   await connection();
@@ -67,13 +62,6 @@ async function ConversationSurface({ runId }: { runId: string }) {
        */}
       <header className="page-header border-border bg-background/95 sticky top-12 z-10 border-b backdrop-blur">
         <div className="mx-auto flex w-full max-w-[var(--page-width)] items-center gap-3">
-          <Link
-            href="/alfred"
-            aria-label="Back to recent conversations"
-            className="text-muted-foreground hover:text-foreground shrink-0 text-xs underline-offset-4 hover:underline"
-          >
-            <span aria-hidden>←</span> Recent
-          </Link>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[14px] leading-tight font-medium">{run.objective}</h1>
             <p className="text-muted-foreground truncate text-[11px]">
@@ -81,18 +69,6 @@ async function ConversationSurface({ runId }: { runId: string }) {
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
             </p>
           </div>
-          {ATTENTION_STATES.has(run.state) ? (
-            <div className="flex shrink-0 items-center">
-              <Link
-                href="/reviews"
-                className="focus-visible:ring-ring rounded-sm outline-none focus-visible:ring-3"
-              >
-                <Badge variant="secondary" className="font-normal">
-                  Needs your reply
-                </Badge>
-              </Link>
-            </div>
-          ) : null}
         </div>
       </header>
 

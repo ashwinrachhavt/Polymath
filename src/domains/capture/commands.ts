@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { enqueueOutbox } from "@/domains/audit/outbox";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -18,6 +19,9 @@ import { captures, captureSource } from "./schema";
  * after conversion the derived record owns the content, so a later edit would
  * silently desync it.
  */
+
+/** Fired when a URL capture lands; the handler fills the capture's text. */
+export const CAPTURE_URL_CONTENT_TOPIC = "capture.url_content_requested";
 
 export class ConflictError extends Error {
   readonly code = "conflict";
@@ -75,6 +79,15 @@ export async function createCapture(
           { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind}` },
           tx,
         );
+        // A URL capture promises the page's content. The scrape is long work,
+        // so it parks in the outbox instead of holding the request open.
+        if (capture.kind === "url" && capture.url) {
+          await enqueueOutbox(tx, auth, {
+            topic: CAPTURE_URL_CONTENT_TOPIC,
+            payload: { captureId: capture.id, url: capture.url },
+            dispatchKey: `capture-url-content:${capture.id}`,
+          });
+        }
         return capture;
       });
       return value;

@@ -32,6 +32,28 @@ type EveTarget =
  * server-side fetch requires an absolute URL, which is what broke every run on
  * Vercel when EVE_BASE_URL was unset.
  */
+/**
+ * Whether an eve dev server answers at this base. A state file can outlive its
+ * server (a crash skips the cleanup that removes it), so a file hit is not
+ * proof of reachability; a cheap POST does not mutate anything (an
+ * unauthenticated call is rejected after the ping).
+ */
+function isEveAlive(base: string): boolean {
+  try {
+    // ponytail: bounded sync probe; run-start frequency only.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execFileSync } = require("child_process") as typeof import("child_process");
+    execFileSync(
+      "curl",
+      ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", `${base}/eve/v1/session`, "-X", "POST"],
+      { stdio: "pipe", timeout: 3000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function eveTarget(): EveTarget | null {
   const explicit = process.env.EVE_BASE_URL;
   if (explicit && explicit.trim().length > 0) return { kind: "standalone", base: explicit.replace(/\/+$/, "") };
@@ -40,16 +62,26 @@ function eveTarget(): EveTarget | null {
   // shadow the deployment the app is actually serving from.
   const vercelHost = process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL;
   if (vercelHost) return { kind: "same-origin", base: `https://${vercelHost}` };
-  // Dev: the eve dev server publishes its port here.
+  // Dev: the eve dev server publishes its port here. Two files carry it, and
+  // eve writes either without our involvement: `dev-server-state.v1.json` is
+  // the canonical one (key `url`) but is intermittently skipped on restart;
+  // `next-dev-server.json` (key `origin`) is always written. A stale file can
+  // outlive its server after a crash, so each URL is probed before use.
   try {
     // ponytail: sync fs read at call time; fine at run-start frequency.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const state = require("fs").readFileSync(
-      `${process.cwd()}/eve/alfred/.eve/dev-server-state.v1.json`,
-      "utf8",
-    ) as string;
-    const parsed = JSON.parse(state) as { url?: string };
-    if (parsed.url) return { kind: "standalone", base: parsed.url.replace(/\/+$/, "") };
+    const fs = require("fs") as typeof import("fs");
+    for (const file of ["dev-server-state.v1.json", "next-dev-server.json"]) {
+      try {
+        const parsed = JSON.parse(
+          fs.readFileSync(`${process.cwd()}/eve/alfred/.eve/${file}`, "utf8"),
+        ) as { url?: string; origin?: string };
+        const base = (parsed.url ?? parsed.origin)?.replace(/\/+$/, "");
+        if (base && isEveAlive(base)) return { kind: "standalone", base };
+      } catch {
+        // This file missing is not an error; try the next.
+      }
+    }
   } catch {
     // No dev server; fall through to the local same-origin mount.
   }
@@ -129,6 +161,19 @@ function skillIdOfSnapshot(snapshot: unknown): string | undefined {
   return typeof skill?.id === "string" ? skill.id : undefined;
 }
 
+/**
+ * Eve answers 409 session_not_active when the session behind a live run row is
+ * gone — an eve restart or an expired lease. The engine catches this to close
+ * the run as failed (retry creates a new run), rather than surfacing a raw 500
+ * for a message the person wrote in good faith.
+ */
+export class SessionNotActiveError extends Error {
+  constructor(sessionRef: string) {
+    super(`The agent session for this run is no longer active (${sessionRef}).`);
+    this.name = "SessionNotActiveError";
+  }
+}
+
 export function createEveDriver(agentName = "alfred"): SessionDriver {
   return {
     async start({ sessionId, objective, auth, instructions, policy }) {
@@ -192,7 +237,19 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
         },
         body: JSON.stringify({ message: signal }),
       });
-      if (!response.ok) throw new Error(`eve follow-up failed: ${response.status}`);
+      if (!response.ok) {
+        // A dead session (eve restarted, lease expired) answers 409
+        // session_not_active. Naming it lets the engine close the orphaned run
+        // instead of leaving it "waiting_input" forever with a UI that says
+        // Working; any other status is a transport failure to throw as before.
+        if (response.status === 409) {
+          const body = (await response.json().catch(() => null)) as { code?: string } | null;
+          if (body?.code === "session_not_active") {
+            throw new SessionNotActiveError(ref);
+          }
+        }
+        throw new Error(`eve follow-up failed: ${response.status}`);
+      }
     },
     async cancel(sessionId, auth) {
       const [run] = await db

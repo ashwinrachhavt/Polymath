@@ -189,6 +189,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                     text: selected.text,
                     url: selected.url,
                     version: selected.version,
+                    failureReason: selected.failureReason,
                     convertedType: selected.convertedType,
                     convertedId: selected.convertedId,
                   }
