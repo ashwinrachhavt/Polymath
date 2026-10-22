@@ -123,6 +123,7 @@ const NATIVE_TOOLS = [
   "wiki.lint",
   "notebook.open",
   "learning.review",
+  "tasks.create",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read", "notion.read"];
 

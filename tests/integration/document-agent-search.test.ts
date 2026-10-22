@@ -208,6 +208,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "notion.read",
       "notebook.open",
       "learning.review",
+      "tasks.create",
     ]);
     const b = await workspace();
     await ensureProfile(b.workspaceId);
@@ -233,6 +234,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "notion.read",
       "notebook.open",
       "learning.review",
+      "tasks.create",
     ]);
   });
 
