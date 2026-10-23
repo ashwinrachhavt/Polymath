@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -90,7 +90,9 @@ export async function pageArtifacts(
       status: artifacts.status,
       updatedAt: artifacts.updatedAt,
       wikiArtifactId: wikiPages.artifactId,
-      excerpt: artifactVersions.plainText,
+      // One excerpt line, at most 512 characters of blob: the full plain_text
+      // can be megabytes per row and only ~240 characters ever render.
+      excerpt: sql<string | null>`left(${artifactVersions.plainText}, 512)`,
     })
     .from(artifacts)
     .leftJoin(wikiPages, wikiJoin)
@@ -118,7 +120,7 @@ export async function pageArtifacts(
       status: row.status,
       updatedAt: row.updatedAt,
       excerpt: row.excerpt
-        ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null
+        ? (row.excerpt.split("\n").map((l: string) => l.trim()).find((l: string) => l.length > 0) ?? null)?.slice(0, 240) ?? null
         : null,
     })),
   };
