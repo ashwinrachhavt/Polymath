@@ -81,15 +81,18 @@ export function WorkList({
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   // Completion asks the spec's question first: "what did you actually do?"
   // The sentence rides onto the day's stone when one is earned; answering is
-  // optional - "Just complete" finishes with no sentence.
+  // optional - "Just complete" finishes with no sentence. The draft lives in
+  // state so a failed completion reopens the question with the typed
+  // sentence intact rather than losing it.
   const [asking, setAsking] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
   const [reward, setReward] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
 
-  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; quartzEarned?: boolean }>, applyChange: Change) {
+  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; quartzEarned?: boolean }>, applyChange: Change, onError?: () => void) {
     setError(null);
     startTransition(async () => {
       change(applyChange);
@@ -98,6 +101,7 @@ export function WorkList({
         if (!result.ok) {
           intent.current = null;
           setError({ id, message: result.error ?? "The write failed." });
+          onError?.();
         } else {
           intent.current = null;
           if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
@@ -105,16 +109,18 @@ export function WorkList({
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
         setError({ id, message: "Could not reach the server. Try again." });
+        onError?.();
       }
     });
   }
 
   function submitCompletion(event: FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
-    const input = event.currentTarget.elements.namedItem("sentence") as HTMLInputElement;
-    const sentence = input.value.trim();
+    const sentence = (drafts[id] ?? "").trim();
     setAsking(null);
-    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id });
+    // On failure the row returns and the question reopens; the draft map
+    // still holds the sentence, so nothing the person typed is lost.
+    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, () => setAsking(id));
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -182,7 +188,8 @@ export function WorkList({
           const row = item.row;
           const optimistic = row.id.startsWith("optimistic-");
           return (
-            <li key={row.id} className="flex items-start justify-between gap-3 py-3">
+            <li key={row.id} className="py-3">
+              <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 {optimistic ? (
                   <span className="text-[13px] font-medium text-muted-foreground">{row.title}</span>
@@ -237,31 +244,37 @@ export function WorkList({
                       Done
                     </Button>
                   </div>
-                  {asking === row.id ? (
-                    <form onSubmit={(event) => submitCompletion(event, row.id)} className="mt-1.5 flex w-full max-w-72 flex-col items-end gap-1.5">
-                      <label className="w-full text-xs text-muted-foreground" htmlFor={`sentence-${row.id}`}>
-                        What did you actually do?
-                      </label>
-                      <Input
-                        id={`sentence-${row.id}`}
-                        name="sentence"
-                        maxLength={280}
-                        placeholder="One sentence"
-                        autoFocus
-                        disabled={pending}
-                      />
-                      <div className="flex gap-1">
-                        <Button type="submit" size="sm" disabled={pending}>
-                          Complete
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setAsking(null); run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id }); }}>
-                          Just complete
-                        </Button>
-                      </div>
-                    </form>
-                  ) : null}
                   {error?.id === row.id ? <p role="alert" className="text-xs text-destructive">{error.message}</p> : null}
                 </div>
+              ) : null}
+              </div>
+              {asking === row.id ? (
+                <form onSubmit={(event) => submitCompletion(event, row.id)} className="ml-auto mt-1.5 flex w-full max-w-xs flex-col items-end gap-1.5">
+                  <label className="w-full text-xs text-muted-foreground" htmlFor={`sentence-${row.id}`}>
+                    What did you actually do?
+                  </label>
+                  <Input
+                    id={`sentence-${row.id}`}
+                    name="sentence"
+                    maxLength={280}
+                    placeholder="One sentence"
+                    autoFocus
+                    disabled={pending}
+                    value={drafts[row.id] ?? ""}
+                    onChange={(event) => setDrafts((prev) => ({ ...prev, [row.id]: event.target.value }))}
+                  />
+                  <div className="flex gap-1">
+                    <Button type="submit" size="sm" disabled={pending}>
+                      Complete
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setAsking(null); run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id }); }}>
+                      Just complete
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAsking(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
               ) : null}
             </li>
           );
