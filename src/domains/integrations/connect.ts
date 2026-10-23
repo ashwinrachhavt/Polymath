@@ -31,6 +31,22 @@ export async function beginConnection(
   input: { provider: string; alias: string; displayName?: string },
 ) {
   return withTransaction(async (tx) => {
+    // Aliases are unique per workspace across providers (agents choose
+    // accounts by alias), so an alias already attached to a DIFFERENT provider
+    // is a stated conflict, not a raw unique-index error. The same provider
+    // reusing its own alias is the resume path and falls through.
+    const [aliased] = await tx
+      .select({ provider: externalAccounts.provider })
+      .from(externalAccounts)
+      .where(
+        and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.alias, input.alias)),
+      )
+      .limit(1);
+    if (aliased && aliased.provider !== input.provider) {
+      throw new ConflictError(
+        `"${input.alias}" is already the name of your ${aliased.provider} account. Pick another name.`,
+      );
+    }
     let [account] = await tx
       .select()
       .from(externalAccounts)

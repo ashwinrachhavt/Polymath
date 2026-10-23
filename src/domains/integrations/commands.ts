@@ -34,6 +34,19 @@ export async function registerAccount(
       .limit(1);
     if (!catalogRow) throw new ConflictError(`"${input.provider}" is not in the connector catalog.`);
 
+    // Aliases are unique per workspace across providers (agents choose
+    // accounts by alias); a same-provider re-register is the resume path.
+    const [aliased] = await tx
+      .select({ provider: externalAccounts.provider })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.alias, input.alias)))
+      .limit(1);
+    if (aliased && aliased.provider !== input.provider) {
+      throw new ConflictError(
+        `"${input.alias}" is already the name of your ${aliased.provider} account. Pick another name.`,
+      );
+    }
+
     try {
       const [account] = await tx
         .insert(externalAccounts)
