@@ -72,7 +72,9 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   await expect(page.getByText("That dependency would make the tasks wait on each other.")).toBeVisible();
 
   // Finishing the blocker releases the other task.
+  // Done opens the completion-sentence form; "Just complete" finishes with no sentence.
   await page.getByRole("button", { name: `Done: complete ${b}` }).click();
+  await page.getByRole("button", { name: "Just complete" }).click();
   await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
   await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("Blocked by 1")).toHaveCount(0);
   await page.goto("/neuralflow/work?view=saved&show=done");
