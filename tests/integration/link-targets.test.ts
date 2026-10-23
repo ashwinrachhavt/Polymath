@@ -47,13 +47,13 @@ suite("link-target search", () => {
     expect(caps).toHaveLength(1);
     expect(caps[0].kind).toBe("capture");
     expect(caps[0].title).toBe("Call the accountant about Q3");
-    expect(caps[0].href).toBe(`/apps/command-center/inbox?id=${caps[0].id}`);
+    expect(caps[0].href).toBe(`/command-center/inbox?id=${caps[0].id}`);
 
     const tks = await workQueries.searchTasksForLink(auth, "accountant");
     expect(tks).toHaveLength(1);
     expect(tks[0].kind).toBe("task");
     expect(tks[0].title).toBe("Accountant follow-up");
-    expect(tks[0].href).toBe(`/apps/neuralflow/tasks?task=${tks[0].id}`);
+    expect(tks[0].href).toBe(`/neuralflow/work?task=${tks[0].id}`);
   });
 
   it("excludes archived captures and archived tasks", async () => {

@@ -28,7 +28,11 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
  * tasks in this workspace whose title matches, routed to the canonical task
  * destination (taskHref's route). Done and cancelled tasks stay linkable - a
  * finished task is still a real destination. Tenant-scoped; an archived task
- * never matches, and a deleted one lands on the tasks page's empty state.
+ * never matches, and a deleted one lands on the work page's empty state. The
+ * route is the canonical /neuralflow/work (Neon-backed, UUID-validated ?task=
+ * detail) - NOT taskHref's /apps/neuralflow/tasks, whose SelectedTask reads
+ * the browser-local preview store and would report every canonical id as
+ * "not found in this preview".
  */
 export async function searchTasksForLink(auth: AuthContext, query: string, limit = 3) {
   const like = `%${escapeLike(query.trim())}%`;
@@ -38,7 +42,7 @@ export async function searchTasksForLink(auth: AuthContext, query: string, limit
     .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(tasks.title, like)))
     .orderBy(asc(tasks.title), asc(tasks.id))
     .limit(limit);
-  return rows.map((row) => ({ id: row.id, title: row.title, kind: "task" as const, href: `/apps/neuralflow/tasks?task=${row.id}` }));
+  return rows.map((row) => ({ id: row.id, title: row.title, kind: "task" as const, href: `/neuralflow/work?task=${row.id}` }));
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { linkTargetInsertion, type LinkTarget } from "./link-target-insertion";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -18,22 +19,8 @@ import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
 
 /** A card the `[[` picker can offer. `version` only comes from the local preview store. */
-export type LinkTarget = { id: string; title: string; kind: string; version?: number; href?: string };
-
-/*
- * What picking a target inserts. A note/zettel becomes a [[wiki link]] so the
- * save path grows a graph edge; anything else (captures, tasks, other
- * artifacts the picker may return) has no edge semantics, so it becomes a
- * real Markdown link to the target's canonical route - render and click
- * resolve to the destination itself, never to a dangling [[title]].
- */
-export function linkTargetInsertion(match: LinkTarget): string | { type: string; text: string; marks: { type: string; attrs: { href: string } }[] }[] {
-  if (!match.href) return `[[${match.title}]] `;
-  return [
-    { type: "text", text: match.title, marks: [{ type: "link", attrs: { href: match.href } }] },
-    { type: "text", text: " " },
-  ];
-}
+export type { LinkTarget } from "./link-target-insertion";
+export { linkTargetInsertion };
 /** Search the workspace's cards. "keyword" answers fast; "hybrid" adds meaning and takes longer. */
 export type FindLinkTargets = (query: string, mode: "keyword" | "hybrid") => Promise<LinkTarget[]>;
 

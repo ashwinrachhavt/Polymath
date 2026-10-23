@@ -82,7 +82,10 @@ export function captureLinkLabel(row: { text: string | null; url: string | null 
  * Link-target matches for the note editor's [[ ]] picker (row 36): any
  * unarchived capture in this workspace whose text or URL matches, labeled and
  * routed to its canonical inbox destination. Tenant-scoped like every other
- * read here; a deleted capture 404s into the inbox's empty-selection state.
+ * read here; a deleted capture lands on the inbox's empty-selection state.
+ * The route is the durable /command-center/inbox (server-rendered, UUID-
+ * validated ?id= selection) - NOT /apps/command-center/inbox, which is the
+ * browser-only preview shell with sample data.
  */
 export async function searchCapturesForLink(auth: AuthContext, query: string, limit = 3) {
   const like = `%${escapeLike(query.trim())}%`;
@@ -92,7 +95,7 @@ export async function searchCapturesForLink(auth: AuthContext, query: string, li
     .where(and(eq(captures.workspaceId, auth.workspaceId), isNull(captures.archivedAt), or(ilike(captures.text, like), ilike(captures.url, like))!))
     .orderBy(desc(captures.createdAt), desc(captures.id))
     .limit(limit);
-  return rows.map((row) => ({ id: row.id, title: captureLinkLabel(row), kind: "capture" as const, href: `/apps/command-center/inbox?id=${row.id}` }));
+  return rows.map((row) => ({ id: row.id, title: captureLinkLabel(row), kind: "capture" as const, href: `/command-center/inbox?id=${row.id}` }));
 }
 
 /** The full row for the detail pane; the only inbox read that carries the whole text. */
