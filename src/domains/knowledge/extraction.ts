@@ -38,7 +38,7 @@ import { clearRestoreOnNewExtraction } from "./versions";
  * provider's URL/key picks the adapter; the text-layer reader is the floor for
  * text PDFs. The last resort for what the floor cannot read (scans, images) is
  * vision OCR through the workspace's OpenRouter key — off by default, enabled
- * with OCR_PROVIDER=openrouter, metered per page (openrouter-vision.ts).
+ * with OCR_PROVIDER=openrouter, metered by model input/output tokens (openrouter-vision.ts).
  */
 
 export async function extractionProvider(): Promise<ExtractionProvider> {

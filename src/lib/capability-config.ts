@@ -123,7 +123,7 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "document-extraction-hosted",
     label: "Hosted document extraction",
-    watches: ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER", "OCR_MODEL"],
+    watches: ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER", "OCR_MODEL", "OCR_ALLOW_UNVERIFIED_UPSTREAM"],
     // Mirrors extractionProvider() plus the vision-OCR rescue in
     // extractDocument(): a hosted reader is configured by any one of the three
     // provider keys, or by the explicit OCR_PROVIDER=openrouter opt-in with the
@@ -151,7 +151,7 @@ const DEFINITIONS: readonly Definition[] = [
     },
     subject: "Scanned PDFs and images cannot be read; text-layer PDFs still can",
     action:
-      "set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter to read scans through the workspace's OpenRouter key (metered per page; OCR_MODEL picks the model)",
+      "set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter to read scans through the workspace's OpenRouter key (metered by model input/output tokens; OCR_MAX_PAGES caps pages per extraction; OCR_MODEL picks the model)",
   },
   {
     id: "web-search-keyed",

@@ -4,6 +4,7 @@ import {
   DEFAULT_OCR_MODEL,
   OCR_MODEL_RATES,
   openRouterVisionProviderFromEnv,
+  UPSTREAM_PRIVACY_UNVERIFIED,
 } from "@/integrations/extraction/openrouter-vision";
 import { scannedPdf } from "../helpers/scanned-pdf";
 
@@ -255,15 +256,40 @@ describe("openRouterVisionProviderFromEnv: opt-in, never inferred", () => {
     ).not.toBeNull();
   });
 
-  it("every allowlisted model resolves; anything else fails closed at resolve time", () => {
+  it("every rate-allowlisted model resolves with its required confirmations; anything else fails closed", () => {
     for (const model of Object.keys(OCR_MODEL_RATES)) {
       expect(
-        openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: model }),
+        openRouterVisionProviderFromEnv({
+          ...KEY_ENV,
+          OCR_PROVIDER: "openrouter",
+          OCR_MODEL: model,
+          OCR_ALLOW_UNVERIFIED_UPSTREAM: "true",
+        }),
       ).not.toBeNull();
     }
     // An unverified model is an unknown bill, and unknown is not a price.
     expect(() =>
       openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: "some/random-model" }),
     ).toThrow(/not one of the rate-verified choices/);
+  });
+
+  it("privacy-unverified models need OCR_ALLOW_UNVERIFIED_UPSTREAM on top of OCR_MODEL", () => {
+    // The allowlist bounds spend; it does not settle privacy. Selecting one of
+    // these fails closed until the operator separately confirms the document
+    // scope — OCR_MODEL alone can never bypass the restriction.
+    expect(UPSTREAM_PRIVACY_UNVERIFIED.size).toBeGreaterThan(0);
+    for (const model of UPSTREAM_PRIVACY_UNVERIFIED) {
+      expect(OCR_MODEL_RATES[model]).toBeDefined();
+      expect(() =>
+        openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: model }),
+      ).toThrow(/unverified upstream privacy/);
+      expect(() => createOpenRouterVisionProvider("test-key", { model })).toThrow(/unverified upstream privacy/);
+      expect(() =>
+        createOpenRouterVisionProvider("test-key", { model, allowUnverifiedUpstream: true }),
+      ).not.toThrow();
+    }
+    // The default and any model outside the unverified set need no such flag.
+    expect(UPSTREAM_PRIVACY_UNVERIFIED.has(DEFAULT_OCR_MODEL)).toBe(false);
+    expect(() => createOpenRouterVisionProvider("test-key", { model: DEFAULT_OCR_MODEL })).not.toThrow();
   });
 });
