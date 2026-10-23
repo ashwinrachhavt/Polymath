@@ -27,6 +27,7 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
+vi.mock("@/domains/conversations/queries", () => ({ listConversations: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));

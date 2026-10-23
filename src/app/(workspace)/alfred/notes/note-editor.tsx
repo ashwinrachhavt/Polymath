@@ -18,8 +18,13 @@ import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNo
  * the artifact's JSONB content ({ format: "markdown", text }) so the existing
  * RichEditor drives it directly. Autosaves land as the working draft behind
  * the artifact's optimistic version; an explicit checkpoint mints the next
- * immutable artifact version. A draft left behind by a crash is offered on
- * load — never applied silently.
+ * immutable artifact version.
+ *
+ * The working draft IS the note: autosave is the save, so the server renders
+ * the draft as the page's content and there is no restore banner for it. The
+ * only thing a server cannot hold is keystrokes lost inside the debounce
+ * window (a crash, a dead network); those are mirrored to localStorage and
+ * offered once on the next visit, never applied silently.
  */
 
 /*
@@ -181,7 +186,7 @@ export function NoteEditor({
   tags: initialTags,
   createdAt,
   updatedAt,
-  draft,
+  savedAt,
   versions,
   outlinks,
   backlinks,
@@ -195,12 +200,14 @@ export function NoteEditor({
   tags: string[];
   createdAt: string;
   updatedAt: string;
-  draft: { markdown: string; updatedAt: string } | null;
+  /** When the server last durably held this content (the draft's own time when one exists). */
+  savedAt: string;
   versions: VersionItem[];
   outlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   backlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
 }) {
+  const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
     (query: string, mode: "keyword" | "hybrid") => findLinkTargetsAction({ query, mode, excludeId: noteId }),
     [noteId],
@@ -208,7 +215,7 @@ export function NoteEditor({
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [markdown, setMarkdown] = useState(initialMarkdown);
-  const [offer, setOffer] = useState(draft && draft.markdown !== initialMarkdown ? draft : null);
+  const [localOffer, setLocalOffer] = useState<{ markdown: string; savedAt: string } | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -240,6 +247,15 @@ export function NoteEditor({
   useEffect(() => {
     if (markdown === savedRef.current) return;
     setSaveState("dirty");
+    // Crash insurance, not storage: the server's working draft is the note's
+    // durable state. This mirror only covers keystrokes the autosave never
+    // got to send (a crash or a dead network inside the debounce), and it is
+    // cleared the moment the server confirms the save.
+    try {
+      window.localStorage.setItem(localKey, JSON.stringify({ markdown, savedAt: new Date().toISOString() }));
+    } catch {
+      // Storage full or blocked: the server draft still protects the note.
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       void enqueue(async () => {
@@ -258,6 +274,11 @@ export function NoteEditor({
         }
         versionRef.current = result.version;
         savedRef.current = markdown;
+        try {
+          window.localStorage.removeItem(localKey);
+        } catch {
+          // Non-fatal: a stale mirror is ignored next load (see the mount effect).
+        }
         setSaveState("saved");
         setError("");
       });
@@ -265,7 +286,7 @@ export function NoteEditor({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [markdown, noteId]);
+  }, [markdown, noteId, localKey]);
 
   const [tags, setTags] = useState<string[]>(initialTags);
   const [tagInput, setTagInput] = useState("");
@@ -304,12 +325,13 @@ export function NoteEditor({
   const checkpoint = async () => {
     setPending(true);
     setError("");
+    const text = markdownRef.current;
     const result = await enqueue(async () =>
       commitNoteAction({
         artifactId: noteId,
         expectedVersion: versionRef.current,
-        content: body(markdown),
-        plainText: markdown,
+        content: body(text),
+        plainText: text,
         idempotencyKey: crypto.randomUUID(),
       }),
     );
@@ -318,10 +340,32 @@ export function NoteEditor({
     versionRef.current = result.version;
     setAwaitingVersion(result.versionNumber);
     setSavedVersions(result.versions);
-    savedRef.current = markdown;
+    savedRef.current = text;
+    try {
+      window.localStorage.removeItem(localKey);
+    } catch {
+      // Non-fatal.
+    }
     setSaveState("saved");
     router.refresh();
   };
+
+  // Cmd/Ctrl+S is the checkpoint: the browser's Save dialog never helps here,
+  // and the shortcut should work from anywhere in the editor.
+  const checkpointRef = useRef(checkpoint);
+  useEffect(() => {
+    checkpointRef.current = checkpoint;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void checkpointRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const confirmLink = async (targetId: string) => {
@@ -413,6 +457,31 @@ export function NoteEditor({
     if (newNote) titleRef.current?.focus();
   }, [newNote]);
 
+  // On load, the server draft is the note - there is nothing to "restore". The
+  // one thing the server cannot have is work typed after the last successful
+  // autosave; a newer local mirror is offered once, never applied silently.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(localKey);
+      if (!raw) return;
+      const entry = JSON.parse(raw) as { markdown?: string; savedAt?: string };
+      const mirroredAt = entry.savedAt;
+      const newer = typeof mirroredAt === "string" && Date.parse(mirroredAt) > Date.parse(savedAt);
+      if (entry.markdown && entry.markdown !== initialMarkdown && newer && mirroredAt) {
+        const offer = { markdown: entry.markdown, savedAt: mirroredAt };
+        // Mirrors a store outside React; surface it after mount, not during
+        // the effect commit (react-hooks/set-state-in-effect).
+        queueMicrotask(() => setLocalOffer(offer));
+      } else {
+        window.localStorage.removeItem(localKey);
+      }
+    } catch {
+      // A corrupt or unreadable mirror is dropped, not restored.
+    }
+    // Mount-time only: savedAt and initialMarkdown are the note's identity here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /*
    * The page is the note: one centered column with the title and the writing
    * surface, and everything else behind the Note details inspector on the
@@ -424,14 +493,26 @@ export function NoteEditor({
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
         <div className="mx-auto flex max-w-[720px] flex-col gap-4 pb-24">
-          {offer && (
+          {localOffer && (
             <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
-              <span>A draft from {stamp(offer.updatedAt)} was left unsaved.</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(offer.markdown); setOffer(null); }}>
-                Restore draft
+              <span>Unsent changes from {stamp(localOffer.savedAt)} were found in this browser.</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(localOffer.markdown); setLocalOffer(null); }}>
+                Restore
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setOffer(null)}>
-                Keep saved version
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setLocalOffer(null);
+                  try {
+                    window.localStorage.removeItem(localKey);
+                  } catch {
+                    // Already gone.
+                  }
+                }}
+              >
+                Discard
               </Button>
             </div>
           )}
@@ -444,7 +525,7 @@ export function NoteEditor({
               onBlur={rename}
               placeholder="Untitled note"
               style={{ fontFamily: "var(--font-display)" }}
-              className="w-full bg-transparent text-[26px] leading-snug outline-none placeholder:text-muted-foreground/50"
+              className="w-full bg-transparent text-[32px] font-medium leading-tight outline-none placeholder:text-muted-foreground/50"
             />
             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
               {saveState === "saving" && <span role="status">Saving…</span>}

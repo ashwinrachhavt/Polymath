@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type HistoryMenuRow = { id: string; objective: string; time: string };
+export type HistoryMenuRow = { id: string; objective: string; time: string; href?: string };
 export type HistoryMenuGroup = { key: string; label: string; rows: HistoryMenuRow[] };
 
 /*
@@ -89,7 +89,7 @@ export function HistoryMenu({ groups }: { groups: HistoryMenuGroup[] }) {
                     {group.rows.map((row) => (
                       <li key={row.id}>
                         <Link
-                          href={`/alfred/${row.id}`}
+                          href={row.href ?? `/alfred/${row.id}`}
                           onClick={() => setOpen(false)}
                           className="hover:bg-muted focus-visible:ring-ring flex h-8 items-center gap-3 rounded-md px-2 text-[13px] outline-none focus-visible:ring-3"
                         >

@@ -60,7 +60,7 @@ export function RunControls({ runId, finished }: { runId: string; finished: bool
           Send
         </Button>
         <Button size="sm" variant="outline" disabled={pending} onClick={() => call("cancel")}>
-          Cancel
+          Stop
         </Button>
       </div>
       {error ? <p role="alert" className="text-destructive text-xs">{error}</p> : null}

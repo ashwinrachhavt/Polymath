@@ -41,10 +41,10 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-  // Reload: the committed version is still empty, so the draft is offered.
+  // Reload: the autosaved draft IS the note - the body is already here, and
+  // there is no restore banner for work the server durably holds.
   await page.reload();
-  await expect(page.getByText(/was left unsaved/)).toBeVisible();
-  await page.getByRole("button", { name: "Restore draft" }).click();
+  await expect(page.getByText(/Unsent changes from/)).toHaveCount(0);
   await openDetails(page);
   await page.getByRole("button", { name: "Markdown source" }).click();
   await expect(page.getByLabel("Markdown source")).toHaveValue(body);
@@ -62,7 +62,7 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
 
   // After a reload the committed text is the note — no draft banner.
   await page.reload();
-  await expect(page.getByText(/was left unsaved/)).toHaveCount(0);
+  await expect(page.getByText(/Unsent changes from/)).toHaveCount(0);
   await openDetails(page);
   await page.getByRole("button", { name: "Markdown source" }).click();
   await expect(page.getByLabel("Markdown source")).toHaveValue(body);

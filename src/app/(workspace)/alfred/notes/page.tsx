@@ -176,12 +176,12 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             noteId={selected.id}
             initialTitle={selected.title}
             initialVersion={selected.version}
-            initialMarkdown={noteMarkdown(selected.content)}
+            initialMarkdown={noteMarkdown(selected.draft?.content ?? selected.content)}
             kind={selected.kind}
             tags={selected.tags}
             createdAt={selected.createdAt.toISOString()}
             updatedAt={selected.updatedAt.toISOString()}
-            draft={selected.draft ? { markdown: noteMarkdown(selected.draft.content), updatedAt: selected.draft.updatedAt.toISOString() } : null}
+            savedAt={(selected.draft?.updatedAt ?? selected.updatedAt).toISOString()}
             versions={versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
             outlinks={outlinks}
             backlinks={backlinks}

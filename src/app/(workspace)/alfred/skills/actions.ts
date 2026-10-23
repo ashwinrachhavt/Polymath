@@ -5,6 +5,7 @@ import { z } from "zod";
 import { inspectSource, parseSource } from "@/domains/skills/inspect";
 import { bundledSkill } from "@/domains/skills/bundled";
 import { installSkill, removeSkill, setSkillEnabled } from "@/domains/skills/commands";
+import { contentHashOf } from "@/domains/skills/package";
 import type { InspectResult, SourceRequest } from "@/domains/skills/sources/types";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -177,6 +178,68 @@ export async function installBundledSkillAction(input: { slug: string }): Promis
     return {
       ok: false,
       error: cause instanceof Error ? cause.message : "The skill did not install. Try again.",
+    };
+  }
+}
+
+const authoredInput = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().min(1).max(300),
+  body: z.string().trim().min(1).max(50_000),
+});
+
+const slugify = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "skill";
+
+/*
+ * "New skill": the person writes the procedure directly. It installs through
+ * the same command as any import - a skill is a procedure, never authority -
+ * with authored coordinates: source kind `local`, ref `authored`, path keyed
+ * by slug, revision the content hash. Two skills authored under the same name
+ * with different text conflict on identity, and the error says to remove the
+ * old one first; that is the same rule a moved source gets.
+ */
+export async function createAuthoredSkillAction(input: {
+  name: string;
+  description: string;
+  body: string;
+}): Promise<InstallAction> {
+  const auth = await authorize();
+  const parsed = authoredInput.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "A skill needs a name, one line on when to use it, and the procedure itself." };
+  }
+  const { name, description, body } = parsed.data;
+  const slug = slugify(name);
+  const skill = {
+    slug,
+    name,
+    description,
+    body,
+    files: [],
+    warnings: [],
+    contentHash: "",
+    sourcePath: `authored/${slug}`,
+  };
+  skill.contentHash = contentHashOf(skill);
+  try {
+    const installed = await installSkill(auth, {
+      ...skill,
+      sourceKind: "local",
+      sourceRef: "authored",
+      sourcePath: skill.sourcePath,
+      revision: skill.contentHash,
+    });
+    revalidate();
+    return { ok: true, skillId: installed.skillId, created: installed.created };
+  } catch (cause) {
+    return {
+      ok: false,
+      error: cause instanceof Error ? cause.message : "The skill did not save. Try again.",
     };
   }
 }

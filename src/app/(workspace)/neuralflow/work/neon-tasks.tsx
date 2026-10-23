@@ -96,6 +96,15 @@ export async function NeonTasks({
       title="Work"
     >
       {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
+      {/* The day's companion tools, reached from the day itself rather than
+          the tab row. Projects stay in the More index and command layer. */}
+      {scope === "today" && !selectedTask ? (
+        <nav aria-label="Related tools" className="-mt-2 mb-4 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
+        </nav>
+      ) : null}
       {activeSession ? (
         <Panel
           className="mb-6 border-app-accent/40"

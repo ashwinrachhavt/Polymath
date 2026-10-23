@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { Empty, Screen } from "@/components/workspace/ui";
 import { addConversationToKnowledgeAction } from "../actions";
 import { getConversation } from "@/domains/conversations/queries";
 import { Button } from "@/components/ui/button";
@@ -31,28 +31,29 @@ async function Timeline({ threadId }: { threadId: string }) {
       ) : undefined}
     >
       <p className="text-[13px]">
-        <Link href="/command-center/conversations" className="text-muted-foreground underline-offset-4 hover:underline">
-          ← All conversations
+        <Link href="/alfred" className="text-muted-foreground underline-offset-4 hover:underline">
+          ← Conversations now live in the Assistant
         </Link>
       </p>
-      <Panel title="Timeline" description={`${conversation.entries.length} message${conversation.entries.length === 1 ? "" : "s"}.`}>
-        <div className="divide-y divide-border">
-          {conversation.entries.map((entry) => (
-            <div key={entry.id} className="py-3 first:pt-0">
-              <div className="mb-1 flex items-center gap-2">
-                <Status>{entry.role}</Status>
-                <span className="text-xs text-muted-foreground">
-                  {entry.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z
-                </span>
-              </div>
-              <p className="whitespace-pre-wrap text-[13px]">{entry.content ?? ""}</p>
+      <div className="space-y-4" aria-label="Timeline">
+        {conversation.entries.map((entry) =>
+          entry.role === "user" ? (
+            <div key={entry.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+              {entry.content ?? ""}
             </div>
-          ))}
-        </div>
+          ) : (
+            <div key={entry.id} className="max-w-[72ch]">
+              <p className="whitespace-pre-wrap text-[13px] leading-6">{entry.content ?? ""}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {entry.role} · {entry.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z
+              </p>
+            </div>
+          ),
+        )}
         {!conversation.entries.length ? (
           <Empty title="No messages yet" />
         ) : null}
-      </Panel>
+      </div>
     </Screen>
   );
 }
