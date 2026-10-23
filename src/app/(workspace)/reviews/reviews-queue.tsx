@@ -46,6 +46,61 @@ function formatTs(iso: string): string {
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
 }
 
+/*
+ * The send summary a reviewer decides on, read from the BOUND revision -
+ * never a live account lookup, so the card shows exactly what the approval
+ * binds. The sender label is the identity pinned when the revision was
+ * written (the account's registered display name, falling back to its
+ * alias); a revision without one cannot send, and says so instead of
+ * implying a sender.
+ */
+function SendSummary({ capability, revision }: { capability: string; revision: QueueCardData["latestRevision"] }) {
+  if ((capability !== "gmail.send" && capability !== "send_mail") || !revision) return null;
+  const payload = (revision.payload ?? {}) as Record<string, unknown>;
+  const pin = payload.accountPin as { resolved?: unknown; sender?: unknown; alias?: unknown } | undefined;
+  const pinnedSender =
+    pin && pin.resolved === true
+      ? typeof pin.sender === "string"
+        ? pin.sender
+        : typeof pin.alias === "string"
+          ? pin.alias
+          : null
+      : typeof payload.sender === "string"
+        ? payload.sender
+        : null;
+  const to = typeof payload.to === "string" ? payload.to : null;
+  const subject = typeof payload.subject === "string" ? payload.subject : null;
+  return (
+    <dl className="mb-3 grid gap-1 text-[13px]">
+      <div className="flex gap-2">
+        <dt className="w-14 shrink-0 text-muted-foreground">From</dt>
+        <dd>
+          {pinnedSender ?? "No sending account is bound to this revision - approving cannot send it. Revise it after connecting the account."}
+        </dd>
+      </div>
+      {to ? (
+        <div className="flex gap-2">
+          <dt className="w-14 shrink-0 text-muted-foreground">To</dt>
+          <dd>{to}</dd>
+        </div>
+      ) : null}
+      {subject ? (
+        <div className="flex gap-2">
+          <dt className="w-14 shrink-0 text-muted-foreground">Subject</dt>
+          <dd>{subject}</dd>
+        </div>
+      ) : null}
+      {pinnedSender ? (
+        <p className="text-xs text-muted-foreground">
+          {capability === "send_mail"
+            ? "Approving does not send. The approved draft waits for Send now on the contact page."
+            : "Approving sends this exact message once."}
+        </p>
+      ) : null}
+    </dl>
+  );
+}
+
 const riskLabel: Record<string, string> = {
   read: "Read",
   prepare: "Prepare",
@@ -137,6 +192,8 @@ function ProposalCard({
         {item.latestRevision ? ` · revision ${item.latestRevision.revisionNumber}` : " · no payload revision"}
         {item.expiresAt ? ` · expires ${formatTs(item.expiresAt)}` : ""}
       </p>
+
+      <SendSummary capability={item.capability} revision={item.latestRevision} />
 
       {item.latestRevision ? (
         <details className="mb-4 text-[13px]">

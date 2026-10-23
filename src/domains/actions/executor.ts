@@ -132,7 +132,9 @@ function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome |
   return null;
 }
 
-type Checked = Omit<Prepared, "connectedAccountId">;
+type AccountPin = { externalAccountId?: unknown; connectedAccountId?: unknown; resolved?: unknown };
+
+type Checked = Omit<Prepared, "connectedAccountId"> & { accountPin: AccountPin | null };
 
 /** Steps 1–4: every check that must pass before an intent key is claimed. */
 async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared> {
@@ -239,6 +241,7 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
       payload: parsed.data,
       accountAlias: proposal.accountAlias,
       runId: proposal.runId,
+      accountPin: ((revision.payload ?? {}) as { accountPin?: AccountPin }).accountPin ?? null,
     };
   });
 
@@ -246,6 +249,26 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // transaction because nothing it returns is written.
   const account = await resolveConnectedAccount(auth, checked.provider, checked.accountAlias ?? undefined);
   if (!account.ok) throw new SendNotAllowedError(account.message);
+  /*
+   * The approval pinned the exact sender identity - the external_accounts
+   * row and the provider's connected-account id - into the approved
+   * revision. Send only from that identity: a reconnect swaps the
+   * connected-account id in place, a default or selection change resolves
+   * the alias to a different row, and an approval written before pinning
+   * existed carries no pin. All three refuse; a fresh approval re-binds.
+   */
+  const pin = checked.accountPin;
+  if (
+    !pin ||
+    pin.resolved === false ||
+    typeof pin.externalAccountId !== "string" ||
+    typeof pin.connectedAccountId !== "string"
+  ) {
+    throw new SendNotAllowedError("This revision was written before a sending account was bound to it. Review and approve a fresh revision.");
+  }
+  if (pin.externalAccountId !== account.externalAccountId || pin.connectedAccountId !== account.connectedAccountId) {
+    throw new SendNotAllowedError("The sending account no longer matches the approved revision. Review and approve a fresh revision.");
+  }
 
   return { ...checked, connectedAccountId: account.connectedAccountId };
 }

@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
 import { auditEvents, requestReceipts } from "@/domains/audit/schema";
+import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -64,6 +65,67 @@ async function seedProposal(auth: ReturnType<typeof ownerAuth>, label: string) {
 }
 
 suite("decideProposal", () => {
+  it("a revision pins the exact sender identity at creation, and approval never rewrites it", async () => {
+    const auth = await seed("pin");
+    const [account] = await db
+      .insert(externalAccounts)
+      .values({
+        workspaceId: auth.workspaceId,
+        provider: "gmail",
+        alias: "work-gmail",
+        status: "active",
+        composioConnectedAccountId: `ca_${crypto.randomUUID()}`,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning();
+    const { proposal } = await seedProposal(auth, "pin");
+    await db.update(actionProposals).set({ accountAlias: "work-gmail" }).where(eq(actionProposals.id, proposal.id));
+
+    const revised = await commands.reviseProposal(auth, {
+      proposalId: proposal.id,
+      expectedVersion: proposal.version,
+      payload: { to: "priya@example.com", body: "revised wording" },
+      preview: { to: "priya@example.com" },
+    });
+    const [pinned] = await db.select().from(actionRevisions).where(eq(actionRevisions.id, revised.revisionId));
+    const expected = {
+      resolved: true,
+      externalAccountId: account.id,
+      connectedAccountId: account.composioConnectedAccountId,
+      alias: "work-gmail",
+      sender: "work-gmail",
+    };
+    expect((pinned.payload as Record<string, unknown>).accountPin).toEqual(expected);
+    expect((pinned.preview as Record<string, unknown>).accountPin).toEqual(expected);
+
+    // Approving binds the pinned revision unchanged: the decision writes no
+    // identity of its own and never mutates what the reviewer saw.
+    await commands.decideProposal(auth, {
+      proposalId: proposal.id,
+      expectedVersion: revised.version,
+      revisionId: revised.revisionId,
+      decision: "approved",
+    });
+    const [after] = await db.select().from(actionRevisions).where(eq(actionRevisions.id, revised.revisionId));
+    expect(after.payload).toEqual(pinned.payload);
+    expect(after.preview).toEqual(pinned.preview);
+  });
+
+  it("a revision written with no resolvable account pins resolved:false so execution must refuse", async () => {
+    const auth = await seed("pin-unresolved");
+    const { proposal } = await seedProposal(auth, "pin-unresolved");
+
+    const revised = await commands.reviseProposal(auth, {
+      proposalId: proposal.id,
+      expectedVersion: proposal.version,
+      payload: { to: "priya@example.com", body: "revised wording" },
+    });
+
+    const [pinned] = await db.select().from(actionRevisions).where(eq(actionRevisions.id, revised.revisionId));
+    expect((pinned.payload as Record<string, unknown>).accountPin).toEqual({ resolved: false, alias: null, provider: "gmail" });
+  });
+
   it("approving flips the status, writes the review, the audit row and the receipt in one transaction", async () => {
     const auth = await seed("decide-approve");
     const { proposal, revision } = await seedProposal(auth, "a1");

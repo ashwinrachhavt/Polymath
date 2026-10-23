@@ -7,7 +7,52 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { requireRole } from "@/lib/auth/guards";
+import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { actionReviews, actionRevisions } from "./schema";
+
+/*
+ * Capabilities whose execution sends through a connected provider account.
+ * Every revision of one pins the EXACT sender identity at creation time -
+ * the external_accounts row, the provider's connected-account id, and the
+ * owner-visible label - so the review card shows who would send BEFORE the
+ * decision, and the approval binds that unchanged revision. The executor
+ * refuses the effect when the live resolution no longer matches the pin,
+ * and refuses any revision that carries no pin at all.
+ */
+const ACCOUNT_PIN_PROVIDERS: Record<string, string> = { "gmail.send": "gmail" };
+
+export type SenderAccountPin =
+  | { resolved: true; externalAccountId: string; connectedAccountId: string; alias: string; sender: string }
+  | { resolved: false; alias: string | null; provider: string };
+
+/** Resolve the sender identity a revision of this capability would send from. */
+export async function senderAccountPin(
+  auth: AuthContext,
+  capability: string,
+  accountAlias: string | null,
+): Promise<SenderAccountPin | null> {
+  const provider = ACCOUNT_PIN_PROVIDERS[capability];
+  if (!provider) return null;
+  const resolved = await resolveConnectedAccount(auth, provider, accountAlias ?? undefined);
+  if (!resolved.ok) return { resolved: false, alias: accountAlias, provider };
+  return {
+    resolved: true,
+    externalAccountId: resolved.externalAccountId,
+    connectedAccountId: resolved.connectedAccountId,
+    alias: resolved.alias,
+    sender: resolved.displayName ?? resolved.alias,
+  };
+}
+
+/** Fold the pin into the payload (binding) and the preview (what the reviewer sees). */
+export function withSenderAccountPin(
+  pin: SenderAccountPin | null,
+  payload: Record<string, unknown>,
+  preview: Record<string, unknown> | null,
+): { payload: Record<string, unknown>; preview: Record<string, unknown> | null } {
+  if (!pin) return { payload, preview };
+  return { payload: { ...payload, accountPin: pin }, preview: { ...(preview ?? {}), accountPin: pin } };
+}
 
 
 /*
@@ -194,6 +239,7 @@ export async function decideProposal(
           note: input.note?.trim() || null,
           reviewedBy: auth.userId,
         });
+
         await recordAudit(
           auth,
           {
@@ -242,7 +288,13 @@ export async function reviseProposal(
       { op: "reviseProposal", ...input },
       async () => {
         const [proposal] = await tx
-          .select({ id: actionProposals.id, status: actionProposals.status, title: actionProposals.title })
+          .select({
+            id: actionProposals.id,
+            status: actionProposals.status,
+            title: actionProposals.title,
+            capability: actionProposals.capability,
+            accountAlias: actionProposals.accountAlias,
+          })
           .from(actionProposals)
           .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
           .limit(1);
@@ -269,14 +321,22 @@ export async function reviseProposal(
 
         const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
         const revisionNumber = (latest?.revisionNumber ?? 0) + 1;
+        // The pin is resolved as the revision is written, so the reviewer
+        // sees the exact sender before deciding; the approval then binds
+        // this revision unchanged.
+        const pinned = withSenderAccountPin(
+          await senderAccountPin(auth, proposal.capability, proposal.accountAlias),
+          input.payload as Record<string, unknown>,
+          (input.preview ?? null) as Record<string, unknown> | null,
+        );
         const [revision] = await tx
           .insert(actionRevisions)
           .values({
             workspaceId: auth.workspaceId,
             proposalId: input.proposalId,
             revisionNumber,
-            payload: input.payload as Record<string, unknown>,
-            preview: (input.preview ?? null) as Record<string, unknown> | null,
+            payload: pinned.payload,
+            preview: pinned.preview,
             createdBy: auth.userId,
           })
           .returning({ id: actionRevisions.id });

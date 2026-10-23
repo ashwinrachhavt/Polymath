@@ -131,16 +131,28 @@ export async function resolveConnectedAccount(
   provider: string,
   alias?: string,
 ): Promise<
-  | { ok: true; connectedAccountId: string; alias: string; accessTier: string; disabledCapabilities: string[] }
+  | {
+      ok: true;
+      connectedAccountId: string;
+      alias: string;
+      accessTier: string;
+      disabledCapabilities: string[];
+      /** The external_accounts row behind the alias, for approval pinning. */
+      externalAccountId: string;
+      /** The owner's registered label for the account, when set. */
+      displayName: string | null;
+    }
   | { ok: false; code: "not_connected" | "ambiguous"; message: string }
 > {
   const rows = await db
     .select({
+      id: externalAccounts.id,
       alias: externalAccounts.alias,
       status: externalAccounts.status,
       connectedAccountId: externalAccounts.composioConnectedAccountId,
       accessTier: externalAccounts.accessTier,
       disabledCapabilities: externalAccounts.disabledCapabilities,
+      displayName: externalAccounts.displayName,
     })
     .from(externalAccounts)
     .where(
@@ -181,6 +193,8 @@ export async function resolveConnectedAccount(
     ok: true,
     connectedAccountId: match.connectedAccountId,
     alias: match.alias,
+    externalAccountId: match.id,
+    displayName: match.displayName ?? null,
     accessTier: match.accessTier ?? "read_only",
     disabledCapabilities: (match.disabledCapabilities as string[]) ?? [],
   };
