@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useOptimistic, useRef, useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
@@ -77,8 +78,13 @@ export function WorkList({
   showQuickAdd: boolean;
   emptyState: React.ReactNode;
 }) {
+  const router = useRouter();
   const [optimisticItems, change] = useOptimistic(items, apply);
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
+  // unrecorded: a sentence the person typed for a completion that did not
+  // happen (the task's real state had already moved on). Never implied to be
+  // saved; kept visible so it can be copied, and kept in drafts so a later
+  // completion of a still-open task still has it.
+  const [error, setError] = useState<{ id: string; message: string; unrecorded?: string } | null>(null);
   // Completion asks the spec's question first: "what did you actually do?"
   // The sentence rides onto the day's stone when one is earned; answering is
   // optional - "Just complete" finishes with no sentence. The draft lives in
@@ -92,7 +98,12 @@ export function WorkList({
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
 
-  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; quartzEarned?: boolean }>, applyChange: Change, onError?: () => void) {
+  function run(
+    id: string,
+    fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean }>,
+    applyChange: Change,
+    onError?: (kind: "conflict" | "validation" | "retryable") => void,
+  ) {
     setError(null);
     startTransition(async () => {
       change(applyChange);
@@ -101,7 +112,7 @@ export function WorkList({
         if (!result.ok) {
           intent.current = null;
           setError({ id, message: result.error ?? "The write failed." });
-          onError?.();
+          onError?.(result.kind ?? "retryable");
         } else {
           intent.current = null;
           if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
@@ -109,7 +120,7 @@ export function WorkList({
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
         setError({ id, message: "Could not reach the server. Try again." });
-        onError?.();
+        onError?.("retryable");
       }
     });
   }
@@ -118,9 +129,20 @@ export function WorkList({
     event.preventDefault();
     const sentence = (drafts[id] ?? "").trim();
     setAsking(null);
-    // On failure the row returns and the question reopens; the draft map
-    // still holds the sentence, so nothing the person typed is lost.
-    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, () => setAsking(id));
+    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, (kind) => {
+      if (kind === "conflict") {
+        // The task already completed elsewhere: do not offer another
+        // completion - reconcile the list with the server, keep the typed
+        // sentence visible as NOT recorded, and hold the draft.
+        if (sentence) setError({ id, message: "This task was already completed.", unrecorded: sentence });
+        router.refresh();
+        return;
+      }
+      // Retryable or a rejected sentence: the row returns and the question
+      // reopens; the draft map still holds the sentence, so nothing the
+      // person typed is lost.
+      setAsking(id);
+    });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -244,7 +266,16 @@ export function WorkList({
                       Done
                     </Button>
                   </div>
-                  {error?.id === row.id ? <p role="alert" className="text-xs text-destructive">{error.message}</p> : null}
+                  {error?.id === row.id ? (
+                    <>
+                      <p role="alert" className="text-xs text-destructive">{error.message}</p>
+                      {error.unrecorded ? (
+                        <p className="max-w-xs text-right text-xs text-muted-foreground">
+                          Your sentence was not recorded: &quot;{error.unrecorded}&quot;
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               </div>

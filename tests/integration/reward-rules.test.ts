@@ -82,6 +82,23 @@ suite("reward rules", () => {
     expect(bySubject.get(second.id)?.completionNote).toBe("Wrote the retro notes.");
   });
 
+  it("a racing double completion writes exactly one audit row and one stone", async () => {
+    const auth = await seed("double-complete");
+    const task = await work.createOwnerTask(auth, { title: "Race me" });
+    const [a, b] = await Promise.all([
+      work.completeTask(auth, { taskId: task.id, sentence: "first click" }),
+      work.completeTask(auth, { taskId: task.id, sentence: "second click" }),
+    ]);
+    // The guarded UPDATE lets exactly one racer through; the other gets null.
+    expect([a, b].filter((r) => r !== null)).toHaveLength(1);
+    expect((await ledgerFor(auth.workspaceId))).toHaveLength(1);
+    const audits = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+    expect(audits).toHaveLength(1);
+  });
+
   it("a blank or missing answer records no sentence", async () => {
     const auth = await seed("completion-blank");
     const blank = await work.createOwnerTask(auth, { title: "Quiet" });

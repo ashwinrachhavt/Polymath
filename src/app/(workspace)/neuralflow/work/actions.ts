@@ -92,23 +92,31 @@ const completionSentence = z
   .max(280, "Keep the sentence under 280 characters.")
   .optional();
 
+export type CompleteTaskResult =
+  | { ok: true; quartzEarned: boolean }
+  // conflict: the task's real state already moved on - retrying the
+  // completion is wrong, the list should reconcile instead. validation: the
+  // sentence itself was rejected; editing and resubmitting is right.
+  | { ok: false; kind: "conflict" | "validation"; error: string };
+
 export async function completeTaskAction(
   taskId: string,
   sentence?: string,
-): Promise<{ ok: true; quartzEarned: boolean } | { ok: false; error: string }> {
+): Promise<CompleteTaskResult> {
   const parsed = z.string().uuid().safeParse(taskId);
-  if (!parsed.success) return { ok: false, error: "That task no longer exists." };
+  if (!parsed.success) return { ok: false, kind: "conflict", error: "That task no longer exists." };
   const noted = completionSentence.safeParse(sentence);
-  if (!noted.success) return { ok: false, error: noted.error.issues[0]?.message ?? "That sentence is too long." };
+  if (!noted.success) return { ok: false, kind: "validation", error: noted.error.issues[0]?.message ?? "That sentence is too long." };
 
   const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data, sentence: noted.data });
   revalidate(auth);
   // Already done leaves the row alone and says so, rather than pretending the
-  // second click did something.
+  // second click did something. The sentence was NOT recorded - the caller
+  // keeps the draft and says exactly that.
   return done
     ? { ok: true, quartzEarned: done.quartzEarned }
-    : { ok: false, error: "This task was already completed. Reload to see it." };
+    : { ok: false, kind: "conflict", error: "This task was already completed." };
 }
 
 /*
