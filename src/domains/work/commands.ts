@@ -236,7 +236,7 @@ export async function completeTask(
     // Whatever this task was blocking is no longer waiting on it. The audit
     // row records exactly which edges this completion settled, so a later
     // reopen undoes by identity, not by timestamp guesswork.
-    const settledEdgeIds = await settleBlockers(tx, auth, task.id, true);
+    const settledEdges = await settleBlockers(tx, auth, task.id, true);
 
     await recordAudit(
       auth,
@@ -245,7 +245,7 @@ export async function completeTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Completed task "${task.title}"`,
-        metadata: { settledEdgeIds },
+        metadata: { settledEdges },
       },
       tx,
     );
@@ -282,7 +282,11 @@ export async function completeTask(
  * stands; the reopen adds its own), and cannot undo an external effect
  * another system already felt.
  */
-export type ReopenOutcome = { id: string; from: "done" | "cancelled" } | "stale" | "not_terminal" | null;
+export type ReopenOutcome =
+  | { id: string; from: "done" | "cancelled"; skippedChangedEdges: number }
+  | "stale"
+  | "not_terminal"
+  | null;
 
 export async function reopenTask(
   auth: AuthContext,
@@ -322,7 +326,10 @@ export async function reopenTask(
     if (!task) return "stale";
 
     // Exact attribution: the latest terminal audit event names the edges its
-    // transition settled. Undo those - only those, and only if still resolved.
+    // transition settled and the version each edge carried right after. An
+    // edge is undone only when its CURRENT version still matches that token -
+    // any later touch (another resolve, an edit) bumps the version, and a
+    // changed edge is refused as ambiguous rather than silently unre-resolved.
     const [terminal] = await tx
       .select({ metadata: auditEvents.metadata })
       .from(auditEvents)
@@ -332,23 +339,30 @@ export async function reopenTask(
           eq(auditEvents.subjectType, "task"),
           eq(auditEvents.subjectId, task.id),
           inArray(auditEvents.action, ["task.completed", "task.updated"]),
-          sql`${auditEvents.metadata} -> 'settledEdgeIds' is not null`,
+          sql`${auditEvents.metadata} -> 'settledEdges' is not null`,
         ),
       )
       .orderBy(desc(auditEvents.createdAt))
       .limit(1);
-    const settledEdgeIds = (terminal?.metadata as { settledEdgeIds?: unknown } | null)?.settledEdgeIds;
+    const settledEdges = (terminal?.metadata as { settledEdges?: unknown } | null)?.settledEdges;
     const unsettled: string[] = [];
-    if (Array.isArray(settledEdgeIds) && settledEdgeIds.length > 0) {
-      const rows = await tx.execute(sql`
-        update task_dependencies
-           set resolved_at = null, updated_at = now(), updated_by = ${auth.userId},
-               version = version + 1
-         where workspace_id = ${auth.workspaceId}
-           and id in (${sql.join(settledEdgeIds.map((id) => sql`${id}::uuid`), sql`, `)})
-           and resolved_at is not null
-         returning id`);
-      unsettled.push(...(rows as unknown as Array<{ id: string }>).map((r) => r.id));
+    const skippedChanged: string[] = [];
+    if (Array.isArray(settledEdges)) {
+      for (const entry of settledEdges) {
+        const e = entry as { id?: unknown; version?: unknown };
+        if (typeof e.id !== "string" || typeof e.version !== "number") continue;
+        const rows = await tx.execute(sql`
+          update task_dependencies
+             set resolved_at = null, updated_at = now(), updated_by = ${auth.userId},
+                 version = version + 1
+           where workspace_id = ${auth.workspaceId}
+             and id = ${e.id}::uuid
+             and version = ${e.version}
+             and resolved_at is not null
+           returning id`);
+        if ((rows as unknown as Array<{ id: string }>).length > 0) unsettled.push(e.id);
+        else skippedChanged.push(e.id);
+      }
     }
 
     const from = before.status as "done" | "cancelled";
@@ -359,10 +373,10 @@ export async function reopenTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Reopened task "${before.title}" (was ${from})`,
-        metadata: { from, unsettledEdgeIds: unsettled },
+        metadata: { from, unsettledEdgeIds: unsettled, skippedChangedEdgeIds: skippedChanged },
       },
       tx,
     );
-    return { id: task.id, from };
+    return { id: task.id, from, skippedChangedEdges: skippedChanged.length };
   });
 }

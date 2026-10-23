@@ -68,18 +68,22 @@ async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Re
   await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic, payload });
 }
 
+export type SettledEdge = { id: string; version: number };
+
 /**
  * Mark edges this task was blocking as resolved (or unresolved on reopen).
- * Returns the affected edge ids so the caller can record exactly which
- * edges its transition settled - reopenTask later undoes by that recorded
- * identity, never by timestamp guesswork.
+ * Returns the affected edges with their post-touch version so the caller
+ * can record exactly what its transition did: the version is an integer
+ * compare-token, bumped on every later touch of the edge, which lets a
+ * reopen prove the edge was not resolved by some other path since - and
+ * refuse the undo when it cannot prove that.
  */
 export async function settleBlockers(
   tx: TxDrizzle,
   auth: AuthContext,
   taskId: string,
   done: boolean,
-): Promise<string[]> {
+): Promise<SettledEdge[]> {
   const rows = await tx.execute(sql`
     update task_dependencies
        set resolved_at = ${done ? sql`now()` : sql`null`}, updated_at = now(), updated_by = ${auth.userId},
@@ -87,8 +91,8 @@ export async function settleBlockers(
      where workspace_id = ${auth.workspaceId}
        and ((kind = 'blocks' and task_id = ${taskId}) or (kind = 'blocked_by' and depends_on_task_id = ${taskId}))
        and (resolved_at is not null) <> ${done}
-       returning id`);
-  return (rows as unknown as Array<{ id: string }>).map((r) => r.id);
+       returning id, version`);
+  return rows as unknown as SettledEdge[];
 }
 
 /** Patch a task if `expectedVersion` still matches; the row's version is the guard. */
@@ -174,7 +178,7 @@ export async function updateTask(
           subjectType: "task",
           subjectId: row.id,
           summary: `Updated task "${row.title}" (${changed.join(", ")})`,
-          metadata: { fields: changed, version: row.version, ...(terminalizing ? { settledEdgeIds } : {}) },
+          metadata: { fields: changed, version: row.version, ...(terminalizing ? { settledEdges: settledEdgeIds } : {}) },
         },
         tx,
       );

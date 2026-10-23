@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
 import { rewardLedger } from "@/domains/gamification/schema";
@@ -46,12 +46,12 @@ suite("reopenTask - undo for terminal transitions", () => {
     const { id } = await work.createOwnerTask(a, { title: "Ship the draft" });
     await work.completeTask(a, { taskId: id });
     const result = await work.reopenTask(a, { taskId: id, expectedVersion: 2 });
-    expect(result).toEqual({ id, from: "done" });
+    expect(result).toEqual({ id, from: "done", skippedChangedEdges: 0 });
     const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
     expect(row.status).toBe("ready");
     expect(row.completedAt).toBeNull();
     const [audit] = await reopenAudits(id);
-    expect(audit.metadata).toMatchObject({ from: "done", unsettledEdgeIds: [] });
+    expect(audit.metadata).toMatchObject({ from: "done", unsettledEdgeIds: [], skippedChangedEdgeIds: [] });
   });
 
   it("reopens a cancelled task, undoing exactly the edges its cancellation settled", async () => {
@@ -62,7 +62,7 @@ suite("reopenTask - undo for terminal transitions", () => {
     await cmd.updateTask(a, { taskId: blocker, expectedVersion: 1, idempotencyKey: key(), patch: { status: "cancelled" } });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     const result = await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 });
-    expect(result).toEqual({ id: blocker, from: "cancelled" });
+    expect(result).toEqual({ id: blocker, from: "cancelled", skippedChangedEdges: 0 });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(1);
     const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
     expect(edge.resolvedAt).toBeNull();
@@ -77,12 +77,12 @@ suite("reopenTask - undo for terminal transitions", () => {
     const { id: blocked } = await work.createOwnerTask(a, { title: "Linked later" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done" });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
     const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
     expect(edge.resolvedAt).not.toBeNull();
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     const [audit] = await reopenAudits(blocker);
-    expect(audit.metadata).toMatchObject({ unsettledEdgeIds: [] });
+    expect(audit.metadata).toMatchObject({ unsettledEdgeIds: [], skippedChangedEdgeIds: [] });
   });
 
   it("un-settles only the edges the latest terminal transition settled", async () => {
@@ -93,7 +93,7 @@ suite("reopenTask - undo for terminal transitions", () => {
     await work.completeTask(a, { taskId: blocker }); // settles the early edge
     const { id: late } = await work.createOwnerTask(a, { title: "Late edge" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: late, kind: "blocks", idempotencyKey: key() }); // resolved by insert rule
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done" });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
     expect((await queries.getTaskDetail(a, early))?.blockedBy).toHaveLength(1); // un-settled
     expect((await queries.getTaskDetail(a, late))?.blockedBy).toHaveLength(0); // untouched
     const edges = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
@@ -110,7 +110,7 @@ suite("reopenTask - undo for terminal transitions", () => {
     // re-sends status "done". That re-save is not a transition and must not
     // overwrite the attribution with an empty set.
     await cmd.updateTask(a, { taskId: blocker, expectedVersion: 2, idempotencyKey: key(), patch: { title: "Gate (renamed)", status: "done" } });
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 3 })).toEqual({ id: blocker, from: "done" });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 3 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(1);
   });
 
@@ -128,6 +128,26 @@ suite("reopenTask - undo for terminal transitions", () => {
     expect(row.status).toBe("done");
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     expect(await reopenAudits(blocker)).toHaveLength(1); // only the first, live reopen
+  });
+
+  it("same named edge re-resolved by another path: the undo refuses that edge", async () => {
+    const { a, workspaceId } = await setup("same-edge");
+    const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
+    const { id: blocked } = await work.createOwnerTask(a, { title: "Behind" });
+    await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
+    await work.completeTask(a, { taskId: blocker }); // names the edge at its post-settle version
+    // Another path touches the SAME edge since (simulated out-of-band: any
+    // resolve/edit bumps the edge version). The recorded token no longer
+    // matches, so the reopen must refuse that edge rather than undo a
+    // resolution it cannot attribute to its own transition.
+    await db.execute(sql`update task_dependencies set resolved_at = now(), version = version + 1 where workspace_id = ${workspaceId}`);
+    const result = await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 });
+    expect(result).toEqual({ id: blocker, from: "done", skippedChangedEdges: 1 });
+    const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
+    expect(edge.resolvedAt).not.toBeNull(); // left exactly as it is
+    expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
+    const [audit] = await reopenAudits(blocker);
+    expect(audit.metadata).toMatchObject({ unsettledEdgeIds: [], skippedChangedEdgeIds: [edge.id] });
   });
 
   it("refuses a task that is not terminal and records nothing", async () => {
@@ -175,7 +195,7 @@ suite("reopenTask - undo for terminal transitions", () => {
     expect(stonesAfterFirst).toBe(1);
 
     // Reopening itself writes no ledger row: scoped undo, not history edits.
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done" });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
     expect(await ledgerCount()).toBe(stonesAfterFirst);
 
     const second = await work.completeTask(a, { taskId: blocker });

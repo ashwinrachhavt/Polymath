@@ -111,7 +111,7 @@ export async function completeTaskAction(
 export async function reopenTaskAction(
   taskId: string,
   expectedVersion: number,
-): Promise<{ ok: true; from: "done" | "cancelled" } | { ok: false; error: string }> {
+): Promise<{ ok: true; from: "done" | "cancelled"; note: string | null } | { ok: false; error: string }> {
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return { ok: false, error: "That task no longer exists." };
@@ -120,7 +120,15 @@ export async function reopenTaskAction(
   const auth = await authorize();
   const reopened = await reopenTask(auth, { taskId: parsed.data, expectedVersion });
   revalidate(auth);
-  if (reopened && reopened !== "stale" && reopened !== "not_terminal") return { ok: true, from: reopened.from };
+  if (reopened && reopened !== "stale" && reopened !== "not_terminal") {
+    // Scoped undo, said out loud: an edge that changed since the completion
+    // is left exactly as it is, and the user hears that.
+    const note =
+      reopened.skippedChangedEdges > 0
+        ? `Reopened. ${reopened.skippedChangedEdges} blocker link${reopened.skippedChangedEdges === 1 ? "" : "s"} changed since completion and ${reopened.skippedChangedEdges === 1 ? "was" : "were"} left as-is.`
+        : null;
+    return { ok: true, from: reopened.from, note };
+  }
   if (reopened === "stale") {
     // ABA defense: the view saw an older transition. Undoing it would revert
     // a newer reopen-and-recomplete the clicker never saw.

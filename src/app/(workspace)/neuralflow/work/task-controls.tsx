@@ -109,6 +109,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
   const rmRun = useRun();
   const toggleRun = useRun();
   const reopenRun = useRun();
+  const [reopenNote, setReopenNote] = useState<string | null>(null);
   const [subTitle, setSubTitle] = useState("");
   const [otherId, setOtherId] = useState("");
   const [kind, setKind] = useState<"blocked_by" | "blocks">("blocked_by");
@@ -185,15 +186,24 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             type="button"
             variant="outline"
             disabled={reopenRun.pending}
-            onClick={() => reopenRun.run(save, () => reopenTaskAction(data.id, data.version))}
+            onClick={() =>
+              reopenRun.run(save, async () => {
+                const r = await reopenTaskAction(data.id, data.version);
+                if (r.ok) setReopenNote(r.note);
+                return r;
+              })
+            }
           >
             Reopen task
           </Button>
           {/* Undo the terminal transition, not history: the stone and the
-              audit trail stay on record. */}
+              audit trail stay on record, external effects cannot be undone,
+              and a blocker link that changed since stays exactly as it is. */}
           <p className="text-xs text-muted-foreground">
-            Back to Ready. Any stone earned and the history stay on record.
+            Back to Ready. Any stone earned and the history stay on record. Blockers its completion released wait on
+            it again; a link that changed since stays as it is.
           </p>
+          {reopenNote ? <p className="text-xs text-muted-foreground">{reopenNote}</p> : null}
           <ErrorLine error={reopenRun.error} />
         </section>
       ) : null}
