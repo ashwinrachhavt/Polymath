@@ -206,16 +206,40 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
 });
 
+/*
+ * The IA simplification removed seven rail destinations. Six keep a redirect
+ * bridge to the screen that absorbed their function (query params dropped);
+ * Learning's route was deleted entirely, so its address 404s with the same
+ * noindex not-found state as any unknown screen.
+ */
+test("removed IA destinations redirect to their new homes, or 404 when the route is gone", async ({ page }) => {
+  for (const [from, to] of [
+    ["/alfred/sources", "/alfred/dossiers"],
+    ["/alfred/wiki", "/alfred/knowledge"],
+    ["/alfred/notebook", "/alfred/notes"],
+    ["/command-center/spending", "/command-center/briefing?tab=spending"],
+    ["/command-center/opportunities", "/command-center/relationships/people"],
+    ["/neuralflow/focus", "/neuralflow/work"],
+  ] as const) {
+    await page.goto(`${from}?stale=param`);
+    await expect(page, from).toHaveURL(to);
+  }
+  await page.goto("/alfred/learning");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
+  await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
+});
+
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/neuralflow/focus", "/alfred/knowledge", "/alfred/notes"]) {
+  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
     await page.goto(path);
     // Axe must evaluate the settled page: the topbar buttons sit at
     // disabled:opacity-50 until hydration and transition to full opacity,
     // and axe composites whatever it samples through in-flight opacity.
     await waitSettled(page);
     // The notebook leg scans the canonical surface (B04); its rich-editor
-    // toolbar only mounts with a note open, so no editor landmark here.
+    // toolbar only mounts with a note open, so no editor landmark here. The
+    // artifacts leg scans the rail's kept-outputs list (IA simplification).
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
   }

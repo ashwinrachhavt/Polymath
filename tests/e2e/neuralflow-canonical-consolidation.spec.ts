@@ -29,32 +29,26 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "More tools", exact: true }).getByRole("link", { name: "Stone collection" })).toHaveAttribute("href", "/apps/neuralflow/rewards");
 });
 
-test("a canonical task deep link opens its detail and starts a task-linked focus session", async ({ page }) => {
+test("a canonical task deep link opens its detail and offers the focus entry point on Work", async ({ page }) => {
   const title = `Focus linked ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=saved");
   await waitSettled(page);
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
+  // A new task ranks to the end of the list, which on a long-lived workspace
+  // is past the first page; the search filter narrows the view to the row.
+  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
+  // The debounced search narrows the view to the new row.
+  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   await page.getByRole("link", { name: title, exact: true }).click();
-  await expect(page).toHaveURL(/\/neuralflow\/work\?view=saved&task=[0-9a-f-]{36}/);
+  await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
+  // Focus left the rail (IA simplification): the detail panel owns the focus
+  // entry point and the session history, and the focus address itself is a
+  // redirect bridge back to Work (query dropped).
+  await expect(page.getByText("Focus history", { exact: true })).toBeVisible();
+  await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Start a focus session" }).click();
-  await expect(page).toHaveURL(/\/neuralflow\/focus\?task=[0-9a-f-]{36}/);
-  // The session is linked to the canonical task, not to pasted preview text.
-  await expect(page.getByText(title).first()).toBeVisible();
-  await page.getByRole("button", { name: "Start focus", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
-  // The server owns the session: it survives a reload.
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
-  await page.getByRole("textbox", { name: /What changed/ }).fill("Drafted the outline");
-  await page.getByRole("textbox", { name: /Next step/ }).fill("Fill in section two");
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
-  // The resume record lands on the task's focus history.
-  await page.goto("/neuralflow/work?view=saved");
-  await page.getByRole("link", { name: title, exact: true }).click();
-  await expect(page.getByText(/Drafted the outline/)).toBeVisible();
-  await expect(page.getByText(/Fill in section two/)).toBeVisible();
+  await expect(page).toHaveURL(/\/neuralflow\/work$/);
 });
 
 

@@ -36,8 +36,9 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/alfred")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge/document-id")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/notes")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/artifacts")).toBe(false);
     expect(isBrowserPreviewPath("/neuralflow/work")).toBe(false);
-    expect(isBrowserPreviewPath("/neuralflow/focus")).toBe(false);
     expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
     expect(isBrowserPreviewPath("/reviews")).toBe(false);
@@ -76,5 +77,27 @@ describe("navigation", () => {
     expect(destinations[0].href).toBe("/alfred");
     expect(destinations[0].label).toBe("Assistant");
     expect(destinations[1].href).toBe("/command-center/briefing");
+  });
+
+  /*
+   * The IA simplification removed seven destinations from the rail. Their
+   * hrefs must be gone (Dossiers was renamed to Notebook, so "Notebook" the
+   * label lives on at /alfred/dossiers; the removed destinations are known by
+   * their addresses). The /apps preview tools keep their donor labels; only
+   * the rail governs.
+   */
+  it("keeps the seven removed destinations off the rail", () => {
+    const removedHrefs = ["/alfred/sources", "/alfred/wiki", "/alfred/learning", "/command-center/spending", "/command-center/opportunities", "/neuralflow/focus", "/alfred/notebook"];
+    for (const destination of destinations) {
+      expect(removedHrefs, destination.href).not.toContain(destination.href);
+    }
+  });
+
+  it("rails exactly the simplified sixteen destinations in order", () => {
+    expect(destinations.map((destination) => destination.label)).toEqual([
+      "Assistant", "Today", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
+      "Artifacts", "Skills", "People", "Companies", "Conversations", "Connectors",
+      "Reviews", "Activity", "Settings",
+    ]);
   });
 });
