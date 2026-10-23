@@ -70,25 +70,25 @@ async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Re
 
 /**
  * Mark edges this task was blocking as resolved (or unresolved on reopen).
- * `resolvedAtOrBefore` scopes an un-settle to the edges this task's own
- * terminalization settled: an edge recorded resolved another way (linked
- * against an already-done blocker) is not this transition's to undo.
+ * Returns the affected edge ids so the caller can record exactly which
+ * edges its transition settled - reopenTask later undoes by that recorded
+ * identity, never by timestamp guesswork.
  */
 export async function settleBlockers(
   tx: TxDrizzle,
   auth: AuthContext,
   taskId: string,
   done: boolean,
-  resolvedAtOrBefore?: Date,
-) {
-  await tx.execute(sql`
+): Promise<string[]> {
+  const rows = await tx.execute(sql`
     update task_dependencies
        set resolved_at = ${done ? sql`now()` : sql`null`}, updated_at = now(), updated_by = ${auth.userId},
            version = version + 1
      where workspace_id = ${auth.workspaceId}
        and ((kind = 'blocks' and task_id = ${taskId}) or (kind = 'blocked_by' and depends_on_task_id = ${taskId}))
        and (resolved_at is not null) <> ${done}
-       ${resolvedAtOrBefore ? sql`and resolved_at <= ${resolvedAtOrBefore.toISOString()}` : sql``}`);
+       returning id`);
+  return (rows as unknown as Array<{ id: string }>).map((r) => r.id);
 }
 
 /** Patch a task if `expectedVersion` still matches; the row's version is the guard. */
@@ -149,8 +149,11 @@ export async function updateTask(
       }
 
       if (finishing) await recordDailyQuartz(tx, auth, row.id);
-      if (p.status === "done" || p.status === "cancelled") await settleBlockers(tx, auth, row.id, true);
-      else if (p.status !== undefined) await settleBlockers(tx, auth, row.id, false);
+      // A terminal transition records exactly which edges it settled, so a
+      // later reopen undoes by identity rather than by timestamp guesswork.
+      const terminalizing = p.status === "done" || p.status === "cancelled";
+      const settledEdgeIds = terminalizing ? await settleBlockers(tx, auth, row.id, true) : undefined;
+      if (p.status !== undefined && !terminalizing) await settleBlockers(tx, auth, row.id, false);
 
       const changed = Object.keys(p).filter((k) => (p as Record<string, unknown>)[k] !== undefined);
       await recordAudit(
@@ -160,7 +163,7 @@ export async function updateTask(
           subjectType: "task",
           subjectId: row.id,
           summary: `Updated task "${row.title}" (${changed.join(", ")})`,
-          metadata: { fields: changed, version: row.version },
+          metadata: { fields: changed, version: row.version, ...(settledEdgeIds ? { settledEdgeIds } : {}) },
         },
         tx,
       );

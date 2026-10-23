@@ -1,5 +1,6 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { auditEvents } from "@/domains/audit/schema";
 import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
@@ -232,8 +233,10 @@ export async function completeTask(
     // there was no change to record.
     if (!task) return null;
 
-    // Whatever this task was blocking is no longer waiting on it.
-    await settleBlockers(tx, auth, task.id, true);
+    // Whatever this task was blocking is no longer waiting on it. The audit
+    // row records exactly which edges this completion settled, so a later
+    // reopen undoes by identity, not by timestamp guesswork.
+    const settledEdgeIds = await settleBlockers(tx, auth, task.id, true);
 
     await recordAudit(
       auth,
@@ -242,6 +245,7 @@ export async function completeTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Completed task "${task.title}"`,
+        metadata: { settledEdgeIds },
       },
       tx,
     );
@@ -254,35 +258,54 @@ export async function completeTask(
 
 /**
  * Undo a terminal transition (Product Spec: "Undo for every terminal
- * transition"). The row's own guard carries the current status, so only a
- * done or cancelled task reopens, a double-click is a no-op, and a task
- * reopened in another tab comes back `null` for the caller to say so.
- * Reopening lands the task in `ready` - the prior open state is not
- * recorded anywhere, and inventing one would be a lie.
+ * transition"). Two guards, both on the row itself: the task must be done or
+ * cancelled, and its version must still be the one the caller saw. The
+ * version guard is the ABA defense - a stale "done" view cannot undo a
+ * newer reopen-and-recomplete cycle it never saw. Reopening lands the task
+ * in `ready` - the prior open state is not recorded anywhere, and inventing
+ * one would be a lie.
+ *
+ * Which blocker edges a reopen un-settles is decided by identity, not by
+ * timestamp: every terminalization records the exact edge ids it settled in
+ * its audit row, and the reopen undoes the edges the LATEST terminal audit
+ * event named. An edge resolved any other way - linked against the task
+ * while it was already terminal, for example - was never named and is never
+ * touched. A task terminalized before this attribution existed has no named
+ * edges; its reopen leaves every edge alone rather than guess.
  *
  * Scope of the undo, honestly: the task row, its completedAt, and the
- * blocker edges its completion resolved. It does NOT reclaim an earned
- * stone (the ledger is append-only), does NOT rewrite the audit history
- * (the completion row stands; the reopen adds its own), and cannot undo an
- * external effect another system already felt.
+ * blocker edges its own terminalization settled. It does NOT reclaim an
+ * earned stone (the ledger is append-only - the daily-stone idempotency key
+ * refuses a second award the same day; a re-completion on a later day earns
+ * that day's first-completion stone, exactly as completing any other task
+ * that day would), does NOT rewrite the audit history (the terminal row
+ * stands; the reopen adds its own), and cannot undo an external effect
+ * another system already felt.
  */
+export type ReopenOutcome = { id: string; from: "done" | "cancelled" } | "stale" | "not_terminal" | null;
+
 export async function reopenTask(
   auth: AuthContext,
-  input: { taskId: string },
-): Promise<{ id: string; from: "done" | "cancelled" } | null> {
+  input: { taskId: string; expectedVersion: number },
+): Promise<ReopenOutcome> {
   return withTransaction(async (tx) => {
     const [before] = await tx
-      .select({ status: tasks.status, title: tasks.title, completedAt: tasks.completedAt, cancelledAt: tasks.cancelledAt })
+      .select({ status: tasks.status, version: tasks.version, title: tasks.title })
       .from(tasks)
       .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
       .limit(1);
-    if (!before || (before.status !== "done" && before.status !== "cancelled")) return null;
+    if (!before) return null;
+    if (before.status !== "done" && before.status !== "cancelled") return "not_terminal";
+    if (before.version !== input.expectedVersion) return "stale";
 
+    // The row's own guard re-checks status and version inside the UPDATE, so
+    // a concurrent reopen or patch between the read and the write loses here.
     const [task] = await tx
       .update(tasks)
       .set({
         status: "ready",
         completedAt: null,
+        cancelledAt: null,
         updatedAt: new Date(),
         updatedBy: auth.userId,
         version: sql`${tasks.version} + 1`,
@@ -291,36 +314,55 @@ export async function reopenTask(
         and(
           eq(tasks.id, input.taskId),
           eq(tasks.workspaceId, auth.workspaceId),
+          eq(tasks.version, input.expectedVersion),
           inArray(tasks.status, ["done", "cancelled"]),
         ),
       )
       .returning({ id: tasks.id });
-    // Lost the race to another reopen (or a concurrent patch): nothing to record.
-    if (!task) return null;
+    if (!task) return "stale";
 
-    // Whatever this task's own terminalization resolved waits on it again.
-    // Edges resolved another way (linked against the task while it was
-    // already done or cancelled) are not this transition's to undo and stay
-    // resolved. The terminal timestamp anchors that scope; a one-second
-    // margin covers JS-vs-database clock skew inside the settling
-    // transaction, nothing more. A terminal row without its timestamp is a
-    // data surprise - skip the un-settle rather than guess.
-    const terminalAt = before.status === "done" ? before.completedAt : before.cancelledAt;
-    if (terminalAt) {
-      await settleBlockers(tx, auth, task.id, false, new Date(terminalAt.getTime() + 1000));
+    // Exact attribution: the latest terminal audit event names the edges its
+    // transition settled. Undo those - only those, and only if still resolved.
+    const [terminal] = await tx
+      .select({ metadata: auditEvents.metadata })
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.subjectType, "task"),
+          eq(auditEvents.subjectId, task.id),
+          inArray(auditEvents.action, ["task.completed", "task.updated"]),
+          sql`${auditEvents.metadata} -> 'settledEdgeIds' is not null`,
+        ),
+      )
+      .orderBy(desc(auditEvents.createdAt))
+      .limit(1);
+    const settledEdgeIds = (terminal?.metadata as { settledEdgeIds?: unknown } | null)?.settledEdgeIds;
+    const unsettled: string[] = [];
+    if (Array.isArray(settledEdgeIds) && settledEdgeIds.length > 0) {
+      const rows = await tx.execute(sql`
+        update task_dependencies
+           set resolved_at = null, updated_at = now(), updated_by = ${auth.userId},
+               version = version + 1
+         where workspace_id = ${auth.workspaceId}
+           and id in (${sql.join(settledEdgeIds.map((id) => sql`${id}::uuid`), sql`, `)})
+           and resolved_at is not null
+         returning id`);
+      unsettled.push(...(rows as unknown as Array<{ id: string }>).map((r) => r.id));
     }
 
+    const from = before.status as "done" | "cancelled";
     await recordAudit(
       auth,
       {
         action: "task.reopened",
         subjectType: "task",
         subjectId: task.id,
-        summary: `Reopened task "${before.title}" (was ${before.status})`,
-        metadata: { from: before.status },
+        summary: `Reopened task "${before.title}" (was ${from})`,
+        metadata: { from, unsettledEdgeIds: unsettled },
       },
       tx,
     );
-    return { id: task.id, from: before.status as "done" | "cancelled" };
+    return { id: task.id, from };
   });
 }

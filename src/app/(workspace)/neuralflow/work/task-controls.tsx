@@ -185,7 +185,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             type="button"
             variant="outline"
             disabled={reopenRun.pending}
-            onClick={() => reopenRun.run(save, () => reopenTaskAction(data.id))}
+            onClick={() => reopenRun.run(save, () => reopenTaskAction(data.id, data.version))}
           >
             Reopen task
           </Button>

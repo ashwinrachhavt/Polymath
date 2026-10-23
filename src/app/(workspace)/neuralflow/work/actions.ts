@@ -110,16 +110,24 @@ export async function completeTaskAction(
  */
 export async function reopenTaskAction(
   taskId: string,
+  expectedVersion: number,
 ): Promise<{ ok: true; from: "done" | "cancelled" } | { ok: false; error: string }> {
   const parsed = z.string().uuid().safeParse(taskId);
-  if (!parsed.success) return { ok: false, error: "That task no longer exists." };
+  if (!parsed.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return { ok: false, error: "That task no longer exists." };
+  }
 
   const auth = await authorize();
-  const reopened = await reopenTask(auth, { taskId: parsed.data });
+  const reopened = await reopenTask(auth, { taskId: parsed.data, expectedVersion });
   revalidate(auth);
-  return reopened
-    ? { ok: true, from: reopened.from }
-    : { ok: false, error: "Only a completed or cancelled task can be reopened." };
+  if (reopened && reopened !== "stale" && reopened !== "not_terminal") return { ok: true, from: reopened.from };
+  if (reopened === "stale") {
+    // ABA defense: the view saw an older transition. Undoing it would revert
+    // a newer reopen-and-recomplete the clicker never saw.
+    return { ok: false, error: "This task changed since you loaded it. Reload to see the latest." };
+  }
+  if (reopened === "not_terminal") return { ok: false, error: "Only a completed or cancelled task can be reopened." };
+  return { ok: false, error: "That task no longer exists." };
 }
 
 /*
