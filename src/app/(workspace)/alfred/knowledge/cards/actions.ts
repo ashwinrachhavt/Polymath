@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { acceptCard, proposeCard, resumeCard, retireCard, reviewCard, suspendCard } from "@/domains/knowledge/cards";
+import { listCardSources } from "@/domains/knowledge/card-queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -70,6 +71,13 @@ export async function retireCardAction(input: unknown) {
   const auth = await authorize();
   await retireCard(auth, parsed);
   revalidate();
+}
+
+/** Source picker search: read-only, member-gated like the rest of the surface. */
+export async function searchCardSourcesAction(query: unknown) {
+  const parsed = z.string().trim().max(200).parse(query);
+  const auth = await authorize();
+  return listCardSources(auth, { query: parsed, limit: 20 });
 }
 
 export async function reviewCardAction(input: unknown) {

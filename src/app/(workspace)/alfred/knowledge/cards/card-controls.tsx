@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { acceptCardAction, proposeCardAction, resumeCardAction, retireCardAction, suspendCardAction } from "./actions";
+import { acceptCardAction, proposeCardAction, resumeCardAction, retireCardAction, searchCardSourcesAction, suspendCardAction } from "./actions";
 
 /*
  * The decision controls for one card, and the new-card form. One shared error
@@ -79,19 +80,58 @@ export function CardControls({ cardId, expectedVersion, state }: ControlProps) {
   );
 }
 
-export function NewCardForm({ sources }: { sources: Array<{ id: string; title: string; kind: string }> }) {
+type Source = { id: string; title: string; kind: string };
+
+export function NewCardForm({ sources }: { sources: Source[] }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
+  // The picker starts from the 50 most recent sources; searching asks the
+  // server by title, so an older note is still reachable.
+  const [options, setOptions] = useState<Source[]>(sources);
+  const [sourceQuery, setSourceQuery] = useState("");
   const [artifactId, setArtifactId] = useState(sources[0]?.id ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorId = useId();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Minted once per filled form: a retried submit replays instead of
   // double-creating; a successfully created card resets the key with the form.
   const keyRef = useRef(crypto.randomUUID());
 
-  if (sources.length === 0) return null;
+  if (sources.length === 0) {
+    return (
+      <p className="text-[13px] text-muted-foreground">
+        A card cites the note or zettel it came from.{" "}
+        <Link href="/alfred/notes" className="underline-offset-2 hover:underline">
+          Write a note first
+        </Link>
+        , then propose its card here.
+      </p>
+    );
+  }
+
+  function onSourceQuery(value: string) {
+    setSourceQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!value.trim()) {
+      // Cleared search restores the initial page of sources, no round trip.
+      setOptions(sources);
+      if (!sources.some((source) => source.id === artifactId)) setArtifactId(sources[0]?.id ?? "");
+      return;
+    }
+    searchTimer.current = setTimeout(() => {
+      void searchCardSourcesAction(value)
+        .then((found) => {
+          setOptions(found);
+          // No match must not leave a hidden selection propping up Propose.
+          if (!found.some((source) => source.id === artifactId)) setArtifactId(found[0]?.id ?? "");
+        })
+        .catch(() => {
+          /* a failed search keeps the current options; proposing is unaffected */
+        });
+    }, 250);
+  }
 
   async function submit() {
     setPending(true);
@@ -123,13 +163,21 @@ export function NewCardForm({ sources }: { sources: Array<{ id: string; title: s
         <Input aria-label="Answer" placeholder="Answer" value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={4000} required />
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="Find a source note"
+          placeholder="Find a source note"
+          value={sourceQuery}
+          onChange={(e) => onSourceQuery(e.target.value)}
+          className="h-9 w-48 text-[13px]"
+          type="search"
+        />
         <select
           aria-label="Source note"
           className="border-input bg-background h-9 rounded-md border px-2 text-[13px]"
           value={artifactId}
           onChange={(e) => setArtifactId(e.target.value)}
         >
-          {sources.map((source) => (
+          {options.map((source) => (
             <option key={source.id} value={source.id}>
               {source.title}
             </option>

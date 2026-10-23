@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -43,11 +43,17 @@ async function sourceInWorkspace(
   auth: AuthContext,
   artifactId: string,
   claimId?: string | null,
-) {
+): Promise<string> {
   const [source] = await tx
-    .select({ id: artifacts.id })
+    .select({ id: artifacts.id, title: artifacts.title })
     .from(artifacts)
-    .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+    .where(
+      and(
+        eq(artifacts.id, artifactId),
+        eq(artifacts.workspaceId, auth.workspaceId),
+        isNull(artifacts.archivedAt),
+      ),
+    )
     .limit(1);
   if (!source) throw new CardError("source_not_found", "That note does not exist in this workspace.");
   if (claimId) {
@@ -58,6 +64,7 @@ async function sourceInWorkspace(
       .limit(1);
     if (!claim) throw new CardError("source_not_found", "That claim does not exist on this source.");
   }
+  return source.title;
 }
 
 export async function proposeCard(
@@ -75,7 +82,7 @@ export async function proposeCard(
   if (!prompt || !answer) throw new CardError("empty_field", "A card needs both a prompt and an answer.");
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, input, async () => {
-      await sourceInWorkspace(tx, auth, input.artifactId, input.claimId);
+      const sourceTitle = await sourceInWorkspace(tx, auth, input.artifactId, input.claimId);
       const [card] = await tx
         .insert(cards)
         .values({
@@ -83,6 +90,7 @@ export async function proposeCard(
           prompt,
           answer,
           artifactId: input.artifactId,
+          sourceTitle,
           claimId: input.claimId ?? null,
           state: "proposed",
           createdBy: auth.userId,
@@ -215,7 +223,13 @@ export async function reviewCard(
         responseText: input.responseText?.trim() || null,
         durationMs: input.durationMs ?? null,
       });
-      await tx
+      // The precheck above reads the version; this UPDATE re-guards on it.
+      // If a concurrent review committed in between, zero rows match - and
+      // without this check the attempt row above would be orphaned (an
+      // outcome recorded against a card that never moved). Throwing rolls
+      // the whole transaction back: no review row, no audit, caller retries
+      // and loses the precheck cleanly.
+      const [moved] = await tx
         .update(cards)
         .set({
           lastOutcome: input.outcome,
@@ -229,7 +243,11 @@ export async function reviewCard(
           updatedAt: now,
           updatedBy: auth.userId,
         })
-        .where(and(eq(cards.id, card.id), eq(cards.version, input.expectedVersion)));
+        .where(and(eq(cards.id, card.id), eq(cards.version, input.expectedVersion)))
+        .returning({ id: cards.id });
+      if (!moved) {
+        throw new CardError("stale_write", "That card changed since you loaded it. Reload and try again.");
+      }
       await recordAudit(
         auth,
         { action: "card.reviewed", subjectType: "card", subjectId: card.id, summary: `Card reviewed: ${input.outcome}` },

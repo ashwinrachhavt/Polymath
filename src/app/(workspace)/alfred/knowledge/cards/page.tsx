@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { cardHeaderStats, listCardSources, pageCards, type CardStateFilter } from "@/domains/knowledge/card-queries";
+import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
@@ -24,7 +25,14 @@ export const metadata = { title: "Cards · Polymath" };
 const BASE = "/alfred/knowledge/cards";
 const STATES = ["proposed", "scheduled", "suspended", "retired", "all"] as const;
 
-const day = (d: Date) => d.toLocaleDateString("en", { month: "short", day: "numeric" });
+/*
+ * due_at is an instant (timestamptz); the scheduler moves it by minutes
+ * (a miss: +10) or whole days (a hit: the SM-2 ladder). What is "due" is
+ * therefore instant-based - not calendar-day-based - while this label is
+ * the day that instant lands on in the owner's saved timezone.
+ */
+const dayIn = (d: Date, timeZone: string) =>
+  new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone }).format(d);
 
 function stateLabel(item: { state: string; lastOutcome: string | null }): string {
   if (item.state === "scheduled" && item.lastOutcome) return item.lastOutcome === "correct" ? "answered correctly" : "answered wrong";
@@ -39,10 +47,11 @@ async function CardsSurface({ searchParams }: { searchParams: Promise<RawSearchP
   const state: CardStateFilter = (STATES as readonly string[]).includes(typeof raw.state === "string" ? raw.state : "")
     ? (raw.state as CardStateFilter)
     : "proposed";
-  const [stats, found, sources] = await Promise.all([
+  const [stats, found, sources, { timezone }] = await Promise.all([
     cardHeaderStats(auth),
     pageCards(auth, { state, query: list.q, limit: list.pageSize, offset: offsetFor(list.page, list.pageSize) }),
     listCardSources(auth),
+    getPreferences(auth),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
 
@@ -111,11 +120,20 @@ async function CardsSurface({ searchParams }: { searchParams: Promise<RawSearchP
                   <p className="text-[13px] font-medium">{card.prompt}</p>
                   <Status>{stateLabel(card)}</Status>
                 </div>
+                {/* Acceptance inspects what enters circulation: the answer is
+                    part of the row, not hidden behind the Accept click. */}
+                <p className="text-[13px] leading-relaxed text-muted-foreground">{card.answer}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <Link href={`/alfred/notes?id=${card.sourceId}`} className="underline-offset-2 hover:underline">
-                    from {card.sourceTitle}
-                  </Link>
-                  {card.state === "scheduled" && card.dueAt && <span>due {day(card.dueAt)}</span>}
+                  {card.sourceId && !card.sourceArchived ? (
+                    <Link href={`/alfred/notes?id=${card.sourceId}`} className="underline-offset-2 hover:underline">
+                      from {card.sourceTitle}
+                    </Link>
+                  ) : (
+                    <span>
+                      from {card.sourceTitle} ({card.sourceId ? "source archived" : "source deleted"})
+                    </span>
+                  )}
+                  {card.state === "scheduled" && card.dueAt && <span>due {dayIn(card.dueAt, timezone)}</span>}
                   {card.reviewCount > 0 && (
                     <span>
                       {card.correctCount}/{card.reviewCount} recalled

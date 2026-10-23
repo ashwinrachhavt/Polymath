@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { artifacts, cardReviews, cards } from "@/domains/knowledge/schema";
+import { artifacts, cardReviews, cards, claims } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -181,4 +181,128 @@ suite("zettel cards and recall", () => {
     expect(stats.due).toBe(1);
     expect(stats.proposed).toBe(1);
   });
+
+  it("loses exactly one of two concurrent reviews, recording a single attempt", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `cards-race-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const artifactId = await seedNote(workspaceId);
+    const proposed = await commands.proposeCard(auth, { prompt: "p", answer: "a", artifactId });
+    await commands.acceptCard(auth, { cardId: proposed.id, expectedVersion: 1 });
+
+    // Two reviews race on the same version. Postgres serializes the final
+    // guarded UPDATE on the row lock; the loser's update matches zero rows,
+    // which must fail the whole transaction - not record an orphan attempt.
+    const attempt = { cardId: proposed.id, expectedVersion: 2, outcome: "correct" as const };
+    const results = await Promise.allSettled([commands.reviewCard(auth, attempt), commands.reviewCard(auth, attempt)]);
+    const won = results.filter((r) => r.status === "fulfilled");
+    const lost = results.filter((r) => r.status === "rejected");
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({ code: "stale_write" });
+
+    const [card] = await db.select().from(cards).where(eq(cards.id, proposed.id));
+    expect(card.reviewCount).toBe(1);
+    const attempts = await db.select().from(cardReviews).where(eq(cardReviews.cardId, proposed.id));
+    expect(attempts).toHaveLength(1);
+  });
+
+  it("keeps archived sources out of proposing and the queue without hiding the card", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `cards-arch-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const artifactId = await seedNote(workspaceId);
+    const proposed = await commands.proposeCard(auth, { prompt: "p", answer: "a", artifactId });
+    await commands.acceptCard(auth, { cardId: proposed.id, expectedVersion: 1 });
+    expect(await queries.countDueCards(auth)).toBe(1);
+
+    await db.update(artifacts).set({ archivedAt: new Date() }).where(eq(artifacts.id, artifactId));
+
+    // An archived source leaves the queue...
+    expect(await queries.countDueCards(auth)).toBe(0);
+    expect(await queries.nextDueCard(auth)).toBeNull();
+    // ...but the card stays listed, marked, with its citation intact.
+    const listed = await queries.pageCards(auth, { state: "all", limit: 24, offset: 0 });
+    expect(listed.total).toBe(1);
+    expect(listed.items[0].sourceTitle).toBe("Distributed systems notes");
+    expect(listed.items[0].sourceId).toBe(artifactId);
+    expect(listed.items[0].sourceArchived).toBe(true);
+
+    // New proposals cannot cite an archived source.
+    await expect(commands.proposeCard(auth, { prompt: "p2", answer: "a2", artifactId })).rejects.toMatchObject({
+      code: "source_not_found",
+    });
+
+    // Unarchiving returns the card to the queue.
+    await db.update(artifacts).set({ archivedAt: null }).where(eq(artifacts.id, artifactId));
+    expect(await queries.countDueCards(auth)).toBe(1);
+  });
+
+  it("keeps the card and its review history when the source is deleted", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `cards-del-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const artifactId = await seedNote(workspaceId);
+    const proposed = await commands.proposeCard(auth, {
+      prompt: "What survives a deleted note?",
+      answer: "The card and its review history.",
+      artifactId,
+    });
+    await commands.acceptCard(auth, { cardId: proposed.id, expectedVersion: 1 });
+    await commands.reviewCard(auth, { cardId: proposed.id, expectedVersion: 2, outcome: "correct" });
+
+    // A claim-sourced card rides the artifact -> claims cascade: deleting the
+    // note deletes the claim, which must detach the card, not delete it.
+    const [claim] = await db
+      .insert(claims)
+      .values({ workspaceId, artifactId, statement: "Idempotency tolerates retries." })
+      .returning({ id: claims.id });
+    const claimCard = await commands.proposeCard(auth, {
+      prompt: "What does idempotency tolerate?",
+      answer: "Retries.",
+      artifactId,
+      claimId: claim.id,
+    });
+
+    await db.delete(artifacts).where(eq(artifacts.id, artifactId));
+
+    // No silent cascade: the cards and their attempts outlive the source.
+    const [card] = await db.select().from(cards).where(eq(cards.id, proposed.id));
+    expect(card).toBeDefined();
+    expect(card.artifactId).toBeNull();
+    const attempts = await db.select().from(cardReviews).where(eq(cardReviews.cardId, proposed.id));
+    expect(attempts).toHaveLength(1);
+
+    const [detached] = await db.select().from(cards).where(eq(cards.id, claimCard.id));
+    expect(detached).toBeDefined();
+    expect(detached.artifactId).toBeNull();
+    expect(detached.claimId).toBeNull();
+
+    // The citation degrades to the snapshotted title instead of a dead link.
+    const listed = await queries.pageCards(auth, { state: "all", limit: 24, offset: 0 });
+    expect(listed.total).toBe(2);
+    const first = listed.items.find((item) => item.id === proposed.id)!;
+    expect(first.sourceId).toBeNull();
+    expect(first.sourceTitle).toBe("Distributed systems notes");
+  });
+
+  it("searches card sources by title and skips archived notes", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `cards-src-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const liveId = await seedNote(workspaceId);
+    await db.insert(artifacts).values({ workspaceId, kind: "note", title: "Cooking recipes" });
+    await db.insert(artifacts).values({ workspaceId, kind: "note", title: "Distributed old draft", archivedAt: new Date() });
+
+    const all = await queries.listCardSources(auth);
+    expect(all.map((s) => s.id)).toContain(liveId);
+    expect(all.some((s) => s.title === "Distributed old draft")).toBe(false);
+
+    const found = await queries.listCardSources(auth, { query: "distributed" });
+    expect(found).toHaveLength(1);
+    expect(found[0].id).toBe(liveId);
+
+    const recipes = await queries.listCardSources(auth, { query: "recipes" });
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0].title).toBe("Cooking recipes");
+  });
 });
+
+// Local alias so the race test can read the rejection reason.
+type PromiseRejectedResult = Extract<PromiseSettledResult<unknown>, { status: "rejected" }>;

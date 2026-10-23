@@ -19,7 +19,8 @@ CREATE TABLE "cards" (
 	"workspace_id" uuid NOT NULL,
 	"prompt" text NOT NULL,
 	"answer" text NOT NULL,
-	"artifact_id" uuid NOT NULL,
+	"artifact_id" uuid,
+	"source_title" text NOT NULL,
 	"claim_id" uuid,
 	"state" "card_state" DEFAULT 'proposed' NOT NULL,
 	"last_outcome" "card_review_outcome",
@@ -48,8 +49,8 @@ CREATE TABLE "card_reviews" (
 );
 --> statement-breakpoint
 ALTER TABLE "cards" ADD CONSTRAINT "cards_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "cards" ADD CONSTRAINT "cards_artifact_id_artifacts_id_fk" FOREIGN KEY ("artifact_id") REFERENCES "public"."artifacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "cards" ADD CONSTRAINT "cards_claim_id_claims_id_fk" FOREIGN KEY ("claim_id") REFERENCES "public"."claims"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cards" ADD CONSTRAINT "cards_artifact_id_artifacts_id_fk" FOREIGN KEY ("artifact_id") REFERENCES "public"."artifacts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cards" ADD CONSTRAINT "cards_claim_id_claims_id_fk" FOREIGN KEY ("claim_id") REFERENCES "public"."claims"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "card_reviews" ADD CONSTRAINT "card_reviews_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "card_reviews" ADD CONSTRAINT "card_reviews_card_id_cards_id_fk" FOREIGN KEY ("card_id") REFERENCES "public"."cards"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "cards_due_idx" ON "cards" ("workspace_id","due_at") WHERE "state" = 'scheduled';--> statement-breakpoint

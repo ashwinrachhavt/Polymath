@@ -1295,12 +1295,25 @@ export const cards = pgTable(
     workspaceId: tenantId(),
     prompt: text("prompt").notNull(),
     answer: text("answer").notNull(),
-    /** The note or zettel this card cites. Required: a card always shows where it came from. */
-    artifactId: uuid("artifact_id")
-      .notNull()
-      .references(() => artifacts.id, { onDelete: "cascade" }),
+    /**
+     * The note or zettel this card cites. Nullable + set-null on source
+     * deletion: a card and its review history survive the source going away;
+     * the citation lives on in sourceTitle. An archived source is handled in
+     * the queries (out of the queue, still listed, marked) - not by unlinking.
+     */
+    artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "set null" }),
+    /**
+     * Denormalized snapshot of the source's title, taken when the card is
+     * proposed. This is what "a card always shows me where it came from"
+     * degrades to when the source is deleted: the title survives the note.
+     * Retention tradeoff, named: deleting a note leaves its title (not its
+     * content) on cards that cited it; retiring the card removes the copy.
+     */
+    sourceTitle: text("source_title").notNull(),
     /** The claim inside the source, when the card tests one claim specifically. */
-    claimId: uuid("claim_id").references(() => claims.id, { onDelete: "cascade" }),
+    // A card outlives the claim it was generated from: deleting the claim
+    // must not silently cascade the card and its review history away.
+    claimId: uuid("claim_id").references(() => claims.id, { onDelete: "set null" }),
     state: cardState("state").notNull().default("proposed"),
     lastOutcome: cardReviewOutcome("last_outcome"),
     /** Null while proposed or suspended: the card is outside the queue. */

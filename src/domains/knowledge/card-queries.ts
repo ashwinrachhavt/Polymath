@@ -5,9 +5,18 @@ import { escapeLike } from "@/lib/list-params";
 import { artifacts, cards, claims } from "./schema";
 
 /*
- * Reads for the cards surface. Every row carries its citation (the source
- * note's title) because a card always shows where it came from; the join is
- * one round trip, not an N+1.
+ * Reads for the cards surface. Every row carries its citation because a card
+ * always shows where it came from: sourceTitle is the live note's title when
+ * the note exists, and the denormalized snapshot taken at propose time when
+ * it does not. The join is a LEFT JOIN - a card whose source was deleted
+ * (artifact_id set null) or archived must still be listed and marked, never
+ * silently dropped.
+ *
+ * Queue honesty: only a card with a live, unarchived source can be due. A
+ * card whose source is archived leaves the rotation while the note is
+ * archived and returns when it is unarchived; a card whose source was
+ * deleted stays listed with its snapshot citation but cannot be reviewed -
+ * there is nothing left to consult.
  */
 
 export type CardListItem = {
@@ -21,7 +30,10 @@ export type CardListItem = {
   reviewCount: number;
   correctCount: number;
   sourceTitle: string;
-  sourceId: string;
+  /** Null when the source note was deleted; the snapshot title remains. */
+  sourceId: string | null;
+  /** True when the source still exists but is archived (out of the queue). */
+  sourceArchived: boolean;
   version: number;
 };
 
@@ -35,8 +47,9 @@ const cardView = {
   intervalDays: cards.intervalDays,
   reviewCount: cards.reviewCount,
   correctCount: cards.correctCount,
-  sourceTitle: artifacts.title,
+  sourceTitle: sql<string>`coalesce(${artifacts.title}, ${cards.sourceTitle})`,
   sourceId: artifacts.id,
+  sourceArchived: sql<boolean>`(${artifacts.id} is not null and ${artifacts.archivedAt} is not null)`,
   version: cards.version,
 } as const;
 
@@ -52,6 +65,7 @@ export async function nextDueCard(auth: AuthContext, now: Date = new Date()): Pr
         eq(cards.state, "scheduled"),
         lte(cards.dueAt, now),
         isNull(cards.archivedAt),
+        isNull(artifacts.archivedAt),
       ),
     )
     .orderBy(asc(cards.dueAt))
@@ -63,12 +77,14 @@ export async function countDueCards(auth: AuthContext, now: Date = new Date()): 
   const [row] = await db
     .select({ n: count() })
     .from(cards)
+    .innerJoin(artifacts, eq(artifacts.id, cards.artifactId))
     .where(
       and(
         eq(cards.workspaceId, auth.workspaceId),
         eq(cards.state, "scheduled"),
         lte(cards.dueAt, now),
         isNull(cards.archivedAt),
+        isNull(artifacts.archivedAt),
       ),
     );
   return row?.n ?? 0;
@@ -92,7 +108,7 @@ export async function pageCards(
     db
       .select(cardView)
       .from(cards)
-      .innerJoin(artifacts, eq(artifacts.id, cards.artifactId))
+      .leftJoin(artifacts, eq(artifacts.id, cards.artifactId))
       .where(where)
       .orderBy(desc(cards.updatedAt))
       .limit(opts.limit)
@@ -121,20 +137,25 @@ export async function cardHeaderStats(auth: AuthContext, now: Date = new Date())
   return { due, proposed: proposedRow?.n ?? 0, reviews: accuracyRow?.reviews ?? 0, correct: accuracyRow?.correct ?? 0 };
 }
 
-/** The notes and zettels a new card can cite, most recently touched first. */
-export async function listCardSources(auth: AuthContext, limit = 50) {
+/**
+ * The notes and zettels a new card can cite, most recently touched first.
+ * With a query this is the search path the source picker falls back to, so
+ * a source older than the first page is still reachable by name.
+ */
+export async function listCardSources(auth: AuthContext, opts: { query?: string; limit?: number } = {}) {
+  const conditions = [
+    eq(artifacts.workspaceId, auth.workspaceId),
+    or(eq(artifacts.kind, "note"), eq(artifacts.kind, "zettel"))!,
+    isNull(artifacts.archivedAt),
+  ];
+  const query = opts.query?.trim();
+  if (query) conditions.push(ilike(artifacts.title, `%${escapeLike(query)}%`));
   return db
     .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
     .from(artifacts)
-    .where(
-      and(
-        eq(artifacts.workspaceId, auth.workspaceId),
-        or(eq(artifacts.kind, "note"), eq(artifacts.kind, "zettel"))!,
-        isNull(artifacts.archivedAt),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(desc(artifacts.updatedAt))
-    .limit(limit);
+    .limit(opts.limit ?? 50);
 }
 
 /** The claim a card tests, when it cites one. */
