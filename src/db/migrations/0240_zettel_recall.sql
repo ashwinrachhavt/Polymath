@@ -1,9 +1,10 @@
 -- 0240: zettel cards and recall (Product Spec, "Zettel Cards and recall").
 --
 -- Cards are generated from a note or a claim, reviewed before they
--- circulate, and always cite their source: cards.artifact_id is required and
--- cascades with the note/zettel, so an unsourced card cannot survive its
--- source. Review is retrieval, not recognition - prompt and answer, no
+-- circulate, and always cite their source: cards.artifact_id is nullable and
+-- set-null on source deletion, so a card and its review history survive the
+-- source going away; source_title (taken at proposal) is the citation that
+-- remains. Review is retrieval, not recognition - prompt and answer, no
 -- options. This is new storage, not the Learning tables #222's 0235 drops:
 -- the spec's model has no decks, plans or quiz kinds, and the two designs
 -- stay independent so 0235 remains its own owner decision.
