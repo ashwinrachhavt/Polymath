@@ -223,7 +223,7 @@ export function AssistantPanel({ profile }: { profile: AssistantProfile }) {
   );
 }
 
-export default function Settings({ serverPreferences, capabilities, serverAssistantProfile }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[]; serverAssistantProfile?: AssistantProfile | null }) {
+export default function Settings({ serverPreferences, capabilities, serverAssistantProfile, browserPreview }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[]; serverAssistantProfile?: AssistantProfile | null; browserPreview: boolean }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
   // The server row is the record; `saved` mirrors it here so a form always
   // submits against the version it rendered (compare-and-set on the server).
@@ -239,7 +239,9 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
   const [confirmation, setConfirmation] = useState("");
   const [factsOpen, setFactsOpen] = useState(false);
   const active = useActiveSection();
-  return <Screen title="Settings" description="Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels describe this browser preview or name what is not built yet." actions={<Destination screen="integrations">Connection catalog</Destination>}>
+  return <Screen title="Settings" description={browserPreview
+    ? "This browser preview keeps its own local state; nothing here is an account. The panels below describe what the preview stores or name what is not built yet."
+    : "Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels name this deployment's capabilities and what is not built yet."} actions={<Destination screen="integrations">Connection catalog</Destination>}>
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       <SettingsNav groups={SECTION_GROUPS} active={active} />
 
@@ -344,6 +346,7 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
         </Section>
 
         <Section id="data-retention">
+          {browserPreview ? (
           <Panel title="Data and retention" description="What this preview stores, and where it stops.">
             <dl className="grid gap-3 text-[13px]">
               <div><dt className="text-muted-foreground">Stored</dt><dd>Tasks, notes and checkpoints, captures, contacts, reviews, preferences and activity, in this browser&apos;s local storage.</dd></div>
@@ -351,6 +354,15 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
               <div><dt className="text-muted-foreground">Retention</dt><dd>Until you clear the browser preview, or your browser clears site data.</dd></div>
             </dl>
           </Panel>
+          ) : (
+          <Panel title="Data and retention" description="Where your account data lives on this deployment.">
+            <dl className="grid gap-3 text-[13px]">
+              <div><dt className="text-muted-foreground">Stored</dt><dd>Timezone, week start, appearance and motion save to your account on this deployment&apos;s server and load on every signed-in device.</dd></div>
+              <div><dt className="text-muted-foreground">Sent anywhere</dt><dd>Which providers this deployment can call is read from its environment and named under Configured capabilities above.</dd></div>
+              <div><dt className="text-muted-foreground">Retention</dt><dd>Saved settings persist on the server; they are not tied to this browser.</dd></div>
+            </dl>
+          </Panel>
+          )}
         </Section>
 
         <Section id="candidate-facts">
@@ -361,7 +373,9 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
         </Section>
 
         <Section id="reset">
-          <Panel title="Reset browser preview" description="Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected.">
+          <Panel title="Reset browser preview" description={browserPreview
+            ? "Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected."
+            : "Clear this browser's local preview edits only - notes, checkpoints, tasks and review decisions stored in this browser. Your account settings and server records are not affected."}>
             <Dialog open={resetOpen} onOpenChange={(open) => { setResetOpen(open); setConfirmation(""); }}>
               <DialogTrigger asChild><Button variant="outline">Clear preview data</Button></DialogTrigger>
               <DialogContent>
