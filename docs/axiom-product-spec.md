@@ -1,6 +1,6 @@
 # Polymath Product Specification
 
-**Revision:** 2026-10-19, third pass.
+**Revision:** 2026-10-22, fourth pass (IA simplification sync).
 **Canonical copy:** Notion, under Command Center / Polymath.
 **Shape:** web app, run locally. Desktop and mobile are out of scope.
 
@@ -198,11 +198,14 @@ rendered as a blank space.
 *States:* first-run, populated, degraded with the unavailable source named,
 offline.
 
-## 6.7 Spending and providers
+## 6.7 Spending
 
 What external providers cost, and what is allowed. A budget is captured before
 paid work and settled after. No run spends past its captured budget, and no
 purchase or top-up happens without policy.
+
+Spending is not a separate destination; the ledger is a tab on Today
+(`/command-center/briefing?tab=spending`).
 
 *States:* within-budget, approaching-limit, exhausted, provider-unavailable.
 
@@ -262,7 +265,8 @@ declaring an outcome is a first-class action, not a formality.
 
 ## 7.3 Focus sessions
 
-A bounded period of work on exactly one task.
+A bounded period of work on exactly one task, started from Work (a task's
+"Focus" action). It is not a standalone destination.
 
 Starting shows the task, its intention, and the last thing you did on it. Timer
 state survives navigation, refresh, and closing the tab. Segments and
@@ -304,13 +308,14 @@ Areas are declared by the person. No taxonomy is imposed.
 Progress is reported as **two separate signals, never one number**:
 
 - **Effort** — what the system can observe: notes written, manual links, sources
-  captured, focus time, recall activity.
-- **Knowledge confidence** — what it can verify: correct recall in spaced
-  repetition, claims accepted, questions answered without looking. Never volume.
+  captured, focus time.
+- **Knowledge confidence** — what it can verify: claims accepted, questions
+  answered without looking. Never volume. (Spaced-repetition recall left with
+  Learning; see § 8.5.)
 
-They are displayed side by side. A topic with twenty notes and failing recall is
-high effort and low confidence, which is the most useful thing the system can
-say, and a single composite would hide exactly that.
+They are displayed side by side. A topic with twenty notes and no accepted
+claims is high effort and low confidence, which is the most useful thing the
+system can say, and a single composite would hide exactly that.
 
 No number ever claims mastery. Self-assessment is unreliable enough that the
 product's value is in replacing the guess with a record, not in replacing it with
@@ -335,6 +340,11 @@ learned, and what is next. Not a scorecard.
 
 **Answers:** what do I know, and what can I produce from it?
 
+Alfred's material lives in one of four homes, decided by where it came from:
+**Notes** (the person wrote it), **Document Vault** (the person uploaded it),
+**Notebook** (the person pointed at it), and **Artifacts** (the assistant
+generated it and the person kept it).
+
 ## 8.1 Sources
 
 An immutable captured artifact — web page, PDF, email, screenshot, transcript —
@@ -343,14 +353,18 @@ with extracted text and provenance.
 The original payload is never mutated. Re-fetching identical content records a new
 observation without duplicating the source.
 
+Sources have no standalone destination. They are tracked inside a Notebook
+through its Add-sources control; a source outside a notebook is unfiled capture,
+which is the Inbox's job.
+
 *States:* fetched, extraction-pending, extraction-failed (retryable),
 partially-extracted (visibly partial), unsupported.
 
 ## 8.2 Notes
 
-Prose the person writes, with checkpoints and version history. Links to any
-object. A note can be about a source without being part of it. Drafting
-assistance is always visible as assistance.
+Prose the person writes, with checkpoints and version history, at
+`/alfred/notes`. Links to any object. A note can be about a source without
+being part of it. Drafting assistance is always visible as assistance.
 
 *States:* draft, edited, unsaved-changes, conflict, deleted-recoverable.
 
@@ -361,8 +375,8 @@ An assertion attributed to a source, with a span and a confidence.
 Clicking a claim opens its source at the cited span. A claim with no source is
 visibly marked unsupported. A paraphrase is distinguished from an exact quote.
 
-This is what makes the library usable in professional work: an answer is only as
-good as the ability to check it.
+This is what makes the knowledge base usable in professional work: an answer is
+only as good as the ability to check it.
 
 *States:* supported, unsupported, contradicted, stale-source.
 
@@ -373,34 +387,34 @@ not depend on remembering to search.
 
 A link carries a relation and a reason. Traversable both ways. **Optional, never
 required.** Manual links count for more in effort scoring because they represent
-a judgement. The product never tells you your library is incomplete because
-things are unlinked.
+a judgement. The product never tells you the knowledge base is incomplete
+because things are unlinked.
 
 *States:* proposed, accepted, rejected, dangling (target archived), bidirectional.
 
 ## 8.5 Cards and recall
 
-Spaced repetition derived from notes and claims.
+Removed. The spaced-repetition review schedule shipped as Learning and was
+deleted (IA simplification, 2026-10-22; tables dropped in migration 0235).
+Quiz and flashcard intents answer "not built"; there is no stub UI. The card
+stays a core resource in the model, with no schedule and no surface until a
+plan exists for one.
 
-Cards are generated and reviewed before entering circulation. Scheduling uses
-expanding intervals tied to the intended retention period. Review is retrieval,
-not recognition: the answer stays hidden until attempted. A failed card returns
-sooner. Every card cites its source.
-
-**The claim is narrow and honest:** this improves recall of facts. It does not
-improve judgement, synthesis, or decision quality, and the product does not say
-it does.
-
-*States:* proposed, scheduled, due, answered-correctly, answered-wrong,
-suspended, retired.
-
-## 8.6 Research and dossiers
+## 8.6 Notebook
 
 A bounded set of sources gathered around a question, with cited answers.
 
 Bounded is the defining property: a chosen set of sources with answers traced to
-spans. A dossier that stops being bounded is a note. Every claim retains source,
+spans. A notebook that stops being bounded is a note. Every claim retains source,
 retrieval time, and uncertainty; interpretation is separated from fact.
+
+Sources enter the notebook through its Add-sources control: a URL, a YouTube
+link, a file, or a pick from the Document Vault. There is no global sources
+list; a source outside a notebook is unfiled capture, which is the Inbox's job.
+
+Reports, decks, infographics, and wiki pages a notebook produces are kept
+outputs and surface in Artifacts. Zettels it accepts appear there too,
+filtered by kind.
 
 *States:* gathering, partial (some sources unreachable), ready, stale.
 
@@ -422,7 +436,7 @@ Work that continues without the person, under declared authority.
 | **Supervisor** | Planning, delegation, stopping | Call tools; widen its own authority |
 | **Curator** | Classification, enrichment, dedupe, tagging | Write outside a proposal |
 | **Researcher** | Bounded source gathering, claim extraction, citation | Invent a citation; answer without a source |
-| **Writer** | Drafting from the library | Assert a fact not in the library |
+| **Writer** | Drafting from the knowledge base | Assert a fact not in the knowledge base |
 
 **The authority rule.** A sub-agent's authority is always a subset of the agent
 that invoked it. Delegation narrows; it never widens. Enforced in code, covered
@@ -450,7 +464,7 @@ imported is executed; a skill's text is data until a run loads it.
 - Import is inspect-first: the discovered packages, their source, revision and
   warnings are shown before anything is stored, and the server re-verifies the
   content at the shown revision before installing.
-- Removal keeps the record: an in-flight run keeps its procedure; the library
+- Removal keeps the record: an in-flight run keeps its procedure; the skill
   entry disappears from every list.
 
 # 10. Tenancy and access
@@ -472,7 +486,7 @@ cross-workspace visibility, a public tenant API.
 | **Source** | Immutable captured artifact with extracted text and provenance. |
 | **Note** | Prose written by a person. |
 | **Claim** | Assertion attributed to a source, with citation and confidence. |
-| **Card** | Spaced-repetition unit derived from a note or claim. |
+| **Card** | Spaced-repetition unit derived from a note or claim. Removed with Learning; no schedule exists. |
 | **Link** | Typed, reasoned connection between two objects. |
 | **Task** | Commitment with owner, due semantic, state, and rationale. |
 | **Session** | Bounded focus on one task. |
@@ -481,18 +495,24 @@ cross-workspace visibility, a public tenant API.
 | **Area** | Declared topic, used for effort and confidence. |
 | **Correspondence** | A message with a lifecycle from planned to sent or received. |
 | **Follow-up** | A commitment to return to someone, with a date and a reason. |
-| **Dossier** | Bounded source set with cited answers. |
+| **Notebook** | Bounded source set with cited answers, at `/alfred/dossiers`. Retires "Dossier" as a user-facing term; the URL keeps the old name. |
+| **Notes** | Pages the person writes, at `/alfred/notes`. |
+| **Document Vault** | Documents the person uploaded, at `/alfred/knowledge`. Retires "Library" as a destination label. |
+| **Artifacts** | Kept LLM-generated outputs (reports, decks, infographics, zettels, wiki pages), listed at `/alfred/artifacts`. |
 | **Proposal** | Suggested mutation with a reason, awaiting acceptance. |
 | **Run** | One agent execution against an objective. |
 | **Pursuit** | Task group driven toward an external outcome. |
 
-Retired: *Opportunity* as a top-level concept, *Document* as distinct from
-Source, *Lead* as a separate lifecycle, *streak* as a concept.
+Retired: *Opportunity* as a top-level concept (its records live under People and
+Companies), *Document* as distinct from Source, *Lead* as a separate lifecycle,
+*streak* as a concept, *Dossier* as a user-facing term (now Notebook, URL
+unchanged), *Library* as a destination label (now Document Vault), *Learning*
+as a destination (deleted; tables dropped in migration 0235).
 
 # 12. Principles
 
-- **Shorten the path to finished work.** A feature that grows the library without
-  shortening that path is not built.
+- **Shorten the path to finished work.** A feature that grows the knowledge
+  base without shortening that path is not built.
 - **Capture never blocks.**
 - **Objects before pages.** One record, many views.
 - **Externalise commitments.** A commitment not written down is a commitment that
@@ -519,7 +539,7 @@ Source, *Lead* as a separate lifecycle, *streak* as a concept.
 | P-06 | Correspondence lifecycle | Every message has a state; no send without approval |
 | P-07 | Follow-ups are tracked | A follow-up carries a reason and a date; superseded is explicit |
 | P-08 | Grounded claims | Every claim cites a source and span; uncited claims marked unsupported |
-| P-09 | Connected library | Any two objects link with a reason; links traverse both ways |
+| P-09 | Connected knowledge base | Any two objects link with a reason; links traverse both ways |
 | P-10 | Honest progress | Effort and confidence reported separately, never derived from each other |
 | P-11 | Durable sessions | Timer survives navigation and refresh; completion is idempotent |
 | P-12 | Stones are memories | Records task, duration, area, outcome; never revoked |
@@ -539,7 +559,7 @@ earn one stone, decide one follow-up.
 
 **Operational.** Capture-to-clarification time; queue depth and age; proposal
 acceptance rate; follow-ups closed; correspondence awaiting reply; session
-completion; recall accuracy by area; run success and retry rate; search success.
+completion; run success and retry rate; search success.
 
 **Outcome measures, which matter most.** Finished outputs per month; commitments
 closed per week; captured items that reach a decision rather than sitting
@@ -558,9 +578,9 @@ write, request receipts, audit and outbox in one transaction, a queue that drain
 
 | Phase | Delivers |
 |---|---|
-| 1 Command Center | Capture, inbox, classification, correspondence, follow-ups, briefing |
+| 1 Command Center | Capture, inbox, classification, correspondence, follow-ups, briefing, spending (a Today tab) |
 | 2 NeuralFlow | Tasks, planning, focus sessions, stones, areas and progress |
-| 3 Alfred | Sources, notes, claims, links, search, cards |
+| 3 Alfred | Notes, Document Vault, Notebook, Artifacts, claims, links, search, cards |
 | 4 Agents and external action | Supervisor, sub-agents, runs, proposals, reconciliation |
 
 Phases 1 to 4 proceed in parallel after phase 0.
@@ -568,7 +588,7 @@ Phases 1 to 4 proceed in parallel after phase 0.
 # 16. Open decisions
 
 - The expertise scoring algorithm: weights and signals, with confidence from
-  verified recall only.
+  verified signals only now that recall testing is gone (§ 8.5).
 - The stone intensity algorithm.
 - Whether shards remain, given they add a collection layer with no evidenced
   benefit.
@@ -631,13 +651,13 @@ or **vendor** are not measured findings.
 | Finding | Source | Used for |
 |---|---|---|
 | Median bookmark unvisited for ~100 days; half unvisited in the prior three months. | [Abrams et al., CHI '98](https://doi.org/10.1145/274644.274651) | Capture must produce decisions |
-| 95%+ re-found after three to six months, and **two-thirds of successful re-findings used no keeping behaviour**. | [Jones et al. 2004](https://doi.org/10.1002/meet.1450410115) | The library stores conclusions, not bookmarks |
+| 95%+ re-found after three to six months, and **two-thirds of successful re-findings used no keeping behaviour**. | [Jones et al. 2004](https://doi.org/10.1002/meet.1450410115) | The knowledge base stores conclusions, not bookmarks |
 | Abandonment factors include ROI — the system must pay back faster than it costs. | [Jones et al. 2008](https://doi.org/10.1002/meet.2008.14504503115) | No mandatory structure |
 | Hierarchical folders outperform search and tags for personal collections. | [Bergman & Whittaker](https://doi.org/10.7551/mitpress/9780262035170.001.0001) | No forced taxonomy; filters over folders |
-| Expecting future access reduces recall of the information and increases recall of where it is. | [Sparrow et al. 2011](https://doi.org/10.1126/science.1207745) | Recall must be tested, not offloaded |
-| Practice testing and distributed practice are high-utility; rereading and highlighting are low. | [Dunlosky et al. 2013](https://doi.org/10.1177/1529100612453266) | Cards test retrieval |
-| Optimal spacing scales with retention interval. | [Cepeda et al. 2006](https://doi.org/10.1037/0033-2909.132.3.354), [2008](https://doi.org/10.1111/j.1467-9280.2008.02209.x) | Expanding intervals |
-| Repeated testing beats repeated study after mastery. | [Karpicke & Roediger 2008](https://doi.org/10.1126/science.1152408) | Retrieval, not review |
+| Expecting future access reduces recall of the information and increases recall of where it is. | [Sparrow et al. 2011](https://doi.org/10.1126/science.1207745) | Recall must be tested, not offloaded (the tested-recall feature is removed; see § 8.5) |
+| Practice testing and distributed practice are high-utility; rereading and highlighting are low. | [Dunlosky et al. 2013](https://doi.org/10.1177/1529100612453266) | Cards test retrieval (feature removed; the finding stands) |
+| Optimal spacing scales with retention interval. | [Cepeda et al. 2006](https://doi.org/10.1037/0033-2909.132.3.354), [2008](https://doi.org/10.1111/j.1467-9280.2008.02209.x) | Expanding intervals (feature removed; kept for the record) |
+| Repeated testing beats repeated study after mastery. | [Karpicke & Roediger 2008](https://doi.org/10.1126/science.1152408) | Retrieval, not review (feature removed; kept for the record) |
 | E-discovery review consumes a median 73% of cost; the bottleneck is human reading. | [RAND 2012](https://www.rand.org/pubs/monographs/MG1208.html) | Citation and skimming, not autonomous judgement |
 | Spreadsheet errors occur in a few percent of cells; developers are overconfident. | [Panko 1998](https://doi.org/10.4018/joeuc.1998040102) | Show what a result was derived from |
 
@@ -666,9 +686,12 @@ collection size.
 
 ---
 
-# Appendix B — What the audits say the pillars already contain
+# Appendix B — What the audits said the pillars contained
 
-From the donor audits in `docs/audits/` (694 keep/merge/drop decisions).
+A historical record of the donor audits in `docs/audits/` (694 keep/merge/drop
+decisions), written before the 2026-10-22 IA simplification. Items named there
+(Learning, Spending, Opportunities, the wiki surface) may since have been
+removed or folded elsewhere; this list is not a description of the current rail.
 
 **Command Center:** daily briefing, quick capture, tasks and commitments, kanban,
 spaces and projects, AI planning and brain dump, card micro-actions, calendar,

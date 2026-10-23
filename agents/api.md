@@ -16,7 +16,7 @@ cards  links  tasks  sessions  areas  runs
 | Resource | Path | Example |
 |---|---|---|
 | Sources | `/v1/sources` | `POST /v1/sources`, `GET /v1/sources/:id` |
-| Notes | `/v1/notes` | `GET /v1/notes?area=<id>&sort=-updated_at` |
+| Notes | `/v1/notes` | `GET /v1/notes?area=<id>&sort=-updatedAt` |
 | Claims | `/v1/claims` | `GET /v1/claims?source=<id>` |
 | Cards | `/v1/cards` | `GET /v1/cards?due=now` |
 | Links | `/v1/links` | `POST /v1/links` with `from`, `to`, `relation`, `reason` |
@@ -24,6 +24,13 @@ cards  links  tasks  sessions  areas  runs
 | Sessions | `/v1/sessions` | `POST /v1/sessions`, `POST /v1/sessions/:id/complete` |
 | Areas | `/v1/areas` | `GET /v1/areas/:id/progress` |
 | Runs | `/v1/runs` | `POST /v1/runs` (optional `skillId` pins the run to an enabled skill), `POST /v1/runs/:id/cancel`, `POST /v1/runs/:id/retry` |
+
+Two route families extend these without being resources of their own:
+
+| Family | Path | Contract |
+|---|---|---|
+| Dossiers | `/v1/dossiers`, `/v1/dossiers/:dossierId/generate` | `GET` lists the workspace's notebooks with document counts; `POST` takes `name` plus `documentIds` (any foreign id fails the whole request with 422); the `generate` child starts a Studio run bound to the notebook and requires `Idempotency-Key`. |
+| Files | `/v1/files` | Multipart upload only (`415` otherwise). Sniffs type by content, returns `201 {documentId, contentHash}` or `200 {fileId, fileStatus: "quarantined"}` (no documentId). `GET ?documentId=` reports extraction progress. |
 
 Everything else is a capability over these. A proposal is `POST /v1/proposals`
 with a `target`; a stone is a session outcome, not a resource with its own
@@ -37,7 +44,9 @@ lifecycle.
   resource is wrong.
 - **Flat, not nested, beyond one level.** `/v1/notes?source=<id>` beats
   `/v1/sources/:id/notes`.
-- **Snake case in JSON**, matching column names. No camel/snake translation layer.
+- **camelCase in JSON**, matching the TypeScript every client reads. Fields are
+  `documentIds`, `updatedAt`, `plannedMinutes`; there is no snake/camel
+  translation layer.
 - **IDs are UUIDs**, opaque, never sequential.
 - **Timestamps are ISO 8601 with offset**, UTC on the wire.
 
@@ -68,8 +77,10 @@ A mutation that skips 4, 5, or 7 is a bug, not a shortcut.
 ## Responses
 
 - `200` read or update, `201` create, `204` delete.
-- Errors are problem+json: `type`, `title`, `status`, `code`, `detail`.
-- Codes are stable and added, never repurposed.
+- Errors are problem+json with these fields, matching `problemResponse` in
+  `src/lib/problems.ts`: `type` (a stable `https://…/problems/<code>` URL),
+  `code` (the machine-readable name), `title` (the human sentence), `status`
+  (the HTTP status). Codes are stable and added, never repurposed.
 - A list is `{ data: [...], next_cursor }`. Cursors, not offsets.
 - Never return a partial result as whole. If a related fetch failed, the resource
   carries a `degraded` field naming what is missing.
@@ -78,7 +89,7 @@ A mutation that skips 4, 5, or 7 is a bug, not a shortcut.
 
 - Cursor pagination on every collection. Default 25, max 100.
 - Filters are query parameters named after columns: `?state=open`, `?area=<id>`.
-- Sort is `?sort=-updated_at`. Prefix `-` for descending.
+- Sort is `?sort=-updatedAt`. Prefix `-` for descending.
 - No filter may be applied without `workspace_id` in scope, ever.
 
 ## Where things live

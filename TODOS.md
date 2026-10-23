@@ -3,6 +3,22 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## IA simplification follow-ups (2026-10-22)
+
+**Priority:** P1
+
+- **Spending ledger as a Today sub-tab.** Deferred from plan:
+  `docs/plans/2026-10-22-ia-simplification.md` §3d. The rail entry is gone and
+  `/command-center/spending` redirects to `/command-center/briefing?tab=spending`,
+  but the Briefing page does not read the tab parameter and renders no ledger;
+  `spending-forms.tsx` is unreachable in the canonical app. The redirect
+  destination silently drops the feature.
+- **Opportunities records reachable from People/Companies.** Deferred from plan:
+  `docs/plans/2026-10-22-ia-simplification.md` §3f. The rail entry is gone and the
+  page redirects to People, but no pursuit or opportunity links or panels exist in
+  the People or Companies pages; `src/domains/opportunities/` rows are stranded
+  without a UI path.
+
 ## Frontend reliability (ASH-186)
 
 **Priority:** P2

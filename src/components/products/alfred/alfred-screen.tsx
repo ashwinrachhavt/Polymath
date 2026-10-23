@@ -11,14 +11,13 @@ const screens: Record<string, ComponentType<{ initialId?: string }>> = {
   zettels: dynamic(() => import("./zettels"), { loading }),
   dossiers: dynamic(() => import("./dossiers"), { loading }),
   // notebook has no entry: /apps/alfred/notebook redirects to the canonical
-  // /alfred/notebook surface before this map is ever consulted.
+  // /alfred/notes surface before this map is ever consulted.
   graph: dynamic(() => import("./graph"), { loading }),
   studio: dynamic(() => import("./studio"), { loading }),
   research: dynamic(() => import("./research"), { loading }),
   chat: dynamic(() => import("./chat"), { loading }),
   blogs: dynamic(() => import("./blogs"), { loading }),
   dictionary: dynamic(() => import("./dictionary"), { loading }),
-  learning: dynamic(() => import("./learning"), { loading }),
   canvas: dynamic(() => import("./canvas"), { loading }),
   projects: dynamic(() => import("./projects"), { loading }),
   integrations: dynamic(() => import("./integrations"), { loading }),

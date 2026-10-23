@@ -35,7 +35,8 @@ src/app/          routes, layouts, RSC pages, server actions, route handlers
 src/components/   presentation only; no data access
   products/       per-surface components (command-center, neuralflow, alfred)
   shell/          launcher, nav, shared chrome
-src/domains/      20 domains, each owning its tables (skills added 2026-10: ASH-200)
+src/domains/      18 domains, each owning its tables (skills added 2026-10: ASH-200;
+                  learning deleted 2026-10-22, tables dropped in migration 0235)
 src/integrations/ embeddings, extraction, firecrawl, notion, object-store,
                   search, wiki, zettels
 src/lib/          auth, clerk, db, problems, list-params, safe-fetch, zip, capability-config
@@ -62,12 +63,11 @@ Cross-domain work goes through a command or an event, never a join.
 | `work` | tasks, projects, spaces, boards, board_columns, task_dependencies, task_links | One task model. Boards are saved views. |
 | `focus` | focus_sessions, daily_outcomes | Focus is tied to one task; outcomes feed briefing. |
 | `calendar` | calendars, events, event_attendees, event_links, recurrence_templates, scheduler_preferences, schedule_proposals, follow_ups | |
-| `knowledge` | documents, document_*, artifacts, artifact_versions, artifact_links, dossiers, sources, claims, embeddings, wiki_pages, working_drafts, zettel_proposals, context_manifests | The largest domain. Extraction, search, library, notes, exports. |
+| `knowledge` | documents, document_*, artifacts, artifact_versions, artifact_links, dossiers, sources, claims, embeddings, wiki_pages, working_drafts, zettel_proposals, context_manifests | The largest domain. Extraction, search, the knowledge base, notes, exports. |
 | `crm` | contacts, companies, contact_*, party_*, account_person_links, opportunities, opportunity_* | Canonical people and organisations. |
 | `conversations` | threads, messages, thread_checkpoints, correspondence | Agent and human conversation records. |
 | `agents` | agent_profiles, agent_runs, agent_steps, agent_questions, tool_calls, tool_invocations, memory_items, runtime_executions, runtime_signals, spend_* | Profiles, runs, memory, spending. |
 | `actions` | action_proposals, action_attempts, action_policies, action_reviews, action_revisions, reviewed_assertions | The review pipeline for external writes. |
-| `learning` | learning_decks, learning_items, learning_attempts, learning_plans, concepts, claims, claim_evidence | Spaced repetition and study. |
 | `gamification` | reward_definitions, reward_ledger, user_progress, daily_snapshots | Rewards. Model unselected. |
 | `integrations` | external_accounts, external_identities, provider_observations, sync_cursors, connection_attempts, webhook_inbox, api_clients, triggers, integration_catalog | Provider state and credentials references. Access tiers live on `external_accounts.access_tier` (enforced in the gateway, per connection, read live per call); `integration_catalog.access_tiers` mirrors `PROVIDER_TIERS` as connect-screen display data. Provider reads route through the generic registry (`src/domains/integrations/reads/generic.ts`): a provider slice is a spec — endpoint, query template, list path, item mapper — not gateway code. |
 | `audit` | audit_events, outbox_events | Append-only audit plus the transactional outbox. |

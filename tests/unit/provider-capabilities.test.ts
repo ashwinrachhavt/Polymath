@@ -122,7 +122,13 @@ const NATIVE_TOOLS = [
   "wiki.ingest",
   "wiki.lint",
   "notebook.open",
-  "learning.review",
+  "tasks.create",
+  // No connected account or catalog row: the search provider is picked from
+  // the environment (zero-key DuckDuckGo by default), and a fetch goes
+  // through the workspace's own Firecrawl, never through a connection.
+  "web.search",
+  "web.fetch",
+  "artifacts.revise",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read", "notion.read"];
 

@@ -421,6 +421,27 @@
       "tag": "0233_crm_tiers",
       "when": 1792621700000,
       "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "tag": "0234_api_client_key_ids",
+      "when": 1792709988105,
+      "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "tag": "0235_drop_learning",
+      "when": 1792711000000,
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "tag": "0236_artifact_source_indexes",
+      "when": 1792712000000,
+      "breakpoints": true
     }
   ]
 }

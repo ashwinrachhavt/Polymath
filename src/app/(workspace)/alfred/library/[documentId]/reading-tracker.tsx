@@ -148,7 +148,7 @@ export function ReadingShell({ documentId, segments, canSave }: { documentId: st
           <mark key={index} className="rounded-sm bg-accent/60 px-0.5 text-foreground" title="Kept as a zettel">
             {segment.text}
             <Link
-              href={`/alfred/notebook?id=${segment.passage.artifactId}`}
+              href={`/alfred/notes?id=${segment.passage.artifactId}`}
               className="ml-1 align-super text-[10px] text-muted-foreground underline-offset-2 hover:underline"
               aria-label={`Open zettel: ${segment.passage.title}`}
             >

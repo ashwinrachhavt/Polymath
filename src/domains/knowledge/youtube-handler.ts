@@ -144,6 +144,11 @@ async function writeCues(
 /** Records why a video has no transcript, in the same place a failed fetch goes. */
 async function recordTranscriptFailure(auth: AuthContext, documentId: string, error: string) {
   const contentHash = `unfetched-youtube:${documentId}`;
+  const [doc] = await db
+    .select({ sourceUrl: documents.sourceUrl, title: documents.title })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.workspaceId, auth.workspaceId)))
+    .limit(1);
   await db
     .insert(documentExtractions)
     .values({ workspaceId: auth.workspaceId, documentId, contentHash, status: "failed", error, extractor: "youtube-transcript" })
@@ -151,14 +156,16 @@ async function recordTranscriptFailure(auth: AuthContext, documentId: string, er
       target: [documentExtractions.documentId, documentExtractions.contentHash],
       set: { error, createdAt: new Date() },
     });
-  // The source row exists so the owner can see the attempt and retry it.
+  // The source row exists so the owner can see the attempt and retry it. The
+  // url is the document's canonical address, the same key the notebook attach
+  // bound by, so the failed state lands on the row the pane already shows.
   await db
     .insert(sources)
     .values({
       workspaceId: auth.workspaceId,
       kind: "document",
-      title: `YouTube ${documentId}`,
-      url: `https://www.youtube.com/watch?v=${documentId}`,
+      title: doc?.title ?? `YouTube ${documentId}`,
+      url: doc?.sourceUrl ?? `https://www.youtube.com/watch?v=${documentId}`,
       contentHash,
       fetchedAt: new Date(),
       createdBy: auth.userId,

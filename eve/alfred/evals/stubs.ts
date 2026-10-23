@@ -84,13 +84,13 @@ function isSet(value: string | undefined): boolean {
  * and the real tool would run — the failure this file exists to prevent.
  */
 export const STUBBED_TOOLS = {
+  artifacts_propose_revision: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
   documents_search: { response: { ok: true, query: "", results: [] } },
-  learning_grade: { response: { ok: true } },
-  learning_next: { response: { ok: true, items: [] } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_search": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_send": { response: { ok: false, error: "not connected in this eval" } },
+  tasks_propose: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
   tasks_read: { response: { ok: true, tasks: [] } },
   tasks_recent: { response: { ok: true, tasks: [], days: 7 } },
   web_fetch: { response: { ok: true, text: "" } },

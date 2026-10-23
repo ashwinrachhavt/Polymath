@@ -1,4 +1,5 @@
 import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
@@ -485,6 +486,9 @@ export type NoteDetail = {
 };
 
 export async function getNote(auth: AuthContext, artifactId: string): Promise<NoteDetail | null> {
+  // A malformed id would reach Postgres as a uuid cast error and 500; it is
+  // the same "no note here" as any other miss.
+  if (!z.string().uuid().safeParse(artifactId).success) return null;
   return withTransaction(async (tx) => {
     const [row] = await tx
       .select({
@@ -507,7 +511,11 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
       .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
       .limit(1);
-    if (!row) return null;
+    // The Notes editor autosaves prose over the row's content, so a
+    // machine-structured kind (a report, a deck, an infographic) must never
+    // open here: the guard is the same one the workbench's isGeneratableKind
+    // applies in reverse. getDraftDetail serves those.
+    if (!row || !(LINKABLE_KINDS as readonly string[]).includes(row.kind)) return null;
     return {
       id: row.id,
       title: row.title,

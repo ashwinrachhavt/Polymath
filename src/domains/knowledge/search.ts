@@ -222,3 +222,88 @@ export async function searchChunks(
     distance: Number(r.distance),
   }));
 }
+
+/*
+ * Passage search without an embedding provider: Postgres full-text over each
+ * document's current extraction text, under the same three scopes as
+ * searchChunks (workspace on both tables, non-archived, current succeeded
+ * version). This is the no-key path for the agent's documents.search: keyword
+ * matching, not semantic similarity, and the caller labels the result that
+ * way instead of failing closed when no embedding provider is configured.
+ */
+export async function searchChunksFts(
+  auth: AuthContext,
+  input: { query: string; limit?: number; documentIds?: string[] },
+): Promise<ChunkHit[]> {
+  const query = input.query.trim();
+  if (!query) return [];
+  // An empty boundary (a dossier with no documents) matches nothing, never everything.
+  if (input.documentIds && input.documentIds.length === 0) return [];
+  const limit = Math.min(Math.max(input.limit ?? 8, 1), 50);
+  // websearch_to_tsquery, never to_tsquery: model-written queries are
+  // arbitrary prose and must not become syntax errors.
+  const tsQuery = sql`websearch_to_tsquery('english', ${query})`;
+  const tsVector = sql`to_tsvector('english', coalesce(${documentExtractions.text}, ''))`;
+  const rank = sql<number>`ts_rank(${tsVector}, ${tsQuery})`;
+
+  const rows = await db
+    .select({
+      documentId: documents.id,
+      title: documents.title,
+      extractionId: documentExtractions.id,
+      text: documentExtractions.text,
+      rank,
+    })
+    .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+    .where(and(
+      eq(documentExtractions.workspaceId, auth.workspaceId),
+      eq(documents.workspaceId, auth.workspaceId),
+      isNull(documents.archivedAt),
+      input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
+      eq(documentExtractions.status, "succeeded"),
+      // Same current-version rule as searchChunks (versions.ts owns "current").
+      sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
+      sql`${tsVector} @@ ${tsQuery}`,
+    ))
+    .orderBy(desc(rank))
+    .limit(limit);
+
+  return rows.flatMap((r) => {
+    const text = r.text ?? "";
+    if (!text) return [];
+    const { start, end } = passageWindow(text, query);
+    return [{
+      documentId: r.documentId,
+      title: r.title,
+      extractionId: r.extractionId,
+      chunkIndex: 0,
+      text: text.slice(start, end),
+      span: { start, end, page: null },
+      // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
+      distance: 1 / (1 + Number(r.rank)),
+    }];
+  });
+}
+
+export const FTS_PASSAGE_RADIUS = 600;
+
+/*
+ * The passage an FTS hit returns: a window around the earliest query term
+ * actually present in the extraction text (websearch matches on stems, so a
+ * raw term may legitimately be absent - then the head of the document). The
+ * offsets are real coordinates into the extraction text, the same contract as
+ * embedding-chunk spans.
+ */
+export function passageWindow(text: string, query: string, radius = FTS_PASSAGE_RADIUS) {
+  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  const lower = text.toLowerCase();
+  let at = -1;
+  for (const term of terms) {
+    const i = lower.indexOf(term);
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  if (at < 0) return { start: 0, end: Math.min(text.length, radius * 2) };
+  const start = Math.max(0, at - radius);
+  return { start, end: Math.min(text.length, at + radius) };
+}

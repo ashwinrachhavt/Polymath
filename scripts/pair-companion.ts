@@ -1,18 +1,17 @@
-import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { resolveSeedOwner } from "@/domains/crm/seed";
+import { mintApiClient } from "@/domains/identity/machine";
 import { apiClients } from "@/domains/identity/schema";
 import { db } from "@/lib/db";
-import { sha256Hex } from "@/lib/hash";
 
 /*
- * Pairs the Chrome companion with this Polymath workspace.
+ * Pairs the Chrome companion with this Polymath workspace. The same flow is
+ * available in the app under Settings → Account and machine clients, which is
+ * the easier path; this CLI remains for headless setups and recovery.
  *
- * Polymath resolves a machine token by looking its digest up in
- * api_clients.token_hash, but nothing ever created those rows. This is that
- * missing step: mint a secret, store only its SHA-256 digest, and print the
- * secret once. No third-party API-key product is involved, so it works on any
- * Clerk plan; revocation is `--revoke`, which archives the row.
+ * Only the secret's SHA-256 digest is stored; the token is printed once. No
+ * third-party API-key product is involved, so it works on any Clerk plan.
+ * Revocation is `--revoke`, which archives the row.
  *
  *   pnpm companion:pair -- --clerk-user user_xxx
  *   pnpm companion:pair -- --clerk-user user_xxx --revoke <clientId>
@@ -48,23 +47,19 @@ async function main() {
   const owner = await resolveSeedOwner(args.clerkUser);
   if (!owner) throw new Error(`No active workspace for ${args.clerkUser}. Sign in to Polymath once first.`);
 
-  const secret = `axm_${randomBytes(32).toString("base64url")}`;
-  const [client] = await db
-    .insert(apiClients)
-    .values({
-      workspaceId: owner.workspaceId,
-      name: args.name,
-      kind: "companion",
-      tokenHash: await sha256Hex(secret),
-      status: "active",
-      scopes: ["captures:write"],
-    })
-    .returning({ id: apiClients.id });
+  const minted = await mintApiClient({
+    workspaceId: owner.workspaceId,
+    name: args.name,
+    kind: "companion",
+    // The companion reads its queue (health check, history) and writes
+    // captures, so it needs both halves of the captures surface.
+    scopes: ["captures:read", "captures:write"],
+  });
 
-  console.log(`Paired ${client.id} to workspace ${owner.workspaceId}.\n`);
+  console.log(`Paired ${minted.clientId} to workspace ${owner.workspaceId}.\n`);
   console.log("Paste this into the extension's Settings → Access token (shown once):\n");
-  console.log(`  ${secret}\n`);
-  console.log(`To revoke: pnpm companion:pair -- --revoke ${client.id}\n`);
+  console.log(`  ${minted.token}\n`);
+  console.log(`To revoke: pnpm companion:pair -- --revoke ${minted.clientId}\n`);
 }
 
 main()

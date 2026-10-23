@@ -77,6 +77,20 @@ async function seed(auth: { workspaceId: string; userId: string }, text: string,
   await embedExtraction({ ...auth, role: "owner" as const }, { extractionId: result.extractionId, provider });
   return doc;
 }
+/** Seed a document with extraction text and no embeddings: the no-key path. */
+async function seedText(auth: { workspaceId: string; userId: string }, text: string, title: string) {
+  const db = holder.db!;
+  const [blob] = await db.insert(blobObjects).values({
+    workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(),
+    sizeBytes: 4, mimeType: "application/pdf",
+  }).returning();
+  const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: `${title}.pdf` }).returning();
+  const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title, fileId: file.id, mimeType: "application/pdf" }).returning();
+  extractor.extract.mockResolvedValueOnce({ ok: true, text, spans: [{ page: 1, start: 0, end: text.length }], pageCount: 1, extractor: "fixture@1" });
+  const result = await extractDocument({ ...auth, role: "owner" as const }, { documentId: doc.id });
+  if (!result.ok) throw new Error("seed failed");
+  return doc;
+}
 const workspace = async () => ({ ...await seedWorkspace(holder.db!, `ds-${crypto.randomUUID()}`), role: "owner" as const });
 
 suite("documents.search for the agent (real Postgres + pgvector)", () => {
@@ -120,13 +134,52 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     expect(await count()).toEqual(before);
   });
 
-  it("gives fixed messages for a missing key and for provider failures, never provider text", async () => {
+  it("gives fixed messages for provider failures, never provider text", async () => {
     const a = await workspace();
+    // No embedding key no longer fails closed: the workspace simply has no
+    // documents, so the full-text fallback answers with an empty, labelled
+    // result instead of the old "not configured" error.
     vi.stubEnv("OPENROUTER_API_KEY", "");
-    expect(await searchDocumentsForAgent(a, { query: "rent" })).toEqual({ ok: false, error: "document search is not configured (no embedding key)" });
+    expect(await searchDocumentsForAgent(a, { query: "rent" })).toEqual({ ok: true, query: "rent", mode: "text", results: [] });
     const broken: EmbeddingProvider = { model: "m", embed: async () => { throw new Error("401 sk-live-secret"); } };
     const res = await searchDocumentsForAgent(a, { query: "rent", provider: broken });
     expect(res).toEqual({ ok: false, error: "document search failed, try again" });
+  });
+
+  it("falls back to full-text search over current extractions when no embedding key is configured", async () => {
+    const a = await workspace();
+    const b = await workspace();
+    // Seed text only: the fallback must need no embeddings and no provider.
+    const lease = await seedText(a, LEASE, "lease");
+    await seedText(a, PAYROLL, "payroll");
+    await seedText(b, LEASE, "other tenant lease");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const res = await searchDocumentsForAgent({ ...a, role: "viewer" }, { query: "security deposit", limit: 3 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.mode).toBe("text");
+    expect(res.results[0]).toMatchObject({ documentId: lease.id, title: "lease" });
+    expect(res.results[0].text.toLowerCase()).toContain("security deposit");
+    // The span is real offsets into the extraction text, the ChunkHit contract.
+    const span = res.results[0].span;
+    expect(LEASE.slice(span.start, span.end)).toBe(res.results[0].text);
+    expect(res.results.map((r) => r.title)).not.toContain("other tenant lease");
+    const bRes = await searchDocumentsForAgent({ ...b, role: "viewer" }, { query: "security deposit" });
+    expect(bRes.ok && bRes.results.every((r) => r.title === "other tenant lease")).toBe(true);
+  });
+
+  it("the full-text fallback respects a dossier boundary and skips archived documents", async () => {
+    const a = await workspace();
+    const lease = await seedText(a, LEASE, "lease");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    // An empty boundary matches nothing, never everything.
+    const empty = await searchDocumentsForAgent(a, { query: "rent", dossierId: crypto.randomUUID() });
+    expect(empty).toEqual({ ok: false, error: "dossier not found" });
+    await holder.db!.update(documents).set({ archivedAt: new Date() }).where(eq(documents.id, lease.id));
+    const res = await searchDocumentsForAgent(a, { query: "rent" });
+    expect(res).toEqual({ ok: true, query: "rent", mode: "text", results: [] });
   });
 
   it("the default profile grants the read and internal tools, and an older profile gains only those", async () => {
@@ -154,7 +207,10 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "calendar.read",
       "notion.read",
       "notebook.open",
-      "learning.review",
+      "tasks.create",
+      "web.search",
+      "web.fetch",
+      "artifacts.revise",
     ]);
     const b = await workspace();
     await ensureProfile(b.workspaceId);
@@ -179,7 +235,10 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "calendar.read",
       "notion.read",
       "notebook.open",
-      "learning.review",
+      "tasks.create",
+      "web.search",
+      "web.fetch",
+      "artifacts.revise",
     ]);
   });
 

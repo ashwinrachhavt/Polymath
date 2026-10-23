@@ -42,7 +42,6 @@ export type ChatSurfaceProps = {
    * server action plus a stream open, which reads as a dropped keystroke.
    */
   optimisticMessage?: string;
-  /** Capabilities the surface advertises; the run's frozen policy is the real gate. */
   placeholder?: string;
   /** Receives citations a tool produced, as the knowledge domain's own type. */
   onCitation?: (citations: DocumentCitation[]) => void;
@@ -220,7 +219,6 @@ export function ChatSurface({
             [/calendar/i, "Checked calendar"],
             [/web_search/i, "Searched the web"],
             [/web_fetch/i, "Read a web page"],
-            [/learning/i, "Checked learning deck"],
           ];
           const visible = chat.tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
           if (visible.length === 0) return null;

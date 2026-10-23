@@ -119,7 +119,7 @@ test("a capture outside the current filter still renders in the detail pane and 
 
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
   // The representative preview route: notebook handed off to the canonical
-  // /alfred/notebook surface (B04), so this leg uses the dictionary preview.
+  // /alfred/notes surface (B04), so this leg uses the dictionary preview.
   await page.goto("/apps/alfred/dictionary");
   // No notebook-toolbar landmark here: the breadcrumb assertion retries
   // until the dynamic screen mounts, and this test runs no axe sweep.
@@ -128,11 +128,7 @@ test("preview routes retain app context and all tools are reachable on a phone",
   // the workshop lives behind More.
   await expect(page.getByRole("navigation", { name: "Breadcrumb", exact: true })).toContainText("Dictionary");
   await page.goto("/more");
-  // "Learning" names the canonical destination in the rail and again as a
-  // preview tool, so scope the assertion to the section it belongs to.
-  const previewTools = page.getByRole("listitem").filter({ hasText: "Learning" }).filter({ hasText: "Flashcards and quiz" });
   await expect(page.getByRole("link", { name: "Dictionary" })).toBeVisible();
-  await expect(previewTools.getByRole("link", { name: /Learning/ })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/briefing");

@@ -45,7 +45,7 @@ suite("generated drafts (Neon)", () => {
       .values({ workspaceId: auth.workspaceId, kind: "report", title: "Brief", status: "draft", producedByRunId: runId, createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
     const map = await draftsForRuns(auth, [runId, crypto.randomUUID()]);
-    expect(map.get(runId)).toEqual({ artifactId: artifact.id, status: "draft" });
+    expect(map.get(runId)).toEqual({ artifactId: artifact.id, status: "draft", version: artifact.version });
     expect(map.size).toBe(1);
   });
 

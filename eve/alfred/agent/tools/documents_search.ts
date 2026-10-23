@@ -19,7 +19,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the workspace's documents by meaning. Returns the best matching passages with document id, title and character span, so answers can cite them. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the workspace's documents. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),

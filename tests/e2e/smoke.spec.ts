@@ -129,11 +129,13 @@ test("the destination launcher is keyboard reachable and closes on escape", asyn
 });
 
 /*
- * A run that needs the owner carries exactly one status, in the words of the
- * screen. `waiting_approval` is only reachable after a model asks for a
- * proposal, so the row is seeded directly.
+ * A run row on home is a conversation, not a status board: the objective and
+ * its age, nothing else. The waiting-on-you vocabulary lives in Reviews by
+ * design (see the run page's comment), so no status words belong on the row.
+ * `waiting_approval` is only reachable after a model asks for a proposal, so
+ * the row is seeded directly.
  */
-test("a waiting run shows one status, and only that one", async ({ page }) => {
+test("a run row on home names the objective, and nothing else", async ({ page }) => {
   const objective = `Approve the renewal letter ${Date.now().toString(36)}`;
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Seeding a waiting run needs DATABASE_URL.");
@@ -141,9 +143,11 @@ test("a waiting run shows one status, and only that one", async ({ page }) => {
   await page.goto("/alfred");
   const row = page.getByRole("link", { name: new RegExp(objective) });
   await expect(row).toBeVisible();
-  await expect(row.getByText("Needs your reply", { exact: true })).toHaveCount(1);
-  for (const second of ["Running", "In progress", "Queued", "Succeeded", "Waiting for your reply"]) {
-    await expect(row, second).not.toContainText(second);
+  await expect(row).toHaveAttribute("href", `/alfred/${run!.id}`);
+  // No status vocabulary on the row: Reviews owns "needs you", and internal
+  // state names are never the words of the screen.
+  for (const status of ["Needs your reply", "Running", "In progress", "Queued", "Succeeded", "waiting_approval"]) {
+    await expect(row, status).not.toContainText(status);
   }
   // The row is a conversation, not a debug line: no model, no transcript prefix.
   await expect(row).not.toContainText("You:");
@@ -151,13 +155,13 @@ test("a waiting run shows one status, and only that one", async ({ page }) => {
 });
 
 /*
- * The conversation page: the transcript is the page, instrumentation is one
- * disclosure away, and a run id that is not this workspace's is the same
- * answer as one that never existed. The shell's loading.tsx commits before
- * notFound() runs, so the response is 200 with not-found content — assert the
- * content, never the status.
+ * The conversation page: the transcript is the page, controls live under it,
+ * and a run id that is not this workspace's is the same answer as one that
+ * never existed. The shell's loading.tsx commits before notFound() runs, so
+ * the response is 200 with not-found content — assert the content, never the
+ * status.
  */
-test("a run opens its conversation, with details behind a disclosure", async ({ page }) => {
+test("a run opens its conversation, with controls under the transcript", async ({ page }) => {
   const objective = `Draft the renewal letter ${Date.now().toString(36)}`;
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Opening a conversation needs DATABASE_URL.");
@@ -171,20 +175,35 @@ test("a run opens its conversation, with details behind a disclosure", async ({ 
   const conversation = content.getByRole("region", { name: "Conversation" });
   await expect(conversation).toBeVisible();
   await expect(conversation.getByText("This conversation has no messages yet.")).toBeVisible();
-  // The attention badge links to Reviews rather than growing a decision surface.
-  const reply = content.getByRole("link", { name: "Needs your reply" });
-  await expect(reply).toBeVisible();
-  await expect(reply).toHaveAttribute("href", "/reviews");
-  // Exactly one status on the page: the header badge, nothing repeated below.
-  await expect(content.getByText("Needs your reply")).toHaveCount(1);
+  // Approvals are decided in Reviews; that surface owns the waiting-on-you
+  // vocabulary, so the conversation page grows no status badge of its own.
+  await expect(content.getByText("Needs your reply")).toHaveCount(0);
 
-  // Details are collapsed: model, tools, and the timeline are not on the page
-  // until asked for.
-  const details = content.locator("details");
-  await expect(details).not.toHaveAttribute("open", "");
-  await expect(content.getByText("Run timeline")).toBeHidden();
-  await details.locator("summary").click();
-  await expect(content.getByText("Run timeline")).toBeVisible();
+  // A waiting run is live from the page's point of view: the composer offers a
+  // follow-up and a stop, and the draft control (nothing produced yet) stays
+  // out of the way.
+  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Stop" })).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Save the answer as a draft" })).toHaveCount(0);
+});
+
+test("a finished run shows its retry and draft controls instead of a composer", async ({ page }) => {
+  const objective = `Summarize the vendor terms ${Date.now().toString(36)}`;
+  const run = await seedRun({ objective, state: "succeeded" });
+  test.skip(!run, "Opening a conversation needs DATABASE_URL.");
+
+  await page.goto(`/alfred/${run!.id}`);
+  const content = page.locator("#content").first();
+  await expect(content.locator("h1")).toHaveText(objective);
+  const conversation = content.getByRole("region", { name: "Conversation" });
+  await expect(conversation).toBeVisible();
+  // A finished run keeps its stored transcript (empty here) and takes Retry;
+  // the live composer and its cancel button are gone.
+  await expect(conversation.getByText("This conversation has no messages yet.")).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Retry as a new run" })).toBeVisible();
+  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toHaveCount(0);
+  // With no output to keep, the draft control renders nothing.
+  await expect(conversation.getByRole("button", { name: "Save the answer as a draft" })).toHaveCount(0);
 });
 
 test("a conversation that does not exist says so, without a 404 page", async ({ page }) => {
@@ -205,16 +224,43 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
 });
 
+/*
+ * The IA simplification removed seven rail destinations. Six keep a redirect
+ * bridge to the screen that absorbed their function (query params dropped,
+ * except the notebook bridge, whose ?id= is the Notes surface's own deep link
+ * and so is carried across); Learning's route was deleted entirely, so its
+ * address 404s with the same noindex not-found state as any unknown screen.
+ */
+test("removed IA destinations redirect to their new homes, or 404 when the route is gone", async ({ page }) => {
+  for (const [from, to] of [
+    ["/alfred/sources", "/alfred/dossiers"],
+    ["/alfred/wiki", "/alfred/knowledge"],
+    ["/command-center/spending", "/command-center/briefing?tab=spending"],
+    ["/command-center/opportunities", "/command-center/relationships/people"],
+    ["/neuralflow/focus", "/neuralflow/work"],
+  ] as const) {
+    await page.goto(`${from}?stale=param`);
+    await expect(page, from).toHaveURL(to);
+  }
+  // The old notebook address keeps the note deep link it once owned.
+  await page.goto("/alfred/notebook?id=00000000-0000-4000-8000-000000000001");
+  await expect(page).toHaveURL("/alfred/notes?id=00000000-0000-4000-8000-000000000001");
+  await page.goto("/alfred/learning");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
+  await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
+});
+
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/neuralflow/focus", "/alfred/knowledge", "/alfred/notebook"]) {
+  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
     await page.goto(path);
     // Axe must evaluate the settled page: the topbar buttons sit at
     // disabled:opacity-50 until hydration and transition to full opacity,
     // and axe composites whatever it samples through in-flight opacity.
     await waitSettled(page);
     // The notebook leg scans the canonical surface (B04); its rich-editor
-    // toolbar only mounts with a note open, so no editor landmark here.
+    // toolbar only mounts with a note open, so no editor landmark here. The
+    // artifacts leg scans the rail's kept-outputs list (IA simplification).
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(violations, path).toEqual([]);
   }

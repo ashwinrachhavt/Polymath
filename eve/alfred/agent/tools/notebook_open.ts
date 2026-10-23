@@ -4,7 +4,7 @@ import { toolAllowed } from "../lib/policy";
 // Relative, not "@...": eve bundles this agent from its own package root and
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
-import { NOTEBOOK_OPEN_CAPABILITY, openNotebook } from "../../../../src/domains/teaching/notebook-context";
+import { NOTEBOOK_OPEN_CAPABILITY, openNotebook } from "../../../../src/domains/knowledge/notebook-context";
 
 /*
  * Read capability: open a notebook (a dossier) and see what it holds.

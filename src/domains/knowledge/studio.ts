@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { actionProposals } from "@/domains/actions/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
@@ -67,12 +68,23 @@ export async function startStudioGenerate(
   if (!dossier) throw new StudioError("dossier_not_found", "No such dossier.");
 
   // The prompt needs the pinned documents so the model can cite by id.
+  // Same rule as dossierDocumentIds: a landed capture binds by file; a queued
+  // URL or YouTube capture has no file yet and binds by its canonical address.
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
     .from(dossierSources)
     .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        or(
+          and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+          and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+        ),
+      ),
+    )
     .where(and(eq(dossierSources.dossierId, dossier.id), eq(dossierSources.workspaceId, auth.workspaceId)));
 
   const objective = buildObjective(kind, {
@@ -163,12 +175,24 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
 
     await tx.insert(artifactLinks).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "run", targetId: run.id, label: "produced by" });
     if (dossierSubject?.id) {
+      // Same file-or-address rule as startStudioGenerate above: a queued URL or
+      // YouTube capture is a pinned source before its bytes land, so its
+      // document still gets the artifact link.
       const pinned = await tx
         .select({ documentId: documents.id, hash: dossierSources.pinnedContentHash })
         .from(dossierSources)
         .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
         .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-        .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+        .innerJoin(
+          documents,
+          and(
+            eq(documents.workspaceId, auth.workspaceId),
+            or(
+              and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+              and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+            ),
+          ),
+        )
         .where(and(eq(dossierSources.dossierId, dossierSubject.id), eq(dossierSources.workspaceId, auth.workspaceId)));
       for (const p of pinned) {
         await tx
@@ -204,13 +228,13 @@ export const discardDraft = (auth: AuthContext, input: { artifactId: string }) =
 
 /** The artifact each run produced, keyed by run id — so a run row can render its save/keep/discard state. */
 export async function draftsForRuns(auth: AuthContext, runIds: string[]) {
-  const map = new Map<string, { artifactId: string; status: string }>();
+  const map = new Map<string, { artifactId: string; status: string; version: number }>();
   if (runIds.length === 0) return map;
   const rows = await db
-    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status })
+    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status, version: artifacts.version })
     .from(artifacts)
     .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.producedByRunId, runIds)));
-  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status });
+  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status, version: row.version });
   return map;
 }
 
@@ -233,8 +257,15 @@ export async function listDrafts(auth: AuthContext) {
 
 export type DraftLinkRow = { id: string; targetType: string; targetId: string; label: string | null };
 
+/** One entry in an artifact's append-only version history. */
+export type DraftVersionRow = { versionNumber: number; reason: string; note: string | null; createdAt: Date };
+
 export type DraftDetail = {
   artifact: { id: string; title: string; kind: string; status: string; version: number };
+  /** Every saved version, newest first — the proof that edits never overwrite. */
+  versions: DraftVersionRow[];
+  /** Open artifacts.revise proposals waiting on this output. */
+  pendingRevisions: number;
   text: string;
   /**
    * The structured payload for a deck or infographic. Null for a report, and
@@ -278,6 +309,30 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
         .limit(1)
     : [null];
 
+  const versionRows = await db
+    .select({
+      versionNumber: artifactVersions.versionNumber,
+      reason: artifactVersions.reason,
+      note: artifactVersions.note,
+      createdAt: artifactVersions.createdAt,
+    })
+    .from(artifactVersions)
+    .where(and(eq(artifactVersions.artifactId, artifact.id), eq(artifactVersions.workspaceId, auth.workspaceId)))
+    .orderBy(desc(artifactVersions.versionNumber))
+    .limit(20);
+
+  const [pendingRev] = await db
+    .select({ n: count() })
+    .from(actionProposals)
+    .where(
+      and(
+        eq(actionProposals.workspaceId, auth.workspaceId),
+        eq(actionProposals.status, "pending"),
+        eq(actionProposals.targetType, "artifact"),
+        eq(actionProposals.targetId, artifact.id),
+      ),
+    );
+
   const linkRows = await db
     .select({ id: artifactLinks.id, targetType: artifactLinks.targetType, targetId: artifactLinks.targetId, label: artifactLinks.label })
     .from(artifactLinks)
@@ -294,6 +349,8 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
 
   return {
     artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, status: artifact.status, version: artifact.version },
+    versions: versionRows,
+    pendingRevisions: Number(pendingRev?.n ?? 0),
     text: version?.plainText ?? "",
     // Structured content is read back as stored, and citations are checked
     // against the documents this artifact is actually pinned to, so a stale or

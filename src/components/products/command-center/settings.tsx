@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
 const CandidateFacts = dynamic(() => import("./candidate-facts"), { loading: () => <p role="status">Loading candidate fact controls…</p> });
+const ApiKeysPanel = dynamic(() => import("./api-keys-panel"), { loading: () => <p role="status">Loading API keys…</p> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -268,8 +269,8 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="account">
-          <Panel title="Account and machine clients">
-            <Unavailable feature="Profile and API-client settings">Authenticated identity, client token creation, one-time secret display and revocation require server-side domain commands. No token is generated here.</Unavailable>
+          <Panel title="Account and machine clients" description="API keys let the Chrome companion, scripts and agents authenticate. Only the key's digest is stored; the secret is shown once at creation.">
+            <ApiKeysPanel />
           </Panel>
         </Section>
 

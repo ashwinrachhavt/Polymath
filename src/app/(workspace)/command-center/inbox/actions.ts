@@ -68,7 +68,7 @@ export async function makeNoteAction(input: { captureId: string; expectedVersion
   } catch (error) {
     return fail(error);
   }
-  revalidatePath("/alfred/notebook");
+  revalidatePath("/alfred/notes");
   revalidate(auth);
   return { ok: true };
 }

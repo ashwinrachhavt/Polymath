@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, files } from "@/domains/knowledge/schema";
+import { documents, files, sources } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -26,6 +26,8 @@ import { DossierError, attachDocuments, createDossier, dossierDocumentIds, listD
 import { dossierSources } from "@/domains/knowledge/schema";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
 import { extractDocument } from "@/domains/knowledge/extraction";
+import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
+import { recordSource } from "@/domains/knowledge/sources";
 
 /** Deterministic embedder: words hash into buckets, so shared words mean closeness. */
 function fakeProvider(model = "fake:hash-1536"): EmbeddingProvider & { calls: number } {
@@ -117,6 +119,46 @@ suite("dossiers (real Postgres + pgvector)", () => {
     await expect(createDossier(a, { name: "   ", documentIds: [] })).rejects.toMatchObject({ code: "invalid_name" });
   });
 
+  it("a queued capture binds by address through the real writer path, and landing keeps one source", async () => {
+    const a = await workspace();
+    // The real queued-capture shape: queueYouTubeCapture writes a documents row
+    // with a canonical sourceUrl and no fileId, and enqueues the transcript
+    // job. No sources row exists until the handler or a notebook attach makes one.
+    const videoId = crypto.randomUUID().replace(/-/g, "").slice(0, 11);
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const queued = await queueYouTubeCapture(a, { url });
+    expect(queued.ok).toBe(true);
+    if (!queued.ok) return;
+    const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, queued.documentId));
+    expect(doc.sourceUrl).toBe(url);
+    expect(doc.fileId).toBeNull();
+
+    // Attaching the queued video makes the notebook's placeholder source row,
+    // bound by address (sourceFor inserts with the url).
+    const d = await createDossier(a, { name: "Videos", documentIds: [queued.documentId] });
+    expect(await dossierDocumentIds(a, d.id)).toEqual([queued.documentId]);
+    const beforeRows = await holder.db!.select().from(sources)
+      .where(and(eq(sources.url, doc.sourceUrl!), eq(sources.workspaceId, a.workspaceId)));
+    expect(beforeRows).toHaveLength(1);
+
+    // The transcript lands: intakeFile attaches the file to the same document
+    // and recordSource updates the url-matched placeholder in place - one row,
+    // still the only one for this address, and the binding still resolves.
+    const [blob] = await holder.db!.insert(blobObjects).values({
+      workspaceId: a.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(),
+      sizeBytes: 4, mimeType: "text/plain",
+    }).returning();
+    const [file] = await holder.db!.insert(files).values({ workspaceId: a.workspaceId, blobId: blob.id, filename: "video.txt" }).returning();
+    await holder.db!.update(documents).set({ fileId: file.id }).where(eq(documents.id, queued.documentId));
+    await recordSource(a, holder.db as never, { title: "The talk", url: doc.sourceUrl!, contentHash: "hash-1", kind: "document" });
+
+    const afterRows = await holder.db!.select().from(sources)
+      .where(and(eq(sources.url, doc.sourceUrl!), eq(sources.workspaceId, a.workspaceId)));
+    expect(afterRows).toHaveLength(1);
+    expect(afterRows[0].contentHash).toBe("hash-1");
+    expect(await dossierDocumentIds(a, d.id)).toEqual([queued.documentId]);
+  });
+
   it("documents.search with a dossierId only returns that dossier's documents", async () => {
     const provider = fakeProvider();
     const a = await workspace();
@@ -135,7 +177,7 @@ suite("dossiers (real Postgres + pgvector)", () => {
     const b = await workspace();
     await seed(a, LEASE, "lease", provider);
     const empty = await createDossier(a, { name: "Empty", documentIds: [] });
-    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: true, query: "rent", results: [] });
+    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "semantic", results: [] });
     expect(await searchDocumentsForAgent(b, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: false, error: "dossier not found" });
     expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: crypto.randomUUID(), provider })).toEqual({ ok: false, error: "dossier not found" });
   });

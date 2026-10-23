@@ -24,6 +24,7 @@ vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(asy
 import { embedExtraction } from "@/domains/knowledge/embedding";
 import { saveGeneratedDraft, saveDraft, discardDraft, startStudioGenerate, StudioError } from "@/domains/knowledge/studio";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
+import { attachDocuments } from "@/domains/knowledge/dossiers";
 import { recordRoundEvent } from "@/domains/agents/event-bridge";
 import { createDossier } from "@/domains/knowledge/dossiers";
 import { ensureProfile } from "@/domains/agents/commands";
@@ -107,6 +108,30 @@ suite("Studio Generate (real Postgres)", () => {
     await expect(startStudioGenerate(b, { dossierId: d.id, brief: "x" }, engine)).rejects.toMatchObject({ code: "dossier_not_found" });
   });
 
+  it("pins a queued URL capture (no file yet) by address, in the objective and in the saved links", async () => {
+    const a = await workspace();
+    const d = await createDossier(a, { name: "Research", documentIds: [] });
+    // A queued capture: a document with a sourceUrl and no fileId, the shape a
+    // pasted link has before its bytes land.
+    const [queued] = await holder.db!.insert(documents).values({
+      workspaceId: a.workspaceId,
+      title: "Queued page",
+      sourceUrl: `https://example.com/queued-${crypto.randomUUID()}`,
+      createdBy: a.userId,
+      updatedBy: a.userId,
+    }).returning();
+    await attachDocuments(a, { dossierId: d.id, documentIds: [queued!.id] });
+
+    const engine = { start: vi.fn(async () => ({ runId: "r", reservationId: "x" })) } as never as import("@/domains/agents/engine").AgentEngine;
+    await startStudioGenerate(a, { dossierId: d.id, brief: "summarize the page" }, engine);
+    // The objective names the queued document: the address join found it.
+    expect((engine.start as ReturnType<typeof vi.fn>).mock.calls[0][0].objective).toContain(queued!.id);
+
+    const { artifactId } = await saveGeneratedDraft(a, { runId: (await runFor(a, d.id, "The page says hi.")).id });
+    const links = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.artifactId, artifactId));
+    expect(links.some((l) => l.targetType === "document" && l.targetId === queued!.id)).toBe(true);
+  });
+
   it("saves the output as a draft artifact linked to the pinned document versions, once", async () => {
     const provider = fakeProvider();
     const a = await workspace();
@@ -157,5 +182,22 @@ suite("Studio Generate (real Postgres)", () => {
     const b = await workspace();
     const other = await saveGeneratedDraft(a, { runId: (await runFor(a, d.id, "x")).id });
     await expect(saveDraft(b, { artifactId: other.artifactId })).rejects.toMatchObject({ code: "not_a_draft" });
+  });
+
+  it("a generated-status draft is not decidable: save and discard both refuse and change nothing", async () => {
+    const a = await workspace();
+    const d = await createDossier(a, { name: "D", documentIds: [] });
+    const { artifactId } = await saveGeneratedDraft(a, { runId: (await runFor(a, d.id, "still generating")).id });
+    // A run that has been picked up but not finished moves its artifact to
+    // "generated" — the in-between state the UI renders as a spinner. Only a
+    // "draft" can be decided.
+    await holder.db!.update(artifacts).set({ status: "generated" }).where(eq(artifacts.id, artifactId));
+    const before = await holder.db!.select().from(artifacts).where(eq(artifacts.id, artifactId));
+
+    await expect(saveDraft(a, { artifactId })).rejects.toMatchObject({ code: "not_a_draft" });
+    await expect(discardDraft(a, { artifactId })).rejects.toMatchObject({ code: "not_a_draft" });
+
+    const [after] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, artifactId));
+    expect(after).toMatchObject({ status: "generated", version: before[0]!.version, archivedAt: before[0]!.archivedAt });
   });
 });

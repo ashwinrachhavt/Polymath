@@ -18,7 +18,7 @@ function CardNodeView({ id, data, selected }: NodeProps<CardNode>) {
       <Handle type="target" position={Position.Left} className="!size-2 !border-border !bg-muted-foreground" />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{data.kind}</span>
-        <a href={`/alfred/notebook?id=${id}`} className="nodrag text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Open</a>
+        <a href={`/alfred/notes?id=${id}`} className="nodrag text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Open</a>
       </div>
       <p className="mt-0.5 line-clamp-2 text-[13px] font-medium leading-snug">{data.title}</p>
       {data.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{data.excerpt}</p>}
@@ -111,7 +111,7 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
     const result = await combineCardsAction({ sourceIds: selected.map((n) => n.id), title: title || undefined, idempotencyKey: crypto.randomUUID() });
     setBusy(false);
     if (!result.ok) return setError(result.error);
-    router.push(`/alfred/notebook?id=${result.id}`);
+    router.push(`/alfred/notes?id=${result.id}`);
   };
 
   return (
