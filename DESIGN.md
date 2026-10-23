@@ -104,12 +104,12 @@ and any colour that is the only carrier of meaning.
 
 ### 4.5 The reward register (the exception)
 
-The focus stage and the stone collection are the one place the calm register
+The focus-session stage and the stone collection are the one place the calm register
 lifts, by design (Opal): a near-black stage with a violet halo, a photoreal
 gem on a pedestal, a small-caps caption, and a big mono readout. This lives
-in `.nf-stage` and `.nf-jewel` and is confined to reward surfaces: the Focus
-screen, the session-complete reveal, the collection. The glow is allowed here
-and only here.
+in `.nf-stage` and `.nf-jewel` and is confined to reward surfaces: a focus
+session's stage, the session-complete reveal, the collection. The glow is
+allowed here and only here.
 
 ## 5. Type
 
@@ -332,7 +332,7 @@ Use these words and no synonyms.
 | **Clarify** | Converting a capture into a typed record. |
 | **Outcome** | A daily commitment the owner accepted. |
 | **Commit** | Moving an outcome into work. |
-| **Focus session** | One durable timed session bound to one task. |
+| **Focus session** | One durable timed session bound to one task, started from Work. Never a standalone destination. |
 | **Review** | A decision the owner owes on a proposal. |
 | **Proposal** | A prepared external write, not yet executed. |
 | **Attempt** | One execution of a proposal against a provider. |
@@ -340,6 +340,10 @@ Use these words and no synonyms.
 | **Stone** | A work memory awarded for completed focus, with a stated reason. The reward art calls it a jewel. |
 | **Connector** | A connected external account. Never "connection", never "integration". |
 | **Relationships** | The people-and-companies destination. Never "Contacts" as a nav label. |
+| **Notes** | The written-pages destination at `/alfred/notes`. Material the person wrote. |
+| **Document Vault** | The destination at `/alfred/knowledge` for uploaded documents and statements. Material the person uploaded. Never "Library" as a label. |
+| **Notebook** | The destination at `/alfred/dossiers` for bounded source sets with cited answers. Material the person pointed at. Retires "Dossier" as a user-facing term; the URL keeps `/dossiers/*` (§ 15). |
+| **Artifacts** | The destination at `/alfred/artifacts` listing kept LLM-generated outputs: reports, decks, infographics, zettels, wiki pages. Material the assistant generated and the person kept. Never "Generated" as a label. |
 
 ## 15. Remaining debt
 
@@ -350,13 +354,14 @@ What still contradicts this file, in the order it should die:
 | Legacy registry | `src/lib/products.ts` | Backs the workshop/preview tools (`featureDestinations`); `navigation.ts` owns the real destinations. Retire with the preview tools. |
 | Preview tools | `/apps/*` | The 16 destinations' legacy paths redirect to canonical routes (#162); the workshop tools that remain should land on canonical homes or go. |
 | App-era vocabulary | assorted copy | Screens and docs that still say "app", "suite", or "workspace" as a product layer should read as one Polymath. |
+| `/dossiers` URL | `/alfred/dossiers/*` | The Notebook label ships while the URL keeps the retired "Dossiers" name (owner decision 2026-10-22: zero redirect work beats a rename). Cosmetic only; the label everywhere is Notebook. |
 
 ## 16. Minimalism rules
 
 How a surface stays calm (the Notes redesign is the reference build):
 
 1. **The page is the object.** A single-object surface (a note, a document, a
-   dossier) renders the object itself: one centered column, the object's name
+   notebook) renders the object itself: one centered column, the object's name
    as the title, the content first. Chrome appears on demand, not by default.
 2. **Toolbars appear on selection or intent.** Formatting floats up over a
    text selection; "/" opens block insert; "[[" links a record. No persistent
