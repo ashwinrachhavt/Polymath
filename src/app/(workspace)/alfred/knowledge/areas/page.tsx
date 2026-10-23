@@ -1,11 +1,10 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { listAreas } from "@/domains/knowledge/area-queries";
 import { getAuthContext } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Empty, Panel, Status } from "@/components/workspace/ui";
 import { AreaActions, NewAreaForm } from "./area-controls";
-
-export const dynamic = "force-dynamic";
 
 /*
  * "Am I getting better at this?" per declared area. Effort (notes, manual
@@ -23,6 +22,7 @@ function ratio(hit: number, total: number): string {
 }
 
 export default async function AreasPage() {
+  await connection();
   const auth = await getAuthContext();
   const areas = await listAreas(auth);
 
