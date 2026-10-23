@@ -99,6 +99,52 @@ suite("reward rules", () => {
     expect(audits).toHaveLength(1);
   });
 
+  it("lost response after commit: the conflict read confirms the sentence was recorded", async () => {
+    // Simulates a request that committed but whose response never arrived:
+    // the completion IS on the task and its sentence IS on the audit row, so
+    // the conflict state must confirm recorded - never claim it was lost.
+    const auth = await seed("lost-response");
+    const queries = await import("@/domains/work/queries");
+    const task = await work.createOwnerTask(auth, { title: "Committed silently" });
+    const first = await work.completeTask(auth, { taskId: task.id, sentence: "Finished the migration." });
+    expect(first).not.toBeNull();
+
+    const retry = await work.completeTask(auth, { taskId: task.id, sentence: "Finished the migration." });
+    expect(retry).toBeNull();
+    const state = await queries.getCompletionConflictState(auth, task.id);
+    expect(state).toEqual({ status: "done", completionNote: "Finished the migration." });
+    // The loser wrote nothing: one audit row, one stone.
+    expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
+    const audits = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+    expect(audits).toHaveLength(1);
+  });
+
+  it("a completed-elsewhere task without a note reports no recorded sentence", async () => {
+    const auth = await seed("conflict-nonote");
+    const queries = await import("@/domains/work/queries");
+    const task = await work.createOwnerTask(auth, { title: "Done quietly" });
+    await work.completeTask(auth, { taskId: task.id });
+    const state = await queries.getCompletionConflictState(auth, task.id);
+    expect(state).toEqual({ status: "done", completionNote: null });
+  });
+
+  it("cancelled and missing tasks are not 'already completed'", async () => {
+    const auth = await seed("conflict-kinds");
+    const queries = await import("@/domains/work/queries");
+    const taskCommands = await import("@/domains/work/task-commands");
+    const cancelled = await work.createOwnerTask(auth, { title: "Cancelled" });
+    await taskCommands.updateTask(auth, { taskId: cancelled.id, expectedVersion: 1, patch: { status: "cancelled" } });
+    // The completion guard refuses a cancelled task, and the conflict read
+    // says cancelled - never "already completed".
+    expect(await work.completeTask(auth, { taskId: cancelled.id })).toBeNull();
+    expect((await queries.getCompletionConflictState(auth, cancelled.id))?.status).toBe("cancelled");
+    // A task the workspace cannot see reads as unavailable, not completed.
+    expect(await queries.getCompletionConflictState(auth, crypto.randomUUID())).toBeNull();
+  });
+
   it("a blank or missing answer records no sentence", async () => {
     const auth = await seed("completion-blank");
     const blank = await work.createOwnerTask(auth, { title: "Quiet" });

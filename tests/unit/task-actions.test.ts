@@ -11,8 +11,12 @@ vi.mock("@/domains/work/commands", () => ({
   createOwnerTask: vi.fn(),
   completeTask: vi.fn(),
 }));
+vi.mock("@/domains/work/queries", () => ({
+  getCompletionConflictState: vi.fn(),
+}));
 
 import { completeTask, createOwnerTask } from "@/domains/work/commands";
+import { getCompletionConflictState } from "@/domains/work/queries";
 import { completeTaskAction, createTaskAction } from "@/app/(workspace)/neuralflow/work/actions";
 
 /*
@@ -23,6 +27,7 @@ import { completeTaskAction, createTaskAction } from "@/app/(workspace)/neuralfl
 
 const created = vi.mocked(createOwnerTask);
 const completed = vi.mocked(completeTask);
+const conflictState = vi.mocked(getCompletionConflictState);
 
 describe("createTaskAction", () => {
   it("rejects a blank title without calling the domain", async () => {
@@ -48,6 +53,7 @@ describe("completeTaskAction", () => {
   it("rejects a non-uuid without touching the domain", async () => {
     expect(await completeTaskAction("not-a-uuid")).toEqual({
       ok: false,
+      kind: "conflict",
       error: "That task no longer exists.",
     });
     expect(completed).not.toHaveBeenCalled();
@@ -55,9 +61,44 @@ describe("completeTaskAction", () => {
 
   it("reports an already-decided task instead of claiming success", async () => {
     completed.mockResolvedValueOnce(null as never);
+    conflictState.mockResolvedValueOnce({ status: "done", completionNote: null } as never);
     const result = await completeTaskAction("11111111-1111-4111-8111-111111111111");
     expect(result.ok).toBe(false);
-    expect(result).toMatchObject({ error: expect.stringContaining("already completed") });
+    expect(result).toMatchObject({ kind: "conflict", error: expect.stringContaining("already completed") });
+  });
+
+  it("a cancelled task is never mislabeled 'already completed'", async () => {
+    completed.mockResolvedValueOnce(null as never);
+    conflictState.mockResolvedValueOnce({ status: "cancelled", completionNote: null } as never);
+    const result = await completeTaskAction("11111111-1111-4111-8111-111111111111");
+    expect(result).toMatchObject({ ok: false, kind: "conflict", error: "That task was cancelled, not completed." });
+  });
+
+  it("an invisible task is unavailable, not completed", async () => {
+    completed.mockResolvedValueOnce(null as never);
+    conflictState.mockResolvedValueOnce(null as never);
+    const result = await completeTaskAction("11111111-1111-4111-8111-111111111111");
+    expect(result).toMatchObject({ ok: false, kind: "conflict", error: "That task is not available in this workspace." });
+  });
+
+  it("a lost response after commit reports the sentence as recorded, not lost", async () => {
+    completed.mockResolvedValueOnce(null as never);
+    conflictState.mockResolvedValueOnce({ status: "done", completionNote: "Finished the migration." } as never);
+    const result = await completeTaskAction("11111111-1111-4111-8111-111111111111", "Finished the migration.");
+    expect(result).toMatchObject({ ok: false, kind: "conflict", sentenceRecorded: true, error: expect.stringContaining("with this sentence recorded") });
+  });
+
+  it("a completed-elsewhere task with a different note reports the sentence as not recorded", async () => {
+    completed.mockResolvedValueOnce(null as never);
+    conflictState.mockResolvedValueOnce({ status: "done", completionNote: "Someone else's note." } as never);
+    const result = await completeTaskAction("11111111-1111-4111-8111-111111111111", "My unsaved sentence.");
+    expect(result).toMatchObject({ ok: false, kind: "conflict", sentenceRecorded: false });
+  });
+
+  it("a sentence over the cap is a validation error, never a completion", async () => {
+    const result = await completeTaskAction("11111111-1111-4111-8111-111111111111", "x".repeat(281));
+    expect(result).toMatchObject({ ok: false, kind: "validation" });
+    expect(completed).not.toHaveBeenCalled();
   });
 
   it("succeeds when the row moves", async () => {

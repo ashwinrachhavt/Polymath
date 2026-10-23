@@ -80,10 +80,9 @@ export function WorkList({
 }) {
   const router = useRouter();
   const [optimisticItems, change] = useOptimistic(items, apply);
-  // unrecorded: a sentence the person typed for a completion that did not
-  // happen (the task's real state had already moved on). Never implied to be
-  // saved; kept visible so it can be copied, and kept in drafts so a later
-  // completion of a still-open task still has it.
+  // unrecorded: a typed sentence the server confirmed is NOT on the recorded
+  // completion. When the server cannot confirm either way, the copy claims
+  // neither; a confirmed-recorded sentence clears its draft.
   const [error, setError] = useState<{ id: string; message: string; unrecorded?: string } | null>(null);
   // Completion asks the spec's question first: "what did you actually do?"
   // The sentence rides onto the day's stone when one is earned; answering is
@@ -102,7 +101,7 @@ export function WorkList({
     id: string,
     fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean }>,
     applyChange: Change,
-    onError?: (kind: "conflict" | "validation" | "retryable") => void,
+    onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
   ) {
     setError(null);
     startTransition(async () => {
@@ -112,7 +111,7 @@ export function WorkList({
         if (!result.ok) {
           intent.current = null;
           setError({ id, message: result.error ?? "The write failed." });
-          onError?.(result.kind ?? "retryable");
+          onError?.(result.kind ?? "retryable", result.sentenceRecorded);
         } else {
           intent.current = null;
           if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
@@ -129,12 +128,19 @@ export function WorkList({
     event.preventDefault();
     const sentence = (drafts[id] ?? "").trim();
     setAsking(null);
-    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, (kind) => {
+    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, (kind, recorded) => {
       if (kind === "conflict") {
-        // The task already completed elsewhere: do not offer another
-        // completion - reconcile the list with the server, keep the typed
-        // sentence visible as NOT recorded, and hold the draft.
-        if (sentence) setError({ id, message: "This task was already completed.", unrecorded: sentence });
+        // The task's state moved on: never offer another completion -
+        // reconcile the list with the server. Say the sentence was not
+        // recorded ONLY when the server checked the completed task's audit
+        // row and found it absent; when the check confirms this exact
+        // sentence was recorded (a lost response after commit), clear the
+        // draft - the work is safely on the stone/audit trail.
+        if (sentence && recorded === true) {
+          setDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+        } else if (sentence && recorded === false) {
+          setError({ id, message: "This task was already completed.", unrecorded: sentence });
+        }
         router.refresh();
         return;
       }

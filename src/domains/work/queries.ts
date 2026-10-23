@@ -257,3 +257,34 @@ export async function listTasksDueBetween(
     .orderBy(sql`${tasks.dueAt}`, sql`${tasks.rank} collate "C"`, asc(tasks.id));
   return rows.filter((r): r is typeof r & { dueAt: Date } => r.dueAt !== null);
 }
+
+/**
+ * Truth recovery after completeTask returns null: what the task's state
+ * actually is, plus the completion sentence recorded on its latest
+ * task.completed audit row (null when the recorded completion carried none).
+ * The action layer uses this to say what happened truthfully - a cancelled or
+ * missing task is not "already completed", and a sentence submitted with a
+ * request whose response was lost may in fact have been recorded.
+ */
+export async function getCompletionConflictState(
+  auth: AuthContext,
+  taskId: string,
+): Promise<{ status: string; completionNote: string | null } | null> {
+  const [task] = await db
+    .select({ status: tasks.status })
+    .from(tasks)
+    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+    .limit(1);
+  if (!task) return null;
+  const rows = await db.execute(sql`
+    select metadata->>'completionNote' as note
+    from audit_events
+    where workspace_id = ${auth.workspaceId}
+      and action = 'task.completed'
+      and subject_id = ${taskId}::uuid
+    order by created_at desc
+    limit 1
+  `);
+  const note = (rows as unknown as Array<{ note: string | null }>)[0]?.note ?? null;
+  return { status: task.status, completionNote: note };
+}
