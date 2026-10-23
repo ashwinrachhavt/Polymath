@@ -2,7 +2,7 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { connection } from "next/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
-import { resolveMachineClient } from "@/domains/identity/machine";
+import { resolveCompanionToken, resolveMachineClient } from "@/domains/identity/machine";
 import { sha256Hex } from "./hash";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { ForbiddenRoleError } from "./auth/guards";
@@ -95,7 +95,9 @@ async function companionFromBearer(request?: Request): Promise<AuthContext | nul
   const header = request?.headers.get("authorization");
   const secret = header?.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!secret) return null;
-  const resolved = await resolveMachineClient(await sha256Hex(secret));
+  // New-format keys are `axm_<keyId>.<secret>`: the id and the secret's digest
+  // are looked up together. Hashing the whole token would miss both halves.
+  const resolved = await resolveCompanionToken(secret);
   if (resolved.ok) {
     return {
       userId: resolved.client.clientId,
