@@ -394,11 +394,20 @@ because things are unlinked.
 
 ## 8.5 Cards and recall
 
-Removed. The spaced-repetition review schedule shipped as Learning and was
-deleted (IA simplification, 2026-10-22; tables dropped in migration 0235).
-Quiz and flashcard intents answer "not built"; there is no stub UI. The card
-stays a core resource in the model, with no schedule and no surface until a
-plan exists for one.
+A card is generated from a note or a claim and is reviewed before it
+circulates: proposed, accepted into the rotation, suspended, retired. Review
+is retrieval, not recognition - the answer stays hidden until attempted.
+Intervals expand on success; a missed card returns within the sitting. A card
+always cites its source, and deleting the source deletes the card.
+
+This is the zettel-native successor to Learning (removed 2026-10-22; see
+migration 0235): no decks, no plans, no quiz kinds - a card anchors to the
+note or zettel it tests. Learning's SM-2 scheduling arithmetic is kept; its
+five-grade scale is the documented upgrade path behind the two outcomes
+(recalled / missed).
+
+*States:* proposed, scheduled, due (scheduled and past its moment),
+answered-correctly, answered-wrong, suspended, retired.
 
 ## 8.6 Notebook
 

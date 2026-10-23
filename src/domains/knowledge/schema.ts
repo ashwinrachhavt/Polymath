@@ -1266,3 +1266,81 @@ export const documentRenameEvents = pgTable(
   },
   (t) => [index("document_rename_events_document_idx").on(t.workspaceId, t.documentId, t.createdAt)],
 );
+
+/*
+ * Zettel cards and recall (Product Spec, "Zettel Cards and recall"). A card
+ * is generated from a note or a claim, is reviewed before it circulates, and
+ * always cites its source: artifactId is the note or zettel it came from, so
+ * deleting the source cascades the card - an unsourced card must not survive
+ * its source, the same honesty rule as claim_evidence.
+ *
+ * Review is retrieval, not recognition: a prompt and an answer, no options.
+ * The spec's state list (proposed, scheduled, due, answered-correctly,
+ * answered-wrong, suspended, retired) maps onto columns rather than one
+ * enum: `state` holds proposed/scheduled/suspended/retired, "due" is
+ * scheduled with dueAt <= now (derived, never stored), and
+ * answered-correctly/answered-wrong is lastOutcome on a scheduled card.
+ *
+ * Scheduling lives in recall-scheduler.ts, the only place intervals are
+ * computed. dueAt is the queue key; a wrong answer comes back within the
+ * sitting, a correct one grows the interval.
+ */
+export const cardState = pgEnum("card_state", ["proposed", "scheduled", "suspended", "retired"]);
+export const cardReviewOutcome = pgEnum("card_review_outcome", ["correct", "wrong"]);
+
+export const cards = pgTable(
+  "cards",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    prompt: text("prompt").notNull(),
+    answer: text("answer").notNull(),
+    /** The note or zettel this card cites. Required: a card always shows where it came from. */
+    artifactId: uuid("artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    /** The claim inside the source, when the card tests one claim specifically. */
+    claimId: uuid("claim_id").references(() => claims.id, { onDelete: "cascade" }),
+    state: cardState("state").notNull().default("proposed"),
+    lastOutcome: cardReviewOutcome("last_outcome"),
+    /** Null while proposed or suspended: the card is outside the queue. */
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    intervalDays: integer("interval_days").notNull().default(0),
+    easeFactor: real("ease_factor").notNull().default(2.5),
+    reviewCount: integer("review_count").notNull().default(0),
+    correctCount: integer("correct_count").notNull().default(0),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    // The review queue: what is due in this workspace right now.
+    index("cards_due_idx").on(t.workspaceId, t.dueAt).where(sql`state = 'scheduled'`),
+    index("cards_workspace_state_idx").on(t.workspaceId, t.state),
+    index("cards_artifact_idx").on(t.artifactId),
+  ],
+);
+
+/*
+ * Append-only attempt history. The card row is the projection; this is the
+ * record "twelve cards in four minutes" is counted from, and the evidence
+ * behind any per-topic weakness readout.
+ */
+export const cardReviews = pgTable(
+  "card_reviews",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    outcome: cardReviewOutcome("outcome").notNull(),
+    /** What the person said before the reveal, when they typed it. */
+    responseText: text("response_text"),
+    durationMs: integer("duration_ms"),
+    ...recorded,
+  },
+  (t) => [
+    index("card_reviews_card_idx").on(t.cardId, t.createdAt),
+    index("card_reviews_workspace_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
