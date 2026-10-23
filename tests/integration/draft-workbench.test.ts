@@ -160,4 +160,25 @@ let companyId: string;
     expect(detail.versions[0].reason).toBe("edited");
     expect(detail.versions.every((v) => v.createdAt instanceof Date)).toBe(true);
   });
+
+  it("getDraftDetail returns null for everything the workbench does not open", async () => {
+    if (!handle) return;
+    // A random id that exists nowhere.
+    expect(await getDraftDetail(auth, crypto.randomUUID())).toBeNull();
+    // Another workspace's draft: the same null as missing.
+    const other = await seedWorkspace(handle.db, `workbench-other-${Date.now()}`);
+    const [foreign] = await handle.db
+      .insert(artifacts)
+      .values({ workspaceId: other.workspaceId, kind: "report", title: "Foreign draft", status: "draft", createdBy: other.userId, updatedBy: other.userId })
+      .returning();
+    expect(await getDraftDetail(auth, foreign.id)).toBeNull();
+    // A note artifact (not a Studio kind) opens no workbench.
+    const [note] = await handle.db
+      .insert(artifacts)
+      .values({ workspaceId: auth.workspaceId, kind: "note", title: "A person's page", status: "draft", createdBy: auth.userId, updatedBy: auth.userId })
+      .returning();
+    expect(await getDraftDetail(auth, note.id)).toBeNull();
+    // A malformed string is a miss, never a uuid cast error.
+    expect(await getDraftDetail(auth, "not-a-uuid")).toBeNull();
+  });
 });

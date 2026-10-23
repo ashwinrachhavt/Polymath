@@ -99,6 +99,43 @@ suite("focus sessions", () => {
     ).rejects.toThrow(commands.StaleWriteError);
   });
 
+  it("rejects the transitions the state matrix forbids", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-matrix-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    // running x resume: resume is only legal from paused.
+    const running = await commands.startFocusSession(auth, { subject: "Running" });
+    await expect(
+      commands.resumeFocusSession(auth, { sessionId: running.id, expectedVersion: 1 }),
+    ).rejects.toThrow(commands.StaleWriteError);
+    await commands.abandonFocusSession(auth, { sessionId: running.id, expectedVersion: 1 });
+
+    // paused x pause: no double pause entry.
+    const session = await commands.startFocusSession(auth, { subject: "Pausing twice" });
+    await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
+    await expect(
+      commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 2 }),
+    ).rejects.toThrow(commands.StaleWriteError);
+    // The one live slot is still held by this paused session.
+    await commands.abandonFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
+
+    // paused x abandon: a paused session can still be abandoned, with endedAt set.
+    const paused = await commands.startFocusSession(auth, { subject: "Pausing out" });
+    await commands.pauseFocusSession(auth, { sessionId: paused.id, expectedVersion: 1 });
+    const abandoned = await commands.abandonFocusSession(auth, {
+      sessionId: paused.id,
+      expectedVersion: 2,
+      reason: "switched contexts",
+    });
+    expect(abandoned.state).toBe("abandoned");
+    expect(abandoned.endedAt).not.toBeNull();
+
+    // paused x start-rival: the one-live-session invariant holds from paused too.
+    const rival = await commands.startFocusSession(auth, { subject: "Pausing rival" });
+    await commands.pauseFocusSession(auth, { sessionId: rival.id, expectedVersion: 1 });
+    await expect(commands.startFocusSession(auth, { subject: "Rival" })).rejects.toThrow(commands.ConflictError);
+  });
+
   it("finishing from paused banks nothing extra", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `focus-paused-${Date.now()}`);
     const auth = ownerAuth(userId, workspaceId);

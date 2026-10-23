@@ -79,6 +79,16 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   const title = `Focus leg task ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=saved");
   await waitSettled(page);
+  // The Quartz rule is task completion, not focus: the balance the flow leaves
+  // behind equals the balance it found (the shared dev database's ledger is
+  // append-only and may already hold entries, so nothing may be added, ever).
+  // Read the balance BEFORE the session runs, so the equality asserts the
+  // session changed nothing — a regression that awards points for focus fails here.
+  const points = page.locator("p", { hasText: "Points earned" }).locator("+ .readout");
+  await page.goto("/apps/neuralflow/rewards");
+  const before = await points.innerText();
+  await page.goto("/neuralflow/work?view=saved");
+  await waitSettled(page);
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
   // A new task ranks to the end of the list, which on a long-lived workspace
@@ -104,17 +114,7 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   // The focus address is still a redirect bridge back to Work.
   await page.goto("/neuralflow/focus?stale=param");
   await expect(page).toHaveURL(/\/neuralflow\/work$/);
-  // The Quartz rule is task completion, not focus: the balance the flow leaves
-  // behind equals the balance it found (the shared dev database's ledger is
-  // append-only and may already hold entries, so nothing may be added, ever).
-  const points = page.getByText("Points earned").locator("..").locator(".readout").first();
-  await page.goto("/apps/neuralflow/rewards");
-  const before = await points.innerText();
-  await page.goto("/neuralflow/work?view=saved");
-  await waitSettled(page);
-  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
-  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
-  await page.getByRole("link", { name: title, exact: true }).click();
+  // The session finished, the task is still open: the balance is unchanged.
   await page.goto("/apps/neuralflow/rewards");
   await expect(points).toHaveText(before);
 });

@@ -148,5 +148,33 @@ suite("pageArtifacts kept-outputs boundary (Neon)", () => {
     // Artifacts link for a non-wiki row never points here in the first place.
     const plain = await pageArtifacts(auth, { kind: "zettel", limit: 1, offset: 0 });
     expect(await getWikiPageText(auth, plain.items[0]!.id)).toBeNull();
+    // A malformed id is a miss, never a uuid cast error.
+    expect(await getWikiPageText(auth, "not-a-uuid")).toBeNull();
+  });
+
+  it("query matches the title and the body text, and escapes LIKE metacharacters", async () => {
+    if (!handle) return;
+    // Title leg.
+    const byTitle = await pageArtifacts(auth, { query: "Launch deck", limit: 100, offset: 0 });
+    expect(byTitle.items.map((r) => r.title)).toEqual(["Launch deck"]);
+    // Body leg: the words live in plain_text, not the title.
+    const byBody = await pageArtifacts(auth, { query: "wiki article body", limit: 100, offset: 0 });
+    expect(byBody.items.map((r) => r.title)).toEqual(["Topic: research"]);
+    // A literal % is a character to find, not a wildcard: it matches nothing,
+    // where an unescaped LIKE would match every row.
+    const literal = await pageArtifacts(auth, { query: "100% match", limit: 100, offset: 0 });
+    expect(literal.total).toBe(0);
+  });
+
+  it("the excerpt is a trimmed prefix of the stored text, never the whole blob", async () => {
+    if (!handle) return;
+    const long = `First paragraph line.\n\n${"Filler body text. ".repeat(400)}`;
+    await insertArtifact({ kind: "report", title: "Excerpt probe", text: long });
+    const page = await pageArtifacts(auth, { query: "Excerpt probe", limit: 1, offset: 0 });
+    const excerpt = page.items[0]!.excerpt!;
+    // One line of the body, capped well below the blob's size.
+    expect(excerpt.startsWith("First paragraph line.")).toBe(true);
+    expect(excerpt.length).toBeLessThanOrEqual(240);
+    expect(excerpt.length).toBeLessThan(long.length);
   });
 });

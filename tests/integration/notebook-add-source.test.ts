@@ -48,8 +48,8 @@ vi.mock("@/lib/safe-fetch", async (importOriginal) => ({
   safeFetch: (url: string, options?: unknown) => safeFetch(url, options),
 }));
 
-import { outboxEvents } from "@/domains/audit/schema";
-import { documentExtractions, documents, sources } from "@/domains/knowledge/schema";
+import { blobObjects, outboxEvents } from "@/domains/audit/schema";
+import { documentExtractions, documents, files, sources } from "@/domains/knowledge/schema";
 import { attachToNotebookAction, addUrlToNotebookAction, retryNotebookSourceAction } from "@/app/(workspace)/alfred/dossiers/[dossierId]/notebook/add-source-actions";
 import { createDossier, dossierDocumentIds } from "@/domains/knowledge/dossiers";
 
@@ -97,7 +97,7 @@ suite("notebook add-source actions (real Postgres)", () => {
     expect(bound).toContain(doc.id);
   });
 
-  it("a failed fetch states its reason and still leaves the row retryable", async () => {
+  it("a failed fetch states its reason and re-runs the capture on retry", async () => {
     const url = `https://example.com/dead-${crypto.randomUUID()}`;
     safeFetch.mockResolvedValue({ ok: false as const, error: "The site answered with status 500." });
     const out = await addUrlToNotebookAction({ dossierId, url });
@@ -105,7 +105,8 @@ suite("notebook add-source actions (real Postgres)", () => {
     expect(out.message).toBe("The site answered with status 500.");
 
     // The document row exists with a failed extraction on it: the pane's
-    // readiness projection reads it as Failed, and Retry re-queues it.
+    // readiness projection reads it as Failed, and Retry re-runs the capture
+    // (a fetch-class failure can never be fixed by re-queueing extraction).
     const [doc] = await db.select().from(documents).where(eq(documents.sourceUrl, url));
     expect(doc).toBeTruthy();
     const [extraction] = await db.select().from(documentExtractions)
@@ -113,8 +114,43 @@ suite("notebook add-source actions (real Postgres)", () => {
     expect(extraction.status).toBe("failed");
     expect(extraction.error).toBe("The site answered with status 500.");
 
+    // The retry fetches again; this time the site answers.
+    safeFetch.mockResolvedValue({
+      ok: true as const,
+      bytes: new TextEncoder().encode("# Recovered\n\nReadable text."),
+      finalUrl: url,
+      contentType: "text/html",
+    });
     const retry = await retryNotebookSourceAction({ dossierId, documentId: doc.id });
-    expect(retry.ok).toBe(true);
+    expect(retry).toMatchObject({ ok: true, message: "Fetching the source again." });
+    const [after] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(after.fileId).not.toBeNull();
+  });
+
+  it("a retry on a document outside the workspace refuses; a skipped row refuses with nothing to retry", async () => {
+    // A foreign document id is not this workspace's, so no outbox row is minted.
+    const foreign = await retryNotebookSourceAction({ dossierId, documentId: crypto.randomUUID() });
+    expect(foreign.ok).toBe(false);
+
+    // A row no reader accepts has nothing behind the button.
+    const [blob] = await db.insert(blobObjects).values({
+      workspaceId: holder.auth!.workspaceId, storageKey: `private/${crypto.randomUUID()}`,
+      contentHash: crypto.randomUUID(), sizeBytes: 1, mimeType: "application/octet-stream",
+    }).returning({ id: blobObjects.id });
+    const [file] = await db.insert(files).values({
+      workspaceId: holder.auth!.workspaceId, blobId: blob.id, filename: "mystery.bin",
+    }).returning({ id: files.id });
+    const [unknown] = await db.insert(documents).values({
+      workspaceId: holder.auth!.workspaceId, title: "Unknown type", fileId: file.id,
+      mimeType: "application/octet-stream",
+      createdBy: holder.auth!.userId, updatedBy: holder.auth!.userId,
+    }).returning({ id: documents.id });
+    await db.insert(documentExtractions).values({
+      workspaceId: holder.auth!.workspaceId, documentId: unknown.id, contentHash: crypto.randomUUID(),
+      status: "skipped", extractor: "docling@1",
+    });
+    const refused = await retryNotebookSourceAction({ dossierId, documentId: unknown.id });
+    expect(refused).toMatchObject({ ok: false, message: "No reader accepts this source type. There is nothing to retry." });
   });
 
   it("a YouTube link queues the transcript job and binds the video to the notebook by address", async () => {
@@ -156,9 +192,18 @@ suite("notebook add-source actions (real Postgres)", () => {
     expect(foreign.ok).toBe(false);
   });
 
-  it("a foreign dossier refuses attaches; a retry enqueues extraction", async () => {
+  it("a foreign dossier refuses attaches; a retry on a file-backed document enqueues extraction once", async () => {
+    // A file-backed document: the retry path re-queues its extraction.
+    const [blob] = await db.insert(blobObjects).values({
+      workspaceId: holder.auth!.workspaceId, storageKey: `private/${crypto.randomUUID()}`,
+      contentHash: crypto.randomUUID(), sizeBytes: 1, mimeType: "application/pdf",
+    }).returning({ id: blobObjects.id });
+    const [file] = await db.insert(files).values({
+      workspaceId: holder.auth!.workspaceId, blobId: blob.id, filename: "retry-me.pdf",
+    }).returning({ id: files.id });
     const [doc] = await db.insert(documents).values({
-      workspaceId: holder.auth!.workspaceId, title: "Retry me",
+      workspaceId: holder.auth!.workspaceId, title: "Retry me", fileId: file.id,
+      mimeType: "application/pdf",
       createdBy: holder.auth!.userId, updatedBy: holder.auth!.userId,
     }).returning({ id: documents.id });
     const foreign = await attachToNotebookAction({ dossierId: otherWorkspaceDossierId, documentIds: [doc.id] });
@@ -170,5 +215,12 @@ suite("notebook add-source actions (real Postgres)", () => {
     const after = (await db.select().from(outboxEvents)
       .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId))).length;
     expect(after).toBe(before + 1);
+    // The dispatch key is per document, not per click: a second click joins
+    // the first attempt instead of minting another doomed row.
+    const again = await retryNotebookSourceAction({ dossierId, documentId: doc.id });
+    expect(again.ok).toBe(true);
+    const final = (await db.select().from(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId))).length;
+    expect(final).toBe(after);
   });
 });

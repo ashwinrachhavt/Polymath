@@ -155,13 +155,13 @@ test("a run row on home names the objective, and nothing else", async ({ page })
 });
 
 /*
- * The conversation page: the transcript is the page, instrumentation is one
- * disclosure away, and a run id that is not this workspace's is the same
- * answer as one that never existed. The shell's loading.tsx commits before
- * notFound() runs, so the response is 200 with not-found content — assert the
- * content, never the status.
+ * The conversation page: the transcript is the page, controls live under it,
+ * and a run id that is not this workspace's is the same answer as one that
+ * never existed. The shell's loading.tsx commits before notFound() runs, so
+ * the response is 200 with not-found content — assert the content, never the
+ * status.
  */
-test("a run opens its conversation, with details behind a disclosure", async ({ page }) => {
+test("a run opens its conversation, with controls under the transcript", async ({ page }) => {
   const objective = `Draft the renewal letter ${Date.now().toString(36)}`;
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Opening a conversation needs DATABASE_URL.");
@@ -179,13 +179,31 @@ test("a run opens its conversation, with details behind a disclosure", async ({ 
   // vocabulary, so the conversation page grows no status badge of its own.
   await expect(content.getByText("Needs your reply")).toHaveCount(0);
 
-  // Details are collapsed: model, tools, and the timeline are not on the page
-  // until asked for.
-  const details = content.locator("details");
-  await expect(details).not.toHaveAttribute("open", "");
-  await expect(content.getByText("Run timeline")).toBeHidden();
-  await details.locator("summary").click();
-  await expect(content.getByText("Run timeline")).toBeVisible();
+  // A waiting run is live from the page's point of view: the composer offers a
+  // follow-up and a stop, and the draft control (nothing produced yet) stays
+  // out of the way.
+  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Stop" })).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Save the answer as a draft" })).toHaveCount(0);
+});
+
+test("a finished run shows its retry and draft controls instead of a composer", async ({ page }) => {
+  const objective = `Summarize the vendor terms ${Date.now().toString(36)}`;
+  const run = await seedRun({ objective, state: "succeeded" });
+  test.skip(!run, "Opening a conversation needs DATABASE_URL.");
+
+  await page.goto(`/alfred/${run!.id}`);
+  const content = page.locator("#content").first();
+  await expect(content.locator("h1")).toHaveText(objective);
+  const conversation = content.getByRole("region", { name: "Conversation" });
+  await expect(conversation).toBeVisible();
+  // A finished run keeps its stored transcript (empty here) and takes Retry;
+  // the live composer and its cancel button are gone.
+  await expect(conversation.getByText("This conversation has no messages yet.")).toBeVisible();
+  await expect(conversation.getByRole("button", { name: "Retry as a new run" })).toBeVisible();
+  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toHaveCount(0);
+  // With no output to keep, the draft control renders nothing.
+  await expect(conversation.getByRole("button", { name: "Save the answer as a draft" })).toHaveCount(0);
 });
 
 test("a conversation that does not exist says so, without a 404 page", async ({ page }) => {
@@ -208,15 +226,15 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
 
 /*
  * The IA simplification removed seven rail destinations. Six keep a redirect
- * bridge to the screen that absorbed their function (query params dropped);
- * Learning's route was deleted entirely, so its address 404s with the same
- * noindex not-found state as any unknown screen.
+ * bridge to the screen that absorbed their function (query params dropped,
+ * except the notebook bridge, whose ?id= is the Notes surface's own deep link
+ * and so is carried across); Learning's route was deleted entirely, so its
+ * address 404s with the same noindex not-found state as any unknown screen.
  */
 test("removed IA destinations redirect to their new homes, or 404 when the route is gone", async ({ page }) => {
   for (const [from, to] of [
     ["/alfred/sources", "/alfred/dossiers"],
     ["/alfred/wiki", "/alfred/knowledge"],
-    ["/alfred/notebook", "/alfred/notes"],
     ["/command-center/spending", "/command-center/briefing?tab=spending"],
     ["/command-center/opportunities", "/command-center/relationships/people"],
     ["/neuralflow/focus", "/neuralflow/work"],
@@ -224,6 +242,9 @@ test("removed IA destinations redirect to their new homes, or 404 when the route
     await page.goto(`${from}?stale=param`);
     await expect(page, from).toHaveURL(to);
   }
+  // The old notebook address keeps the note deep link it once owned.
+  await page.goto("/alfred/notebook?id=00000000-0000-4000-8000-000000000001");
+  await expect(page).toHaveURL("/alfred/notes?id=00000000-0000-4000-8000-000000000001");
   await page.goto("/alfred/learning");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
