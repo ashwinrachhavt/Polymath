@@ -274,6 +274,7 @@ export async function searchKnowledge(
  * tenant scope as the search itself that the meaning leg CANNOT see: they have
  * current text but no embedding row for their current version - indexing
  * failed (embed_error set), is still pending, or the pass died before writing.
+ * countMeaningUncoveredByState separates failed from pending.
  * The meaning leg ranks only current-version chunks, so this count is exactly
  * "in scope, with text, not meaning-searchable". Empty-text artifacts are
  * excluded: embedArtifact skips them by design and there is nothing to index.
@@ -282,10 +283,30 @@ export async function countMeaningUncovered(
   auth: AuthContext,
   input: { kinds?: readonly string[]; filters?: SearchFilters },
 ): Promise<number> {
+  const { pending, failed } = await countMeaningUncoveredByState(auth, input);
+  return pending + failed;
+}
+
+/**
+ * The same uncovered set, split into the two states the spec wants named
+ * separately. Failed = the artifact carries an embed_error from its last
+ * pass; pending = no error recorded, so the pass has not run for the current
+ * version (queued, never attempted, or in flight). This mirrors the per-note
+ * status exactly: an embeddings row for the current version means indexed,
+ * otherwise embed_error means failed, otherwise pending.
+ */
+export type MeaningUncoveredByState = { pending: number; failed: number };
+
+export async function countMeaningUncoveredByState(
+  auth: AuthContext,
+  input: { kinds?: readonly string[]; filters?: SearchFilters },
+): Promise<MeaningUncoveredByState> {
   const kinds = validKinds(input.kinds);
-  if (!kinds.length) return 0;
+  if (!kinds.length) return { pending: 0, failed: 0 };
   const rows = await db.execute(sql`
-    select count(*)::int as n
+    select
+      count(*) filter (where a.embed_error is null)::int as pending,
+      count(*) filter (where a.embed_error is not null)::int as failed
     from artifacts a
     join artifact_versions v on v.id = a.current_version_id
     where a.workspace_id = ${auth.workspaceId}
@@ -300,5 +321,6 @@ export async function countMeaningUncovered(
           and e.source_version_id = a.current_version_id
       )
   `);
-  return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
+  const row = (rows as unknown as Array<{ pending: number; failed: number }>)[0];
+  return { pending: row?.pending ?? 0, failed: row?.failed ?? 0 };
 }

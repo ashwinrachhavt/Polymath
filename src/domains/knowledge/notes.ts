@@ -191,7 +191,7 @@ export async function createNoteInTx(
       createdBy: auth.userId,
     })
     .returning({ id: artifactVersions.id });
-  await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+  await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
   await recordAudit(
     auth,
     { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
@@ -291,7 +291,7 @@ export async function commitNoteSnapshot(
           createdBy: auth.userId,
         })
         .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
-      await tx.update(artifacts).set({ currentVersionId: snapshot.id }).where(eq(artifacts.id, artifact.id));
+      await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, artifact.id));
       await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
       await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
       await recordAudit(
