@@ -12,6 +12,7 @@ import {
   listNotes,
   listNoteVersions,
   renameNote,
+  retryNoteEmbedding,
   setNoteTags,
 } from "@/domains/knowledge/notes";
 import { createEngine } from "@/domains/agents/engine";
@@ -116,6 +117,32 @@ const renameInput = z.object({
   title: z.string().trim().min(1).max(300),
   idempotencyKey: key,
 });
+
+const retryEmbedInput = z.object({ artifactId: z.string().uuid() });
+
+/*
+ * Re-run meaning indexing for one note. The commit path embeds best-effort,
+ * so a note saved while the embedding provider was unconfigured (or a
+ * transient failure) carries artifacts.embed_error and stays invisible to
+ * meaning search until this runs. The call is the member's own, scoped to
+ * their workspace's note; the outcome string is the provider's honest state,
+ * never a blanket "indexed".
+ */
+export async function retryNoteEmbeddingAction(input: z.input<typeof retryEmbedInput>): Promise<Result<{ message: string }>> {
+  const auth = await authorize();
+  const parsed = retryEmbedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That note id is not valid." };
+  try {
+    const out = await retryNoteEmbedding(auth, parsed.data);
+    revalidate();
+    if (out.status === "succeeded") return { ok: true, message: "Indexed for meaning search." };
+    if (out.status === "skipped") return { ok: false, error: out.reason === "no_text" ? "This note has no text to index yet." : "That note is not here." };
+    return { ok: false, error: out.error };
+  } catch (error) {
+    if (error instanceof NoteNotFoundError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
 
 export async function renameNoteAction(input: z.input<typeof renameInput>): Promise<Result<{ version: number }>> {
   const parsed = renameInput.safeParse(input);
