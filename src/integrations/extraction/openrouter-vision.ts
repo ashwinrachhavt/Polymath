@@ -24,17 +24,25 @@ import type {
  * page break would be a visible lie — and names the page a provider failed
  * on, matching the LlamaParse adapter's partial-is-failure rule.
  *
- * Cost shape, stated precisely (verified 2026-10-23): the default model
- * google/gemini-2.5-flash-lite is $0.10 per 1M input / $0.40 per 1M output
- * tokens (live openrouter.ai/api/v1/models). Google's Gemini API docs count
- * a PDF page as 258 input tokens (ai.google.dev/gemini-api/docs/
- * document-processing); whether OpenRouter's native passthrough bills
- * identically is NOT independently verified, so per-page cost is an
- * estimate, not a quote. The bill levers are: pages processed (capped by
- * OCR_MAX_PAGES), output length (capped per page by MAX_PAGE_OUTPUT_TOKENS),
- * input image resolution (provider-side), the model (allowlisted below, each
- * with its verified rate), and each owner-initiated Retry, which is a fresh
- * extraction that spends again. OCR_MAX_PAGES bounds pages, not dollars.
+ * Default model anthropic/claude-haiku-4.5: natively reads file+image
+ * input, $1 per 1M input / $5 per 1M output tokens (live
+ * openrouter.ai/api/v1/models, 2026-10-23). It is the default because its
+ * privacy posture is the unambiguous one for private documents: Anthropic's
+ * Commercial Terms state "Anthropic may not train models on Customer Content
+ * from Services" (anthropic.com/legal/commercial-terms, checked 2026-10-23),
+ * and OpenRouter itself does not train on inputs (openrouter.ai/privacy).
+ * The allowlisted Gemini models are cheaper per token, but Google's
+ * no-training promise covers only its PAID API (ai.google.dev/gemini-api/
+ * terms) and whether OpenRouter's upstream counts as paid is not verified —
+ * pick them with OCR_MODEL knowing that question is open. Per-page cost is
+ * always an estimate, never a quote: token accounting through OpenRouter's
+ * native passthrough is not independently verified.
+ *
+ * The bill levers are: pages processed (capped by OCR_MAX_PAGES), output
+ * length (capped per page by MAX_PAGE_OUTPUT_TOKENS), input image resolution
+ * (provider-side), the model (allowlisted below, each with its verified
+ * rate), and each owner-initiated Retry, which is a fresh extraction that
+ * spends again. OCR_MAX_PAGES bounds pages, not dollars.
  *
  * This provider is metered and off by default: it runs only when the domain
  * resolver sees OCR_PROVIDER=openrouter. The key stays server-env only,
@@ -43,7 +51,7 @@ import type {
  */
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
-export const DEFAULT_OCR_MODEL = "google/gemini-2.5-flash-lite";
+export const DEFAULT_OCR_MODEL = "anthropic/claude-haiku-4.5";
 export const DEFAULT_OCR_MAX_PAGES = 30;
 /** A page never rambles into an open-ended bill: output is capped per page. */
 const MAX_PAGE_OUTPUT_TOKENS = 2048;
