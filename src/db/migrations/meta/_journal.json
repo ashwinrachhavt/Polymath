@@ -465,6 +465,13 @@
       "breakpoints": true
     },
     {
+      "idx": 240,
+      "version": "7",
+      "tag": "0240_zettel_recall",
+      "when": 1792745300001,
+      "breakpoints": true
+    },
+    {
       "idx": 242,
       "version": "7",
       "tag": "0242_reward_ledger_note",
