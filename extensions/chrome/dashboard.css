@@ -513,6 +513,7 @@ body {
 }
 .card-actions {
   display: flex;
+  flex-wrap: wrap; /* long recovery labels must stack inside the card, not overflow it */
   gap: 8px;
   margin-top: 8px;
 }

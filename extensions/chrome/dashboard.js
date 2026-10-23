@@ -280,7 +280,7 @@
           ${syncTag}
           ${timeAgo(item.timestamp)}
         </div>
-        ${item.url ? `<div class="card-meta" style="margin-top:4px;font-size:11px;word-break:break-all;color:var(--text-dim)">${escHtml(truncate(item.url, 80))}</div>` : ""}
+        ${item.url ? `<div class="card-meta" style="margin-top:4px;font-size:11px;word-break:break-all;color:var(--text-muted)">${escHtml(truncate(item.url, 80))}</div>` : ""}
       `;
       container.appendChild(card);
     }
@@ -326,8 +326,8 @@
           <span class="card-tag ${entry.status === "queued" || entry.status === "sending" ? "card-tag-pending" : "card-tag-failed"}">${escHtml(stateLabel)}</span>
           ${timeAgo(entry.createdAt)}
         </div>
-        ${entry.preview ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-dim)">${escHtml(entry.preview)}</div>` : ""}
-        ${entry.lastError ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-dim)">${escHtml(truncate(entry.lastError, 120))}</div>` : ""}
+        ${entry.preview ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-muted)">${escHtml(entry.preview)}</div>` : ""}
+        ${entry.lastError ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-muted)">${escHtml(truncate(entry.lastError, 120))}</div>` : ""}
       `;
       const actions = document.createElement("div");
       actions.className = "card-actions";
