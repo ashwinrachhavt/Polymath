@@ -26,15 +26,18 @@ export const metadata = { title: "Conversation · Polymath" };
  */
 
 /*
- * What the run has cost, from its recorded usage events. A live run's figure
- * is partial and says so; a finished run with no usage events is "no usage
- * recorded", not $0 - unrecorded cost is unknown, never zero.
+ * What the run has cost, from its recorded usage events. Every total is
+ * labeled "recorded": the recording contract does not guarantee completeness
+ * (a step may report no usage, usage without a price, or a dropped bridge
+ * write), so even a finished run's figure is what was recorded, not a
+ * guaranteed final bill. Missing cost stays missing - never rendered as zero.
  */
 function costLabel(usage: RunUsage | null, finished: boolean): string | null {
   if (!usage) return finished ? "no usage recorded" : null;
+  if (usage.usd === null) return "cost not recorded";
   const n = Number(usage.usd);
   const usd = Number.isFinite(n) ? (n >= 0.01 ? n.toFixed(2) : n.toFixed(4)) : usage.usd;
-  return `$${usd}${finished ? "" : " so far"}`;
+  return `$${usd} recorded${finished ? "" : " so far"}`;
 }
 
 async function ConversationSurface({ runId }: { runId: string }) {
