@@ -23,6 +23,18 @@ function timeLabel(date: Date): string {
   return date.toISOString().slice(11, 16);
 }
 
+/*
+ * The queue description must never contradict the rows beneath it: with
+ * proposals listed, "nothing is waiting" copy is a lie even when technically
+ * about the unlisted remainder. Three states only - overflow count, all
+ * shown, or none at all (no description; the body says it).
+ */
+export function pendingQueueDescription(pendingCount: number, shownCount: number): string | undefined {
+  if (pendingCount > shownCount) return `${pendingCount - shownCount} more in the queue.`;
+  if (pendingCount > 0) return "Everything waiting is listed here.";
+  return undefined;
+}
+
 const runStateLabel: Record<string, string> = {
   queued: "queued",
   running: "running",
@@ -46,13 +58,7 @@ export async function AgentPanels() {
     <div className="grid items-start gap-6 xl:grid-cols-2">
       <Panel
         title="Needs your judgment"
-        description={
-          pendingCount > topPending.length
-            ? `${pendingCount - topPending.length} more in the queue.`
-            : pendingCount > 0
-              ? "Nothing else is waiting."
-              : undefined
-        }
+        description={pendingQueueDescription(pendingCount, topPending.length)}
         actions={
           pendingCount > 0 ? (
             <Button variant="outline" size="sm" asChild>
