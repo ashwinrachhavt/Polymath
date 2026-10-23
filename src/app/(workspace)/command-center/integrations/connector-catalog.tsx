@@ -46,6 +46,9 @@ const EXPIRED_ATTEMPT_MESSAGE = "That connection attempt expired. Start again.";
 
 export function cardState(connector: CatalogConnector): CardState {
   if (connector.accounts.some((account) => account.status === "active")) return "connected";
+  // A provider with no agent-action tiers is not connectable on any
+  // deployment, whatever its env says — Coming soon wins over Setup needed.
+  if (!connector.accessTiers.length) return "coming_soon";
   // An unconfigured deployment cannot complete any handshake, so nothing on
   // the card may offer Connect — not even to resume a half-open attempt.
   if (!connector.configured) return "needs_config";
@@ -61,8 +64,7 @@ export function cardState(connector: CatalogConnector): CardState {
   }
   if (live.length) return "connecting";
   if (connector.accounts.some((account) => account.status !== "available")) return "action_needed";
-  if (connector.accessTiers.length) return "available";
-  return "coming_soon";
+  return "available";
 }
 
 const CATEGORY_BY_PROVIDER: Record<string, string> = {

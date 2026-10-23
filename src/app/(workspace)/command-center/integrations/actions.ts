@@ -11,6 +11,7 @@ import {
   setDefaultForWrites,
 } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection, failConnectionAttempt } from "@/domains/integrations/connect";
+import { resolveRequestOrigin } from "@/domains/integrations/origin";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
 import { syncNotionAccount } from "@/domains/integrations/notion";
@@ -121,11 +122,19 @@ export async function startConnectionAction(input: { provider: string; alias?: s
     // the browser actually used. The old localhost fallback sent a hosted
     // deployment's OAuth return to localhost:3000, so the attempt never
     // completed and the card said "expired" for a flow that had finished.
+    // The forwarded host is client-supplied, so it is only trusted when the
+    // platform confirms it is this deployment's own (resolveRequestOrigin).
     const requestHeaders = await headers();
-    const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-    const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
-    const origin = process.env.APP_ORIGIN ?? (host ? `${proto}://${host}` : "http://localhost:3000");
-    const callbackUrl = new URL("/api/integrations/callback", origin);
+    const resolved = resolveRequestOrigin({
+      host: requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+      proto: requestHeaders.get("x-forwarded-proto"),
+    });
+    if (!resolved.ok) {
+      const reason = resolved.error;
+      await failConnectionAttempt(auth, { accountId: account.id, reason });
+      return { ok: false, error: reason };
+    }
+    const callbackUrl = new URL("/api/integrations/callback", resolved.origin);
     callbackUrl.searchParams.set("state", attempt.stateToken);
     let link;
     try {

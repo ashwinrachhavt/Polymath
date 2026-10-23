@@ -120,6 +120,14 @@ describe("cardState", () => {
     );
   });
 
+  it("a tierless provider is coming_soon even when the deployment is unconfigured", () => {
+    // Dropbox has no tiers: no env config could make it connectable, so the
+    // card says Coming soon rather than blaming deployment setup.
+    expect(
+      cardState(connector({ configured: false, missingConfig: ["COMPOSIO_API_KEY"], accessTiers: [] })),
+    ).toBe("coming_soon");
+  });
+
   it("a connected account stays connected even when the deployment loses its config", () => {
     const c = connector({
       configured: false,

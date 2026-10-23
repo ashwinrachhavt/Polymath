@@ -84,6 +84,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: aWork,
       alias: "work-gmail",
       accessTier: "read_only",
+      disabledCapabilities: [],
     });
 
     // Another workspace's identically named account (seeded above) is not
@@ -112,6 +113,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: only,
       alias: "only",
       accessTier: "read_only",
+      disabledCapabilities: [],
     });
 
     // No account at all is a distinct outcome from ambiguity.
@@ -135,6 +137,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: live,
       alias: "live",
       accessTier: "read_only",
+      disabledCapabilities: [],
     });
   });
 
@@ -148,6 +151,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: raised,
       alias: "raised",
       accessTier: "read_send",
+      disabledCapabilities: [],
     });
 
     // Unset is a valid state per the tier contract; it means the narrowest
@@ -165,6 +169,7 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: unset.connectedAccountId,
       alias: "unset-tier",
       accessTier: "read_only",
+      disabledCapabilities: [],
     });
   });
 });
