@@ -74,10 +74,13 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
 
     // Persisted: a reload reads the server, and completed work stays gone.
+    // The positive anchor comes FIRST: "row absent" is vacuous while the
+    // skeleton is still rendering, so prove the page is up before counting.
     await page.reload();
+    await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add task" })).toBeVisible();
     await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
-    await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
     await settle(page);
     await page.screenshot({ path: `test-results/bulk-pixels/completed-settled-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
@@ -117,6 +120,8 @@ for (const vp of VIEWPORTS) {
       // The server's truth after reload: both stay gone - a through this
       // action, b through the earlier completion this one honestly named.
       await page.reload();
+      await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Add task" })).toBeVisible();
       await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
       await settle(page);
