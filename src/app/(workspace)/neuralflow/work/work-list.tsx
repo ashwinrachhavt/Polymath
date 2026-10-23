@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
 import { parseQuickAdd } from "@/domains/work/quick-add";
-import { completeTaskAction, createTaskAction, moveTaskAction } from "./actions";
+import { completeTaskAction, completeTasksAction, createTaskAction, moveTaskAction } from "./actions";
+import { pruneSelection, toggleSelection } from "./selection";
 
 /*
  * Optimistic Work list: Add, Done and Up/Down apply the moment they are
@@ -93,6 +94,20 @@ export function WorkList({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
   const [reward, setReward] = useState<string | null>(null);
+  // Bulk edit (Product Spec: "bulk edit"). Selection only ever names rows on
+  // screen: the effect below prunes it against the rendered items, so a
+  // filter, page or refresh that drops a row drops it from the selection too
+  // - an invisible id can never ride into a later bulk action.
+  const [selection, setSelection] = useState<string[]>([]);
+  const [bulkResult, setBulkResult] = useState<{ kind: "info" | "error"; message: string } | null>(null);
+  // Prune during render when the items prop changes (filter, page, refresh):
+  // a row that left the screen leaves the selection in the same render, so
+  // the count the action bar shows never includes an invisible id.
+  const [lastItems, setLastItems] = useState(items);
+  if (items !== lastItems) {
+    setLastItems(items);
+    setSelection((prev) => pruneSelection(prev, new Set(items.map((item) => item.row.id))));
+  }
   const [pending, startTransition] = useTransition();
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
@@ -148,6 +163,42 @@ export function WorkList({
       // reopens; the draft map still holds the sentence, so nothing the
       // person typed is lost.
       setAsking(id);
+    });
+  }
+
+  function bulkComplete() {
+    const ids = selection;
+    if (ids.length === 0) return;
+    setError(null);
+    setBulkResult(null);
+    startTransition(async () => {
+      try {
+        const result = await completeTasksAction(ids);
+        if (!result.ok) {
+          setBulkResult({ kind: "error", message: result.error });
+          return;
+        }
+        if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
+        const done = new Set(result.completed);
+        setSelection((prev) => prev.filter((id) => !done.has(id)));
+        setBulkResult({
+          kind: "info",
+          message:
+            result.skipped.length === 0
+              ? `Completed ${result.completed.length} task${result.completed.length === 1 ? "" : "s"}.`
+              : `Completed ${result.completed.length} of ${ids.length}. ${result.skipped.length} could not be completed (already done or no longer available) and ${result.skipped.length === 1 ? "stays" : "stay"} selected.`,
+        });
+        router.refresh();
+      } catch {
+        // The request may have completed a prefix of the selection before it
+        // died: refresh to reconcile, keep the (visible) selection, and say
+        // so instead of claiming all-or-nothing either way.
+        router.refresh();
+        setBulkResult({
+          kind: "error",
+          message: "The request was interrupted. Some selected tasks may have completed - the list has been refreshed, so check before retrying.",
+        });
+      }
     });
   }
 
@@ -211,6 +262,33 @@ export function WorkList({
         </form>
       ) : null}
       {optimisticItems.length === 0 ? emptyState : null}
+      {selection.length > 0 ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+          <span className="text-xs text-muted-foreground">{selection.length} selected</span>
+          <Button size="sm" variant="outline" disabled={pending} onClick={bulkComplete}>
+            Complete {selection.length} selected
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => {
+              setSelection([]);
+              setBulkResult(null);
+            }}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+      {bulkResult ? (
+        <p
+          role={bulkResult.kind === "error" ? "alert" : "status"}
+          className={`mb-2 text-xs ${bulkResult.kind === "error" ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {bulkResult.message}
+        </p>
+      ) : null}
       <ul className="divide-y divide-border">
         {optimisticItems.map((item) => {
           const row = item.row;
@@ -218,6 +296,20 @@ export function WorkList({
           return (
             <li key={row.id} className="py-3">
               <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-2.5">
+              {!optimistic ? (
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${row.title}`}
+                  checked={selection.includes(row.id)}
+                  disabled={pending}
+                  onChange={() => {
+                    setSelection((prev) => toggleSelection(prev, row.id));
+                    setBulkResult(null);
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-foreground"
+                />
+              ) : null}
               <div className="min-w-0">
                 {optimistic ? (
                   <span className="text-[13px] font-medium text-muted-foreground">{row.title}</span>
@@ -233,6 +325,7 @@ export function WorkList({
                   {row.subtaskCount > 0 && <span className="text-xs text-muted-foreground">{row.subtasksDone}/{row.subtaskCount} subtasks</span>}
                   {row.blockedBy > 0 && <Status>Blocked by {row.blockedBy}</Status>}
                 </div>
+              </div>
               </div>
               {!optimistic && canMove ? (
                 <div className="flex flex-col items-end gap-1">

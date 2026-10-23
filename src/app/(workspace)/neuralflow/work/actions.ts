@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { completeTask, reopenTask, createOwnerTask } from "@/domains/work/commands";
+import { completeTask, completeTasks, reopenTask, createOwnerTask } from "@/domains/work/commands";
 import { getCompletionConflictState } from "@/domains/work/queries";
 import {
   DependencyCycleError,
@@ -132,6 +132,29 @@ export async function completeTaskAction(
       : { ok: false, kind: "conflict", error: "This task was already completed.", sentenceRecorded: false };
   }
   return { ok: false, kind: "conflict", error: "This task was already completed." };
+}
+
+/*
+ * Bulk edit (Product Spec: "bulk edit"). Completes each selected task through
+ * the same guarded command the single Done button uses and reports the
+ * outcome per item: nothing is shown as done that did not complete, and a
+ * task that was already terminal or left the workspace is named as skipped,
+ * not absorbed. No per-item sentence - the completion question stays a
+ * single-task affordance; completing with no sentence is the same "Just
+ * complete" the row button already offers.
+ */
+const bulkCompleteInput = z.array(z.string().uuid()).min(1).max(100);
+
+export async function completeTasksAction(
+  taskIds: string[],
+): Promise<{ ok: true; completed: string[]; skipped: string[]; quartzEarned: boolean } | { ok: false; error: string }> {
+  const parsed = bulkCompleteInput.safeParse(taskIds);
+  if (!parsed.success) return { ok: false, error: "Select between 1 and 100 tasks." };
+
+  const auth = await authorize();
+  const outcome = await completeTasks(auth, [...new Set(parsed.data)]);
+  revalidate(auth);
+  return { ok: true, ...outcome };
 }
 
 /*

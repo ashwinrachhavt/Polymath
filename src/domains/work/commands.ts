@@ -290,6 +290,38 @@ export async function completeTask(
  * stands; the reopen adds its own), and cannot undo an external effect
  * another system already felt.
  */
+
+export type BulkCompleteOutcome = {
+  completed: string[];
+  skipped: string[];
+  quartzEarned: boolean;
+};
+
+/**
+ * Bulk edit (Product Spec: "bulk edit"), scoped to the operation the Work
+ * surface offers: complete. Composes over completeTask one id at a time, so
+ * every per-item guard (status, tenant), audit row, settled-edge attribution
+ * and Quartz rule applies exactly as if each row's Done was clicked - the
+ * bulk path bypasses nothing. Each completion is its own transaction: an id
+ * that no longer qualifies (already terminal, or not visible in this
+ * workspace) lands in `skipped` and neither rolls back nor silently absorbs
+ * the ones that did complete. Sequential on purpose: the audit trail's order
+ * is the caller's order.
+ */
+export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], quartzEarned: false };
+  for (const taskId of taskIds) {
+    const result = await completeTask(auth, { taskId });
+    if (result) {
+      outcome.completed.push(result.id);
+      outcome.quartzEarned ||= result.quartzEarned;
+    } else {
+      outcome.skipped.push(taskId);
+    }
+  }
+  return outcome;
+}
+
 export type ReopenOutcome =
   | { id: string; from: "done" | "cancelled"; skippedChangedEdges: number }
   | "stale"
