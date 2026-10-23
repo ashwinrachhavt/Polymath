@@ -93,30 +93,33 @@
 
   // ── Capture page ───────────────────────────────────────────────────
 
+  // The one full-page capture flow: extract via the content script, queue it,
+  // and report honestly. Both the Capture Page button and the empty-note
+  // fallback use it.
+  async function captureActivePage(flashContainer) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_ARTICLE_TEXT" });
+    const result = await AlfredAPI.capturePage({
+      url: page.url,
+      title: page.title,
+      content: page.text,
+      history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
+    });
+    const qualityLabel = page.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
+    flashStatus(
+      flashContainer,
+      result.delivered ? `Page captured! (${qualityLabel})` : "Saved on this device — will sync when Polymath is reachable.",
+      "success",
+    );
+    refreshOutbox();
+  }
+
   $("#btn-capture").addEventListener("click", async () => {
     const btn = $("#btn-capture");
     btn.disabled = true;
     btn.textContent = "Capturing...";
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      // Use the content script's shared extractor via messaging
-      const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_ARTICLE_TEXT" });
-      const result = await AlfredAPI.capturePage({
-        url: page.url,
-        title: page.title,
-        content: page.text,
-        raw_markdown: page.raw_markdown,
-        content_type_hint: page.content_type_hint,
-        capture_quality: page.quality,
-        history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
-      });
-      const qualityLabel = page.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
-      flashStatus(
-        $("#quick-actions"),
-        result.delivered ? `Page captured! (${qualityLabel})` : "Saved on this device — will sync when Polymath is reachable.",
-        "success",
-      );
-      refreshOutbox();
+      await captureActivePage($("#quick-actions"));
     } catch (err) {
       flashStatus($("#quick-actions"), `Error: ${err.message}`, "error");
     } finally {
@@ -158,22 +161,7 @@
       btn.disabled = true;
       btn.textContent = "Capturing page...";
       try {
-        const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_ARTICLE_TEXT" });
-        const result = await AlfredAPI.capturePage({
-          url: page.url,
-          title: page.title,
-          content: page.text,
-          raw_markdown: page.raw_markdown,
-          content_type_hint: page.content_type_hint,
-          capture_quality: page.quality,
-          history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
-        });
-        flashStatus(
-          $("#quick-note"),
-          result.delivered ? "Page captured!" : "Saved on this device — will sync when Polymath is reachable.",
-          "success",
-        );
-        refreshOutbox();
+        await captureActivePage($("#quick-note"));
       } catch (err) {
         flashStatus($("#quick-note"), `Error: ${err.message}`, "error");
       } finally {

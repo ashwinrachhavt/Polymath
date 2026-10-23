@@ -262,9 +262,6 @@
         ? AlfredExtract.extractPage()
         : { raw_text: document.body.innerText.slice(0, 50000), raw_markdown: null, quality: "basic", content_type_hint: "generic" };
       text = extracted.raw_text.trim();
-      var _fallbackMarkdown = extracted.raw_markdown;
-      var _fallbackHint = extracted.content_type_hint;
-      var _fallbackQuality = extracted.quality;
     }
 
     if (!text) {
@@ -281,9 +278,6 @@
             url: location.href,
             title: document.title,
             content: text,
-            raw_markdown: typeof _fallbackMarkdown !== "undefined" ? _fallbackMarkdown : null,
-            content_type_hint: typeof _fallbackHint !== "undefined" ? _fallbackHint : null,
-            capture_quality: typeof _fallbackQuality !== "undefined" ? _fallbackQuality : null,
           })
         : await AlfredAPI.captureSelection({
             url: location.href,
@@ -317,9 +311,6 @@
         url: location.href,
         title: document.title,
         content: extracted.raw_text,
-        raw_markdown: extracted.raw_markdown,
-        content_type_hint: extracted.content_type_hint,
-        capture_quality: extracted.quality,
         history: {
           title: `[Page] ${document.title}`,
           url: location.href,

@@ -45,7 +45,6 @@ async function relayThroughWorker(url, options) {
 
 const AlfredAPI = {
   _baseUrl: null,
-  _workspaceId: null,
   _defaultUrl: "http://localhost:3000",
 
   /** Resolve the API base URL from storage or fall back to default. */
