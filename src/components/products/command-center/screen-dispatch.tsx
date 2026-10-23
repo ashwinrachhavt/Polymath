@@ -23,7 +23,7 @@ const Integrations = dynamic(() => import("./integrations"), { loading });
 const Activity = dynamic(() => import("./activity"), { loading });
 const Settings = dynamic(() => import("./settings"), { loading });
 
-export default function CommandCenterScreen({ screen, recordId, invalidRecordId }: { screen: string; recordId?: string; invalidRecordId?: boolean }) {
+export default function CommandCenterScreen({ screen, recordId, invalidRecordId, browserPreview }: { screen: string; recordId?: string; invalidRecordId?: boolean; browserPreview?: boolean }) {
   switch (screen) {
     case "briefing": return <Briefing/>;
     case "inbox": return <Inbox/>;
@@ -43,7 +43,7 @@ export default function CommandCenterScreen({ screen, recordId, invalidRecordId 
     case "companion": return <Companion/>;
     case "integrations": return <Integrations/>;
     case "activity": return <Activity/>;
-    case "settings": return <Settings/>;
+    case "settings": return <Settings browserPreview={browserPreview ?? false}/>;
     default: return null;
   }
 }

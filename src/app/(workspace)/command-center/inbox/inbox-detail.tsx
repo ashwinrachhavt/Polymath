@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
+import { makeDraftAction, makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
+import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import { CaptureBody } from "./capture-body";
 import { captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 
@@ -41,7 +42,7 @@ function when(iso: string): string {
 export function InboxDetail({
   capture,
 }: {
-  capture: (Omit<InboxRow, "preview"> & { text: string | null; failureReason?: string | null }) | null;
+  capture: (Omit<InboxRow, "preview"> & { text: string | null; failureReason?: string | null; rawPayload?: unknown }) | null;
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -83,6 +84,15 @@ export function InboxDetail({
     startTransition(async () => {
       decide("converted");
       const result = await makeNoteAction({ captureId: capture!.id, expectedVersion: capture!.version });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function saveAsDraft(template: DraftTemplate) {
+    setError(null);
+    startTransition(async () => {
+      decide("converted");
+      const result = await makeDraftAction({ captureId: capture!.id, expectedVersion: capture!.version, template });
       if (!result.ok) setError(result.error);
     });
   }
@@ -134,7 +144,9 @@ export function InboxDetail({
       </header>
 
       <div className="mt-6 border-border border-t pt-6">
-        {isUrlOnly ? (
+        {capture.kind === "file" ? (
+          <FileCapturePanel captureId={capture.id} rawPayload={capture.rawPayload} />
+        ) : isUrlOnly ? (
           capture.text ? (
             <CaptureBody
               captureId={capture.id}
@@ -172,12 +184,28 @@ export function InboxDetail({
       <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
         {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
           <>
-            <Button size="sm" disabled={pending} onClick={saveAsNote}>
-              Save as note
-            </Button>
+            {capture.kind === "file" ? null : (
+              <Button size="sm" disabled={pending} onClick={saveAsNote}>
+                Save as note
+              </Button>
+            )}
             <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
               Make task
             </Button>
+            {capture.kind === "file" ? (
+              <span className="flex items-center text-xs text-muted-foreground">
+                A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself.
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                Turn into
+                {DRAFT_TEMPLATES.map((template) => (
+                  <Button key={template} size="sm" variant="ghost" disabled={pending} onClick={() => saveAsDraft(template)}>
+                    {DRAFT_TEMPLATE_LABEL[template]}
+                  </Button>
+                ))}
+              </span>
+            )}
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => act("discarded")}>
               Archive
             </Button>
@@ -188,9 +216,9 @@ export function InboxDetail({
             Restore capture
           </Button>
         ) : null}
-        {state === "converted" && capture.convertedType === "note" && capture.convertedId ? (
+        {state === "converted" && (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>Open note</Link>
+            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
@@ -200,5 +228,48 @@ export function InboxDetail({
         ) : null}
       </div>
     </article>
+  );
+}
+
+type FilePayload = { filename?: string; mimeType?: string; sizeBytes?: number; quarantined?: boolean };
+
+function formatBytes(n: number | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "unknown size";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/*
+ * A file capture's detail: the filename is the whole label. The bytes open or
+ * download through the tenant-checked file route; the contents are never
+ * extracted or searchable here. A quarantined file (type unrecognized) is
+ * named as such and downloads rather than rendering.
+ */
+function FileCapturePanel({ captureId, rawPayload }: { captureId: string; rawPayload: unknown }) {
+  const payload = (rawPayload ?? {}) as FilePayload;
+  const filename = payload.filename?.trim() || "Captured file";
+  const quarantined = payload.quarantined === true;
+  return (
+    <section aria-label="Captured file" className="flex flex-col gap-3">
+      <p className="text-[15px] font-medium break-words text-foreground">{filename}</p>
+      <p className="text-[13px] text-muted-foreground">
+        {quarantined ? "Type not recognized - stored as-is" : (payload.mimeType ?? "File")} · {formatBytes(payload.sizeBytes)}
+      </p>
+      <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+        Stored as captured. The file&apos;s contents aren&apos;t searchable; the filename is the label.
+        {quarantined ? " It downloads rather than opening in the browser." : ""}
+      </p>
+      <div>
+        <a
+          href={`/api/v1/captures/${captureId}/file`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[13px] font-medium text-primary underline-offset-4 hover:underline"
+        >
+          {quarantined ? "Download file" : "Open file"}
+        </a>
+      </div>
+    </section>
   );
 }

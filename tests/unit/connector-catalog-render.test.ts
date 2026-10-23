@@ -77,6 +77,20 @@ const fixtures: CatalogConnector[] = [
     ],
   }),
   base({ provider: "dropbox", displayName: "Dropbox", configured: false, accessTiers: [] }),
+  base({ provider: "linkedin", displayName: "LinkedIn", accessTiers: PROVIDER_TIERS.linkedin }),
+  base({
+    provider: "instagram",
+    displayName: "Instagram",
+    accessTiers: PROVIDER_TIERS.instagram,
+    accounts: [
+      account({
+        alias: "work-ig",
+        isDefaultForWrites: false,
+        accessTier: "read_only",
+        disabledCapabilities: [],
+      }),
+    ],
+  }),
 ];
 
 describe("connector catalog pixel harness", () => {
@@ -88,6 +102,10 @@ describe("connector catalog pixel harness", () => {
     expect(html).toContain("Setup needed");
     expect(html).toContain("Coming soon");
     expect(html).toContain("Invalid API key (401)");
+    expect(html).toContain("Needs a Business or Creator account");
+    // instagram's active, non-default account must NOT offer a write default:
+    // the provider has no write capability, so the control would be a lie.
+    expect(html).not.toContain("Make write default");
     mkdirSync("/tmp/harness", { recursive: true });
     writeFileSync("/tmp/harness/fragment.html", html);
   });

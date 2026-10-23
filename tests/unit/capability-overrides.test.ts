@@ -91,3 +91,14 @@ describe("nextAlias", () => {
     expect(nextAlias(["gmail"], "slack")).toBe("slack");
   });
 });
+
+describe("notion capability enforcement", () => {
+  it("a switch narrows the notion tier per account, never widens it", () => {
+    expect(effectiveCapabilities("notion", "read_only", ["notion.page.read"])).toEqual(["notion.read"]);
+    expect(capabilityAllowed("notion", "read_only", ["notion.page.read"], "notion.page.read")).toBe(false);
+    expect(capabilityAllowed("notion", "read_only", ["notion.page.read"], "notion.read")).toBe(true);
+    // An unknown tier or a capability from another provider fails closed.
+    expect(capabilityAllowed("notion", "admin", [], "notion.read")).toBe(false);
+    expect(capabilityAllowed("notion", "read_only", [], "gmail.send")).toBe(false);
+  });
+});

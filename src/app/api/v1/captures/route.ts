@@ -71,7 +71,12 @@ export const POST = authedHandler(async (auth, request) => {
     });
     return withCors(Response.json({ capture }, { status: 201 }), origin);
   } catch (cause) {
-    if (cause instanceof ConflictError) return withCors(problemResponse(409, cause.code, cause.message), origin);
+    if (cause instanceof ConflictError) {
+      // Companion contract: type/code/title/status stay byte-exact; the id of
+      // the capture that is already there is an additive member.
+      const extra = cause.existingId ? { existingCaptureId: cause.existingId } : undefined;
+      return withCors(problemResponse(409, cause.code, cause.message, extra), origin);
+    }
     throw cause;
   }
 });

@@ -1,6 +1,9 @@
 import type postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { recordAudit } from "@/domains/audit/record";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { DEFAULT_MODEL_ID } from "./models";
 import { agentProfiles } from "./schema";
 
@@ -37,6 +40,10 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "linear.issue.read",
   "calendar.read",
   "notion.read",
+  "notion.page.read",
+  "linkedin.profile.read",
+  "instagram.profile.read",
+  "instagram.media.read",
   // NotebookLM parity. Opening a notebook reads its sources and artifacts.
   "notebook.open",
   // Run follow-ups become reviewable task proposals, never silent task
@@ -87,6 +94,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "linear.issue.read",
       "calendar.read",
       "notion.read",
+  "notion.page.read",
+  "linkedin.profile.read",
+  "instagram.profile.read",
+  "instagram.media.read",
       "notebook.open",
       // Prepare-risk proposal writes gained with the tasks_propose tool;
       // without this, existing profiles would fail closed on every call.
@@ -220,5 +231,66 @@ export async function reconcileStaleRuns(
     `;
 
     return ids;
+  });
+}
+
+/*
+ * Profile management (spec "It learns your taste": tone, explanation depth
+ * and writing preferences can be reviewed and changed; the person can
+ * inspect, correct or retire what is remembered). The learned brief is
+ * description + instructions; this is its one review-and-change write. Empty
+ * retires that part (null, not a blank string); the onboarding session row
+ * keeps the verbatim original as provenance, and nothing on the run path
+ * reads it back - retiring is real.
+ *
+ * The profile's `name` is NOT editable here: engine.start resolves profiles
+ * by name and every caller passes the machine key ("alfred"), so renaming
+ * would break every future run start. A persona display name needs its own
+ * column and display surfaces - recorded as a gap in ASH-220.
+ *
+ * Compare-and-set on the row version, like preferences: two open settings
+ * tabs cannot silently overwrite each other.
+ */
+export type ProfileBriefResult =
+  | { ok: true; profile: { name: string; description: string | null; instructions: string | null; version: number } }
+  | { ok: false; kind: "validation"; error: string }
+  | { ok: false; kind: "conflict" }
+  | { ok: false; kind: "not_found" };
+
+const BRIEF_LIMITS = { description: 500, instructions: 4000 } as const;
+
+export async function updateDefaultProfileBrief(
+  auth: AuthContext,
+  input: { description?: string; instructions?: string; expectedVersion: number },
+): Promise<ProfileBriefResult> {
+  const description = (input.description ?? "").trim();
+  if (description.length > BRIEF_LIMITS.description) return { ok: false, kind: "validation", error: `Keep the description under ${BRIEF_LIMITS.description} characters.` };
+  const instructions = (input.instructions ?? "").trim();
+  if (instructions.length > BRIEF_LIMITS.instructions) return { ok: false, kind: "validation", error: `Keep the brief under ${BRIEF_LIMITS.instructions} characters.` };
+
+  return withTransaction(async (tx) => {
+    const [current] = await tx
+      .select({ id: agentProfiles.id, version: agentProfiles.version })
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.isDefault, true)))
+      .limit(1);
+    if (!current) return { ok: false, kind: "not_found" } as const;
+
+    const patch = { description: description || null, instructions: instructions || null };
+    const [updated] = await tx
+      .update(agentProfiles)
+      .set({ ...patch, version: current.version + 1, updatedAt: new Date(), updatedBy: auth.userId })
+      .where(and(eq(agentProfiles.id, current.id), eq(agentProfiles.version, input.expectedVersion)))
+      .returning();
+    // No row: the version moved under us - the caller's view is stale.
+    if (!updated) return { ok: false, kind: "conflict" } as const;
+
+    await recordAudit(auth, {
+      action: "agent_profile.brief_saved",
+      subjectType: "agent_profile",
+      subjectId: updated.id,
+      summary: `Assistant brief saved: ${updated.description ? "description set" : "description retired"}, ${updated.instructions ? "brief set" : "brief retired"}`,
+    }, tx);
+    return { ok: true, profile: { name: updated.name, description: updated.description, instructions: updated.instructions, version: updated.version } } as const;
   });
 }

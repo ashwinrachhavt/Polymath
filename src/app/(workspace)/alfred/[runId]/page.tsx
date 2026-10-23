@@ -7,7 +7,7 @@ import { Markdown } from "@/components/markdown";
 import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
-import { getRun } from "@/domains/agents/queries";
+import { getRun, getRunUsage, type RunUsage } from "@/domains/agents/queries";
 import { listThreads } from "@/domains/agents/thread";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
@@ -25,6 +25,21 @@ export const metadata = { title: "Conversation · Polymath" };
  * and the routes to act.
  */
 
+/*
+ * What the run has cost, from its recorded usage events. Every total is
+ * labeled "recorded": the recording contract does not guarantee completeness
+ * (a step may report no usage, usage without a price, or a dropped bridge
+ * write), so even a finished run's figure is what was recorded, not a
+ * guaranteed final bill. Missing cost stays missing - never rendered as zero.
+ */
+function costLabel(usage: RunUsage | null, finished: boolean): string | null {
+  if (!usage) return finished ? "no usage recorded" : null;
+  if (usage.usd === null) return "cost not recorded";
+  const n = Number(usage.usd);
+  const usd = Number.isFinite(n) ? (n >= 0.01 ? n.toFixed(2) : n.toFixed(4)) : usage.usd;
+  return `$${usd} recorded${finished ? "" : " so far"}`;
+}
+
 async function ConversationSurface({ runId }: { runId: string }) {
   await connection();
   const auth = await getAuthContext();
@@ -35,9 +50,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [threads, drafts] = await Promise.all([
+  const [threads, drafts, usage] = await Promise.all([
     listThreads(auth.workspaceId, [run.id]),
     draftsForRuns(auth, [run.id]),
+    getRunUsage(auth.workspaceId, run.id),
   ]);
 
   const thread = threads.get(run.id) ?? [];
@@ -65,6 +81,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <p className="text-muted-foreground truncate text-[11px]">
               Started {timeAgo(run.createdAt)}
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
+              {costLabel(usage, finished) ? ` · ${costLabel(usage, finished)}` : null}
             </p>
           </div>
         </div>

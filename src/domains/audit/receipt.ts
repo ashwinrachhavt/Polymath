@@ -29,6 +29,11 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+/** The stored receipt hash for a request payload - one definition so a route's pre-check and withReceipt agree byte-for-byte. */
+export async function receiptRequestHash(request: unknown): Promise<string> {
+  return sha256Hex(JSON.stringify(request));
+}
+
 export async function withReceipt<T>(
   tx: TxDrizzle,
   auth: Pick<AuthContext, "workspaceId">,
@@ -41,7 +46,7 @@ export async function withReceipt<T>(
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`${auth.workspaceId}:${key}`}, 0))`,
   );
-  const requestHash = await sha256Hex(JSON.stringify(request));
+  const requestHash = await receiptRequestHash(request);
 
   const [receipt] = await tx
     .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })

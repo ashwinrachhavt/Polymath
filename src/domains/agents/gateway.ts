@@ -15,6 +15,9 @@ import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/d
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
 import { GENERIC_READS, genericList } from "@/domains/integrations/reads/generic";
 import { readLinearIssue, searchLinearIssues } from "@/domains/integrations/reads/linear";
+import { readNotionPage, searchNotion } from "@/domains/integrations/reads/notion";
+import { getInstagramProfile, listInstagramMedia } from "@/domains/integrations/reads/instagram";
+import { getLinkedInProfile } from "@/domains/integrations/reads/linkedin";
 import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -83,7 +86,19 @@ type ParsedThread = {
 };
 type ParsedSend = { ok: true; generic?: undefined; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
 
-const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel", "linear_search_issues", "linear_read_issue"] as const;
+const OTHER_READS = [
+  "github_search",
+  "github_read_issue",
+  "slack_list_channels",
+  "slack_read_channel",
+  "linear_search_issues",
+  "linear_read_issue",
+  "notion_search",
+  "notion_read_page",
+  "linkedin_get_profile",
+  "instagram_get_profile",
+  "instagram_list_media",
+] as const;
 type OtherRead = (typeof OTHER_READS)[number];
 type ParsedGeneric = {
   ok: true;
@@ -173,6 +188,8 @@ function parseCall(tool: string, input: unknown): ParsedCall {
           ? `issue:${args.owner}/${args.repo}#${args.number}`
           : name === "linear_read_issue"
             ? `issue:linear:${String(args.identifier).toUpperCase()}`
+            : name === "notion_read_page"
+              ? `page:notion:${args.pageId}`
             : undefined,
     };
   }
@@ -701,6 +718,42 @@ export function createGateway({ transport }: { transport: Transport }) {
       case "slack_list_channels": {
         const r = await listSlackChannels(transport, { connectedAccountId, limit });
         outcome = r.ok ? { ok: true, ...truncateList("channels", r.channels, {}, LIMITS.maxResponseBytes), count: r.channels.length } : r;
+        break;
+      }
+      case "notion_search": {
+        const r = await searchNotion(transport, { connectedAccountId, query: String(other.args.query), limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        break;
+      }
+      case "notion_read_page": {
+        const r = await readNotionPage(transport, { connectedAccountId, pageId: String(other.args.pageId) });
+        outcome = r.ok
+          ? {
+              ok: true,
+              text: JSON.stringify({ page: r.item, markdown: r.markdown, ...(r.truncated ? { truncated: true } : {}) }),
+              truncated: r.truncated,
+              count: 1,
+            }
+          : r;
+        break;
+      }
+      case "linkedin_get_profile": {
+        const r = await getLinkedInProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_get_profile": {
+        const r = await getInstagramProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_list_media": {
+        const r = await listInstagramMedia(transport, { connectedAccountId, limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
         break;
       }
       case "slack_read_channel": {

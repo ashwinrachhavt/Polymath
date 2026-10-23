@@ -58,6 +58,25 @@ suite("capture inbox", () => {
     expect(await auditCount(auth, note.id)).toBe(1);
   });
 
+  it("names the existing capture when a URL duplicates, and never across workspaces", async () => {
+    const auth = await seed("capture-duplicate");
+    const original = await commands.createCapture(auth, { text: "https://example.com/already-here" });
+
+    const duplicate = await commands.createCapture(auth, { text: "https://example.com/already-here" }).catch((e) => e);
+    expect(duplicate).toMatchObject({ code: "conflict", message: "That URL is already in the inbox." });
+    // The notice can link straight to the row the person already has.
+    expect(duplicate.existingId).toBe(original.id);
+
+    // Same URL in another workspace is its own capture, not a conflict.
+    const other = await seed("capture-duplicate-other");
+    const theirs = await commands.createCapture(other, { text: "https://example.com/already-here" });
+    expect(theirs.id).not.toBe(original.id);
+
+    // And the lookup never leaks the other workspace's row back.
+    const again = await commands.createCapture(auth, { text: "https://example.com/already-here" }).catch((e) => e);
+    expect(again.existingId).toBe(original.id);
+  });
+
   it("converts to a canonical task in one transaction and refuses a second conversion", async () => {
     const auth = await seed("capture-convert");
     const capture = await commands.createCapture(auth, {
