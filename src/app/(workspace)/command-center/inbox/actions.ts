@@ -35,13 +35,16 @@ function fail(error: unknown): { ok: false; error: string } {
 }
 
 export async function captureTextAction(input: { text: string }): Promise<
-  { ok: true; id: string } | { ok: false; error: string }
+  { ok: true; id: string } | { ok: false; error: string; existingId?: string }
 > {
   const auth = await authorize();
   let capture: { id: string };
   try {
     capture = await createCapture(auth, input);
   } catch (error) {
+    // A duplicate already names the capture it collided with; pass the id so
+    // the notice can open it.
+    if (error instanceof ConflictError) return { ok: false, error: error.message, existingId: error.existingId };
     return fail(error);
   }
   revalidate(auth);

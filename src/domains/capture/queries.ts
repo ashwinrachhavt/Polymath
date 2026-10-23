@@ -16,6 +16,19 @@ export type InboxFilter = "unprocessed" | "converted" | "discarded" | "all";
 export const CAPTURE_KINDS = ["text", "url", "file", "voice", "forwarded"] as const;
 export type CaptureKindFilter = (typeof CAPTURE_KINDS)[number];
 
+/** The capture a URL-only duplicate collided with, so the notice can link to it. */
+export async function findCaptureIdByUrl(
+  auth: AuthContext,
+  input: { source: (typeof captures.$inferSelect)["source"]; url: string },
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ id: captures.id })
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.source, input.source), eq(captures.url, input.url)))
+    .limit(1);
+  return row?.id;
+}
+
 function stateWhere(auth: AuthContext, filter: InboxFilter): SQL {
   return (
     filter === "all"

@@ -7,6 +7,7 @@ import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { withTransaction } from "@/lib/db-transaction";
+import { findCaptureIdByUrl } from "./queries";
 import { captures, captureSource } from "./schema";
 
 /*
@@ -25,6 +26,13 @@ export const CAPTURE_URL_CONTENT_TOPIC = "capture.url_content_requested";
 
 export class ConflictError extends Error {
   readonly code = "conflict";
+  /** Set when the conflict is a URL duplicate: the capture already in the inbox. */
+  readonly existingId?: string;
+
+  constructor(message: string, existingId?: string) {
+    super(message);
+    this.existingId = existingId;
+  }
 }
 
 export class StaleWriteError extends Error {
@@ -94,7 +102,14 @@ export async function createCapture(
     });
   } catch (cause) {
     if (isUniqueViolation(cause)) {
-      throw new ConflictError("That URL is already in the inbox.");
+      // The only unique constraint a capture can hit is (workspace, source, url),
+      // so point the caller at the row that is already there: told it exists
+      // becomes a link to it. The API keeps its four-member 409 body byte-exact
+      // (companion contract); the id rides along as an additive member.
+      const existing = url
+        ? await findCaptureIdByUrl(auth, { source: input.source ?? "quick_capture", url })
+        : undefined;
+      throw new ConflictError("That URL is already in the inbox.", existing);
     }
     throw cause;
   }
