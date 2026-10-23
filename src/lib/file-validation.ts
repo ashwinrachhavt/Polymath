@@ -90,3 +90,38 @@ export function validateFile(bytes: Uint8Array, filename = ""): FileValidationRe
   }
   return { ok: false, reason: "unidentified" };
 }
+
+/*
+ * Audio sniffing (voice capture intake): magic-grounded, never the filename.
+ * Every accepted type is a real signature checked at its spec offset; a
+ * mismatch is "unidentified" and the caller quarantines the original rather
+ * than filing it under a claimed type. A renamed video or PDF does not pass:
+ * RIFF must prove WAVE at offset 8 (AVI/WEBP fail), an ISO-BMFF file must
+ * declare an audio brand (M4A / M4B), EBML alone is accepted as WebM because
+ * browsers record microphone audio to it and the bytes stay honest - the
+ * capture never promises playability beyond the sniffed container.
+ */
+const AUDIO_SIGNATURES: { mimeType: string; sniff: (b: Uint8Array) => boolean }[] = [
+  { mimeType: "audio/wav", sniff: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x41 && b[10] === 0x56 && b[11] === 0x45 }, // RIFF....WAVE
+  { mimeType: "audio/mpeg", sniff: (b) => (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) }, // ID3 or frame sync
+  { mimeType: "audio/ogg", sniff: (b) => b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53 }, // OggS
+  { mimeType: "audio/flac", sniff: (b) => b[0] === 0x66 && b[1] === 0x4c && b[2] === 0x61 && b[3] === 0x43 }, // fLaC
+  {
+    mimeType: "audio/mp4",
+    // ISO-BMFF: ftyp box at offset 4, and the major brand must be audio (M4A
+    // or M4B). A video .mp4 (isom/mp41/mp42/avc1 brands) is not voice audio.
+    sniff: (b) =>
+      b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70 &&
+      ((b[8] === 0x4d && b[9] === 0x34 && b[10] === 0x41 && b[11] === 0x20) || // "M4A "
+       (b[8] === 0x4d && b[9] === 0x34 && b[10] === 0x42 && b[11] === 0x20)), // "M4B "
+  },
+  { mimeType: "audio/webm", sniff: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 }, // EBML (WebM container; browser mic recordings)
+];
+
+export function validateAudioFile(bytes: Uint8Array): FileValidationResult {
+  if (bytes.byteLength === 0) return { ok: false, reason: "empty_file" };
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) return { ok: false, reason: "payload_too_large" };
+  const match = AUDIO_SIGNATURES.find((sig) => sig.sniff(bytes));
+  if (match) return { ok: true, mimeType: match.mimeType };
+  return { ok: false, reason: "unidentified" };
+}

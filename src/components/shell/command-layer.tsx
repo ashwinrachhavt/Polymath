@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Paperclip, Plus, Search, Users } from "lucide-react";
+import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Mic, Paperclip, Plus, Search, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ export function CommandLayer() {
   const searchTrigger = useRef<HTMLButtonElement>(null);
   const captureTrigger = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const audioInput = useRef<HTMLInputElement>(null);
   const [filePending, setFilePending] = useState(false);
   const returnTo = useRef<"search" | "capture">("search");
 
@@ -90,7 +91,7 @@ export function CommandLayer() {
   // Files and screenshots capture through the multipart API route (server
   // actions cap below the 4.5 MB function ceiling), then the cached inbox is
   // refreshed so the new row is there when the dialog lands on it.
-  function attachFile(file: File) {
+  function attachBlob(file: File, endpoint: "/api/v1/captures/file" | "/api/v1/captures/voice") {
     if (filePending || pending) return;
     setSaveError("");
     setSaveErrorId(null);
@@ -99,7 +100,7 @@ export function CommandLayer() {
     setFilePending(true);
     const form = new FormData();
     form.set("file", file);
-    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+    void fetch(endpoint, { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
       .then(async (res) => {
         if (!res.ok) {
           // A platform-level 413 answers with an HTML error page, not a
@@ -118,6 +119,11 @@ export function CommandLayer() {
       .catch(() => setSaveError("Could not capture the file. Try again."))
       .finally(() => setFilePending(false));
   }
+  function attachFile(file: File) { attachBlob(file, "/api/v1/captures/file"); }
+  // Attaching RECORDED audio - not microphone recording and not
+  // transcription, neither of which exists yet; the copy next to the button
+  // says exactly that.
+  function attachAudio(file: File) { attachBlob(file, "/api/v1/captures/voice"); }
   function saveCapture(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!text.trim() || pending) return;
@@ -169,10 +175,17 @@ export function CommandLayer() {
             </div>
             <label className="flex flex-col gap-2 text-[13px] font-medium">Capture content<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} placeholder="A thought, a task, a link, or something to clarify" /></label>
             {kind === "capture" ? (
-              <div className="flex items-center gap-2">
-                <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
-                <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
-                <span className="text-[11px] text-muted-foreground">File or screenshot, up to 4 MB. Stored as-is; contents aren&apos;t searchable.</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
+                  <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
+                  <span className="text-[11px] text-muted-foreground">File or screenshot, up to 4 MB. Stored as-is; contents aren&apos;t searchable.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input ref={audioInput} type="file" accept="audio/*,.m4a,.wav,.mp3,.ogg,.flac,.webm" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachAudio(chosen); }} />
+                  <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={() => audioInput.current?.click()}><Mic aria-hidden />{filePending ? "Capturing…" : "Attach audio"}</Button>
+                  <span className="text-[11px] text-muted-foreground">A recording you already have, up to 4 MB. Stored as-is; not transcribed, not searchable.</span>
+                </div>
               </div>
             ) : null}
           </form>

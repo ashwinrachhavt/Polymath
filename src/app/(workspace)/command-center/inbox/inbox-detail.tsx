@@ -146,6 +146,8 @@ export function InboxDetail({
       <div className="mt-6 border-border border-t pt-6">
         {capture.kind === "file" ? (
           <FileCapturePanel captureId={capture.id} rawPayload={capture.rawPayload} />
+        ) : capture.kind === "voice" ? (
+          <VoiceCapturePanel captureId={capture.id} rawPayload={capture.rawPayload} />
         ) : isUrlOnly ? (
           capture.text ? (
             <CaptureBody
@@ -184,7 +186,7 @@ export function InboxDetail({
       <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
         {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
           <>
-            {capture.kind === "file" ? null : (
+            {capture.kind === "file" || capture.kind === "voice" ? null : (
               <Button size="sm" disabled={pending} onClick={saveAsNote}>
                 Save as note
               </Button>
@@ -192,9 +194,11 @@ export function InboxDetail({
             <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
               Make task
             </Button>
-            {capture.kind === "file" ? (
+            {capture.kind === "file" || capture.kind === "voice" ? (
               <span className="flex items-center text-xs text-muted-foreground">
-                A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself.
+                {capture.kind === "voice"
+                  ? "A recording stays a recording - notes and drafts start from text, and nothing is transcribed here. Make a task from its filename, or play it back."
+                  : "A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself."}
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -246,6 +250,45 @@ function formatBytes(n: number | undefined): string {
  * extracted or searchable here. A quarantined file (type unrecognized) is
  * named as such and downloads rather than rendering.
  */
+/*
+ * A voice capture's detail: the filename is the whole label, the sniffed
+ * container decides playback. A recognized recording plays inline through
+ * the tenant-checked blob route (inline + byte ranges, never quarantined);
+ * a quarantined one downloads as an attachment. Nothing here transcribes:
+ * the audio's contents are not searchable and no transcript is promised.
+ */
+function VoiceCapturePanel({ captureId, rawPayload }: { captureId: string; rawPayload: unknown }) {
+  const payload = (rawPayload ?? {}) as FilePayload;
+  const filename = payload.filename?.trim() || "Captured audio";
+  const quarantined = payload.quarantined === true;
+  return (
+    <section aria-label="Captured audio" className="flex flex-col gap-3">
+      <p className="text-[15px] font-medium break-words text-foreground">{filename}</p>
+      <p className="text-[13px] text-muted-foreground">
+        {quarantined ? "Type not recognized - stored as-is" : (payload.mimeType ?? "Audio")} · {formatBytes(payload.sizeBytes)}
+      </p>
+      {quarantined ? null : (
+        // eslint-disable-next-line jsx-a11y/media-has-caption -- the capture IS the recording; no caption track exists to offer
+        <audio controls preload="metadata" src={`/api/v1/captures/${captureId}/file`} className="w-full max-w-md" />
+      )}
+      <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+        Stored as captured. Not transcribed - the audio&apos;s contents aren&apos;t searchable; the filename is the label.
+        {quarantined ? " It downloads rather than playing in the browser." : ""}
+      </p>
+      <div>
+        <a
+          href={`/api/v1/captures/${captureId}/file`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[13px] font-medium text-primary underline-offset-4 hover:underline"
+        >
+          {quarantined ? "Download audio" : "Open audio"}
+        </a>
+      </div>
+    </section>
+  );
+}
+
 function FileCapturePanel({ captureId, rawPayload }: { captureId: string; rawPayload: unknown }) {
   const payload = (rawPayload ?? {}) as FilePayload;
   const filename = payload.filename?.trim() || "Captured file";

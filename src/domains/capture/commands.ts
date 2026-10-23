@@ -152,23 +152,57 @@ export function fileCaptureReceiptRequest(contentHash: string, filename: string)
   return { op: "createFileCapture", contentHash, filename };
 }
 
+/** The voice-capture receipt payload. Its own op, so a voice replay can never collide with a file receipt. */
+export function voiceCaptureReceiptRequest(contentHash: string, filename: string) {
+  return { op: "createVoiceCapture", contentHash, filename };
+}
+
+type BlobCaptureInput = {
+  bytes: Uint8Array;
+  /** The uploader's filename - a label only, never trusted for type (validateFile already sniffed). */
+  filename: string;
+  /** From validateFile/validateAudioFile. A failed verdict quarantines the original rather than rejecting it. */
+  verdict: FileValidationResult;
+  /** sha256 hex of the bytes when the caller already has it. */
+  contentHash?: string;
+  source?: (typeof captureSource.enumValues)[number];
+  /**
+   * First-party idempotency key. The ROUTE checks the receipt before the
+   * blob write (a replay must not store a second object); the receipt here
+   * is the in-transaction backstop that serializes racing first attempts.
+   */
+  idempotencyKey?: string;
+};
+
 export async function createFileCapture(
   auth: AuthContext,
-  input: {
-    bytes: Uint8Array;
-    /** The uploader's filename - a label only, never trusted for type (validateFile already sniffed). */
-    filename: string;
-    /** From validateFile. A failed verdict quarantines the original rather than rejecting it. */
-    verdict: FileValidationResult;
-    /** sha256 hex of the bytes when the caller already has it. */
-    contentHash?: string;
-    source?: (typeof captureSource.enumValues)[number];
-    /**
-     * First-party idempotency key. The ROUTE checks the receipt before the
-     * blob write (a replay must not store a second object); the receipt here
-     * is the in-transaction backstop that serializes racing first attempts.
-     */
-    idempotencyKey?: string;
+  input: BlobCaptureInput,
+): Promise<{ captureId: string; quarantined: boolean; contentHash: string }> {
+  return createBlobCapture(auth, input, { kind: "file", receiptRequest: fileCaptureReceiptRequest, auditVerb: "Captured file" });
+}
+
+/*
+ * Voice/audio capture (ASH-220 row 20): ATTACHING recorded audio, distinct
+ * from recording microphone audio in-app and from transcription - neither of
+ * those exists yet and nothing here implies them. Storage honesty matches the
+ * file kind: the bytes are kept as-is, `text` stays null (audio contents are
+ * never promised as searchable/transcribed), a sniff mismatch quarantines the
+ * original, and the filename is the only label.
+ */
+export async function createVoiceCapture(
+  auth: AuthContext,
+  input: BlobCaptureInput,
+): Promise<{ captureId: string; quarantined: boolean; contentHash: string }> {
+  return createBlobCapture(auth, input, { kind: "voice", receiptRequest: voiceCaptureReceiptRequest, auditVerb: "Captured audio" });
+}
+
+async function createBlobCapture(
+  auth: AuthContext,
+  input: BlobCaptureInput,
+  opts: {
+    kind: "file" | "voice";
+    receiptRequest: (contentHash: string, filename: string) => { op: string; contentHash: string; filename: string };
+    auditVerb: string;
   },
 ): Promise<{ captureId: string; quarantined: boolean; contentHash: string }> {
   const filename = input.filename.trim().slice(0, 500);
@@ -189,7 +223,7 @@ export async function createFileCapture(
   let lostRace = false;
   try {
     const result = await withTransaction(async (tx) => {
-      const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, fileCaptureReceiptRequest(contentHash, filename), async () => {
+      const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, opts.receiptRequest(contentHash, filename), async () => {
     const blobRow =
       (await tx
         .insert(blobObjects)
@@ -215,7 +249,7 @@ export async function createFileCapture(
         .insert(captures)
         .values({
           workspaceId: auth.workspaceId,
-          kind: "file",
+          kind: opts.kind,
           source: input.source ?? "quick_capture",
           rawPayload: {
             filename,
@@ -232,7 +266,7 @@ export async function createFileCapture(
         .returning();
       await recordAudit(
         auth,
-        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
+        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `${opts.auditVerb} ${filename}` },
         tx,
       );
         return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
