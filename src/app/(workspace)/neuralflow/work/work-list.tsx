@@ -279,7 +279,7 @@ export function WorkList({
       ) : null}
       {optimisticItems.length === 0 ? emptyState : null}
       {selection.length > 0 ? (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+        <div role="group" aria-label="Bulk selection actions" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
           <span className="text-xs text-muted-foreground">{selection.length} selected</span>
           <Button size="sm" variant="outline" disabled={pending} onClick={bulkComplete}>
             Complete {selection.length} selected

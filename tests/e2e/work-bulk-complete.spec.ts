@@ -32,6 +32,15 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
+// Dev-harness chrome (the "Rendering…" activity pill lives in the nextjs-portal
+// shadow host) is tooling, not app UI: it must never appear in a review pixel.
+// App-state truth is proven by the assertions before every capture.
+const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
+
+async function settle(page: Page) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 async function addTask(page: Page, title: string) {
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
@@ -55,7 +64,8 @@ for (const vp of VIEWPORTS) {
     // The action bar reflects the actual selection state, not a claim.
     await expect(page.getByLabel(`Select ${a}`)).toBeChecked();
     await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-    await page.screenshot({ path: `test-results/bulk-pixels/selected-bar-${vp.name}.png` });
+    // The bar itself, framed tight: the count and the checked state it acts on.
+    await page.getByRole("group", { name: "Bulk selection actions" }).screenshot({ path: `test-results/bulk-pixels/selected-bar-${vp.name}.png` });
     await page.getByRole("button", { name: "Complete 2 selected" }).click();
     await expect(page.getByText("Completed 2 tasks.", { exact: true })).toBeVisible();
     // Settled: the server-driven refresh has reconciled the list (dev
@@ -68,7 +78,8 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
-    await page.screenshot({ path: `test-results/bulk-pixels/completed-settled-${vp.name}.png` });
+    await settle(page);
+    await page.screenshot({ path: `test-results/bulk-pixels/completed-settled-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 
   test(`a task that moved on behind the page's back is named as not completed [${vp.name}]`, async ({ page }) => {
@@ -100,14 +111,16 @@ for (const vp of VIEWPORTS) {
       // frame shows the message AND the reconciled list agreeing with it.
       await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0, { timeout: 30_000 });
       await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
-      await page.screenshot({ path: `test-results/bulk-pixels/mixed-outcome-${vp.name}.png` });
+      await settle(page);
+      await page.screenshot({ path: `test-results/bulk-pixels/mixed-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
       // The server's truth after reload: both stay gone - a through this
       // action, b through the earlier completion this one honestly named.
       await page.reload();
       await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
-      await page.screenshot({ path: `test-results/bulk-pixels/partial-settled-${vp.name}.png` });
+      await settle(page);
+      await page.screenshot({ path: `test-results/bulk-pixels/partial-settled-${vp.name}.png`, style: HIDE_DEV_CHROME });
     } finally {
       await sql.end();
     }
