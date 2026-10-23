@@ -1357,7 +1357,6 @@ export const cardReviews = pgTable(
     index("card_reviews_workspace_idx").on(t.workspaceId, t.createdAt),
   ],
 );
-
 /*
  * Areas (Product Spec, "Areas and progress"): declared by the person, never
  * inferred. An area is a name plus the note tags it covers; effort and
@@ -1388,3 +1387,4 @@ export const areas = pgTable(
     index("areas_workspace_idx").on(t.workspaceId, t.archivedAt),
   ],
 );
+
