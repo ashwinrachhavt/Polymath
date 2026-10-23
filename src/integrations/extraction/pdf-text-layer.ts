@@ -20,7 +20,7 @@ export function createPdfTextLayerProvider(): ExtractionProvider {
       if (input.mimeType !== "application/pdf") {
         return {
           ok: false,
-          error: "The local reader only reads PDF text. Reading images needs DOCLING_SERVE_URL or LLAMAPARSE_API_KEY.",
+          error: "The local reader only reads PDF text. Reading images needs a hosted reader (DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY) or OCR_PROVIDER=openrouter.",
           extractor,
         };
       }
@@ -42,7 +42,7 @@ export function createPdfTextLayerProvider(): ExtractionProvider {
         if (!text.trim()) {
           return {
             ok: false,
-            error: "This PDF has no text layer, so it is probably a scan. Reading it needs DOCLING_SERVE_URL or LLAMAPARSE_API_KEY.",
+            error: "This PDF has no text layer, so it is probably a scan. Reading it needs a hosted reader (DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY) or OCR_PROVIDER=openrouter.",
             extractor,
           };
         }

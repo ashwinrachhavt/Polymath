@@ -94,7 +94,7 @@ export async function KnowledgeSurface({
         <div className="page-content">
           <EmptyState
             title="Knowledge storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and DOCLING_SERVE_URL or LLAMAPARSE_API_KEY."
+            description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and a hosted reader (DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter)."
           />
         </div>
       </>

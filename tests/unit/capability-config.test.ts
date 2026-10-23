@@ -112,4 +112,29 @@ describe("capabilityStatus", () => {
     expect(find({ LLAMAPARSE_API_KEY: "k" }, "document-extraction-hosted").configured).toBe(true);
     expect(find({}, "document-extraction-hosted").configured).toBe(false);
   });
+
+  describe("vision OCR is opt-in, never inferred from a key's presence", () => {
+    it("an OpenRouter key alone does not configure scan reading", () => {
+      expect(find({ OPENROUTER_API_KEY: "k" }, "document-extraction-hosted").configured).toBe(false);
+    });
+
+    it("OCR_PROVIDER=openrouter with the key is configured", () => {
+      const cap = find({ OCR_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" }, "document-extraction-hosted");
+      expect(cap.configured).toBe(true);
+      expect(cap.missingEnv).toEqual([]);
+    });
+
+    it("OCR_PROVIDER=openrouter without the key names the key, not the menu", () => {
+      const cap = find({ OCR_PROVIDER: "openrouter" }, "document-extraction-hosted");
+      expect(cap.configured).toBe(false);
+      expect(cap.missingEnv).toEqual(["OPENROUTER_API_KEY"]);
+    });
+
+    it("off by default: the enable path is named with its metered shape", () => {
+      const cap = find({}, "document-extraction-hosted");
+      expect(cap.configured).toBe(false);
+      expect(cap.reason).toContain("OCR_PROVIDER=openrouter");
+      expect(cap.reason).toContain("metered");
+    });
+  });
 });
