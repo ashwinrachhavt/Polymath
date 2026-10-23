@@ -5,6 +5,7 @@ import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from 
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { dossierDocumentIds } from "@/domains/knowledge/dossiers";
+import { notebookChatObjective } from "@/domains/knowledge/notebook-chat";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -44,7 +45,7 @@ export async function startNotebookRun(input: { dossierId: string; title: string
     const { runId } = await engine.start({
       auth,
       profileName: "alfred",
-      objective: `Answer questions using only the sources in the notebook "${parsed.title}". Cite the sources you use. If the notebook does not contain the answer, say so.`,
+      objective: notebookChatObjective(parsed.title),
       subjects: [{ type: "dossier", id: parsed.dossierId }],
       estimateUsd: "0.25",
     });

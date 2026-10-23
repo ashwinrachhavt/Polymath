@@ -1,15 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { BookmarkPlus, FileText, Image, Loader2, NotebookPen, Presentation } from "lucide-react";
+import { BookmarkPlus, FileText, Image, Loader2, NotebookPen, Plus, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Markdown } from "@/components/markdown";
 import { Unavailable } from "@/components/workspace/ui";
 import { ChatSurface } from "@/components/chat/chat-surface";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/alfred/artifact-views";
-import { CitedAnswer } from "@/components/products/alfred/cited-answer";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
@@ -28,6 +29,12 @@ import { AddSources } from "./add-sources";
  * Assistant mounts, bound to this dossier through subjects. What differs is
  * scope, not interface: the run is restricted to this notebook's sources, and
  * the tools that scope allows are documents.search and notebook.open.
+ *
+ * Conversations persist (ASH-179). The history lists this notebook's chats;
+ * opening one resumes it: a live run streams and keeps its composer, a finished
+ * one reads back the stored thread and offers its last answer for saving to
+ * notes. A finished conversation is history, not a dead end — a new question
+ * starts a new conversation, same as the Assistant's own run page.
  *
  * Studio is this notebook's own capability panel: generate a report, deck, or
  * infographic from the pinned sources, research a company dossier-only, and
@@ -53,6 +60,16 @@ export type GeneratedArtifact = {
 
 export type NotebookRun = { id: string; state: string; objective: string };
 
+/** One row in the conversation history. */
+export type NotebookChatRow = { runId: string; state: string; label: string; ago: string };
+
+/** A resumed conversation: its run, whether it can still stream, and its stored thread. */
+export type ActiveChat = {
+  runId: string;
+  live: boolean;
+  thread: Array<{ kind: string; text: string; ago: string }>;
+};
+
 /** The readiness vocabulary the pane shows; one label per state of the existing field. */
 const READINESS_LABEL: Record<SourceRow["readiness"], string> = {
   queued: "Reading...",
@@ -68,6 +85,8 @@ export default function NotebookSurface({
   sources,
   artifacts,
   vault = [],
+  chats = [],
+  activeChat = null,
   runs = [],
   runDrafts = {},
   lastAnswer,
@@ -77,11 +96,15 @@ export default function NotebookSurface({
   artifacts: GeneratedArtifact[];
   /** The workspace's filed documents, for the pick-from-Vault control. */
   vault?: Array<{ id: string; title: string }>;
+  /** This notebook's conversations, newest first. */
+  chats?: NotebookChatRow[];
+  /** The conversation selected with ?chat=, when it is one of this notebook's. */
+  activeChat?: ActiveChat | null;
   /** This notebook's generate/research runs, newest first. */
   runs?: NotebookRun[];
   /** Draft artifact per producing run, when one exists. */
   runDrafts?: Record<string, { artifactId: string; status: string; version: number }>;
-  /** The most recent grounded answer, when one exists. */
+  /** The selected conversation's last grounded answer, when one exists. */
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
 }) {
   const router = useRouter();
@@ -89,7 +112,7 @@ export default function NotebookSurface({
   const [brief, setBrief] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
-  const [runId, setRunId] = useState<string | null>(null);
+  const [startedRunId, setStartedRunId] = useState<string | null>(null);
   const [starting, startStart] = useTransition();
   const [generating, setGenerating] = useState(false);
   const [researching, setResearching] = useState(false);
@@ -98,6 +121,12 @@ export default function NotebookSurface({
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryNote, setRetryNote] = useState<string | null>(null);
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
+
+  const basePath = `/alfred/dossiers/${notebook.dossierId}/notebook`;
+  // A conversation started in this visit wins over one resumed from the URL;
+  // after a refresh it is the same row in the history.
+  const liveRunId = startedRunId ?? (activeChat?.live ? activeChat.runId : null);
+  const readySources = sources.filter((s) => s.readiness === "ready").length;
 
   function retrySource(documentId: string) {
     // A new retry clears the previous attempt's note, so a stale result never
@@ -116,8 +145,13 @@ export default function NotebookSurface({
     setMessage(null);
     startStart(async () => {
       const out = await startNotebookRun({ dossierId: notebook.dossierId, title: notebook.title });
-      if (out.ok) setRunId(out.runId);
-      else setMessage(out.error);
+      if (out.ok) {
+        setStartedRunId(out.runId);
+        // The new conversation joins the history on the next server render.
+        router.refresh();
+      } else {
+        setMessage(out.error);
+      }
     });
   }
 
@@ -134,6 +168,7 @@ export default function NotebookSurface({
           idempotencyKey: crypto.randomUUID(),
         });
         setMessage("Saved to your notes.");
+        setDiscarded(true);
       } catch (cause) {
         setMessage(cause instanceof Error ? cause.message : "The answer could not be saved.");
       }
@@ -240,42 +275,110 @@ export default function NotebookSurface({
       <section aria-label="Chat" className="panel flex min-h-[60vh] flex-col rounded-xl p-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-[13px] font-medium">{notebook.title}</h2>
-          {runId && (
-            <Button size="sm" variant="ghost" onClick={() => { setRunId(null); setDiscarded(false); }}>
+          {(activeChat || liveRunId) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setStartedRunId(null);
+                setDiscarded(false);
+                router.push(basePath);
+              }}
+            >
+              <Plus aria-hidden />
               New conversation
             </Button>
           )}
         </div>
+
+        {chats.length > 0 && (
+          <ul aria-label="Conversations" className="mt-2 flex flex-col border-b border-border pb-2">
+            {chats.slice(0, 5).map((chat) => {
+              const active = chat.runId === activeChat?.runId || chat.runId === startedRunId;
+              return (
+                <li key={chat.runId}>
+                  <Link
+                    href={`${basePath}?chat=${chat.runId}`}
+                    onClick={() => setStartedRunId(null)}
+                    className={`flex items-baseline gap-2 rounded-md px-1 py-1 text-[13px] hover:bg-muted ${
+                      active ? "font-medium" : ""
+                    }`}
+                    aria-current={active ? "true" : undefined}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{chat.label}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{chat.ago}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
         <div className="mt-3 flex-1">
-          {runId ? (
+          {liveRunId ? (
             <ChatSurface
-              runId={runId}
+              runId={liveRunId}
               subject={{ type: "dossier", id: notebook.dossierId }}
               title={notebook.title}
               placeholder="Ask about these sources"
+              showHeader={false}
             />
-          ) : lastAnswer && !discarded ? (
+          ) : activeChat ? (
             <div>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Last answer</h3>
-                <span className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
-                    {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
-                    Save to notes
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setDiscarded(true)}>
-                    Discard
-                  </Button>
-                </span>
-              </div>
-              <CitedAnswer answer={lastAnswer.answer} citations={lastAnswer.citations} />
+              {(() => {
+                // The thread's first user entry is the run's grounding
+                // objective, not something the person typed; history starts
+                // with the question they actually asked.
+                const visible = activeChat.thread.filter((entry) => entry.kind === "user" || entry.kind === "assistant");
+                const shown = visible.length > 0 && visible[0].kind === "user" ? visible.slice(1) : visible;
+                return shown.length === 0 ? (
+                  <p className="text-[13px] text-muted-foreground">This conversation has no messages yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {shown.map((entry, index) =>
+                      entry.kind === "user" ? (
+                        <div key={index} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                          {entry.text}
+                        </div>
+                      ) : (
+                        <div key={index} className="max-w-[72ch] text-[13px] leading-6">
+                          <Markdown text={entry.text} />
+                        </div>
+                      ),
+                    )}
+                  </div>
+                );
+              })()}
+              {lastAnswer && lastAnswer.runId === activeChat.runId && !discarded ? (
+                // The answer is the last message above; this bar acts on it
+                // without repeating the body. The sources it would carry into
+                // the note stay visible because they are the save's evidence.
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Save this answer
+                    {lastAnswer.citations.length > 0
+                      ? ` with its ${lastAnswer.citations.length === 1 ? "source" : "sources"} (${lastAnswer.citations.map((c) => c.title).join(", ")})`
+                      : ""}{" "}
+                    to your notes.
+                  </p>
+                  <span className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
+                      {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
+                      Save to notes
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setDiscarded(true)}>
+                      Discard
+                    </Button>
+                  </span>
+                </div>
+              ) : null}
             </div>
-          ) : sources.filter((s) => s.readiness === "ready").length === 0 ? (
+          ) : readySources === 0 ? (
             <Unavailable feature="Grounded chat">
               No source in this notebook is ready yet. Add one and wait for it to say Ready, then ask away.
             </Unavailable>
           ) : (
-            <div className="flex h-full flex-col items-start justify-center gap-3">
+            <div className="flex flex-col items-start gap-3 py-8">
               <Button onClick={beginChat} disabled={starting}>
                 {starting ? <Loader2 aria-hidden className="animate-spin" /> : <NotebookPen aria-hidden />}
                 Start a conversation
@@ -383,7 +486,7 @@ export default function NotebookSurface({
                   <DraftControls runId={run.id} draft={runDrafts[run.id] ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
                   {runDrafts[run.id] ? (
                     <a
-                      href={`/alfred/dossiers/${notebook.dossierId}/notebook?draft=${runDrafts[run.id].artifactId}`}
+                      href={`${basePath}?draft=${runDrafts[run.id].artifactId}`}
                       className="w-fit text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
                     >
                       Open the workbench
