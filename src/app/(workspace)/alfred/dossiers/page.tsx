@@ -13,7 +13,7 @@ import { DraftWorkbench } from "./draft-workbench";
 import { listLinkableRecords, resolveLinkTitles } from "./links";
 import { CreateDossierForm } from "./create-dossier-form";
 
-export const metadata = { title: "Dossiers · Polymath" };
+export const metadata = { title: "Notebook · Polymath" };
 
 /*
  * The notebook screen: the workspace's notebooks and the form that creates one.
@@ -32,11 +32,11 @@ export async function DossiersSurface({
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Dossiers" />
+        <PageHeader title="Notebook" />
         <div className="page-content">
           <EmptyState
-            title="Dossier storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to create dossiers and generate from them."
+            title="Notebook storage is not configured"
+            description="Set DATABASE_URL and apply the database migrations to create notebooks and generate from them."
           />
         </div>
       </>
@@ -56,11 +56,11 @@ export async function DossiersSurface({
 
   return (
     <>
-      <PageHeader title="Dossiers" />
+      <PageHeader title="Notebook" />
       <div className="flex flex-col gap-8 page-content">
-        <Section title="Your dossiers">
+        <Section title="Your notebooks">
           {dossiers.length === 0 ? (
-            <EmptyState title="No dossiers yet" />
+            <EmptyState title="No notebooks yet" />
           ) : (
             <ul className="flex flex-col gap-1">
               {dossiers.map((dossier) => (
@@ -112,7 +112,7 @@ export default function DossiersPage(props: { searchParams: Promise<RawSearchPar
 
 function DossiersSkeleton() {
   return (
-    <div role="status" aria-label="Loading Dossiers" className="flex flex-1 flex-col gap-4 p-6">
+    <div role="status" aria-label="Loading Notebook" className="flex flex-1 flex-col gap-4 p-6">
       <Skeleton className="h-6 w-40" />
       <Skeleton className="h-4 w-full max-w-xl" />
       <Skeleton className="h-40" />

@@ -71,10 +71,11 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect((await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12")).toHaveLength(accepted.length);
 });
 
-test("a focus session entry point lives on the task detail, and no stone is earned without a completed task: the Quartz rule fires on task completion, not focus", async ({ page }) => {
-  // Focus left the rail (IA simplification): the entry point and the session
-  // history live in the task's detail panel on Work, and the focus address
-  // itself is a redirect bridge back to Work (query dropped).
+test("a focus session starts from the task's Focus action on Work, and no stone is earned without a completed task: the Quartz rule fires on task completion, not focus", async ({ page }) => {
+  // Focus left the rail (IA simplification): the session lifecycle is hosted
+  // on Work - the task detail's Focus action starts it, the live session's
+  // controls render above the list - and the focus address itself is a
+  // redirect bridge back to Work (query dropped).
   const title = `Focus leg task ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=saved");
   await waitSettled(page);
@@ -89,7 +90,19 @@ test("a focus session entry point lives on the task detail, and no stone is earn
   await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
   await expect(page.getByText("Focus history", { exact: true })).toBeVisible();
   await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Start a focus session" }).click();
+  // The Focus action starts a task-linked session; the live session's
+  // controls appear on the same surface.
+  await page.getByRole("button", { name: "Start focus", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByText("A focus session is paused.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeHidden();
+  await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeHidden();
+  // The focus address is still a redirect bridge back to Work.
+  await page.goto("/neuralflow/focus?stale=param");
   await expect(page).toHaveURL(/\/neuralflow\/work$/);
   // The Quartz rule is task completion, not focus: the balance the flow leaves
   // behind equals the balance it found (the shared dev database's ledger is

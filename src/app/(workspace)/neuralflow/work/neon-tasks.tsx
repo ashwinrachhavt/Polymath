@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
-import { getTaskDetailForPage, listFocusHistoryForPage, listWorkPageForPage, listWorkRowsForPage } from "./data";
+import { listWorkPageForPage, listWorkRowsForPage, getTaskDetailForPage, getActiveFocusSessionForPage, listFocusHistoryForPage } from "./data";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
@@ -11,6 +11,7 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { getTaskProvenance } from "@/domains/knowledge/queries";
 import { TaskCard } from "./task-controls";
+import { FocusTaskButton, ActiveSessionControls } from "./focus-controls";
 import { TodaysFlow } from "./todays-flow";
 import { TaskEvidence } from "./task-evidence";
 import { WorkList } from "./work-list";
@@ -69,10 +70,13 @@ export async function NeonTasks({
   // Reordering is a rank between two neighbours; with rows hidden by a filter
   // the neighbours are not adjacent in the real order, so moves wait for a clear list.
   const canMove = scope !== "done" && !filtered;
-  // Detail, its focus history and the move targets are independent reads.
-  const [detail, openRows] = await Promise.all([
+  // Detail, its focus history, the live session and the move targets are
+  // independent reads. The live session renders wherever on Work the owner
+  // is; Work is the focus surface since the rail lost the Focus tab.
+  const [detail, openRows, activeSession] = await Promise.all([
     selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? getTaskDetailForPage(auth, selectedTask) : null,
     selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? listWorkRowsForPage(auth, "open") : ([] as WorkRow[]),
+    getActiveFocusSessionForPage(auth),
   ]);
   const focusHistory = detail ? await listFocusHistoryForPage(auth, 10, detail.task.id) : [];
   const provenance = detail ? await getTaskProvenance(auth, detail.task.id) : [];
@@ -92,6 +96,27 @@ export async function NeonTasks({
       title="Work"
     >
       {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
+      {activeSession ? (
+        <Panel
+          className="mb-6 border-app-accent/40"
+          title={activeSession.subject || "Focus session"}
+          description={activeSession.state === "running" ? "A focus session is running." : "A focus session is paused."}
+        >
+          <ActiveSessionControls
+            key={`${activeSession.id}:${activeSession.version}`}
+            session={{
+              id: activeSession.id,
+              subject: activeSession.subject,
+              state: activeSession.state as "running" | "paused",
+              plannedMinutes: activeSession.plannedMinutes,
+              elapsedSeconds: activeSession.elapsedSeconds,
+              version: activeSession.version,
+              hasTask: !!activeSession.taskId,
+            }}
+          />
+        </Panel>
+      ) : null}
+
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Panel
           title={scope === "today" ? "Today" : scope === "done" ? "Finished" : "Open tasks"}
@@ -172,12 +197,11 @@ export async function NeonTasks({
             <div className="mt-4 border-t border-border pt-4">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[13px] font-medium">Focus history</p>
-                <Link
-                  href={`/neuralflow/focus?task=${detail.task.id}`}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  Start a focus session
-                </Link>
+                {activeSession ? (
+                  <span className="text-xs text-muted-foreground">Session live above</span>
+                ) : (
+                  <FocusTaskButton task={{ id: detail.task.id, title: detail.task.title }} />
+                )}
               </div>
               {focusHistory.length ? (
                 <div className="divide-y divide-border">

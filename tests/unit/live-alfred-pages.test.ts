@@ -200,7 +200,7 @@ async function dossiers() {
 describe("live dossiers screen", () => {
   it("reads Neon: an empty workspace gets the invitation, not the preview", async () => {
     const html = await dossiers();
-    expect(html).toContain("No dossiers yet");
+    expect(html).toContain("No notebooks yet");
     expect(html).toContain("New notebook");
     expect(html).not.toContain("AlfredScreen");
   });

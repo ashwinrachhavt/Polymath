@@ -355,6 +355,7 @@ What still contradicts this file, in the order it should die:
 | Preview tools | `/apps/*` | The 16 destinations' legacy paths redirect to canonical routes (#162); the workshop tools that remain should land on canonical homes or go. |
 | App-era vocabulary | assorted copy | Screens and docs that still say "app", "suite", or "workspace" as a product layer should read as one Polymath. |
 | `/dossiers` URL | `/alfred/dossiers/*` | The Notebook label ships while the URL keeps the retired "Dossiers" name (owner decision 2026-10-22: zero redirect work beats a rename). Cosmetic only; the label everywhere is Notebook. |
+| Wiki ingest/lint controls | `/alfred/wiki` (retired) | The ingest and lint controls await a home in the Document Vault's document inspector (plan §3c, deferred). The capability survives through the `wiki.ingest` and `wiki.lint` agent tools. |
 
 ## 16. Minimalism rules
 

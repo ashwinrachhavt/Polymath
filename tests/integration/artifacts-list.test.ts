@@ -9,6 +9,7 @@ const holder: { db: ReturnType<typeof import("drizzle-orm/postgres-js").drizzle>
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 
 import { pageArtifacts } from "@/domains/knowledge/artifacts";
+import { getWikiPageText } from "@/domains/knowledge/wiki";
 
 /*
  * The /alfred/artifacts boundary (plan §5): the list holds kept outputs only.
@@ -135,5 +136,17 @@ suite("pageArtifacts kept-outputs boundary (Neon)", () => {
     });
     const page = await pageArtifacts(auth, { limit: 100, offset: 0 });
     expect(page.items.map((r) => r.title)).not.toContain("Foreign report");
+  });
+
+  it("the wiki reader returns the registered page's current version, and never a plain note", async () => {
+    if (!handle) return;
+    // The wiki row seeded above is the only registry-claimed artifact.
+    const wiki = await pageArtifacts(auth, { kind: "wiki", limit: 1, offset: 0 });
+    const reader = await getWikiPageText(auth, wiki.items[0]!.id);
+    expect(reader).toMatchObject({ title: "Topic: research", plainText: "A wiki article body.", versionNumber: 1 });
+    // A plain note has no registry row: the reader returns null, so the
+    // Artifacts link for a non-wiki row never points here in the first place.
+    const plain = await pageArtifacts(auth, { kind: "zettel", limit: 1, offset: 0 });
+    expect(await getWikiPageText(auth, plain.items[0]!.id)).toBeNull();
   });
 });

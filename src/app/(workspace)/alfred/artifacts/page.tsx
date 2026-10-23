@@ -121,7 +121,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
               <li key={row.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <Link
-                    href={row.isWiki ? `/alfred/knowledge?id=${row.id}` : `/alfred/notes?id=${row.id}`}
+                    href={row.isWiki ? `/alfred/artifacts/${row.id}` : `/alfred/notes?id=${row.id}`}
                     className="text-[13px] font-medium underline-offset-4 hover:underline"
                   >
                     {row.title}
