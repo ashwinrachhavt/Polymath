@@ -3,7 +3,7 @@ import { workView } from "@/components/products/neuralflow/work-views";
 import { NeonBoard } from "./neon-board";
 import { NeonCalendar } from "./neon-calendar";
 import { NeonTasks } from "./neon-tasks";
-import { FeatureLinks, WorkViewLinks } from "./work-today";
+import { WorkViewLinks } from "./work-today";
 
 export const metadata = { title: "Work · Polymath" };
 
@@ -31,7 +31,6 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
     <>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3 md:px-6">
         <WorkViewLinks active={view} />
-        <FeatureLinks />
       </div>
       {surface}
     </>

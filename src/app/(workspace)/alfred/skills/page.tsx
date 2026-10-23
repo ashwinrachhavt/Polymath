@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
-import { PageHeader, Section } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
 import { Readout } from "@/components/readout";
 import { getAuthContext } from "@/lib/auth";
 import { listSkills } from "@/domains/skills/queries";
@@ -15,20 +15,22 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, matchesQuery, paginate, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { AddSkillForm } from "./add-skill-form";
+import { NewSkill } from "./create-skill";
 import { InstallExample, RemoveSkillButton, SkillToggle, UseSkill } from "./skill-controls";
 import { READINESS_FILTERS, skillReadiness } from "./readiness";
 
 export const metadata = { title: "Skills · Polymath" };
 
 /*
- * The skills library: a procedure the assistant follows, imported from a
- * GitHub repository, a local folder, or one of the three examples that ship
- * with the app. A skill supplies instructions only; the run's tool scope still
- * comes from its frozen policy, so adding one cannot widen what the assistant
- * may do.
+ * The skills library: procedures the assistant can follow. The page is a
+ * library, not an install form - your skills as compact cards, a Discover
+ * shelf with the procedures that ship with Polymath, and "New skill" for
+ * writing one in plain words. Importing from GitHub or a folder still works,
+ * behind one disclosure at the bottom of the library.
  *
- * Everything on this page reads Neon. The one client state is the Add skill
- * form's inspection, which is deliberately not stored anywhere.
+ * A skill supplies instructions only; the run's tool scope still comes from
+ * its frozen policy, so adding one cannot widen what the assistant may do.
+ * Everything on this page reads Neon.
  */
 
 const BASE = "/alfred/skills";
@@ -48,6 +50,12 @@ function shortRevision(revision: string): string {
 }
 
 const installedDate = new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric" });
+
+function sourceLine(skill: { sourceKind: string; sourceRef: string }): string {
+  if (skill.sourceKind === "bundled") return "Ships with Polymath";
+  if (skill.sourceRef === "authored") return "Written by you";
+  return `${skill.sourceKind}: ${skill.sourceRef}`;
+}
 
 export async function SkillsSurface({
   searchParams = Promise.resolve({}),
@@ -71,9 +79,10 @@ export async function SkillsSurface({
 
   const auth = await getAuthContext();
   const raw = await searchParams;
-  const list = parseListParams(raw, { filters: { readiness: READINESS_FILTERS }, defaultPageSize: 25 });
+  const list = parseListParams(raw, { filters: { readiness: READINESS_FILTERS }, defaultPageSize: 24 });
   const installed = await listSkills(auth);
   const installedIdentities = new Set(installed.map((skill) => `${skill.sourceKind}:${skill.sourcePath}`));
+  const tab = (typeof raw.tab === "string" && raw.tab === "discover" ? "discover" : "installed") as "installed" | "discover";
 
   const matching = installed.filter(
     (skill) =>
@@ -84,6 +93,28 @@ export async function SkillsSurface({
   const page = paginate(matching, list.page, list.pageSize);
   const filtered = Boolean(list.q || list.filters.readiness);
   const enabledCount = installed.filter((skill) => skill.enabled).length;
+
+  const tabs = (
+    <nav aria-label="Skills views" className="flex gap-1">
+      {(
+        [
+          { id: "installed", label: `My skills · ${installed.length}` },
+          { id: "discover", label: "Discover" },
+        ] as const
+      ).map(({ id, label }) => (
+        <Link
+          key={id}
+          href={listHref(BASE, raw, { tab: id === "installed" ? undefined : id, page: undefined })}
+          aria-current={tab === id ? "page" : undefined}
+          className={`inline-flex min-h-9 items-center rounded-md px-3 text-[13px] font-medium transition-colors ${
+            tab === id ? "bg-app-accent text-app-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
 
   return (
     <>
@@ -96,117 +127,117 @@ export async function SkillsSurface({
           </Readout>
         }
       />
-      <div className="flex flex-col gap-6 page-content">
-        <Section
-          title="Add a skill"
-          description="Paste a github.com link, a supported install command, or a folder path. Inspect first: nothing is stored until you install a package."
-        >
-          <AddSkillForm />
-        </Section>
+      <div className="flex flex-col gap-4 page-content">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {tabs}
+          <NewSkill />
+        </div>
 
-        <Section
-          title="My skills"
-          description="A skill is a procedure, never authority. A run that pins one keeps that revision for its whole life, even after you edit or remove it here."
-        >
-          {installed.length === 0 ? (
-            <EmptyState
-              title="No skills yet"
-              description="Add one above, for example github.com/anthropics/skills, or install an example from Discover below."
+        {tab === "installed" ? (
+          <>
+            <ListToolbar
+              pageKeys={["page"]}
+              searchPlaceholder="Search skills"
+              filters={[
+                {
+                  key: "readiness",
+                  label: "Readiness",
+                  allLabel: "All skills",
+                  options: [
+                    { value: "ready", label: "Ready" },
+                    { value: "disabled", label: "Disabled" },
+                  ],
+                },
+              ]}
+              total={matching.length}
+              noun={matching.length === 1 ? "skill" : "skills"}
             />
-          ) : (
-            <>
-              <ListToolbar
-                pageKeys={["page"]}
-                searchPlaceholder="Search skills"
-                filters={[
-                  {
-                    key: "readiness",
-                    label: "Readiness",
-                    allLabel: "All skills",
-                    options: [
-                      { value: "ready", label: "Ready" },
-                      { value: "disabled", label: "Disabled" },
-                    ],
-                  },
-                ]}
-                total={matching.length}
-                noun={matching.length === 1 ? "skill" : "skills"}
+            {installed.length === 0 ? (
+              <EmptyState
+                title="No skills yet"
+                description="Write one with New skill, or install one from Discover."
               />
-              {page.items.length === 0 ? (
-                <NoResults
-                  filtered={filtered}
-                  clearHref={listHref(BASE, raw, { q: undefined, readiness: undefined })}
-                  emptyTitle=""
-                  emptyDescription=""
-                />
-              ) : (
-                <ul className="divide-border flex flex-col divide-y">
-                  {page.items.map((skill) => {
-                    const readiness = skillReadiness(skill);
-                    return (
-                      <li key={skill.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <div className="flex min-w-0 flex-col">
-                            <Link
-                              href={`/alfred/skills/${skill.id}`}
-                              className="text-[13px] font-medium underline-offset-4 hover:underline"
-                            >
-                              {skill.name}
-                            </Link>
-                            <p className="text-muted-foreground text-xs">{skill.description}</p>
-                          </div>
-                          <Badge variant={skill.enabled ? "secondary" : "outline"} className="font-normal">
-                            {readiness}
-                          </Badge>
+            ) : page.items.length === 0 ? (
+              <NoResults
+                filtered={filtered}
+                clearHref={listHref(BASE, raw, { q: undefined, readiness: undefined })}
+                emptyTitle=""
+                emptyDescription=""
+              />
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {page.items.map((skill) => {
+                  const readiness = skillReadiness(skill);
+                  return (
+                    <li key={skill.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 flex-col">
+                          <Link
+                            href={`/alfred/skills/${skill.id}`}
+                            className="text-[13px] font-medium underline-offset-4 hover:underline"
+                          >
+                            {skill.name}
+                          </Link>
+                          <p className="text-muted-foreground line-clamp-2 text-xs">{skill.description}</p>
                         </div>
-                        <p className="text-muted-foreground readout text-xs">
-                          {skill.sourceKind}: {skill.sourceRef} · {shortRevision(skill.revision)} ·{" "}
-                          {skill.files.length + 1} {skill.files.length === 0 ? "file" : "files"} · installed{" "}
-                          {installedDate.format(skill.createdAt)}
-                        </p>
-                        {skill.warnings.length > 0 ? (
-                          <ul className="flex flex-col gap-0.5">
-                            {skill.warnings.map((warning) => (
-                              <li key={warning} className="text-muted-foreground text-xs">
-                                {warning}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
+                        <Badge variant={skill.enabled ? "secondary" : "outline"} className="shrink-0 font-normal">
+                          {readiness}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground readout text-xs">
+                        {sourceLine(skill)} · {shortRevision(skill.revision)} · installed {installedDate.format(skill.createdAt)}
+                      </p>
+                      {skill.warnings.length > 0 ? (
+                        <ul className="flex flex-col gap-0.5">
+                          {skill.warnings.map((warning) => (
+                            <li key={warning} className="text-muted-foreground text-xs">
+                              {warning}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                         <UseSkill id={skill.id} name={skill.name} disabled={!skill.enabled} />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <SkillToggle id={skill.id} name={skill.name} enabled={skill.enabled} />
-                          <RemoveSkillButton id={skill.id} name={skill.name} />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <Pagination basePath={BASE} raw={raw} page={page.page} pageSize={list.pageSize} total={page.total} />
-            </>
-          )}
-        </Section>
+                        <SkillToggle id={skill.id} name={skill.name} enabled={skill.enabled} />
+                        <RemoveSkillButton id={skill.id} name={skill.name} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <Pagination basePath={BASE} raw={raw} page={page.page} pageSize={list.pageSize} total={page.total} />
 
-        <Section
-          title="Discover"
-          description="Three procedures that ship with Polymath. Installing one copies it into your library; it is no different from an imported skill after that."
-        >
-          <ul className="divide-border flex flex-col divide-y rounded-md border border-border">
-            {BUNDLED_SKILLS.map((skill) => (
-              <li key={skill.slug} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
-                <div className="flex min-w-0 flex-col">
-                  <p className="text-[13px] font-medium">{skill.name}</p>
-                  <p className="text-muted-foreground text-xs">{skill.description}</p>
-                </div>
-                <InstallExample
-                  slug={skill.slug}
-                  installed={installedIdentities.has(`bundled:${skill.sourcePath}`)}
-                />
-              </li>
-            ))}
-          </ul>
-        </Section>
+            <details className="rounded-xl border border-border">
+              <summary className="cursor-pointer list-none px-4 py-3 text-[13px] text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                Import from GitHub or a folder
+              </summary>
+              <div className="border-t border-border px-4 py-3">
+                <AddSkillForm />
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground text-xs">
+              Procedures that ship with Polymath. Installing one copies it into your library; it is no different from
+              a skill you wrote after that.
+            </p>
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {BUNDLED_SKILLS.map((skill) => (
+                <li key={skill.slug} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+                  <div className="flex min-w-0 flex-col">
+                    <p className="text-[13px] font-medium">{skill.name}</p>
+                    <p className="text-muted-foreground line-clamp-2 text-xs">{skill.description}</p>
+                  </div>
+                  <div className="mt-auto pt-1">
+                    <InstallExample slug={skill.slug} installed={installedIdentities.has(`bundled:${skill.sourcePath}`)} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </>
   );

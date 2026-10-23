@@ -12,6 +12,7 @@ import { timeAgo, timeAgoShort } from "@/lib/time";
 import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
+import { listConversations } from "@/domains/conversations/queries";
 import { HistoryMenu } from "./history-menu";
 import { ModelPicker } from "./model-picker";
 import type { PickableSkill } from "./skills/slash-skill-menu";
@@ -58,6 +59,10 @@ export async function AlfredSurface() {
   // the five rows shown under the composer. Fifty is a bounded read, not the
   // whole table, so the page stays cheap as history grows.
   const runs = await listRecentRuns(auth.workspaceId, 50);
+  // Conversation threads (the retired Conversations surface) stay discoverable
+  // inside the chat history control: same query bound as the run history, and
+  // the thread pages themselves are untouched so every old link keeps working.
+  const conversationThreads = await listConversations(auth);
   // The dropdown is the complete history; the list under the composer is the
   // five most recent. One array, two views.
   const recent = runs.slice(0, 5);
@@ -78,18 +83,34 @@ export async function AlfredSurface() {
   return (
     <Home>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-        {runs.length > 0 ? (
+        {runs.length > 0 || conversationThreads.length > 0 ? (
           <div className="flex">
             <HistoryMenu
-              groups={groupByRecency(runs).map((group) => ({
-                key: group.key,
-                label: group.label,
-                rows: group.rows.map((run) => ({
-                  id: run.id,
-                  objective: run.objective,
-                  time: timeAgoShort(run.createdAt),
+              groups={[
+                ...groupByRecency(runs).map((group) => ({
+                  key: group.key,
+                  label: group.label,
+                  rows: group.rows.map((run) => ({
+                    id: run.id,
+                    objective: run.objective,
+                    time: timeAgoShort(run.createdAt),
+                  })),
                 })),
-              }))}
+                ...(conversationThreads.length > 0
+                  ? [
+                      {
+                        key: "threads",
+                        label: "Threads",
+                        rows: conversationThreads.map((thread) => ({
+                          id: thread.id,
+                          objective: thread.title || "Untitled conversation",
+                          time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
+                          href: `/command-center/conversations/${thread.id}`,
+                        })),
+                      },
+                    ]
+                  : []),
+              ]}
             />
           </div>
         ) : null}

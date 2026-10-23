@@ -1,4 +1,12 @@
 import Link from "next/link";
+
+/*
+ * The Work view tabs are task views only - Today, List, Board, Calendar and
+ * Saved tasks. Whole features (Scheduler, Meetings, Brain dump, Weekly
+ * review, Stone collection, Projects) are not tabs: they live where they are
+ * used (the Calendar and Today surfaces link theirs) and in the More index
+ * and command layer.
+ */
 import type { WorkView } from "@/components/products/neuralflow/work-views";
 
 const views: { id: WorkView; label: string }[] = [
@@ -22,20 +30,6 @@ export function WorkViewLinks({ active }: { active: WorkView }) {
           {label}
         </Link>
       ))}
-    </nav>
-  );
-}
-
-export function FeatureLinks() {
-  return (
-    <nav aria-label="More tools" className="-mx-1 flex flex-nowrap items-center gap-x-4 overflow-x-auto px-1 text-xs text-muted-foreground md:flex-wrap md:gap-y-2 md:overflow-visible">
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/projects">Projects</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/meetings">Meetings</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/notes">Notes</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
-      <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
     </nav>
   );
 }

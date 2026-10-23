@@ -58,6 +58,11 @@ export async function NeonCalendar({ date }: { date?: string }) {
         <span className="readout text-xs text-muted-foreground">
           {startKey} to {endKey}
         </span>
+        {/* Planning tools belong to the calendar, not the tab row. */}
+        <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/meetings">Meetings</Link>
+        </span>
       </div>
       <CalendarToolbar
         events={events.map((e) => ({ title: e.title, startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(), taskId: e.taskId }))}

@@ -359,6 +359,19 @@ top: 8px;
 outline: 2px solid var(--ring);
 outline-offset: 2px;
 }
+/* The writing surface is the page itself: an editor-wide ring reads as a box
+   around the canvas. Keyboard focus stays visible through the caret and a
+   whisper outline in the border color. Unlayered so it beats the ring above. */
+.writing-surface:focus-visible {
+outline: 1px solid var(--border);
+outline-offset: -1px;
+}
+/* A composer draws its focus ring on the surrounding panel
+   (has-[:focus-visible]:ring-3); the textarea's own outline would double it.
+   Unlayered so it beats the universal focus outline above. */
+.composer-input:focus-visible {
+outline: none;
+}
 select {
 min-height: 32px;
 max-width: 100%;
