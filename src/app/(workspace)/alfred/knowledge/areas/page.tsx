@@ -3,7 +3,7 @@ import { listAreas } from "@/domains/knowledge/area-queries";
 import { getAuthContext } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Empty, Panel, Status } from "@/components/workspace/ui";
-import { ArchiveAreaButton, NewAreaForm } from "./area-controls";
+import { AreaActions, NewAreaForm } from "./area-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +77,8 @@ export default async function AreasPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">Confidence</span> - recalled{" "}
-                      {ratio(area.confidence.recallCorrect, area.confidence.recallTotal)}; claims accepted{" "}
+                      {ratio(area.confidence.recallCorrect, area.confidence.recallTotal)}; answered without looking{" "}
+                      {ratio(area.confidence.answeredWithoutLooking, area.confidence.recallTotal)}; claims accepted{" "}
                       {ratio(area.confidence.claimsAccepted, area.confidence.claimsDecided)}
                     </div>
                   </div>
@@ -86,9 +87,7 @@ export default async function AreasPage() {
                       Effort is high and recall is low - study this, don&apos;t just reread it.
                     </p>
                   )}
-                  <div className="flex items-center">
-                    <ArchiveAreaButton areaId={area.id} expectedVersion={area.version} />
-                  </div>
+                  <AreaActions areaId={area.id} expectedVersion={area.version} name={area.name} tags={area.tags} />
                 </li>
               ))}
             </ul>

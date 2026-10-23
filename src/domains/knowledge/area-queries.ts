@@ -30,6 +30,8 @@ export type AreaListItem = {
   confidence: {
     recallCorrect: number;
     recallTotal: number;
+    /** Recall attempts where the person typed an answer before the reveal. */
+    answeredWithoutLooking: number;
     claimsAccepted: number;
     claimsDecided: number;
   };
@@ -59,6 +61,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
     manual_links: string;
     recall_attempts: string;
     recall_correct: string;
+    answered_without_looking: string;
     claims_decided: string;
     claims_accepted: string;
     last_activity_at: string | null;
@@ -85,6 +88,9 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
       (select count(*)::text from card_reviews r
         join cards c on c.id = r.card_id
         where c.artifact_id in (select id from linked) and r.outcome = 'correct') as recall_correct,
+      (select count(*)::text from card_reviews r
+        join cards c on c.id = r.card_id
+        where c.artifact_id in (select id from linked) and r.response_text is not null) as answered_without_looking,
       (select count(*)::text from claims cl
         where cl.artifact_id in (select id from linked) and cl.status in ('accepted', 'rejected')) as claims_decided,
       (select count(*)::text from claims cl
@@ -105,6 +111,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
   const confidence = {
     recallCorrect: Number(row?.recall_correct ?? 0),
     recallTotal: effort.recallAttempts,
+    answeredWithoutLooking: Number(row?.answered_without_looking ?? 0),
     claimsAccepted: Number(row?.claims_accepted ?? 0),
     claimsDecided: Number(row?.claims_decided ?? 0),
   };
@@ -125,6 +132,25 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
   return { effort, confidence, lastActivityAt, state, suggestStudy };
 }
 
+/*
+ * Scaling, stated rather than assumed: areas are declared by the person,
+ * so the expected count is tens, not thousands. The list measures each
+ * area with one SQL round trip - 30 declared areas is 30 sequential
+ * queries, fine at that scale; if areas ever become machine-generated
+ * this must move to a single grouped query. Measured on the scratch
+ * database: 50 declared areas with seeded content list in well under a
+ * second.
+ *
+ * Source lifecycle in the totals: archived sources are excluded (a.tags
+ * linkage requires a live note/zettel, matching how archived sources
+ * leave the review queue), and deleting a source sets cards.artifact_id
+ * to null, so its reviews leave the area's totals - the area linkage
+ * lived on the source's tags, and pretending otherwise would invent an
+ * attribution. Captures and focus time are not counted: unprocessed
+ * captures carry no tags, and focus sessions join to tasks, not
+ * artifacts. Both would need real linkage before they can be counted
+ * honestly.
+ */
 export async function listAreas(auth: AuthContext): Promise<AreaListItem[]> {
   const rows = await db
     .select({ id: areas.id, name: areas.name, tags: areas.tags, version: areas.version })

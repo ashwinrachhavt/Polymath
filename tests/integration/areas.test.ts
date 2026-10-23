@@ -130,9 +130,10 @@ suite("areas", () => {
       .insert(cards)
       .values({ workspaceId, prompt: "What does Raft guarantee?", answer: "Leader completeness.", artifactId: noteA, sourceTitle: "Area test note" })
       .returning({ id: cards.id });
-    for (const outcome of ["correct", "correct", "wrong"] as const) {
-      await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome });
-    }
+    // Two of the three attempts typed an answer before the reveal.
+    await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "correct", responseText: "Leader completeness" });
+    await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "correct", responseText: "One leader per term" });
+    await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "wrong" });
 
     // Claims on note B: one accepted, one rejected, one proposed (not decided).
     await db.insert(claims).values({ workspaceId, statement: "Raft elects a single leader.", status: "accepted", artifactId: noteB });
@@ -142,7 +143,13 @@ suite("areas", () => {
     [measured] = await queries.listAreas(auth);
     expect(measured.state).toBe("active");
     expect(measured.effort).toEqual({ notes: 2, manualLinks: 1, recallAttempts: 3 });
-    expect(measured.confidence).toEqual({ recallCorrect: 2, recallTotal: 3, claimsAccepted: 1, claimsDecided: 2 });
+    expect(measured.confidence).toEqual({
+      recallCorrect: 2,
+      recallTotal: 3,
+      answeredWithoutLooking: 2,
+      claimsAccepted: 1,
+      claimsDecided: 2,
+    });
     // Effort score 6 >= 5, 3 attempts, accuracy 2/3 < 0.7: the study cue fires.
     expect(measured.suggestStudy).toBe(true);
 
