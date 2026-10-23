@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAuthContext } from "@/lib/auth";
 import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
 import { listRecentRuns } from "@/domains/agents/queries";
-import { getDossierDetail, listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
-import { deriveContinuation } from "@/domains/knowledge/continuation";
+import { listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
 import { AlfredSurface } from "@/app/(workspace)/alfred/page";
@@ -30,10 +29,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
-vi.mock("@/domains/knowledge/continuation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/domains/knowledge/continuation")>()),
-  deriveContinuation: vi.fn(async () => []),
-}));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/vault-queries", () => ({ getVaultDocuments: vi.fn(async () => []) }));
@@ -198,67 +193,37 @@ describe("live Alfred route functionality", () => {
   });
 });
 
-async function dossiers(dossier?: string) {
-  return renderToStaticMarkup(await DossiersSurface({ searchParams: Promise.resolve({ dossier }) }));
+async function dossiers() {
+  return renderToStaticMarkup(await DossiersSurface({ searchParams: Promise.resolve({}) }));
 }
 
 describe("live dossiers screen", () => {
   it("reads Neon: an empty workspace gets the invitation, not the preview", async () => {
     const html = await dossiers();
-    expect(html).toContain("No dossiers yet");
-    expect(html).toContain("New dossier");
+    expect(html).toContain("No notebooks yet");
+    expect(html).toContain("New notebook");
     expect(html).not.toContain("AlfredScreen");
   });
 
-  it("shows Continue only when derived open work exists, with the next step as a suggestion", async () => {
-    vi.mocked(deriveContinuation).mockResolvedValueOnce([
-      {
-        artifactId: "a1",
-        title: "Rental market brief",
-        kind: "report",
-        status: "draft",
-        updatedAt: new Date("2026-10-20T10:00:00Z"),
-        suggestedNextStep: "Review it: keep the draft or discard it.",
-        href: "/alfred/dossiers?draft=a1",
-      },
-    ] as never);
-    const withWork = await dossiers();
-    expect(withWork).toContain("Continue");
-    expect(withWork).toContain("Rental market brief");
-    expect(withWork).toContain("suggestion, not a task you picked");
-    expect(withWork).toContain("Review it: keep the draft or discard it.");
-    expect(withWork).toContain("/alfred/dossiers?draft=a1");
-    const withoutWork = await dossiers();
-    expect(withoutWork).not.toContain("Continue");
-  });
-
-  it("lists dossiers with counts and renders the detail with its documents and Generate form", async () => {
+  it("lists dossiers as links to their notebooks", async () => {
     vi.mocked(listDossiers).mockResolvedValue([
       { id: "d1", title: "Rental papers", documentCount: 2 },
     ] as never);
-    vi.mocked(getDossierDetail).mockResolvedValue({
-      id: "d1",
-      title: "Rental papers",
-      documents: [
-        { id: "doc1", title: "Lease", mimeType: "application/pdf" },
-        { id: "doc2", title: "Renewal notes", mimeType: "text/markdown" },
-      ],
-    } as never);
-    vi.mocked(listAttachableDocuments).mockResolvedValue([{ id: "doc1", title: "Lease" }] as never);
-    const html = await dossiers("d1");
+    const html = await dossiers();
     expect(html).toContain("Rental papers");
     expect(html).toContain("2 documents");
-    expect(html).toContain("Renewal notes");
-    expect(html).toContain("What should the draft say?");
+    expect(html).toContain("/alfred/dossiers/d1/notebook");
   });
 
-  it("the attach picker offers the workspace's filed documents", async () => {
+  it("creating a notebook is naming it: no document picker", async () => {
     vi.mocked(listAttachableDocuments).mockResolvedValue([
       { id: "doc1", title: "Lease" },
       { id: "doc2", title: "Inspection" },
     ] as never);
     const html = await dossiers();
-    expect(html).toContain("Lease");
-    expect(html).toContain("Inspection");
+    expect(html).toContain("Name the notebook");
+    expect(html).not.toContain("Lease");
+    expect(html).not.toContain("Inspection");
+    expect(listAttachableDocuments).not.toHaveBeenCalled();
   });
 });

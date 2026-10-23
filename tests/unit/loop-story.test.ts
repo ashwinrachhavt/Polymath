@@ -27,7 +27,9 @@ describe("loop story", () => {
     const tasks = sampleState.tasks.map((task, index) => index < 3 ? { ...task, status: "READY" as const, tags: [...task.tags, `Outcome:${today}`] } : task);
     expect(nextBeat(loopBeats(state({ tasks }), today))).toBe("focus");
     const running = loopBeats(state({ tasks, focus: { taskId: tasks[0].id, startedAt: 0, remaining: 60, duration: 1500, status: "running", completed: 0 } }), today);
-    expect(running.find((beat) => beat.key === "focus")).toMatchObject({ href: "/neuralflow/focus", action: "Return to focus" });
+    // Focus left the rail (IA simplification): the live session lives on Work,
+    // so the beat returns there rather than to the retired /neuralflow/focus.
+    expect(running.find((beat) => beat.key === "focus")).toMatchObject({ href: "/neuralflow/work?view=today", action: "Return to session" });
   });
 
   it("never invents work: an empty workspace has no next step", () => {

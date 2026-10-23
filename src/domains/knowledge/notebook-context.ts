@@ -4,13 +4,12 @@ import { db } from "@/lib/db";
 import { artifactLinks, artifacts } from "@/domains/knowledge/schema";
 import { dossierDocumentIds, getDossierDetail } from "@/domains/knowledge/dossiers";
 import { sourceReadiness, type SourceReadiness } from "@/domains/knowledge/source-readiness";
-import { draftsForRuns } from "@/domains/knowledge/studio";
 
 /*
  * What an agent needs to open a notebook (NotebookLM parity, S6).
  *
  * A "notebook" is a dossier: the existing bounded source set. This module
- * resolves one and returns what a teaching agent can act on: the sources, their
+ * resolves one and returns what an agent can act on: the sources, their
  * readiness, and the generated artifacts the notebook already owns. It reads
  * only; generating is Studio's job and drafting is the owner's.
  *
@@ -72,9 +71,4 @@ export async function openNotebook(auth: AuthContext, input: { dossierId: string
       .map((row) => ({ documentId: row.documentId, title: row.title, readiness: row.readiness, kind: row.kind })),
     artifacts: linked.map((row) => ({ artifactId: row.id, title: row.title, kind: row.kind, status: row.status })),
   };
-}
-
-/** The drafts a set of runs produced, so a teaching agent can point at one. */
-export async function notebookArtifactsForRuns(auth: AuthContext, runIds: string[]) {
-  return draftsForRuns(auth, runIds);
 }

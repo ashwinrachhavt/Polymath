@@ -16,9 +16,18 @@ import {
   removeDependency,
   updateTask,
 } from "@/domains/work/task-commands";
+import {
+  abandonFocusSession,
+  ConflictError as FocusConflictError,
+  finishFocusSession,
+  pauseFocusSession,
+  resumeFocusSession,
+  StaleWriteError as FocusStaleWriteError,
+  startFocusSession,
+} from "@/domains/focus/commands";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { tasksTag } from "@/lib/cache-tags";
+import { focusTag, tasksTag } from "@/lib/cache-tags";
 
 /*
  * Work mutations. Both write the canonical `tasks` row — the same one
@@ -29,6 +38,11 @@ import { tasksTag } from "@/lib/cache-tags";
 
 const revalidate = (auth: AuthContext) => {
   updateTag(tasksTag(auth));
+  revalidatePath("/neuralflow/work");
+};
+
+const revalidateFocus = (auth: AuthContext) => {
+  updateTag(focusTag(auth));
   revalidatePath("/neuralflow/work");
 };
 
@@ -199,4 +213,110 @@ export async function removeDependencyAction(input: { dependencyId: string; idem
     await removeDependency(auth, parsed.data);
     return {};
   });
+}
+
+/*
+ * Focus-session lifecycle (the retired Focus surface's actions, hosted here so
+ * a session starts, pauses, resumes, and finishes from Work). Every
+ * transition carries the version the caller rendered; a stale version is a
+ * user-safe error, never a silent overwrite. The server owns the clock -
+ * clients send intents, not timestamps.
+ */
+
+function focusFail(error: unknown): FocusResult {
+  if (error instanceof FocusStaleWriteError || error instanceof FocusConflictError) {
+    return { ok: false, error: error.message };
+  }
+  throw error;
+}
+
+type FocusResult = { ok: true } | { ok: false; error: string };
+
+const focusTransitionInput = z.object({
+  sessionId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().max(200).optional().default(""),
+  outcome: z.string().trim().max(500).optional().default(""),
+  whatChanged: z.string().trim().max(500).optional().default(""),
+  nextStep: z.string().trim().max(500).optional().default(""),
+});
+
+export async function startSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = z
+    .object({
+      subject: z.string().trim().max(200).optional().default(""),
+      plannedMinutes: z.number().int().min(1).max(480).nullable(),
+      taskId: z.string().uuid().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the session and try again." };
+  }
+  if (!parsed.data.taskId && !parsed.data.subject) {
+    return { ok: false, error: "Name what you are focusing on." };
+  }
+  const auth = await authorize();
+  try {
+    await startFocusSession(auth, {
+      subject: parsed.data.subject || null,
+      plannedMinutes: parsed.data.plannedMinutes,
+      taskId: parsed.data.taskId ?? null,
+    });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function pauseSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = focusTransitionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await pauseFocusSession(auth, { ...parsed.data, reason: parsed.data.reason || null });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function resumeSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = focusTransitionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await resumeFocusSession(auth, parsed.data);
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function finishSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = focusTransitionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await finishFocusSession(auth, { ...parsed.data, outcome: parsed.data.outcome || null, whatChanged: parsed.data.whatChanged || null, nextStep: parsed.data.nextStep || null });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function abandonSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = focusTransitionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await abandonFocusSession(auth, { ...parsed.data, reason: parsed.data.reason || null });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
 }

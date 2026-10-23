@@ -8,10 +8,13 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 export function FocusDock() {
   const { state } = useWorkspace();
   const pathname = usePathname();
-  if (!state.focus || pathname === "/neuralflow/focus" || pathname === "/apps/neuralflow/focus") return null;
+  // The focus surface folded into Work; the dock returns to Work, where the
+  // live session's controls now render. The preview /apps route keeps its own
+  // local session store.
+  if (!state.focus || pathname === "/neuralflow/work" || pathname === "/apps/neuralflow/focus") return null;
   const task = state.tasks.find((record) => record.id === state.focus?.taskId);
   return <aside aria-label="Preview focus session" className="sticky bottom-0 mt-auto border-t border-border bg-background/95 px-4 py-2 backdrop-blur">
-    <Link href="/neuralflow/focus" className="flex min-h-8 items-center gap-3 rounded-md text-[13px] hover:text-app-accent">
+    <Link href="/neuralflow/work?view=today" className="flex min-h-8 items-center gap-3 rounded-md text-[13px] hover:text-app-accent">
       <Timer aria-hidden className="size-4 shrink-0 text-app-accent" />
       <span className="readout shrink-0 text-xs">Focus {state.focus.status}</span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">{task?.title || "Untitled task"}</span>

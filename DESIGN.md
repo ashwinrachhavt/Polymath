@@ -86,6 +86,8 @@ Target WCAG 2.2 AA. Keyboard operation and drag alternatives, visible focus, pre
 
 Use active voice, sentence case, plain verbs, and exact action labels. No em dashes, exclamation marks, filler marketing language, placeholder identities, or unsupported precision in user-visible strings. Explain failures and recovery without guessing.
 
+The phone bar reads Assistant, Today, Notebook, More.
+
 ## 9. Sourcing, acceptance, and debt
 
 Primary primitive source: shadcn/ui. Evaluate editorcn for existing Tiptap compatibility; Plate and BlockNote are alternative stacks, not simultaneous additions. Prompt Kit and current official shadcn AI patterns are selective candidates. Verify exact license, version or commit, accessibility, maintenance, paid boundaries, and attribution before adoption. Candidate status is not dependency approval. Retain Tiptap unless an explicit evaluation justifies migration. UI libraries do not supply Polymath authorization, durability, citation, or reconciliation semantics.
@@ -95,5 +97,7 @@ Each shared component documents purpose, product requirement IDs, source/license
 Reference workflow: capture article, review classification, write focused note, attach supported claim, link idea, create reasoned task, complete session, record outcome. Extract shared components from a coherent workflow before decorative polish.
 
 Preserve existing migration debt: inspect src/lib/products.ts legacy registry, /apps/* preview tools, and app-era copy before retiring them. navigation.ts remains the navigation implementation to reconcile. Do not delete these solely because this document names them.
+
+IA simplification debt (2026-10-22): the Notebook keeps the /alfred/dossiers URL under its new label, so the address and the name disagree until a rename migration is worth its breakage. The wiki ingest and lint controls await a home in the Vault's document inspector; the capability survives through the wiki.ingest and wiki.lint agent tools. /alfred/learning answers 404 rather than a redirect: the surface was deleted, not moved.
 
 Open decisions: distinct zettel entity if justified; stone intensity weights; shards; milestone assets; agent tool grants; measured narrow-screen density; candidate components after checks.

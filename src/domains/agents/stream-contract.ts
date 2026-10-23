@@ -87,9 +87,8 @@ const asNumber = (value: unknown): number | null => (typeof value === "number" ?
  * Citation extraction for a tool output, inline rather than imported from the
  * knowledge domain: this module must stay dependency-free so it can ship in the
  * browser bundle and run in the eval harness. The shape it reads is
- * `DocumentCitation`, and `collectCitations` in
- * src/domains/knowledge/agent-search.ts is the canonical server-side version —
- * keep the two in step when the citation shape changes.
+ * `DocumentCitation` (src/domains/knowledge/agent-search.ts) — keep the two in
+ * step when the citation shape changes.
  */
 function citationsFromToolOutput(output: unknown): ChatCitation[] {
   const list = (output as { results?: unknown } | null | undefined)?.results;

@@ -19,7 +19,7 @@ const create = z.object({
 export const POST = authedHandler(async (auth, request) => {
   requireRole(auth, "member");
   const parsed = create.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return problemResponse(422, "invalid_input", "Give a name and a list of document ids.");
+  if (!parsed.success) return problemResponse(422, "invalid_input", "Give the notebook a name.");
   try {
     const dossier = await createDossier(auth, parsed.data);
     return Response.json({ dossier }, { status: 201 });

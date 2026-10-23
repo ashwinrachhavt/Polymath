@@ -23,7 +23,7 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
       reason: outcomes >= 3 ? "Today is decided. Protect it." : `${open.length} open commitments. Choose up to three that matter today.`, href: "/command-center/briefing#outcomes", action: outcomes >= 3 ? "See outcomes" : "Choose outcomes", needsYou: outcomes < 3 && open.length > 0 },
     { key: "focus", label: "Focus", app: "neuralflow", count: focus ? 1 : ready, unit: focus ? `session ${focus.status}` : "ready to work",
       reason: focus ? `Return to ${focusTask?.title ?? "your session"}.` : ready ? "Pick one, start an interval, earn a stone." : "Move a task to Ready when you choose to work on it.",
-      href: focus ? "/neuralflow/focus" : "/neuralflow/work?view=today", action: focus ? "Return to focus" : "Start focus", needsYou: !!focus || ready > 0 },
+      href: "/neuralflow/work?view=today", action: focus ? "Return to session" : "Start focus", needsYou: !!focus || ready > 0 },
     { key: "review", label: "Review", app: "command-center", count: pending, unit: "awaiting you",
       reason: pending ? "Nothing leaves Polymath until you approve the exact revision." : "No proposals are waiting for a decision.", href: "/reviews", action: pending ? "Review proposals" : "Open reviews", needsYou: pending > 0 },
     { key: "learn", label: "Learn", app: "alfred", count: state.rewards.length, unit: state.rewards.length === 1 ? "stone earned" : "stones earned",

@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Bot, Brain, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, CircleDot, ClipboardList, FileCheck2, FileText, FolderKanban, Gem, GraduationCap, Grid2X2, Inbox, Layers3, Library, Lightbulb, Link2, ListTodo, Map, MessageSquare, Network, NotebookPen, PanelTop, PenLine, ScanText, Search, Settings, ShieldCheck, Timer, Users, Wallet, Workflow, type LucideIcon } from "lucide-react";
+import { Activity, BookOpen, Bot, Brain, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, CircleDot, ClipboardList, FileCheck2, FileText, FolderKanban, Gem, Grid2X2, Inbox, Layers3, Library, Lightbulb, Link2, ListTodo, Map, MessageSquare, Network, NotebookPen, PanelTop, PenLine, ScanText, Search, Settings, ShieldCheck, Timer, Users, Wallet, Workflow, type LucideIcon } from "lucide-react";
 
 export type ProductId = "command-center" | "neuralflow" | "alfred";
 export type ProductDestination = { slug: string; label: string; icon: LucideIcon; group: string; description: string };
@@ -52,7 +52,6 @@ export const products: Product[] = [
     { slug: "chat", label: "Ask Polymath", icon: MessageSquare, group: "Create & research", description: "Supervised grounded conversation" },
     { slug: "blogs", label: "Blog studio", icon: FileText, group: "Create & research", description: "Draft before reviewed publishing" },
     { slug: "dictionary", label: "Dictionary", icon: BookOpen, group: "Learn", description: "Concepts, senses and annotations" },
-    { slug: "learning", label: "Learning", icon: GraduationCap, group: "Learn", description: "Flashcards and quiz attempts" },
     { slug: "canvas", label: "Canvas", icon: Map, group: "Learn", description: "System-design whiteboards linked to notes" },
     { slug: "projects", label: "Projects", icon: BriefcaseBusiness, group: "Workspace", description: "Shared outcomes and knowledge" },
     { slug: "integrations", label: "Connectors", icon: Link2, group: "Workspace", description: "Source ingestion providers" },

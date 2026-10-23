@@ -36,8 +36,9 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/alfred")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge")).toBe(false);
     expect(isBrowserPreviewPath("/alfred/knowledge/document-id")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/notes")).toBe(false);
+    expect(isBrowserPreviewPath("/alfred/artifacts")).toBe(false);
     expect(isBrowserPreviewPath("/neuralflow/work")).toBe(false);
-    expect(isBrowserPreviewPath("/neuralflow/focus")).toBe(false);
     expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
     expect(isBrowserPreviewPath("/reviews")).toBe(false);
@@ -45,10 +46,14 @@ describe("navigation", () => {
   });
 
   it("prefers the exact destination over a prefix match", () => {
-    // `/alfred` is a destination and a prefix of `/alfred/knowledge`. The bare
-    // root must name Assistant; the child must name Library.
+    // `/alfred` is a destination and a prefix of `/alfred/notes`. The bare
+    // root must name Assistant; the child must name Notes.
     expect(destinationForPath("/alfred")?.label).toBe("Assistant");
-    expect(destinationForPath("/alfred/knowledge")?.label).toBe("Library");
+    expect(destinationForPath("/alfred/knowledge")?.label).toBe("Document Vault");
+    // /alfred/notebook now redirects to /alfred/notes, and the breadcrumb
+    // for the old address still names Notes via featureRoutes.
+    expect(destinationForPath("/alfred/notebook")?.label).toBe("Notes");
+    expect(destinationForPath("/alfred/dossiers")?.label).toBe("Notebook");
   });
 
   it("attributes every destination to a historic prefix or shared", () => {
@@ -72,5 +77,21 @@ describe("navigation", () => {
     expect(destinations[0].href).toBe("/alfred");
     expect(destinations[0].label).toBe("Assistant");
     expect(destinations[1].href).toBe("/command-center/briefing");
+  });
+
+  /*
+   * The IA simplification removed seven destinations from the rail (Sources,
+   * Wiki, Learning, Spending, Opportunities, Focus, and the old Notebook at
+   * /alfred/notebook). The exact-order test above already fails if any of them
+   * returns, so no separate negative assertion is kept; /apps preview tools
+   * keep their donor labels, only the rail governs.
+   */
+
+  it("rails exactly the simplified sixteen destinations in order", () => {
+    expect(destinations.map((destination) => destination.label)).toEqual([
+      "Assistant", "Today", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
+      "Artifacts", "Skills", "People", "Companies", "Conversations", "Connectors",
+      "Reviews", "Activity", "Settings",
+    ]);
   });
 });

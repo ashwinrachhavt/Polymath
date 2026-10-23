@@ -40,10 +40,15 @@ let eveCalls: Array<{ url: string; init: RequestInit }> = [];
 const json = (body: unknown) => ({ method: "POST" as const, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const listDossiers = () => GET(new Request("https://axiom.test/api/v1/dossiers"), undefined as never);
 const createDossier = (body: unknown) => POST(new Request("https://axiom.test/api/v1/dossiers", json(body)), undefined as never);
-const generate = (dossierId: string, body: unknown) =>
-  GENERATE(new Request(`https://axiom.test/api/v1/dossiers/${dossierId}/generate`, json(body)), {
-    params: Promise.resolve({ dossierId }),
-  } as never);
+const generate = (dossierId: string, body: unknown, headers: Record<string, string> = { "Idempotency-Key": crypto.randomUUID() }) =>
+  GENERATE(
+    new Request(`https://axiom.test/api/v1/dossiers/${dossierId}/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ dossierId }) } as never,
+  );
 
 async function addDocument(workspaceId: string, userId: string, title: string): Promise<string> {
   const [doc] = await holder.db!.insert(documents)
@@ -96,14 +101,33 @@ suite("dossier routes (real Postgres)", () => {
     expect(res.headers.get("content-type")).toContain("application/problem+json");
   });
 
-  it("generate starts a run bound to the dossier", async () => {
+  it("generate starts a run bound to the dossier, once per idempotency key", async () => {
     const created = await (await createDossier({ name: "Studio source", documentIds: [] })).json();
-    const res = await generate(created.dossier.id, { brief: "Summarise the key dates" });
+    const key = crypto.randomUUID();
+    const res = await generate(created.dossier.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
     expect(res.status).toBe(201);
     const { runId } = await res.json();
     const [run] = await holder.db!.select().from(agentRuns).where(eq(agentRuns.id, runId));
     expect(run.objective).toContain('dossier "Studio source"');
     expect(eveCalls[0].url).toBe("http://eve.fixture/eve/v1/session");
+    // The same key replays the stored run id instead of starting a second Eve session.
+    const replay = await generate(created.dossier.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toEqual({ runId });
+    expect(eveCalls).toHaveLength(1);
+    // A missing or malformed key is refused before anything starts.
+    expect((await generate(created.dossier.id, { brief: "x" }, {})).status).toBe(422);
+    expect((await generate(created.dossier.id, { brief: "x" }, { "Idempotency-Key": "nope" })).status).toBe(422);
+    expect(eveCalls).toHaveLength(1);
+  });
+
+  it("a replayed key with a different body is a conflict", async () => {
+    const created = await (await createDossier({ name: "Conflicting", documentIds: [] })).json();
+    const key = crypto.randomUUID();
+    await generate(created.dossier.id, { brief: "first" }, { "Idempotency-Key": key });
+    const conflict = await generate(created.dossier.id, { brief: "second" }, { "Idempotency-Key": key });
+    expect(conflict.status).toBe(422);
+    expect(await conflict.json()).toMatchObject({ code: "idempotency_conflict" });
   });
 
   it("generate on an unknown dossier is a 404 problem; a foreign dossier is not found either", async () => {

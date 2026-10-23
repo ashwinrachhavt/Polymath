@@ -4,13 +4,13 @@ import {
   Activity,
   BookOpen,
   Briefcase,
-  CalendarClock,
-  GraduationCap,
   Inbox,
+  Layers,
   LayoutList,
   Library,
   MessagesSquare,
   NotebookPen,
+  Puzzle,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -18,7 +18,6 @@ import {
   Target,
   Unplug,
   Users,
-  Wallet,
 } from "lucide-react";
 
 /*
@@ -75,52 +74,38 @@ export const destinations: Destination[] = [
     group: "neuralflow",
   },
   {
-    href: "/neuralflow/focus",
-    label: "Focus",
-    purpose: "Work on one thing.",
-    icon: CalendarClock,
-    group: "neuralflow",
-  },
-  {
-    href: "/alfred/sources",
-    label: "Sources",
-    purpose: "Find and bring in the material you will study.",
-    icon: Inbox,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/knowledge",
-    label: "Library",
-    purpose: "Write, retrieve, and connect.",
-    icon: BookOpen,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/wiki",
-    label: "Wiki",
-    purpose: "The maintained layer over your documents.",
-    icon: Library,
-    group: "alfred",
-  },
-  {
-    href: "/alfred/dossiers",
-    label: "Dossiers",
-    purpose: "Research with a bounded set of sources.",
+    href: "/alfred/notes",
+    label: "Notes",
+    purpose: "Write and keep your own pages.",
     icon: NotebookPen,
     group: "alfred",
   },
   {
-    href: "/alfred/learning",
-    label: "Learning",
-    purpose: "Review what you are trying to retain.",
-    icon: GraduationCap,
+    href: "/alfred/knowledge",
+    label: "Document Vault",
+    purpose: "Your uploaded documents, retrievable and connected.",
+    icon: BookOpen,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/dossiers",
+    label: "Notebook",
+    purpose: "Research with a bounded set of sources.",
+    icon: Library,
+    group: "alfred",
+  },
+  {
+    href: "/alfred/artifacts",
+    label: "Artifacts",
+    purpose: "Everything the assistant made that you kept.",
+    icon: Layers,
     group: "alfred",
   },
   {
     href: "/alfred/skills",
     label: "Skills",
     purpose: "Give the assistant a procedure to follow.",
-    icon: Library,
+    icon: Puzzle,
     group: "alfred",
   },
   {
@@ -135,20 +120,6 @@ export const destinations: Destination[] = [
     label: "Companies",
     purpose: "The organizations your people belong to.",
     icon: Briefcase,
-    group: "command-center",
-  },
-  {
-    href: "/command-center/opportunities",
-    label: "Opportunities",
-    purpose: "Track what you are pursuing.",
-    icon: Briefcase,
-    group: "command-center",
-  },
-  {
-    href: "/command-center/spending",
-    label: "Spending",
-    purpose: "See what paid work costs.",
-    icon: Wallet,
     group: "command-center",
   },
   {
@@ -189,23 +160,20 @@ export const destinations: Destination[] = [
 ];
 
 const featureRoutes: Record<string, string> = {
-  // The notebook has no nav entry of its own; it is a Library surface
-  // (same artifact tables), so the nav and breadcrumb name Library, not
-  // the prefix-matched Assistant (ASH-167).
-  "/alfred/notebook": "/alfred/knowledge",
+  // The notes surface moved to /alfred/notes (IA simplification); the old
+  // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
+  // to the Notes destination for as long as that bridge exists.
+  "/alfred/notebook": "/alfred/notes",
   "/apps/command-center/briefing": "/command-center/briefing",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships/people",
   "/command-center/relationships": "/command-center/relationships/people",
-  "/apps/command-center/opportunities": "/command-center/opportunities",
-  "/apps/command-center/spending": "/command-center/spending",
   "/apps/command-center/conversations": "/command-center/conversations",
   "/apps/command-center/integrations": "/command-center/integrations",
   "/apps/command-center/reviews": "/reviews",
   "/apps/command-center/activity": "/activity",
   "/apps/command-center/settings": "/settings",
   "/apps/neuralflow/tasks": "/neuralflow/work",
-  "/apps/neuralflow/focus": "/neuralflow/focus",
   "/apps/alfred/dossiers": "/alfred/dossiers",
 };
 

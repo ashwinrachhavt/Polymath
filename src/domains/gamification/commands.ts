@@ -122,7 +122,7 @@ export async function awardReward(
   auth: AuthContext,
   input: {
     definitionKey: string;
-    reason: "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "learning_reviewed" | "weekly_review" | "adjustment";
+    reason: "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "weekly_review" | "adjustment";
     idempotencyKey: string;
     subjectType?: string | null;
     subjectId?: string | null;

@@ -29,7 +29,7 @@ export async function linkCardsAction(input: z.input<typeof linkInput>): Promise
     return { ok: false, error: error instanceof Error ? error.message : "Could not link those cards." };
   }
   revalidatePath("/alfred/graph");
-  revalidatePath("/alfred/notebook");
+  revalidatePath("/alfred/notes");
   return { ok: true };
 }
 
@@ -41,7 +41,7 @@ export async function combineCardsAction(input: z.input<typeof combineInput>): P
   try {
     const created = await synthesizeZettel(auth, parsed.data);
     revalidatePath("/alfred/graph");
-    revalidatePath("/alfred/notebook");
+    revalidatePath("/alfred/notes");
     return { ok: true, id: created.id };
   } catch (error) {
     if (error instanceof SynthesisError) return { ok: false, error: error.message };

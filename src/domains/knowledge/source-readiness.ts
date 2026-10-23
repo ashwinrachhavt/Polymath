@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { isYouTubeUrl } from "@/integrations/youtube/transcript";
 import { documentExtractions, documents, youtubeTranscripts } from "./schema";
 
 /*
@@ -90,15 +91,19 @@ export async function listSources(auth: AuthContext, input: { limit?: number; do
 
   return rows.map((row) => {
     const extraction = latest.get(row.id) ?? null;
-    const isVideo = videoIds.has(row.id) || isYouTubeUrl(row.sourceUrl);
+    const isVideo = videoIds.has(row.id) || (row.sourceUrl ? isYouTubeUrl(row.sourceUrl) : false);
     const { readiness, detail, queuedForMs } = project(extraction);
+    // A fetch-class failure (the URL fetcher, the transcript fetcher) reads
+    // "Couldn't fetch <title>" per DESIGN.md §8; the provider's reason rides
+    // behind it as the secondary line. Other failures keep their reason.
+    const isFetchFailure = readiness === "failed" && (extraction?.extractor === "url-fetch" || extraction?.extractor === "youtube-transcript");
     return {
       documentId: row.id,
       title: row.title,
       sourceUrl: row.sourceUrl,
       kind: isVideo ? "video" : "document",
       readiness,
-      detail,
+      detail: isFetchFailure ? `Couldn't fetch ${row.title}. ${extraction?.error ?? ""}`.trim() : detail,
       hasTranscript: videoIds.has(row.id),
       createdAt: row.createdAt,
       queuedForMs,
@@ -139,16 +144,6 @@ function project(extraction: {
     return { readiness: "embedding", detail: "Indexing for search.", queuedForMs: null };
   }
   return { readiness: "ready", detail: null, queuedForMs: null };
-}
-
-function isYouTubeUrl(url: string | null): boolean {
-  if (!url) return false;
-  try {
-    const u = new URL(url);
-    return /(^|\.)youtube\.com$/.test(u.hostname) || u.hostname === "youtu.be";
-  } catch {
-    return false;
-  }
 }
 
 /** One document's readiness, for the notebook Sources pane. */

@@ -62,7 +62,7 @@ function CardsView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchPara
     <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {cards.map((card) => (
         <li key={card.id} className="flex flex-col gap-1.5 rounded-lg border border-border p-3 hover:bg-muted/30">
-          <Link href={`/alfred/notebook?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
+          <Link href={`/alfred/notes?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
             {card.title}
           </Link>
           {card.excerpt && <p className="line-clamp-3 text-xs text-muted-foreground">{card.excerpt}</p>}
@@ -91,7 +91,7 @@ function TableView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchPara
         {cards.map((card) => (
           <tr key={card.id} className="border-b border-border/60 last:border-0">
             <td className="py-1.5 pr-3">
-              <Link href={`/alfred/notebook?id=${card.id}`} className="font-medium underline-offset-2 hover:underline">
+              <Link href={`/alfred/notes?id=${card.id}`} className="font-medium underline-offset-2 hover:underline">
                 {card.title}
               </Link>
             </td>
@@ -119,7 +119,7 @@ function TimelineView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchP
           <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-3">
             {group.map((card) => (
               <li key={card.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                <Link href={`/alfred/notebook?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
+                <Link href={`/alfred/notes?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
                   {card.title}
                 </Link>
                 <TagBadges tags={card.tags} raw={raw} />
@@ -139,7 +139,7 @@ function DictionaryView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearc
       {cards.map((card) => (
         <div key={card.id} className="rounded-md border border-border px-3 py-2">
           <dt className="flex flex-wrap items-center gap-2">
-            <Link href={`/alfred/notebook?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
+            <Link href={`/alfred/notes?id=${card.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
               {card.title}
             </Link>
             <TagBadges tags={card.tags} raw={raw} />

@@ -4,26 +4,25 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
-import { ChatSurface } from "@/components/chat/chat-surface";
+import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
-import { getRun, getRunPolicySnapshot, listDocumentSearchResults, listRunEvents, listRunToolCalls } from "@/domains/agents/queries";
+import { getRun } from "@/domains/agents/queries";
 import { listThreads } from "@/domains/agents/thread";
-import { collectCitations } from "@/domains/knowledge/agent-search";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import { RunDetails } from "./details";
+import { RunControls } from "../run-controls";
+import { DraftControls } from "../draft-controls";
 
 export const metadata = { title: "Conversation · Polymath" };
 
 /*
  * One conversation, full page. The home lists rows; this is what a row opens.
  *
- * The transcript is the page. Everything the home shed about the run - model,
- * tools, budget, sources, timeline, controls - sits behind the Details
- * disclosure, because those are for when the owner is auditing what happened,
- * not for reading the answer. Decisions on approvals live in Reviews; that
- * surface owns the waiting-on-you vocabulary and the routes to act.
+ * The transcript is the page. Controls under it are the ones that act on this
+ * run: follow-up or cancel, and the draft the run produced. Decisions on
+ * approvals live in Reviews; that surface owns the waiting-on-you vocabulary
+ * and the routes to act.
  */
 
 async function ConversationSurface({ runId }: { runId: string }) {
@@ -36,17 +35,12 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [threads, searchResults, events, policy, drafts, toolCalls] = await Promise.all([
+  const [threads, drafts] = await Promise.all([
     listThreads(auth.workspaceId, [run.id]),
-    listDocumentSearchResults(auth.workspaceId, [run.id]),
-    listRunEvents(auth.workspaceId, run.id),
-    getRunPolicySnapshot(run.id, auth.workspaceId),
     draftsForRuns(auth, [run.id]),
-    listRunToolCalls(auth.workspaceId, run.id),
   ]);
 
   const thread = threads.get(run.id) ?? [];
-  const citations = collectCitations(searchResults.get(run.id) ?? []);
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
@@ -122,15 +116,17 @@ async function ConversationSurface({ runId }: { runId: string }) {
             ))
           )}
 
-          <RunDetails
-            run={run}
-            policy={policy}
-            citations={citations}
-            events={events}
-            toolCalls={toolCalls}
-            draft={drafts.get(run.id) ?? null}
-            unavailable={unavailable}
-          />
+          {run.error ? (
+            <p role="alert" className="text-destructive text-[13px]">{run.error}</p>
+          ) : null}
+          {/* The live composer above already sends messages; the only action it
+              lacks is stopping the run. A finished run takes Retry here. */}
+          {!isLive ? (
+            <RunControls runId={run.id} finished />
+          ) : unavailable ? null : (
+            <ChatCancel runId={run.id} />
+          )}
+          <DraftControls runId={run.id} draft={drafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
         </section>
       </div>
     </div>

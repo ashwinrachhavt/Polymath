@@ -45,7 +45,7 @@ export async function saveAnswerAction(input: {
     })
     .parse(input);
   const note = await saveAnswerAsNote(auth, parsed);
-  revalidatePath("/alfred/notebook");
+  revalidatePath("/alfred/notes");
   revalidatePath("/alfred/knowledge");
   return note;
 }

@@ -81,23 +81,3 @@ export async function searchDocumentsForAgent(
     return { ok: false, error: "document search failed, try again" };
   }
 }
-
-/** Distinct citations across tool results, one per document span, in first-seen order. */
-export function collectCitations(results: unknown[]): DocumentCitation[] {
-  const seen = new Set<string>();
-  const out: DocumentCitation[] = [];
-  for (const result of results) {
-    const list = (result as { results?: unknown } | null)?.results;
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
-      const c = item as Partial<DocumentCitation>;
-      if (typeof c.documentId !== "string" || typeof c.title !== "string" || typeof c.text !== "string") continue;
-      const start = c.span?.start ?? 0;
-      const key = `${c.documentId}:${start}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ documentId: c.documentId, title: c.title, text: c.text, span: { start, end: c.span?.end ?? start, page: c.span?.page ?? null } });
-    }
-  }
-  return out;
-}

@@ -1,8 +1,34 @@
-# Glossary — professional workspace terms
+# Glossary — workspace terms
 
-Terms defined in [ADR 0001](adr/0001-professional-workspace-scope.md). All rows
-are scoped to one workspace. Classification (what someone is) never implies
-authorization (what they may do).
+The tenancy and relationship terms are defined in
+[ADR 0001](adr/0001-professional-workspace-scope.md); all rows are scoped to
+one workspace. Classification (what someone is) never implies authorization
+(what they may do). The destination terms below come from the IA
+simplification (owner decisions, 2026-10-22).
+
+## IA destinations
+
+The four content homes, decided by where material came from. Use these
+labels and no synonyms.
+
+- **Notes** — `/alfred/notes`. Pages the person writes. The spec's former
+  "Notebook" (the notes surface) is now Notes.
+- **Document Vault** — `/alfred/knowledge`. Documents and statements the person
+  uploaded. Retires "Library" as a destination label; shows uploaded documents
+  and statements only.
+- **Notebook** — `/alfred/dossiers`. Bounded source sets with cited answers;
+  sources are tracked inside it through the Add-sources control. Absorbs the
+  former "Dossier" definition; the URL keeps `/dossiers/*` (cosmetic debt,
+  recorded in DESIGN.md §15).
+- **Artifacts** — `/alfred/artifacts`. The list of LLM-generated kept outputs:
+  reports, decks, infographics, zettels, wiki pages. Retires "Generated" as a
+  label; raw saved answers stay in their conversation thread.
+
+Removed from the rail, and where their function went: Learning (deleted
+entirely, tables dropped in migration 0235), Spending (a Today tab),
+Opportunities (records live under People and Companies), Focus (sessions start
+from Work), Sources (tracked inside the Notebook), Wiki (pages surface in
+Artifacts).
 
 ## Workspace
 

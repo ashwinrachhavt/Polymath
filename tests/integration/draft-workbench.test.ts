@@ -79,7 +79,7 @@ let companyId: string;
     if (!handle) return;
     await linkDraftToRecord(auth, { artifactId, targetType: "task", targetId: taskId });
     await linkDraftToRecord(auth, { artifactId, targetType: "company", targetId: companyId });
-    const detail = await getDraftDetail(auth, artifactId);
+    const detail = (await getDraftDetail(auth, artifactId))!;
     expect(detail.artifact.title).toBe("Market brief");
     expect(detail.text).toBe("First pass.");
     expect(detail.sources).toEqual([{ documentId, title: "Source paper", pinnedHash: "deadbeef1234" }]);
@@ -96,22 +96,22 @@ let companyId: string;
     await linkDraftToRecord(auth, { artifactId, targetType: "contact", targetId: contactId });
     // Linking the same pair twice keeps one row.
     await linkDraftToRecord(auth, { artifactId, targetType: "contact", targetId: contactId });
-    let detail = await getDraftDetail(auth, artifactId);
+    let detail = (await getDraftDetail(auth, artifactId))!;
     const contactLinks = detail.links.filter((l) => l.targetType === "contact");
     expect(contactLinks).toHaveLength(1);
     await unlinkDraftFromRecord(auth, { artifactId, linkId: contactLinks[0].id });
-    detail = await getDraftDetail(auth, artifactId);
+    detail = (await getDraftDetail(auth, artifactId))!;
     expect(detail.links.filter((l) => l.targetType === "contact")).toHaveLength(0);
   });
 
   it("editGeneratedDraft appends a version under the expectedVersion guard", async () => {
     if (!handle) return;
-    const before = await getDraftDetail(auth, artifactId);
+    const before = (await getDraftDetail(auth, artifactId))!;
     const key = crypto.randomUUID();
     const input = { artifactId, expectedVersion: before.artifact.version, text: "Second pass, edited by hand.", idempotencyKey: key };
     const result = await editGeneratedDraft(auth, input);
     expect(result.version).toBe(before.artifact.version + 1);
-    const after = await getDraftDetail(auth, artifactId);
+    const after = (await getDraftDetail(auth, artifactId))!;
     expect(after.text).toBe("Second pass, edited by hand.");
     // The same idempotency key replays the result instead of appending again.
     const replay = await editGeneratedDraft(auth, input);
@@ -124,7 +124,7 @@ let companyId: string;
 
   it("an archived draft is no longer editable", async () => {
     if (!handle) return;
-    const detail = await getDraftDetail(auth, artifactId);
+    const detail = (await getDraftDetail(auth, artifactId))!;
     await saveDraft(auth, { artifactId });
     // Reviewed stays editable…
     const edited = await editGeneratedDraft(auth, { artifactId, expectedVersion: detail.artifact.version + 1, text: "Post-review polish.", idempotencyKey: crypto.randomUUID() });
@@ -149,15 +149,36 @@ let companyId: string;
       .returning();
     await handle.db.update(artifacts).set({ currentVersionId: v1.id }).where(eq(artifacts.id, artifact.id));
 
-    let detail = await getDraftDetail(auth, artifact.id);
+    let detail = (await getDraftDetail(auth, artifact.id))!;
     expect(detail.versions.map((v) => v.versionNumber)).toEqual([1]);
     expect(detail.versions[0].reason).toBe("generated");
 
     await editGeneratedDraft(auth, { artifactId: artifact.id, expectedVersion: 1, text: "v2, hand edited.", idempotencyKey: crypto.randomUUID() });
-    detail = await getDraftDetail(auth, artifact.id);
+    detail = (await getDraftDetail(auth, artifact.id))!;
     // Newest first, and the earlier version is still there: edits append, never overwrite.
     expect(detail.versions.map((v) => v.versionNumber)).toEqual([2, 1]);
     expect(detail.versions[0].reason).toBe("edited");
     expect(detail.versions.every((v) => v.createdAt instanceof Date)).toBe(true);
+  });
+
+  it("getDraftDetail returns null for everything the workbench does not open", async () => {
+    if (!handle) return;
+    // A random id that exists nowhere.
+    expect(await getDraftDetail(auth, crypto.randomUUID())).toBeNull();
+    // Another workspace's draft: the same null as missing.
+    const other = await seedWorkspace(handle.db, `workbench-other-${Date.now()}`);
+    const [foreign] = await handle.db
+      .insert(artifacts)
+      .values({ workspaceId: other.workspaceId, kind: "report", title: "Foreign draft", status: "draft", createdBy: other.userId, updatedBy: other.userId })
+      .returning();
+    expect(await getDraftDetail(auth, foreign.id)).toBeNull();
+    // A note artifact (not a Studio kind) opens no workbench.
+    const [note] = await handle.db
+      .insert(artifacts)
+      .values({ workspaceId: auth.workspaceId, kind: "note", title: "A person's page", status: "draft", createdBy: auth.userId, updatedBy: auth.userId })
+      .returning();
+    expect(await getDraftDetail(auth, note.id)).toBeNull();
+    // A malformed string is a miss, never a uuid cast error.
+    expect(await getDraftDetail(auth, "not-a-uuid")).toBeNull();
   });
 });

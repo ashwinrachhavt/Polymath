@@ -1,0 +1,50 @@
+# Changelog
+
+## [0.2.0] - 2026-10-22
+
+### Added
+
+- A simplified rail: 16 destinations, one calm list. Notes and Document Vault
+  sit beside the new Artifacts tab, which lists every kept output the assistant
+  generated, filterable by kind and status.
+- NotebookLM-pattern capture in the Notebook: an "Add sources" control takes a
+  URL, a YouTube link, a file, or a pick from the Document Vault, with visible
+  readiness per source (Reading / Ready / Failed) and working Retry.
+- Focus sessions start from Work. A task's Focus action opens the session in
+  place; pause, resume, and finish live on the same screen, and the reward
+  stage renders during the session.
+- Notes has its own page at /alfred/notes, with "Write your first page." as
+  the empty state and a focused composer.
+- Creating a notebook is naming it: the document picker on the create form is
+  gone; sources attach in the Notebook itself.
+- Dossier generation now requires an Idempotency-Key, so a double click or a
+  network retry can never start two paid runs.
+
+### Changed
+
+- Dossiers are now called Notebooks everywhere in the product (the URL stays
+  /alfred/dossiers so old links keep working). The Library is now the Document
+  Vault. Every piece of material lives in one home by origin: you write it
+  (Notes), you uploaded it (Document Vault), the assistant generated it
+  (Artifacts), or you pointed at it (Notebook).
+- Six removed destinations now redirect: Sources to Notebook, Wiki to Document
+  Vault, Spending to Today, Opportunities to People, Focus to Work, and the
+  old /alfred/notebook address to Notes.
+
+### Removed
+
+- The Learning feature: the review schedule, its decks and items, the agent
+  tools, and the /alfred/learning page are gone, with a migration dropping the
+  tables. Quiz and flashcards remain unbuilt by design.
+
+### Fixed
+
+- A run's draft crash when opening a draft that was not a Studio artifact, and
+  the same crash class on wiki pages, notes, and malformed links (all now
+  render the right empty state instead of a 500).
+- Notebook generation now includes URL and YouTube sources pinned by address,
+  and they receive their citation links.
+- Retry on a failed URL or YouTube source re-runs the fetch instead of
+  queueing an extraction that could never succeed.
+- A quarantined file upload now reports the quarantine instead of a generic
+  upload failure.

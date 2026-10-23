@@ -93,7 +93,7 @@ suite("generatable draft kinds (Neon)", () => {
       }),
     );
     const { artifactId } = await saveGeneratedDraft(auth, { runId, kind: "infographic" });
-    const detail = await getDraftDetail(auth, artifactId);
+    const detail = (await getDraftDetail(auth, artifactId))!;
     expect(detail.artifact.status).toBe("draft");
     expect(detail.text).toContain("key numbers");
     const edited = await editGeneratedDraft(auth, {

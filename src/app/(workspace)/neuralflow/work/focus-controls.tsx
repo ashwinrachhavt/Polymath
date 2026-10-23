@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
+import { FormingStone, StoneStage } from "@/components/products/neuralflow/stone-art";
+import { formingProgress, stoneForReward } from "@/components/products/neuralflow/stones";
 import {
   abandonSessionAction,
   finishSessionAction,
@@ -13,7 +16,8 @@ import {
 } from "./actions";
 
 /*
- * The live timer island. The ticking number is display-only, derived from the
+ * The focus-session islands on Work (the focus surface folded here in the IA
+ * simplification). The ticking number is display-only, derived from the
  * server's durable clock fields (accumulatedSeconds + the open stretch since
  * lastResumedAt); every real transition is a server action that re-derives
  * the truth in Postgres, so a refresh loses nothing.
@@ -39,9 +43,13 @@ type ActiveSession = {
   version: number;
 };
 
+const clarityStone = stoneForReward("Clarity stone");
+
 export function ActiveSessionControls({ session }: { session: ActiveSession & { hasTask?: boolean } }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // The OS-level motion preference; the stage's sheen honours it like the preview screens do.
+  const reduceMotion = useReducedMotion() ?? false;
   // Display-only drift counter: the server remains the clock of record and
   // every action re-derives elapsed time in Postgres.
   const [extraSeconds, setExtraSeconds] = useState(0);
@@ -53,6 +61,7 @@ export function ActiveSessionControls({ session }: { session: ActiveSession & { 
   }, [session.state]);
 
   const displaySeconds = session.elapsedSeconds + extraSeconds;
+  const plannedSeconds = session.plannedMinutes != null ? session.plannedMinutes * 60 : 25 * 60;
 
   const act = (action: (input: unknown) => Promise<{ ok: true } | { ok: false; error: string }>, extra: Record<string, unknown> = {}) => {
     setError(null);
@@ -74,16 +83,23 @@ export function ActiveSessionControls({ session }: { session: ActiveSession & { 
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-baseline gap-3">
-        <p className="font-mono text-4xl tabular-nums" aria-live="off">
-          {formatClock(displaySeconds)}
-        </p>
-        <p className="text-[13px] text-muted-foreground">
-          {session.state === "running" ? "running" : "paused"}
-          {session.plannedMinutes != null ? ` · planned ${session.plannedMinutes} min` : ""}
-          {over ? " · past the planned interval" : ""}
-        </p>
-      </div>
+      <StoneStage
+        caption={session.state === "running" ? "Focusing" : "Paused"}
+        sub={
+          <span role="timer" aria-label={`${Math.floor(displaySeconds / 60)} minutes ${displaySeconds % 60} seconds elapsed`}>
+            {formatClock(displaySeconds)}
+          </span>
+        }
+      >
+        {clarityStone ? (
+          <FormingStone stone={clarityStone} progress={formingProgress(displaySeconds, plannedSeconds)} reduceMotion={reduceMotion} />
+        ) : null}
+      </StoneStage>
+      <p className="text-[13px] text-muted-foreground">
+        {session.state === "running" ? "Running" : "Paused"}
+        {session.plannedMinutes != null ? ` · planned ${session.plannedMinutes} min` : ""}
+        {over ? " · past the planned interval" : ""}
+      </p>
       <div className="flex flex-wrap gap-2">
         {session.state === "running" ? (
           <Button variant="outline" disabled={pending} onClick={() => act(pauseSessionAction)}>
@@ -126,56 +142,34 @@ export function ActiveSessionControls({ session }: { session: ActiveSession & { 
   );
 }
 
-export function StartSessionForm({
-  defaultSubject,
-  task,
-}: {
-  defaultSubject?: string;
-  task?: { id: string; title: string; status: string };
-}) {
+/*
+ * The task detail's Focus action: one click starts a task-linked session.
+ * A session already running comes back as the domain's conflict message, so
+ * the second click never silently replaces the live one.
+ */
+export function FocusTaskButton({ task }: { task: { id: string; title: string } }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   return (
-    <form
-      className="grid gap-3 sm:grid-cols-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const data = new FormData(form);
-        setError(null);
-        const plannedRaw = String(data.get("plannedMinutes") || "").trim();
-        startTransition(async () => {
-          const result = await startSessionAction({
-            subject: String(data.get("subject") || ""),
-            plannedMinutes: plannedRaw ? Number.parseInt(plannedRaw, 10) : null,
-            ...(task ? { taskId: task.id } : {}),
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await startSessionAction({ subject: task.title, plannedMinutes: null, taskId: task.id });
+            if (!result.ok) setError(result.error);
           });
-          if (!result.ok) {
-            setError(result.error);
-            return;
-          }
-          form.reset();
-        });
-      }}
-    >
-      {task ? (
-        <div className="sm:col-span-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-          <p className="text-[13px] font-medium">{task.title}</p>
-          <p className="text-xs text-muted-foreground">Task-linked session · status {task.status} - finishing the session never completes the task.</p>
-        </div>
+        }}
+      >
+        Start focus
+      </Button>
+      {error ? (
+        <p role="alert" className="text-destructive text-xs">
+          {error}
+        </p>
       ) : null}
-      <Field label="Focusing on">
-        <Input name="subject" required={!task} maxLength={200} defaultValue={defaultSubject ?? task?.title} placeholder="What are you focusing on?" />
-      </Field>
-      <Field label="Planned minutes (optional)">
-        <Input name="plannedMinutes" inputMode="numeric" placeholder="25" />
-      </Field>
-      <div className="flex items-center gap-3 sm:col-span-2">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Starting…" : "Start focus"}
-        </Button>
-        {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
-      </div>
-    </form>
+    </div>
   );
 }

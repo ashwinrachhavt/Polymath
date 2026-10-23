@@ -25,9 +25,9 @@ Every kind of state has exactly one home. A second copy is a copy that drifts.
 
 | State kind | Where it lives | Example |
 |---|---|---|
-| Server records | Server component and the domain query layer | The note list composed by `pageNotes` in `(workspace)/alfred/notebook/page.tsx` |
+| Server records | Server component and the domain query layer | The note list composed by `pageNotes` in `(workspace)/alfred/notes/page.tsx` |
 | Shareable view state | The URL | `?q=capture&page=2&status=open` |
-| Selected record | The URL | `?id=<noteId>` on the notebook and inbox, `?task=<taskId>` on work |
+| Selected record | The URL | `?id=<noteId>` on Notes and the inbox, `?task=<taskId>` on work |
 | Drafts and dialogs | Component state | A textarea before submit, an open menu, a hover |
 | Preview records | The browser-preview store, localStorage only | `/apps/neuralflow`, `/activity`, `/settings` |
 

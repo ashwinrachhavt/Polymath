@@ -1,25 +1,7 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
-
-/*
- * A run's frozen policy snapshot, read back for the tools that must honour it.
- * Scoped by workspace as well as run: a run id from another tenant and a run
- * that does not exist return the same null, because the difference is not the
- * caller's to learn.
- */
-export async function getRunPolicySnapshot(
-  runId: string,
-  workspaceId: string,
-): Promise<unknown | null> {
-  const [run] = await db
-    .select({ policySnapshot: agentRuns.policySnapshot })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
-    .limit(1);
-  return run?.policySnapshot ?? null;
-}
+import { agentProfiles, agentRuns, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -117,43 +99,6 @@ export async function getProfileNameForRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return row?.name ?? null;
-}
-
-/**
- * One run's timeline, oldest first: every event the bridge persisted, which is
- * what the SSE cursor replays from. Workspace-scoped like every other read, and
- * the caller has already proved the run belongs here through getRun.
- */
-export async function listRunEvents(workspaceId: string, runId: string) {
-  return db
-    .select({ sequence: runEvents.sequence, type: runEvents.type, data: runEvents.data, createdAt: runEvents.createdAt })
-    .from(runEvents)
-    .where(and(eq(runEvents.workspaceId, workspaceId), eq(runEvents.runId, runId)))
-    .orderBy(asc(runEvents.sequence));
-}
-
-/**
- * One run's tool calls, oldest first, for the conversation page's Details
- * disclosure. Rows are already redacted at the write points (the bridge's
- * `recordToolCall` and the gateway's settlement), so this read needs no second
- * pass — arguments and results are safe to show the owner.
- */
-export async function listRunToolCalls(workspaceId: string, runId: string) {
-  return db
-    .select({
-      id: toolCalls.id,
-      toolName: toolCalls.toolName,
-      accountAlias: toolCalls.accountAlias,
-      arguments: toolCalls.arguments,
-      result: toolCalls.result,
-      ok: toolCalls.ok,
-      errorCode: toolCalls.errorCode,
-      durationMs: toolCalls.durationMs,
-      createdAt: toolCalls.createdAt,
-    })
-    .from(toolCalls)
-    .where(and(eq(toolCalls.workspaceId, workspaceId), eq(toolCalls.runId, runId)))
-    .orderBy(asc(toolCalls.createdAt));
 }
 
 /** Tool names a documents search is recorded under (the capability and the tool file name). */

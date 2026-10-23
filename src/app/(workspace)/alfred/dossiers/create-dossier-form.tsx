@@ -6,38 +6,22 @@ import { Button } from "@/components/ui/button";
 import { requestJson } from "@/lib/client-request";
 
 /*
- * Create a dossier: a name plus the documents it holds. The POST goes to
- * /api/v1/dossiers, which rejects any document outside the workspace; a
- * success lands in the server-rendered list on refresh.
+ * Create a notebook: a name only. Documents join through the notebook's
+ * Sources pane afterward (IA plan 9), so this form sends no document ids; the
+ * POST route still accepts them for API callers.
  */
-const extractionLabel: Record<string, string> = {
-  succeeded: "Filed",
-  pending: "Reading…",
-  running: "Reading…",
-  failed: "Extraction failed",
-};
-
-export function CreateDossierForm({ documents }: { documents: Array<{ id: string; title: string; extractionStatus: string | null }> }) {
+export function CreateDossierForm() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function toggle(id: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
 
   async function create() {
     setPending(true);
     setError(null);
     const result = await requestJson("/api/v1/dossiers", {
       method: "POST",
-      body: { name, documentIds: [...selected] },
+      body: { name, documentIds: [] },
       idempotencyKey: crypto.randomUUID(),
     });
     setPending(false);
@@ -46,44 +30,28 @@ export function CreateDossierForm({ documents }: { documents: Array<{ id: string
       return;
     }
     setName("");
-    setSelected(new Set());
     router.refresh();
   }
 
   return (
     <form
-      className="flex flex-col gap-2.5"
+      className="flex items-center gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         void create();
       }}
     >
-      <div className="flex items-center gap-2">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Name the dossier"
-          required
-          maxLength={200}
-          className="border-input bg-background h-9 w-64 rounded-md border px-3 text-sm"
-        />
-        <Button type="submit" variant="outline" disabled={pending || !name.trim()}>
-          {pending ? "Creating…" : "New dossier"}
-        </Button>
-      </div>
-      {documents.length > 0 ? (
-        <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border px-3 py-2">
-          {documents.map((doc) => (
-            <label key={doc.id} className="flex items-center gap-2 text-[13px]">
-              <input type="checkbox" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} />
-              <span className="truncate">{doc.title}</span>
-              <span className="text-muted-foreground text-xs">{doc.extractionStatus ? (extractionLabel[doc.extractionStatus] ?? doc.extractionStatus) : "Unread"}</span>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <p className="text-muted-foreground text-[13px]">No filed documents yet.</p>
-      )}
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="Name the notebook"
+        required
+        maxLength={200}
+        className="border-input bg-background h-9 w-64 rounded-md border px-3 text-sm"
+      />
+      <Button type="submit" variant="outline" disabled={pending || !name.trim()}>
+        {pending ? "Creating…" : "New notebook"}
+      </Button>
       {error ? <p className="text-destructive text-[13px]">{error}</p> : null}
     </form>
   );

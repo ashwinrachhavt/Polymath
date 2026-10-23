@@ -1,4 +1,5 @@
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import { actionProposals } from "@/domains/actions/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
@@ -67,12 +68,23 @@ export async function startStudioGenerate(
   if (!dossier) throw new StudioError("dossier_not_found", "No such dossier.");
 
   // The prompt needs the pinned documents so the model can cite by id.
+  // Same rule as dossierDocumentIds: a landed capture binds by file; a queued
+  // URL or YouTube capture has no file yet and binds by its canonical address.
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
     .from(dossierSources)
     .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        or(
+          and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+          and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+        ),
+      ),
+    )
     .where(and(eq(dossierSources.dossierId, dossier.id), eq(dossierSources.workspaceId, auth.workspaceId)));
 
   const objective = buildObjective(kind, {
@@ -163,12 +175,24 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
 
     await tx.insert(artifactLinks).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "run", targetId: run.id, label: "produced by" });
     if (dossierSubject?.id) {
+      // Same file-or-address rule as startStudioGenerate above: a queued URL or
+      // YouTube capture is a pinned source before its bytes land, so its
+      // document still gets the artifact link.
       const pinned = await tx
         .select({ documentId: documents.id, hash: dossierSources.pinnedContentHash })
         .from(dossierSources)
         .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
         .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-        .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+        .innerJoin(
+          documents,
+          and(
+            eq(documents.workspaceId, auth.workspaceId),
+            or(
+              and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+              and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+            ),
+          ),
+        )
         .where(and(eq(dossierSources.dossierId, dossierSubject.id), eq(dossierSources.workspaceId, auth.workspaceId)));
       for (const p of pinned) {
         await tx
@@ -256,7 +280,10 @@ export type DraftDetail = {
 
 const RECORD_LINK_TARGETS = ["task", "contact", "company", "opportunity"] as const;
 
-export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail> {
+export async function getDraftDetail(auth: AuthContext, artifactId: string): Promise<DraftDetail | null> {
+  // A malformed id would reach Postgres as a uuid cast error and 500; it is
+  // the same "no draft here" as any other miss.
+  if (!z.string().uuid().safeParse(artifactId).success) return null;
   const [artifact] = await db
     .select({
       id: artifacts.id,
@@ -269,7 +296,10 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     .from(artifacts)
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
-  if (!artifact || !isGeneratableKind(artifact.kind)) throw new StudioError("draft_not_found", "No such draft.");
+  // A missing id, another workspace's id, or a non-Studio artifact (a note, a
+  // zettel) is all "no draft here" to the caller: the workbench simply does not
+  // open. Nothing above treats Studio artifacts as secret, so one answer covers.
+  if (!artifact || !isGeneratableKind(artifact.kind)) return null;
 
   const [version] = artifact.currentVersionId
     ? await db

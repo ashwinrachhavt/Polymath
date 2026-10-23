@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { waitSettled } from "./helpers/settled";
 
 async function preview(page: Page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem("axiom-ui-preview-v1") || "{}"));
@@ -70,23 +71,52 @@ test("literal brain dump proposals retain source and scheduler accepts local blo
   expect((await preview(page)).events.filter((event: { date: string }) => event.date === "2026-10-12")).toHaveLength(accepted.length);
 });
 
-test("focus finishing records the durable session and awards no stone: the Quartz rule fires on task completion, not focus", async ({ page }) => {
-  await page.goto("/neuralflow/focus?task=task-architecture");
-  await expect(page.getByLabel("Focusing on")).toHaveValue("task-architecture");
-  await page.getByRole("button", { name: "Start focus", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
-  // The session survives navigation because the server owns it.
-  await page.goto("/neuralflow/work");
-  await page.goto("/neuralflow/focus");
-  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start focus", exact: true })).toBeVisible();
-  // The Quartz rule is task completion, not focus: finishing a session
-  // records history but awards no stone.
+test("a focus session starts from the task's Focus action on Work, and no stone is earned without a completed task: the Quartz rule fires on task completion, not focus", async ({ page }) => {
+  // Focus left the rail (IA simplification): the session lifecycle is hosted
+  // on Work - the task detail's Focus action starts it, the live session's
+  // controls render above the list - and the focus address itself is a
+  // redirect bridge back to Work (query dropped).
+  const title = `Focus leg task ${Date.now().toString(36)}`;
+  await page.goto("/neuralflow/work?view=saved");
+  await waitSettled(page);
+  // The Quartz rule is task completion, not focus: the balance the flow leaves
+  // behind equals the balance it found (the shared dev database's ledger is
+  // append-only and may already hold entries, so nothing may be added, ever).
+  // Read the balance BEFORE the session runs, so the equality asserts the
+  // session changed nothing — a regression that awards points for focus fails here.
+  const points = page.locator("p", { hasText: "Points earned" }).locator("+ .readout");
   await page.goto("/apps/neuralflow/rewards");
-  await expect(page.getByText("Nothing earned yet", { exact: true })).toBeVisible();
+  const before = await points.innerText();
+  await page.goto("/neuralflow/work?view=saved");
+  await waitSettled(page);
+  await page.getByLabel("New task title").fill(title);
+  await page.getByRole("button", { name: "Add task" }).click();
+  // A new task ranks to the end of the list, which on a long-lived workspace
+  // is past the first page; the search filter narrows the view to the row.
+  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
+  // The debounced search narrows the view to the new row.
+  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
+  await page.getByRole("link", { name: title, exact: true }).click();
+  await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
+  await expect(page.getByText("Focus history", { exact: true })).toBeVisible();
+  await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeVisible();
+  // The Focus action starts a task-linked session; the live session's
+  // controls appear on the same surface.
+  await page.getByRole("button", { name: "Start focus", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByText("A focus session is paused.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await expect(page.getByText("A focus session is running.", { exact: true })).toBeHidden();
+  await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeHidden();
+  // The focus address is still a redirect bridge back to Work.
+  await page.goto("/neuralflow/focus?stale=param");
+  await expect(page).toHaveURL(/\/neuralflow\/work$/);
+  // The session finished, the task is still open: the balance is unchanged.
+  await page.goto("/apps/neuralflow/rewards");
+  await expect(points).toHaveText(before);
 });
 test("a local overnight meeting retains full metadata and uses canonical event notes", async ({ page }) => {
   await page.goto("/apps/neuralflow/meetings");

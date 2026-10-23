@@ -24,15 +24,15 @@ import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
- * Notebook mutations on the canonical artifact rows (ASH-141 / B04). A note
+ * Notes mutations on the canonical artifact rows (ASH-141 / B04). A note
  * written here is the same row generated artifacts use; slash blocks, media
  * and [[ autocomplete are the D11 follow-up on top of this core.
  */
 
-const revalidate = () => revalidatePath("/alfred/notebook");
+const revalidate = () => revalidatePath("/alfred/notes");
 
 /*
- * Notebook writes (create/autosave/commit/rename and the AI pass that spends
+ * Notes writes (create/autosave/commit/rename and the AI pass that spends
  * a run) require member or above; reading a run's output stays membership-
  * only so a viewer can watch progress (ASH-121 AC05).
  */
@@ -183,7 +183,7 @@ export async function setNoteTagsAction(input: z.input<typeof tagsInput>): Promi
 }
 
 /* ---------------------------------------------------------------------------
- * Notebook AI. Starts a run bound to the note, polls its output, and applies
+ * Notes AI. Starts a run bound to the note, polls its output, and applies
  * an accepted draft as a checkpoint with run lineage. The run is the spend
  * and audit unit; the panel only ever stages the result for acceptance.
  * ------------------------------------------------------------------------- */

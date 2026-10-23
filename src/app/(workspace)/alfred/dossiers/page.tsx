@@ -5,30 +5,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
-import { redirectPastEnd } from "@/components/list/clamp";
-import { ListToolbar } from "@/components/list/list-toolbar";
-import { NoResults } from "@/components/list/no-results";
-import { Pagination } from "@/components/list/pagination";
-import { listHref, matchesQuery, paginate, parseListParams, parsePageNumber, type RawSearchParams } from "@/lib/list-params";
-import { getDossierDetail, listAttachableDocuments, listDossierRuns, listDossiers } from "@/domains/knowledge/dossiers";
-import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
-import { artifactNextStep, deriveContinuation } from "@/domains/knowledge/continuation";
-import { DraftControls } from "../draft-controls";
-import { Badge } from "@/components/ui/badge";
-import { CreateDossierForm } from "./create-dossier-form";
+import type { RawSearchParams } from "@/lib/list-params";
+import { listDossiers } from "@/domains/knowledge/dossiers";
+import { getDraftDetail } from "@/domains/knowledge/studio";
+import { artifactNextStep } from "@/domains/knowledge/continuation";
 import { DraftWorkbench } from "./draft-workbench";
 import { listLinkableRecords, resolveLinkTitles } from "./links";
-import { GenerateForm } from "./generate-form";
-import { ResearchCompanyForm } from "./research-form";
+import { CreateDossierForm } from "./create-dossier-form";
 
-export const metadata = { title: "Dossiers · Polymath" };
+export const metadata = { title: "Notebook · Polymath" };
 
 /*
- * The dossier screen: the workspace's dossiers, the documents each one holds,
- * and Studio Generate bound to a dossier. All of it reads Neon; nothing here
- * is the browser preview.
+ * The notebook screen: the workspace's notebooks and the form that creates one.
+ * A notebook opens as its notebook view — sources on the left, the grounded
+ * conversation in the middle, Studio on the right — so everything else lives
+ * there, not here. Creating one is naming it; sources join in the Sources pane.
  */
-// Per-request data; streams inside the Suspense boundary in the default export.
 const BASE = "/alfred/dossiers";
 
 export async function DossiersSurface({
@@ -40,11 +32,11 @@ export async function DossiersSurface({
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Dossiers" />
+        <PageHeader title="Notebook" />
         <div className="page-content">
           <EmptyState
-            title="Dossier storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to create dossiers and generate from them."
+            title="Notebook storage is not configured"
+            description="Set DATABASE_URL and apply the database migrations to create notebooks and generate from them."
           />
         </div>
       </>
@@ -52,157 +44,47 @@ export async function DossiersSurface({
   }
   const auth = await getAuthContext();
   const raw = await searchParams;
-  const params = {
-    dossier: typeof raw.dossier === "string" ? raw.dossier : undefined,
-    draft: typeof raw.draft === "string" ? raw.draft : undefined,
-  };
-  const list = parseListParams(raw, { filters: { contents: ["with", "empty"] }, defaultPageSize: 10 });
-  const [dossiers, attachable, detail, continuation] = await Promise.all([
-    listDossiers(auth),
-    listAttachableDocuments(auth),
-    params.dossier ? getDossierDetail(auth, params.dossier) : Promise.resolve(null),
-    deriveContinuation(auth),
-  ]);
-  const matching = dossiers.filter(
-    (d) =>
-      matchesQuery(list.q, d.title) &&
-      (!list.filters.contents || (list.filters.contents === "with" ? d.documentCount > 0 : d.documentCount === 0)),
-  );
-  redirectPastEnd(BASE, raw, list.page, list.pageSize, matching.length);
-  const dossierPage = paginate(matching, list.page, list.pageSize);
-  const docsPageNumber = parsePageNumber(raw.dpage);
-  const docsPaged = detail ? paginate(detail.documents, docsPageNumber, 25) : null;
-  if (detail) redirectPastEnd(BASE, raw, docsPageNumber, 25, detail.documents.length, "dpage");
-  const dossierRuns = detail ? await listDossierRuns(auth, detail.id) : [];
-  const dossierRunDrafts = await draftsForRuns(auth, dossierRuns.map((run) => run.id));
-  const draftDetail = params.draft ? await getDraftDetail(auth, params.draft) : null;
+  const draftId = typeof raw.draft === "string" ? raw.draft : undefined;
+  const dossiers = await listDossiers(auth);
+  // A draft id that is missing, foreign, or not a Studio artifact opens no
+  // workbench; only the link's sender knows the difference, and the page still
+  // renders the list.
+  const draftDetail = draftId ? await getDraftDetail(auth, draftId) : null;
   const [linkTitles, linkable] = draftDetail
     ? await Promise.all([resolveLinkTitles(auth, draftDetail.links), listLinkableRecords(auth)])
-    : [null, null];
+    : [{}, null];
 
   return (
     <>
-      <PageHeader title="Dossiers" />
+      <PageHeader title="Notebook" />
       <div className="flex flex-col gap-8 page-content">
-        {continuation.length > 0 ? (
-          <Section title="Continue" description="Open work, derived from what you saved. Each next step is a suggestion, not a task you picked.">
-            <ul className="flex flex-col gap-1">
-              {continuation.map((item) => (
-                <li key={item.artifactId}>
-                  <a
-                    href={item.href}
-                    className="flex flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-accent"
-                  >
-                    <span className="font-medium">{item.title}</span>
-                    <span className="text-muted-foreground">{item.status}</span>
-                    <span className="text-muted-foreground">
-                      last change {item.updatedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                    </span>
-                    <span className="text-muted-foreground">{item.suggestedNextStep}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        ) : null}
-        <Section title="Your dossiers">
+        <Section title="Your notebooks">
           {dossiers.length === 0 ? (
-            <EmptyState
-              title="No dossiers yet"
-            />
+            <EmptyState title="No notebooks yet" />
           ) : (
-            <>
-            {dossiers.length > 4 || list.q || list.filters.contents ? (
-              <ListToolbar
-                pageKeys={["page"]}
-                searchPlaceholder="Search dossiers"
-                filters={[
-                  { key: "contents", label: "Contents", allLabel: "All dossiers", options: [{ value: "with", label: "Has documents" }, { value: "empty", label: "Empty" }] },
-                ]}
-                total={matching.length}
-                noun={matching.length === 1 ? "dossier" : "dossiers"}
-              />
-            ) : null}
-            {matching.length === 0 ? (
-              <NoResults
-                filtered
-                clearHref={listHref(BASE, raw, { q: undefined, contents: undefined, page: undefined })}
-                emptyTitle=""
-                emptyDescription=""
-              />
-            ) : null}
             <ul className="flex flex-col gap-1">
-              {dossierPage.items.map((dossier) => (
+              {dossiers.map((dossier) => (
                 <li key={dossier.id}>
-                  <a
-                    href={listHref(BASE, raw, { dossier: dossier.id, dpage: undefined, draft: undefined })}
-                    className={`flex items-baseline gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-accent ${detail?.id === dossier.id ? "bg-accent" : ""}`}
+                  <Link
+                    href={`${BASE}/${dossier.id}/notebook`}
+                    className="flex items-baseline gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-accent"
                   >
                     <span className="font-medium">{dossier.title}</span>
                     <span className="text-muted-foreground">
                       {dossier.documentCount} {dossier.documentCount === 1 ? "document" : "documents"}
                     </span>
-                  </a>
-                  <Link
-                    href={`/alfred/dossiers/${dossier.id}/notebook`}
-                    className="ml-2 text-xs text-muted-foreground underline-offset-2 hover:underline"
-                  >
-                    Open notebook
                   </Link>
                 </li>
               ))}
             </ul>
-            <Pagination basePath={BASE} raw={raw} page={dossierPage.page} pageSize={list.pageSize} total={matching.length} />
-            </>
           )}
         </Section>
 
-        {detail ? (
-          <Section title={detail.title} description="The documents this dossier holds, each pinned at the version it was attached at.">
-            {detail.documents.length === 0 ? (
-              <p className="text-muted-foreground text-[13px]">No documents yet.</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {docsPaged!.items.map((doc) => (
-                  <li key={doc.id} className="flex items-baseline gap-2 px-2 py-1 text-[13px]">
-                    <span>{doc.title}</span>
-                    <span className="text-muted-foreground">{doc.mimeType ?? "unfiled"}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Pagination basePath={BASE} raw={raw} page={docsPaged!.page} pageSize={25} total={detail.documents.length} pageParam="dpage" compact />
-            <Section title="Research a company" description="An evidence-grounded case study that reads only this dossier's pinned sources - no web search, gaps marked honestly.">
-              <ResearchCompanyForm dossierId={detail.id} />
-            </Section>
-            <Section title="Generate a draft" description="Starts a run that reads only this dossier. The result is a draft you save or discard; nothing publishes.">
-              <GenerateForm dossierId={detail.id} />
-              {dossierRuns.length > 0 ? (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {dossierRuns.map((run) => (
-                    <li key={run.id} className="flex flex-col gap-1 rounded-md border border-border px-3 py-2">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="line-clamp-1 text-[13px]">{run.objective}</p>
-                        <Badge variant="secondary" className="font-normal">{run.state === "waiting_input" ? "Answered" : run.state}</Badge>
-                      </div>
-                      <DraftControls runId={run.id} draft={dossierRunDrafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
-                      {dossierRunDrafts.get(run.id) ? (
-                        <a
-                          href={`/alfred/dossiers?dossier=${detail.id}&draft=${dossierRunDrafts.get(run.id)?.artifactId}`}
-                          className="w-fit text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
-                        >
-                          Open the workbench
-                        </a>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </Section>
-          </Section>
-        ) : null}
+        <Section title="New notebook">
+          <CreateDossierForm />
+        </Section>
 
-        {draftDetail && linkTitles && linkable ? (
+        {draftDetail && linkable ? (
           <Section title="Draft workbench">
             <DraftWorkbench
               suggestedNextStep={artifactNextStep(draftDetail.artifact.status, draftDetail.pendingRevisions)}
@@ -216,10 +98,6 @@ export async function DossiersSurface({
             />
           </Section>
         ) : null}
-
-        <Section title="New dossier">
-          <CreateDossierForm documents={attachable} />
-        </Section>
       </div>
     </>
   );
@@ -235,7 +113,7 @@ export default function DossiersPage(props: { searchParams: Promise<RawSearchPar
 
 function DossiersSkeleton() {
   return (
-    <div role="status" aria-label="Loading Dossiers" className="flex flex-1 flex-col gap-4 p-6">
+    <div role="status" aria-label="Loading Notebook" className="flex flex-1 flex-col gap-4 p-6">
       <Skeleton className="h-6 w-40" />
       <Skeleton className="h-4 w-full max-w-xl" />
       <Skeleton className="h-40" />
