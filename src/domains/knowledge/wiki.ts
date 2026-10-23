@@ -71,7 +71,7 @@ async function createArtifact(
       createdBy: auth.userId,
     })
     .returning({ id: artifactVersions.id });
-  await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+  await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
   return artifact.id;
 }
 

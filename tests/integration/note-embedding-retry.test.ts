@@ -26,7 +26,7 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { commitNoteSnapshot, createNote, getNote, NoteNotFoundError, retryNoteEmbedding } from "@/domains/knowledge/notes";
-import { countMeaningUncovered, searchKnowledge } from "@/domains/knowledge/retrieval";
+import { countMeaningUncovered, countMeaningUncoveredByState, searchKnowledge } from "@/domains/knowledge/retrieval";
 
 function vec(dims: number[]): number[] {
   const v = new Array(1536).fill(0);
@@ -157,14 +157,81 @@ suite("note embedding retry (real Postgres)", () => {
     const out = await retry;
 
     expect(out).toEqual({ status: "skipped", reason: "edited" });
-    // No vectors written for the stale v1, and nothing cleared or marked.
+    // No vectors written for the stale v1, and nothing marked on v2: the
+    // commit cleared v1's recorded failure (a failure describes the version
+    // it ran against; v2 has no recorded pass), and the edited pass wrote
+    // nothing.
     const rows = await holder.db!.select({ id: artifacts.id }).from(artifacts).where(eq(artifacts.id, note.id));
     expect(rows).toHaveLength(1);
     const embeddingRows = await holder.db!.execute("select count(*)::int as n from embeddings where owner_id = '" + note.id + "'") as unknown as { n: number }[];
     expect(embeddingRows[0].n).toBe(0);
     const detail = await getNote(auth, note.id);
     expect(detail?.indexed).toBe(false);
+    expect(detail?.embedError).toBeNull();
+  });
+
+  it("an edit committed mid-failing-pass keeps the old version's failure off the new version", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "RaceFail", "First text about fermentation.");
+    // v1 carries a recorded failure from the commit path (no provider).
+    let detail = await getNote(auth, note.id);
     expect(detail?.embedError).toContain("No embedding provider configured");
+
+    // A slow pass starts on v1 and fails only after a gate we control.
+    let entered!: () => void;
+    const embedEntered = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const failing: EmbeddingProvider = {
+      model: "fake@1",
+      embed: async () => { entered(); await gate; throw new Error("provider down"); },
+    };
+    const pass = retryNoteEmbedding(auth, { artifactId: note.id, provider: failing });
+    await embedEntered;
+
+    // The user edits and commits v2 while the pass is in flight: the commit
+    // clears v1's failure (the new version has no recorded pass yet) and its
+    // own best-effort embed bows out on the busy lock.
+    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: detail!.version, content: { format: "markdown", text: "Replacement text about brewing." }, plainText: "Replacement text about brewing." });
+    release();
+    const out = await pass;
+
+    // The failed pass ran against v1: its error must NOT land on v2.
+    expect(out).toEqual({ status: "skipped", reason: "edited" });
+    detail = await getNote(auth, note.id);
+    expect(detail?.indexed).toBe(false);
+    expect(detail?.embedError).toBeNull();
+    // Fleet split: v2 is pending (no pass recorded), not failed.
+    expect(await countMeaningUncoveredByState(auth, {})).toEqual({ pending: 1, failed: 0 });
+  });
+
+  it("the fleet count separates pending from failed and the total stays their sum", async () => {
+    const auth = await workspace();
+    // failed: committed with no provider, error recorded, never retried.
+    await writeNote(auth, "Failed one", "Text about fermentation that never indexed.");
+    // covered: retried into vectors with a working provider.
+    const covered = await writeNote(auth, "Covered one", "Text about brewing that gets indexed.");
+    const fake = provider({ brewing: vec([2]) });
+    expect(await retryNoteEmbedding(auth, { artifactId: covered.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
+    // pending: an edit whose own embed is still owed and carries no recorded failure.
+    const edited = await writeNote(auth, "Pending one", "First text about fermentation.");
+    let entered!: () => void;
+    const embedEntered = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: EmbeddingProvider = {
+      model: "fake@1",
+      embed: async (values) => { entered(); await gate; return values.map(() => vec([1])); },
+    };
+    const pass = retryNoteEmbedding(auth, { artifactId: edited.id, provider: slow });
+    await embedEntered;
+    const before = await getNote(auth, edited.id);
+    await commitNoteSnapshot(auth, { artifactId: edited.id, expectedVersion: before!.version, content: { format: "markdown", text: "Second text about brewing." }, plainText: "Second text about brewing." });
+    release();
+    expect(await pass).toEqual({ status: "skipped", reason: "edited" });
+
+    expect(await countMeaningUncoveredByState(auth, {})).toEqual({ pending: 1, failed: 1 });
+    expect(await countMeaningUncovered(auth, {})).toBe(2);
   });
 
   it("a second concurrent pass is told one is already running instead of paying twice", async () => {

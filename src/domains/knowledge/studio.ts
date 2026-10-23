@@ -171,7 +171,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       .insert(artifactVersions)
       .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, versionNumber: 1, content, plainText, reason: "generated", createdBy: auth.userId })
       .returning({ id: artifactVersions.id });
-    await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+    await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
 
     await tx.insert(artifactLinks).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "run", targetId: run.id, label: "produced by" });
     if (dossierSubject?.id) {
