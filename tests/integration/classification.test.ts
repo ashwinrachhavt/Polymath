@@ -1,12 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { documentRenameEvents, documents } from "@/domains/knowledge/schema";
+import { documentClassificationProposals, documentRenameEvents, documents } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * B02 invariants: accepting a classification sets the one doc-type signal in
- * the same transaction; a decided proposal cannot be re-decided; every rename
- * lands in the manifest with its old and new titles.
+ * B02 invariants: classification proposes, never auto-accepts - except the
+ * one ASH-202 scope, a high-confidence bank statement, which is accepted on
+ * upload; accepting a proposal sets the one doc-type signal in the same
+ * transaction; a decided proposal cannot be re-decided; every rename lands
+ * in the manifest with its old and new titles.
  */
 
 const handle = makeTestDb();
@@ -37,6 +39,40 @@ async function seed(slug: string) {
 }
 
 suite("classification and rename manifest", () => {
+  it("a high-confidence bank statement is accepted on upload; everything else still proposes", async () => {
+    const { auth, doc } = await seed("classify-auto");
+    const result = await classify.proposeClassification(auth, {
+      documentId: doc.id,
+      extractionId: null,
+      text: "Monthly Statement Period\nJan 1 - Jan 31\nBeginning Balance $521.35\nEnding Balance $470.20",
+      fieldNames: [],
+    });
+    expect(result).toMatchObject({ proposed: false, docType: "statement" });
+    expect(await classify.getOpenClassification(auth, doc.id)).toBeNull();
+    const [after] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(after.docType).toBe("statement");
+
+    // The accepted proposal row still records the basis for the decision.
+    const accepted = await db
+      .select()
+      .from(documentClassificationProposals)
+      .where(eq(documentClassificationProposals.documentId, doc.id));
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]).toMatchObject({ status: "accepted", confidence: "high", proposedType: "statement" });
+
+    // A high-confidence invoice is NOT auto-accepted: the scope is statements.
+    const { auth: auth2, doc: doc2 } = await seed("classify-invoice-still-proposal");
+    const invoice = await classify.proposeClassification(auth2, {
+      documentId: doc2.id,
+      extractionId: null,
+      text: "INVOICE\nTotal due: EUR 100",
+      fieldNames: ["invoice_number", "invoice_total"],
+    });
+    expect(invoice).toMatchObject({ proposed: true, docType: "invoice" });
+    const [after2] = await db.select().from(documents).where(eq(documents.id, doc2.id));
+    expect(after2.docType).toBeNull();
+  });
+
   it("propose then accept sets documents.doc_type once", async () => {
     const { auth, doc } = await seed("classify-accept");
     const proposed = await classify.proposeClassification(auth, {

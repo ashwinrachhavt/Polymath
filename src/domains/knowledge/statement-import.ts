@@ -1,8 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { documentExtractions } from "./schema";
-import { parseStatementTables, type ParseResult, type ParsedTable } from "./statement-parse";
+import { documentExtractions, documents, files } from "./schema";
+import { looksLikeStatement, parseStatementTables, type ParseResult, type ParsedTable } from "./statement-parse";
 import { statementImports, statementTransactions } from "./statement-schema";
 
 /*
@@ -40,8 +40,12 @@ async function latestExtraction(auth: AuthContext, documentId: string) {
       id: documentExtractions.id,
       tables: documentExtractions.tables,
       text: documentExtractions.text,
+      title: documents.title,
+      filename: files.filename,
     })
     .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+    .leftJoin(files, eq(files.id, documents.fileId))
     .where(
       and(
         eq(documentExtractions.workspaceId, auth.workspaceId),
@@ -232,4 +236,92 @@ export async function statementForDocument(
     )
     .orderBy(statementTransactions.position);
   return { import: row, transactions };
+}
+
+
+/**
+ * Read a statement ledger without anyone asking, when the document reads like
+ * a bank statement. Called at the end of extraction so an upload of a
+ * statement is detected and parsed on its own (ASH-202). The text predicate
+ * is the cheap gate; the parser remains the authority and records
+ * "unsupported" when the tables do not yield a ledger. Import is idempotent
+ * per extraction, so a retry of extraction simply reuses the ledger it made.
+ */
+export async function maybeImportStatement(
+  auth: AuthContext,
+  documentId: string,
+): Promise<{ attempted: boolean; status?: StatementImport["status"] }> {
+  const extraction = await latestExtraction(auth, documentId);
+  if (!extraction) return { attempted: false };
+  if (!looksLikeStatement(extraction.text ?? "", extraction.filename ?? extraction.title)) {
+    return { attempted: false };
+  }
+  const result = await importStatement(auth, documentId);
+  return { attempted: true, status: result.import.status };
+}
+
+export type StatementStatus = {
+  extraction: "none" | "pending" | "failed" | "succeeded" | "skipped";
+  looksLikeStatement: boolean;
+  import: {
+    status: StatementImport["status"];
+    reconciled: boolean;
+    accountLabel: string;
+    periodStart: string | null;
+    periodEnd: string | null;
+    transactionCount: number;
+    error: string | null;
+  } | null;
+};
+
+/**
+ * What the vault viewer needs to render the statement strip: has the document
+ * been read, does it read like a statement, and where does its ledger stand.
+ * Transactions stay out of this shape; the review workbench queries them
+ * itself.
+ */
+export async function statementStatus(auth: AuthContext, documentId: string): Promise<StatementStatus> {
+  const [latest] = await db
+    .select({
+      status: documentExtractions.status,
+      text: documentExtractions.text,
+      title: documents.title,
+      filename: files.filename,
+    })
+    .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+    .leftJoin(files, eq(files.id, documents.fileId))
+    .where(
+      and(
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documentExtractions.documentId, documentId),
+      ),
+    )
+    .orderBy(desc(documentExtractions.createdAt))
+    .limit(1);
+
+  const found = await statementForDocument(auth, documentId);
+  if (found) {
+    return {
+      extraction: latest?.status ?? "none",
+      looksLikeStatement: true,
+      import: {
+        status: found.import.status,
+        reconciled: found.import.reconciled,
+        accountLabel: found.import.accountLabel,
+        periodStart: found.import.periodStart,
+        periodEnd: found.import.periodEnd,
+        transactionCount: found.import.transactionCount,
+        error: found.import.error,
+      },
+    };
+  }
+  if (!latest || latest.status !== "succeeded") {
+    return { extraction: latest?.status ?? "none", looksLikeStatement: false, import: null };
+  }
+  return {
+    extraction: "succeeded",
+    looksLikeStatement: looksLikeStatement(latest.text ?? "", latest.filename ?? latest.title),
+    import: null,
+  };
 }
