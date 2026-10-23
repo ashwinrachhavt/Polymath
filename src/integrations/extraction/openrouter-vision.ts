@@ -24,11 +24,17 @@ import type {
  * page break would be a visible lie — and names the page a provider failed
  * on, matching the LlamaParse adapter's partial-is-failure rule.
  *
- * Default model google/gemini-2.5-flash-lite: natively reads file+image
- * input, $0.10 per 1M input / $0.40 per 1M output tokens, and Google counts
- * a PDF page as 258 tokens (ai.google.dev/gemini-api/docs/document-processing),
- * so a 30-page dense scan costs well under a cent. All three figures are
- * live-API/documentation rates as of 2026-10-23; OCR_MODEL swaps the model.
+ * Cost shape, stated precisely (verified 2026-10-23): the default model
+ * google/gemini-2.5-flash-lite is $0.10 per 1M input / $0.40 per 1M output
+ * tokens (live openrouter.ai/api/v1/models). Google's Gemini API docs count
+ * a PDF page as 258 input tokens (ai.google.dev/gemini-api/docs/
+ * document-processing); whether OpenRouter's native passthrough bills
+ * identically is NOT independently verified, so per-page cost is an
+ * estimate, not a quote. The bill levers are: pages processed (capped by
+ * OCR_MAX_PAGES), output length (capped per page by MAX_PAGE_OUTPUT_TOKENS),
+ * input image resolution (provider-side), the model (allowlisted below, each
+ * with its verified rate), and each owner-initiated Retry, which is a fresh
+ * extraction that spends again. OCR_MAX_PAGES bounds pages, not dollars.
  *
  * This provider is metered and off by default: it runs only when the domain
  * resolver sees OCR_PROVIDER=openrouter. The key stays server-env only,
@@ -39,6 +45,20 @@ import type {
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_OCR_MODEL = "google/gemini-2.5-flash-lite";
 export const DEFAULT_OCR_MAX_PAGES = 30;
+/** A page never rambles into an open-ended bill: output is capped per page. */
+const MAX_PAGE_OUTPUT_TOKENS = 2048;
+/*
+ * The only models this adapter will call, each with its rate verified against
+ * the live openrouter.ai/api/v1/models response on 2026-10-23 (USD per 1M
+ * tokens, input/output). OCR_MODEL naming anything else fails closed at
+ * resolve time: an unverified model is an unknown bill, and "unknown" is
+ * not a price the workspace agreed to.
+ */
+export const OCR_MODEL_RATES: Record<string, { input: number; output: number }> = {
+  "google/gemini-2.5-flash-lite": { input: 0.1, output: 0.4 },
+  "google/gemini-2.5-flash": { input: 0.3, output: 2.5 },
+  "anthropic/claude-haiku-4.5": { input: 1, output: 5 },
+};
 /*
  * Bounded for the platform the upload route runs on: extraction happens in
  * the post-response window of a Vercel function whose Hobby ceiling is 60 s,
@@ -86,6 +106,11 @@ export function createOpenRouterVisionProvider(
   options: OpenRouterVisionOptions = {},
 ): ExtractionProvider {
   const model = options.model || DEFAULT_OCR_MODEL;
+  if (!OCR_MODEL_RATES[model]) {
+    throw new Error(
+      `OCR_MODEL "${model}" is not one of the rate-verified choices (${Object.keys(OCR_MODEL_RATES).join(", ")})`,
+    );
+  }
   const baseUrl = (options.baseUrl ?? process.env.OPENROUTER_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, "");
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxPages = options.maxPages ?? DEFAULT_OCR_MAX_PAGES;
@@ -98,6 +123,7 @@ export function createOpenRouterVisionProvider(
       body: JSON.stringify({
         model,
         temperature: 0,
+        max_tokens: MAX_PAGE_OUTPUT_TOKENS,
         messages: [{ role: "user", content: [{ type: "text", text: PROMPT }, ...parts] }],
         // The pin is the price control: "native" sends the page to the model
         // as-is; an unpinned request can route through the paid OCR engine.
@@ -202,6 +228,8 @@ export function createOpenRouterVisionProvider(
  * so the workspace turns it on (OCR_PROVIDER=openrouter) knowing the rate —
  * the same way it chose its hosted providers. OCR_MODEL and OCR_MAX_PAGES
  * override the defaults; OCR_PROVIDER unset or anything else stays off.
+ * Every owner Retry is a new extraction and spends again: the cap bounds
+ * pages per attempt, not dollars per day.
  */
 export function openRouterVisionProviderFromEnv(
   env: Record<string, string | undefined>,

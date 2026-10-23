@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOpenRouterVisionProvider,
   DEFAULT_OCR_MODEL,
+  OCR_MODEL_RATES,
   openRouterVisionProviderFromEnv,
 } from "@/integrations/extraction/openrouter-vision";
 import { scannedPdf } from "../helpers/scanned-pdf";
@@ -75,6 +76,8 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe(DEFAULT_OCR_MODEL);
       expect(body.temperature).toBe(0);
+      // The output side of the bill is capped per page, never open-ended.
+      expect(body.max_tokens).toBe(2048);
       // The pin is the price control: native file processing, never the
       // per-page-priced OCR engine OpenRouter defaults to otherwise.
       expect(body.plugins).toEqual([{ id: "file-parser", pdf: { engine: "native" } }]);
@@ -148,6 +151,28 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
     }
   });
 
+  it("the overall deadline aborts in-flight page reads, and a timed-out page fails the whole extraction - never partial text", async () => {
+    // A provider that hangs until the abort signal fires. The deadline covers
+    // split + every page request + cleanup, not any single request.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockImplementation(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+          }),
+      ),
+    );
+    const provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test", timeoutMs: 50 });
+    const result = await provider.extract({
+      bytes: await scannedPdf(2),
+      filename: "scan.pdf",
+      mimeType: "application/pdf",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("timed out");
+  });
+
   it("refuses a type it cannot read without a provider call", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
@@ -184,5 +209,17 @@ describe("openRouterVisionProviderFromEnv: opt-in, never inferred", () => {
     expect(
       openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MAX_PAGES: "many" }),
     ).not.toBeNull();
+  });
+
+  it("every allowlisted model resolves; anything else fails closed at resolve time", () => {
+    for (const model of Object.keys(OCR_MODEL_RATES)) {
+      expect(
+        openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: model }),
+      ).not.toBeNull();
+    }
+    // An unverified model is an unknown bill, and unknown is not a price.
+    expect(() =>
+      openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: "some/random-model" }),
+    ).toThrow(/not one of the rate-verified choices/);
   });
 });
