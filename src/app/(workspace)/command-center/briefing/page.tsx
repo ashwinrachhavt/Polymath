@@ -33,7 +33,7 @@ function TaskRow({ task, outcomeTag, mode }: { task: BriefingTask; outcomeTag: s
         </p>
       </div>
       <div className="flex items-center gap-2">
-        {mode === "replace" ? <Status>Accepted outcome</Status> : null}
+        {mode === "replace" ? <Status>Accepted outcome</Status> : <Status>Suggested</Status>}
         <StartFocusButton task={{ id: task.id, title: task.title }} />
         <OutcomeButton taskId={task.id} version={task.version} tags={task.tags} outcomeTag={outcomeTag} mode={mode} />
       </div>
@@ -108,6 +108,9 @@ async function Briefing() {
                     <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
                       {task.title}
                     </Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      waiting{task.dueAt ? ` · due ${task.dueAt.toISOString().slice(0, 10)}` : ""} · {task.priority} priority
+                    </p>
                   </div>
                 ))}
               </div>
