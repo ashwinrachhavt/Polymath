@@ -34,7 +34,9 @@ export async function SettingsSurface() {
   }
   const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
-  const serverAssistantProfile = await getDefaultProfile(auth);
+  // Owner scope, same contract as actions.ts: a non-owner must not receive
+  // the raw brief in the initial RSC payload either.
+  const serverAssistantProfile = auth.role === "owner" ? await getDefaultProfile(auth) : null;
   return <Settings serverPreferences={serverPreferences} capabilities={capabilities} serverAssistantProfile={serverAssistantProfile} />;
 }
 

@@ -5,9 +5,10 @@ import { makeTestDb, seedWorkspace, truncateAll } from "../helpers/test-workspac
 
 /*
  * Role contract for the assistant-brief server actions (ASH-220 review): the
- * raw brief carries the owner's personal working preferences and no
- * established policy shares it with viewers, so both the read and the write
- * sit at the editing role until the owner decides otherwise. Tenant scoping
+ * brief is written by onboarding into the person's own workspace and carries
+ * personal working/writing preferences; no pre-existing policy grants members
+ * or viewers a raw-brief read, so both the read and the write sit at owner
+ * scope until the owner decides otherwise. Tenant scoping
  * is by the caller's own workspace, so no role can read another
  * workspace's profile at all.
  */
@@ -35,26 +36,26 @@ beforeAll(async () => { holder.db = handle?.db; });
 afterAll(async () => { await handle?.client.end(); });
 
 suite("assistant-brief action authorization", () => {
-  it("rejects viewers on both the read and the write", async () => {
+  it.each(["viewer", "member"] as const)("rejects %s on both the read and the write", async (role) => {
     await truncateAll(handle!.client);
     const seed = await seedWorkspace(holder.db!, `briefauth-${crypto.randomUUID()}`);
-    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "viewer" };
+    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role };
     const load = await loadAssistantProfileAction();
     expect(load.ok).toBe(false);
-    if (!load.ok) expect(load.error).toMatch(/member/i);
+    if (!load.ok) expect(load.error).toMatch(/owner/i);
     const save = await saveAssistantProfileAction({ description: "x", instructions: "y", expectedVersion: 0 });
     expect(save.ok).toBe(false);
-    if (!save.ok) expect(save.error).toMatch(/member/i);
+    if (!save.ok) expect(save.error).toMatch(/owner/i);
   });
 
-  it("lets a member read and write their own workspace's profile", async () => {
+  it("lets the owner read and write their own workspace's profile", async () => {
     await truncateAll(handle!.client);
     const seed = await seedWorkspace(holder.db!, `briefauth-${crypto.randomUUID()}`);
     await holder.db!.insert(agentProfiles).values({
       workspaceId: seed.workspaceId, name: "Polymath", description: "d", instructions: "i",
       isDefault: true, createdBy: seed.userId, updatedBy: seed.userId,
     });
-    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "member" };
+    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" };
     const load = await loadAssistantProfileAction();
     expect(load.ok).toBe(true);
     if (load.ok) expect(load.profile?.name).toBe("Polymath");

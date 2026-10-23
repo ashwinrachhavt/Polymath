@@ -84,11 +84,12 @@ export async function loadAssistantProfileAction(): Promise<Result<{ profile: { 
     return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
   }
   try {
-    // Member+, not viewer: this is the first surface exposing the raw brief,
-    // which carries the owner's personal working preferences, and no
-    // established policy shares it with viewers. Minimum is the editing role
-    // until the owner decides who else may read it (recorded as open).
-    requireRole(auth, "member");
+    // Owner only: the brief is written by onboarding into the person's own
+    // workspace and carries personal working/writing preferences. No
+    // pre-existing policy grants members or viewers a raw-brief read, so the
+    // new surface stays at the grounded owner scope until the owner decides
+    // who else may read it (recorded as open).
+    requireRole(auth, "owner");
     return { ok: true, profile: await getDefaultProfile(auth) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not load the assistant profile." };
@@ -107,7 +108,8 @@ export async function saveAssistantProfileAction(input: {
     return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
   }
   try {
-    requireRole(auth, "member");
+    // Owner only, same grounding as the read above.
+    requireRole(auth, "owner");
     const result = await updateDefaultProfileBrief(auth, input);
     if (!result.ok) {
       if (result.kind === "conflict") return { ok: false, kind: "conflict", error: "The assistant profile changed elsewhere. Reloaded the latest - review and save again." };
