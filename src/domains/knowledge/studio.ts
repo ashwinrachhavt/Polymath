@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { actionProposals } from "@/domains/actions/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
@@ -239,6 +240,8 @@ export type DraftDetail = {
   artifact: { id: string; title: string; kind: string; status: string; version: number };
   /** Every saved version, newest first — the proof that edits never overwrite. */
   versions: DraftVersionRow[];
+  /** Open artifacts.revise proposals waiting on this output. */
+  pendingRevisions: number;
   text: string;
   /**
    * The structured payload for a deck or infographic. Null for a report, and
@@ -288,6 +291,18 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     .orderBy(desc(artifactVersions.versionNumber))
     .limit(20);
 
+  const [pendingRev] = await db
+    .select({ n: count() })
+    .from(actionProposals)
+    .where(
+      and(
+        eq(actionProposals.workspaceId, auth.workspaceId),
+        eq(actionProposals.status, "pending"),
+        eq(actionProposals.targetType, "artifact"),
+        eq(actionProposals.targetId, artifact.id),
+      ),
+    );
+
   const linkRows = await db
     .select({ id: artifactLinks.id, targetType: artifactLinks.targetType, targetId: artifactLinks.targetId, label: artifactLinks.label })
     .from(artifactLinks)
@@ -305,6 +320,7 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
   return {
     artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, status: artifact.status, version: artifact.version },
     versions: versionRows,
+    pendingRevisions: Number(pendingRev?.n ?? 0),
     text: version?.plainText ?? "",
     // Structured content is read back as stored, and citations are checked
     // against the documents this artifact is actually pinned to, so a stale or

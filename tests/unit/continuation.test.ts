@@ -17,6 +17,15 @@ describe("artifactNextStep", () => {
   });
 });
 
+describe("artifactNextStep with a waiting proposal", () => {
+  it("a pending revision proposal outranks the status-derived suggestion", () => {
+    expect(artifactNextStep("reviewed", 1)).toBe("Review the proposed revision in Reviews.");
+    expect(artifactNextStep("draft", 2)).toBe("Review the proposed revision in Reviews.");
+    // Zero proposals keeps the status derivation.
+    expect(artifactNextStep("reviewed", 0)).toContain("Decide what this output becomes next");
+  });
+});
+
 describe("deriveContinuationFromArtifacts", () => {
   const older = new Date("2026-10-01T10:00:00Z");
   const newer = new Date("2026-10-20T10:00:00Z");
@@ -41,6 +50,20 @@ describe("deriveContinuationFromArtifacts", () => {
       href: "/alfred/dossiers?draft=a9",
       suggestedNextStep: "Review it: keep the draft or discard it.",
     });
+  });
+
+  it("work with a decision waiting ranks first and links to Reviews", () => {
+    const items = deriveContinuationFromArtifacts([
+      { id: "a1", title: "Fresh draft, nothing waiting", kind: "report", status: "draft", updatedAt: newer },
+      { id: "a2", title: "Older output with a proposed revision", kind: "report", status: "reviewed", updatedAt: older, pendingRevisions: 1 },
+    ]);
+    expect(items[0]).toMatchObject({
+      artifactId: "a2",
+      pendingRevisions: 1,
+      href: "/reviews",
+      suggestedNextStep: "Review the proposed revision in Reviews.",
+    });
+    expect(items[1]).toMatchObject({ artifactId: "a1", href: "/alfred/dossiers?draft=a1", pendingRevisions: 0 });
   });
 
   it("honours the limit", () => {
