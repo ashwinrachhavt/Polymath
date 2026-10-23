@@ -1,5 +1,6 @@
 import {
   Briefcase,
+  BriefcaseBusiness,
   CalendarClock,
   CalendarDays,
   Cloud,
@@ -13,6 +14,7 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
+  Camera,
   MessageSquareCode,
   Palette,
   SquareKanban,
@@ -52,6 +54,8 @@ const ICONS: Record<string, typeof Mail> = {
   hubspot: Contact,
   salesforce: Cloud,
   stripe: CreditCard,
+  linkedin: BriefcaseBusiness,
+  instagram: Camera,
   // Not shipped, but the catalog may still show a row for a provider added
   // before its config existed.
   vercel: Briefcase,
