@@ -11,7 +11,6 @@ import { Markdown } from "@/components/markdown";
 import { Unavailable } from "@/components/workspace/ui";
 import { ChatSurface } from "@/components/chat/chat-surface";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/alfred/artifact-views";
-import { CitedAnswer } from "@/components/products/alfred/cited-answer";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
@@ -169,6 +168,7 @@ export default function NotebookSurface({
           idempotencyKey: crypto.randomUUID(),
         });
         setMessage("Saved to your notes.");
+        setDiscarded(true);
       } catch (cause) {
         setMessage(cause instanceof Error ? cause.message : "The answer could not be saved.");
       }
@@ -350,20 +350,26 @@ export default function NotebookSurface({
                 );
               })()}
               {lastAnswer && lastAnswer.runId === activeChat.runId && !discarded ? (
-                <div className="mt-4 border-t border-border pt-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-xs font-medium text-muted-foreground">Last answer</h3>
-                    <span className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
-                        {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
-                        Save to notes
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDiscarded(true)}>
-                        Discard
-                      </Button>
-                    </span>
-                  </div>
-                  <CitedAnswer answer={lastAnswer.answer} citations={lastAnswer.citations} />
+                // The answer is the last message above; this bar acts on it
+                // without repeating the body. The sources it would carry into
+                // the note stay visible because they are the save's evidence.
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Save this answer
+                    {lastAnswer.citations.length > 0
+                      ? ` with its ${lastAnswer.citations.length === 1 ? "source" : "sources"} (${lastAnswer.citations.map((c) => c.title).join(", ")})`
+                      : ""}{" "}
+                    to your notes.
+                  </p>
+                  <span className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={saveAnswer} disabled={saving}>
+                      {saving ? <Loader2 aria-hidden className="animate-spin" /> : <BookmarkPlus aria-hidden />}
+                      Save to notes
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setDiscarded(true)}>
+                      Discard
+                    </Button>
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -372,7 +378,7 @@ export default function NotebookSurface({
               No source in this notebook is ready yet. Add one and wait for it to say Ready, then ask away.
             </Unavailable>
           ) : (
-            <div className="flex h-full flex-col items-start justify-center gap-3">
+            <div className="flex flex-col items-start gap-3 py-8">
               <Button onClick={beginChat} disabled={starting}>
                 {starting ? <Loader2 aria-hidden className="animate-spin" /> : <NotebookPen aria-hidden />}
                 Start a conversation
