@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Transport } from "@/domains/integrations/transport";
 import type { ReadFailure } from "./github";
+import { malformedResponse, transportFailure } from "./failures";
 
 /*
  * LinkedIn reads. One honest tool: the authenticated member's profile via the
@@ -23,10 +24,6 @@ const profileSchema = z.object({
   locale: z.union([z.string(), z.object({ country: z.string().optional(), language: z.string().optional() })]).optional(),
 });
 
-function malformed(what: string): ReadFailure {
-  return { ok: false, code: "malformed_response", message: `LinkedIn returned a ${what} response this app does not recognise.` };
-}
-
 export type LinkedInProfile = {
   id: string;
   name: string | null;
@@ -45,13 +42,9 @@ export async function getLinkedInProfile(
     endpoint: `${API}/v2/userinfo`,
     method: "GET",
   });
-  if (!result.ok) {
-    return result.code === "not_configured"
-      ? { ok: false, code: "not_configured", message: "This deployment cannot reach LinkedIn yet." }
-      : { ok: false, code: "provider_error", message: result.message };
-  }
+  if (!result.ok) return transportFailure(result, "LinkedIn");
   const parsed = profileSchema.safeParse(result.data);
-  if (!parsed.success) return malformed("profile");
+  if (!parsed.success) return malformedResponse("LinkedIn", "profile");
   return {
     ok: true,
     profile: {

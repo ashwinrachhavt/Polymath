@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Transport } from "@/domains/integrations/transport";
 import type { ReadFailure } from "./github";
+import { malformedResponse, transportFailure } from "./failures";
 
 /*
  * Instagram reads over the Instagram Login surface (graph.instagram.com):
@@ -32,10 +33,6 @@ const mediaSchema = z.object({
   paging: z.object({ next: z.string().optional() }).optional(),
 });
 
-function malformed(what: string): ReadFailure {
-  return { ok: false, code: "malformed_response", message: `Instagram returned a ${what} response this app does not recognise.` };
-}
-
 export type InstagramProfile = {
   id: string;
   username: string | null;
@@ -61,13 +58,9 @@ export async function getInstagramProfile(
     method: "GET",
     query: { fields: "id,username,account_type,media_count" },
   });
-  if (!result.ok) {
-    return result.code === "not_configured"
-      ? { ok: false, code: "not_configured", message: "This deployment cannot reach Instagram yet." }
-      : { ok: false, code: "provider_error", message: result.message };
-  }
+  if (!result.ok) return transportFailure(result, "Instagram");
   const parsed = profileSchema.safeParse(result.data);
-  if (!parsed.success) return malformed("profile");
+  if (!parsed.success) return malformedResponse("Instagram", "profile");
   return {
     ok: true,
     profile: {
@@ -83,19 +76,16 @@ export async function listInstagramMedia(
   transport: Transport,
   input: { connectedAccountId: string; limit: number },
 ): Promise<{ ok: true; items: InstagramMediaItem[] } | ReadFailure> {
+  const limit = Math.min(Math.max(input.limit, 1), 100);
   const result = await transport.read({
     connectedAccountId: input.connectedAccountId,
     endpoint: `${API}/me/media`,
     method: "GET",
-    query: { fields: "id,caption,media_type,permalink,timestamp", limit: String(input.limit) },
+    query: { fields: "id,caption,media_type,permalink,timestamp", limit: String(limit) },
   });
-  if (!result.ok) {
-    return result.code === "not_configured"
-      ? { ok: false, code: "not_configured", message: "This deployment cannot reach Instagram yet." }
-      : { ok: false, code: "provider_error", message: result.message };
-  }
+  if (!result.ok) return transportFailure(result, "Instagram");
   const parsed = mediaSchema.safeParse(result.data);
-  if (!parsed.success) return malformed("media");
+  if (!parsed.success) return malformedResponse("Instagram", "media");
   const items = (parsed.data.data ?? []).map((item) => ({
     id: item.id,
     caption: item.caption ? (item.caption.length > 280 ? `${item.caption.slice(0, 280)}…` : item.caption) : null,
