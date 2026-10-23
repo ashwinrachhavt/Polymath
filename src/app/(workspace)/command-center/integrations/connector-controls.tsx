@@ -253,7 +253,7 @@ export function TierPicker({
       <p className="text-xs text-muted-foreground">{active.description}</p>
       {narrowed.length ? (
         <p className="text-xs text-muted-foreground">
-          Narrowed by the switches below: {narrowed.map((capability) => CAPABILITY_LABELS[capability] ?? capability).join(", ")}{" "}
+          Narrowed by the switches below: {narrowed.map((capability) => CAPABILITY_LABELS[capability as keyof typeof CAPABILITY_LABELS] ?? capability).join(", ")}{" "}
           {narrowed.length === 1 ? "is" : "are"} off.
         </p>
       ) : null}
