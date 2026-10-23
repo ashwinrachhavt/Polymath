@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -75,6 +75,40 @@ export async function searchCaptures(
     db.select({ total: count() }).from(captures).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
+}
+
+/** A capture's display label for link pickers: the first text line, else the URL host. */
+export function captureLinkLabel(row: { text: string | null; url: string | null }): string {
+  const line = row.text?.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  if (line) return line.length > 60 ? `${line.slice(0, 57)}...` : line;
+  if (row.url) {
+    try {
+      return new URL(row.url).hostname;
+    } catch {
+      return row.url;
+    }
+  }
+  return "Untitled capture";
+}
+
+/*
+ * Link-target matches for the note editor's [[ ]] picker (row 36): any
+ * unarchived capture in this workspace whose text or URL matches, labeled and
+ * routed to its canonical inbox destination. Tenant-scoped like every other
+ * read here; a deleted capture lands on the inbox's empty-selection state.
+ * The route is the durable /command-center/inbox (server-rendered, UUID-
+ * validated ?id= selection) - NOT /apps/command-center/inbox, which is the
+ * browser-only preview shell with sample data.
+ */
+export async function searchCapturesForLink(auth: AuthContext, query: string, limit = 3) {
+  const like = `%${escapeLike(query.trim())}%`;
+  const rows = await db
+    .select({ id: captures.id, text: captures.text, url: captures.url })
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), isNull(captures.archivedAt), or(ilike(captures.text, like), ilike(captures.url, like))!))
+    .orderBy(desc(captures.createdAt), desc(captures.id))
+    .limit(limit);
+  return rows.map((row) => ({ id: row.id, title: captureLinkLabel(row), kind: "capture" as const, href: `/command-center/inbox?id=${row.id}` }));
 }
 
 /** The full row for the detail pane; the only inbox read that carries the whole text. */
