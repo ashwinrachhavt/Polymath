@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { focusSessions } from "./schema";
@@ -55,4 +55,35 @@ export async function listFocusHistory(auth: AuthContext, limit = 30, taskId?: s
     .orderBy(desc(focusSessions.startedAt))
     .limit(limit);
   return rows.map((row) => withElapsed(row));
+}
+
+/*
+ * The continuity cue for starting work on a task: where the task's latest
+ * closed session said to pick it up. "Latest" is completion chronology
+ * (endedAt), not when the session started - a long session that began
+ * first but ended last is the most recent thing the owner did. The
+ * handoff comes from that session only: if it left no next step the
+ * answer is null, never an older session's stale instruction dressed up
+ * as "last time". Tenant and task are both filtered here, in the owning
+ * data layer; null means the surface shows nothing, not a placeholder.
+ */
+export async function getLastTaskHandoff(
+  auth: AuthContext,
+  taskId: string,
+): Promise<{ nextStep: string; startedAt: Date } | null> {
+  const [row] = await db
+    .select({ nextStep: focusSessions.nextStep, startedAt: focusSessions.startedAt })
+    .from(focusSessions)
+    .where(
+      and(
+        eq(focusSessions.workspaceId, auth.workspaceId),
+        eq(focusSessions.taskId, taskId),
+        inArray(focusSessions.state, ["finished", "abandoned", "interrupted"]),
+        isNull(focusSessions.archivedAt),
+        isNotNull(focusSessions.endedAt),
+      ),
+    )
+    .orderBy(desc(focusSessions.endedAt))
+    .limit(1);
+  return row?.nextStep ? { nextStep: row.nextStep, startedAt: row.startedAt } : null;
 }
