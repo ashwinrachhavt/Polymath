@@ -1,12 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { documentRenameEvents, documents } from "@/domains/knowledge/schema";
+import { documentClassificationProposals, documentRenameEvents, documents } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * B02 invariants: accepting a classification sets the one doc-type signal in
- * the same transaction; a decided proposal cannot be re-decided; every rename
- * lands in the manifest with its old and new titles.
+ * B02 invariants: a high-confidence rules verdict is accepted on upload and
+ * sets the one doc-type signal directly; a medium or low verdict stays an
+ * open proposal, and accepting it sets the doc-type signal in the same
+ * transaction; a decided proposal cannot be re-decided; every rename lands in
+ * the manifest with its old and new titles.
  */
 
 const handle = makeTestDb();
@@ -37,13 +39,36 @@ async function seed(slug: string) {
 }
 
 suite("classification and rename manifest", () => {
-  it("propose then accept sets documents.doc_type once", async () => {
-    const { auth, doc } = await seed("classify-accept");
-    const proposed = await classify.proposeClassification(auth, {
+  it("a high-confidence verdict is accepted on upload, no proposal left open", async () => {
+    const { auth, doc } = await seed("classify-auto");
+    const result = await classify.proposeClassification(auth, {
       documentId: doc.id,
       extractionId: null,
       text: "INVOICE\nTotal due: EUR 100",
       fieldNames: ["invoice_number", "invoice_total"],
+    });
+    expect(result).toMatchObject({ proposed: false, docType: "invoice" });
+    expect(await classify.getOpenClassification(auth, doc.id)).toBeNull();
+    const [after] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(after.docType).toBe("invoice");
+
+    // The accepted proposal row still records the basis for the decision.
+    const accepted = await db
+      .select()
+      .from(documentClassificationProposals)
+      .where(eq(documentClassificationProposals.documentId, doc.id));
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]).toMatchObject({ status: "accepted", confidence: "high", proposedType: "invoice" });
+  });
+
+  it("propose then accept sets documents.doc_type once", async () => {
+    const { auth, doc } = await seed("classify-accept");
+    // One invoice signal with the word stays medium confidence: a proposal.
+    const proposed = await classify.proposeClassification(auth, {
+      documentId: doc.id,
+      extractionId: null,
+      text: "INVOICE",
+      fieldNames: ["invoice_number"],
     });
     expect(proposed).toMatchObject({ proposed: true, docType: "invoice" });
 

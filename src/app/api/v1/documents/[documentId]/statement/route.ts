@@ -3,7 +3,12 @@ import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { buildClassifiedLedgerCsv, buildLedgerCsv, ledgerCsvFilename } from "@/domains/knowledge/statement-csv";
 import { listOwnerRules } from "@/domains/knowledge/transaction-rules";
-import { statementForDocument } from "@/domains/knowledge/statement-import";
+import {
+  importStatement,
+  StatementExtractionMissingError,
+  statementForDocument,
+  statementStatus,
+} from "@/domains/knowledge/statement-import";
 
 /*
  * GET /api/v1/documents/:documentId/statement.csv — the ledger for one
@@ -19,6 +24,14 @@ export const GET = authedHandler(async (auth, request, ctx: { params: Promise<{ 
   const { documentId } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
     return problemResponse(404, "not_found", "No such document in this workspace.");
+  }
+
+  // The viewer's statement strip reads the summary as JSON; the default stays
+  // the downloadable file.
+  if (new URL(request.url).searchParams.get("status") === "1") {
+    return Response.json(await statementStatus(auth, documentId), {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   }
 
   const found = await statementForDocument(auth, documentId);
@@ -56,5 +69,31 @@ export const GET = authedHandler(async (auth, request, ctx: { params: Promise<{ 
       "Content-Disposition": `attachment; filename="${ledgerCsvFilename(found.import.accountLabel, found.import.periodStart, found.import.periodEnd)}"`,
       "Cache-Control": "private, no-store",
     },
+  });
+});
+
+
+/*
+ * POST /api/v1/documents/:documentId/statement — build (or reuse) the ledger
+ * for one document that reads like a statement. Parsing is deterministic and
+ * idempotent per extraction, so a repeat click returns the ledger already
+ * made. The response is the same summary the viewer's status read returns.
+ */
+export const POST = authedHandler(async (auth, _request, ctx: { params: Promise<{ documentId: string }> }) => {
+  requireRole(auth, "member");
+  const { documentId } = await ctx.params;
+  if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
+    return problemResponse(404, "not_found", "No such document in this workspace.");
+  }
+  try {
+    await importStatement(auth, documentId);
+  } catch (cause) {
+    if (cause instanceof StatementExtractionMissingError) {
+      return problemResponse(409, "extraction_missing", "Read the document first, then build its ledger.");
+    }
+    throw cause;
+  }
+  return Response.json(await statementStatus(auth, documentId), {
+    headers: { "Cache-Control": "private, no-store" },
   });
 });

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Readout } from "@/components/readout";
+import { StatementStrip } from "./statement-section";
 
 /*
  * The document vault, on the Box pattern: a column-header table (Name,
@@ -78,16 +79,32 @@ function DocGlyph({ doc, className }: { doc: Pick<VaultDocument, "kind" | "mimeT
   return <FileText className={cn(cls, "text-muted-foreground")} aria-hidden />;
 }
 
-function docSubtitle(doc: Pick<VaultDocument, "kind" | "mimeType" | "filename" | "sourceUrl">): string {
+/** What the document-type catalogue calls each type, for the row subtitle. */
+const DOC_TYPE_LABELS: Record<string, string> = {
+  statement: "Bank statement",
+  invoice: "Invoice",
+  receipt: "Receipt",
+  agreement: "Agreement",
+  resume: "Resume",
+  letter: "Letter",
+  report: "Report",
+  form: "Form",
+};
+
+function docSubtitle(doc: Pick<VaultDocument, "kind" | "mimeType" | "filename" | "sourceUrl" | "docType">): string {
+  const typeLabel = doc.docType ? DOC_TYPE_LABELS[doc.docType] : undefined;
+  let base: string;
   if (doc.kind === "web_page" && doc.sourceUrl) {
     try {
-      return new URL(doc.sourceUrl).hostname;
+      base = new URL(doc.sourceUrl).hostname;
     } catch {
-      return "Web page";
+      base = "Web page";
     }
+  } else {
+    const type = doc.mimeType === "application/pdf" ? "PDF" : doc.mimeType?.startsWith("image/") ? "Image" : "File";
+    base = doc.filename ?? type;
   }
-  const type = doc.mimeType === "application/pdf" ? "PDF" : doc.mimeType?.startsWith("image/") ? "Image" : "File";
-  return doc.filename ?? type;
+  return typeLabel ? `${typeLabel} · ${base}` : base;
 }
 
 /** The directory path a picked file belongs to, from its webkitRelativePath. */
@@ -587,6 +604,7 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
           )}
         </div>
         <div className="relative min-h-0 overflow-y-auto">
+          <StatementStrip documentId={doc.id} />
           {textState === "loading" ? (
             <div role="status" className="text-muted-foreground flex items-center gap-2 p-4 text-xs">
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Reading the extracted text…
