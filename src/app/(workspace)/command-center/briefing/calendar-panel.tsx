@@ -37,7 +37,7 @@ function AccountAgenda({ account, timezone, single }: { account: AgendaAccount; 
     <div>
       {!single ? <p className="pt-2 text-xs font-medium text-muted-foreground">{account.alias}</p> : null}
       {account.events.length === 0 ? (
-        <p className="py-2 text-[13px] text-muted-foreground">No events on the {single ? "primary calendar" : `${account.alias} primary calendar`} today.</p>
+        <p className="py-2 text-[13px] text-muted-foreground">{single ? "No events on the primary calendar today." : `No events on ${account.alias}'s primary calendar today.`}</p>
       ) : (
         <div className="divide-y divide-border">
           {account.events.map((event) => (
