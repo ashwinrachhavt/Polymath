@@ -10,8 +10,10 @@ import postgres from "postgres";
  * against real Postgres in tests/integration/work-bulk-complete.test.ts.
  *
  * Screenshots land in test-results/bulk-pixels/ and upload as the
- * bulk-complete-pixels CI artifact: the hydrated action bar and the mixed
- * outcome are visual states a static render cannot show.
+ * bulk-complete-pixels CI artifact. They are viewport captures (no full-page
+ * stitching) taken only once the UI has settled - the mixed-outcome frame
+ * waits for the refresh to reconcile the list, so no capture shows a
+ * mid-transition state that disagrees with its own message.
  */
 
 const VIEWPORTS = [
@@ -53,14 +55,20 @@ for (const vp of VIEWPORTS) {
     // The action bar reflects the actual selection state, not a claim.
     await expect(page.getByLabel(`Select ${a}`)).toBeChecked();
     await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-    await page.screenshot({ path: `test-results/bulk-pixels/selected-bar-${vp.name}.png`, fullPage: true });
+    await page.screenshot({ path: `test-results/bulk-pixels/selected-bar-${vp.name}.png` });
     await page.getByRole("button", { name: "Complete 2 selected" }).click();
     await expect(page.getByText("Completed 2 tasks.", { exact: true })).toBeVisible();
+    // Settled: the server-driven refresh has reconciled the list (dev
+    // compile makes the round-trip slow; give it room).
+    await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
 
-    // Persisted: a reload reads the server, and completed work left the list.
+    // Persisted: a reload reads the server, and completed work stays gone.
     await page.reload();
     await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
+    await page.screenshot({ path: `test-results/bulk-pixels/completed-settled-${vp.name}.png` });
   });
 
   test(`a task that moved on behind the page's back is named as not completed [${vp.name}]`, async ({ page }) => {
@@ -88,13 +96,18 @@ for (const vp of VIEWPORTS) {
       await expect(
         page.getByText("Completed 1 of 2. 1 could not be completed (already done or no longer available).", { exact: true }),
       ).toBeVisible();
-      await page.screenshot({ path: `test-results/bulk-pixels/mixed-outcome-${vp.name}.png`, fullPage: true });
+      // Settled before the capture: the refresh removed both rows, so the
+      // frame shows the message AND the reconciled list agreeing with it.
+      await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0, { timeout: 30_000 });
+      await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+      await page.screenshot({ path: `test-results/bulk-pixels/mixed-outcome-${vp.name}.png` });
 
-      // The server's truth after reload: both left the open list - a through
-      // this action, b through the earlier completion this one honestly named.
+      // The server's truth after reload: both stay gone - a through this
+      // action, b through the earlier completion this one honestly named.
       await page.reload();
       await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+      await page.screenshot({ path: `test-results/bulk-pixels/partial-settled-${vp.name}.png` });
     } finally {
       await sql.end();
     }
