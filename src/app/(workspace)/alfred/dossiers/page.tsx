@@ -207,6 +207,7 @@ export async function DossiersSurface({
             <DraftWorkbench
               suggestedNextStep={artifactNextStep(draftDetail.artifact.status)}
               artifact={draftDetail.artifact}
+              versions={draftDetail.versions}
               text={draftDetail.text}
               sources={draftDetail.sources}
               links={draftDetail.links}

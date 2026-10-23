@@ -203,13 +203,13 @@ export const discardDraft = (auth: AuthContext, input: { artifactId: string }) =
 
 /** The artifact each run produced, keyed by run id — so a run row can render its save/keep/discard state. */
 export async function draftsForRuns(auth: AuthContext, runIds: string[]) {
-  const map = new Map<string, { artifactId: string; status: string }>();
+  const map = new Map<string, { artifactId: string; status: string; version: number }>();
   if (runIds.length === 0) return map;
   const rows = await db
-    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status })
+    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status, version: artifacts.version })
     .from(artifacts)
     .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.producedByRunId, runIds)));
-  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status });
+  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status, version: row.version });
   return map;
 }
 
@@ -232,8 +232,13 @@ export async function listDrafts(auth: AuthContext) {
 
 export type DraftLinkRow = { id: string; targetType: string; targetId: string; label: string | null };
 
+/** One entry in an artifact's append-only version history. */
+export type DraftVersionRow = { versionNumber: number; reason: string; note: string | null; createdAt: Date };
+
 export type DraftDetail = {
   artifact: { id: string; title: string; kind: string; status: string; version: number };
+  /** Every saved version, newest first — the proof that edits never overwrite. */
+  versions: DraftVersionRow[];
   text: string;
   /**
    * The structured payload for a deck or infographic. Null for a report, and
@@ -271,6 +276,18 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
         .limit(1)
     : [null];
 
+  const versionRows = await db
+    .select({
+      versionNumber: artifactVersions.versionNumber,
+      reason: artifactVersions.reason,
+      note: artifactVersions.note,
+      createdAt: artifactVersions.createdAt,
+    })
+    .from(artifactVersions)
+    .where(and(eq(artifactVersions.artifactId, artifact.id), eq(artifactVersions.workspaceId, auth.workspaceId)))
+    .orderBy(desc(artifactVersions.versionNumber))
+    .limit(20);
+
   const linkRows = await db
     .select({ id: artifactLinks.id, targetType: artifactLinks.targetType, targetId: artifactLinks.targetId, label: artifactLinks.label })
     .from(artifactLinks)
@@ -287,6 +304,7 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
 
   return {
     artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, status: artifact.status, version: artifact.version },
+    versions: versionRows,
     text: version?.plainText ?? "",
     // Structured content is read back as stored, and citations are checked
     // against the documents this artifact is actually pinned to, so a stale or
