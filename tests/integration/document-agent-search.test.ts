@@ -210,6 +210,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "tasks.create",
       "web.search",
       "web.fetch",
+      "artifacts.revise",
     ]);
     const b = await workspace();
     await ensureProfile(b.workspaceId);
@@ -237,6 +238,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "tasks.create",
       "web.search",
       "web.fetch",
+      "artifacts.revise",
     ]);
   });
 

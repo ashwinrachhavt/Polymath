@@ -17,7 +17,7 @@ export function DraftControls({
   canSave,
 }: {
   runId: string;
-  draft: { artifactId: string; status: string } | null;
+  draft: { artifactId: string; status: string; version: number } | null;
   canSave: boolean;
 }) {
   const router = useRouter();
@@ -47,7 +47,15 @@ export function DraftControls({
       </div>
     );
   }
-  if (draft.status === "reviewed") return <p className="text-muted-foreground text-xs">Saved as a Studio draft.</p>;
+  if (draft.status === "reviewed")
+    return (
+      <p className="text-muted-foreground text-xs">
+        Kept as a reviewed Studio draft · version {draft.version} ·{" "}
+        <a href={`/alfred/dossiers?draft=${draft.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
+          Open it
+        </a>
+      </p>
+    );
   if (draft.status === "archived") return <p className="text-muted-foreground text-xs">Draft discarded.</p>;
   return (
     <div className="flex flex-col gap-1">
