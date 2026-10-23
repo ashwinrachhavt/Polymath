@@ -128,7 +128,10 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         </div>
       )}
       {list.q && !kanban ? (
-        <SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+        // While a note is open the ranked results stay in the sidebar so the
+        // reader can jump between hits; with nothing selected they take the
+        // working column below instead of truncating into 16rem.
+        selected ? <SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} /> : null
       ) : notes.length === 0 ? (
         <NoResults
           filtered={Boolean(list.q || list.filters.view)}
@@ -221,6 +224,13 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             backlinks={backlinks}
             related={related}
           />
+        ) : list.q && !kanban ? (
+          // Same 720px reading column as the editor and empty states: ranked
+          // results get full titles, snippets and why-ranked chips instead of
+          // the sidebar's truncation next to an empty editor.
+          <div className="mx-auto max-w-[720px] px-3 py-12">
+            <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+          </div>
         ) : found.total === 0 ? (
           <div className="mx-auto max-w-[720px] px-3 py-12">
             <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h2>

@@ -27,7 +27,7 @@ vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
 vi.mock("@/domains/knowledge/notes", () => ({
   pageNotes: vi.fn(async () => ({ items: [], total: 0 })),
   listNoteTags: vi.fn(async () => []),
-  getNote: vi.fn(async () => null),
+  getNote: vi.fn(async () => null as null | { id: string }),
   listNoteVersions: vi.fn(async () => []),
   listNoteOutlinks: vi.fn(async () => []),
   listNoteBacklinks: vi.fn(async () => []),
@@ -44,18 +44,21 @@ vi.mock("@/components/list/clamp", () => ({ redirectPastEnd: vi.fn() }));
 vi.mock("@/app/(workspace)/alfred/notes/note-editor", () => ({ NewNoteButton: () => null, NoteEditor: () => null }));
 vi.mock("@/app/(workspace)/alfred/notes/notebook-workspace", () => ({
   NotebookWorkspace: (props: { list: unknown; children: unknown }) =>
-    h("div", null, props.list as ReactNode, props.children as ReactNode),
+    h("div", null,
+      h("div", { "data-testid": "list-column" }, props.list as ReactNode),
+      h("div", { "data-testid": "working-column" }, props.children as ReactNode)),
 }));
 
 const resultsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
 vi.mock("@/app/(workspace)/alfred/notes/search-results", () => ({
   SearchResults: (props: unknown) => {
     resultsProps.fn(props);
-    return null;
+    return h("div", { "data-testid": "search-results" });
   },
 }));
 
 import { NotesSurface } from "@/app/(workspace)/alfred/notes/page";
+import { getNote } from "@/domains/knowledge/notes";
 
 const params = (raw: Record<string, string>) => Promise.resolve(raw);
 
@@ -63,6 +66,8 @@ beforeEach(() => {
   searchKnowledge.mockClear();
   countMeaningUncovered.mockClear();
   toolbarProps.fn.mockClear();
+  resultsProps.fn.mockClear();
+  vi.mocked(getNote).mockResolvedValue(null);
 });
 
 describe("notes page search-filter wiring", () => {
@@ -89,5 +94,27 @@ describe("notes page search-filter wiring", () => {
     renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", kind: "bogus" }) }));
     const scope2 = (resultsProps.fn.mock.calls[1]?.[0] as { scope: { kinds?: string[]; filters?: unknown } }).scope;
     expect(scope2.kinds).toBeUndefined();
+  });
+
+  it("places ranked results in the working column while searching, and back in the list column once a note is open", async () => {
+    // No note selected: results take the wide reading column, not the 16rem sidebar.
+    const searching = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
+    const working = searching.split('data-testid="working-column"')[1] ?? "";
+    const listCol = searching.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
+    expect(working).toContain('data-testid="search-results"');
+    expect(listCol).not.toContain('data-testid="search-results"');
+    expect(resultsProps.fn).toHaveBeenCalledTimes(1);
+
+    // A note open: results return to the sidebar so the reader can jump between hits.
+    const now = new Date();
+    vi.mocked(getNote).mockResolvedValue({
+      id: "n1", title: "Quarterly plan", kind: "note", tags: [], version: 1,
+      content: null, draft: null, createdAt: now, updatedAt: now,
+    } as never);
+    const open = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", id: "n1" }) }));
+    const openList = open.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
+    const openWorking = open.split('data-testid="working-column"')[1] ?? "";
+    expect(openList).toContain('data-testid="search-results"');
+    expect(openWorking).not.toContain('data-testid="search-results"');
   });
 });
