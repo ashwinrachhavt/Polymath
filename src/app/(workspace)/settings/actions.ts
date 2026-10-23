@@ -11,6 +11,7 @@ import {
 } from "@/domains/identity/preferences";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { updateDefaultProfileBrief } from "@/domains/agents/commands";
+import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -30,12 +31,12 @@ export async function loadPreferencesAction(): Promise<Result<{ preferences: Loa
     // A deployment without sign-in (no Clerk keys) still renders /settings as
     // a browser preview; the load failing must be a named result, not an
     // unhandled server-action rejection (ASH-193).
-    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }
   try {
     return { ok: true, preferences: await getPreferences(auth) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not load preferences." };
+    return { ok: false, error: actionError(error, "Could not load preferences.") };
   }
 }
 
@@ -50,7 +51,7 @@ export async function savePreferencesAction(input: {
   try {
     auth = await getAuthContext();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }
   requireRole(auth, "member");
   const patch: Partial<Preferences> = {};
@@ -66,7 +67,7 @@ export async function savePreferencesAction(input: {
     revalidatePath("/settings");
     return { ok: true, preferences };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not save preferences." };
+    return { ok: false, error: actionError(error, "Could not save preferences.") };
   }
 }
 
@@ -81,7 +82,7 @@ export async function loadAssistantProfileAction(): Promise<Result<{ profile: { 
   try {
     auth = await getAuthContext();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }
   try {
     // Owner only: the brief is written by onboarding into the person's own
@@ -92,7 +93,7 @@ export async function loadAssistantProfileAction(): Promise<Result<{ profile: { 
     requireRole(auth, "owner");
     return { ok: true, profile: await getDefaultProfile(auth) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not load the assistant profile." };
+    return { ok: false, error: actionError(error, "Could not load the assistant profile.") };
   }
 }
 
@@ -105,7 +106,7 @@ export async function saveAssistantProfileAction(input: {
   try {
     auth = await getAuthContext();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }
   try {
     // Owner only, same grounding as the read above.
@@ -119,6 +120,6 @@ export async function saveAssistantProfileAction(input: {
     revalidatePath("/settings");
     return { ok: true, profile: result.profile };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not save the assistant profile." };
+    return { ok: false, error: actionError(error, "Could not save the assistant profile.") };
   }
 }
