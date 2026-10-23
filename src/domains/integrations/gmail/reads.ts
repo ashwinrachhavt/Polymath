@@ -199,15 +199,14 @@ export async function searchGmailMessages(
   },
 ): Promise<GmailSearchResult> {
   const limit = Math.max(1, Math.min(input.limit, MAX_RESULTS_HARD_CAP));
-  // The transport's query map cannot repeat a key, so the metadata header names
-  // are joined; Gmail's repeated-parameter spelling has no representation here.
-  const metadataHeaders = "From,Subject,Date";
 
   const list = await transport.read({
     connectedAccountId: input.connectedAccountId,
     endpoint: MESSAGES_ENDPOINT,
     method: "GET",
-    query: { q: input.query, maxResults: String(limit), format: "metadata", metadataHeaders },
+    // No format/metadataHeaders: only ids, threadIds and snippets are read from
+    // the list; headers and bodies come from the per-message detail read below.
+    query: { q: input.query, maxResults: String(limit) },
   });
   if (!list.ok) return failureFrom(list);
 
@@ -231,7 +230,11 @@ export async function searchGmailMessages(
         connectedAccountId: input.connectedAccountId,
         endpoint: `${MESSAGES_ENDPOINT}/${encodeURIComponent(hit.id)}`,
         method: "GET",
-        query: { format: "metadata", metadataHeaders },
+        // format=full, not metadata: Gmail takes metadataHeaders only as repeated
+        // query params, and the proxy collapses repeats to the last value
+        // (live-verified 2026-10-23). metadata without them returns zero headers,
+        // which is how this read used to surface every message as "(no subject)".
+        query: { format: "full" },
       });
       if (!detail.ok) {
         failure ??= failureFrom(detail);

@@ -84,6 +84,38 @@ describe("searchGmailMessages", () => {
     });
   });
 
+  it("fetches details as format=full — the proxy collapses repeated metadataHeaders", async () => {
+    // Live-verified 2026-10-23: the proxy keeps only the last repeated query
+    // value, so metadata+metadataHeaders can never deliver From/Subject/Date
+    // together; metadata without them returns no headers at all. full is the
+    // only format through this proxy that carries the headers.
+    const { transport, requests } = recording(
+      fixtureTransport([
+        {
+          method: "GET",
+          endpointPrefix: `${MESSAGES}/msg_fixture_alpha`,
+          status: 200,
+          body: detailFor("msg_fixture_alpha", "thr_fixture_alpha", [{ name: "Subject", value: "Alpha subject" }]),
+        },
+        {
+          method: "GET",
+          endpointPrefix: `${MESSAGES}/msg_fixture_beta`,
+          status: 200,
+          body: detailFor("msg_fixture_beta", "thr_fixture_beta", [{ name: "Subject", value: "Beta subject" }]),
+        },
+        { method: "GET", endpointPrefix: MESSAGES, status: 200, body: searchFixture },
+      ]),
+    );
+
+    await searchGmailMessages(transport, { connectedAccountId: CONNECTED_ACCOUNT, query: "in:inbox", limit: 10 });
+
+    const detailRequests = requests.filter((request) => request.endpoint.startsWith(`${MESSAGES}/msg_`));
+    expect(detailRequests.length).toBeGreaterThan(0);
+    for (const request of detailRequests) {
+      expect(request.query).toEqual({ format: "full" });
+    }
+  });
+
   it("returns null for a header the message lacks, never an empty string", async () => {
     const transport = fixtureTransport([
       {

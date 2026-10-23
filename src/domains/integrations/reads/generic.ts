@@ -21,6 +21,19 @@ export type GenericReadSpec = {
   /** Dotted path into the response JSON carrying the array, e.g. "results" or "data.items". */
   listPath: string;
   itemText: (item: unknown) => string;
+  /**
+   * Some providers gate the list read on a value only the account itself can
+   * answer (Calendly's user/organization URIs, Asana's workspace gid). The
+   * preflight is a second read, issued first, whose body supplies those query
+   * params. It goes through the same transport, so it carries the same
+   * read-only and no-retry guarantees; a null extract fails the read honestly
+   * instead of guessing.
+   */
+  preflight?: {
+    endpoint: string;
+    extract: (data: unknown) => Record<string, string> | null;
+    failureMessage: string;
+  };
 };
 
 export type GenericListResult =
@@ -76,8 +89,19 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
   calendly_list_events: {
     tool: "calendly_list_events",
     capability: "calendly.events.read",
-    endpoint: "https://calendly.com/api/v1/users/me/scheduled_events",
+    // api.calendly.com; scheduled_events is filtered by the caller's user and
+    // organization URIs, which only /users/me can answer.
+    endpoint: "https://api.calendly.com/scheduled_events",
     query: { count: "25" },
+    preflight: {
+      endpoint: "https://api.calendly.com/users/me",
+      extract: (data) => {
+        const resource = (data as { resource?: { uri?: string; current_organization?: string } }).resource;
+        if (!resource?.uri || !resource.current_organization) return null;
+        return { user: resource.uri, organization: resource.current_organization };
+      },
+      failureMessage: "Calendly did not return the account profile the event list needs.",
+    },
     listPath: "collection",
     itemText: (item) => {
       const e = item as { name?: string; start_time?: string };
@@ -88,7 +112,17 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
     tool: "asana_list_tasks",
     capability: "asana.tasks.read",
     endpoint: "https://app.asana.com/api/1.0/tasks",
+    // Asana 400s an assignee filter without a workspace; /users/me answers it.
     query: { assignee: "me", completed_since: "now", opt_fields: "name,due_on" },
+    preflight: {
+      endpoint: "https://app.asana.com/api/1.0/users/me",
+      extract: (data) => {
+        const workspaces = (data as { data?: { workspaces?: { gid?: string }[] } }).data?.workspaces;
+        const gid = workspaces?.find((w) => w?.gid)?.gid;
+        return gid ? { workspace: gid } : null;
+      },
+      failureMessage: "Asana did not return a workspace for the account, so its tasks cannot be listed.",
+    },
     listPath: "data",
     itemText: (item) => {
       const t = item as { name?: string; due_on?: string | null };
@@ -120,11 +154,14 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
   canva_list_designs: {
     tool: "canva_list_designs",
     capability: "canva.designs.read",
-    endpoint: "https://www.canva.com/api/v1/designs",
+    // api.canva.com/rest/v1 is the Connect API host; www.canva.com/api serves
+    // an HTML status page, not JSON. Items carry their id at the top level
+    // (both verified against the live API on the connected account).
+    endpoint: "https://api.canva.com/rest/v1/designs",
     listPath: "items",
     itemText: (item) => {
-      const d = item as { title?: string; design?: { id?: string } };
-      return [d.title ?? "(untitled design)", d.design?.id].filter(Boolean).join(" — ");
+      const d = item as { title?: string; id?: string };
+      return [d.title ?? "(untitled design)", d.id].filter(Boolean).join(" — ");
     },
   },
   hubspot_list_contacts: {
@@ -197,11 +234,23 @@ export async function genericList(
   spec: GenericReadSpec,
   input: { connectedAccountId: string; query?: string; limit?: number },
 ): Promise<GenericListResult> {
+  let query = resolveQuery(spec, input.query);
+  if (spec.preflight) {
+    const pre = await transport.read({
+      connectedAccountId: input.connectedAccountId,
+      endpoint: spec.preflight.endpoint,
+      method: "GET",
+    });
+    if (!pre.ok) return pre;
+    const extra = spec.preflight.extract(pre.data);
+    if (extra === null) return { ok: false, code: "provider_error", message: spec.preflight.failureMessage };
+    query = { ...query, ...extra };
+  }
   const result = await transport.read({
     connectedAccountId: input.connectedAccountId,
     endpoint: spec.endpoint,
     method: "GET",
-    query: resolveQuery(spec, input.query),
+    query,
   });
   if (!result.ok) return result;
 
