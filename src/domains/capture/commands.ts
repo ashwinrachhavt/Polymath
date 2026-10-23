@@ -9,6 +9,10 @@ import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { findCaptureIdByUrl } from "./queries";
+import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
+import type { FileValidationResult } from "@/lib/file-validation";
+import { sha256Hex } from "@/lib/hash";
+import { blobObjects } from "../audit/schema";
 import { captures, captureSource } from "./schema";
 
 /*
@@ -33,6 +37,16 @@ export class ConflictError extends Error {
   constructor(message: string, existingId?: string) {
     super(message);
     this.existingId = existingId;
+  }
+}
+
+/** The object store refused the bytes before any row existed; the caller can retry, nothing was captured. */
+export class StorageWriteFailedError extends Error {
+  readonly code = "storage_write_failed";
+  constructor(cause: unknown) {
+    super("The file could not be stored. Nothing was captured - try again.");
+    this.name = "StorageWriteFailedError";
+    this.cause = cause;
   }
 }
 
@@ -117,6 +131,128 @@ export async function createCapture(
 }
 
 /**
+ * File/screenshot capture (ASH-220): the `file` kind had a schema seat
+ * (captures.blobId) but no writer. The bytes land in the object store FIRST;
+ * the blob_objects row and the capture then commit in one transaction, so
+ * there is never a capture pointing at bytes that failed to record, nor a
+ * recorded blob without its capture. Retry safety belongs to the caller's
+ * receipt (the route checks Idempotency-Key BEFORE calling this): a bare
+ * retry without the key stores a second object, same as document intake.
+ *
+ * A sniff failure still captures - quarantined, never silently filed under
+ * the client's claimed type: a preserved original beats a lost upload. A
+ * quarantined capture carries rawPayload.quarantined and octet-stream, and
+ * nothing downstream may promise its content (no extraction, no search text,
+ * no preview) - the capture IS the file, its filename is the only label.
+ * Verified files are likewise not extracted here: `text` stays null, so
+ * search and semantic surfaces never imply the file's contents are readable.
+ */
+/** The receipt payload for a file capture - route pre-check and command receipt must hash this exact shape. */
+export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
+  return { op: "createFileCapture", contentHash, filename };
+}
+
+export async function createFileCapture(
+  auth: AuthContext,
+  input: {
+    bytes: Uint8Array;
+    /** The uploader's filename - a label only, never trusted for type (validateFile already sniffed). */
+    filename: string;
+    /** From validateFile. A failed verdict quarantines the original rather than rejecting it. */
+    verdict: FileValidationResult;
+    /** sha256 hex of the bytes when the caller already has it. */
+    contentHash?: string;
+    source?: (typeof captureSource.enumValues)[number];
+    /**
+     * First-party idempotency key. The ROUTE checks the receipt before the
+     * blob write (a replay must not store a second object); the receipt here
+     * is the in-transaction backstop that serializes racing first attempts.
+     */
+    idempotencyKey?: string;
+  },
+): Promise<{ captureId: string; quarantined: boolean; contentHash: string }> {
+  const filename = input.filename.trim().slice(0, 500);
+  if (!filename) throw new ConflictError("Name the file.");
+  const contentHash = input.contentHash ?? (await sha256Hex(input.bytes));
+  const mimeType = input.verdict.ok ? input.verdict.mimeType : "application/octet-stream";
+  // Network write outside the transaction: a storage failure throws before any
+  // row exists, so the caller gets a clean error and nothing half-created.
+  let stored: Awaited<ReturnType<typeof putBlob>>;
+  try {
+    stored = await putBlob({ bytes: input.bytes, filename, contentType: mimeType, workspaceId: auth.workspaceId, contentHash });
+  } catch (cause) {
+    // No rows exist yet; a storage fault is a clean, retryable failure, never
+    // an ambiguous 500 that might have half-created something.
+    if (cause instanceof ObjectStoreUnconfiguredError) throw cause;
+    throw new StorageWriteFailedError(cause);
+  }
+  let lostRace = false;
+  try {
+    const result = await withTransaction(async (tx) => {
+      const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, fileCaptureReceiptRequest(contentHash, filename), async () => {
+    const blobRow =
+      (await tx
+        .insert(blobObjects)
+        .values({
+          workspaceId: auth.workspaceId,
+          storageKey: stored.storageKey,
+          contentHash,
+          sizeBytes: input.bytes.byteLength,
+          mimeType,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .onConflictDoNothing({ target: blobObjects.storageKey })
+        .returning({ id: blobObjects.id }))[0] ??
+      (
+        await tx
+          .select({ id: blobObjects.id })
+          .from(blobObjects)
+          .where(eq(blobObjects.storageKey, stored.storageKey))
+      )[0];
+      if (!blobRow) throw new Error("blob row missing after insert");
+      const [capture] = await tx
+        .insert(captures)
+        .values({
+          workspaceId: auth.workspaceId,
+          kind: "file",
+          source: input.source ?? "quick_capture",
+          rawPayload: {
+            filename,
+            mimeType,
+            sizeBytes: input.bytes.byteLength,
+            contentHash,
+            ...(input.verdict.ok ? {} : { quarantined: true }),
+          },
+          text: null,
+          blobId: blobRow.id,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning();
+      await recordAudit(
+        auth,
+        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
+        tx,
+      );
+        return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
+      });
+      lostRace = replayed;
+      return value;
+    });
+    // Lost idempotency race: the response is the winner's, and the object this
+    // run stored is referenced by nothing - remove it.
+    if (lostRace) await deleteBlob(stored.storageKey).catch(() => {});
+    return result;
+  } catch (cause) {
+    // The rows rolled back; the just-stored object is garbage. Best-effort
+    // cleanup, then the original error - never a misleading success.
+    await deleteBlob(stored.storageKey).catch(() => {});
+    throw cause;
+  }
+}
+
+/**
  * Turn a capture into a canonical task. The task row, the lineage edge
  * (convertedType/convertedId/convertedAt) and the audit row are one commit;
  * a stale version or an already-converted capture is a user-safe error, not
@@ -140,7 +276,12 @@ export async function convertCaptureToTask(
       throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
     }
 
-    const sourceText = capture.text ?? capture.url ?? "Captured item";
+    const sourceText =
+      capture.text ??
+      capture.url ??
+      // A file capture's only label is its filename; its bytes are not text.
+      ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
+      "Captured item";
     const title = input.title?.trim() || (sourceText.length > 120 ? `${sourceText.slice(0, 117)}…` : sourceText);
     const task = await createTask(
       auth,

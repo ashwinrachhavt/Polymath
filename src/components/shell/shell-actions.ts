@@ -210,3 +210,16 @@ function rankRecords(records: WorkspaceRecord[], q: string): WorkspaceRecord[] {
     .sort((a, b) => a.tier - b.tier || a.index - b.index)
     .map((entry) => entry.record);
 }
+
+/**
+ * A file capture lands through POST /api/v1/captures/file (the 4.5 MB
+ * multipart path server actions cannot take); this expires the cached inbox
+ * surfaces afterwards, the same refresh quickCreate does for text captures.
+ */
+export async function refreshInbox(): Promise<void> {
+  const auth = await getAuthContext();
+  // Invalidates only the caller's own workspace tag; still a guarded action.
+  requireRole(auth, "viewer");
+  updateTag(capturesTag(auth));
+  revalidatePath("/command-center/inbox");
+}
