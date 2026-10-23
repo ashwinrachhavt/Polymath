@@ -68,6 +68,8 @@ export const rewardLedger = pgTable(
     /** What earned it: the outcome, session, task, or review. */
     subjectType: text("subject_type"),
     subjectId: uuid("subject_id"),
+    /** The person's own sentence, carried onto the stone at completion. */
+    note: text("note"),
     points: integer("points").notNull().default(0),
     idempotencyKey: text("idempotency_key").notNull(),
     ...recorded,

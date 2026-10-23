@@ -1,5 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { auditEvents } from "@/domains/audit/schema";
 import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -56,6 +57,38 @@ suite("reward rules", () => {
       .where(eq(rewardDefinitions.workspaceId, auth.workspaceId));
     expect(quartz.key).toBe("quartz");
     expect(quartz.points).toBe(10);
+  });
+
+  it("the completion sentence rides on the stone, and stays on the audit row when no stone is earned", async () => {
+    const auth = await seed("completion-sentence");
+    const first = await work.createOwnerTask(auth, { title: "First" });
+    const second = await work.createOwnerTask(auth, { title: "Second" });
+    await work.completeTask(auth, { taskId: first.id, sentence: "  Shipped the onboarding fix.  " });
+    await work.completeTask(auth, { taskId: second.id, sentence: "Wrote the retro notes." });
+
+    const ledger = await ledgerFor(auth.workspaceId);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].subjectId).toBe(first.id);
+    expect(ledger[0].note).toBe("Shipped the onboarding fix.");
+
+    // No second stone today, but the second sentence is not lost: every
+    // completion's audit row carries its note whether or not a stone was.
+    const audits = await db
+      .select({ subjectId: auditEvents.subjectId, metadata: auditEvents.metadata })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed")));
+    const bySubject = new Map(audits.map((a) => [a.subjectId, a.metadata as { completionNote?: string } | null]));
+    expect(bySubject.get(first.id)?.completionNote).toBe("Shipped the onboarding fix.");
+    expect(bySubject.get(second.id)?.completionNote).toBe("Wrote the retro notes.");
+  });
+
+  it("a blank or missing answer records no sentence", async () => {
+    const auth = await seed("completion-blank");
+    const blank = await work.createOwnerTask(auth, { title: "Quiet" });
+    await work.completeTask(auth, { taskId: blank.id, sentence: "   " });
+    const ledger = await ledgerFor(auth.workspaceId);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].note).toBeNull();
   });
 
   it("a disabled quartz definition skips the award without blocking completion", async () => {

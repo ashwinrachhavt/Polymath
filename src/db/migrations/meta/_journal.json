@@ -449,6 +449,13 @@
       "tag": "0237_account_capability_overrides",
       "when": 1792727159173,
       "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "tag": "0242_reward_ledger_note",
+      "when": 1792757100000,
+      "breakpoints": true
     }
   ]
 }

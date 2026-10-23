@@ -86,14 +86,23 @@ export async function createTaskAction(input: {
   return { ok: true, taskId: id };
 }
 
+const completionSentence = z
+  .string()
+  .trim()
+  .max(280, "Keep the sentence under 280 characters.")
+  .optional();
+
 export async function completeTaskAction(
   taskId: string,
+  sentence?: string,
 ): Promise<{ ok: true; quartzEarned: boolean } | { ok: false; error: string }> {
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) return { ok: false, error: "That task no longer exists." };
+  const noted = completionSentence.safeParse(sentence);
+  if (!noted.success) return { ok: false, error: noted.error.issues[0]?.message ?? "That sentence is too long." };
 
   const auth = await authorize();
-  const done = await completeTask(auth, { taskId: parsed.data });
+  const done = await completeTask(auth, { taskId: parsed.data, sentence: noted.data });
   revalidate(auth);
   // Already done leaves the row alone and says so, rather than pretending the
   // second click did something.

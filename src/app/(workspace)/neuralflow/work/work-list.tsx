@@ -79,6 +79,10 @@ export function WorkList({
 }) {
   const [optimisticItems, change] = useOptimistic(items, apply);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
+  // Completion asks the spec's question first: "what did you actually do?"
+  // The sentence rides onto the day's stone when one is earned; answering is
+  // optional - "Just complete" finishes with no sentence.
+  const [asking, setAsking] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [reward, setReward] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -103,6 +107,14 @@ export function WorkList({
         setError({ id, message: "Could not reach the server. Try again." });
       }
     });
+  }
+
+  function submitCompletion(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const input = event.currentTarget.elements.namedItem("sentence") as HTMLInputElement;
+    const sentence = input.value.trim();
+    setAsking(null);
+    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -219,11 +231,35 @@ export function WorkList({
                       variant="outline"
                       disabled={pending}
                       aria-label={`Done: complete ${row.title}`}
-                      onClick={() => run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id })}
+                      aria-expanded={asking === row.id}
+                      onClick={() => setAsking(asking === row.id ? null : row.id)}
                     >
                       Done
                     </Button>
                   </div>
+                  {asking === row.id ? (
+                    <form onSubmit={(event) => submitCompletion(event, row.id)} className="mt-1.5 flex w-full max-w-72 flex-col items-end gap-1.5">
+                      <label className="w-full text-xs text-muted-foreground" htmlFor={`sentence-${row.id}`}>
+                        What did you actually do?
+                      </label>
+                      <Input
+                        id={`sentence-${row.id}`}
+                        name="sentence"
+                        maxLength={280}
+                        placeholder="One sentence"
+                        autoFocus
+                        disabled={pending}
+                      />
+                      <div className="flex gap-1">
+                        <Button type="submit" size="sm" disabled={pending}>
+                          Complete
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setAsking(null); run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id }); }}>
+                          Just complete
+                        </Button>
+                      </div>
+                    </form>
+                  ) : null}
                   {error?.id === row.id ? <p role="alert" className="text-xs text-destructive">{error.message}</p> : null}
                 </div>
               ) : null}
