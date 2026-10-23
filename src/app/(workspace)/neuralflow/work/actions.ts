@@ -147,7 +147,7 @@ const bulkCompleteInput = z.array(z.string().uuid()).min(1).max(100);
 
 export async function completeTasksAction(
   taskIds: string[],
-): Promise<{ ok: true; completed: string[]; skipped: string[]; unknown: string[]; quartzEarned: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; completed: string[]; skipped: string[]; unknown: string[]; unattempted: string[]; quartzEarned: boolean } | { ok: false; error: string }> {
   const parsed = bulkCompleteInput.safeParse(taskIds);
   if (!parsed.success) return { ok: false, error: "Select between 1 and 100 tasks." };
 

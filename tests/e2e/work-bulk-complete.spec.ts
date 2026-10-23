@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
 
 /*
@@ -8,7 +8,16 @@ import postgres from "postgres";
  * not, and a reload proves the server's truth (nothing lives in browser
  * storage). The per-item guards the bulk path composes over are covered
  * against real Postgres in tests/integration/work-bulk-complete.test.ts.
+ *
+ * Screenshots land in test-results/bulk-pixels/ and upload as the
+ * bulk-complete-pixels CI artifact: the hydrated action bar and the mixed
+ * outcome are visual states a static render cannot show.
  */
+
+const VIEWPORTS = [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+] as const;
 
 function db(): postgres.Sql | null {
   if (!process.env.DATABASE_URL) {
@@ -21,67 +30,73 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-async function addTask(page: import("@playwright/test").Page, title: string) {
+async function addTask(page: Page, title: string) {
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
   // The link (not the optimistic span) means the server row is back.
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
 }
 
-test("select tasks, complete them in bulk, and it sticks after reload", async ({ page }) => {
-  const tag = Date.now().toString(36);
-  const a = `Bulk one ${tag}`;
-  const b = `Bulk two ${tag}`;
-  await page.goto("/neuralflow/work?view=saved");
-  await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
-  await addTask(page, a);
-  await addTask(page, b);
-
-  await page.getByLabel(`Select ${a}`).check();
-  await page.getByLabel(`Select ${b}`).check();
-  // The action bar reflects the actual selection state, not a claim.
-  await expect(page.getByLabel(`Select ${a}`)).toBeChecked();
-  await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Complete 2 selected" }).click();
-  await expect(page.getByText("Completed 2 tasks.", { exact: true })).toBeVisible();
-
-  // Persisted: a reload reads the server, and completed work left the list.
-  await page.reload();
-  await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
-});
-
-test("a task that moved on behind the page's back is named as not completed, never shown as done", async ({ page }) => {
-  const sql = db();
-  if (!sql) {
-    test.skip(true, "DATABASE_URL required to move a task mid-journey");
-    return;
-  }
-  const tag = Date.now().toString(36);
-  const a = `Bulk partial ${tag}`;
-  const b = `Bulk moved ${tag}`;
-  try {
+for (const vp of VIEWPORTS) {
+  test(`select tasks, complete them in bulk, and it sticks after reload [${vp.name}]`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const tag = `${Date.now().toString(36)}${vp.name[0]}`;
+    const a = `Bulk one ${tag}`;
+    const b = `Bulk two ${tag}`;
     await page.goto("/neuralflow/work?view=saved");
+    await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
     await addTask(page, a);
     await addTask(page, b);
 
-    // b completes elsewhere before the page acts on it.
-    await sql`update tasks set status = 'done', completed_at = now(), version = version + 1 where title = ${b}`;
-
     await page.getByLabel(`Select ${a}`).check();
     await page.getByLabel(`Select ${b}`).check();
+    // The action bar reflects the actual selection state, not a claim.
+    await expect(page.getByLabel(`Select ${a}`)).toBeChecked();
     await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await page.screenshot({ path: `test-results/bulk-pixels/selected-bar-${vp.name}.png`, fullPage: true });
     await page.getByRole("button", { name: "Complete 2 selected" }).click();
-    await expect(
-      page.getByText("Completed 1 of 2. 1 could not be completed (already done or no longer available).", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("Completed 2 tasks.", { exact: true })).toBeVisible();
 
-    // The server's truth after reload: both left the open list - a through
-    // this action, b through the earlier completion this one honestly named.
+    // Persisted: a reload reads the server, and completed work left the list.
     await page.reload();
     await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
-  } finally {
-    await sql.end();
-  }
-});
+  });
+
+  test(`a task that moved on behind the page's back is named as not completed [${vp.name}]`, async ({ page }) => {
+    const sql = db();
+    if (!sql) {
+      test.skip(true, "DATABASE_URL required to move a task mid-journey");
+      return;
+    }
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const tag = `${Date.now().toString(36)}${vp.name[0]}`;
+    const a = `Bulk partial ${tag}`;
+    const b = `Bulk moved ${tag}`;
+    try {
+      await page.goto("/neuralflow/work?view=saved");
+      await addTask(page, a);
+      await addTask(page, b);
+
+      // b completes elsewhere before the page acts on it.
+      await sql`update tasks set status = 'done', completed_at = now(), version = version + 1 where title = ${b}`;
+
+      await page.getByLabel(`Select ${a}`).check();
+      await page.getByLabel(`Select ${b}`).check();
+      await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Complete 2 selected" }).click();
+      await expect(
+        page.getByText("Completed 1 of 2. 1 could not be completed (already done or no longer available).", { exact: true }),
+      ).toBeVisible();
+      await page.screenshot({ path: `test-results/bulk-pixels/mixed-outcome-${vp.name}.png`, fullPage: true });
+
+      // The server's truth after reload: both left the open list - a through
+      // this action, b through the earlier completion this one honestly named.
+      await page.reload();
+      await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+    } finally {
+      await sql.end();
+    }
+  });
+}

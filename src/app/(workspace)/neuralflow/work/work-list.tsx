@@ -187,10 +187,9 @@ export function WorkList({
           // one, because each may already be done - and the rest were not
           // attempted.
           setSelection(result.unknown);
-          const unattempted = ids.length - result.completed.length - result.skipped.length - result.unknown.length;
           setBulkResult({
             kind: "error",
-            message: `Stopped early. Completed ${result.completed.length} of ${ids.length}${result.skipped.length ? `; ${result.skipped.length} could not be completed` : ""}. ${result.unknown.length} may or may not have completed - ${result.unknown.length === 1 ? "it stays" : "they stay"} selected, check before retrying.${unattempted > 0 ? ` ${unattempted} were not attempted.` : ""}`,
+            message: `Stopped early. Completed ${result.completed.length} of ${ids.length}${result.skipped.length ? `; ${result.skipped.length} could not be completed` : ""}. ${result.unknown.length} may or may not have completed - ${result.unknown.length === 1 ? "it stays" : "they stay"} selected, check before retrying.${result.unattempted.length > 0 ? ` ${result.unattempted.length} were not attempted.` : ""}`,
           });
         } else {
           // Clear the whole selection: the refresh reconciles every row to

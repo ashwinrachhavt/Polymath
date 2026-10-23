@@ -302,6 +302,12 @@ export type BulkCompleteOutcome = {
    * which the caller can compute from the three lists and the request.
    */
   unknown: string[];
+  /**
+   * Ids the batch never reached because it stopped at the first unknown.
+   * Returned explicitly - the caller must not have to set-subtract to learn
+   * what was not attempted.
+   */
+  unattempted: string[];
   quartzEarned: boolean;
 };
 
@@ -319,13 +325,14 @@ export type BulkCompleteOutcome = {
  * Sequential on purpose: the audit trail's order is the caller's order.
  */
 export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
-  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], quartzEarned: false };
-  for (const taskId of taskIds) {
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], unattempted: [], quartzEarned: false };
+  for (const [index, taskId] of taskIds.entries()) {
     let result: Awaited<ReturnType<typeof completeTask>>;
     try {
       result = await completeTask(auth, { taskId });
     } catch {
       outcome.unknown.push(taskId);
+      outcome.unattempted = taskIds.slice(index + 1);
       break;
     }
     if (result) {

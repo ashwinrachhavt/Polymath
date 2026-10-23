@@ -87,6 +87,8 @@ suite("bulk complete", () => {
     expect(first.skipped.length + second.skipped.length).toBe(1);
     expect(first.unknown).toEqual([]);
     expect(second.unknown).toEqual([]);
+    expect(first.unattempted).toEqual([]);
+    expect(second.unattempted).toEqual([]);
 
     const completions = await db
       .select({ id: auditEvents.id })
@@ -107,6 +109,8 @@ suite("bulk complete", () => {
     expect(outcome.completed).toEqual([one]);
     expect(outcome.skipped).toEqual([]);
     expect(outcome.unknown).toEqual(["not-a-uuid"]);
+    // Returned explicitly, not inferred by set-subtraction at the caller.
+    expect(outcome.unattempted).toEqual([two]);
 
     const [after] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, two));
     expect(after.status).toBe("inbox");
