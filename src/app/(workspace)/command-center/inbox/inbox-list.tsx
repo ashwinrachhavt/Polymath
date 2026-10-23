@@ -76,10 +76,12 @@ export function captureStateLabel(state: string): string {
 }
 
 /** One line of primary text: the first line of the body, else the URL. */
-export function captureTitle(capture: { preview?: string | null; text?: string | null; url?: string | null }): string {
+export function captureTitle(capture: { preview?: string | null; text?: string | null; url?: string | null; rawPayload?: unknown }): string {
   const body = capture.preview ?? capture.text ?? "";
   const first = body.trim().split("\n")[0]?.trim();
-  return first || capture.url || "Empty capture";
+  // A file capture's only label is its filename.
+  const filename = ((capture.rawPayload ?? {}) as { filename?: string }).filename?.trim();
+  return first || capture.url || filename || "Empty capture";
 }
 
 function when(iso: string): string {

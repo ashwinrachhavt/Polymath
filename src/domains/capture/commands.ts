@@ -9,7 +9,7 @@ import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { findCaptureIdByUrl } from "./queries";
-import { putBlob } from "@/integrations/object-store/object-store";
+import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
@@ -37,6 +37,16 @@ export class ConflictError extends Error {
   constructor(message: string, existingId?: string) {
     super(message);
     this.existingId = existingId;
+  }
+}
+
+/** The object store refused the bytes before any row existed; the caller can retry, nothing was captured. */
+export class StorageWriteFailedError extends Error {
+  readonly code = "storage_write_failed";
+  constructor(cause: unknown) {
+    super("The file could not be stored. Nothing was captured - try again.");
+    this.name = "StorageWriteFailedError";
+    this.cause = cause;
   }
 }
 
@@ -137,6 +147,11 @@ export async function createCapture(
  * Verified files are likewise not extracted here: `text` stays null, so
  * search and semantic surfaces never imply the file's contents are readable.
  */
+/** The receipt payload for a file capture - route pre-check and command receipt must hash this exact shape. */
+export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
+  return { op: "createFileCapture", contentHash, filename };
+}
+
 export async function createFileCapture(
   auth: AuthContext,
   input: {
@@ -162,9 +177,19 @@ export async function createFileCapture(
   const mimeType = input.verdict.ok ? input.verdict.mimeType : "application/octet-stream";
   // Network write outside the transaction: a storage failure throws before any
   // row exists, so the caller gets a clean error and nothing half-created.
-  const stored = await putBlob({ bytes: input.bytes, filename, contentType: mimeType, workspaceId: auth.workspaceId, contentHash });
-  const { value } = await withTransaction(async (tx) => {
-    return withReceipt(tx, auth, input.idempotencyKey, { op: "createFileCapture", contentHash, filename }, async () => {
+  let stored: Awaited<ReturnType<typeof putBlob>>;
+  try {
+    stored = await putBlob({ bytes: input.bytes, filename, contentType: mimeType, workspaceId: auth.workspaceId, contentHash });
+  } catch (cause) {
+    // No rows exist yet; a storage fault is a clean, retryable failure, never
+    // an ambiguous 500 that might have half-created something.
+    if (cause instanceof ObjectStoreUnconfiguredError) throw cause;
+    throw new StorageWriteFailedError(cause);
+  }
+  let lostRace = false;
+  try {
+    const result = await withTransaction(async (tx) => {
+      const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, fileCaptureReceiptRequest(contentHash, filename), async () => {
     const blobRow =
       (await tx
         .insert(blobObjects)
@@ -210,10 +235,21 @@ export async function createFileCapture(
         { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
         tx,
       );
-      return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
+        return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
+      });
+      lostRace = replayed;
+      return value;
     });
-  });
-  return value;
+    // Lost idempotency race: the response is the winner's, and the object this
+    // run stored is referenced by nothing - remove it.
+    if (lostRace) await deleteBlob(stored.storageKey).catch(() => {});
+    return result;
+  } catch (cause) {
+    // The rows rolled back; the just-stored object is garbage. Best-effort
+    // cleanup, then the original error - never a misleading success.
+    await deleteBlob(stored.storageKey).catch(() => {});
+    throw cause;
+  }
 }
 
 /**
@@ -240,7 +276,12 @@ export async function convertCaptureToTask(
       throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
     }
 
-    const sourceText = capture.text ?? capture.url ?? "Captured item";
+    const sourceText =
+      capture.text ??
+      capture.url ??
+      // A file capture's only label is its filename; its bytes are not text.
+      ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
+      "Captured item";
     const title = input.title?.trim() || (sourceText.length > 120 ? `${sourceText.slice(0, 117)}…` : sourceText);
     const task = await createTask(
       auth,

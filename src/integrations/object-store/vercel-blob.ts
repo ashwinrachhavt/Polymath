@@ -1,4 +1,4 @@
-import { get, put } from "@vercel/blob";
+import { del, get, put } from "@vercel/blob";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 
@@ -27,6 +27,15 @@ export async function putBlob(input: {
   );
   const contentHash = input.contentHash ?? (await sha256Hex(input.bytes));
   return { storageKey: blob.url, contentHash, sizeBytes: input.bytes.byteLength };
+}
+
+/**
+ * Best-effort removal of an object this run just wrote (orphan cleanup after
+ * a failed finalize or a lost idempotency race). blob_objects is the ledger:
+ * an object with no row is garbage whether or not this delete lands.
+ */
+export async function deleteBlob(storageKey: string): Promise<void> {
+  await del(storageKey);
 }
 
 /** Server-side only; callers must authorize the stored key's workspace first. */

@@ -55,7 +55,8 @@ const listColumns = {
   version: captures.version,
   convertedType: captures.convertedType,
   convertedId: captures.convertedId,
-  preview: sql<string | null>`left(${captures.text}, 300)`,
+  // A file capture has no text; its only searchable label is the filename.
+  preview: sql<string | null>`coalesce(left(${captures.text}, 300), ${captures.rawPayload}->>'filename')`,
 };
 
 /** Paged, searchable read for the inbox list pane. The total honours every filter. */
@@ -67,7 +68,8 @@ export async function searchCaptures(
   if (input.kind) parts.push(eq(captures.kind, input.kind));
   if (input.query?.trim()) {
     const like = `%${escapeLike(input.query.trim())}%`;
-    parts.push(or(ilike(captures.text, like), ilike(captures.url, like))!);
+    // The filename matches search too - the file's CONTENTS stay unsearchable.
+    parts.push(or(ilike(captures.text, like), ilike(captures.url, like), ilike(sql`${captures.rawPayload}->>'filename'`, like))!);
   }
   const where = and(...parts);
   const [items, [totalRow]] = await Promise.all([
