@@ -24,6 +24,7 @@ export function CommandLayer() {
   const [text, setText] = useState("");
   const [kind, setKind] = useState<"capture" | "task" | "note">("capture");
   const [saveError, setSaveError] = useState("");
+  const [saveErrorId, setSaveErrorId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [records, setRecords] = useState<WorkspaceRecord[]>([]);
   const [searched, setSearched] = useState(false);
@@ -88,10 +89,11 @@ export function CommandLayer() {
     event.preventDefault();
     if (!text.trim() || pending) return;
     setSaveError("");
+    setSaveErrorId(null);
     setPending(true);
     void quickCreate(kind, text, crypto.randomUUID())
       .then((result) => {
-        if (!result.ok) { setSaveError(result.error); return; }
+        if (!result.ok) { setSaveError(result.error); setSaveErrorId(result.existingId ?? null); return; }
         notify(result.message);
         setText(""); setMode(null);
       })
@@ -135,10 +137,26 @@ export function CommandLayer() {
             <label className="flex flex-col gap-2 text-[13px] font-medium">Capture content<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} placeholder="A thought, a task, a link, or something to clarify" /></label>
           </form>
           <ImportDrop hint="Add pasted text or a URL. Files upload through Alfred Knowledge, where they are extracted." onImport={(result) => {
-            if (result.kind === "file") { setSaveError("Quick capture handles text and URLs. Add files in Alfred Knowledge."); return; }
+            if (result.kind === "file") { setSaveError("Quick capture handles text and URLs. Add files in Alfred Knowledge."); setSaveErrorId(null); return; }
             setText((current) => current ? `${current}\n${result.value}` : result.value);
           }} />
-          {saveError ? <p className="text-destructive text-[13px]" role="alert">{saveError}</p> : null}
+          {saveError ? (
+            <p className="text-destructive text-[13px]" role="alert">
+              {saveError}
+              {saveErrorId ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 hover:text-foreground"
+                    onClick={() => navigate(`/command-center/inbox?id=${saveErrorId}`)}
+                  >
+                    Open the one you already have
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <div className="flex justify-end"><Button type="submit" form="quick-capture-form" disabled={!text.trim() || pending}>Save capture</Button></div>
         </>}
       </DialogContent>
