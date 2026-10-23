@@ -96,7 +96,7 @@ export const destinations: Destination[] = [
   },
   {
     href: "/alfred/artifacts",
-    label: "Generated",
+    label: "Artifacts",
     purpose: "Everything the assistant made that you kept.",
     icon: Layers,
     group: "alfred",
