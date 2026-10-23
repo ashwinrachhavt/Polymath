@@ -41,20 +41,34 @@ export type SearchMode = "hybrid" | "keyword" | "meaning";
  *   carries no run id either. It is not the spec's full "source" dimension
  *   (captured sources are not in this index at all; origin/channel provenance
  *   does not exist in the schema).
- * - area is not implementable: the areas schema (0241) is unapplied and the
- *   artifact table has no area linkage on this base.
+ * - areaTags is the area dimension's artifact linkage: an area is a name plus
+ *   the note tags it covers (0241, declared never inferred), so an artifact
+ *   is IN an area when it carries ANY of the area's declared tags. Callers
+ *   resolve area -> tags against the areas table; tags are stored lowercased
+ *   and this filter normalizes to lowercase too. The areas table itself
+ *   (0241) is file-only/unapplied, so no UI resolves names on this base -
+ *   this is the domain predicate plus tests, exactly what the 067da68
+ *   correction taught us to label.
  */
 export type SearchFilters = {
   from?: Date;
   to?: Date;
   provenance?: "agent" | "not-agent";
+  areaTags?: string[];
 };
 
 /** One predicate set for every leg and count: a filter means the same thing everywhere. */
 function filterSql(filters?: SearchFilters) {
   if (!filters) return sql``;
+  // Area linkage: any declared tag matches (OR of jsonb contains, the same
+  // binding pattern the notes list tag filter uses). Normalized here so no
+  // caller can smuggle case/whitespace drift past the stored lowercase tags.
+  const areaTags = [...new Set((filters.areaTags ?? []).map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0))];
+  const area = areaTags.length
+    ? sql` and (${sql.join(areaTags.map((t) => sql`a.tags @> ${JSON.stringify([t])}::jsonb`), sql` or `)})`
+    : sql``;
   // postgres.js through db.execute cannot bind Date objects: send ISO strings.
-  return sql`${filters.from ? sql` and a.updated_at >= ${filters.from.toISOString()}::timestamptz` : sql``}${filters.to ? sql` and a.updated_at < ${filters.to.toISOString()}::timestamptz` : sql``}${filters.provenance === "agent" ? sql` and a.produced_by_run_id is not null` : sql``}${filters.provenance === "not-agent" ? sql` and a.produced_by_run_id is null` : sql``}`;
+  return sql`${filters.from ? sql` and a.updated_at >= ${filters.from.toISOString()}::timestamptz` : sql``}${filters.to ? sql` and a.updated_at < ${filters.to.toISOString()}::timestamptz` : sql``}${filters.provenance === "agent" ? sql` and a.produced_by_run_id is not null` : sql``}${filters.provenance === "not-agent" ? sql` and a.produced_by_run_id is null` : sql``}${area}`;
 }
 
 /** Kinds are interpolated into SQL as an enum array: only schema kinds may pass. */
