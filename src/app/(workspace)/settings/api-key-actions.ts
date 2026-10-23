@@ -6,6 +6,7 @@ import {
   revokeApiClient,
   type ApiClientView,
 } from "@/domains/identity/machine";
+import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -27,6 +28,7 @@ export type ApiKeyDto = Omit<ApiClientView, "pairedAt" | "lastSeenAt" | "expires
   expiresAt: string | null;
 };
 
+
 function toDto(view: ApiClientView): ApiKeyDto {
   return {
     ...view,
@@ -42,7 +44,7 @@ export async function listApiKeysAction(): Promise<Result<{ keys: ApiKeyDto[] }>
     requireRole(auth, "owner");
     return { ok: true, keys: (await listApiClients(auth)).map(toDto) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not load API keys." };
+    return { ok: false, error: actionError(error, "Could not load API keys.") };
   }
 }
 
@@ -61,7 +63,7 @@ export async function createApiKeyAction(input: {
     });
     return { ok: true, key: toDto(client), token };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not create the key." };
+    return { ok: false, error: actionError(error, "Could not create the key.") };
   }
 }
 
@@ -72,6 +74,6 @@ export async function revokeApiKeyAction(input: { clientId: string }): Promise<R
     await revokeApiClient(auth, String(input.clientId ?? ""));
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not revoke the key." };
+    return { ok: false, error: actionError(error, "Could not revoke the key.") };
   }
 }

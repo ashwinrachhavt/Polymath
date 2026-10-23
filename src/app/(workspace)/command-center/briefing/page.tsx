@@ -7,7 +7,8 @@ import { type BriefingTask } from "@/domains/work/briefing";
 import { getBriefingForPage } from "./data";
 import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
-import { OutcomeButton } from "./briefing-client";
+import { CalendarPanel } from "./calendar-panel";
+import { OutcomeButton, StartFocusButton } from "./briefing-client";
 
 export const metadata = { title: "Briefing · Polymath" };
 
@@ -32,7 +33,8 @@ function TaskRow({ task, outcomeTag, mode }: { task: BriefingTask; outcomeTag: s
         </p>
       </div>
       <div className="flex items-center gap-2">
-        {mode === "replace" ? <Status>Accepted outcome</Status> : null}
+        {mode === "replace" ? <Status>Accepted outcome</Status> : <Status>Suggested</Status>}
+        <StartFocusButton task={{ id: task.id, title: task.title }} />
         <OutcomeButton taskId={task.id} version={task.version} tags={task.tags} outcomeTag={outcomeTag} mode={mode} />
       </div>
     </div>
@@ -71,6 +73,10 @@ async function Briefing() {
         ) : null}
       </Panel>
 
+      <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the calendar…</p>}>
+        <CalendarPanel />
+      </Suspense>
+
       <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the agents…</p>}>
         <AgentPanels />
       </Suspense>
@@ -81,11 +87,14 @@ async function Briefing() {
             <Panel title="Today and overdue">
               <div className="divide-y divide-border">
                 {briefing.dueTodayOrOverdue.map((task) => (
-                  <div key={task.id} className="py-3 first:pt-0">
-                    <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
-                      {task.title}
-                    </Link>
-                    <p className="mt-0.5 text-xs text-muted-foreground">due {task.dueAt?.toISOString().slice(0, 10)} · {task.priority} priority</p>
+                  <div key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+                    <div>
+                      <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
+                        {task.title}
+                      </Link>
+                      <p className="mt-0.5 text-xs text-muted-foreground">due {task.dueAt?.toISOString().slice(0, 10)} · {task.priority} priority</p>
+                    </div>
+                    <StartFocusButton task={{ id: task.id, title: task.title }} />
                   </div>
                 ))}
               </div>
@@ -99,6 +108,9 @@ async function Briefing() {
                     <Link href={`/neuralflow/work?task=${encodeURIComponent(task.id)}`} className="text-[13px] font-medium hover:underline">
                       {task.title}
                     </Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      waiting{task.dueAt ? ` · due ${task.dueAt.toISOString().slice(0, 10)}` : ""} · {task.priority} priority
+                    </p>
                   </div>
                 ))}
               </div>

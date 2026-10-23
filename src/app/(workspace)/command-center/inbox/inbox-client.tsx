@@ -19,7 +19,7 @@ export function CaptureForm() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; existingId?: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const collapsed = !expanded && !text;
 
@@ -29,7 +29,7 @@ export function CaptureForm() {
     startTransition(async () => {
       const result = await captureTextAction({ text });
       if (!result.ok) {
-        setError(result.error);
+        setError({ message: result.error, existingId: result.existingId });
         return;
       }
       setText("");
@@ -99,7 +99,28 @@ export function CaptureForm() {
               <CornerDownLeft aria-hidden className="size-3" />
               <span className="readout">Cmd Enter</span>
             </span>
-            {error ? <p className="w-full text-destructive text-[13px]" role="alert">{error}</p> : null}
+            {error ? (
+              <p className="w-full text-destructive text-[13px]" role="alert">
+                {error.message}
+                {error.existingId ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-foreground"
+                      onClick={() => {
+                        setText("");
+                        setExpanded(false);
+                        setError(null);
+                        router.push(`/command-center/inbox?id=${error.existingId}`);
+                      }}
+                    >
+                      Open the one you already have
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
           </div>
         </div>
       )}

@@ -158,51 +158,49 @@ export type ComposioCallResult =
  *    provider call inside a turn hides the failure from the user.
  *  - the caller has already checked the run's policy snapshot; this function
  *    cannot see a policy and must not be the only gate.
- *
- * The proxy answers `{ data: <provider body> }`; a bare body is accepted too,
- * because the two shipped clients had to handle both shapes.
  */
-export async function executeComposioRead(call: ComposioCall): Promise<ComposioCallResult> {
-  if (!READ_METHODS.has(call.method)) throw new ComposioReadOnlyViolationError(call.method);
+/*
+ * The one POST through the proxy that every read path shares. The proxy
+ * answers `{ data: <provider body> }`; a bare body is accepted too, because
+ * the two shipped clients had to handle both shapes. No retry anywhere here:
+ * silently retrying a provider call inside a turn hides the failure from the
+ * user. The write path keeps its own fetch - its timeout makes a failure
+ * `ambiguous`, a deliberately different contract.
+ */
+async function postThroughProxy(payload: Record<string, unknown>): Promise<ComposioCallResult> {
   const apiKey = process.env.COMPOSIO_API_KEY;
-  if (!apiKey) {
-    return {
-      ok: false,
-      code: "not_configured",
-      message: "Composio is not configured on this deployment yet.",
-    };
-  }
-  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
-  for (const [name, value] of Object.entries(call.query ?? {})) {
-    parameters.push({ name, value, type: "query" });
-  }
+  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
   let response: Response;
   try {
     response = await fetch(EXECUTE_PROXY_URL, {
       method: "POST",
       headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        connected_account_id: call.connectedAccountId,
-        endpoint: call.endpoint,
-        method: call.method,
-        ...(call.body === undefined ? {} : { body: call.body }),
-        parameters,
-      }),
+      body: JSON.stringify(payload),
     });
   } catch {
     return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
   }
   if (!response.ok) {
-    return {
-      ok: false,
-      code: "provider_error",
-      status: response.status,
-      message: `The connected service returned ${response.status}.`,
-    };
+    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
   }
   const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
   if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
   return { ok: true, data: "data" in body ? body.data : body };
+}
+
+export async function executeComposioRead(call: ComposioCall): Promise<ComposioCallResult> {
+  if (!READ_METHODS.has(call.method)) throw new ComposioReadOnlyViolationError(call.method);
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  for (const [name, value] of Object.entries(call.query ?? {})) {
+    parameters.push({ name, value, type: "query" });
+  }
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: call.method,
+    ...(call.body === undefined ? {} : { body: call.body }),
+    parameters,
+  });
 }
 
 /*
@@ -227,30 +225,36 @@ export async function executeComposioGraphqlRead(call: {
   variables?: Record<string, unknown>;
 }): Promise<ComposioCallResult> {
   if (!/^\s*query\b/.test(call.query) || GRAPHQL_FORBIDDEN.test(call.query)) throw new ComposioGraphqlNotQueryError();
-  const apiKey = process.env.COMPOSIO_API_KEY;
-  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
-  let response: Response;
-  try {
-    response = await fetch(EXECUTE_PROXY_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        connected_account_id: call.connectedAccountId,
-        endpoint: call.endpoint,
-        method: "POST",
-        body: { query: call.query, variables: call.variables ?? {} },
-        parameters: [],
-      }),
-    });
-  } catch {
-    return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
-  }
-  if (!response.ok) {
-    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
-  }
-  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
-  if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
-  return { ok: true, data: "data" in body ? body.data : body };
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: "POST",
+    body: { query: call.query, variables: call.variables ?? {} },
+    parameters: [],
+  });
+}
+
+/*
+ * A constant-body POST read (Notion search). Same seam discipline as the
+ * GraphQL read: the provider module fixes the endpoint and the body shape,
+ * caller-supplied values travel inside the body only after validation, and
+ * the proxy still answers `{ data: <provider body> }`. There is no method
+ * parameter - a POST read cannot become anything else from here.
+ */
+export async function executeComposioPostRead(call: {
+  connectedAccountId: string;
+  endpoint: string;
+  body: Record<string, unknown>;
+  headers?: Record<string, string>;
+}): Promise<ComposioCallResult> {
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: "POST",
+    body: call.body,
+    parameters,
+  });
 }
 
 /** A write call: the method is fixed at the type level, and guarded at runtime. */

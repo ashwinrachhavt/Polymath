@@ -1,4 +1,5 @@
 import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
@@ -173,6 +174,22 @@ export async function listDocumentSearchResults(workspaceId: string, runIds: str
 }
 
 /** One profile by name, workspace-scoped; foreign and missing names return the same null. */
+/** The workspace's one first-party profile (agents/product.md), with its brief. */
+export async function getDefaultProfile(auth: AuthContext) {
+  const [profile] = await db
+    .select({
+      id: agentProfiles.id,
+      name: agentProfiles.name,
+      description: agentProfiles.description,
+      instructions: agentProfiles.instructions,
+      version: agentProfiles.version,
+    })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.isDefault, true)))
+    .limit(1);
+  return profile ?? null;
+}
+
 export async function getProfileByName(workspaceId: string, name: string) {
   const [profile] = await db
     .select({ id: agentProfiles.id, name: agentProfiles.name, description: agentProfiles.description })

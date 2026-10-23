@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { linkTargetInsertion, type LinkTarget } from "./link-target-insertion";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -18,7 +19,8 @@ import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
 
 /** A card the `[[` picker can offer. `version` only comes from the local preview store. */
-export type LinkTarget = { id: string; title: string; kind: string; version?: number };
+export type { LinkTarget } from "./link-target-insertion";
+export { linkTargetInsertion };
 /** Search the workspace's cards. "keyword" answers fast; "hybrid" adds meaning and takes longer. */
 export type FindLinkTargets = (query: string, mode: "keyword" | "hybrid") => Promise<LinkTarget[]>;
 
@@ -189,7 +191,7 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
           event.preventDefault();
           if (event.key === "Escape") { setLink(null); return true; }
           const match = matches[Math.min(linkActive, matches.length - 1)];
-          editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${match.title}]] `).run();
+          editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(linkTargetInsertion(match)).run();
           setLink(null);
           return true;
         }
@@ -257,13 +259,13 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
   );
   const recordDialog = (
     <Dialog open={recordOpen} onOpenChange={setRecordOpen}><DialogTrigger asChild><Button type="button" variant="ghost">Link an artifact</Button></DialogTrigger><DialogContent className="sm:max-w-lg"><DialogTitle>Insert canonical artifact link</DialogTitle><DialogDescription>Equivalent to linking a knowledge page: inserts a Markdown link to an existing artifact identity. Save in Notebook to capture its backlink.</DialogDescription><SearchField value={recordQuery} onChange={setRecordQuery} placeholder="Search notes and knowledge" /><div className="max-h-72 space-y-1 overflow-y-auto">{findLinkTargets
-            ? remote.map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent(`[[${item.title}]] `).run(); setRecordOpen(false); }}>{item.title}</Button>)
+            ? remote.map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent(linkTargetInsertion(item)).run(); setRecordOpen(false); }}>{item.title}</Button>)
             : state.artifacts.filter((item) => item.title.toLowerCase().includes(recordQuery.toLowerCase())).map((item) => <Button type="button" key={item.id} className="w-full justify-start" variant="ghost" onClick={() => { editor?.chain().focus().insertContent({ type: "text", text: item.title, marks: [{ type: "link", attrs: { href: artifactHref(item) } }] }).run(); setRecordOpen(false); }}>{item.title}</Button>)}</div></DialogContent></Dialog>
   );
   return (
     <div ref={containerRef} className={floating ? "relative" : "relative panel overflow-hidden rounded-lg"}>
       {slash && slashMatches.length > 0 && <div className="absolute z-50 top-12 left-0" style={menuPos ?? undefined}><SlashMenu items={slashMatches} active={slashActive} onPick={(command) => { editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (editor) applyBlock(editor, command); setSlash(null); }} /></div>}
-      {link && linkMatches.length > 0 && <div className="absolute z-50 top-12 left-0" style={menuPos ?? undefined}><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(`[[${artifact.title}]] `).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind}{artifact.version !== undefined ? ` / v${artifact.version}` : ""}</span></button>)}</div></div>}
+      {link && linkMatches.length > 0 && <div className="absolute z-50 top-12 left-0" style={menuPos ?? undefined}><div role="listbox" aria-label="Link a record" className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]">{linkMatches.map((artifact, index) => <button key={artifact.id} type="button" role="option" aria-selected={index === linkActive} className={`flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left ${index === linkActive ? "bg-muted" : ""}`} onMouseDown={(event) => { event.preventDefault(); editor?.chain().focus().deleteRange({ from: link.from, to: link.to }).insertContent(linkTargetInsertion(artifact)).run(); setLink(null); }}><span className="font-medium">{artifact.title}</span><span className="text-xs text-muted-foreground">{artifact.kind}{artifact.version !== undefined ? ` / v${artifact.version}` : ""}</span></button>)}</div></div>}
       {floating ? (
         floatAt ? (
           <div

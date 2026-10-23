@@ -188,6 +188,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                     createdAt: selected.createdAt.toISOString(),
                     text: selected.text,
                     url: selected.url,
+                    rawPayload: selected.rawPayload,
                     version: selected.version,
                     failureReason: selected.failureReason,
                     convertedType: selected.convertedType,

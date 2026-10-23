@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import CommandCenterScreen from "@/components/products/command-center/screen-dispatch";
+import { clerkConfigured } from "@/lib/clerk";
 import { products } from "@/lib/products";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -23,7 +24,7 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   const ambiguous = Array.isArray(raw) && raw.length > 1;
   const recordId = !ambiguous && rawId && /^[a-zA-Z0-9_-]{1,100}$/.test(rawId) ? rawId : undefined;
   const invalidRecordId = ambiguous || (rawId !== undefined && !recordId);
-  return <CommandCenterScreen key={`${screen}:${recordId || ""}:${invalidRecordId}`} screen={screen} recordId={recordId} invalidRecordId={invalidRecordId}/>;
+  return <CommandCenterScreen key={`${screen}:${recordId || ""}:${invalidRecordId}`} screen={screen} recordId={recordId} invalidRecordId={invalidRecordId} browserPreview={!clerkConfigured}/>;
 }
 
 export default function Page({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {

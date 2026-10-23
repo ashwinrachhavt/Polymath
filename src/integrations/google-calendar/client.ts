@@ -13,6 +13,13 @@ export interface GoogleCalendarClient {
     events: GoogleEvent[];
     /** Newest `updated` stamp seen, the next watermark. */
     newestUpdated: string | null;
+    /**
+     * True when the page cap cut the read short with more pages pending.
+     * Callers with a watermark (sync) make progress on the next run; callers
+     * without one (the briefing agenda) must not present the partial list as
+     * complete.
+     */
+    truncated: boolean;
   }>;
 }
 
@@ -35,7 +42,8 @@ export function composioGoogleCalendarClient(
       const events: GoogleEvent[] = [];
       let newest: string | null = null;
       let pageToken: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page += 1) {
+      let page = 0;
+      for (; page < MAX_PAGES; page += 1) {
         const query: Record<string, string> = {
           singleEvents: "true",
           showDeleted: "true",
@@ -60,14 +68,20 @@ export function composioGoogleCalendarClient(
         const body = (await res.json()) as { data?: { items?: RawEvent[]; nextPageToken?: string }; items?: RawEvent[]; nextPageToken?: string };
         // The proxy wraps the provider body under `data`; accept either shape.
         const payload = body.data ?? body;
-        for (const item of payload.items ?? []) {
+        // A 200 whose body is not an event list (provider error page, proxy
+        // envelope, HTML) must fail loudly: treating a missing `items` as an
+        // empty list would read a broken calendar as a free day.
+        if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
+          throw new Error("Google Calendar returned an unexpected response.");
+        }
+        for (const item of payload.items) {
           events.push(item);
           if (item.updated && (!newest || item.updated > newest)) newest = item.updated;
         }
         pageToken = payload.nextPageToken;
         if (!pageToken) break;
       }
-      return { events, newestUpdated: newest };
+      return { events, newestUpdated: newest, truncated: Boolean(pageToken) };
     },
   };
 }

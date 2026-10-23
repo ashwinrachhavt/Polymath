@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Plus, Search, Users } from "lucide-react";
+import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Paperclip, Plus, Search, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navi
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
 import { ShortcutsDialog } from "./shortcuts-dialog";
-import { quickCreate, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
+import { quickCreate, refreshInbox, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
 
 const subscribeToHydration = () => () => {};
 
@@ -24,12 +24,15 @@ export function CommandLayer() {
   const [text, setText] = useState("");
   const [kind, setKind] = useState<"capture" | "task" | "note">("capture");
   const [saveError, setSaveError] = useState("");
+  const [saveErrorId, setSaveErrorId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [records, setRecords] = useState<WorkspaceRecord[]>([]);
   const [searched, setSearched] = useState(false);
   const [selected, setSelected] = useState(0);
   const searchTrigger = useRef<HTMLButtonElement>(null);
   const captureTrigger = useRef<HTMLButtonElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [filePending, setFilePending] = useState(false);
   const returnTo = useRef<"search" | "capture">("search");
 
   function open(next: "search" | "capture") {
@@ -84,14 +87,46 @@ export function CommandLayer() {
   const active = Math.min(selected, Math.max(0, results.length - 1));
 
   function navigate(href: string) { setMode(null); router.push(href); }
+  // Files and screenshots capture through the multipart API route (server
+  // actions cap below the 4.5 MB function ceiling), then the cached inbox is
+  // refreshed so the new row is there when the dialog lands on it.
+  function attachFile(file: File) {
+    if (filePending || pending) return;
+    setSaveError("");
+    setSaveErrorId(null);
+    // Matches the API route's deploy-supported cap; the message shows BEFORE submit.
+    if (file.size > 4 * 1024 * 1024) { setSaveError("Captures are limited to 4 MB - the largest upload this app accepts."); return; }
+    setFilePending(true);
+    const form = new FormData();
+    form.set("file", file);
+    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+      .then(async (res) => {
+        if (!res.ok) {
+          // A platform-level 413 answers with an HTML error page, not a
+          // problem body - name the limit either way, and never auto-retry.
+          if (res.status === 413) { setSaveError("That file is over the 4 MB limit."); return; }
+          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
+          setSaveError(problem?.title ?? "Could not capture the file. Try again.");
+          return;
+        }
+        const created = (await res.json()) as { captureId: string; quarantined: boolean };
+        await refreshInbox();
+        notify(created.quarantined ? `Captured ${file.name} - type not recognized, stored as-is.` : `Captured ${file.name}.`);
+        setText(""); setMode(null);
+        navigate(`/command-center/inbox?id=${created.captureId}`);
+      })
+      .catch(() => setSaveError("Could not capture the file. Try again."))
+      .finally(() => setFilePending(false));
+  }
   function saveCapture(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!text.trim() || pending) return;
     setSaveError("");
+    setSaveErrorId(null);
     setPending(true);
     void quickCreate(kind, text, crypto.randomUUID())
       .then((result) => {
-        if (!result.ok) { setSaveError(result.error); return; }
+        if (!result.ok) { setSaveError(result.error); setSaveErrorId(result.existingId ?? null); return; }
         notify(result.message);
         setText(""); setMode(null);
       })
@@ -133,12 +168,35 @@ export function CommandLayer() {
               {([{ value: "capture", label: "Inbox", icon: Inbox }, { value: "task", label: "Task", icon: ListTodo }, { value: "note", label: "Note", icon: FileText }] as const).map((item) => <Button key={item.value} type="button" variant={kind === item.value ? "secondary" : "ghost"} aria-pressed={kind === item.value} onClick={() => setKind(item.value)}><item.icon aria-hidden />{item.label}</Button>)}
             </div>
             <label className="flex flex-col gap-2 text-[13px] font-medium">Capture content<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} placeholder="A thought, a task, a link, or something to clarify" /></label>
+            {kind === "capture" ? (
+              <div className="flex items-center gap-2">
+                <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
+                <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
+                <span className="text-[11px] text-muted-foreground">File or screenshot, up to 4 MB. Stored as-is; contents aren&apos;t searchable.</span>
+              </div>
+            ) : null}
           </form>
           <ImportDrop hint="Add pasted text or a URL. Files upload through Alfred Knowledge, where they are extracted." onImport={(result) => {
-            if (result.kind === "file") { setSaveError("Quick capture handles text and URLs. Add files in Alfred Knowledge."); return; }
+            if (result.kind === "file") { setSaveError("Use Attach file to keep it as-is in the inbox, or Alfred Knowledge to extract it."); setSaveErrorId(null); return; }
             setText((current) => current ? `${current}\n${result.value}` : result.value);
           }} />
-          {saveError ? <p className="text-destructive text-[13px]" role="alert">{saveError}</p> : null}
+          {saveError ? (
+            <p className="text-destructive text-[13px]" role="alert">
+              {saveError}
+              {saveErrorId ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 hover:text-foreground"
+                    onClick={() => navigate(`/command-center/inbox?id=${saveErrorId}`)}
+                  >
+                    Open the one you already have
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <div className="flex justify-end"><Button type="submit" form="quick-capture-form" disabled={!text.trim() || pending}>Save capture</Button></div>
         </>}
       </DialogContent>
