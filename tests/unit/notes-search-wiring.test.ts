@@ -1,6 +1,7 @@
 import { createElement as h, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SearchAreaResolution } from "@/domains/knowledge/area-resolve";
 
 /*
  * Pins the notes-search filter wiring end to end at the component level: the
@@ -33,6 +34,11 @@ vi.mock("@/domains/knowledge/notes", () => ({
   listNoteBacklinks: vi.fn(async () => []),
 }));
 vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));
+const areaResolve = vi.hoisted(() => ({
+  listSearchAreaNames: vi.fn(async () => ["Training"]),
+  resolveSearchArea: vi.fn(async (): Promise<SearchAreaResolution> => ({ status: "resolved", name: "Training", tags: ["training"] })),
+}));
+vi.mock("@/domains/knowledge/area-resolve", () => areaResolve);
 const toolbarProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
 vi.mock("@/components/list/list-toolbar", () => ({
   ListToolbar: (props: unknown) => {
@@ -68,6 +74,9 @@ beforeEach(() => {
   toolbarProps.fn.mockClear();
   resultsProps.fn.mockClear();
   vi.mocked(getNote).mockResolvedValue(null);
+  areaResolve.listSearchAreaNames.mockClear();
+  areaResolve.resolveSearchArea.mockClear();
+  areaResolve.resolveSearchArea.mockResolvedValue({ status: "resolved", name: "Training", tags: ["training"] });
 });
 
 describe("notes page search-filter wiring", () => {
@@ -78,7 +87,7 @@ describe("notes page search-filter wiring", () => {
 
     renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
     const searching = toolbarProps.fn.mock.calls[1]?.[0] as { filters: { key: string }[] };
-    expect(searching.filters.map((f) => f.key)).toEqual(["view", "layout", "kind", "edited", "source"]);
+    expect(searching.filters.map((f) => f.key)).toEqual(["view", "layout", "kind", "edited", "source", "area"]);
   });
 
   it("parses kind/edited/source URL params into the scope handed to the results surface", async () => {
@@ -94,6 +103,29 @@ describe("notes page search-filter wiring", () => {
     renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", kind: "bogus" }) }));
     const scope2 = (resultsProps.fn.mock.calls[1]?.[0] as { scope: { kinds?: string[]; filters?: unknown } }).scope;
     expect(scope2.kinds).toBeUndefined();
+  });
+
+  it("resolves a requested area into the scope, and suppresses results generically when it cannot", async () => {
+    // Resolved area: its declared tags join the shared filters, and the
+    // control's options come from the workspace's live areas.
+    renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "zephyr", area: "Training" }) }));
+    const scope = (resultsProps.fn.mock.calls[0]?.[0] as { scope: { filters: { areaTags: string[] } } }).scope;
+    expect(scope.filters.areaTags).toEqual(["training"]);
+    const toolbar = toolbarProps.fn.mock.calls[0]?.[0] as { filters: { key: string; options: { value: string; label: string }[] }[] };
+    expect(toolbar.filters.find((f) => f.key === "area")?.options).toEqual([{ value: "Training", label: "Training" }]);
+
+    // Unavailable area: NO results surface renders at all (never a broadened
+    // search), the unavailable panel offers the remove-filter action, and the
+    // control shows a generic "Unavailable area" option - the requested name
+    // is never echoed back.
+    areaResolve.resolveSearchArea.mockResolvedValue({ status: "unavailable" });
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "zephyr", area: "bogus" }) }));
+    expect(html).not.toContain('data-testid="search-results"');
+    expect(html).toContain("That area isn");
+    expect(html).toContain("Remove the area filter");
+    expect(html).not.toContain(">bogus<");
+    const toolbar2 = toolbarProps.fn.mock.calls[1]?.[0] as { filters: { key: string; options: { value: string; label: string }[] }[] };
+    expect(toolbar2.filters.find((f) => f.key === "area")?.options).toContainEqual({ value: "bogus", label: "Unavailable area" });
   });
 
   it("places ranked results in the working column while searching, and back in the list column once a note is open", async () => {

@@ -1357,3 +1357,34 @@ export const cardReviews = pgTable(
     index("card_reviews_workspace_idx").on(t.workspaceId, t.createdAt),
   ],
 );
+/*
+ * Areas (Product Spec, "Areas and progress"): declared by the person, never
+ * inferred. An area is a name plus the note tags it covers; effort and
+ * knowledge confidence are computed from live content at read time, so the
+ * table stores no counters to drift. Spec rules honored by construction:
+ * areas are declared, not discovered; nothing here averages effort and
+ * confidence into a single score.
+ */
+export const areas = pgTable(
+  "areas",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    name: text("name").notNull(),
+    /** The note tags this area covers (normalized like artifacts.tags). */
+    tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    createdBy: uuid("created_by"),
+    updatedBy: uuid("updated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    // Live names are unique per workspace, case-insensitively; archiving
+    // releases the name.
+    uniqueIndex("areas_workspace_name_key").on(t.workspaceId, sql`lower(${t.name})`).where(sql`archived_at is null`),
+    index("areas_workspace_idx").on(t.workspaceId, t.archivedAt),
+  ],
+);
+
