@@ -1,4 +1,4 @@
-import { executeComposioGraphqlRead, executeComposioRead } from "./composio";
+import { executeComposioGraphqlRead, executeComposioPostRead, executeComposioRead } from "./composio";
 
 /*
  * The transport seam. Every gateway read tool talks to a provider through this
@@ -40,12 +40,33 @@ export type GraphqlReadRequest = {
   variables?: Record<string, unknown>;
 };
 
+/*
+ * A constant-body POST read (Notion search). Separate from `read` for the same
+ * reason as `graphql`: the GET/HEAD union stays closed, and the provider module
+ * owns the endpoint and body shape - only validated values travel as fields.
+ */
+export type PostReadRequest = {
+  connectedAccountId: string;
+  /** Absolute https URL, fixed by the provider module. */
+  endpoint: string;
+  /** Constant body template built by the provider module. */
+  body: Record<string, unknown>;
+  headers?: Record<string, string>;
+};
+
 export interface Transport {
   read(request: TransportRequest): Promise<TransportResult>;
   graphql?(request: GraphqlReadRequest): Promise<TransportResult>;
+  postRead?(request: PostReadRequest): Promise<TransportResult>;
 }
 
 export const composioTransport: Transport = {
+  async postRead(request) {
+    const result = await executeComposioPostRead(request);
+    if (result.ok) return { ok: true, status: 200, data: result.data };
+    if (result.code === "not_configured") return { ok: false, code: "not_configured", message: result.message };
+    return { ok: false, code: "provider_error", status: result.status, message: result.message };
+  },
   async graphql(request) {
     const result = await executeComposioGraphqlRead(request);
     if (result.ok) return { ok: true, status: 200, data: result.data };

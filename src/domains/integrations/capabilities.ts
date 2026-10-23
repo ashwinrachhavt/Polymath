@@ -41,7 +41,8 @@ export type Provider =
   | "airtable"
   | "canva"
   | "hubspot"
-  | "stripe";
+  | "stripe"
+  | "notion";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -54,9 +55,13 @@ export type CapabilitySpec = {
 
 /*
  * Gmail, GitHub and Slack ship in this slice (GitHub and Slack read-only).
- * Linear needs a POST-shaped GraphQL read the transport cannot express yet,
- * and Vercel and Notion rows are owned by later slices; leaving them out is what keeps this catalog honest
- * about what the gateway can actually route today.
+ * Providers whose reads the transport cannot express yet stay out of this
+ * catalog: that is what keeps it honest about what the gateway can actually
+ * route today.
+ *
+ * Notion ships as a search + page read through the constant-body POST seam
+ * (the transport's second exception, after GraphQL: the provider module owns
+ * the endpoint and body shape; only validated values travel).
  *
  * `gmail.read` and `gmail.send` are fixed names: they are in
  * `DEFAULT_ALLOWED_TOOLS` and in every frozen policy snapshot, so renaming one
@@ -96,6 +101,8 @@ export const CAPABILITIES = {
   "canva.designs.read": { provider: "canva", kind: "read", riskClass: "read", tool: "canva_list_designs" },
   "hubspot.contacts.read": { provider: "hubspot", kind: "read", riskClass: "read", tool: "hubspot_list_contacts" },
   "stripe.payments.read": { provider: "stripe", kind: "read", riskClass: "read", tool: "stripe_list_payments" },
+  "notion.read": { provider: "notion", kind: "read", riskClass: "read", tool: "notion_search" },
+  "notion.page.read": { provider: "notion", kind: "read", riskClass: "read", tool: "notion_read_page" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -127,6 +134,8 @@ export const PROVIDER_TOOLS = {
   canva_list_designs: "canva.designs.read",
   hubspot_list_contacts: "hubspot.contacts.read",
   stripe_list_payments: "stripe.payments.read",
+  notion_search: "notion.read",
+  notion_read_page: "notion.page.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -292,6 +301,14 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       capabilities: ["stripe.payments.read"],
     },
   ],
+  notion: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search and read the pages and databases you share with the connection.",
+      capabilities: ["notion.read", "notion.page.read"],
+    },
+  ],
 };
 
 /** The capabilities a tier grants; empty for an unknown tier id or provider. */
@@ -339,6 +356,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   "canva.designs.read": "List designs",
   "hubspot.contacts.read": "List contacts",
   "stripe.payments.read": "List payments",
+  "notion.read": "Search pages",
+  "notion.page.read": "Read pages",
 };
 
 /*

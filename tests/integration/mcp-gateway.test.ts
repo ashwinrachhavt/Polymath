@@ -209,6 +209,8 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
       "hubspot_list_contacts",
       "linear_read_issue",
       "linear_search_issues",
+      "notion_read_page",
+      "notion_search",
       "slack_list_channels",
       "slack_read_channel",
       "stripe_list_payments",
