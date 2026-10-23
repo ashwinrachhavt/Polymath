@@ -2,9 +2,11 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
+import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-templates";
 import {
   ConflictError,
   StaleWriteError,
+  convertCaptureToDraft,
   convertCaptureToNote,
   convertCaptureToTask,
   createCapture,
@@ -59,6 +61,27 @@ export async function makeTaskAction(input: { captureId: string; expectedVersion
     return fail(error);
   }
   updateTag(tasksTag(auth));
+  revalidate(auth);
+  return { ok: true };
+}
+
+const makeDraftInput = z.object({
+  captureId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  template: z.enum(DRAFT_TEMPLATES),
+});
+
+/** Turn a capture into a starter draft (email / product spec / tech spec) - one transaction, same guards as note conversion. */
+export async function makeDraftAction(input: { captureId: string; expectedVersion: number; template: DraftTemplate }): Promise<Result> {
+  const auth = await authorize();
+  const parsed = makeDraftInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That draft request was malformed. Reload and try again." };
+  try {
+    await convertCaptureToDraft(auth, parsed.data);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidatePath("/alfred/notes");
   revalidate(auth);
   return { ok: true };
 }
