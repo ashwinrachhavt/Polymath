@@ -218,7 +218,7 @@ export default function NotebookSurface({
   }
 
   return (
-    <div className="page-content grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+    <div className="page-content grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
       {/* Sources */}
       <aside aria-label="Sources" className="panel rounded-xl p-3">
         <div className="flex items-baseline justify-between gap-2 px-1">
@@ -234,12 +234,12 @@ export default function NotebookSurface({
             {sources.map((source) => (
               <li key={source.documentId} className="px-1 py-1.5">
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className="truncate text-[13px]">{source.title}</p>
+                  <p className="min-w-0 truncate text-[13px]">{source.title}</p>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {READINESS_LABEL[source.readiness]}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs break-words text-muted-foreground">
                   {source.kind === "video" ? "Video" : "Document"}
                   {source.detail ? ` · ${source.detail}` : ""}
                 </p>
@@ -478,7 +478,7 @@ export default function NotebookSurface({
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 border-b border-border pb-2 last:border-0 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="line-clamp-1 text-[13px]">{run.objective}</p>
+                    <p className="min-w-0 line-clamp-1 text-[13px]">{run.objective}</p>
                     <Badge variant="secondary" className="shrink-0 font-normal">
                       {run.state === "waiting_input" ? "Answered" : run.state}
                     </Badge>
