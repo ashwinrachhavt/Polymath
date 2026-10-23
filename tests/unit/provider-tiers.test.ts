@@ -25,6 +25,7 @@ const migrationSql = [
   "0232_workmgmt_tiers.sql",
   "0233_crm_tiers.sql",
   "0238_notion_access_tiers.sql",
+  "0239_social_access_tiers.sql",
 ]
   .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");

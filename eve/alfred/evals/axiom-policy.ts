@@ -63,6 +63,9 @@ export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
   "calendar.read": "read",
   "notion.read": "read",
   "notion.page.read": "read",
+  "linkedin.profile.read": "read",
+  "instagram.profile.read": "read",
+  "instagram.media.read": "read",
   "gmail.draft": "prepare",
   "notion.draft": "prepare",
   // NotebookLM parity. Opening a notebook reads its sources and artifacts.

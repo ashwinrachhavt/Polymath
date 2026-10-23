@@ -42,7 +42,9 @@ export type Provider =
   | "canva"
   | "hubspot"
   | "stripe"
-  | "notion";
+  | "notion"
+  | "linkedin"
+  | "instagram";
 
 export type CapabilitySpec = {
   provider: Provider;
@@ -103,6 +105,12 @@ export const CAPABILITIES = {
   "stripe.payments.read": { provider: "stripe", kind: "read", riskClass: "read", tool: "stripe_list_payments" },
   "notion.read": { provider: "notion", kind: "read", riskClass: "read", tool: "notion_search" },
   "notion.page.read": { provider: "notion", kind: "read", riskClass: "read", tool: "notion_read_page" },
+  // Social profiles: identity reads only. LinkedIn's member-feed read is a
+  // restricted permission; Instagram media reads need a professional account.
+  // Neither provider's writes are wired.
+  "linkedin.profile.read": { provider: "linkedin", kind: "read", riskClass: "read", tool: "linkedin_get_profile" },
+  "instagram.profile.read": { provider: "instagram", kind: "read", riskClass: "read", tool: "instagram_get_profile" },
+  "instagram.media.read": { provider: "instagram", kind: "read", riskClass: "read", tool: "instagram_list_media" },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type Capability = keyof typeof CAPABILITIES;
@@ -136,6 +144,9 @@ export const PROVIDER_TOOLS = {
   stripe_list_payments: "stripe.payments.read",
   notion_search: "notion.read",
   notion_read_page: "notion.page.read",
+  linkedin_get_profile: "linkedin.profile.read",
+  instagram_get_profile: "instagram.profile.read",
+  instagram_list_media: "instagram.media.read",
 } as const satisfies Record<string, Capability>;
 
 /*
@@ -309,6 +320,22 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       capabilities: ["notion.read", "notion.page.read"],
     },
   ],
+  linkedin: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can read your LinkedIn profile name, headline and photo.",
+      capabilities: ["linkedin.profile.read"],
+    },
+  ],
+  instagram: [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can read your Instagram profile and recent media.",
+      capabilities: ["instagram.profile.read", "instagram.media.read"],
+    },
+  ],
 };
 
 /** The capabilities a tier grants; empty for an unknown tier id or provider. */
@@ -358,6 +385,9 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   "stripe.payments.read": "List payments",
   "notion.read": "Search pages",
   "notion.page.read": "Read pages",
+  "linkedin.profile.read": "Read profile",
+  "instagram.profile.read": "Read profile",
+  "instagram.media.read": "Read recent media",
 };
 
 /*
