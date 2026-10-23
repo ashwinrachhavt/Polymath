@@ -147,9 +147,11 @@ async function meaningLeg(auth: AuthContext, vector: number[], model: string, ki
     from (
       select e.owner_id, e.embedding <=> ${literal}::vector as distance
       from embeddings e
+      join artifacts a on a.id = e.owner_id
       where e.workspace_id = ${auth.workspaceId}
         and e.owner_type = 'artifact'
         and e.model = ${model}
+        and e.source_version_id = a.current_version_id
       order by e.embedding <=> ${literal}::vector
       limit ${LEG_DEPTH * 3}
     ) c
@@ -253,13 +255,16 @@ export async function searchKnowledge(
 }
 
 /**
- * Partial-index visibility (spec: failed retrieval is visible, never presented
- * as a complete search). Counts artifacts matching the SAME kind set, filters
- * and tenant scope as the search itself whose meaning indexing FAILED
- * (embed_error set). Artifacts never attempted or skipped (e.g. empty text)
- * leave no trace, so this count is failed indexing exactly - not "pending".
+ * Partial-index visibility (spec: partial indexing is visible, never presented
+ * as a complete search). Counts artifacts matching the SAME kinds, filters and
+ * tenant scope as the search itself that the meaning leg CANNOT see: they have
+ * current text but no embedding row for their current version - indexing
+ * failed (embed_error set), is still pending, or the pass died before writing.
+ * The meaning leg ranks only current-version chunks, so this count is exactly
+ * "in scope, with text, not meaning-searchable". Empty-text artifacts are
+ * excluded: embedArtifact skips them by design and there is nothing to index.
  */
-export async function countMeaningIndexFailures(
+export async function countMeaningUncovered(
   auth: AuthContext,
   input: { kinds?: readonly string[]; filters?: SearchFilters },
 ): Promise<number> {
@@ -268,10 +273,18 @@ export async function countMeaningIndexFailures(
   const rows = await db.execute(sql`
     select count(*)::int as n
     from artifacts a
+    join artifact_versions v on v.id = a.current_version_id
     where a.workspace_id = ${auth.workspaceId}
       and a.archived_at is null
-      and a.embed_error is not null
+      and length(trim(coalesce(v.plain_text, ''))) > 0
       and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})${filterSql(input.filters)}
+      and not exists (
+        select 1 from embeddings e
+        where e.workspace_id = ${auth.workspaceId}
+          and e.owner_type = 'artifact'
+          and e.owner_id = a.id
+          and e.source_version_id = a.current_version_id
+      )
   `);
   return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
 }

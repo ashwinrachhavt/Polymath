@@ -24,7 +24,7 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
-import { countMeaningIndexFailures, fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
+import { countMeaningUncovered, fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
 import { syncThreadToGraph } from "@/domains/knowledge/thread-graph";
 
 function vec(dims: number[]): number[] {
@@ -166,23 +166,39 @@ suite("search filters (real Postgres)", () => {
     expect(human.id).not.toBe(generated.id);
   });
 
-  it("counts failed meaning indexing with the same kinds, filters and tenant scope as the search", async () => {
+  it("counts exactly what the meaning leg cannot see, with the same kinds, filters and tenant scope", async () => {
     const auth = await workspace();
     const other = await workspace();
-    // Every commit auto-embeds; with no real key that failure lands on
-    // embed_error. A successful fake-provider pass clears it, so these three
-    // start clean and only the two marked below count as failed indexing.
     const p = provider({ zephyr: vec([1]) });
-    const failed = await write(auth, "Failed zephyr", "zephyr failed to index", p);
-    await write(auth, "Healthy zephyr", "zephyr indexed fine", p);
-    const failedZettel = await write(auth, "Failed zephyr zettel", "zephyr zettel failed", p, "zettel");
-    await holder.db!.update(artifacts).set({ embedError: "provider 500" }).where(eq(artifacts.id, failed.id));
-    await holder.db!.update(artifacts).set({ embedError: "provider 500" }).where(eq(artifacts.id, failedZettel.id));
-    expect(await countMeaningIndexFailures(auth, {})).toBe(2);
-    expect(await countMeaningIndexFailures(auth, { kinds: ["note"] })).toBe(1);
-    // Same filters as the search: excluding the failed note narrows the count with it.
-    expect(await countMeaningIndexFailures(auth, { kinds: ["note"], filters: { to: new Date(Date.now() - 1000) } })).toBe(0);
-    // Tenant scope: the other workspace never sees these failures.
-    expect(await countMeaningIndexFailures(other, {})).toBe(0);
+    // Covered: embedded at the current version.
+    await write(auth, "Covered zephyr", "zephyr indexed fine", p);
+    // Failed: the auto-embed has no real key, so embed_error is set and no
+    // current-version rows exist.
+    await write(auth, "Failed zephyr", "zephyr failed to index");
+    // Pending: a real failure record cleared - text, no embedding, no error.
+    const pending = await write(auth, "Pending zephyr", "zephyr never attempted");
+    await holder.db!.update(artifacts).set({ embedError: null }).where(eq(artifacts.id, pending.id));
+    // Empty text is skipped by design: nothing to index, never counted.
+    await createNote(auth, { title: "Blank zephyr", kind: "note" });
+    expect(await countMeaningUncovered(auth, {})).toBe(2);
+    expect(await countMeaningUncovered(auth, { kinds: ["zettel"] })).toBe(0);
+    // Same filters as the search: excluding both uncovered notes zeroes the count.
+    expect(await countMeaningUncovered(auth, { filters: { to: new Date(Date.now() - 1000) } })).toBe(0);
+    // Tenant scope: the other workspace never sees these.
+    expect(await countMeaningUncovered(other, {})).toBe(0);
+  });
+
+  it("stale chunks after an edit do not rank, and the artifact reads as uncovered", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    const note = await write(auth, "Shifting note", "zephyr first draft", p);
+    // Control: the current-version chunk ranks before the edit.
+    const before = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
+    expect(before.hits.map((h) => h.title)).toContain("Shifting note");
+    // Edit: v2 commits, the auto-embed fails without a real key, v1 chunks go stale.
+    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: 2, content: { format: "markdown", text: "entirely ordinary replacement words" }, plainText: "entirely ordinary replacement words" });
+    const after = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
+    expect(after.hits.map((h) => h.title)).not.toContain("Shifting note");
+    expect(await countMeaningUncovered(auth, {})).toBe(1);
   });
 });
