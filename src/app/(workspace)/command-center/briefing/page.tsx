@@ -7,6 +7,7 @@ import { type BriefingTask } from "@/domains/work/briefing";
 import { getBriefingForPage } from "./data";
 import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
+import { CalendarPanel } from "./calendar-panel";
 import { OutcomeButton } from "./briefing-client";
 
 export const metadata = { title: "Briefing · Polymath" };
@@ -70,6 +71,10 @@ async function Briefing() {
           />
         ) : null}
       </Panel>
+
+      <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the calendar…</p>}>
+        <CalendarPanel />
+      </Suspense>
 
       <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the agents…</p>}>
         <AgentPanels />
