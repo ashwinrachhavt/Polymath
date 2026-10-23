@@ -26,25 +26,24 @@ async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null
   // A capture that has landed has a file; a queued URL or YouTube capture does
   // not yet. Both belong in the notebook the moment they are captured, so the
   // address is the fallback key: documents.sourceUrl is canonical and unique
-  // per workspace, so a queued video is found here and joins its source when
-  // the transcript lands.
-  if (doc.fileId || doc.sourceUrl) {
+  // per workspace, so a queued video is found here and keeps its binding when
+  // the bytes land. The insert carries the url for the same reason - a row
+  // with neither file nor address could never join its document back.
+  const match = or(
+    doc.fileId ? eq(sources.fileId, doc.fileId) : undefined,
+    doc.sourceUrl ? eq(sources.url, doc.sourceUrl) : undefined,
+  );
+  if (match) {
     const [existing] = await tx
       .select({ id: sources.id })
       .from(sources)
-      .where(
-        and(
-          eq(sources.workspaceId, auth.workspaceId),
-          doc.fileId ? eq(sources.fileId, doc.fileId) : undefined,
-          doc.sourceUrl ? eq(sources.url, doc.sourceUrl) : undefined,
-        ),
-      )
+      .where(and(eq(sources.workspaceId, auth.workspaceId), match))
       .limit(1);
     if (existing) return existing.id;
   }
   const [created] = await tx
     .insert(sources)
-    .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, fileId: doc.fileId, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, url: doc.sourceUrl, fileId: doc.fileId, createdBy: auth.userId, updatedBy: auth.userId })
     .returning({ id: sources.id });
   return created.id;
 }

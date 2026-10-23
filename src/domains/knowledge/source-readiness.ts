@@ -92,13 +92,17 @@ export async function listSources(auth: AuthContext, input: { limit?: number; do
     const extraction = latest.get(row.id) ?? null;
     const isVideo = videoIds.has(row.id) || isYouTubeUrl(row.sourceUrl);
     const { readiness, detail, queuedForMs } = project(extraction);
+    // A fetch-class failure (the URL fetcher, the transcript fetcher) reads
+    // "Couldn't fetch <title>" per DESIGN.md §8; the provider's reason rides
+    // behind it as the secondary line. Other failures keep their reason.
+    const isFetchFailure = readiness === "failed" && (extraction?.extractor === "url-fetch" || extraction?.extractor === "youtube-transcript");
     return {
       documentId: row.id,
       title: row.title,
       sourceUrl: row.sourceUrl,
       kind: isVideo ? "video" : "document",
       readiness,
-      detail,
+      detail: isFetchFailure ? `Couldn't fetch ${row.title}. ${extraction?.error ?? ""}`.trim() : detail,
       hasTranscript: videoIds.has(row.id),
       createdAt: row.createdAt,
       queuedForMs,

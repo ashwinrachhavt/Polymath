@@ -98,6 +98,8 @@ export default function NotebookSurface({
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
 
   function retrySource(documentId: string) {
+    // A new retry clears the previous attempt's note, so a stale result never
+    // sits beside a fresh spinner.
     setRetryNote(null);
     setRetrying(documentId);
     void retryNotebookSourceAction({ dossierId: notebook.dossierId, documentId })
@@ -208,7 +210,7 @@ export default function NotebookSurface({
                       variant="ghost"
                       className="h-6 px-2 text-xs"
                       onClick={() => retrySource(source.documentId)}
-                      disabled={retrying !== null}
+                      disabled={retrying === source.documentId}
                     >
                       {retrying === source.documentId ? <Loader2 aria-hidden className="animate-spin" /> : null}
                       Retry
@@ -222,7 +224,7 @@ export default function NotebookSurface({
             ))}
           </ul>
         )}
-        {retryNote && retrying === null && (
+        {retryNote && (
           <p role="status" className="mt-1 px-1 text-xs leading-relaxed text-muted-foreground">
             {retryNote}
           </p>

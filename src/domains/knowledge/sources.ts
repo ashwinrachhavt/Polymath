@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { sources } from "./schema";
@@ -9,9 +9,11 @@ import { sources } from "./schema";
  * skipped it left the material readable but uncitable.
  *
  * Call inside the intake transaction, so a source exists exactly when the file
- * does. The partial unique index on (workspace, url, content_hash) makes this
- * idempotent: the same page captured twice, or a redelivered crawl, inserts
- * nothing the second time.
+ * does. The partial unique index on (workspace, url, content_hash) makes the
+ * insert idempotent: the same page captured twice, or a redelivered crawl,
+ * inserts nothing the second time. A url-matched row without a hash (a
+ * notebook's placeholder for a queued capture) is updated in place instead, so
+ * one material is one row and the notebook's binding survives.
  *
  * `dossiers.ts` and `zettels.ts` build document-backed sources with their own
  * lookups (fileId-keyed, no URL); those stay where they are until a second
@@ -31,6 +33,33 @@ export async function recordSource(
     providerRequestId?: string | null;
   },
 ): Promise<void> {
+  // The partial unique index on (workspace, url, content_hash) makes the
+  // insert idempotent for rows that already carry this version. A row written
+  // earlier without the hash — the placeholder a notebook attach made for a
+  // queued capture (dossiers.sourceFor) — has no row it can conflict with, so
+  // an insert here would leave two rows for one material. Updating the
+  // url-matched row first keeps one source per address: the placeholder gains
+  // its content hash and the binding survives the capture landing.
+  const updated = await tx
+    .update(sources)
+    .set({
+      kind: input.kind,
+      title: input.title,
+      contentHash: input.contentHash,
+      fetchedAt: new Date(),
+      providerRequestId: input.providerRequestId ?? null,
+      updatedBy: auth.userId,
+      updatedAt: new Date(),
+      version: sql`${sources.version} + 1`,
+    })
+    .where(and(
+      eq(sources.workspaceId, auth.workspaceId),
+      eq(sources.url, input.url),
+      isNull(sources.contentHash),
+    ))
+    .returning({ id: sources.id });
+  if (updated.length > 0) return;
+
   await tx
     .insert(sources)
     .values({
@@ -38,6 +67,7 @@ export async function recordSource(
       kind: input.kind,
       title: input.title,
       url: input.url,
+      fileId: null,
       contentHash: input.contentHash,
       fetchedAt: new Date(),
       providerRequestId: input.providerRequestId ?? null,
