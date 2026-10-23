@@ -99,7 +99,7 @@ export function WorkList({
 
   function run(
     id: string,
-    fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean }>,
+    fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean; sentenceRecorded?: boolean }>,
     applyChange: Change,
     onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
   ) {
