@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
 import { clerkConfigured } from "@/lib/clerk";
@@ -33,7 +34,8 @@ export async function SettingsSurface() {
   }
   const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
-  return <Settings serverPreferences={serverPreferences} capabilities={capabilities} />;
+  const serverAssistantProfile = await getDefaultProfile(auth);
+  return <Settings serverPreferences={serverPreferences} capabilities={capabilities} serverAssistantProfile={serverAssistantProfile} />;
 }
 
 /*

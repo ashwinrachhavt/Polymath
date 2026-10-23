@@ -1,6 +1,9 @@
 import type postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { recordAudit } from "@/domains/audit/record";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { DEFAULT_MODEL_ID } from "./models";
 import { agentProfiles } from "./schema";
 
@@ -221,4 +224,80 @@ export async function reconcileStaleRuns(
 
     return ids;
   });
+}
+
+/*
+ * Profile management (spec "It learns your taste": tone, explanation depth
+ * and writing preferences can be reviewed and changed; the person can
+ * inspect, correct or retire what is remembered). The brief is the durable
+ * home for what onboarding learned - name, description, instructions - and
+ * this is its one review-and-change write. Empty description/instructions
+ * retires that part of the brief (null, not a blank string); the onboarding
+ * session row keeps the verbatim original as provenance.
+ *
+ * Compare-and-set on the row version, like preferences: two open settings
+ * tabs cannot silently overwrite each other. A name collision with another
+ * profile in the workspace surfaces as validation, not a 500.
+ */
+export type ProfileBriefResult =
+  | { ok: true; profile: { name: string; description: string | null; instructions: string | null; version: number } }
+  | { ok: false; kind: "validation"; error: string }
+  | { ok: false; kind: "conflict" }
+  | { ok: false; kind: "not_found" };
+
+const BRIEF_LIMITS = { name: 80, description: 500, instructions: 4000 } as const;
+
+export async function updateDefaultProfileBrief(
+  auth: AuthContext,
+  input: { name: string; description?: string; instructions?: string; expectedVersion: number },
+): Promise<ProfileBriefResult> {
+  const name = input.name.trim();
+  if (!name) return { ok: false, kind: "validation", error: "The assistant needs a name." };
+  if (name.length > BRIEF_LIMITS.name) return { ok: false, kind: "validation", error: `Keep the name under ${BRIEF_LIMITS.name} characters.` };
+  const description = (input.description ?? "").trim();
+  if (description.length > BRIEF_LIMITS.description) return { ok: false, kind: "validation", error: `Keep the description under ${BRIEF_LIMITS.description} characters.` };
+  const instructions = (input.instructions ?? "").trim();
+  if (instructions.length > BRIEF_LIMITS.instructions) return { ok: false, kind: "validation", error: `Keep the brief under ${BRIEF_LIMITS.instructions} characters.` };
+
+  // The name uniqueness check runs outside the transaction wrapper:
+  // postgres.js rolls back and rethrows a failed statement's error even when
+  // the callback catches it, so the violation can only be translated here.
+  try {
+    return await withTransaction(async (tx) => {
+      const [current] = await tx
+        .select({ id: agentProfiles.id, version: agentProfiles.version })
+        .from(agentProfiles)
+        .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.isDefault, true)))
+        .limit(1);
+      if (!current) return { ok: false, kind: "not_found" } as const;
+
+      const patch = { name, description: description || null, instructions: instructions || null };
+      const [updated] = await tx
+        .update(agentProfiles)
+        .set({ ...patch, version: current.version + 1, updatedAt: new Date(), updatedBy: auth.userId })
+        .where(and(eq(agentProfiles.id, current.id), eq(agentProfiles.version, input.expectedVersion)))
+        .returning();
+      // No row: the version moved under us - the caller's view is stale.
+      if (!updated) return { ok: false, kind: "conflict" } as const;
+
+      await recordAudit(auth, {
+        action: "agent_profile.brief_saved",
+        subjectType: "agent_profile",
+        subjectId: updated.id,
+        summary: `Assistant brief saved: name "${updated.name}", ${updated.description ? "description set" : "description retired"}, ${updated.instructions ? "brief set" : "brief retired"}`,
+      }, tx);
+      return { ok: true, profile: { name: updated.name, description: updated.description, instructions: updated.instructions, version: updated.version } } as const;
+    });
+  } catch (cause) {
+    // unique(agent_profiles.workspace_id, name) - postgres.js keeps the PG fields on the error itself.
+    let link: unknown = cause;
+    while (link) {
+      const pg = link as { code?: string; constraint_name?: string };
+      if (pg.code === "23505" && pg.constraint_name === "agent_profiles_workspace_name_key") {
+        return { ok: false, kind: "validation", error: "Another assistant profile already has this name." };
+      }
+      link = (link as { cause?: unknown }).cause;
+    }
+    throw cause;
+  }
 }

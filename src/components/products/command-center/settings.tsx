@@ -7,11 +7,12 @@ const CandidateFacts = dynamic(() => import("./candidate-facts"), { loading: () 
 const ApiKeysPanel = dynamic(() => import("./api-keys-panel"), { loading: () => <p role="status">Loading API keys…</p> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Panel, Screen, Status, Unavailable } from "@/components/workspace/ui";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Check, Destination, DisabledAction, Select } from "./controls";
-import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
+import { loadAssistantProfileAction, loadPreferencesAction, saveAssistantProfileAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
 import type { LoadedPreferences } from "@/domains/identity/preferences";
 import type { CapabilityStatus } from "@/lib/capability-config";
 import { SchedulerPanel } from "./scheduler-panel";
@@ -42,6 +43,7 @@ const SECTION_GROUPS = [
   {
     label: "Workspace",
     items: [
+      { id: "assistant", label: "Your assistant" },
       { id: "execution-safety", label: "Execution safety" },
       { id: "model-policy", label: "Model and tools" },
       { id: "connectors", label: "Connectors" },
@@ -160,7 +162,55 @@ function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }
   );
 }
 
-export default function Settings({ serverPreferences, capabilities }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[] }) {
+export type AssistantProfile = { name: string; description: string | null; instructions: string | null; version: number };
+
+/*
+ * The assistant's learned brief (spec "It learns your taste"): what onboarding
+ * wrote, open to review and change. Saving empty retires that part of the
+ * brief; the onboarding session keeps the verbatim original as provenance.
+ * The form submits against the rendered version and the server
+ * compare-and-sets, so two open tabs conflict instead of silently
+ * overwriting; on conflict the panel reloads the latest and says so.
+ */
+export function AssistantPanel({ profile }: { profile: AssistantProfile }) {
+  const { notify } = useWorkspace();
+  const [saved, setSaved] = useState(profile);
+  const [saving, setSaving] = useState(false);
+  return (
+    <Panel title="Your assistant" description="What your assistant knows about how you work, learned during onboarding. Edit to correct it; save empty fields to retire them. The verbatim interview stays on the onboarding session as provenance.">
+      <form key={`${saved.name}-${saved.version}`} className="grid gap-4" onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        const name = String(data.get("name") ?? "").trim();
+        const description = String(data.get("description") ?? "");
+        const instructions = String(data.get("instructions") ?? "");
+        setSaving(true);
+        void saveAssistantProfileAction({ name, description, instructions, expectedVersion: saved.version }).then((result) => {
+          setSaving(false);
+          if (!result.ok) {
+            notify(result.error);
+            if (result.kind === "conflict") {
+              void loadAssistantProfileAction().then((loaded) => { if (loaded.ok && loaded.profile) setSaved(loaded.profile); });
+            }
+            return;
+          }
+          setSaved(result.profile);
+          notify("Assistant brief saved. It guides every future run.");
+        });
+      }}>
+        <Field label="Name"><Input required name="name" defaultValue={saved.name} maxLength={80} /></Field>
+        <Field label="Description - one line on what it is to you"><Textarea name="description" defaultValue={saved.description ?? ""} maxLength={500} rows={2} placeholder="Retired - nothing saved." /></Field>
+        <Field label="Learned brief - how it should write, explain and work with you"><Textarea name="instructions" defaultValue={saved.instructions ?? ""} maxLength={4000} rows={6} placeholder="Retired - nothing saved." /></Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save assistant brief"}</Button>
+          <p className="text-xs text-muted-foreground">Changes apply to future runs; running work keeps the brief it started with.</p>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
+export default function Settings({ serverPreferences, capabilities, serverAssistantProfile }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[]; serverAssistantProfile?: AssistantProfile | null }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
   // The server row is the record; `saved` mirrors it here so a form always
   // submits against the version it rendered (compare-and-set on the server).
@@ -238,6 +288,12 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
             <p className="text-[13px] leading-relaxed text-muted-foreground">The header toggle cycles light, dark and system, and saves the choice to your account, so a new browser adopts it on first load. One accent colour is used across all three products; per-surface palette switching is not offered.</p>
           </Panel>
         </Section>
+
+        {serverAssistantProfile ? (
+        <Section id="assistant">
+          <AssistantPanel profile={serverAssistantProfile} />
+        </Section>
+        ) : null}
 
         <Section id="execution-safety">
           <Panel title="Execution safety" actions={<Status>{state.preferences.killSwitch ? "Preview kill switch enabled" : "Preview kill switch disabled"}</Status>}>
