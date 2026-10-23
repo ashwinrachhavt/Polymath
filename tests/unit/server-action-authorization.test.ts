@@ -20,6 +20,7 @@ const VIEWER_READS: Record<string, string> = {
   findLinkTargetsAction: "read-only search of the workspace cards for the [[ picker; no write",
   loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
+  loadAssistantProfileAction: "read-only load of the workspace's shared assistant profile brief; one profile per workspace, membership alone authorizes viewing",
 };
 
 function actionFiles(dir: string): string[] {
