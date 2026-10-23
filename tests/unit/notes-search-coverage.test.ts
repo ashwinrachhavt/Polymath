@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auth = { userId: "u1", workspaceId: "w1", role: "owner" as const };
 vi.mock("next/link", () => ({ default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children) }));
 const { searchKnowledge, countMeaningUncovered } = vi.hoisted(() => ({
-  searchKnowledge: vi.fn(async () => ({ hits: [], meaning: "ok" as const, ms: 1 })),
+  searchKnowledge: vi.fn(async (): Promise<{ hits: never[]; meaning: "ok" | "off" | "unconfigured" | "failed"; ms: number }> => ({ hits: [], meaning: "ok", ms: 1 })),
   countMeaningUncovered: vi.fn(async () => 0),
 }));
 vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
