@@ -385,6 +385,18 @@ export async function setDefaultForWrites(
   input: { accountId: string; expectedVersion: number },
 ) {
   return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select({ provider: externalAccounts.provider })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
+      .limit(1);
+    if (!account) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    const hasWrites = Object.values(CAPABILITIES).some((spec) => spec.provider === account.provider && spec.kind === "proposal");
+    if (!hasWrites) {
+      throw new ConflictError(`${account.provider} has nothing an agent can write with, so there is no write default to choose.`);
+    }
     const [target] = await tx
       .update(externalAccounts)
       .set({ isDefaultForWrites: true, version: sql`${externalAccounts.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
