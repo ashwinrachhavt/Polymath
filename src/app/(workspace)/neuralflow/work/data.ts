@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { getActiveFocusSession, listFocusHistory } from "@/domains/focus/queries";
+import { getActiveFocusSession, getLastTaskHandoff, listFocusHistory } from "@/domains/focus/queries";
 import {
   getTaskDetail,
   listTasksDueBetween,
@@ -53,6 +53,13 @@ export async function getActiveFocusSessionForPage(auth: AuthContext) {
   cacheLife("default");
   cacheTag(focusTag(auth));
   return getActiveFocusSession(auth);
+}
+
+export async function getLastTaskHandoffForPage(auth: AuthContext, taskId: string) {
+  "use cache";
+  cacheLife("default");
+  cacheTag(focusTag(auth));
+  return getLastTaskHandoff(auth, taskId);
 }
 
 export async function listFocusHistoryForPage(auth: AuthContext, limit?: number, taskId?: string) {

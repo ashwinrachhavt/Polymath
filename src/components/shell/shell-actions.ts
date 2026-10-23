@@ -22,7 +22,7 @@ import { db } from "@/lib/db";
  * finds those rows - not the browser preview store.
  */
 
-export type QuickCreateResult = { ok: true; message: string } | { ok: false; error: string };
+export type QuickCreateResult = { ok: true; message: string } | { ok: false; error: string; existingId?: string };
 
 export async function quickCreate(
   kind: "capture" | "task" | "note",
@@ -65,7 +65,7 @@ export async function quickCreate(
   } catch (cause) {
     const code = (cause as { code?: string })?.code;
     if (code === "conflict" || code === "stale_write") {
-      return { ok: false, error: (cause as Error).message };
+      return { ok: false, error: (cause as Error).message, existingId: (cause as { existingId?: string }).existingId };
     }
     throw cause;
   }
@@ -209,4 +209,17 @@ function rankRecords(records: WorkspaceRecord[], q: string): WorkspaceRecord[] {
     .map((record, index) => ({ record, index, tier: matchTier(record.label, q) }))
     .sort((a, b) => a.tier - b.tier || a.index - b.index)
     .map((entry) => entry.record);
+}
+
+/**
+ * A file capture lands through POST /api/v1/captures/file (the 4.5 MB
+ * multipart path server actions cannot take); this expires the cached inbox
+ * surfaces afterwards, the same refresh quickCreate does for text captures.
+ */
+export async function refreshInbox(): Promise<void> {
+  const auth = await getAuthContext();
+  // Invalidates only the caller's own workspace tag; still a guarded action.
+  requireRole(auth, "viewer");
+  updateTag(capturesTag(auth));
+  revalidatePath("/command-center/inbox");
 }

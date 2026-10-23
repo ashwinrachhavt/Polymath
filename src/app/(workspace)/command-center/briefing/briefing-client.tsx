@@ -1,10 +1,46 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
+import { startSessionAction } from "@/app/(workspace)/neuralflow/work/actions";
 import { Button } from "@/components/ui/button";
 import { acceptOutcomeAction, replaceOutcomeAction } from "./actions";
 
 /* Outcome buttons: a tag patch on the canonical task, version-checked. */
+
+/*
+ * The briefing's direct start: the same startSessionAction the Work surface
+ * uses, then over to Work where the running session shows. "Start a session
+ * directly from the briefing" without re-implementing focus.
+ */
+export function StartFocusButton({ task }: { task: { id: string; title: string } }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <span className="flex items-center gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await startSessionAction({ subject: task.title, plannedMinutes: null, taskId: task.id });
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            router.push(`/neuralflow/work?task=${encodeURIComponent(task.id)}`);
+          });
+        }}
+      >
+        {pending ? "Starting…" : "Start focus"}
+      </Button>
+      {error ? <span className="text-destructive text-xs" role="alert">{error}</span> : null}
+    </span>
+  );
+}
 
 export function OutcomeButton({
   taskId,

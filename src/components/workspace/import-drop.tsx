@@ -74,7 +74,7 @@ export function ImportDrop({ onImport, accept, hint = "Drop a file here, or past
       <div className="flex flex-wrap gap-2">
         <input
           aria-label="Paste a URL or text to import"
-          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 min-w-40 flex-1 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="Paste a URL or text"
           value={text}
           onChange={(event) => setText(event.target.value)}

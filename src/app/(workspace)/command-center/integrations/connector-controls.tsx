@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CAPABILITY_LABELS, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
+import { CAPABILITIES, CAPABILITY_LABELS, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
 import {
   renameAccountAction,
   revokeAccountAction,
@@ -16,6 +16,13 @@ import {
 } from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
+
+/*
+ * A provider with no write capability can never honor "Make write default" -
+ * the button is hidden rather than shown to fail, because a card never shows
+ * a control its state cannot honor.
+ */
+const PROVIDERS_WITH_WRITES = new Set<string>(Object.values(CAPABILITIES).filter((spec) => spec.kind === "proposal").map((spec) => spec.provider));
 
 export function AccountControls({
   accountId,
@@ -61,7 +68,7 @@ export function AccountControls({
           Disconnect
         </Button>
       ) : null}
-      {status === "active" && !isDefault ? (
+      {status === "active" && !isDefault && provider !== undefined && PROVIDERS_WITH_WRITES.has(provider) ? (
         <Button
           size="sm"
           variant="outline"

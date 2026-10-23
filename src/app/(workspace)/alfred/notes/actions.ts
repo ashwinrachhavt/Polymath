@@ -20,6 +20,8 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
+import { searchCapturesForLink } from "@/domains/capture/queries";
+import { searchTasksForLink } from "@/domains/work/queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -247,13 +249,25 @@ const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword"
  * An empty query lists recent cards so the menu is useful the moment it opens.
  * A read: membership is enough, and nothing is revalidated.
  */
-export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string }[]> {
+export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string; href?: string }[]> {
   const parsed = findInput.safeParse(input);
   if (!parsed.success) return [];
   const auth = await getAuthContext();
   const query = parsed.data.query.trim();
-  const rows = query
-    ? (await searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 })).hits
-    : await listNotes(auth, 9);
-  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  if (!query) return (await listNotes(auth, 9)).filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  // Row 36: the picker searches beyond knowledge artifacts - captures and
+  // tasks match too. Non-artifact targets carry a canonical href (captures
+  // resolve at the inbox, tasks at the tasks page); the editor inserts those
+  // as real links, since a [[wiki link]] edge can only point at note/zettel.
+  const [knowledge, captureRows, taskRows] = await Promise.all([
+    searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 }),
+    searchCapturesForLink(auth, query),
+    searchTasksForLink(auth, query),
+  ]);
+  const rows: { id: string; title: string; kind: string; href?: string }[] = [
+    ...knowledge.hits.map((r) => ({ id: r.id, title: r.title, kind: r.kind })),
+    ...captureRows,
+    ...taskRows,
+  ];
+  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8);
 }
