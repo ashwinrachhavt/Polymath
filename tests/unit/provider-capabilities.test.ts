@@ -129,6 +129,7 @@ const NATIVE_TOOLS = [
   // through the workspace's own Firecrawl, never through a connection.
   "web.search",
   "web.fetch",
+  "artifacts.revise",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read", "notion.read"];
 

@@ -84,6 +84,7 @@ function isSet(value: string | undefined): boolean {
  * and the real tool would run — the failure this file exists to prevent.
  */
 export const STUBBED_TOOLS = {
+  artifacts_propose_revision: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
   documents_search: { response: { ok: true, query: "", results: [] } },
   learning_grade: { response: { ok: true } },
   learning_next: { response: { ok: true, items: [] } },

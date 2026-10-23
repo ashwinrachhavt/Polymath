@@ -51,6 +51,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // URL is set; granting it keeps the refusal honest instead of a dead 403.
   "web.search",
   "web.fetch",
+  // AI changes to a saved artifact arrive as reviewable revision proposals,
+  // never silent edits. Same prepare-risk class as tasks.create.
+  "artifacts.revise",
 ];
 
 export async function ensureProfile(workspaceId: string, name = "alfred") {
@@ -95,6 +98,7 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       // profile without them makes the tools a dead 403 on every call.
       "web.search",
       "web.fetch",
+      "artifacts.revise",
     ];
     const missing = gained.filter((t) => !tools.includes(t));
     if (missing.length) {
