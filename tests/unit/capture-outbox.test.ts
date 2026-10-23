@@ -12,6 +12,7 @@ function entry(overrides: Record<string, unknown> = {}) {
       url: "https://example.com/a",
       title: "Example",
       history: { title: "[Page] Example", url: "https://example.com/a", type: "page-capture" },
+      destination: { origin: "https://axiom.example", tokenHash: "hash-a" },
     },
     T0,
   );
@@ -35,10 +36,31 @@ describe("capture outbox delivery classification", () => {
     expect(Outbox.classifyDelivery({ ok: false, status: 503 })).toBe("retry");
   });
 
-  it("treats 2xx and 409 as delivered", () => {
+  it("treats 2xx as delivered", () => {
     expect(Outbox.classifyDelivery({ ok: true, status: 201 })).toBe("delivered");
-    // 409 = the server already holds this capture (receipt replay or URL dedupe)
-    expect(Outbox.classifyDelivery({ ok: false, status: 409 })).toBe("delivered");
+  });
+
+  it("treats 409 as delivered only for a URL-only capture with the endpoint's exact duplicate conflict", () => {
+    // The server's (workspace, source, url) unique index covers every capture
+    // with a URL, so a text-bearing 409 means the content was REJECTED — the
+    // server kept an earlier version. Only a URL-only duplicate is same-intent
+    // and safe to drop, and only when the problem body is pinned to this
+    // endpoint's duplicate-URL conflict (type + code + title), so an arbitrary
+    // 409 from a proxy or another API version cannot masquerade as a duplicate.
+    const urlOnly = entry({ text: "", url: "https://example.com/a" });
+    const duplicate = {
+      ok: false,
+      status: 409,
+      problemCode: "conflict",
+      problemType: "https://axiom.dev/problems/conflict",
+      problemTitle: "That URL is already in the inbox.",
+    };
+    expect(Outbox.classifyDelivery(duplicate, urlOnly)).toBe("delivered");
+    expect(Outbox.classifyDelivery(duplicate, entry())).toBe("conflicted");
+    expect(Outbox.classifyDelivery({ ...duplicate, problemTitle: "conflict" }, urlOnly)).toBe("conflicted");
+    expect(Outbox.classifyDelivery({ ...duplicate, problemType: null }, urlOnly)).toBe("conflicted");
+    expect(Outbox.classifyDelivery({ ...duplicate, problemCode: "other" }, urlOnly)).toBe("conflicted");
+    expect(Outbox.classifyDelivery({ ok: false, status: 409 }, urlOnly)).toBe("conflicted");
   });
 
   it("treats 401/403 as needs-auth and other 4xx as permanently failed", () => {
@@ -111,5 +133,42 @@ describe("capture outbox quota and scheduling", () => {
     expect(Outbox.nextWakeAt([later, sooner], T0)).toBe(T0 + 30_000);
     expect(Outbox.nextWakeAt([entry({ status: "failed" })], T0)).toBeNull();
     expect(Outbox.nextWakeAt([], T0)).toBeNull();
+  });
+});
+
+describe("capture outbox destination binding", () => {
+  it("matches only the exact origin and credential hash", () => {
+    const bound = { origin: "https://axiom.example", tokenHash: "hash-a" };
+    expect(Outbox.destinationsMatch(bound, { origin: "https://axiom.example", tokenHash: "hash-a" })).toBe(true);
+    // key rotation or an account switch changes the hash: not provably the
+    // same account, so it must not auto-deliver.
+    expect(Outbox.destinationsMatch(bound, { origin: "https://axiom.example", tokenHash: "hash-b" })).toBe(false);
+    expect(Outbox.destinationsMatch(bound, { origin: "https://other.example", tokenHash: "hash-a" })).toBe(false);
+    // an unbound entry (pre-binding build) is never a match: park, don't guess.
+    expect(Outbox.destinationsMatch(null, bound)).toBe(false);
+    expect(Outbox.destinationsMatch(bound, null)).toBe(false);
+  });
+
+  it("parks on identity mismatch instead of delivering to the new destination", () => {
+    const parked = Outbox.applyOutcome(entry(), "identity-mismatch", T0, "changed");
+    expect(parked.status).toBe("parked-identity");
+    expect(parked.nextAttemptAt).toBe(0);
+    expect(Outbox.isDue(parked, T0 + 999_999_999)).toBe(false);
+  });
+
+  it("rebind re-stamps the destination and queues with a fresh budget", () => {
+    const parked = Outbox.applyOutcome(entry(), "identity-mismatch", T0, "changed");
+    const rebound = Outbox.rebind(parked, { origin: "https://new.example", tokenHash: "hash-b" }, T0 + 1000);
+    expect(rebound.status).toBe("queued");
+    expect(rebound.attempts).toBe(0);
+    expect(rebound.destination).toEqual({ origin: "https://new.example", tokenHash: "hash-b" });
+    expect(Outbox.isDue(rebound, T0 + 1000)).toBe(true);
+  });
+
+  it("conflicted parks for the user rather than discarding the text", () => {
+    const parked = Outbox.applyOutcome(entry(), "conflicted", T0, "duplicate");
+    expect(parked.status).toBe("conflicted");
+    expect(parked.text).toBe("hello world");
+    expect(Outbox.isDue(parked, T0 + 999_999_999)).toBe(false);
   });
 });

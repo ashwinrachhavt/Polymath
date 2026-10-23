@@ -62,6 +62,25 @@ background:
 - **Storage budget.** The outbox refuses new captures near ~8 MB instead of
   corrupting the queue; the Dashboard shows what is waiting.
 
+## If the account or server changes with captures still queued
+
+Every queued capture is bound to the destination it was saved for (the server
+origin plus a hash of the paired key — the key itself is never stored on the
+entry). If you switch accounts, rotate the key, or point the extension at a
+different server while captures are waiting, they park as **account changed —
+needs your OK** instead of silently landing in the new account. Nothing is
+sent anywhere until you choose, per capture, in **Pending Sync**:
+
+- **Deliver to connected account** sends it to the currently connected
+  server/account, which may be different from the one it was saved for;
+- **Discard** removes it from this device.
+
+The same honesty applies when Polymath already holds a captured URL: the
+server keeps its earlier version and rejects the new text, so the capture
+parks as **already in Polymath — text not saved** with the choice to **save
+the text without the link** (as a plain note) or discard it. A repeated
+URL-only capture is the one case safe to treat as already delivered.
+
 ## Requirements
 
 - Polymath backend running at the configured URL

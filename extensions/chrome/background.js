@@ -43,6 +43,29 @@ async function writeOutbox(entries) {
   await chrome.storage.local.set({ [Outbox.STORAGE_KEY]: entries });
 }
 
+// ── Destination identity ───────────────────────────────────────────
+
+/**
+ * SHA-256 hex of the paired credential. Stored on queued entries so a later
+ * account or key change is DETECTABLE; it is not an identity proof (Polymath
+ * has no whoami endpoint) and must never be rendered or logged.
+ */
+async function credentialHash(token) {
+  if (!token) return null;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The destination a capture enqueued right now would be bound to. */
+async function currentDestination() {
+  const base = await AlfredAPI.base();
+  let origin = base;
+  try {
+    origin = new URL(base).origin;
+  } catch {}
+  return { origin, tokenHash: await credentialHash(await AlfredAPI.token()) };
+}
+
 // ── Delivery ─────────────────────────────────────────────────────────
 
 /**
@@ -51,6 +74,14 @@ async function writeOutbox(entries) {
  * Outbox.classifyDelivery needs.
  */
 async function deliver(entry) {
+  // Never send a queued capture to a destination it was not captured for: an
+  // account switch or a different server must park the entry, not silently
+  // deliver the user's words elsewhere. Unbound (pre-binding) entries park
+  // too — conservative beats guessing.
+  const current = await currentDestination();
+  if (!Outbox.destinationsMatch(entry.destination, current)) {
+    return { identityMismatch: true };
+  }
   const base = await AlfredAPI.base();
   const token = await AlfredAPI.token();
   const headers = {
@@ -71,8 +102,21 @@ async function deliver(entry) {
       }),
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
-    const errorText = resp.ok ? null : (await resp.text().catch(() => "")).slice(0, 200);
-    return { ok: resp.ok, status: resp.status, errorText };
+    let errorText = null;
+    let problemCode = null;
+    let problemType = null;
+    let problemTitle = null;
+    if (!resp.ok) {
+      const raw = await resp.text().catch(() => "");
+      errorText = raw.slice(0, 200);
+      try {
+        const problem = JSON.parse(raw);
+        problemCode = problem.code || null;
+        problemType = problem.type || null;
+        problemTitle = problem.title || null;
+      } catch {}
+    }
+    return { ok: resp.ok, status: resp.status, errorText, problemCode, problemType, problemTitle };
   } catch {
     return null;
   }
@@ -121,8 +165,14 @@ async function pump() {
         });
         await writeOutbox(entries);
         var response = await deliver(entry);
-        var outcome = Outbox.classifyDelivery(response);
-        var error = response && response.errorText ? response.errorText
+        var outcome = response && response.identityMismatch
+          ? "identity-mismatch"
+          : Outbox.classifyDelivery(response, entry);
+        var error = outcome === "identity-mismatch"
+          ? "The connected Polymath server or account changed after this capture was saved."
+          : outcome === "conflicted"
+          ? "Polymath already holds this URL, so this capture's text was not saved."
+          : response && response.errorText ? response.errorText
           : response ? `Polymath answered ${response.status}.`
           : "Polymath is unreachable.";
         var folded = Outbox.applyOutcome(entry, outcome, Date.now(), error);
@@ -198,6 +248,7 @@ async function enqueueCapture(msg) {
       url: (msg.url || "").trim(),
       title: (msg.title || "").trim(),
       history: msg.history || null,
+      destination: await currentDestination(),
     },
     Date.now(),
   );
@@ -240,6 +291,8 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         pending: entries.filter(function (e) { return e.status === "queued" || e.status === "sending"; }).length,
         failed: entries.filter(function (e) { return e.status === "failed"; }).length,
         needsAuth: entries.filter(function (e) { return e.status === "needs-auth"; }).length,
+        parkedIdentity: entries.filter(function (e) { return e.status === "parked-identity"; }).length,
+        conflicted: entries.filter(function (e) { return e.status === "conflicted"; }).length,
         bytes: Outbox.estimateBytes(entries),
         budgetBytes: Outbox.QUOTA_BUDGET_BYTES,
       });
@@ -261,6 +314,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
             createdAt: e.createdAt,
             nextAttemptAt: e.nextAttemptAt,
             lastError: e.lastError,
+            hasText: Boolean(e.text),
             preview: (e.text || "").slice(0, 140),
           };
         }),
@@ -294,6 +348,69 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       await writeOutbox(kept);
       await markHistory(msg.id, { delivery: "discarded" });
       sendResponse({ ok: true });
+    })().catch(function (error) {
+      sendResponse({ ok: false, error: String((error && error.message) || error) });
+    });
+    return true;
+  }
+
+  if (msg.type === "AXIOM_OUTBOX_REBIND") {
+    // The user's explicit choice: deliver this queued capture to the NEWLY
+    // CONNECTED destination. Re-stamps the binding and queues it again.
+    (async function () {
+      var destination = await currentDestination();
+      var entries = await readOutbox();
+      var now = Date.now();
+      var found = false;
+      entries = entries.map(function (entry) {
+        var mine = !msg.id || entry.id === msg.id;
+        if (mine && (entry.status === "parked-identity" || entry.status === "failed" || entry.status === "needs-auth")) {
+          found = true;
+          return Outbox.rebind(entry, destination, now);
+        }
+        return entry;
+      });
+      await writeOutbox(entries);
+      if (found && msg.id) await markHistory(msg.id, { delivery: "pending" });
+      await pump();
+      sendResponse({ ok: true, rebound: found });
+    })().catch(function (error) {
+      sendResponse({ ok: false, error: String((error && error.message) || error) });
+    });
+    return true;
+  }
+
+  if (msg.type === "AXIOM_OUTBOX_SAVE_TEXT_ONLY") {
+    // Recovery for a conflicted capture: the server already holds this URL and
+    // rejected the text. The user's explicit choice saves a NEW, SEPARATE note
+    // under a fresh idempotency key — the earlier capture on the server stays
+    // untouched. Provenance is preserved in the note text itself, since the
+    // canonical URL field is what the server dedupes on.
+    (async function () {
+      var entries = await readOutbox();
+      var idx = entries.findIndex(function (entry) { return entry.id === msg.id; });
+      var source = idx === -1 ? null : entries[idx];
+      if (!source || !source.text) {
+        sendResponse({ ok: false, error: "Nothing to save without the link." });
+        return;
+      }
+      var replacement = Outbox.makeEntry(
+        {
+          id: crypto.randomUUID(),
+          text: source.url ? source.text + "\n\nSource: " + source.url : source.text,
+          url: "",
+          title: source.title,
+          history: source.history,
+          destination: await currentDestination(),
+        },
+        Date.now(),
+      );
+      entries.splice(idx, 1, replacement);
+      await writeOutbox(entries);
+      // Point the history row at the replacement so its sync state follows.
+      await AlfredAPI.updateCaptureHistoryByOutboxId(msg.id, { outboxId: replacement.id, delivery: "pending" });
+      await pump();
+      sendResponse({ ok: true, id: replacement.id });
     })().catch(function (error) {
       sendResponse({ ok: false, error: String((error && error.message) || error) });
     });

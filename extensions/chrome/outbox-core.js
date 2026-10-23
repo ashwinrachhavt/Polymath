@@ -8,7 +8,12 @@
  *     deploy, a dead dev server or a closed laptop can never lose it;
  *   - every entry carries one idempotency key minted at enqueue time, which
  *     the server uses to make retries exactly-once (request_receipts);
- *   - responses classify into delivered / retry / failed / needs-auth;
+ *   - every entry is bound to the destination it was captured for (server
+ *     origin + a hash of the credential, never the credential itself). If the
+ *     connected account or server changes before delivery, the entry parks
+ *     instead of silently landing in a different account;
+ *   - responses classify into delivered / retry / failed / needs-auth /
+ *     conflicted / identity-mismatch;
  *   - retries back off exponentially (30s, doubling, 15m cap) and give up
  *     into "failed" after MAX_ATTEMPTS — the entry is kept for the user,
  *     never silently dropped.
@@ -49,17 +54,41 @@
 
   /**
    * What a delivery attempt means for the entry.
-   * `response` is { ok, status } for a completed fetch, or null when the
-   * network/server was unreachable (DNS, refused connection, timeout).
+   *
+   * `response` is { ok, status, problemCode } for a completed fetch (problemCode
+   * is the RFC 9457 `code` parsed from the problem+json body, when present), or
+   * null when the network/server was unreachable (DNS, refused, timeout).
+   *
+   * 409 is only safe to treat as delivered when ALL of these hold — pinned to
+   * the captures endpoint's own conflict semantics, so an arbitrary 409 from
+   * a proxy or a different API version can never masquerade as a duplicate:
+   *   - the queued capture is URL-only (no text): the server's
+   *     captures_workspace_source_url_key unique index covers every capture
+   *     with a URL, so a text-bearing capture that 409s had its content
+   *     REJECTED — the server kept an earlier version and discarded this one.
+   *     Dropping the local copy would lose the user's words.
+   *   - the problem body is exactly this endpoint's duplicate-URL conflict:
+   *     type https://axiom.dev/problems/conflict, code "conflict", and the
+   *     endpoint's own duplicate title. For a URL-only body this endpoint
+   *     raises no other conflict ("Nothing to capture." needs an empty body).
+   * A URL-only duplicate is same-intent by construction, so only then is the
+   * local copy safe to drop. Anything else parks as "conflicted" for the user.
    */
-  function classifyDelivery(response) {
+  const DUPLICATE_URL_TITLE = "That URL is already in the inbox.";
+  function isEndpointDuplicate(response) {
+    return (
+      response.problemCode === "conflict" &&
+      response.problemType === "https://axiom.dev/problems/conflict" &&
+      response.problemTitle === DUPLICATE_URL_TITLE
+    );
+  }
+  function classifyDelivery(response, entry) {
     if (!response) return "retry";
     if (response.ok) return "delivered";
-    // A URL-only capture dedupes on (workspace, url): 409 means the server
-    // confirms it already holds this exact capture, so the copy here is safe
-    // to drop. Page grabs carry text and never dedupe this way; a replayed
-    // idempotency key answers 201 from request_receipts, not 409.
-    if (response.status === 409) return "delivered";
+    if (response.status === 409) {
+      const urlOnly = Boolean(entry) && !entry.text;
+      return urlOnly && isEndpointDuplicate(response) ? "delivered" : "conflicted";
+    }
     if (response.status === 401 || response.status === 403) return "needs-auth";
     if (response.status >= 400 && response.status < 500) return "failed";
     return "retry"; // 5xx and anything unexpected: the server may recover
@@ -69,8 +98,19 @@
     return entry.status === "queued" && (entry.nextAttemptAt || 0) <= now;
   }
 
+  /**
+   * The destination this capture must land in: the server origin and a hash
+   * of the credential, captured at enqueue time. The hash proves only that
+   * the credential is unchanged — it is not an account identity (Polymath
+   * exposes no whoami endpoint), so a mismatch always parks for the user
+   * rather than guessing. Never render or log the hash.
+   */
+  function destinationsMatch(a, b) {
+    return Boolean(a && b) && a.origin === b.origin && a.tokenHash === b.tokenHash;
+  }
+
   /** Fresh entry. The id doubles as the server idempotency key. */
-  function makeEntry({ id, text, url, title, history }, now) {
+  function makeEntry({ id, text, url, title, history, destination }, now) {
     return {
       v: SCHEMA_VERSION,
       id,
@@ -78,7 +118,8 @@
       url: url || null,
       title: title || null,
       history: history || null,
-      status: "queued", // queued | sending | failed | needs-auth
+      destination: destination || null,
+      status: "queued", // queued | sending | failed | needs-auth | conflicted | parked-identity
       attempts: 0,
       createdAt: now,
       updatedAt: now,
@@ -89,8 +130,10 @@
 
   /**
    * Fold one delivery attempt into the entry. `outcome` comes from
-   * classifyDelivery; `error` is the human-readable reason for failures.
-   * Returns a NEW entry (or null when delivered — the caller drops it).
+   * classifyDelivery (or "identity-mismatch" when the destination changed
+   * before the request was even sent); `error` is the human-readable reason
+   * for failures. Returns a NEW entry (or null when delivered — the caller
+   * drops it).
    */
   function applyOutcome(entry, outcome, now, error) {
     if (outcome === "delivered") return null;
@@ -105,10 +148,15 @@
         lastError: error || null,
       };
     }
-    // retry exhausted, permanent 4xx, or auth rejected: park for the user.
+    // retry exhausted, permanent 4xx, auth rejected, server conflict, or a
+    // destination change: park for the user, each with its own recovery path.
+    const status =
+      outcome === "retry" ? "failed"
+      : outcome === "identity-mismatch" ? "parked-identity"
+      : outcome; // failed | needs-auth | conflicted
     return {
       ...entry,
-      status: outcome === "retry" ? "failed" : outcome, // failed | needs-auth
+      status,
       attempts,
       updatedAt: now,
       nextAttemptAt: 0,
@@ -129,6 +177,19 @@
       updatedAt: now,
       nextAttemptAt: now,
       lastError: null,
+    };
+  }
+
+  /**
+   * The explicit recovery for a parked-identity entry: the user confirms the
+   * queued content should go to the NEWLY CONNECTED destination, so the entry
+   * is re-stamped with it and queued again. This is never automatic — a
+   * changed credential hash is not proof of a same-account key rotation.
+   */
+  function rebind(entry, destination, now) {
+    return {
+      ...requeue(entry, now),
+      destination,
     };
   }
 
@@ -176,9 +237,11 @@
     backoffMs,
     classifyDelivery,
     isDue,
+    destinationsMatch,
     makeEntry,
     applyOutcome,
     requeue,
+    rebind,
     recoverInFlight,
     estimateBytes,
     hasQuotaFor,

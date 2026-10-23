@@ -45,13 +45,15 @@
       section.hidden = true;
       return;
     }
-    const total = status.pending + status.failed + status.needsAuth;
+    const total = status.pending + status.failed + status.needsAuth + (status.parkedIdentity || 0) + (status.conflicted || 0);
     section.hidden = total === 0;
     if (total === 0) return;
     const parts = [];
     if (status.pending) parts.push(`${status.pending} syncing`);
     if (status.failed) parts.push(`${status.failed} failed`);
     if (status.needsAuth) parts.push(`${status.needsAuth} need a new API key`);
+    if (status.parkedIdentity) parts.push(`${status.parkedIdentity} waiting on account change`);
+    if (status.conflicted) parts.push(`${status.conflicted} already in Polymath`);
     $("#outbox-summary").textContent = `Saved on this device: ${parts.join(", ")}`;
   }
   refreshOutbox();

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Fixed
+
+- Chrome connector: queued captures are now bound to the destination they
+  were saved for (server origin + credential hash, never the credential). An
+  account switch, key rotation, or server change parks them as "account
+  changed — needs your OK" with an explicit per-capture choice, instead of
+  silently delivering the user's words to a different account.
+- Chrome connector: a 409 from Polymath is only treated as delivered for a
+  URL-only capture whose problem body carries code "conflict" — the server's
+  unique index covers every capture with a URL, so a text-bearing 409 means
+  the text was rejected, not saved. Those now park as "already in Polymath —
+  text not saved" with an explicit save-text-without-link / discard choice.
+- Chrome connector: Capture History and Pending Sync refresh live while the
+  dashboard is open (storage change subscription + reload on panel show), so
+  a drained queue no longer shows a stale "pending sync".
+- Chrome connector: the settings access-token field now uses the same styled,
+  full-width input as the other fields.
+
 ### Added
 
 - The Chrome connector keeps captures safe across deploys: every capture is
