@@ -472,6 +472,13 @@
       "breakpoints": true
     },
     {
+      "idx": 241,
+      "version": "7",
+      "tag": "0241_areas",
+      "when": 1792749511210,
+      "breakpoints": true
+    },
+    {
       "idx": 242,
       "version": "7",
       "tag": "0242_reward_ledger_note",

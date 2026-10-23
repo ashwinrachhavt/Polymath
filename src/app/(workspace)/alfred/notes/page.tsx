@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/workspace/ui";
 import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteTags, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
+import { listSearchAreaNames, resolveSearchArea } from "@/domains/knowledge/area-resolve";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import { redirectPastEnd } from "@/components/list/clamp";
@@ -58,18 +59,38 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   // eslint-disable-next-line react-hooks/purity -- per-request rolling window: connection() above already opted this render out of prerendering, and the window must be evaluated at request time, not build time.
   const editedFrom = editedDays ? new Date(Date.now() - editedDays * 86_400_000) : undefined;
    
+  // Area is a search-only filter like kind/edited/source, but its values are
+  // the workspace's declared areas, not a fixed enum, so it is parsed from the
+  // raw params and resolved tenant-scoped (see area-resolve.ts): an explicit
+  // selection that cannot resolve - or resolves to no usable tags - must show
+  // the unavailable state, never silently broaden into an unfiltered search.
+  const requestedArea = typeof raw.area === "string" && raw.area.trim() ? raw.area.trim() : undefined;
+  const areaResolution = list.q && requestedArea ? await resolveSearchArea(auth, requestedArea) : undefined;
+  const resolvedArea = areaResolution?.status === "resolved" ? areaResolution : undefined;
   const searchScope: SearchScope | undefined = list.q
     ? {
         kinds: list.filters.kind ? [list.filters.kind] : undefined,
         filters:
-          editedDays || list.filters.source
+          editedDays || list.filters.source || resolvedArea
             ? {
                 ...(editedFrom ? { from: editedFrom } : {}),
                 ...(list.filters.source ? { provenance: list.filters.source as "agent" | "not-agent" } : {}),
+                ...(resolvedArea ? { areaTags: resolvedArea.tags } : {}),
               }
             : undefined,
       }
     : undefined;
+  // Generic on purpose: whether the area exists elsewhere is not disclosed.
+  const areaUnavailable =
+    areaResolution?.status === "unavailable" ? (
+      <div role="status" className="rounded-md border border-border px-3 py-3 text-[13px] text-muted-foreground">
+        That area isn&apos;t available, so this search can&apos;t run under it.{" "}
+        <Link href={listHref(BASE, raw, { area: undefined, page: undefined })} className="underline underline-offset-2 hover:text-foreground">
+          Remove the area filter
+        </Link>{" "}
+        to search everything.
+      </div>
+    ) : undefined;
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
   const kanban = list.filters.layout === "kanban";
   const found = await pageNotes(auth, {
@@ -83,6 +104,15 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   if (!kanban) redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const notes = found.items;
   const allTags = await listNoteTags(auth);
+  const areaNames = list.q ? await listSearchAreaNames(auth) : [];
+  // When the requested area is unavailable the control must still show a set
+  // state - rendering "All areas" while results are suppressed would imply an
+  // unfiltered scope. The synthetic option is labeled generically: echoing the
+  // requested name back could disclose (or confirm) another tenant's area.
+  const areaOptions = [
+    ...areaNames.map((n) => ({ value: n, label: n })),
+    ...(areaResolution?.status === "unavailable" && requestedArea ? [{ value: requestedArea, label: "Unavailable area" }] : []),
+  ];
   const selected = id ? await getNote(auth, id) : null;
   const versions = selected ? await listNoteVersions(auth, selected.id) : [];
   const outlinks = selected ? await listNoteOutlinks(auth, selected.id) : [];
@@ -109,6 +139,11 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                 { key: "kind", label: "Kind", allLabel: "All kinds", options: SEARCH_KINDS.map((k) => ({ value: k as string, label: k === "transcript" ? "Conversation" : k[0].toUpperCase() + k.slice(1) })) },
                 { key: "edited", label: "Edited", allLabel: "Any time", options: [{ value: "day", label: "Last 24 hours" }, { value: "week", label: "Last 7 days" }, { value: "month", label: "Last 30 days" }] },
                 { key: "source", label: "Provenance", allLabel: "Any provenance", options: [{ value: "agent", label: "Agent-generated" }, { value: "not-agent", label: "Not agent-generated" }] },
+                // Dynamic options: the workspace's declared areas. The control
+                // renders whenever a search is active, even with no areas yet,
+                // so a requested-but-unavailable area stays visible as a set
+                // filter rather than vanishing from the UI.
+                { key: "area", label: "Area", allLabel: "All areas", options: areaOptions },
               ]
             : []),
         ]}
@@ -131,7 +166,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         // While a note is open the ranked results stay in the sidebar so the
         // reader can jump between hits; with nothing selected they take the
         // working column below instead of truncating into 16rem.
-        selected ? <SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} /> : null
+        selected ? (areaUnavailable ?? <SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />) : null
       ) : notes.length === 0 ? (
         <NoResults
           filtered={Boolean(list.q || list.filters.view)}
@@ -229,7 +264,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
           <div className="mx-auto max-w-[720px] px-3 py-12">
-            <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+            {areaUnavailable ?? <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />}
           </div>
         ) : found.total === 0 ? (
           <div className="mx-auto max-w-[720px] px-3 py-12">

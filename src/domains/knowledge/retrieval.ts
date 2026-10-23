@@ -45,10 +45,10 @@ export type SearchMode = "hybrid" | "keyword" | "meaning";
  *   the note tags it covers (0241, declared never inferred), so an artifact
  *   is IN an area when it carries ANY of the area's declared tags. Callers
  *   resolve area -> tags against the areas table; tags are stored lowercased
- *   and this filter normalizes to lowercase too. The areas table itself
- *   (0241) is file-only/unapplied, so no UI resolves names on this base -
- *   this is the domain predicate plus tests, exactly what the 067da68
- *   correction taught us to label.
+ *   and this filter normalizes to lowercase too. The notes search resolves
+ *   area names through area-resolve.ts (tenant-scoped, unavailable-never-
+ *   broadens); the areas table (0241) is still file-only/unapplied to any
+ *   shared database - this branch composes it for the consumer.
  */
 export type SearchFilters = {
   from?: Date;
