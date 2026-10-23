@@ -16,6 +16,8 @@ import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/gith
 import { GENERIC_READS, genericList } from "@/domains/integrations/reads/generic";
 import { readLinearIssue, searchLinearIssues } from "@/domains/integrations/reads/linear";
 import { readNotionPage, searchNotion } from "@/domains/integrations/reads/notion";
+import { getInstagramProfile, listInstagramMedia } from "@/domains/integrations/reads/instagram";
+import { getLinkedInProfile } from "@/domains/integrations/reads/linkedin";
 import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -93,6 +95,9 @@ const OTHER_READS = [
   "linear_read_issue",
   "notion_search",
   "notion_read_page",
+  "linkedin_get_profile",
+  "instagram_get_profile",
+  "instagram_list_media",
 ] as const;
 type OtherRead = (typeof OTHER_READS)[number];
 type ParsedGeneric = {
@@ -730,6 +735,25 @@ export function createGateway({ transport }: { transport: Transport }) {
               count: 1,
             }
           : r;
+        break;
+      }
+      case "linkedin_get_profile": {
+        const r = await getLinkedInProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_get_profile": {
+        const r = await getInstagramProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_list_media": {
+        const r = await listInstagramMedia(transport, { connectedAccountId, limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
         break;
       }
       case "slack_read_channel": {

@@ -47,6 +47,8 @@ describe("provider capability catalog", () => {
         "hubspot",
         "stripe",
         "notion",
+        "linkedin",
+        "instagram",
       ]).toContain(spec.provider);
       // A provider's capability prefix is its name without separators
       // ("google-calendar" → "googlecalendar."), so one provider's ids stay
