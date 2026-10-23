@@ -261,7 +261,7 @@ export async function executeComposioPostRead(call: {
 export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
 
 export type ComposioWriteResult =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; /** The provider's own HTTP status, from the proxy's 200 envelope, when present. */ providerStatus?: number }
   // `ambiguous` is the important one: the request may have reached the provider.
   // Anything that cannot prove "not sent" belongs here, and the executor turns
   // it into UNKNOWN rather than a retry.
@@ -310,8 +310,18 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
   }
   if (!response.ok) {
     const status = response.status;
-    // A 5xx may mean the provider accepted the request and failed afterwards.
-    // Only a 4xx proves the call was refused before it took effect.
+    /*
+     * This status is the PROXY's own, not the provider's. Composio's proxy
+     * contract (docs.composio.dev /reference/v3/api-reference/tools
+     * /postToolsExecuteProxy, fetched 2026-10-23) returns the provider's
+     * response - including the provider's error status - inside a 200
+     * envelope (`status` field). A non-200 here is the proxy's documented
+     * own error (400 invalid proxy request, 401 bad project key, 403/404
+     * account problems, 422 invalid account state, 429 rate limit refused,
+     * 501 unsupported): every one refuses BEFORE dispatch, so the call
+     * provably never reached the provider. A 5xx says nothing about whether
+     * the proxy dispatched first, so it stays ambiguous.
+     */
     return status >= 400 && status < 500
       ? { ok: false, code: "provider_error", status, message: `The connected service rejected the call (${status}).` }
       : { ok: false, code: "ambiguous", status, message: `The connected service returned ${status}.` };
@@ -319,9 +329,13 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
   // A 2xx whose body cannot be parsed is still a success at the provider with
   // no id we can record, which the caller cannot distinguish from a lost
   // response. Say so rather than inventing an outcome.
-  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  const body = (await response.json().catch(() => null)) as { data?: unknown; status?: unknown } | null;
   if (body === null) {
     return { ok: false, code: "ambiguous", status: response.status, message: "The connected service returned no parseable body." };
   }
-  return { ok: true, data: "data" in body ? body.data : body };
+  // The envelope carries the provider's own status (`status`, required by the
+  // contract) alongside the provider body (`data`). Surface it: a provider
+  // 4xx arrives here as a proxy 200 and must not read as success.
+  const providerStatus = typeof body.status === "number" ? body.status : undefined;
+  return { ok: true, data: "data" in body ? body.data : body, providerStatus };
 }

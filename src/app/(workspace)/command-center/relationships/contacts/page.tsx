@@ -30,6 +30,7 @@ import {
   FollowUpForm,
   ObservationForm,
   ResolveFollowUpButton,
+  SendApprovedButton,
 } from "../contact-detail-controls";
 import { CompanyForm } from "../company-form";
 import { ResearchCompanyButton } from "../research-button";
@@ -350,7 +351,7 @@ function ContactDetailPanel({
 
       <Panel
         title="Correspondence"
-        description="Outreach is drafted here, sent nowhere: the send path is an approval you give in Reviews, and the provider send lands with connector OAuth. Every row carries its state."
+        description="Outreach is drafted here. You approve the exact send in Reviews, then send it from here through the connected Gmail account. Every row carries its state."
       >
         <div className="mb-4 divide-y divide-border">
           {correspondence.map((item) => (
@@ -362,8 +363,16 @@ function ContactDetailPanel({
               </div>
               <p className="mb-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">{item.body}</p>
               {item.state === "drafted" || item.state === "planned" ? (
-                <span className="flex flex-wrap gap-1">
-                  <RequestSendApprovalButton correspondenceId={item.id} version={item.version} hasProposal={!!item.actionProposalId} />
+                <span className="flex flex-wrap items-center gap-2">
+                  {item.proposalStatus === "approved" ? (
+                    <SendApprovedButton correspondenceId={item.id} />
+                  ) : item.proposalStatus === "rejected" ? (
+                    <span className="text-xs text-muted-foreground">
+                      Send approval was rejected. Cancel this draft and start a new one to change it.
+                    </span>
+                  ) : (
+                    <RequestSendApprovalButton correspondenceId={item.id} version={item.version} hasProposal={!!item.actionProposalId} />
+                  )}
                   <CancelCorrespondenceButton correspondenceId={item.id} version={item.version} />
                 </span>
               ) : null}

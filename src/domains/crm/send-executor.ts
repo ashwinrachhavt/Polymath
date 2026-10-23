@@ -97,7 +97,14 @@ async function prepare(auth: AuthContext, correspondenceId: string): Promise<Pre
     if (!review || review.decision !== "approved" || review.revisionId !== latest.id) {
       throw new SendNotAllowedError("The approval does not cover the current revision.");
     }
-    const approved = latest.payload as { subject?: string | null; body?: string | null; contactId?: string | null; externalAccountId?: string | null };
+    const approved = latest.payload as {
+      subject?: string | null;
+      body?: string | null;
+      contactId?: string | null;
+      externalAccountId?: string | null;
+      /** The recipient email exactly as approved; pinned since the adapter shipped. */
+      to?: string | null;
+    };
     if (
       approved.subject !== draft.subject ||
       approved.body !== draft.body ||
@@ -123,6 +130,18 @@ async function prepare(auth: AuthContext, correspondenceId: string): Promise<Pre
       .where(and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.id, draft.contactId)))
       .limit(1);
     if (!contact?.email) throw new SendNotAllowedError("The contact has no email address.");
+    /*
+     * The approval names the recipient address, not just the contact: an
+     * email edited on the contact after approval must not receive a message
+     * the owner never saw addressed. Approvals written before this binding
+     * have no `to` and cannot send; re-requesting approval pins it.
+     */
+    if (typeof approved.to !== "string" || approved.to.length === 0) {
+      throw new SendNotAllowedError("This approval does not name the exact recipient. Request approval again.");
+    }
+    if (approved.to !== contact.email) {
+      throw new SendNotAllowedError("The recipient address changed after approval. Request approval again.");
+    }
 
     const prior = await tx
       .select()

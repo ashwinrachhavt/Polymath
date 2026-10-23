@@ -1,8 +1,10 @@
 import { executeComposioWrite } from "../composio";
 
 /*
- * The one provider write this codebase can perform. It is called by the
- * approved-effect executor and nowhere else: no tool, no gateway path, no
+ * The one provider write this codebase can perform. Only the two
+ * approval-bound executors call it: the approved-effect executor for
+ * agent-run proposals, and the CRM send executor through the MailSender
+ * adapter in `src/domains/crm/mail-sender.ts`. No tool, no gateway path, no
  * route.
  *
  * The Message-ID is derived from the attempt id rather than stored. That gives
@@ -10,10 +12,18 @@ import { executeComposioWrite } from "../composio";
  * column that could disagree with the attempt, and it means a crash before the
  * settle still leaves a searchable marker in the sent message.
  *
- * Failure classification is the whole safety story:
- *  - a 4xx is proof the message was refused before dispatch -> rejected;
- *  - a timeout, a 5xx, or a 2xx we cannot parse proves nothing -> ambiguous.
+ * Failure classification is the whole safety story, grounded in two
+ * contracts (Composio proxy reference, fetched 2026-10-23; the Gmail
+ * messages.send API, which returns errors without creating a message):
+ *  - the proxy's own non-200 4xx is a documented pre-dispatch refusal (bad
+ *    key, unknown account, invalid proxy request, rate limit) -> rejected;
+ *  - a provider 4xx arrives inside the proxy's 200 envelope (`status`) and
+ *    means Gmail refused before creating anything -> rejected;
+ *  - a timeout, any 5xx, or a success we cannot prove (no message id, no
+ *    trustworthy envelope) proves nothing -> ambiguous.
  * The executor maps ambiguous to UNKNOWN, which blocks retry until reconciled.
+ * A rejected send carries only the status number - never the provider's
+ * error body, which can echo the request back.
  */
 
 const SEND_ENDPOINT = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
@@ -107,12 +117,26 @@ export async function sendGmailMessage(input: {
   });
 
   if (!result.ok) {
+    // The proxy's own documented 4xx refused the call before dispatch; the
+    // provider was never reached. Everything else proves nothing.
     if (result.code === "provider_error" && typeof result.status === "number" && result.status >= 400 && result.status < 500) {
       throw new GmailSendRejectedError(result.status);
     }
     // not_configured, ambiguous, or a 5xx: nothing proves the message did not
     // leave, so the caller must not treat this as a failure it can retry.
     throw new GmailSendAmbiguousError(result.message);
+  }
+
+  // The proxy answered 200, which only means the envelope arrived - the
+  // provider's own status rides inside it. A provider 4xx is a refusal
+  // before Gmail created anything; a provider 5xx proves nothing.
+  if (typeof result.providerStatus === "number") {
+    if (result.providerStatus >= 400 && result.providerStatus < 500) {
+      throw new GmailSendRejectedError(result.providerStatus);
+    }
+    if (result.providerStatus >= 500) {
+      throw new GmailSendAmbiguousError(`Gmail returned ${result.providerStatus}; the send outcome is unproven.`);
+    }
   }
 
   const id = providerId(result.data);

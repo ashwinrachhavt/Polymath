@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { actionRevisions } from "@/domains/actions/schema";
+import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { createProposal } from "@/domains/actions/commands";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
@@ -10,11 +10,10 @@ import { withTransaction } from "@/lib/db-transaction";
 import { contacts, correspondence } from "./schema";
 
 /*
- * Outreach (ASH-139 C03): correspondence is drafted, edited, cancelled, and
- * approved - never sent from here. The approval gate is an action proposal
- * linked on the row; the actual provider send is a later slice that executes
- * an accepted proposal and comes back with a provider identity. No external
- * effect exists in this module.
+ * Outreach (ASH-139 C03): correspondence is drafted, edited and cancelled
+ * here, and the approval gate is an action proposal linked on the row. The
+ * provider send is deliberately not in this module: it runs through the
+ * approval-bound send executor once the owner decides in Reviews.
  */
 
 export class ConflictError extends Error {
@@ -168,13 +167,27 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
       return { correspondence: draft, proposalId: draft.actionProposalId, alreadyRequested: true };
     }
 
+    /*
+     * Pin the recipient address at request time. The send executor compares
+     * this against the contact's email at send time, so an address edited
+     * after approval can never receive a message the owner did not see
+     * addressed. Without an email there is nothing to approve a send to.
+     */
+    if (!draft.contactId) throw new ConflictError("Link a contact before requesting send approval.");
+    const [contact] = await tx
+      .select({ email: contacts.primaryEmail })
+      .from(contacts)
+      .where(and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.id, draft.contactId)))
+      .limit(1);
+    if (!contact?.email) throw new ConflictError("The contact needs an email address before a send can be approved.");
+
     const { proposalId, deduplicated } = await createProposal(tx, auth, {
       capability: "send_mail",
       riskClass: "external_write",
       targetType: "correspondence",
       targetId: draft.id,
       title: `Send: ${draft.subject ?? "(no subject)"}`,
-      expectedEffect: `Sends the drafted ${draft.channel} message as an external ${draft.channel} send to the linked contact.`,
+      expectedEffect: `Sends the drafted ${draft.channel} message as an external ${draft.channel} send to ${contact.email}.`,
       dedupeKey: `correspondence-send:${draft.id}`,
     });
 
@@ -185,8 +198,14 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
         workspaceId: auth.workspaceId,
         proposalId,
         revisionNumber: 1,
-        payload: { contactId: draft.contactId, externalAccountId: draft.externalAccountId, subject: draft.subject, body: draft.body },
-        preview: { subject: draft.subject, body: draft.body },
+        payload: {
+          to: contact.email,
+          contactId: draft.contactId,
+          externalAccountId: draft.externalAccountId,
+          subject: draft.subject,
+          body: draft.body,
+        },
+        preview: { to: contact.email, subject: draft.subject, body: draft.body },
         createdBy: auth.userId,
       });
     }
@@ -207,10 +226,19 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
   });
 }
 
+/*
+ * Rows plus the linked send proposal's status, so the screen can show the
+ * real next step - request approval, decide in Reviews, send the approved
+ * draft - instead of a static "approval requested" label after the decision.
+ */
 export async function listCorrespondence(auth: AuthContext, input: { contactId?: string } = {}) {
-  return db
-    .select()
+  const rows = await db
+    .select({ correspondence, proposalStatus: actionProposals.status })
     .from(correspondence)
+    .leftJoin(
+      actionProposals,
+      and(eq(actionProposals.id, correspondence.actionProposalId), eq(actionProposals.workspaceId, auth.workspaceId)),
+    )
     .where(
       input.contactId
         ? and(eq(correspondence.workspaceId, auth.workspaceId), eq(correspondence.contactId, input.contactId))
@@ -218,4 +246,5 @@ export async function listCorrespondence(auth: AuthContext, input: { contactId?:
     )
     .orderBy(desc(correspondence.createdAt))
     .limit(100);
+  return rows.map((row) => ({ ...row.correspondence, proposalStatus: row.proposalStatus }));
 }

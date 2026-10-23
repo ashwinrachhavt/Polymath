@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { actionRevisions, actionAttempts, providerObservations } from "@/domains/actions/schema";
-import { correspondence } from "@/domains/crm/schema";
+import { contacts, correspondence } from "@/domains/crm/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -17,6 +17,7 @@ let db: NonNullable<typeof handle>["db"];
 let corr: typeof import("@/domains/crm/correspondence");
 let crm: typeof import("@/domains/crm/commands");
 let exec: typeof import("@/domains/crm/send-executor");
+let mailSender: typeof import("@/domains/crm/mail-sender");
 let actions: typeof import("@/domains/actions/commands");
 
 beforeAll(async () => {
@@ -25,7 +26,13 @@ beforeAll(async () => {
   corr = await import("@/domains/crm/correspondence");
   crm = await import("@/domains/crm/commands");
   exec = await import("@/domains/crm/send-executor");
+  mailSender = await import("@/domains/crm/mail-sender");
   actions = await import("@/domains/actions/commands");
+});
+
+afterEach(() => {
+  delete process.env.COMPOSIO_API_KEY;
+  vi.unstubAllGlobals();
 });
 
 afterAll(async () => {
@@ -105,6 +112,105 @@ suite("sendApprovedCorrespondence", () => {
     const again = await exec.sendApprovedCorrespondence(auth, { correspondenceId: draft.id, sender: okSender(calls) });
     expect(again.alreadySent).toBe(true);
     expect(calls).toHaveLength(1);
+  });
+
+  it("the wired Gmail adapter sends an approved draft through Composio and marks it sent", async () => {
+    const { auth, draft } = await setup("send-gmail", { approve: true });
+    process.env.COMPOSIO_API_KEY = "test-composio-key";
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ data: { id: "gmail_msg_1", threadId: "gmail_thr_1" }, status: 200, headers: {} }), {
+          status: 200,
+        });
+      }),
+    );
+    const result = await exec.sendApprovedCorrespondence(auth, {
+      correspondenceId: draft.id,
+      sender: mailSender.gmailMailSender(),
+    });
+    expect(result).toMatchObject({ state: "sent", providerObjectId: "gmail_msg_1" });
+    const [row] = (await corr.listCorrespondence(auth)).filter((r) => r.id === draft.id);
+    expect(row.state).toBe("sent");
+    expect(row.threadId).toBe("gmail_thr_1");
+    expect(row.proposalStatus).toBe("approved");
+    expect(calls).toHaveLength(1);
+    const request = JSON.parse(calls[0].body) as { endpoint: string; method: string; body: { raw: string } };
+    expect(request.endpoint).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+    const raw = Buffer.from(request.body.raw, "base64url").toString("utf8");
+    const [contact] = await db
+      .select({ email: contacts.primaryEmail })
+      .from(contacts)
+      .where(eq(contacts.id, draft.contactId!))
+      .limit(1);
+    expect(raw).toContain(`To: ${contact.email}\r\n`);
+    const [attempt] = await db
+      .select({ id: actionAttempts.id, status: actionAttempts.status })
+      .from(actionAttempts)
+      .where(eq(actionAttempts.proposalId, row.actionProposalId!));
+    expect(attempt.status).toBe("succeeded");
+    expect(raw).toContain(`Message-ID: <polymath-${attempt.id}@polymath.invalid>`);
+  });
+
+  it("the adapter fails the send honestly when the deployment has no Composio key", async () => {
+    const { auth, draft } = await setup("send-no-key", { approve: true });
+    const spy = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+    const result = await exec.sendApprovedCorrespondence(auth, {
+      correspondenceId: draft.id,
+      sender: mailSender.gmailMailSender(),
+    });
+    expect(result.state).toBe("failed");
+    expect(spy).not.toHaveBeenCalled();
+    const [row] = (await corr.listCorrespondence(auth)).filter((r) => r.id === draft.id);
+    expect(row.state).toBe("drafted");
+    const [attempt] = await db
+      .select({ errorCode: actionAttempts.errorCode })
+      .from(actionAttempts)
+      .where(eq(actionAttempts.proposalId, row.actionProposalId!));
+    expect(attempt.errorCode).toBe("sender_not_configured");
+  });
+
+  it("a provider refusal inside the proxy envelope settles failed and the draft stays editable", async () => {
+    const { auth, draft } = await setup("send-envelope-403", { approve: true });
+    process.env.COMPOSIO_API_KEY = "test-composio-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: { error: { message: "insufficient permissions" } }, status: 403, headers: {} }), {
+            status: 200,
+          }),
+      ),
+    );
+    const result = await exec.sendApprovedCorrespondence(auth, {
+      correspondenceId: draft.id,
+      sender: mailSender.gmailMailSender(),
+    });
+    expect(result.state).toBe("failed");
+    const [row] = (await corr.listCorrespondence(auth)).filter((r) => r.id === draft.id);
+    expect(row.state).toBe("drafted");
+    const [attempt] = await db
+      .select({ status: actionAttempts.status, errorCode: actionAttempts.errorCode })
+      .from(actionAttempts)
+      .where(eq(actionAttempts.proposalId, row.actionProposalId!));
+    expect(attempt.status).toBe("failed");
+    expect(attempt.errorCode).toBe("gmail_send_rejected");
+  });
+
+  it("refuses when the recipient address changed after approval", async () => {
+    const { auth, draft } = await setup("send-moved-recipient", { approve: true });
+    const calls: unknown[] = [];
+    await db
+      .update(contacts)
+      .set({ primaryEmail: `moved-${Date.now()}@example.test` })
+      .where(eq(contacts.id, draft.contactId!));
+    await expect(
+      exec.sendApprovedCorrespondence(auth, { correspondenceId: draft.id, sender: okSender(calls) }),
+    ).rejects.toThrow(/recipient address changed/);
+    expect(calls).toHaveLength(0);
   });
 
   it("an unknown outcome blocks a retry until reconciled", async () => {
