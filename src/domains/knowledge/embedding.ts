@@ -79,7 +79,7 @@ export async function embedExtraction(
     vectors = [];
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
-      const out = await provider.embed(batch);
+      const out = await withDeadline(provider.embed(batch, { signal: AbortSignal.timeout(EMBED_BATCH_TIMEOUT_MS) }), EMBED_BATCH_TIMEOUT_MS);
       if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
       vectors.push(...out);
     }
@@ -88,7 +88,7 @@ export async function embedExtraction(
     }
   } catch (cause) {
     // Provider text can carry request details; keep the durable message generic.
-    console.error(`embedding failed for extraction ${extraction.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    logProviderFailure("embedding failed for extraction", extraction.id, cause);
     const error = "Embedding could not complete. Retry to try again.";
     await record(error);
     return { status: "failed", error };
@@ -156,6 +156,21 @@ const SAFE_SETUP = "The embedding provider could not be set up.";
 const SAFE_FAILED = "Embedding could not complete. Retry to try again.";
 const SAFE_UNKNOWN = "Indexing failed. Retry to try again.";
 
+/*
+ * Hosted logs are a disclosure surface too: an AI-SDK error can carry the
+ * request body (the document text) and response details, and a hand-rolled
+ * one can carry worse. Log the error CLASS and non-secret metadata only -
+ * never .message, never bodies, never headers beyond the request id.
+ */
+function logProviderFailure(context: string, ownerId: string, cause: unknown) {
+  const name = cause instanceof Error ? cause.name : "unknown";
+  const statusCode = (cause as { statusCode?: unknown })?.statusCode;
+  const status = typeof statusCode === "number" ? ` HTTP ${statusCode}` : "";
+  const headers = (cause as { responseHeaders?: Record<string, string> })?.responseHeaders;
+  const requestId = headers?.["x-request-id"] ? ` request ${headers["x-request-id"]}` : "";
+  console.error(`${context} ${ownerId}: ${name}${status}${requestId}`);
+}
+
 export function safeArtifactEmbedError(error: string | null): string | null {
   if (!error) return null;
   if (error.includes("No embedding provider configured")) return SAFE_UNCONFIGURED;
@@ -164,9 +179,28 @@ export function safeArtifactEmbedError(error: string | null): string | null {
   return SAFE_UNKNOWN;
 }
 
+/** Bounds one provider batch; the pass holds a pool connection while it waits. */
+export const EMBED_BATCH_TIMEOUT_MS = 30_000;
+
+/*
+ * The abort signal cancels a well-behaved transport; this deadline bounds the
+ * AWAIT even when a provider ignores it, so the transaction, advisory lock
+ * and pool slot are always released. The provider promise may outlive the
+ * race in the worker; the signal ends its transport.
+ */
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Embedding batch timed out.")), ms);
+  });
+  return Promise.race([work.finally(() => clearTimeout(timer)), deadline]);
+}
+/** Backstop for a provider that ignores the abort signal: the DB kills the idle tx, releasing the advisory lock and pool slot. */
+const EMBED_TX_IDLE_TIMEOUT_MS = 120_000;
+
 export async function embedArtifact(
   auth: AuthContext,
-  input: { artifactId: string; provider?: EmbeddingProvider },
+  input: { artifactId: string; provider?: EmbeddingProvider; batchTimeoutMs?: number },
 ): Promise<ArtifactEmbedOutcome> {
   const outcome = await withTransaction(async (tx): Promise<ArtifactEmbedOutcome> => {
     // One indexing pass per artifact at a time, across the PROVIDER CALL: a
@@ -175,6 +209,10 @@ export async function embedArtifact(
     // is told a pass is already running.
     const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${input.artifactId}, 0)) as got`)) as unknown as { got: boolean }[];
     if (!lock.got) return { status: "skipped", reason: "busy" };
+    // A provider that hangs AND ignores the abort signal would otherwise pin
+    // this transaction, its advisory lock, and the pool slot forever.
+    // SET rejects bound parameters; the value is a module constant, inlined as a checked integer.
+    await tx.execute(sql`set local idle_in_transaction_session_timeout = ${sql.raw(String(EMBED_TX_IDLE_TIMEOUT_MS | 0))}`);
 
     const [row] = await tx
       .select({
@@ -226,7 +264,8 @@ export async function embedArtifact(
       vectors = [];
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
-        const out = await provider.embed(batch);
+        const budget = input.batchTimeoutMs ?? EMBED_BATCH_TIMEOUT_MS;
+        const out = await withDeadline(provider.embed(batch, { signal: AbortSignal.timeout(budget) }), budget);
         if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
         vectors.push(...out);
       }
@@ -234,7 +273,7 @@ export async function embedArtifact(
         throw new Error(`The provider returned vectors that are not ${EMBEDDING_DIMENSIONS} wide.`);
       }
     } catch (cause) {
-      console.error(`embedding failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      logProviderFailure("embedding failed for artifact", row.id, cause);
       await record(SAFE_FAILED);
       return { status: "failed", error: SAFE_FAILED };
     }

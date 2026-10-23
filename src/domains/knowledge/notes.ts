@@ -557,7 +557,7 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
  */
 export async function retryNoteEmbedding(
   auth: AuthContext,
-  input: { artifactId: string; provider?: EmbeddingProvider },
+  input: { artifactId: string; provider?: EmbeddingProvider; batchTimeoutMs?: number },
 ): Promise<ArtifactEmbedOutcome> {
   if (!z.string().uuid().safeParse(input.artifactId).success) throw new NoteNotFoundError();
   const row = await withTransaction(async (tx) => {
@@ -569,7 +569,7 @@ export async function retryNoteEmbedding(
     return found ?? null;
   });
   if (!row || !(LINKABLE_KINDS as readonly string[]).includes(row.kind)) throw new NoteNotFoundError();
-  return embedArtifact(auth, { artifactId: row.id, provider: input.provider });
+  return embedArtifact(auth, { artifactId: row.id, provider: input.provider, batchTimeoutMs: input.batchTimeoutMs });
 }
 
 /*

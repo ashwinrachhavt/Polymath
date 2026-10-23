@@ -186,6 +186,46 @@ suite("note embedding retry (real Postgres)", () => {
     expect(calls).toBe(1); // the provider was paid once
   });
 
+  it("a hung provider is bounded by the batch timeout and releases the lock and connection", { timeout: 20_000 }, async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Hanging", "Text about fermentation.");
+    const hanging: EmbeddingProvider = { model: "fake@1", embed: () => new Promise(() => {}) }; // never resolves
+    const started = Date.now();
+    const out = await retryNoteEmbedding(auth, { artifactId: note.id, provider: hanging, batchTimeoutMs: 200 });
+    expect(out.status).toBe("failed");
+    expect(Date.now() - started).toBeLessThan(10_000);
+    // The transaction committed the failure and released everything: a fresh
+    // pass with a working provider indexes immediately (no busy, no hang).
+    const fake = provider({ fermentation: vec([1]) });
+    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
+  });
+
+  it("provider failure logging carries no request body or token", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Leaky", "Secret fermentation text.");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const leaky: EmbeddingProvider = {
+        model: "fake@1",
+        embed: async () => {
+          const cause = new Error("401 unauthorized: token sk-live-abc123 body={\"input\":\"Secret fermentation text.\"}");
+          (cause as unknown as { statusCode: number }).statusCode = 401;
+          throw cause;
+        },
+      };
+      const out = await retryNoteEmbedding(auth, { artifactId: note.id, provider: leaky });
+      expect(out.status).toBe("failed");
+      const logged = spy.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+      expect(logged).toContain("401");
+      expect(logged).not.toContain("sk-live-abc123");
+      expect(logged).not.toContain("Secret fermentation text");
+      const detail = await getNote(auth, note.id);
+      expect(detail?.embedError).toBe("Embedding could not complete. Retry to try again.");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("a twin retry joins an already-indexed version without another provider call", async () => {
     const auth = await workspace();
     const note = await writeNote(auth, "Twin", "Text about fermentation.");
