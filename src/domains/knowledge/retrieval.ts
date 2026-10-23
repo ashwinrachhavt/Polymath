@@ -30,6 +30,39 @@ export const SEARCH_KINDS = ["note", "zettel", "document", "memo", "report", "tr
 
 export type SearchMode = "hybrid" | "keyword" | "meaning";
 
+/*
+ * Filter dimensions for search (spec: filter by kind, area, date or source).
+ * - from/to bound artifacts.updated_at - the last EDIT, the same field the
+ *   hit row shows. Rolling windows are computed by the caller; these are
+ *   absolute instants, not calendar days, so timezone plays no role.
+ * - provenance is generation provenance ONLY: produced_by_run_id set means a
+ *   run generated the artifact ("agent"); null means no run produced it
+ *   ("not-agent"). Null does NOT prove human authorship - imported material
+ *   carries no run id either. It is not the spec's full "source" dimension
+ *   (captured sources are not in this index at all; origin/channel provenance
+ *   does not exist in the schema).
+ * - area is not implementable: the areas schema (0241) is unapplied and the
+ *   artifact table has no area linkage on this base.
+ */
+export type SearchFilters = {
+  from?: Date;
+  to?: Date;
+  provenance?: "agent" | "not-agent";
+};
+
+/** One predicate set for every leg and count: a filter means the same thing everywhere. */
+function filterSql(filters?: SearchFilters) {
+  if (!filters) return sql``;
+  // postgres.js through db.execute cannot bind Date objects: send ISO strings.
+  return sql`${filters.from ? sql` and a.updated_at >= ${filters.from.toISOString()}::timestamptz` : sql``}${filters.to ? sql` and a.updated_at < ${filters.to.toISOString()}::timestamptz` : sql``}${filters.provenance === "agent" ? sql` and a.produced_by_run_id is not null` : sql``}${filters.provenance === "not-agent" ? sql` and a.produced_by_run_id is null` : sql``}`;
+}
+
+/** Kinds are interpolated into SQL as an enum array: only schema kinds may pass. */
+function validKinds(kinds: readonly string[] | undefined): readonly string[] {
+  const requested = kinds?.length ? kinds : SEARCH_KINDS;
+  return requested.filter((k) => (SEARCH_KINDS as readonly string[]).includes(k));
+}
+
 export type SearchHit = {
   id: string;
   title: string;
@@ -81,7 +114,7 @@ export function fuse(keyword: { id: string }[], meaning: { id: string; distance:
   return [...scores.entries()].sort((a, b) => b[1].score - a[1].score).map(([id, e]) => ({ id, ...e }));
 }
 
-async function keywordLeg(auth: AuthContext, query: string, kinds: readonly string[]): Promise<KeywordRow[]> {
+async function keywordLeg(auth: AuthContext, query: string, kinds: readonly string[], filters?: SearchFilters): Promise<KeywordRow[]> {
   const rows = await db.execute(sql`
     select a.id,
            (a.title ilike '%' || ${query} || '%' or ${query} <% a.title) as title_match,
@@ -95,7 +128,7 @@ async function keywordLeg(auth: AuthContext, query: string, kinds: readonly stri
     left join artifact_versions v on v.id = a.current_version_id
     where a.workspace_id = ${auth.workspaceId}
       and a.archived_at is null
-      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})
+      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})${filterSql(filters)}
       and (
         to_tsvector('english', coalesce(v.plain_text, '')) @@ websearch_to_tsquery('english', ${query})
         or to_tsvector('english', a.title) @@ websearch_to_tsquery('english', ${query})
@@ -107,22 +140,24 @@ async function keywordLeg(auth: AuthContext, query: string, kinds: readonly stri
   return (rows as unknown as KeywordRow[]).map((r) => ({ id: r.id, rank: Number(r.rank), title_match: Boolean(r.title_match) }));
 }
 
-async function meaningLeg(auth: AuthContext, vector: number[], model: string, kinds: readonly string[]): Promise<MeaningRow[]> {
+async function meaningLeg(auth: AuthContext, vector: number[], model: string, kinds: readonly string[], filters?: SearchFilters): Promise<MeaningRow[]> {
   const literal = vectorLiteral(vector);
   const rows = await db.execute(sql`
     select c.owner_id as id, min(c.distance) as distance
     from (
       select e.owner_id, e.embedding <=> ${literal}::vector as distance
       from embeddings e
+      join artifacts a on a.id = e.owner_id
       where e.workspace_id = ${auth.workspaceId}
         and e.owner_type = 'artifact'
         and e.model = ${model}
+        and e.source_version_id = a.current_version_id
       order by e.embedding <=> ${literal}::vector
       limit ${LEG_DEPTH * 3}
     ) c
     join artifacts a on a.id = c.owner_id
     where a.archived_at is null
-      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})
+      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})${filterSql(filters)}
       and c.distance <= ${MEANING_MAX_DISTANCE}
     group by c.owner_id
     order by distance
@@ -149,14 +184,14 @@ async function embedQuery(provider: EmbeddingProvider, query: string): Promise<n
 
 export async function searchKnowledge(
   auth: AuthContext,
-  input: { query: string; limit?: number; mode?: SearchMode; kinds?: readonly string[]; provider?: EmbeddingProvider },
+  input: { query: string; limit?: number; mode?: SearchMode; kinds?: readonly string[]; filters?: SearchFilters; provider?: EmbeddingProvider },
 ): Promise<SearchResult> {
   const started = performance.now();
   const query = input.query.trim();
   const mode = input.mode ?? "hybrid";
   const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
-  const kinds = input.kinds?.length ? input.kinds : SEARCH_KINDS;
-  if (!query) return { hits: [], meaning: "off", ms: 0 };
+  const kinds = validKinds(input.kinds);
+  if (!query || !kinds.length) return { hits: [], meaning: "off", ms: 0 };
 
   let meaningState: SearchResult["meaning"] = mode === "keyword" ? "off" : "ok";
   const meaningPromise: Promise<MeaningRow[]> =
@@ -172,13 +207,13 @@ export async function searchKnowledge(
           }
           try {
             const vector = await embedQuery(provider, query);
-            return await meaningLeg(auth, vector, provider.model, kinds);
+            return await meaningLeg(auth, vector, provider.model, kinds, input.filters);
           } catch {
             meaningState = "failed";
             return [];
           }
         })();
-  const [kw, mn] = await Promise.all([mode === "meaning" ? Promise.resolve([]) : keywordLeg(auth, query, kinds), meaningPromise]);
+  const [kw, mn] = await Promise.all([mode === "meaning" ? Promise.resolve([]) : keywordLeg(auth, query, kinds, input.filters), meaningPromise]);
 
   const fused = fuse(kw, mn).slice(0, limit);
   if (!fused.length) return { hits: [], meaning: meaningState, ms: Math.round(performance.now() - started) };
@@ -217,4 +252,39 @@ export async function searchKnowledge(
     }];
   });
   return { hits, meaning: meaningState, ms: Math.round(performance.now() - started) };
+}
+
+/**
+ * Partial-index visibility (spec: partial indexing is visible, never presented
+ * as a complete search). Counts artifacts matching the SAME kinds, filters and
+ * tenant scope as the search itself that the meaning leg CANNOT see: they have
+ * current text but no embedding row for their current version - indexing
+ * failed (embed_error set), is still pending, or the pass died before writing.
+ * The meaning leg ranks only current-version chunks, so this count is exactly
+ * "in scope, with text, not meaning-searchable". Empty-text artifacts are
+ * excluded: embedArtifact skips them by design and there is nothing to index.
+ */
+export async function countMeaningUncovered(
+  auth: AuthContext,
+  input: { kinds?: readonly string[]; filters?: SearchFilters },
+): Promise<number> {
+  const kinds = validKinds(input.kinds);
+  if (!kinds.length) return 0;
+  const rows = await db.execute(sql`
+    select count(*)::int as n
+    from artifacts a
+    join artifact_versions v on v.id = a.current_version_id
+    where a.workspace_id = ${auth.workspaceId}
+      and a.archived_at is null
+      and length(trim(coalesce(v.plain_text, ''))) > 0
+      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})${filterSql(input.filters)}
+      and not exists (
+        select 1 from embeddings e
+        where e.workspace_id = ${auth.workspaceId}
+          and e.owner_type = 'artifact'
+          and e.owner_id = a.id
+          and e.source_version_id = a.current_version_id
+      )
+  `);
+  return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
 }
