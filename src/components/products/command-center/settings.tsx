@@ -167,42 +167,55 @@ export type AssistantProfile = { name: string; description: string | null; instr
 /*
  * The assistant's learned brief (spec "It learns your taste"): what onboarding
  * wrote, open to review and change. Saving empty retires that part of the
- * brief; the onboarding session keeps the verbatim original as provenance.
- * The form submits against the rendered version and the server
- * compare-and-sets, so two open tabs conflict instead of silently
- * overwriting; on conflict the panel reloads the latest and says so.
+ * brief for future runs; the onboarding interview and the change history are
+ * kept - retiring is not erasing. The profile's name is the machine key runs
+ * resolve by, so it is shown, not edited.
+ *
+ * The draft is controlled state, so a conflict can keep the person's unsaved
+ * edits on screen while showing what the server has now: re-saving targets
+ * the latest version, and "Replace my edits" adopts the server's values.
  */
 export function AssistantPanel({ profile }: { profile: AssistantProfile }) {
   const { notify } = useWorkspace();
   const [saved, setSaved] = useState(profile);
+  const [draft, setDraft] = useState({ description: profile.description ?? "", instructions: profile.instructions ?? "" });
+  const [conflict, setConflict] = useState<AssistantProfile | null>(null);
   const [saving, setSaving] = useState(false);
   return (
-    <Panel title="Your assistant" description="What your assistant knows about how you work, learned during onboarding. Edit to correct it; save empty fields to retire them. The verbatim interview stays on the onboarding session as provenance.">
-      <form key={`${saved.name}-${saved.version}`} className="grid gap-4" onSubmit={(e) => {
+    <Panel title="Your assistant" description={`What your assistant knows about how you work, learned during onboarding (profile: ${saved.name}). Edit to correct it; save empty fields to retire them for future runs. Retiring is not erasing: the onboarding interview and the change history are kept.`}>
+      <form className="grid gap-4" onSubmit={(e) => {
         e.preventDefault();
-        const data = new FormData(e.currentTarget);
-        const name = String(data.get("name") ?? "").trim();
-        const description = String(data.get("description") ?? "");
-        const instructions = String(data.get("instructions") ?? "");
         setSaving(true);
-        void saveAssistantProfileAction({ name, description, instructions, expectedVersion: saved.version }).then((result) => {
+        void saveAssistantProfileAction({ description: draft.description, instructions: draft.instructions, expectedVersion: saved.version }).then((result) => {
           setSaving(false);
           if (!result.ok) {
-            notify(result.error);
             if (result.kind === "conflict") {
-              void loadAssistantProfileAction().then((loaded) => { if (loaded.ok && loaded.profile) setSaved(loaded.profile); });
+              // Keep the draft; show what changed underneath it.
+              void loadAssistantProfileAction().then((loaded) => { if (loaded.ok && loaded.profile) { setSaved(loaded.profile); setConflict(loaded.profile); } });
+              notify("The brief changed elsewhere. Your edits are kept below - review what changed, then save again or replace them.");
+            } else {
+              notify(result.error);
             }
             return;
           }
           setSaved(result.profile);
+          setDraft({ description: result.profile.description ?? "", instructions: result.profile.instructions ?? "" });
+          setConflict(null);
           notify("Assistant brief saved. It guides every future run.");
         });
       }}>
-        <Field label="Name"><Input required name="name" defaultValue={saved.name} maxLength={80} /></Field>
-        <Field label="Description - one line on what it is to you"><Textarea name="description" defaultValue={saved.description ?? ""} maxLength={500} rows={2} placeholder="Retired - nothing saved." /></Field>
-        <Field label="Learned brief - how it should write, explain and work with you"><Textarea name="instructions" defaultValue={saved.instructions ?? ""} maxLength={4000} rows={6} placeholder="Retired - nothing saved." /></Field>
+        {conflict ? (
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-[13px]">
+            <p className="font-medium">Changed elsewhere while you edited.</p>
+            <p className="mt-1 text-muted-foreground">Latest description: {conflict.description ?? "(retired)"}</p>
+            <p className="mt-0.5 line-clamp-2 text-muted-foreground">Latest brief: {conflict.instructions ?? "(retired)"}</p>
+            <Button type="button" variant="outline" className="mt-2" onClick={() => { setDraft({ description: conflict.description ?? "", instructions: conflict.instructions ?? "" }); setConflict(null); }}>Replace my edits with the latest</Button>
+          </div>
+        ) : null}
+        <Field label="Description - one line on what it is to you"><Textarea name="description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} maxLength={500} rows={2} placeholder="Retired - nothing saved." /></Field>
+        <Field label="Learned brief - how it should write, explain and work with you"><Textarea name="instructions" value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} maxLength={4000} rows={6} placeholder="Retired - nothing saved." /></Field>
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save assistant brief"}</Button>
+          <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : conflict ? "Save over the latest" : "Save assistant brief"}</Button>
           <p className="text-xs text-muted-foreground">Changes apply to future runs; running work keeps the brief it started with.</p>
         </div>
       </form>

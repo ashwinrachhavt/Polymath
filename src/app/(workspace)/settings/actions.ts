@@ -91,7 +91,6 @@ export async function loadAssistantProfileAction(): Promise<Result<{ profile: { 
 }
 
 export async function saveAssistantProfileAction(input: {
-  name: string;
   description?: string;
   instructions?: string;
   expectedVersion: number;
