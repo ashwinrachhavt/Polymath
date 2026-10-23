@@ -1,6 +1,6 @@
 # knowledge
 
-Owns: artifacts, versions, drafts, files, documents, extractions, sources, claims, evidence, embeddings, dossiers, concepts, canvases
+Owns: artifacts, versions, drafts, files, documents, extractions, sources, claims, evidence, embeddings, dossiers, concepts, canvases, cards, card reviews
 
 Tables are in `schema.ts` and nowhere else — a domain owns its tables, and UI
 code reads them through this domain's queries rather than joining across
@@ -210,3 +210,12 @@ The read model behind the document library UI: `library.ts` for reads,
   a `document_export_packets` record (append-only; manifest edits do not
   mutate past packets). POST `/api/v1/exports/manifests/:id/packet`
   assembles (member), GET `/api/v1/exports/packets/:id` downloads (viewer).
+
+## Cards and recall
+
+`cards.ts` owns the lifecycle (propose -> accept -> review, suspend/resume/
+retire); every write is one transaction with a receipt and an audit row, and
+only a scheduled, due card can be reviewed. `recall-scheduler.ts` is the one
+place intervals are computed - SM-2 arithmetic narrowed to the spec's two
+outcomes; a missed card returns within the sitting. `card-queries.ts` owns the
+reads; every row carries its source citation.

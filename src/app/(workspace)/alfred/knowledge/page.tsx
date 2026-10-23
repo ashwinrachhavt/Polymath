@@ -170,6 +170,9 @@ export async function KnowledgeSurface({
         <Link href="/alfred/knowledge/zettels" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
           Zettels
         </Link>
+        <Link href="/alfred/knowledge/cards" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+          Cards
+        </Link>
       </nav>
 
       <div className="page-content">
