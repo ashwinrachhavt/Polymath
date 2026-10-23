@@ -24,7 +24,7 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
-import { fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
+import { countMeaningIndexFailures, fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
 import { syncThreadToGraph } from "@/domains/knowledge/thread-graph";
 
 function vec(dims: number[]): number[] {
@@ -166,4 +166,23 @@ suite("search filters (real Postgres)", () => {
     expect(human.id).not.toBe(generated.id);
   });
 
+  it("counts failed meaning indexing with the same kinds, filters and tenant scope as the search", async () => {
+    const auth = await workspace();
+    const other = await workspace();
+    // Every commit auto-embeds; with no real key that failure lands on
+    // embed_error. A successful fake-provider pass clears it, so these three
+    // start clean and only the two marked below count as failed indexing.
+    const p = provider({ zephyr: vec([1]) });
+    const failed = await write(auth, "Failed zephyr", "zephyr failed to index", p);
+    await write(auth, "Healthy zephyr", "zephyr indexed fine", p);
+    const failedZettel = await write(auth, "Failed zephyr zettel", "zephyr zettel failed", p, "zettel");
+    await holder.db!.update(artifacts).set({ embedError: "provider 500" }).where(eq(artifacts.id, failed.id));
+    await holder.db!.update(artifacts).set({ embedError: "provider 500" }).where(eq(artifacts.id, failedZettel.id));
+    expect(await countMeaningIndexFailures(auth, {})).toBe(2);
+    expect(await countMeaningIndexFailures(auth, { kinds: ["note"] })).toBe(1);
+    // Same filters as the search: excluding the failed note narrows the count with it.
+    expect(await countMeaningIndexFailures(auth, { kinds: ["note"], filters: { to: new Date(Date.now() - 1000) } })).toBe(0);
+    // Tenant scope: the other workspace never sees these failures.
+    expect(await countMeaningIndexFailures(other, {})).toBe(0);
+  });
 });

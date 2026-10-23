@@ -251,3 +251,27 @@ export async function searchKnowledge(
   });
   return { hits, meaning: meaningState, ms: Math.round(performance.now() - started) };
 }
+
+/**
+ * Partial-index visibility (spec: failed retrieval is visible, never presented
+ * as a complete search). Counts artifacts matching the SAME kind set, filters
+ * and tenant scope as the search itself whose meaning indexing FAILED
+ * (embed_error set). Artifacts never attempted or skipped (e.g. empty text)
+ * leave no trace, so this count is failed indexing exactly - not "pending".
+ */
+export async function countMeaningIndexFailures(
+  auth: AuthContext,
+  input: { kinds?: readonly string[]; filters?: SearchFilters },
+): Promise<number> {
+  const kinds = validKinds(input.kinds);
+  if (!kinds.length) return 0;
+  const rows = await db.execute(sql`
+    select count(*)::int as n
+    from artifacts a
+    where a.workspace_id = ${auth.workspaceId}
+      and a.archived_at is null
+      and a.embed_error is not null
+      and a.kind = any(${sql.raw(`array[${kinds.map((k) => `'${k}'`).join(",")}]::artifact_kind[]`)})${filterSql(input.filters)}
+  `);
+  return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
+}
