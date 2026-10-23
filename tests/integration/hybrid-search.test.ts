@@ -69,6 +69,8 @@ suite("hybrid search (real Postgres)", () => {
     expect(exact.hits[0].title).toBe("Compound interest");
     expect(exact.hits[0].why.keywordRank).toBe(1);
     expect(exact.hits[0].snippet).toContain("[[earnings]]");
+    // Freshness is visible: every hit carries the artifact's last edit time.
+    expect(exact.hits[0].updatedAt).toBeInstanceOf(Date);
     const typo = await searchKnowledge(auth, { query: "sourdogh", mode: "keyword" });
     expect(typo.hits[0].title).toBe("Sourdough starter");
     expect(typo.hits[0].why.titleMatch).toBe(true);

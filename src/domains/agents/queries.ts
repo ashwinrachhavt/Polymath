@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { agentProfiles, agentRuns, toolCalls } from "./schema";
+import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -63,6 +63,53 @@ export async function getRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return run ?? null;
+}
+
+export type RunUsage = {
+  /*
+   * Summed over the run's cost-bearing usage events as numeric in SQL; text
+   * keeps the precision. Null when no usage event carries a cost: unpriced
+   * usage means the cost is unknown, never zero.
+   */
+  usd: string | null;
+  /** Usage events carrying a costUsd figure. */
+  pricedEvents: number;
+  /** All usage events, priced or not. */
+  usageEvents: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+/*
+ * The recorded usage of one run, summed from its usage events in SQL - the
+ * same derivation the terminal close settles with. Null when the run has no
+ * usage events at all. The recording contract does not guarantee
+ * completeness: a step may report no usage, or usage without a price, and a
+ * failed bridge write is dropped - so these are recorded figures, never a
+ * guaranteed complete bill.
+ */
+export async function getRunUsage(workspaceId: string, runId: string): Promise<RunUsage | null> {
+  const rows = await db.execute(sql`
+    select
+      sum((${runEvents.data}->>'costUsd')::numeric)::text as usd,
+      count((${runEvents.data}->>'costUsd'))::int as priced_events,
+      count(*)::int as usage_events,
+      coalesce(sum((${runEvents.data}->>'inputTokens')::bigint), 0)::int as input_tokens,
+      coalesce(sum((${runEvents.data}->>'outputTokens')::bigint), 0)::int as output_tokens
+    from run_events
+    where run_id = ${runId} and workspace_id = ${workspaceId} and type = 'usage'
+  `);
+  const row = rows[0] as
+    | { usd: string | null; priced_events: number; usage_events: number; input_tokens: number; output_tokens: number }
+    | undefined;
+  if (!row || row.usage_events === 0) return null;
+  return {
+    usd: row.usd,
+    pricedEvents: row.priced_events,
+    usageEvents: row.usage_events,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+  };
 }
 
 /**
