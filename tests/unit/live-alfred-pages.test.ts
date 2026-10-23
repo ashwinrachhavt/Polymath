@@ -201,7 +201,7 @@ describe("live dossiers screen", () => {
   it("reads Neon: an empty workspace gets the invitation, not the preview", async () => {
     const html = await dossiers();
     expect(html).toContain("No dossiers yet");
-    expect(html).toContain("New dossier");
+    expect(html).toContain("New notebook");
     expect(html).not.toContain("AlfredScreen");
   });
 
@@ -209,20 +209,21 @@ describe("live dossiers screen", () => {
     vi.mocked(listDossiers).mockResolvedValue([
       { id: "d1", title: "Rental papers", documentCount: 2 },
     ] as never);
-    vi.mocked(listAttachableDocuments).mockResolvedValue([{ id: "doc1", title: "Lease" }] as never);
     const html = await dossiers();
     expect(html).toContain("Rental papers");
     expect(html).toContain("2 documents");
     expect(html).toContain("/alfred/dossiers/d1/notebook");
   });
 
-  it("the create form offers the workspace's filed documents", async () => {
+  it("creating a notebook is naming it: no document picker", async () => {
     vi.mocked(listAttachableDocuments).mockResolvedValue([
       { id: "doc1", title: "Lease" },
       { id: "doc2", title: "Inspection" },
     ] as never);
     const html = await dossiers();
-    expect(html).toContain("Lease");
-    expect(html).toContain("Inspection");
+    expect(html).toContain("Name the notebook");
+    expect(html).not.toContain("Lease");
+    expect(html).not.toContain("Inspection");
+    expect(listAttachableDocuments).not.toHaveBeenCalled();
   });
 });

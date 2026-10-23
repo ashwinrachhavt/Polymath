@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader, Section } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
-import { listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
+import { listDossiers } from "@/domains/knowledge/dossiers";
 import { getDraftDetail } from "@/domains/knowledge/studio";
 import { artifactNextStep } from "@/domains/knowledge/continuation";
 import { DraftWorkbench } from "./draft-workbench";
@@ -16,10 +16,10 @@ import { CreateDossierForm } from "./create-dossier-form";
 export const metadata = { title: "Dossiers · Polymath" };
 
 /*
- * The dossier screen: the workspace's dossiers and the form that creates one.
- * A dossier opens as a notebook — sources on the left, the grounded
+ * The notebook screen: the workspace's notebooks and the form that creates one.
+ * A notebook opens as its notebook view — sources on the left, the grounded
  * conversation in the middle, Studio on the right — so everything else lives
- * there, not here.
+ * there, not here. Creating one is naming it; sources join in the Sources pane.
  */
 const BASE = "/alfred/dossiers";
 
@@ -45,7 +45,7 @@ export async function DossiersSurface({
   const auth = await getAuthContext();
   const raw = await searchParams;
   const draftId = typeof raw.draft === "string" ? raw.draft : undefined;
-  const [dossiers, attachable] = await Promise.all([listDossiers(auth), listAttachableDocuments(auth)]);
+  const dossiers = await listDossiers(auth);
   // A draft id that is missing, foreign, or not a Studio artifact opens no
   // workbench; only the link's sender knows the difference, and the page still
   // renders the list.
@@ -80,8 +80,8 @@ export async function DossiersSurface({
           )}
         </Section>
 
-        <Section title="New dossier">
-          <CreateDossierForm documents={attachable} />
+        <Section title="New notebook">
+          <CreateDossierForm />
         </Section>
 
         {draftDetail && linkable ? (

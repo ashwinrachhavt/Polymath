@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { BookmarkPlus, FileText, Image, Loader2, NotebookPen, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +16,8 @@ import { DraftControls } from "../../../draft-controls";
 import { saveAnswerAction } from "../../../save-answer-actions";
 import { researchDossierCompanyAction } from "../../actions";
 import { startNotebookRun } from "./chat-run-actions";
+import { retryNotebookSourceAction } from "./add-source-actions";
+import { AddSources } from "./add-sources";
 
 /*
  * The notebook surface, laid out the way NotebookLM reads: sources on the left,
@@ -51,10 +52,21 @@ export type GeneratedArtifact = {
 
 export type NotebookRun = { id: string; state: string; objective: string };
 
+/** The readiness vocabulary the pane shows; one label per state of the existing field. */
+const READINESS_LABEL: Record<SourceRow["readiness"], string> = {
+  queued: "Reading...",
+  extracting: "Reading...",
+  embedding: "Reading...",
+  ready: "Ready",
+  failed: "Failed",
+  unsupported: "Failed",
+};
+
 export default function NotebookSurface({
   notebook,
   sources,
   artifacts,
+  vault = [],
   runs = [],
   runDrafts = {},
   lastAnswer,
@@ -62,6 +74,8 @@ export default function NotebookSurface({
   notebook: { dossierId: string; title: string };
   sources: SourceRow[];
   artifacts: GeneratedArtifact[];
+  /** The workspace's filed documents, for the pick-from-Vault control. */
+  vault?: Array<{ id: string; title: string }>;
   /** This notebook's generate/research runs, newest first. */
   runs?: NotebookRun[];
   /** Draft artifact per producing run, when one exists. */
@@ -79,7 +93,20 @@ export default function NotebookSurface({
   const [researching, setResearching] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [discarded, setDiscarded] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
+
+  function retrySource(documentId: string) {
+    setRetryNote(null);
+    setRetrying(documentId);
+    void retryNotebookSourceAction({ dossierId: notebook.dossierId, documentId })
+      .then((out) => setRetryNote(out.message))
+      .catch((cause: unknown) =>
+        setRetryNote(cause instanceof Error ? cause.message : "The source could not be retried."),
+      )
+      .finally(() => setRetrying(null));
+  }
 
   function beginChat() {
     setMessage(null);
@@ -154,26 +181,51 @@ export default function NotebookSurface({
       <aside aria-label="Sources" className="panel rounded-xl p-3">
         <div className="flex items-baseline justify-between gap-2 px-1">
           <h2 className="text-[13px] font-medium">Sources</h2>
-          <Link href="/alfred/sources" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
-            Add
-          </Link>
         </div>
+        <AddSources dossierId={notebook.dossierId} vault={vault} />
         {sources.length === 0 ? (
           <p className="mt-3 px-1 text-xs leading-relaxed text-muted-foreground">
-            No sources yet. Add one and it will appear here once it is ready.
+            No sources yet. Add a URL, YouTube link, or file.
           </p>
         ) : (
           <ul className="mt-2 flex flex-col">
             {sources.map((source) => (
               <li key={source.documentId} className="px-1 py-1.5">
-                <p className="truncate text-[13px]">{source.title}</p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="truncate text-[13px]">{source.title}</p>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {READINESS_LABEL[source.readiness]}
+                  </span>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {source.kind === "video" ? "Video" : "Document"}
-                  {source.readiness !== "ready" ? ` · ${source.readiness}` : ""}
+                  {source.detail ? ` · ${source.detail}` : ""}
                 </p>
+                {(source.readiness === "failed" || source.readiness === "unsupported") && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => retrySource(source.documentId)}
+                      disabled={retrying !== null}
+                    >
+                      {retrying === source.documentId ? <Loader2 aria-hidden className="animate-spin" /> : null}
+                      Retry
+                    </Button>
+                    {retrying === source.documentId && retryNote && (
+                      <span className="text-xs text-muted-foreground">{retryNote}</span>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+        )}
+        {retryNote && retrying === null && (
+          <p role="status" className="mt-1 px-1 text-xs leading-relaxed text-muted-foreground">
+            {retryNote}
+          </p>
         )}
       </aside>
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -22,12 +22,23 @@ export class DossierError extends Error {
 
 type Tx = Parameters<Parameters<typeof withTransaction>[0]>[0];
 
-async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null; title: string }): Promise<string> {
-  if (doc.fileId) {
+async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null; sourceUrl: string | null; title: string }): Promise<string> {
+  // A capture that has landed has a file; a queued URL or YouTube capture does
+  // not yet. Both belong in the notebook the moment they are captured, so the
+  // address is the fallback key: documents.sourceUrl is canonical and unique
+  // per workspace, so a queued video is found here and joins its source when
+  // the transcript lands.
+  if (doc.fileId || doc.sourceUrl) {
     const [existing] = await tx
       .select({ id: sources.id })
       .from(sources)
-      .where(and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")))
+      .where(
+        and(
+          eq(sources.workspaceId, auth.workspaceId),
+          doc.fileId ? eq(sources.fileId, doc.fileId) : undefined,
+          doc.sourceUrl ? eq(sources.url, doc.sourceUrl) : undefined,
+        ),
+      )
       .limit(1);
     if (existing) return existing.id;
   }
@@ -43,7 +54,7 @@ async function attach(tx: Tx, auth: AuthContext, dossierId: string, documentIds:
   const ids = [...new Set(documentIds)];
   if (ids.length === 0) return 0;
   const docs = await tx
-    .select({ id: documents.id, fileId: documents.fileId, title: documents.title })
+    .select({ id: documents.id, fileId: documents.fileId, sourceUrl: documents.sourceUrl, title: documents.title })
     .from(documents)
     .where(and(inArray(documents.id, ids), eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`));
   if (docs.length !== ids.length) {
@@ -117,7 +128,18 @@ export async function dossierDocumentIds(auth: AuthContext, dossierId: string): 
     .select({ id: documents.id })
     .from(dossierSources)
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        // A landed capture binds by file; a queued URL or YouTube capture has
+        // no file yet and binds by its canonical address until the bytes land.
+        or(
+          and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+          and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+        ),
+      ),
+    )
     .where(and(eq(dossierSources.dossierId, dossierId), eq(dossierSources.workspaceId, auth.workspaceId)));
   return [...new Set(rows.map((r) => r.id))];
 }
@@ -134,7 +156,18 @@ export async function getDossierDetail(auth: AuthContext, dossierId: string) {
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
     .from(dossierSources)
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        // Same rule as dossierDocumentIds: file binding for landed captures,
+        // address binding for captures still in the queue.
+        or(
+          and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+          and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+        ),
+      ),
+    )
     .where(and(eq(dossierSources.dossierId, dossierId), eq(dossierSources.workspaceId, auth.workspaceId)));
   const seen = new Set<string>();
   return { ...dossier, documents: docs.filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true))) };

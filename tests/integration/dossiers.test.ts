@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, files } from "@/domains/knowledge/schema";
+import { documents, files, sources } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -115,6 +115,31 @@ suite("dossiers (real Postgres + pgvector)", () => {
     const d = await createDossier(a, { name: "D", documentIds: [lease.id] });
     expect(await attachDocuments(a, { dossierId: d.id, documentIds: [lease.id] })).toEqual({ attached: 0 });
     await expect(createDossier(a, { name: "   ", documentIds: [] })).rejects.toMatchObject({ code: "invalid_name" });
+  });
+
+  it("a queued capture with no file yet joins by address and appears in the notebook", async () => {
+    const a = await workspace();
+    const url = `https://example.com/video-${Date.now()}`;
+    // The shape a queued YouTube capture leaves behind: a document row with a
+    // sourceUrl and no fileId, plus the source row its outbox handler writes.
+    const [doc] = await holder.db!.insert(documents).values({
+      workspaceId: a.workspaceId, title: "Queued video", sourceUrl: url,
+      createdBy: a.userId, updatedBy: a.userId,
+    }).returning();
+    await holder.db!.insert(sources).values({
+      workspaceId: a.workspaceId, kind: "document", title: "Queued video", url,
+      createdBy: a.userId, updatedBy: a.userId,
+    });
+    const d = await createDossier(a, { name: "Videos", documentIds: [doc.id] });
+    expect(await dossierDocumentIds(a, d.id)).toEqual([doc.id]);
+    // Once the transcript lands (fileId set), the same binding still holds.
+    const [blob] = await holder.db!.insert(blobObjects).values({
+      workspaceId: a.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(),
+      sizeBytes: 4, mimeType: "text/plain",
+    }).returning();
+    const [file] = await holder.db!.insert(files).values({ workspaceId: a.workspaceId, blobId: blob.id, filename: "video.txt" }).returning();
+    await holder.db!.update(documents).set({ fileId: file.id }).where(eq(documents.id, doc.id));
+    expect(await dossierDocumentIds(a, d.id)).toEqual([doc.id]);
   });
 
   it("documents.search with a dossierId only returns that dossier's documents", async () => {

@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
-import { dossierDocumentIds, getDossierDetail, listDossierRuns } from "@/domains/knowledge/dossiers";
+import { dossierDocumentIds, getDossierDetail, listAttachableDocuments, listDossierRuns } from "@/domains/knowledge/dossiers";
 import { listSources } from "@/domains/knowledge/source-readiness";
 import { parseStructuredContent } from "@/domains/knowledge/artifact-content";
 import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
@@ -43,7 +43,10 @@ async function NotebookData({
   if (!dossier) notFound();
 
   const documentIds = (await dossierDocumentIds(auth, dossierId)) ?? [];
-  const sources = documentIds.length > 0 ? await listSources(auth, { documentIds, limit: 100 }) : [];
+  const [sources, vault] = await Promise.all([
+    documentIds.length > 0 ? listSources(auth, { documentIds, limit: 100 }) : [],
+    listAttachableDocuments(auth),
+  ]);
 
   // Artifacts pinned to this notebook's documents, with their stored structure.
   const links = documentIds.length > 0
@@ -100,6 +103,7 @@ async function NotebookData({
         notebook={{ dossierId: dossier.id, title: dossier.title }}
         sources={sources}
         artifacts={generated}
+        vault={vault.map((doc) => ({ id: doc.id, title: doc.title }))}
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
       />

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { artifactVersions, artifacts, wikiPages } from "@/domains/knowledge/schema";
+import { artifactKind, artifactStatus, artifactVersions, artifacts, wikiPages } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 const handle = makeTestDb();
@@ -22,8 +22,8 @@ suite("pageArtifacts kept-outputs boundary (Neon)", () => {
   let auth: ReturnType<typeof ownerAuth>;
 
   async function insertArtifact(input: {
-    kind: string;
-    status?: string;
+    kind: (typeof artifactKind.enumValues)[number];
+    status?: (typeof artifactStatus.enumValues)[number];
     title: string;
     text?: string;
     archived?: boolean;
@@ -81,7 +81,7 @@ suite("pageArtifacts kept-outputs boundary (Neon)", () => {
   it("default view lists kept outputs and excludes plain notes and archived rows", async () => {
     if (!handle) return;
     const all: string[] = [];
-    let page = await pageArtifacts(auth, { limit: 100, offset: 0 });
+    const page = await pageArtifacts(auth, { limit: 100, offset: 0 });
     all.push(...page.items.map((r) => r.title));
     expect(page.total).toBe(4);
     expect(all).toContain("Quarterly report draft");
