@@ -6,6 +6,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
+import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { findCaptureIdByUrl } from "./queries";
 import { captures, captureSource } from "./schema";
@@ -232,6 +233,75 @@ export async function convertCaptureToNote(
   });
   try {
     await embedArtifact(auth, { artifactId: result.note.id });
+  } catch (cause) {
+    console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+  return result;
+}
+
+/**
+ * Turn a capture into a starter draft in a picked writing template ("turn it
+ * into anything" - the Omnibox inbox row of the Product Spec). Same guards as
+ * convertCaptureToNote: tenant-scoped, unconverted, version-checked, one
+ * transaction. The template is a deterministic scaffold with the capture
+ * quoted verbatim as source material - the system invents no prose. The
+ * template value itself is validated at the action boundary (zod enum).
+ */
+export async function convertCaptureToDraft(
+  auth: AuthContext,
+  input: { captureId: string; expectedVersion: number; template: DraftTemplate },
+) {
+  const result = await withTransaction(async (tx) => {
+    const [capture] = await tx
+      .select()
+      .from(captures)
+      .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+      .limit(1);
+    if (!capture) throw new StaleWriteError("That capture no longer exists. Reload the inbox.");
+    if (capture.processingState === "converted") {
+      throw new ConflictError("That capture was already converted.");
+    }
+    if (capture.version !== input.expectedVersion) {
+      throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+    }
+
+    const material = capture.text ?? (capture.url ? capture.url : "Captured item");
+    const firstLine = material.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
+    const title = draftTitle(input.template, firstLine);
+    const body = draftBody(input.template, { firstLine, material });
+    const draft = await createNoteInTx(tx, auth, {
+      title,
+      content: { format: "markdown", text: body },
+      plainText: body,
+      kind: DRAFT_TEMPLATE_KIND[input.template],
+    });
+    await syncNoteLinks(tx, auth, draft.id, body);
+
+    const [updated] = await tx
+      .update(captures)
+      .set({
+        processingState: "converted",
+        convertedType: `draft:${input.template}`,
+        convertedId: draft.id,
+        convertedAt: new Date(),
+        version: sql`${captures.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
+      .returning();
+    if (!updated) {
+      throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became ${DRAFT_TEMPLATE_LABEL[input.template].toLowerCase()}: ${title}` },
+      tx,
+    );
+    return { capture: updated, draft };
+  });
+  try {
+    await embedArtifact(auth, { artifactId: result.draft.id });
   } catch (cause) {
     console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
   }

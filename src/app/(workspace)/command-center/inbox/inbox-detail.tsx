@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
+import { makeDraftAction, makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
+import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import { CaptureBody } from "./capture-body";
 import { captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 
@@ -83,6 +84,15 @@ export function InboxDetail({
     startTransition(async () => {
       decide("converted");
       const result = await makeNoteAction({ captureId: capture!.id, expectedVersion: capture!.version });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function saveAsDraft(template: DraftTemplate) {
+    setError(null);
+    startTransition(async () => {
+      decide("converted");
+      const result = await makeDraftAction({ captureId: capture!.id, expectedVersion: capture!.version, template });
       if (!result.ok) setError(result.error);
     });
   }
@@ -178,6 +188,14 @@ export function InboxDetail({
             <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
               Make task
             </Button>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              Turn into
+              {DRAFT_TEMPLATES.map((template) => (
+                <Button key={template} size="sm" variant="ghost" disabled={pending} onClick={() => saveAsDraft(template)}>
+                  {DRAFT_TEMPLATE_LABEL[template]}
+                </Button>
+              ))}
+            </span>
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => act("discarded")}>
               Archive
             </Button>
@@ -188,9 +206,9 @@ export function InboxDetail({
             Restore capture
           </Button>
         ) : null}
-        {state === "converted" && capture.convertedType === "note" && capture.convertedId ? (
+        {state === "converted" && (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>Open note</Link>
+            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
