@@ -13,7 +13,8 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 import { NotebookWorkspace } from "./notebook-workspace";
-import { SearchResults } from "./search-results";
+import { SearchResults, type SearchScope } from "./search-results";
+import { SEARCH_KINDS } from "@/domains/knowledge/retrieval";
 
 export const metadata = { title: "Notes · Polymath" };
 
@@ -44,7 +45,31 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const raw = await searchParams;
   const id = typeof raw.id === "string" ? raw.id : undefined;
   // The list is a narrow sidebar: a short page keeps it scannable.
-  const list = parseListParams(raw, { filters: { view: ["drafts"], layout: ["kanban"] }, defaultPageSize: 10 });
+  const list = parseListParams(raw, {
+    filters: { view: ["drafts"], layout: ["kanban"], kind: [...SEARCH_KINDS], edited: ["day", "week", "month"], source: ["agent", "not-agent"] },
+    defaultPageSize: 10,
+  });
+  // Search-only scope: kind narrows the searched kinds, edited is a rolling
+  // window on the same updated_at each hit row shows (absolute instant, no
+  // calendar-day ambiguity), source is generation provenance exactly -
+  // "agent" means produced_by_run_id set, never a human-authorship claim.
+  const EDITED_DAYS: Record<string, number> = { day: 1, week: 7, month: 30 };
+  const editedDays = list.filters.edited ? EDITED_DAYS[list.filters.edited] : undefined;
+  // eslint-disable-next-line react-hooks/purity -- per-request rolling window: connection() above already opted this render out of prerendering, and the window must be evaluated at request time, not build time.
+  const editedFrom = editedDays ? new Date(Date.now() - editedDays * 86_400_000) : undefined;
+   
+  const searchScope: SearchScope | undefined = list.q
+    ? {
+        kinds: list.filters.kind ? [list.filters.kind] : undefined,
+        filters:
+          editedDays || list.filters.source
+            ? {
+                ...(editedFrom ? { from: editedFrom } : {}),
+                ...(list.filters.source ? { provenance: list.filters.source as "agent" | "not-agent" } : {}),
+              }
+            : undefined,
+      }
+    : undefined;
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
   const kanban = list.filters.layout === "kanban";
   const found = await pageNotes(auth, {
@@ -77,6 +102,15 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         filters={[
           { key: "view", label: "Show", allLabel: "All notes", options: [{ value: "drafts", label: "With unsaved draft" }] },
           { key: "layout", label: "Layout", allLabel: "List", options: [{ value: "kanban", label: "Kanban by tag" }] },
+          // Search filters render only while a query is active: they filter
+          // results, not the plain list, and an inert control would lie.
+          ...(list.q
+            ? [
+                { key: "kind", label: "Kind", allLabel: "All kinds", options: SEARCH_KINDS.map((k) => ({ value: k as string, label: k === "transcript" ? "Conversation" : k[0].toUpperCase() + k.slice(1) })) },
+                { key: "edited", label: "Edited", allLabel: "Any time", options: [{ value: "day", label: "Last 24 hours" }, { value: "week", label: "Last 7 days" }, { value: "month", label: "Last 30 days" }] },
+                { key: "source", label: "Provenance", allLabel: "Any provenance", options: [{ value: "agent", label: "Agent-generated" }, { value: "not-agent", label: "Not agent-generated" }] },
+              ]
+            : []),
         ]}
       />
       {allTags.length > 0 && (
@@ -94,7 +128,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         </div>
       )}
       {list.q && !kanban ? (
-        <SearchResults auth={auth} q={list.q} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+        <SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected?.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
       ) : notes.length === 0 ? (
         <NoResults
           filtered={Boolean(list.q || list.filters.view)}
