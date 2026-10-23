@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { completeTask, createOwnerTask } from "@/domains/work/commands";
+import { completeTask, reopenTask, createOwnerTask } from "@/domains/work/commands";
 import {
   DependencyCycleError,
   RankOrderError,
@@ -100,6 +100,26 @@ export async function completeTaskAction(
   return done
     ? { ok: true, quartzEarned: done.quartzEarned }
     : { ok: false, error: "This task was already completed. Reload to see it." };
+}
+
+/*
+ * Undo a terminal transition (Product Spec: "Undo for every terminal
+ * transition"). A completed or cancelled task comes back as `ready`. The
+ * earned stone and the audit history stand - reopening reopens the task,
+ * it does not rewrite what happened.
+ */
+export async function reopenTaskAction(
+  taskId: string,
+): Promise<{ ok: true; from: "done" | "cancelled" } | { ok: false; error: string }> {
+  const parsed = z.string().uuid().safeParse(taskId);
+  if (!parsed.success) return { ok: false, error: "That task no longer exists." };
+
+  const auth = await authorize();
+  const reopened = await reopenTask(auth, { taskId: parsed.data });
+  revalidate(auth);
+  return reopened
+    ? { ok: true, from: reopened.from }
+    : { ok: false, error: "Only a completed or cancelled task can be reopened." };
 }
 
 /*

@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { withReceipt } from "@/domains/audit/receipt";
@@ -249,5 +249,69 @@ export async function completeTask(
     // Quartz. Same transaction, skip-silent when the day already has one.
     const quartzEarned = await recordDailyQuartz(tx, auth, task.id);
     return { id: task.id, quartzEarned };
+  });
+}
+
+/**
+ * Undo a terminal transition (Product Spec: "Undo for every terminal
+ * transition"). The row's own guard carries the current status, so only a
+ * done or cancelled task reopens, a double-click is a no-op, and a task
+ * reopened in another tab comes back `null` for the caller to say so.
+ * Reopening lands the task in `ready` - the prior open state is not
+ * recorded anywhere, and inventing one would be a lie.
+ *
+ * Scope of the undo, honestly: the task row, its completedAt, and the
+ * blocker edges its completion resolved. It does NOT reclaim an earned
+ * stone (the ledger is append-only), does NOT rewrite the audit history
+ * (the completion row stands; the reopen adds its own), and cannot undo an
+ * external effect another system already felt.
+ */
+export async function reopenTask(
+  auth: AuthContext,
+  input: { taskId: string },
+): Promise<{ id: string; from: "done" | "cancelled" } | null> {
+  return withTransaction(async (tx) => {
+    const [before] = await tx
+      .select({ status: tasks.status, title: tasks.title })
+      .from(tasks)
+      .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!before || (before.status !== "done" && before.status !== "cancelled")) return null;
+
+    const [task] = await tx
+      .update(tasks)
+      .set({
+        status: "ready",
+        completedAt: null,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+        version: sql`${tasks.version} + 1`,
+      })
+      .where(
+        and(
+          eq(tasks.id, input.taskId),
+          eq(tasks.workspaceId, auth.workspaceId),
+          inArray(tasks.status, ["done", "cancelled"]),
+        ),
+      )
+      .returning({ id: tasks.id });
+    // Lost the race to another reopen (or a concurrent patch): nothing to record.
+    if (!task) return null;
+
+    // Whatever this task was blocking waits on it again.
+    await settleBlockers(tx, auth, task.id, false);
+
+    await recordAudit(
+      auth,
+      {
+        action: "task.reopened",
+        subjectType: "task",
+        subjectId: task.id,
+        summary: `Reopened task "${before.title}" (was ${before.status})`,
+        metadata: { from: before.status },
+      },
+      tx,
+    );
+    return { id: task.id, from: before.status as "done" | "cancelled" };
   });
 }

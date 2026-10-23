@@ -11,6 +11,7 @@ import {
   createSubtaskAction,
   moveTaskAction,
   removeDependencyAction,
+  reopenTaskAction,
   updateTaskAction,
 } from "./actions";
 
@@ -107,6 +108,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
   const depRun = useRun();
   const rmRun = useRun();
   const toggleRun = useRun();
+  const reopenRun = useRun();
   const [subTitle, setSubTitle] = useState("");
   const [otherId, setOtherId] = useState("");
   const [kind, setKind] = useState<"blocked_by" | "blocks">("blocked_by");
@@ -176,6 +178,25 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
           <ErrorLine error={saver.error} />
         </div>
       </form>
+
+      {data.status === "done" || data.status === "cancelled" ? (
+        <section aria-label="Reopen" className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={reopenRun.pending}
+            onClick={() => reopenRun.run(save, () => reopenTaskAction(data.id))}
+          >
+            Reopen task
+          </Button>
+          {/* Undo the terminal transition, not history: the stone and the
+              audit trail stay on record. */}
+          <p className="text-xs text-muted-foreground">
+            Back to Ready. Any stone earned and the history stay on record.
+          </p>
+          <ErrorLine error={reopenRun.error} />
+        </section>
+      ) : null}
 
       <section aria-label="Subtasks" className="grid gap-2">
         <h3 className="text-[13px] font-medium">Subtasks</h3>
