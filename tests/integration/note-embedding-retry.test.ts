@@ -122,4 +122,77 @@ suite("note embedding retry (real Postgres)", () => {
     const auth = await workspace();
     await expect(retryNoteEmbedding(auth, { artifactId: "not-a-uuid" })).rejects.toBeInstanceOf(NoteNotFoundError);
   });
+
+  it("never renders a raw persisted error: a poisoned embed_error maps to the authored generic", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Poisoned", "Text.");
+    await holder.db!.update(artifacts).set({
+      embedError: "provider 401: token sk-live-abc123; SQL: select * from users; POST /embeddings body={\"input\":\"...\"}",
+    }).where(eq(artifacts.id, note.id));
+    const detail = await getNote(auth, note.id);
+    expect(detail?.embedError).toBe("Indexing failed. Retry to try again.");
+    expect(JSON.stringify(detail)).not.toContain("sk-live-abc123");
+  });
+
+  it("an edit committed mid-embed wins: stale vectors are not written and the new version keeps its own state", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Race", "First text about fermentation.");
+    // Slow provider whose first call waits on a gate we control.
+    let entered!: () => void;
+    const embedEntered = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: EmbeddingProvider = {
+      model: "fake@1",
+      embed: async (values) => { entered(); await gate; return values.map(() => vec([1])); },
+    };
+    const retry = retryNoteEmbedding(auth, { artifactId: note.id, provider: slow });
+    await embedEntered; // the pass now holds the advisory lock and is mid-call on v1
+
+    // The user edits and commits v2 while the retry is in flight. The commit
+    // itself lands; its own best-effort embed sees the busy lock and bows out.
+    const detail1 = await getNote(auth, note.id);
+    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: detail1!.version, content: { format: "markdown", text: "Replacement text about brewing." }, plainText: "Replacement text about brewing." });
+    release();
+    const out = await retry;
+
+    expect(out).toEqual({ status: "skipped", reason: "edited" });
+    // No vectors written for the stale v1, and nothing cleared or marked.
+    const rows = await holder.db!.select({ id: artifacts.id }).from(artifacts).where(eq(artifacts.id, note.id));
+    expect(rows).toHaveLength(1);
+    const embeddingRows = await holder.db!.execute("select count(*)::int as n from embeddings where owner_id = '" + note.id + "'") as unknown as { n: number }[];
+    expect(embeddingRows[0].n).toBe(0);
+    const detail = await getNote(auth, note.id);
+    expect(detail?.indexed).toBe(false);
+    expect(detail?.embedError).toContain("No embedding provider configured");
+  });
+
+  it("a second concurrent pass is told one is already running instead of paying twice", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Busy", "Text about fermentation.");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const slow: EmbeddingProvider = {
+      model: "fake@1",
+      embed: async (values) => { calls++; await gate; return values.map(() => vec([1])); },
+    };
+    const first = retryNoteEmbedding(auth, { artifactId: note.id, provider: slow });
+    await vi.waitFor(() => expect(calls).toBe(1));
+    const second = await retryNoteEmbedding(auth, { artifactId: note.id, provider: slow });
+    expect(second).toEqual({ status: "skipped", reason: "busy" });
+    release();
+    expect(await first).toEqual({ status: "succeeded", chunks: 1 });
+    expect(calls).toBe(1); // the provider was paid once
+  });
+
+  it("a twin retry joins an already-indexed version without another provider call", async () => {
+    const auth = await workspace();
+    const note = await writeNote(auth, "Twin", "Text about fermentation.");
+    const fake = provider({ fermentation: vec([1]) });
+    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
+    const exploding: EmbeddingProvider = { model: "fake@1", embed: async () => { throw new Error("must not be called"); } };
+    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: exploding })).toEqual({ status: "succeeded", chunks: 1 });
+    expect((await getNote(auth, note.id))?.indexed).toBe(true);
+  });
 });

@@ -21,6 +21,7 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
+import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
 import { searchTasksForLink } from "@/domains/work/queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
@@ -136,8 +137,15 @@ export async function retryNoteEmbeddingAction(input: z.input<typeof retryEmbedI
     const out = await retryNoteEmbedding(auth, parsed.data);
     revalidate();
     if (out.status === "succeeded") return { ok: true, message: "Indexed for meaning search." };
-    if (out.status === "skipped") return { ok: false, error: out.reason === "no_text" ? "This note has no text to index yet." : "That note is not here." };
-    return { ok: false, error: out.error };
+    if (out.status === "skipped") {
+      const reason = out.reason === "no_text" ? "This note has no text to index yet."
+        : out.reason === "busy" ? "Indexing is already in progress for this note."
+        : out.reason === "edited" ? "This note changed while indexing. Retry to index the latest version."
+        : "That note is not here.";
+      return { ok: false, error: reason };
+    }
+    // Authored categories only: a provider payload must never reach the UI.
+    return { ok: false, error: safeArtifactEmbedError(out.error) ?? "Indexing failed. Retry to try again." };
   } catch (error) {
     if (error instanceof NoteNotFoundError) return { ok: false, error: error.message };
     throw error;

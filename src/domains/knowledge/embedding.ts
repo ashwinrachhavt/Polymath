@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import {
   EMBEDDING_DIMENSIONS,
@@ -141,63 +141,115 @@ export const ARTIFACT_EMBEDDING_OWNER_TYPE = "artifact";
 
 export type ArtifactEmbedOutcome =
   | { status: "succeeded"; chunks: number }
-  | { status: "skipped"; reason: "not_found" | "no_text" }
+  | { status: "skipped"; reason: "not_found" | "no_text" | "busy" | "edited" }
   | { status: "failed"; error: string };
+
+/*
+ * The only strings ever persisted to artifacts.embed_error by this module -
+ * authored here, never a provider/client payload. safeArtifactEmbedError maps
+ * anything found in that column back to one of these (or a generic), so the
+ * UI never renders raw text that could carry a secret, SQL, or request body
+ * (the same leakage pattern the API-key surface needed #255 for).
+ */
+const SAFE_UNCONFIGURED = "No embedding provider configured. Set OPENROUTER_API_KEY (or OPENAI_API_KEY).";
+const SAFE_SETUP = "The embedding provider could not be set up.";
+const SAFE_FAILED = "Embedding could not complete. Retry to try again.";
+const SAFE_UNKNOWN = "Indexing failed. Retry to try again.";
+
+export function safeArtifactEmbedError(error: string | null): string | null {
+  if (!error) return null;
+  if (error.includes("No embedding provider configured")) return SAFE_UNCONFIGURED;
+  if (error.includes("could not be set up")) return SAFE_SETUP;
+  if (error.includes("Embedding could not complete")) return SAFE_FAILED;
+  return SAFE_UNKNOWN;
+}
 
 export async function embedArtifact(
   auth: AuthContext,
   input: { artifactId: string; provider?: EmbeddingProvider },
 ): Promise<ArtifactEmbedOutcome> {
-  const [row] = await db
-    .select({
-      id: artifacts.id,
-      currentVersionId: artifacts.currentVersionId,
-      plainText: artifactVersions.plainText,
-    })
-    .from(artifacts)
-    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
-    .limit(1);
-  if (!row || !row.currentVersionId) return { status: "skipped", reason: "not_found" };
-  const text = row.plainText ?? "";
-  if (!text.trim()) return { status: "skipped", reason: "no_text" };
+  const outcome = await withTransaction(async (tx): Promise<ArtifactEmbedOutcome> => {
+    // One indexing pass per artifact at a time, across the PROVIDER CALL: a
+    // double-click or a retry racing the commit-path embed joins here instead
+    // of paying for a second metered batch. Try-lock, never queue - the loser
+    // is told a pass is already running.
+    const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${input.artifactId}, 0)) as got`)) as unknown as { got: boolean }[];
+    if (!lock.got) return { status: "skipped", reason: "busy" };
 
-  const record = (error: string | null) =>
-    db.update(artifacts)
-      .set({ embedError: error })
-      .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)));
+    const [row] = await tx
+      .select({
+        id: artifacts.id,
+        currentVersionId: artifacts.currentVersionId,
+        plainText: artifactVersions.plainText,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!row || !row.currentVersionId) return { status: "skipped", reason: "not_found" };
+    const text = row.plainText ?? "";
+    if (!text.trim()) return { status: "skipped", reason: "no_text" };
 
-  let provider: EmbeddingProvider;
-  try {
-    provider = input.provider ?? embeddingProvider();
-  } catch (cause) {
-    const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : "The embedding provider could not be set up.";
-    await record(error);
-    return { status: "failed", error };
-  }
+    const record = (error: string | null) =>
+      tx.update(artifacts)
+        .set({ embedError: error })
+        .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)));
 
-  const chunks = chunkText(text);
-  let vectors: number[][];
-  try {
-    vectors = [];
-    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-      const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
-      const out = await provider.embed(batch);
-      if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
-      vectors.push(...out);
+    // A twin pass that finished first already indexed this version: join its
+    // result, clear any stale recorded failure, and skip the metered call.
+    const [existing] = await tx
+      .select({ n: count() })
+      .from(embeddings)
+      .where(and(
+        eq(embeddings.workspaceId, auth.workspaceId),
+        eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+        eq(embeddings.ownerId, row.id),
+        eq(embeddings.sourceVersionId, row.currentVersionId),
+      ));
+    if (existing.n > 0) {
+      await record(null);
+      return { status: "succeeded", chunks: existing.n };
     }
-    if (vectors.some((v) => v.length !== EMBEDDING_DIMENSIONS)) {
-      throw new Error(`The provider returned vectors that are not ${EMBEDDING_DIMENSIONS} wide.`);
-    }
-  } catch (cause) {
-    console.error(`embedding failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
-    const error = "Embedding could not complete. Retry to try again.";
-    await record(error);
-    return { status: "failed", error };
-  }
 
-  await withTransaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${row.id}, 0))`);
+    let provider: EmbeddingProvider;
+    try {
+      provider = input.provider ?? embeddingProvider();
+    } catch (cause) {
+      const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : SAFE_SETUP;
+      await record(error);
+      return { status: "failed", error };
+    }
+
+    const chunks = chunkText(text);
+    let vectors: number[][];
+    try {
+      vectors = [];
+      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
+        const out = await provider.embed(batch);
+        if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
+        vectors.push(...out);
+      }
+      if (vectors.some((v) => v.length !== EMBEDDING_DIMENSIONS)) {
+        throw new Error(`The provider returned vectors that are not ${EMBEDDING_DIMENSIONS} wide.`);
+      }
+    } catch (cause) {
+      console.error(`embedding failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      await record(SAFE_FAILED);
+      return { status: "failed", error: SAFE_FAILED };
+    }
+
+    // An edit committed while the provider was working: the vectors describe
+    // a version that is no longer current. Writing them (or clearing the
+    // error the new version's own pass just recorded) would mark fresh text
+    // as indexed on stale vectors, so this pass reports the race instead.
+    const [fresh] = await tx
+      .select({ currentVersionId: artifacts.currentVersionId })
+      .from(artifacts)
+      .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (fresh?.currentVersionId !== row.currentVersionId) return { status: "skipped", reason: "edited" };
+
     await tx.delete(embeddings).where(and(
       eq(embeddings.workspaceId, auth.workspaceId),
       eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
@@ -220,12 +272,15 @@ export async function embedArtifact(
       );
     }
     await record(null);
+    return { status: "succeeded", chunks: chunks.length };
   });
   // Best-effort: edges follow the vectors, but a failure here never fails the embed.
-  try {
-    await materializeSemanticEdges(auth, row.id);
-  } catch (cause) {
-    console.error(`semantic edges failed for artifact ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+  if (outcome.status === "succeeded") {
+    try {
+      await materializeSemanticEdges(auth, input.artifactId);
+    } catch (cause) {
+      console.error(`semantic edges failed for artifact ${input.artifactId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
   }
-  return { status: "succeeded", chunks: chunks.length };
+  return outcome;
 }

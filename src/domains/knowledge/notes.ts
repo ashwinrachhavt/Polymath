@@ -6,7 +6,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
-import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, type ArtifactEmbedOutcome } from "./embedding";
+import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 
@@ -535,7 +535,9 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       tags: readTags(row.tags),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      embedError: row.embedError,
+      // Mapped, never raw: the column is plain text and the UI renders it,
+      // so only authored categories may reach the screen (#255's lesson).
+      embedError: safeArtifactEmbedError(row.embedError),
       indexed: row.indexed,
       content: (row.content as NoteContent | null) ?? null,
       draft: row.draftContent ? { content: row.draftContent as NoteContent, baseVersionId: row.draftBaseVersionId, updatedAt: row.draftUpdatedAt! } : null,

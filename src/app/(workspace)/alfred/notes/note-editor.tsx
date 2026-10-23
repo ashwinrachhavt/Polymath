@@ -572,13 +572,17 @@ export function NoteEditor({
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
               {saveState === "error" && <span role="status">Not saved</span>}
-              {indexNotice && <MeaningIndexStatus noteId={noteId} notice={indexNotice} />}
               <span>Updated {stamp(updatedAt)}</span>
               <span className="flex-1" />
               <Button type="button" variant="ghost" size="sm" aria-expanded={detailsOpen} aria-controls="note-details" onClick={() => setDetailsOpen((open) => !open)}>
                 Note details
               </Button>
             </div>
+            {indexNotice && (
+              <div className="mt-1.5 text-xs text-muted-foreground">
+                <MeaningIndexStatus noteId={noteId} notice={indexNotice} />
+              </div>
+            )}
           </div>
           <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
           {ai && (

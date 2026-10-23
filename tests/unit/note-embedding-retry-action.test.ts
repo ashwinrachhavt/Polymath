@@ -72,4 +72,30 @@ describe("retryNoteEmbeddingAction", () => {
     const result = await retryNoteEmbeddingAction({ artifactId: noteId });
     expect(result).toEqual({ ok: false, error: "That note does not exist in this workspace." });
   });
+
+  it("reports a concurrent pass without pretending to have indexed", async () => {
+    retryNoteEmbedding.mockResolvedValue({ status: "skipped", reason: "busy" });
+    expect(await retryNoteEmbeddingAction({ artifactId: noteId })).toEqual({ ok: false, error: "Indexing is already in progress for this note." });
+  });
+
+  it("reports an edit that landed mid-indexing", async () => {
+    retryNoteEmbedding.mockResolvedValue({ status: "skipped", reason: "edited" });
+    expect(await retryNoteEmbeddingAction({ artifactId: noteId })).toEqual({ ok: false, error: "This note changed while indexing. Retry to index the latest version." });
+  });
+
+  it("never passes a raw provider payload to the UI", async () => {
+    retryNoteEmbedding.mockResolvedValue({ status: "failed", error: "401 unauthorized: token sk-live-abc123 POST /v1/embeddings" });
+    expect(await retryNoteEmbeddingAction({ artifactId: noteId })).toEqual({ ok: false, error: "Indexing failed. Retry to try again." });
+  });
+});
+
+describe("safeArtifactEmbedError", () => {
+  it("maps authored strings to themselves and anything else to the generic", async () => {
+    const { safeArtifactEmbedError } = await import("@/domains/knowledge/embedding");
+    expect(safeArtifactEmbedError(null)).toBeNull();
+    expect(safeArtifactEmbedError("No embedding provider configured. Set OPENROUTER_API_KEY (or OPENAI_API_KEY).")).toBe("No embedding provider configured. Set OPENROUTER_API_KEY (or OPENAI_API_KEY).");
+    expect(safeArtifactEmbedError("The embedding provider could not be set up.")).toBe("The embedding provider could not be set up.");
+    expect(safeArtifactEmbedError("Embedding could not complete. Retry to try again.")).toBe("Embedding could not complete. Retry to try again.");
+    expect(safeArtifactEmbedError("sk-live-abc123; SQL: select * from users")).toBe("Indexing failed. Retry to try again.");
+  });
 });
