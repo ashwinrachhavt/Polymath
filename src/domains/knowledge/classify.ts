@@ -7,14 +7,16 @@ import { documentClassificationProposals, documents } from "./schema";
 import { classifyDocument, type DocumentType } from "./vocabulary";
 
 /*
- * B02 (ASH-143): classification runs at the end of the proposal pass, so a
- * document is classified as soon as it is read (ASH-202). A high-confidence
- * rules verdict is accepted in the same pass - the document-type catalogue is
- * only useful if uploading is enough - while medium and low confidence stay
- * proposals for the owner to decide. A model proposer plugs in behind the
- * same row with its own proposer id. One open proposal per (document,
- * proposer); accepting sets documents.doc_type - the single doc-type signal
- * obligations and naming consume - in the same transaction.
+ * B02 (ASH-143): classification runs at the end of the proposal pass, and
+ * stays a proposal, never an auto-accept - with one scoped exception the
+ * owner asked for (ASH-202): a bank statement the rules read with high
+ * confidence is accepted in the same pass, because the upload -> detect ->
+ * export flow is only useful if nobody has to confirm the obvious first.
+ * Every other type, and every medium or low verdict, waits for the owner as
+ * an open proposal. A model proposer plugs in behind the same row with its
+ * own proposer id. One open proposal per (document, proposer); accepting
+ * sets documents.doc_type - the single doc-type signal obligations and
+ * naming consume - in the same transaction.
  */
 
 export const RULES_CLASSIFIER = "rules@v1";
@@ -42,10 +44,10 @@ export async function proposeClassification(
   });
   if (result.docType === "other" && result.signals.length === 0) return { proposed: false };
 
-  // High confidence is accepted on the spot: the catalogue classifies on
-  // upload, and the proposal row still records the basis for the decision.
-  // Anything shakier waits for the owner as an open proposal.
-  if (result.confidence === "high") {
+  // The one scoped auto-accept: a high-confidence bank statement. Every
+  // other type or confidence waits for the owner as an open proposal, and
+  // the accepted row still records the basis for the decision.
+  if (result.docType === "statement" && result.confidence === "high") {
     await withTransaction(async (tx) => {
       await tx.insert(documentClassificationProposals).values({
         workspaceId: auth.workspaceId,
