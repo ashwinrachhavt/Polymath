@@ -9,6 +9,8 @@ import {
   type MotionValue,
   type Preferences,
 } from "@/domains/identity/preferences";
+import { getDefaultProfile } from "@/domains/agents/queries";
+import { updateDefaultProfileBrief } from "@/domains/agents/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -65,5 +67,58 @@ export async function savePreferencesAction(input: {
     return { ok: true, preferences };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save preferences." };
+  }
+}
+
+/*
+ * The assistant's learned brief (spec "It learns your taste"): review and
+ * change what onboarding wrote onto the default profile. Reads are open to
+ * the workspace; writes need a member, and the domain compare-and-sets on
+ * the rendered version. Retire = save empty, recorded as retired in audit.
+ */
+export async function loadAssistantProfileAction(): Promise<Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } | null }>> {
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+  }
+  try {
+    // Owner only: the brief is written by onboarding into the person's own
+    // workspace and carries personal working/writing preferences. No
+    // pre-existing policy grants members or viewers a raw-brief read, so the
+    // new surface stays at the grounded owner scope until the owner decides
+    // who else may read it (recorded as open).
+    requireRole(auth, "owner");
+    return { ok: true, profile: await getDefaultProfile(auth) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load the assistant profile." };
+  }
+}
+
+export async function saveAssistantProfileAction(input: {
+  description?: string;
+  instructions?: string;
+  expectedVersion: number;
+}): Promise<Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } }> & { kind?: "conflict" | "validation" | "not_found" }> {
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
+  }
+  try {
+    // Owner only, same grounding as the read above.
+    requireRole(auth, "owner");
+    const result = await updateDefaultProfileBrief(auth, input);
+    if (!result.ok) {
+      if (result.kind === "conflict") return { ok: false, kind: "conflict", error: "The assistant profile changed elsewhere. Reloaded the latest - review and save again." };
+      if (result.kind === "not_found") return { ok: false, kind: "not_found", error: "No assistant profile exists yet. It is created when the assistant first runs." };
+      return { ok: false, kind: "validation", error: result.error };
+    }
+    revalidatePath("/settings");
+    return { ok: true, profile: result.profile };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save the assistant profile." };
   }
 }

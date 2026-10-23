@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
 import { clerkConfigured } from "@/lib/clerk";
@@ -33,7 +34,10 @@ export async function SettingsSurface() {
   }
   const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
-  return <Settings serverPreferences={serverPreferences} capabilities={capabilities} />;
+  // Owner scope, same contract as actions.ts: a non-owner must not receive
+  // the raw brief in the initial RSC payload either.
+  const serverAssistantProfile = auth.role === "owner" ? await getDefaultProfile(auth) : null;
+  return <Settings serverPreferences={serverPreferences} capabilities={capabilities} serverAssistantProfile={serverAssistantProfile} />;
 }
 
 /*
