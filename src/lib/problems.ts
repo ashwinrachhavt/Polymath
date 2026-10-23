@@ -5,9 +5,10 @@
  */
 export function problemResponse(status: number, code: string, title: string, extra?: Record<string, unknown>): Response {
   return Response.json(
-    // The first four members are the pinned contract; `extra` is additive
-    // only (e.g. existingCaptureId on a duplicate), never a reshape.
-    { type: `https://axiom.dev/problems/${code}`, code, title, status, ...extra },
+    // `extra` is additive only (e.g. existingCaptureId on a duplicate): the
+    // pinned members spread last so no caller can override them, even by
+    // accident. The companion's duplicate detection switches on these four.
+    { ...extra, type: `https://axiom.dev/problems/${code}`, code, title, status },
     { status, headers: { "content-type": "application/problem+json" } },
   );
 }

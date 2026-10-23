@@ -51,6 +51,26 @@ function captureRequest(body: unknown) {
   });
 }
 
+describe("problemResponse extra members", () => {
+  it("additive members can never override the pinned four", async () => {
+    const { problemResponse } = await import("@/lib/problems");
+    const res = problemResponse(409, "conflict", "That URL is already in the inbox.", {
+      existingCaptureId: "capt-1",
+      code: "sneaky",
+      title: "sneaky",
+      type: "sneaky",
+      status: 200,
+    });
+    const body = await res.json();
+    expect(body.existingCaptureId).toBe("capt-1");
+    expect(body.code).toBe("conflict");
+    expect(body.title).toBe("That URL is already in the inbox.");
+    expect(body.type).toBe("https://axiom.dev/problems/conflict");
+    expect(body.status).toBe(409);
+    expect(res.headers.get("content-type")).toContain("application/problem+json");
+  });
+});
+
 suite("POST /api/v1/captures duplicate contract", () => {
   beforeAll(async () => {
     if (!handle) return;
