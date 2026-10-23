@@ -34,6 +34,8 @@ export type SearchHit = {
   id: string;
   title: string;
   kind: string;
+  /** The artifact's last edit - what the reader judges freshness against. */
+  updatedAt: Date;
   /** Fused score; only comparable within one result list. */
   score: number;
   /** Why it ranked: which leg found it and where. */
@@ -182,7 +184,7 @@ export async function searchKnowledge(
   if (!fused.length) return { hits: [], meaning: meaningState, ms: Math.round(performance.now() - started) };
   const ids = fused.map((f) => f.id);
   const meta = await db.execute(sql`
-    select a.id, a.title, a.kind,
+    select a.id, a.title, a.kind, extract(epoch from a.updated_at)::float8 as updated_at_epoch,
            coalesce(
              nullif(ts_headline('english', v.plain_text, websearch_to_tsquery('english', ${query}),
                'StartSel=[[, StopSel=]], MaxWords=24, MinWords=8, MaxFragments=1'), ''),
@@ -192,7 +194,9 @@ export async function searchKnowledge(
     where a.workspace_id = ${auth.workspaceId}
       and a.id = any(${sql.raw(`array[${ids.map((id) => `'${id}'`).join(",")}]::uuid[]`)})
   `);
-  const byId = new Map((meta as unknown as { id: string; title: string; kind: string; snippet: string | null }[]).map((r) => [r.id, r]));
+  const byId = new Map(
+    (meta as unknown as { id: string; title: string; kind: string; updated_at_epoch: number; snippet: string | null }[]).map((r) => [r.id, r]),
+  );
   const titleMatch = new Map(kw.map((r) => [r.id, r.title_match]));
   const hits = fused.flatMap((f): SearchHit[] => {
     const m = byId.get(f.id);
@@ -201,6 +205,7 @@ export async function searchKnowledge(
       id: f.id,
       title: m.title,
       kind: m.kind,
+      updatedAt: new Date(m.updated_at_epoch * 1000),
       score: f.score,
       why: {
         keywordRank: f.kw,

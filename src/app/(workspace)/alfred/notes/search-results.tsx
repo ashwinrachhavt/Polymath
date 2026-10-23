@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { Status } from "@/components/workspace/ui";
+import { timeAgo } from "@/lib/time";
 import { searchKnowledge, type SearchHit, type SearchResult } from "@/domains/knowledge/retrieval";
 import type { AuthContext } from "@/lib/auth";
 
@@ -49,7 +50,10 @@ function HitList({ result, hrefFor, selectedId, note }: { result: SearchResult; 
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{hit.title}</span>
-                  {KIND_LABEL[hit.kind] && <Status>{KIND_LABEL[hit.kind]}</Status>}
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">edited {timeAgo(hit.updatedAt)}</span>
+                    {KIND_LABEL[hit.kind] && <Status>{KIND_LABEL[hit.kind]}</Status>}
+                  </span>
                 </span>
                 {hit.snippet && <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{marked(hit.snippet)}</span>}
                 <Why hit={hit} />
