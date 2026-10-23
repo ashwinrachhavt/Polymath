@@ -69,9 +69,14 @@ const AlfredAPI = {
         try {
           // Verify the stored URL is actually Polymath (not another service on
           // that port) by checking /api/v1/captures, which only Polymath serves.
+          // The endpoint requires auth, so the probe carries the saved key;
+          // without it every valid server answers 401 and the URL never sticks.
+          const probeHeaders = { "Content-Type": "application/json" };
+          const probeToken = await this.token();
+          if (probeToken) probeHeaders.Authorization = `Bearer ${probeToken}`;
           const resp = await fetch(`${stored}/api/v1/captures`, {
             signal: AbortSignal.timeout(1500),
-            headers: { "Content-Type": "application/json" },
+            headers: probeHeaders,
           });
           if (resp.ok) {
             this._baseUrl = stored;

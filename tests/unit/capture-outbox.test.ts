@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 // The extension ships plain scripts; the state machine is exported for Node.
-// @ts-expect-error no type declarations for the extension script
 import Outbox from "../../extensions/chrome/outbox-core.js";
 
 const T0 = 1_760_000_000_000;

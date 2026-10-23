@@ -11,7 +11,8 @@
     "alarms"
   ],
   "host_permissions": [
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://axiom-jade-five.vercel.app/*"
   ],
   "action": {
     "default_popup": "popup.html",

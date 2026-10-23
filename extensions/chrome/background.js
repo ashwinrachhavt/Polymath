@@ -84,6 +84,20 @@ var pumping = false;
 var pumpAgain = false;
 
 /**
+ * Two tabs can enqueue in the same instant, and the pump re-reads and
+ * re-writes the outbox around every network await. chrome.storage.local has
+ * no transactions, so every read-modify-write of the outbox goes through
+ * this chain; a concurrent writer appends instead of interleaving and
+ * losing an entry.
+ */
+var writeChain = Promise.resolve();
+function withOutboxLock(fn) {
+  var run = writeChain.then(fn, fn);
+  writeChain = run.then(function () {}, function () {});
+  return run;
+}
+
+/**
  * Deliver every due entry, then schedule the next wake. Re-entrant calls
  * during a pump set pumpAgain instead of running concurrently.
  */
@@ -187,16 +201,20 @@ async function enqueueCapture(msg) {
     },
     Date.now(),
   );
-  var entries = await readOutbox();
-  if (!Outbox.hasQuotaFor(entries, entry)) {
+  var locked = await withOutboxLock(async function () {
+    var entries = await readOutbox();
+    if (!Outbox.hasQuotaFor(entries, entry)) return { full: true };
+    entries.push(entry);
+    await writeOutbox(entries);
+    return { full: false };
+  });
+  if (locked.full) {
     return {
       ok: false,
       error:
         "This device is out of capture storage. Open the Dashboard, let the pending captures sync, then try again.",
     };
   }
-  entries.push(entry);
-  await writeOutbox(entries);
   await recordHistoryPending(entry);
   // Try to deliver immediately so a healthy backend still feels instant.
   await pump();
@@ -283,19 +301,26 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
 
   if (msg.type === "AXIOM_FETCH") {
-    var allowed = /^http:\/\/localhost:3000\//;
-    if (typeof msg.url !== "string" || !allowed.test(msg.url)) {
-      sendResponse({ ok: false, error: "Blocked: not an Polymath origin." });
+    if (typeof msg.url !== "string") {
+      sendResponse({ ok: false, error: "Blocked: not a Polymath origin." });
       return true;
     }
 
-    fetch(msg.url, {
-      method: msg.method || "GET",
-      headers: msg.headers || {},
-      body: msg.body ?? null,
-      signal: AbortSignal.timeout(msg.signalTimeoutMs || 15000),
-    })
-      .then(async function (resp) {
+    (async function () {
+      // Only the configured Polymath origin is reachable; the URL is checked,
+      // not trusted, and the manifest's host_permissions bound it further.
+      var base = await AlfredAPI.base();
+      if (!msg.url.startsWith(base + "/")) {
+        sendResponse({ ok: false, error: "Blocked: not the configured Polymath origin." });
+        return;
+      }
+      try {
+        var resp = await fetch(msg.url, {
+          method: msg.method || "GET",
+          headers: msg.headers || {},
+          body: msg.body ?? null,
+          signal: AbortSignal.timeout(msg.signalTimeoutMs || 15000),
+        });
         var text = await resp.text();
         sendResponse({
           ok: true,
@@ -303,19 +328,14 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           contentType: resp.headers.get("content-type") || "application/json",
           body: text,
         });
-      })
-      .catch(function (error) {
-        // A bare "Failed to fetch" hides whether the server is down or the URL
-        // was never allowed. Say which one happened.
+      } catch (error) {
         var raw = error && error.message ? error.message : "Request failed.";
-        var detail;
-        if (typeof msg.url !== "string" || !allowed.test(msg.url)) {
-          detail = "Blocked: the extension only forwards to http://localhost:3000.";
-        } else {
-          detail = "Could not reach Polymath at localhost:3000. Is the dev server running? (" + raw + ")";
-        }
-        sendResponse({ ok: false, error: detail });
-      });
+        sendResponse({
+          ok: false,
+          error: "Could not reach the configured Polymath server. (" + raw + ")",
+        });
+      }
+    })();
 
     return true; // keep the channel open for the async response
   }

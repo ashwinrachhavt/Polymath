@@ -55,8 +55,10 @@
   function classifyDelivery(response) {
     if (!response) return "retry";
     if (response.ok) return "delivered";
-    // The server already holds this capture: the request_receipts row answers
-    // a replayed idempotency key, and a URL-only capture dedupes on URL.
+    // A URL-only capture dedupes on (workspace, url): 409 means the server
+    // confirms it already holds this exact capture, so the copy here is safe
+    // to drop. Page grabs carry text and never dedupe this way; a replayed
+    // idempotency key answers 201 from request_receipts, not 409.
     if (response.status === 409) return "delivered";
     if (response.status === 401 || response.status === 403) return "needs-auth";
     if (response.status >= 400 && response.status < 500) return "failed";
@@ -114,11 +116,16 @@
     };
   }
 
-  /** Reset a parked entry so the user can retry it by hand. */
+  /**
+   * Reset a parked entry so the user can retry it by hand. The attempt
+   * budget restarts: a manual retry is a new delivery cycle, not one last
+   * chance before the entry parks again.
+   */
   function requeue(entry, now) {
     return {
       ...entry,
       status: "queued",
+      attempts: 0,
       updatedAt: now,
       nextAttemptAt: now,
       lastError: null,
