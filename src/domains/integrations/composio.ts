@@ -50,7 +50,29 @@ export class ComposioNotConfiguredError extends Error {
   readonly code = "composio_not_configured";
 }
 
-function authConfigEnvName(provider: string) {
+/*
+ * A hosted-link request that reached Composio and failed. The status is kept
+ * on the error because a 401 is a deployment problem (the stored API key is
+ * invalid) with a different fix than a provider outage, and the account row
+ * should say so instead of rotting into a misleading "expired".
+ */
+export class ComposioLinkError extends Error {
+  readonly code = "composio_link_failed";
+  readonly status: number;
+  constructor(status: number) {
+    // Keep the "failed (N)" phrasing the client test pins; the 401 tail
+    // names the cause so the card's lastError says what to fix. The key
+    // itself never appears in the message.
+    super(
+      status === 401
+        ? "Composio link request failed (401): the deployment's COMPOSIO_API_KEY is invalid."
+        : `Composio link request failed (${status}).`,
+    );
+    this.status = status;
+  }
+}
+
+export function authConfigEnvName(provider: string) {
   return `COMPOSIO_AUTH_CONFIG_${provider.toUpperCase().replace(/-/g, "_")}`;
 }
 
@@ -83,7 +105,7 @@ export async function createHostedConnectLink(input: {
     }),
   });
   if (!response.ok) {
-    throw new Error(`Composio link request failed (${response.status}).`);
+    throw new ComposioLinkError(response.status);
   }
   const body = (await response.json()) as { redirect_url: string; connected_account_id: string; expires_at: string };
   return { redirectUrl: body.redirect_url, connectedAccountId: body.connected_account_id, expiresAt: body.expires_at };

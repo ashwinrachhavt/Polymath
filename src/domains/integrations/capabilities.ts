@@ -311,3 +311,56 @@ export function tierAllows(
 export function lowestTierId(provider: Provider): string | null {
   return PROVIDER_TIERS[provider]?.[0]?.id ?? null;
 }
+
+/*
+ * Plain-language capability names for the connect screen's per-account
+ * switches. The capability id stays the contract in the gateway, the policy
+ * snapshot and the evals; this label is only what a person reads while
+ * deciding what one account may do.
+ */
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  "gmail.read": "Search mail",
+  "gmail.thread.read": "Read threads",
+  "gmail.send": "Prepare send proposals",
+  "github.read": "Search repositories",
+  "github.issue.read": "Read issues",
+  "slack.channels.read": "List channels",
+  "slack.read": "Read messages",
+  "linear.read": "Search issues",
+  "linear.issue.read": "Read issues",
+  "googlecalendar.events.read": "List events",
+  "googledrive.files.read": "Search files",
+  "discord.guilds.read": "List servers",
+  "zoom.meetings.read": "List meetings",
+  "calendly.events.read": "List scheduled events",
+  "asana.tasks.read": "List tasks",
+  "trello.cards.read": "List cards",
+  "airtable.bases.read": "List records",
+  "canva.designs.read": "List designs",
+  "hubspot.contacts.read": "List contacts",
+  "stripe.payments.read": "List payments",
+};
+
+/*
+ * What one account actually grants: the tier's capabilities minus the ones
+ * the owner switched off on that account. The tier stays the ceiling — a
+ * switch can only ever narrow it, never grant above it.
+ */
+export function effectiveCapabilities(
+  provider: Provider,
+  tierId: string,
+  disabled: readonly string[],
+): Capability[] {
+  const off = new Set(disabled);
+  return tierCapabilities(provider, tierId).filter((capability) => !off.has(capability));
+}
+
+/** The live per-call check: inside the tier and not switched off on the account. */
+export function capabilityAllowed(
+  provider: Provider,
+  tierId: string,
+  disabled: readonly string[],
+  capability: Capability,
+): boolean {
+  return tierAllows(provider, tierId, capability) && !disabled.includes(capability);
+}

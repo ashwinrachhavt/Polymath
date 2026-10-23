@@ -151,9 +151,11 @@ async function callGateway(tool: string, args: Record<string, unknown>): Promise
 test("the connectors card names the tier, offers the picker, and marks tierless providers Coming soon", async ({ page }) => {
   await page.goto("/command-center/integrations");
 
-  // The seeded gmail account is connected at read_only.
+  // The seeded gmail account is connected at read_only: the card badge says
+  // Connected and the row is the account's.
   const row = e2eAccountRow(page);
-  await expect(row.getByText("Connected")).toBeVisible();
+  await expect(row).toBeVisible();
+  await expect(page.locator("article", { hasText: "Gmail" }).getByText("Connected", { exact: true })).toBeVisible();
   const picker = row.getByLabel("Agent access");
   await expect(picker).toBeVisible();
   await expect(picker).toHaveValue("read_only");

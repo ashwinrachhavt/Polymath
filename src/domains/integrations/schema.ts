@@ -110,6 +110,13 @@ export const externalAccounts = pgTable(
      * capability lists in PROVIDER_TIERS are the enforcement source.
      */
     accessTier: text("access_tier"),
+    /**
+     * Fine-grained per-account switches (migration 0237): capabilities from
+     * the account's tier the owner turned off for this one account. The tier
+     * stays the ceiling; this list only narrows it. The gateway reads it
+     * live with the tier on every call.
+     */
+    disabledCapabilities: jsonb("disabled_capabilities").notNull().default([]),
     lastHealthyAt: timestamp("last_healthy_at", { withTimezone: true }),
     lastError: text("last_error"),
     ...mutable,

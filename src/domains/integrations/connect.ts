@@ -1,7 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { nextAlias } from "./alias";
 import { connectionAttempts, externalAccounts } from "./schema";
 
 /*
@@ -26,11 +27,26 @@ export class StaleWriteError extends Error {
 
 const ATTEMPT_TTL_MS = 15 * 60 * 1000;
 
+async function nextAvailableAlias(tx: TxDrizzle, workspaceId: string, provider: string): Promise<string> {
+  const rows = await tx
+    .select({ alias: externalAccounts.alias })
+    .from(externalAccounts)
+    .where(eq(externalAccounts.workspaceId, workspaceId));
+  return nextAlias(
+    rows.map((row) => row.alias),
+    provider,
+  );
+}
+
 export async function beginConnection(
   auth: AuthContext,
-  input: { provider: string; alias: string; displayName?: string },
+  input: { provider: string; alias?: string; displayName?: string },
 ) {
   return withTransaction(async (tx) => {
+    // A blank alias means "just connect": the flow names the account itself
+    // and the owner can rename it afterwards. A typed alias is honoured as
+    // before (resume path and explicit naming both land here).
+    const alias = input.alias?.trim() || (await nextAvailableAlias(tx, auth.workspaceId, input.provider));
     // Aliases are unique per workspace across providers (agents choose
     // accounts by alias), so an alias already attached to a DIFFERENT provider
     // is a stated conflict, not a raw unique-index error. The same provider
@@ -39,12 +55,12 @@ export async function beginConnection(
       .select({ provider: externalAccounts.provider })
       .from(externalAccounts)
       .where(
-        and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.alias, input.alias)),
+        and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.alias, alias)),
       )
       .limit(1);
     if (aliased && aliased.provider !== input.provider) {
       throw new ConflictError(
-        `"${input.alias}" is already the name of your ${aliased.provider} account. Pick another name.`,
+        `"${alias}" is already the name of your ${aliased.provider} account. Pick another name.`,
       );
     }
     let [account] = await tx
@@ -54,26 +70,35 @@ export async function beginConnection(
         and(
           eq(externalAccounts.workspaceId, auth.workspaceId),
           eq(externalAccounts.provider, input.provider),
-          eq(externalAccounts.alias, input.alias),
+          eq(externalAccounts.alias, alias),
         ),
       )
       .limit(1);
     if (!account) {
-      [account] = await tx
-        .insert(externalAccounts)
-        .values({
-          workspaceId: auth.workspaceId,
-          provider: input.provider,
-          alias: input.alias,
-          displayName: input.displayName ?? null,
-          status: "connecting",
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning();
+      try {
+        [account] = await tx
+          .insert(externalAccounts)
+          .values({
+            workspaceId: auth.workspaceId,
+            provider: input.provider,
+            alias,
+            displayName: input.displayName ?? null,
+            status: "connecting",
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning();
+      } catch (cause) {
+        // Two flows racing to the same auto-picked name hit the unique index;
+        // say so in words, not in SQL.
+        if ((cause as { cause?: { code?: string } })?.cause?.code === "23505") {
+          throw new ConflictError("Another connection just took that name. Try again.");
+        }
+        throw cause;
+      }
     }
     if (account.status === "revoked") {
-      throw new ConflictError(`"${input.alias}" was revoked. Register a new alias instead.`);
+      throw new ConflictError(`"${alias}" was revoked. Connect again without a name and a fresh one is chosen.`);
     }
 
     const stateToken = crypto.randomUUID();
@@ -90,7 +115,7 @@ export async function beginConnection(
       .returning();
     await recordAudit(
       auth,
-      { action: "integration.connection_started", subjectType: "external_account", subjectId: account.id, summary: `Connection started: ${input.provider} as "${input.alias}"` },
+      { action: "integration.connection_started", subjectType: "external_account", subjectId: account.id, summary: `Connection started: ${input.provider} as "${alias}"` },
       tx,
     );
     return { account, attempt };
@@ -116,6 +141,57 @@ export async function attachProviderLink(
       .returning();
     if (!updated) throw new StaleWriteError("That connection attempt is no longer pending.");
     return updated;
+  });
+}
+
+/**
+ * The connect flow's failure half: when the hosted link cannot be created at
+ * all (Composio not configured, an invalid API key, a provider outage), the
+ * attempt is marked failed and the account goes to `error` with the real
+ * reason — immediately. Without this the row sat in `connecting` until the
+ * TTL sweep rewrote the reason to "expired", and the card blamed the owner
+ * for not finishing a flow the deployment never started.
+ */
+export async function failConnectionAttempt(
+  auth: AuthContext,
+  input: { accountId: string; reason: string },
+) {
+  return withTransaction(async (tx) => {
+    await tx
+      .update(connectionAttempts)
+      .set({ status: "failed", completedAt: new Date() })
+      .where(
+        and(
+          eq(connectionAttempts.workspaceId, auth.workspaceId),
+          eq(connectionAttempts.externalAccountId, input.accountId),
+          eq(connectionAttempts.status, "pending"),
+        ),
+      );
+    const [account] = await tx
+      .update(externalAccounts)
+      .set({
+        status: "error",
+        lastError: input.reason,
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.id, input.accountId),
+          eq(externalAccounts.status, "connecting"),
+        ),
+      )
+      .returning();
+    if (account) {
+      await recordAudit(
+        auth,
+        { action: "integration.connection_failed", subjectType: "external_account", subjectId: account.id, summary: `Connection failed: ${account.provider} as "${account.alias}" — ${input.reason}` },
+        tx,
+      );
+    }
+    return account ?? null;
   });
 }
 

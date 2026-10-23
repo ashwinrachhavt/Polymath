@@ -24,6 +24,7 @@ function account(overrides: {
     allowRead: true,
     allowWrite: false,
     accessTier: null,
+    disabledCapabilities: [],
     lastHealthyAt: null,
     lastError: overrides.lastError ?? null,
     version: 1,
@@ -33,6 +34,8 @@ function account(overrides: {
 function connector(overrides: {
   accounts?: CatalogConnector["accounts"];
   accessTiers?: CatalogConnector["accessTiers"];
+  configured?: boolean;
+  missingConfig?: string[];
 } = {}): CatalogConnector {
   return {
     provider: "gmail",
@@ -42,6 +45,8 @@ function connector(overrides: {
     accessTiers: [
       { id: "read_only", label: "Read only", description: "Reads mail.", capabilities: ["gmail.read"] },
     ],
+    configured: true,
+    missingConfig: [],
     accounts: [],
     ...overrides,
   };
@@ -97,5 +102,52 @@ describe("cardState", () => {
       ],
     });
     expect(cardState(c)).not.toBe("connecting");
+  });
+
+
+  it("an unconfigured deployment means needs_config, whatever the accounts say", () => {
+    const c = connector({
+      configured: false,
+      missingConfig: ["COMPOSIO_API_KEY"],
+      accounts: [account({ status: "connecting", lastError: EXPIRED_ATTEMPT_MESSAGE })],
+    });
+    expect(cardState(c)).toBe("needs_config");
+  });
+
+  it("unconfigured with no accounts is needs_config, not available", () => {
+    expect(cardState(connector({ configured: false, missingConfig: ["COMPOSIO_AUTH_CONFIG_GMAIL"] }))).toBe(
+      "needs_config",
+    );
+  });
+
+  it("a tierless provider is coming_soon even when the deployment is unconfigured", () => {
+    // Dropbox has no tiers: no env config could make it connectable, so the
+    // card says Coming soon rather than blaming deployment setup.
+    expect(
+      cardState(connector({ configured: false, missingConfig: ["COMPOSIO_API_KEY"], accessTiers: [] })),
+    ).toBe("coming_soon");
+  });
+
+  it("a connected account stays connected even when the deployment loses its config", () => {
+    const c = connector({
+      configured: false,
+      missingConfig: ["COMPOSIO_API_KEY"],
+      accounts: [account({ status: "active" })],
+    });
+    expect(cardState(c)).toBe("connected");
+  });
+
+  it("a failed attempt lands on action_needed with the real reason, not a spinner", () => {
+    // failConnectionAttempt flips the account to `error` with the cause; the
+    // card must surface that, never sit in connecting until the TTL sweep.
+    const c = connector({
+      accounts: [
+        account({
+          status: "error",
+          lastError: "Composio link request failed (401): the deployment's COMPOSIO_API_KEY is invalid.",
+        }),
+      ],
+    });
+    expect(cardState(c)).toBe("action_needed");
   });
 });

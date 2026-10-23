@@ -473,6 +473,18 @@ export function createGateway({ transport }: { transport: Transport }) {
       };
     }
 
+    // 2c. The account's own fine-grained switches, live with the tier: the
+    // owner can turn one capability off for this connection without lowering
+    // the tier, and that has to bite at once too.
+    if (account.disabledCapabilities.includes(capability)) {
+      return {
+        ok: false,
+        status: 403,
+        code: "permission_denied",
+        message: `"${account.alias}" has this switched off in Connectors.`,
+      };
+    }
+
     // 3. Reserve the budget before anything is fetched. The reservation is the
     // row the next concurrent caller counts, so the cap holds under a burst;
     // the grant gate runs first so a denied call spends nothing.
@@ -562,7 +574,7 @@ export function createGateway({ transport }: { transport: Transport }) {
     provider: string,
     alias: string | undefined,
   ): Promise<
-    | { ok: true; alias: string; connectedAccountId: string; accessTier: string }
+    | { ok: true; alias: string; connectedAccountId: string; accessTier: string; disabledCapabilities: string[] }
     | { ok: false; outcome: GatewayOutcome }
   > {
     const resolved = await resolveConnectedAccount(context.auth, provider, alias);
