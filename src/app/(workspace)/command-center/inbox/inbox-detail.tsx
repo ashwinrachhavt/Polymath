@@ -190,7 +190,7 @@ export function InboxDetail({
         ) : null}
         {state === "converted" && capture.convertedType === "note" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/alfred/notebook?id=${encodeURIComponent(capture.convertedId)}`}>Open note</Link>
+            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>Open note</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (

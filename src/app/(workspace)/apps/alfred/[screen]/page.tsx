@@ -16,10 +16,10 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
   const query = await searchParams;
   const initialId = Array.isArray(query.id) ? query.id[0] : query.id;
-  // B04 (ASH-141): the notebook merged onto the canonical artifact rows at
-  // /alfred/notebook; the preview screen hands off instead of holding a
+  // B04 (ASH-141): the notebook merged onto the canonical artifact rows, now
+  // at /alfred/notes; the preview screen hands off instead of holding a
   // second, browser-local copy of the same notes.
-  if (screen === "notebook") redirect(initialId ? `/alfred/notebook?id=${encodeURIComponent(initialId)}` : "/alfred/notebook");
+  if (screen === "notebook") redirect(initialId ? `/alfred/notes?id=${encodeURIComponent(initialId)}` : "/alfred/notes");
   // D18 (ASH-144): the source library merged onto canonical documents at
   // /alfred/library; the preview screen's browser-local sources hand off the
   // same way the notebook's notes did.

@@ -14,7 +14,7 @@ import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } fro
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
- * The editing island for the canonical notebook. The body is Markdown inside
+ * The editing island for Notes. The body is Markdown inside
  * the artifact's JSONB content ({ format: "markdown", text }) so the existing
  * RichEditor drives it directly. Autosaves land as the working draft behind
  * the artifact's optimistic version; an explicit checkpoint mints the next
@@ -85,7 +85,7 @@ export function NewNoteButton() {
           const result = await createNoteAction({ title: "Untitled note", idempotencyKey: crypto.randomUUID() });
           setPending(false);
           if (!result.ok) return setError(result.error);
-          router.push(`/alfred/notebook?id=${result.artifactId}`);
+          router.push(`/alfred/notes?id=${result.artifactId}`);
           router.refresh();
         }}
       >
@@ -151,7 +151,7 @@ function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: st
 function LinkRow({ noteId, outgoing, link, label }: { noteId: string; outgoing: boolean; link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }; label: string }) {
   return (
     <li className="group relative rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40 focus-within:border-border focus-within:bg-muted/40">
-      <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notebook?id=${link.id}`}>
+      <Link className="text-[13px] underline-offset-2 hover:underline" href={`/alfred/notes?id=${link.id}`}>
         {link.kind === "zettel" && <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}
         {link.title}
       </Link>
@@ -405,6 +405,13 @@ export function NoteEditor({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>(() => markdownEditorMode(initialMarkdown));
   const sourceReason = markdownSourceReason(markdown);
+  // A brand-new note (the empty state's "Write your first page." action) opens
+  // with the composer focused; an existing note never steals focus on mount.
+  const titleRef = useRef<HTMLInputElement>(null);
+  const newNote = initialTitle === "Untitled note" && initialMarkdown === "";
+  useEffect(() => {
+    if (newNote) titleRef.current?.focus();
+  }, [newNote]);
 
   /*
    * The page is the note: one centered column with the title and the writing
@@ -430,6 +437,7 @@ export function NoteEditor({
           )}
           <div>
             <input
+              ref={titleRef}
               aria-label="Note title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -618,7 +626,7 @@ export function NoteEditor({
                     <li key={r.id} className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-[13px] transition-colors hover:bg-muted/60">
                       <Link
                         className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        href={`/alfred/notebook?id=${r.id}`}
+                        href={`/alfred/notes?id=${r.id}`}
                         title={r.excerpt ?? r.title}
                       >
                         {r.kind === "zettel" && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>}

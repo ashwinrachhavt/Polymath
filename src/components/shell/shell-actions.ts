@@ -55,8 +55,8 @@ export async function quickCreate(
         title: value.split("\n", 1)[0].slice(0, 200) || "Note",
         plainText: value,
       });
-      revalidatePath("/alfred/notebook");
-      return { ok: true, message: "Note saved to your notebook." };
+      revalidatePath("/alfred/notes");
+      return { ok: true, message: "Note saved to Notes." };
     }
     await createCapture(auth, { text: value });
     updateTag(capturesTag(auth));
@@ -165,7 +165,7 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       id: row.id,
       label: row.title,
       context: "Note in Alfred",
-      href: `/alfred/notebook?id=${row.id}`,
+      href: `/alfred/notes?id=${row.id}`,
     })),
     ...contactRows.map((row) => ({
       kind: "contact" as const,

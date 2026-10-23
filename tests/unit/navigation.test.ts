@@ -49,8 +49,8 @@ describe("navigation", () => {
     // root must name Assistant; the child must name Notes.
     expect(destinationForPath("/alfred")?.label).toBe("Assistant");
     expect(destinationForPath("/alfred/knowledge")?.label).toBe("Document Vault");
-    // /alfred/notebook still serves the notes surface, but the breadcrumb
-    // must already name Notes (the surface moves in a later task).
+    // /alfred/notebook now redirects to /alfred/notes, and the breadcrumb
+    // for the old address still names Notes via featureRoutes.
     expect(destinationForPath("/alfred/notebook")?.label).toBe("Notes");
     expect(destinationForPath("/alfred/dossiers")?.label).toBe("Notebook");
   });

@@ -208,7 +208,7 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
 
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/neuralflow/focus", "/alfred/knowledge", "/alfred/notebook"]) {
+  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/neuralflow/focus", "/alfred/knowledge", "/alfred/notes"]) {
     await page.goto(path);
     // Axe must evaluate the settled page: the topbar buttons sit at
     // disabled:opacity-50 until hydration and transition to full opacity,

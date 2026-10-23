@@ -7,9 +7,8 @@ import { cn } from "cn";
 /*
  * The phone bottom bar: Assistant, Today, Notebook, and More — the
  * destinations a thumb reaches for most — with the full list behind More.
- * Wired by href, not label, because /alfred/notebook resolves to the Notes
- * destination via featureRoutes while the bar's Notebook must be the
- * /alfred/dossiers destination.
+ * Wired by href, not label, because /alfred/dossiers is the Notebook
+ * destination while the rail's Notes destination lives at /alfred/notes.
  * Target size is 44px, above the 24px floor in agents/design.md, because a
  * thumb is not a cursor.
  */

@@ -160,9 +160,9 @@ export const destinations: Destination[] = [
 ];
 
 const featureRoutes: Record<string, string> = {
-  // The notes surface still lives at /alfred/notebook until its move lands
-  // (later task), but the breadcrumb must already name Notes, so the prefix
-  // resolves to the Notes destination now (ASH-167, IA simplification).
+  // The notes surface moved to /alfred/notes (IA simplification); the old
+  // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
+  // to the Notes destination for as long as that bridge exists.
   "/alfred/notebook": "/alfred/notes",
   "/apps/command-center/briefing": "/command-center/briefing",
   "/apps/command-center/inbox": "/command-center/inbox",
