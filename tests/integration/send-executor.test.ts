@@ -200,6 +200,19 @@ suite("sendApprovedCorrespondence", () => {
     expect(attempt.errorCode).toBe("gmail_send_rejected");
   });
 
+  it("refuses when the sending account was reconnected after approval", async () => {
+    const { auth, draft } = await setup("send-reconnected", { approve: true });
+    const calls: unknown[] = [];
+    await db
+      .update(externalAccounts)
+      .set({ composioConnectedAccountId: `ca_reconnected_${crypto.randomUUID()}` })
+      .where(eq(externalAccounts.id, draft.externalAccountId!));
+    await expect(
+      exec.sendApprovedCorrespondence(auth, { correspondenceId: draft.id, sender: okSender(calls) }),
+    ).rejects.toThrow(/reconnected after approval/);
+    expect(calls).toHaveLength(0);
+  });
+
   it("refuses when the recipient address changed after approval", async () => {
     const { auth, draft } = await setup("send-moved-recipient", { approve: true });
     const calls: unknown[] = [];

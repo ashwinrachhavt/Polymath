@@ -181,6 +181,22 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
       .limit(1);
     if (!contact?.email) throw new ConflictError("The contact needs an email address before a send can be approved.");
 
+    /*
+     * Pin the sending account's provider identity, not just its row: a
+     * reconnect swaps the Composio connected-account id on the SAME row, and
+     * without this pin the approved send would leave from an account the
+     * owner never reviewed. The executor compares at send time.
+     */
+    let connectedAccountId: string | null = null;
+    if (draft.externalAccountId) {
+      const [account] = await tx
+        .select({ composioConnectedAccountId: externalAccounts.composioConnectedAccountId })
+        .from(externalAccounts)
+        .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, draft.externalAccountId)))
+        .limit(1);
+      connectedAccountId = account?.composioConnectedAccountId ?? null;
+    }
+
     const { proposalId, deduplicated } = await createProposal(tx, auth, {
       capability: "send_mail",
       riskClass: "external_write",
@@ -202,6 +218,7 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
           to: contact.email,
           contactId: draft.contactId,
           externalAccountId: draft.externalAccountId,
+          connectedAccountId,
           subject: draft.subject,
           body: draft.body,
         },

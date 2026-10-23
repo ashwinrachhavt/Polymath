@@ -3,7 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { createProposal } from "@/domains/actions/commands";
+import { createProposal, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { decideAndRecordToolInvocation } from "./authorization";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
@@ -547,7 +547,7 @@ export function createGateway({ transport }: { transport: Transport }) {
       return read(context, parsed, account.alias, account.connectedAccountId, reservation);
     }
     return parsed.tool === "gmail_send"
-      ? proposeSend(context, capability, parsed, account.alias, reservation)
+      ? proposeSend(context, capability, parsed, account, reservation)
       : read(context, parsed, account.alias, account.connectedAccountId, reservation);
   }
 
@@ -591,7 +591,15 @@ export function createGateway({ transport }: { transport: Transport }) {
     provider: string,
     alias: string | undefined,
   ): Promise<
-    | { ok: true; alias: string; connectedAccountId: string; accessTier: string; disabledCapabilities: string[] }
+    | {
+        ok: true;
+        alias: string;
+        connectedAccountId: string;
+        externalAccountId: string;
+        displayName: string | null;
+        accessTier: string;
+        disabledCapabilities: string[];
+      }
     | { ok: false; outcome: GatewayOutcome }
   > {
     const resolved = await resolveConnectedAccount(context.auth, provider, alias);
@@ -791,9 +799,10 @@ export function createGateway({ transport }: { transport: Transport }) {
     context: GatewayContext,
     capability: Capability,
     parsed: ParsedSend,
-    accountAlias: string,
+    account: { alias: string; externalAccountId: string; connectedAccountId: string; displayName: string | null },
     reservation: { reservationId: string; startedAt: number },
   ): Promise<GatewayOutcome> {
+    const accountAlias = account.alias;
     const { to, subject, body, messageId } = parsed.args;
     const inReplyTo = messageId;
     const dedupeKey = `gmail.mcp:${context.auth.workspaceId}:${to}:${subject}:${inReplyTo ?? ""}`;
@@ -818,12 +827,29 @@ export function createGateway({ transport }: { transport: Transport }) {
       // A replayed intent resolves the proposal that already exists; appending a
       // revision would make the owner approve the same intent twice.
       if (!proposal.deduplicated) {
+        /*
+         * Pin the sender the gateway already resolved for this call, so the
+         * review card shows the exact account BEFORE the decision and the
+         * approval binds this revision unchanged. The executor re-resolves
+         * and refuses when the identity no longer matches.
+         */
+        const pinned = withSenderAccountPin(
+          {
+            resolved: true,
+            externalAccountId: account.externalAccountId,
+            connectedAccountId: account.connectedAccountId,
+            alias: account.alias,
+            sender: account.displayName ?? account.alias,
+          },
+          { to, subject, body, inReplyTo, accountAlias },
+          { to, subject, body },
+        );
         await tx.insert(actionRevisions).values({
           workspaceId: context.auth.workspaceId,
           proposalId: proposal.proposalId,
           revisionNumber: 1,
-          payload: { to, subject, body, inReplyTo, accountAlias },
-          preview: { to, subject, body },
+          payload: pinned.payload,
+          preview: pinned.preview,
           createdBy: context.auth.userId,
         });
         return { ...proposal, bodyChanged: false };

@@ -85,20 +85,25 @@ async function seedSend(options: {
   runId?: string | null;
   accountStatus?: "active" | "revoked";
   payload?: Record<string, unknown>;
-}): Promise<Seeded & { workspaceId: string }> {
+  /** Legacy shape: an approval written before sender-account binding shipped. */
+  unpinned?: boolean;
+}): Promise<Seeded & { workspaceId: string; accountId: string }> {
   counter += 1;
   const { userId, workspaceId } = await seedWorkspace(db, `${options.slug}-${Date.now()}-${counter}`);
   const auth = ownerAuth(userId, workspaceId);
   const alias = `work-gmail-${counter}`;
-  await db.insert(externalAccounts).values({
-    workspaceId,
-    provider: "gmail",
-    alias,
-    status: options.accountStatus ?? "active",
-    composioConnectedAccountId: options.accountStatus === "revoked" ? null : `ca_${crypto.randomUUID()}`,
-    createdBy: userId,
-    updatedBy: userId,
-  });
+  const [account] = await db
+    .insert(externalAccounts)
+    .values({
+      workspaceId,
+      provider: "gmail",
+      alias,
+      status: options.accountStatus ?? "active",
+      composioConnectedAccountId: options.accountStatus === "revoked" ? null : `ca_${crypto.randomUUID()}`,
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning();
 
   const [proposal] = await db
     .insert(actionProposals)
@@ -117,14 +122,29 @@ async function seedSend(options: {
     })
     .returning();
 
+  const pin =
+    options.unpinned || options.accountStatus === "revoked"
+      ? {}
+      : {
+          accountPin: {
+            resolved: true,
+            externalAccountId: account.id,
+            connectedAccountId: account.composioConnectedAccountId,
+            alias,
+            sender: alias,
+          },
+        };
   const [revision] = await db
     .insert(actionRevisions)
     .values({
       workspaceId,
       proposalId: proposal.id,
       revisionNumber: 1,
-      payload: options.payload ?? { to: "ada@example.test", subject: "Hi", body: "Hello", inReplyTo: null },
-      preview: { to: "ada@example.test", subject: "Hi" },
+      payload: {
+        ...(options.payload ?? { to: "ada@example.test", subject: "Hi", body: "Hello", inReplyTo: null }),
+        ...pin,
+      },
+      preview: { to: "ada@example.test", subject: "Hi", ...pin },
       createdBy: userId,
     })
     .returning();
@@ -139,7 +159,7 @@ async function seedSend(options: {
     });
   }
 
-  return { auth, proposalId: proposal.id, revisionId: revision.id, accountAlias: alias, workspaceId };
+  return { auth, proposalId: proposal.id, revisionId: revision.id, accountAlias: alias, workspaceId, accountId: account.id };
 }
 
 async function seedRun(workspaceId: string, userId: string, allowedTools = ["gmail.send"]) {
@@ -187,6 +207,83 @@ suite("executeApprovedEffect", () => {
       .from(actionProposals)
       .where(eq(actionProposals.id, seeded.proposalId));
     expect(proposal.status).toBe("approved");
+  });
+
+  it("refuses when the approved account row was reconnected after approval, and never calls the provider", async () => {
+    const seeded = await seedSend({ slug: "effect-account-reconnected" });
+    // A reconnect swaps the provider identity on the SAME row; backdating
+    // updatedAt proves the pin, not the mtime, drives the refusal.
+    await db
+      .update(externalAccounts)
+      .set({ composioConnectedAccountId: `ca_reconnected_${crypto.randomUUID()}`, updatedAt: new Date("2020-01-01") })
+      .where(eq(externalAccounts.id, seeded.accountId));
+    const { spy } = stubProvider(sentOk());
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /no longer matches the approved revision/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    const attempts = await db
+      .select()
+      .from(actionAttempts)
+      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    expect(attempts).toHaveLength(0);
+  });
+
+  it("refuses when the approved alias is moved to a different existing account after approval", async () => {
+    const seeded = await seedSend({ slug: "effect-alias-moved" });
+    const [other] = await db
+      .insert(externalAccounts)
+      .values({
+        workspaceId: seeded.workspaceId,
+        provider: "gmail",
+        alias: `other-gmail-${crypto.randomUUID()}`,
+        status: "active",
+        composioConnectedAccountId: `ca_other_${crypto.randomUUID()}`,
+        createdBy: seeded.auth.userId,
+        updatedBy: seeded.auth.userId,
+      })
+      .returning();
+    // The approved row is revoked and its alias lands on the other account:
+    // resolution now returns a different row with an older updatedAt.
+    await db
+      .update(externalAccounts)
+      .set({ status: "revoked", alias: `revoked-${seeded.accountAlias}` })
+      .where(eq(externalAccounts.id, seeded.accountId));
+    await db
+      .update(externalAccounts)
+      .set({ alias: seeded.accountAlias, updatedAt: new Date("2020-01-01") })
+      .where(eq(externalAccounts.id, other.id));
+    const { spy } = stubProvider(sentOk());
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /no longer matches the approved revision/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a legacy approval written before a sending account was bound", async () => {
+    const seeded = await seedSend({ slug: "effect-legacy-unpinned", unpinned: true });
+    const { spy } = stubProvider(sentOk());
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /before a sending account was bound/,
+    );
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("an approval over a stale pin never retargets: reconnect between review and execution refuses", async () => {
+    const seeded = await seedSend({ slug: "effect-stale-pin" });
+    // The reviewer looked at the pinned sender; the row was reconnected
+    // before or after the click. Approval must not re-bind to the new
+    // identity - execution refuses and a fresh revision is required.
+    await db
+      .update(externalAccounts)
+      .set({ composioConnectedAccountId: `ca_swapped_${crypto.randomUUID()}` })
+      .where(eq(externalAccounts.id, seeded.accountId));
+    const { spy } = stubProvider(sentOk());
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /no longer matches the approved revision/,
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("a crash-shaped unknown attempt blocks the claim and never calls the provider", async () => {
