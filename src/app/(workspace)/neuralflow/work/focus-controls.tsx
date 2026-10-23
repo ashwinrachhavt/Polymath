@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
@@ -42,28 +43,13 @@ type ActiveSession = {
   version: number;
 };
 
-/** The OS-level motion preference; the stage's sheen honours it like the preview screens do. */
-function useReduceMotion() {
-  // Lazy initializer: reading matchMedia at mount is an external-system read,
-  // not cascading state; the listener only reacts to later changes.
-  const [reduced, setReduced] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
-}
-
 const clarityStone = stoneForReward("Clarity stone");
 
 export function ActiveSessionControls({ session }: { session: ActiveSession & { hasTask?: boolean } }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const reduceMotion = useReduceMotion();
+  // The OS-level motion preference; the stage's sheen honours it like the preview screens do.
+  const reduceMotion = useReducedMotion() ?? false;
   // Display-only drift counter: the server remains the clock of record and
   // every action re-derives elapsed time in Postgres.
   const [extraSeconds, setExtraSeconds] = useState(0);

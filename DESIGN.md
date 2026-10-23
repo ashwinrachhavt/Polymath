@@ -357,6 +357,12 @@ What still contradicts this file, in the order it should die:
 | `/dossiers` URL | `/alfred/dossiers/*` | The Notebook label ships while the URL keeps the retired "Dossiers" name (owner decision 2026-10-22: zero redirect work beats a rename). Cosmetic only; the label everywhere is Notebook. |
 | Wiki ingest/lint controls | `/alfred/wiki` (retired) | The ingest and lint controls await a home in the Document Vault's document inspector (plan §3c, deferred). The capability survives through the `wiki.ingest` and `wiki.lint` agent tools. |
 
+Deliberate non-redirect: of the seven retired rail destinations, six keep a
+bridge to the screen that absorbed them, but Learning's `/alfred/learning`
+404s — the surface was deleted, not moved, so there is no new home to send it
+to (owner ruling, 2026-10-22). The address answers the same noindex not-found
+state as any unknown screen.
+
 ## 16. Minimalism rules
 
 How a surface stays calm (the Notes redesign is the reference build):

@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
@@ -475,6 +476,9 @@ export async function getWikiOverview(auth: AuthContext): Promise<WikiOverview |
 }
 
 export async function getWikiPageText(auth: AuthContext, artifactId: string) {
+  // A malformed id would reach Postgres as a uuid cast error and 500; it is
+  // the same "no page here" as any other miss (see getDraftDetail).
+  if (!z.string().uuid().safeParse(artifactId).success) return null;
   const [row] = await db
     .select({ title: artifacts.title, plainText: artifactVersions.plainText, versionNumber: artifactVersions.versionNumber, updatedAt: artifacts.updatedAt })
     .from(artifacts)
@@ -483,27 +487,4 @@ export async function getWikiPageText(auth: AuthContext, artifactId: string) {
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
   return row ?? null;
-}
-
-/** Documents with a succeeded extraction, newest first — the ingest form's choices. */
-export async function listIngestableDocuments(auth: AuthContext) {
-  return db
-    .select({
-      id: documents.id,
-      title: documents.title,
-      ingested: sql<boolean>`${wikiPages.id} is not null`,
-    })
-    .from(documents)
-    .innerJoin(
-      documentExtractions,
-      and(eq(documentExtractions.documentId, documents.id), eq(documentExtractions.status, "succeeded")),
-    )
-    .leftJoin(
-      wikiPages,
-      and(eq(wikiPages.documentId, documents.id), eq(wikiPages.workspaceId, auth.workspaceId), sql`${wikiPages.role} = 'article'`),
-    )
-    .where(and(eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`))
-    .groupBy(documents.id, wikiPages.id)
-    .orderBy(desc(documents.createdAt))
-    .limit(50);
 }
