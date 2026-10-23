@@ -174,9 +174,17 @@
     btn.disabled = true;
     btn.textContent = "Saving...";
     try {
-      await AlfredAPI.createCapture({ text: content });
+      const result = await AlfredAPI.queueCapture({
+        text: content,
+        history: { title: content.slice(0, 80), url: "", type: "quick-note" },
+      });
       $("#note-modal").classList.add("hidden");
-      await loadNotes();
+      if (result.delivered) {
+        await loadNotes();
+      } else {
+        alert("Saved on this device. It will appear in the inbox once it syncs.");
+      }
+      await loadOutbox();
     } catch (err) {
       alert(`Capture failed: ${err.message}`);
     } finally {
@@ -253,10 +261,17 @@
     for (const item of history) {
       const card = document.createElement("div");
       card.className = "card";
+      const syncTag =
+        item.delivery === "pending" ? '<span class="card-tag card-tag-pending">pending sync</span>'
+        : item.delivery === "failed" ? '<span class="card-tag card-tag-failed">sync failed</span>'
+        : item.delivery === "needs-auth" ? '<span class="card-tag card-tag-failed">needs new API key</span>'
+        : item.delivery === "discarded" ? '<span class="card-tag">discarded</span>'
+        : "";
       card.innerHTML = `
         <div class="card-title">${escHtml(item.title || "Untitled")}</div>
         <div class="card-meta">
           <span class="card-tag">${escHtml(item.type || "capture")}</span>
+          ${syncTag}
           ${timeAgo(item.timestamp)}
         </div>
         ${item.url ? `<div class="card-meta" style="margin-top:4px;font-size:11px;word-break:break-all;color:var(--text-dim)">${escHtml(truncate(item.url, 80))}</div>` : ""}
@@ -270,6 +285,70 @@
     await AlfredAPI.clearCaptureHistory();
     loadHistory();
   });
+
+  // ── Pending sync panel ─────────────────────────────────────────────
+
+  async function loadOutbox() {
+    const container = $("#outbox-list");
+    if (!container) return;
+    let reply;
+    try {
+      reply = await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_LIST" });
+    } catch {
+      container.innerHTML = '<p class="empty-state">The companion worker did not answer.</p>';
+      return;
+    }
+    const entries = (reply && reply.entries) || [];
+    container.innerHTML = "";
+    if (entries.length === 0) {
+      container.innerHTML = '<p class="empty-state">Nothing waiting to sync.</p>';
+      return;
+    }
+    for (const entry of entries) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const stateLabel =
+        entry.status === "needs-auth" ? "needs a new API key"
+        : entry.status === "failed" ? `failed after ${entry.attempts} tries`
+        : entry.attempts > 0 ? `syncing (try ${entry.attempts + 1})`
+        : "syncing";
+      card.innerHTML = `
+        <div class="card-title">${escHtml(entry.title || "Untitled")}</div>
+        <div class="card-meta">
+          <span class="card-tag ${entry.status === "queued" ? "card-tag-pending" : "card-tag-failed"}">${escHtml(stateLabel)}</span>
+          ${timeAgo(entry.createdAt)}
+        </div>
+        ${entry.preview ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-dim)">${escHtml(entry.preview)}</div>` : ""}
+        ${entry.lastError ? `<div class="card-meta" style="margin-top:4px;font-size:11px;color:var(--text-dim)">${escHtml(truncate(entry.lastError, 120))}</div>` : ""}
+      `;
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
+      const retryBtn = document.createElement("button");
+      retryBtn.className = "btn btn-sm btn-secondary";
+      retryBtn.textContent = "Retry now";
+      retryBtn.addEventListener("click", async () => {
+        retryBtn.disabled = true;
+        try { await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_RETRY", id: entry.id }); } catch {}
+        await loadOutbox();
+        await loadHistory();
+      });
+      const discardBtn = document.createElement("button");
+      discardBtn.className = "btn btn-sm btn-danger";
+      discardBtn.textContent = "Discard";
+      discardBtn.addEventListener("click", async () => {
+        if (!confirm("Discard this capture? It has not reached Polymath and will be removed from this device.")) return;
+        try { await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_DISCARD", id: entry.id }); } catch {}
+        await loadOutbox();
+        await loadHistory();
+      });
+      actions.appendChild(retryBtn);
+      actions.appendChild(discardBtn);
+      card.appendChild(actions);
+      container.appendChild(card);
+    }
+  }
+
+  $("#btn-refresh-outbox").addEventListener("click", loadOutbox);
 
   // ── Settings ───────────────────────────────────────────────────────
 
@@ -299,4 +378,5 @@
     $("#library-list").innerHTML = '<p class="empty-state">Polymath is offline. Start the dev server and refresh.</p>';
   }
   loadHistory();
+  loadOutbox();
 })();

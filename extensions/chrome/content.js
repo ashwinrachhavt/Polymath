@@ -191,10 +191,15 @@
     }
     for (const item of recent) {
       const ago = timeAgo(item.timestamp);
+      const sync =
+        item.delivery === "pending" ? " — pending sync"
+        : item.delivery === "failed" ? " — sync failed"
+        : item.delivery === "needs-auth" ? " — needs new API key"
+        : "";
       list.appendChild(
         el("li", { class: "alfred-capture-item" }, [
           el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),
-          el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}`),
+          el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}${sync}`),
         ])
       );
     }
@@ -271,32 +276,32 @@
     const captureType = isFullPage ? "page-capture" : "quick-note";
 
     try {
-      if (isFullPage) {
-        await AlfredAPI.capturePage({
-          url: location.href,
-          title: document.title,
-          content: text,
-          raw_markdown: typeof _fallbackMarkdown !== "undefined" ? _fallbackMarkdown : null,
-          content_type_hint: typeof _fallbackHint !== "undefined" ? _fallbackHint : null,
-          capture_quality: typeof _fallbackQuality !== "undefined" ? _fallbackQuality : null,
-        });
-      } else {
-        await AlfredAPI.captureSelection({
-          url: location.href,
-          title: document.title,
-          selectedText: text,
-        });
-      }
+      const result = isFullPage
+        ? await AlfredAPI.capturePage({
+            url: location.href,
+            title: document.title,
+            content: text,
+            raw_markdown: typeof _fallbackMarkdown !== "undefined" ? _fallbackMarkdown : null,
+            content_type_hint: typeof _fallbackHint !== "undefined" ? _fallbackHint : null,
+            capture_quality: typeof _fallbackQuality !== "undefined" ? _fallbackQuality : null,
+          })
+        : await AlfredAPI.captureSelection({
+            url: location.href,
+            title: document.title,
+            selectedText: text,
+            history: { title: text.slice(0, 80), url: location.href, type: captureType },
+          });
       if (textarea) {
         textarea.value = "";
         try { localStorage.removeItem(DOMAIN_KEY); } catch {}
       }
-      showToast(isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!", "success");
-      AlfredAPI.addCaptureHistory({
-        title: isFullPage ? `[Page] ${document.title}` : text.slice(0, 80),
-        url: location.href,
-        type: captureType,
-      }).then(() => refreshRecentCaptures()).catch(() => {});
+      showToast(
+        result.delivered
+          ? (isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!")
+          : "Saved on this device — will sync to Polymath when it is reachable.",
+        "success",
+      );
+      refreshRecentCaptures();
     } catch (err) {
       showToast(`Save failed: ${err.message}`, "error");
     }
@@ -308,22 +313,28 @@
         ? AlfredExtract.extractPage()
         : { raw_text: document.body.innerText.slice(0, 50000), raw_markdown: null, quality: "basic", content_type_hint: "generic" };
 
-      await AlfredAPI.capturePage({
+      const result = await AlfredAPI.capturePage({
         url: location.href,
         title: document.title,
         content: extracted.raw_text,
         raw_markdown: extracted.raw_markdown,
         content_type_hint: extracted.content_type_hint,
         capture_quality: extracted.quality,
+        history: {
+          title: `[Page] ${document.title}`,
+          url: location.href,
+          type: "page-capture",
+          quality: extracted.quality,
+        },
       });
       const qualityLabel = extracted.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
-      showToast(`Page captured to Polymath! (${qualityLabel})`, "success");
-      AlfredAPI.addCaptureHistory({
-        title: `[Page] ${document.title}`,
-        url: location.href,
-        type: "page-capture",
-        quality: extracted.quality,
-      }).then(() => refreshRecentCaptures()).catch(() => {});
+      showToast(
+        result.delivered
+          ? `Page captured to Polymath! (${qualityLabel})`
+          : "Saved on this device — will sync to Polymath when it is reachable.",
+        "success",
+      );
+      refreshRecentCaptures();
     } catch (err) {
       showToast(`Capture failed: ${err.message}`, "error");
     }
@@ -338,18 +349,20 @@
 
       var selText = extracted.raw_text || text;
 
-      await AlfredAPI.captureSelection({
+      const result = await AlfredAPI.captureSelection({
         url: location.href,
         title: document.title,
         selectedText: selText,
         raw_markdown: extracted.raw_markdown,
+        history: { title: selText.slice(0, 80), url: location.href, type: "selection" },
       });
-      showToast("Selection saved to Polymath!", "success");
-      AlfredAPI.addCaptureHistory({
-        title: selText.slice(0, 80),
-        url: location.href,
-        type: "selection",
-      }).then(() => refreshRecentCaptures()).catch(() => {});
+      showToast(
+        result.delivered
+          ? "Selection saved to Polymath!"
+          : "Saved on this device — will sync to Polymath when it is reachable.",
+        "success",
+      );
+      refreshRecentCaptures();
     } catch (err) {
       showToast(`Save failed: ${err.message}`, "error");
     }

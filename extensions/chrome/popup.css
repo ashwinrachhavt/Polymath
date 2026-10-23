@@ -218,3 +218,10 @@ textarea {
 .status-msg.error {
   color: #ef4444;
 }
+
+/* Outbox: captures stored on this device awaiting sync */
+.outbox-summary {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #b45309;
+}

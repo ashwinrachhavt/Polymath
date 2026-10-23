@@ -29,6 +29,43 @@
   }
   checkStatus();
 
+  // ── Outbox (captures saved on this device, not yet synced) ────────
+
+  async function refreshOutbox() {
+    const section = $("#outbox-section");
+    if (!section) return;
+    let status;
+    try {
+      status = await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_STATUS" });
+    } catch {
+      section.hidden = true;
+      return;
+    }
+    if (!status || status.ok !== true) {
+      section.hidden = true;
+      return;
+    }
+    const total = status.pending + status.failed + status.needsAuth;
+    section.hidden = total === 0;
+    if (total === 0) return;
+    const parts = [];
+    if (status.pending) parts.push(`${status.pending} syncing`);
+    if (status.failed) parts.push(`${status.failed} failed`);
+    if (status.needsAuth) parts.push(`${status.needsAuth} need a new API key`);
+    $("#outbox-summary").textContent = `Saved on this device: ${parts.join(", ")}`;
+  }
+  refreshOutbox();
+
+  $("#btn-outbox-retry").addEventListener("click", async () => {
+    const btn = $("#btn-outbox-retry");
+    btn.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_RETRY" });
+    } catch {}
+    btn.disabled = false;
+    refreshOutbox();
+  });
+
   // ── Load saved settings ────────────────────────────────────────────
 
   const res = await chrome.storage.local.get(["alfredBaseUrl", "axiomToken"]);
@@ -62,22 +99,22 @@
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       // Use the content script's shared extractor via messaging
       const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_ARTICLE_TEXT" });
-      await AlfredAPI.capturePage({
+      const result = await AlfredAPI.capturePage({
         url: page.url,
         title: page.title,
         content: page.text,
         raw_markdown: page.raw_markdown,
         content_type_hint: page.content_type_hint,
         capture_quality: page.quality,
-      });
-      await AlfredAPI.addCaptureHistory({
-        title: `[Page] ${page.title}`,
-        url: page.url,
-        type: "page-capture",
-        quality: page.quality,
+        history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
       });
       const qualityLabel = page.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
-      flashStatus($("#quick-actions"), `Page captured! (${qualityLabel})`, "success");
+      flashStatus(
+        $("#quick-actions"),
+        result.delivered ? `Page captured! (${qualityLabel})` : "Saved on this device — will sync when Polymath is reachable.",
+        "success",
+      );
+      refreshOutbox();
     } catch (err) {
       flashStatus($("#quick-actions"), `Error: ${err.message}`, "error");
     } finally {
@@ -120,21 +157,21 @@
       btn.textContent = "Capturing page...";
       try {
         const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_ARTICLE_TEXT" });
-        await AlfredAPI.capturePage({
+        const result = await AlfredAPI.capturePage({
           url: page.url,
           title: page.title,
           content: page.text,
           raw_markdown: page.raw_markdown,
           content_type_hint: page.content_type_hint,
           capture_quality: page.quality,
+          history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
         });
-        AlfredAPI.addCaptureHistory({
-          title: `[Page] ${page.title}`,
-          url: page.url,
-          type: "page-capture",
-          quality: page.quality,
-        }).catch(() => {});
-        flashStatus($("#quick-note"), "Page captured!", "success");
+        flashStatus(
+          $("#quick-note"),
+          result.delivered ? "Page captured!" : "Saved on this device — will sync when Polymath is reachable.",
+          "success",
+        );
+        refreshOutbox();
       } catch (err) {
         flashStatus($("#quick-note"), `Error: ${err.message}`, "error");
       } finally {
@@ -147,18 +184,19 @@
     // Save the text (from textarea or clipboard)
     btn.disabled = true;
     try {
-      await AlfredAPI.captureSelection({
+      const result = await AlfredAPI.captureSelection({
         url: tab?.url || "",
         title: tab?.title || "",
         selectedText: text,
+        history: { title: text.slice(0, 80), url: tab?.url || "", type: "quick-note" },
       });
-      AlfredAPI.addCaptureHistory({
-        title: text.slice(0, 80),
-        url: tab?.url || "",
-        type: "quick-note",
-      }).catch(() => {});
       $("#note-input").value = "";
-      flashStatus($("#quick-note"), "Note saved!", "success");
+      flashStatus(
+        $("#quick-note"),
+        result.delivered ? "Note saved!" : "Saved on this device — will sync when Polymath is reachable.",
+        "success",
+      );
+      refreshOutbox();
     } catch (err) {
       flashStatus($("#quick-note"), `Error: ${err.message}`, "error");
     } finally {

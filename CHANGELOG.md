@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The Chrome connector keeps captures safe across deploys: every capture is
+  written to a durable on-device outbox before any network attempt, then
+  synced in the background with exponential-backoff retries and exactly-once
+  idempotency keys. Capture History and toasts now distinguish "Saved on
+  this device" from "Synced to Polymath", and the Dashboard has a Pending
+  Sync panel with Retry and Discard. Failed or unauthenticated captures park
+  for review instead of disappearing (ASH-219).
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

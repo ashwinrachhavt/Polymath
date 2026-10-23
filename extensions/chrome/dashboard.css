@@ -496,3 +496,23 @@ body {
   margin-top: 4px;
   word-break: break-all;
 }
+
+/* Pending sync states */
+.card-tag-pending {
+  background: rgba(180, 83, 9, 0.12);
+  color: #b45309;
+}
+.card-tag-failed {
+  background: rgba(185, 28, 28, 0.12);
+  color: #b91c1c;
+}
+.panel-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-dim, #6b7280);
+}
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

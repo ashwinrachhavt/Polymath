@@ -35,6 +35,33 @@ Capturing requires an API key:
 
 The extension sends the key as a bearer token; Polymath stores only its digest. Revoke the key from the same Settings panel to cut access. A `pnpm companion:pair` CLI remains for headless setups.
 
+## Durable capture outbox
+
+Captures are written to the extension's own storage **before** any network
+attempt, so a redeploy, a stopped dev server, or a closed laptop delays a
+capture instead of losing it. The service worker delivers the queue in the
+background:
+
+- **Save first, sync second.** The capture lands in `chrome.storage.local`
+  (durable across browser restarts and worker death), then a POST is
+  attempted immediately. Page `localStorage` is deliberately not used: it
+  belongs to each website, is cleared with site data, and is unreachable
+  from the service worker.
+- **Exactly-once retries.** Each capture gets one idempotency key at enqueue
+  time; the server's `request_receipts` make every retry safe. Failures
+  retry with exponential backoff (30s, doubling, 15m cap) scheduled through
+  `chrome.alarms`, which wakes the worker even after Chrome restarts.
+- **Honest status.** Toasts and Capture History distinguish "Saved on this
+  device" from "Synced to Polymath". The popup shows the pending count; the
+  Dashboard's **Pending Sync** panel lists every waiting capture with Retry
+  and Discard.
+- **Nothing is silently dropped.** After 8 failed attempts, or on a
+  permanent error, the capture parks as failed / needs-auth and waits for
+  you. A 401 means the API key was revoked — mint a fresh one, save it in
+  Settings, then Retry.
+- **Storage budget.** The outbox refuses new captures near ~8 MB instead of
+  corrupting the queue; the Dashboard shows what is waiting.
+
 ## Requirements
 
 - Polymath backend running at the configured URL

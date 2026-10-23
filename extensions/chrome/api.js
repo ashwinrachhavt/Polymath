@@ -148,10 +148,10 @@ const AlfredAPI = {
    * page was grabbed; the inbox keeps both and treats the URL as provenance.
    * Server-side dedupe answers 409 for a repeated URL-only capture.
    */
-  async createCapture({ text, url, title }) {
+  async createCapture({ text, url, title, idempotencyKey }) {
     return this._fetch("/api/v1/captures", {
       method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": idempotencyKey || crypto.randomUUID() },
       body: JSON.stringify({ text, url, title }),
     });
   },
@@ -163,15 +163,61 @@ const AlfredAPI = {
   },
 
   /** Ingest a captured page (or a short excerpt) into the inbox. */
-  async capturePage({ url, title, content }) {
+  async capturePage({ url, title, content, history }) {
     const text = (content || "").trim();
-    return this.createCapture({ text, url, title: title || url });
+    return this.queueCapture({
+      text,
+      url,
+      title: title || url,
+      history: history || { title: `[Page] ${title || url}`, url, type: "page-capture" },
+    });
   },
 
   /** Capture a text selection into the inbox. */
-  async captureSelection({ url, title, selectedText }) {
+  async captureSelection({ url, title, selectedText, history }) {
     const text = (selectedText || "").trim();
-    return this.createCapture({ text, url, title: title ? `${title} — selection` : url });
+    return this.queueCapture({
+      text,
+      url,
+      title: title ? `${title} — selection` : url,
+      history: history || { title: text.slice(0, 80), url, type: "selection" },
+    });
+  },
+
+  /**
+   * The durable save path. The service worker writes the capture to its
+   * outbox BEFORE any network attempt and answers { delivered } — true only
+   * when Polymath confirmed the save during this call. A false delivered is
+   * not a failure: the capture is safe on this device and syncs itself.
+   *
+   * Falls back to a direct POST only when the worker cannot be messaged at
+   * all (e.g. an unpacked dashboard outside the extension runtime).
+   */
+  async queueCapture({ text, url, title, history }) {
+    const canMessage =
+      typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage;
+    if (canMessage) {
+      let reply;
+      try {
+        reply = await chrome.runtime.sendMessage({
+          type: "AXIOM_ENQUEUE_CAPTURE",
+          text,
+          url,
+          title,
+          history: history || null,
+        });
+      } catch (err) {
+        // "Extension context invalidated" — the extension was reloaded or
+        // updated and this page still runs the old content script.
+        throw new Error("The extension was just reloaded. Refresh this page and try again.");
+      }
+      if (!reply || reply.ok !== true) {
+        throw new Error(reply && reply.error ? reply.error : "The companion could not save the capture.");
+      }
+      return reply;
+    }
+    await this.createCapture({ text, url, title });
+    return { ok: true, delivered: true };
   },
 
   // ── Health ─────────────────────────────────────────────────────────
@@ -233,6 +279,17 @@ const AlfredAPI = {
     }
   },
 
+  /** Patch the history entry written for one outbox entry (sync status). */
+  async updateCaptureHistoryByOutboxId(outboxId, patch) {
+    try {
+      const history = (await this._getStorage("captureHistory")) || [];
+      const idx = history.findIndex((entry) => entry.outboxId === outboxId);
+      if (idx === -1) return;
+      history[idx] = { ...history[idx], ...patch };
+      await this._setStorage("captureHistory", history);
+    } catch {}
+  },
+
   /** Get capture history. */
   async getCaptureHistory() {
     try {
@@ -250,7 +307,8 @@ const AlfredAPI = {
   },
 };
 
-// Make available globally (content scripts share the same scope per injection)
-if (typeof window !== "undefined") {
-  window.AlfredAPI = AlfredAPI;
+// Make available globally: window in pages, self in the service worker.
+const _axiomRoot = typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : null;
+if (_axiomRoot) {
+  _axiomRoot.AlfredAPI = AlfredAPI;
 }
