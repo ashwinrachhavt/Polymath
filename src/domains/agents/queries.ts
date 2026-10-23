@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { agentProfiles, agentRuns, toolCalls } from "./schema";
+import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -63,6 +63,33 @@ export async function getRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return run ?? null;
+}
+
+export type RunUsage = {
+  /** Summed from the run's usage events as numeric in SQL; text keeps the precision. */
+  usd: string;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+/*
+ * The recorded cost of one run, summed from its usage events in SQL - the same
+ * derivation the terminal close settles with. Null when the run has no usage
+ * events: unrecorded cost is unknown, never zero.
+ */
+export async function getRunUsage(workspaceId: string, runId: string): Promise<RunUsage | null> {
+  const rows = await db.execute(sql`
+    select
+      coalesce(sum((${runEvents.data}->>'costUsd')::numeric), 0)::text as usd,
+      coalesce(sum((${runEvents.data}->>'inputTokens')::bigint), 0)::int as input_tokens,
+      coalesce(sum((${runEvents.data}->>'outputTokens')::bigint), 0)::int as output_tokens,
+      count(*)::int as events
+    from run_events
+    where run_id = ${runId} and workspace_id = ${workspaceId} and type = 'usage'
+  `);
+  const row = rows[0] as { usd: string; input_tokens: number; output_tokens: number; events: number } | undefined;
+  if (!row || row.events === 0) return null;
+  return { usd: row.usd, inputTokens: row.input_tokens, outputTokens: row.output_tokens };
 }
 
 /**
