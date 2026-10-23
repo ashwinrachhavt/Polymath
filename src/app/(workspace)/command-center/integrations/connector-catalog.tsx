@@ -203,7 +203,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                             <p className="mb-2 text-xs text-muted-foreground">
                               {account.lastHealthyAt
                                 ? `Healthy ${account.lastHealthyAt.slice(0, 16).replace("T", " ")}Z`
-                                : "Never connected"}
+                                : "No health check yet"}
                             </p>
                             <TierPicker
                               provider={connector.provider}
@@ -211,6 +211,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                               expectedVersion={account.version}
                               current={account.accessTier}
                               tiers={connector.accessTiers}
+                              disabled={account.disabledCapabilities}
                             />
                             <div className="mt-3">
                               <CapabilitySwitches

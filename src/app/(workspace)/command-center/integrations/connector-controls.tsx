@@ -205,18 +205,24 @@ export function TierPicker({
   expectedVersion,
   current,
   tiers,
+  disabled = [],
 }: {
   provider: string;
   accountId: string;
   expectedVersion: number;
   current: string | null;
-  tiers: Array<{ id: string; label: string; description: string }>;
+  tiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
+  disabled?: string[];
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const active = tiers.find((tier) => tier.id === current) ?? tiers[0];
 
   if (!active) return null;
+
+  // The description names the tier ceiling; when account switches narrow it,
+  // say so right there so the summary never claims access that is off.
+  const narrowed = active.capabilities.filter((capability) => disabled.includes(capability));
 
   const choose = (tierId: string) => {
     setError(null);
@@ -245,6 +251,12 @@ export function TierPicker({
         ))}
       </select>
       <p className="text-xs text-muted-foreground">{active.description}</p>
+      {narrowed.length ? (
+        <p className="text-xs text-muted-foreground">
+          Narrowed by the switches below: {narrowed.map((capability) => CAPABILITY_LABELS[capability] ?? capability).join(", ")}{" "}
+          {narrowed.length === 1 ? "is" : "are"} off.
+        </p>
+      ) : null}
       {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
     </div>
   );

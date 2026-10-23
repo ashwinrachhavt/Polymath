@@ -83,6 +83,8 @@ describe("connector catalog pixel harness", () => {
   it("renders every changed card state to static markup", () => {
     const html = renderToStaticMarkup(createElement(ConnectorCatalog, { connectors: fixtures }));
     expect(html).toContain("work-gmail");
+    expect(html).toContain("No health check yet");
+    expect(html).toContain("Narrowed by the switches below: Prepare send proposals is off.");
     expect(html).toContain("Setup needed");
     expect(html).toContain("Coming soon");
     expect(html).toContain("Invalid API key (401)");
