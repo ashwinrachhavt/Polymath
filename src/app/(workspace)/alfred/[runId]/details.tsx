@@ -123,7 +123,7 @@ export function RunDetails({
   citations: DocumentCitation[];
   events: TimelineEvent[];
   toolCalls?: ToolCallRow[];
-  draft: { artifactId: string; status: string } | null;
+  draft: { artifactId: string; status: string; version: number } | null;
   unavailable: string | null;
 }) {
   const tools = policyTools(policy);

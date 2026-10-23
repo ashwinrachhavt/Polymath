@@ -20,6 +20,7 @@ type Pick = { id: string; title: string };
 export function DraftWorkbench({
   suggestedNextStep,
   artifact,
+  versions,
   text,
   sources,
   links,
@@ -28,6 +29,8 @@ export function DraftWorkbench({
 }: {
   suggestedNextStep?: string | null;
   artifact: { id: string; title: string; status: string; version: number };
+  /** Append-only version history, newest first. */
+  versions: { versionNumber: number; reason: string; note: string | null; createdAt: Date }[];
   text: string;
   sources: { documentId: string; title: string; pinnedHash: string | null }[];
   links: LinkRow[];
@@ -42,8 +45,20 @@ export function DraftWorkbench({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const dirty = draftText !== text;
+  const stablePath = `/alfred/dossiers?draft=${artifact.id}`;
+
+  async function copyStableLink() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${stablePath}`);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      setError("Copying the link failed — copy it from the address bar instead.");
+    }
+  }
   const picks = linkable[targetType];
 
   async function saveEdits() {
@@ -105,6 +120,19 @@ export function DraftWorkbench({
         <Badge variant="secondary" className="font-normal">
           {artifact.status}
         </Badge>
+        <span className="text-muted-foreground text-xs">version {artifact.version}</span>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {artifact.status === "draft"
+          ? "A draft is visible only here; keeping or discarding it is always your call."
+          : "Kept as reviewed. Edits append a new version — earlier versions below are never overwritten."}
+      </p>
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted-foreground">Stable link:</span>
+        <code className="rounded bg-muted px-1.5 py-0.5">{stablePath}</code>
+        <button type="button" className="text-muted-foreground underline underline-offset-2 hover:text-foreground" onClick={copyStableLink}>
+          {linkCopied ? "Copied" : "Copy"}
+        </button>
       </div>
       {suggestedNextStep ? (
         <p className="text-muted-foreground text-[13px]">Suggested next step: {suggestedNextStep}</p>
@@ -126,6 +154,27 @@ export function DraftWorkbench({
             {error}
           </p>
         ) : null}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Version history</p>
+        <ul className="flex flex-col gap-1">
+          {versions.map((row) => (
+            <li key={row.versionNumber} className="flex items-baseline gap-2 text-[13px]">
+              <span className="font-mono text-xs">v{row.versionNumber}</span>
+              <Badge variant="outline" className="font-normal">
+                {row.reason}
+              </Badge>
+              {row.versionNumber === artifact.version ? (
+                <span className="text-muted-foreground text-xs">current</span>
+              ) : null}
+              <span className="text-muted-foreground text-xs">
+                {new Date(row.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              </span>
+              {row.note ? <span className="text-muted-foreground text-xs">— {row.note}</span> : null}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="flex flex-col gap-1">
