@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
+import { artifacts } from "@/domains/knowledge/schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -125,4 +127,43 @@ suite("hybrid search (real Postgres)", () => {
     expect(res.hits.map((h) => h.id)).toEqual([first.artifactId]);
     expect(res.hits[0].kind).toBe("transcript");
   });
+});
+
+suite("search filters (real Postgres)", () => {
+  it("kind restricts both legs, and an unknown kind matches nothing instead of reaching SQL", async () => {
+    const auth = await workspace();
+    await write(auth, "Keyword note", "zephyr across the sky");
+    await write(auth, "Keyword zettel", "zephyr across the sky", undefined, "zettel");
+    const zettels = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["zettel"] });
+    expect(zettels.hits.map((h) => h.title)).toEqual(["Keyword zettel"]);
+    // Kinds are interpolated into SQL: a bogus kind must be rejected, not passed through.
+    const bogus = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["note; drop table artifacts--"] });
+    expect(bogus.hits).toEqual([]);
+  });
+
+  it("from/to bound the last edit (updated_at) on the keyword and meaning legs alike", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    const fresh = await write(auth, "Fresh zephyr", "zephyr today", p);
+    const stale = await write(auth, "Stale zephyr", "zephyr long ago", p);
+    await holder.db!.update(artifacts).set({ updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) }).where(eq(artifacts.id, stale.id));
+    const week = await searchKnowledge(auth, { query: "zephyr", provider: p, filters: { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } });
+    expect(week.hits.map((h) => h.title)).toEqual(["Fresh zephyr"]);
+    const beforeYesterday = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { to: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    expect(beforeYesterday.hits.map((h) => h.title)).toEqual(["Stale zephyr"]);
+    expect(fresh.id).not.toBe(stale.id);
+  });
+
+  it("provenance is generation provenance exactly: produced_by_run_id set or null", async () => {
+    const auth = await workspace();
+    const human = await write(auth, "Handwritten zephyr", "zephyr by hand");
+    const generated = await write(auth, "Generated zephyr", "zephyr by run");
+    await holder.db!.update(artifacts).set({ producedByRunId: crypto.randomUUID() }).where(eq(artifacts.id, generated.id));
+    const agentOnly = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "agent" } });
+    expect(agentOnly.hits.map((h) => h.title)).toEqual(["Generated zephyr"]);
+    const notAgent = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "not-agent" } });
+    expect(notAgent.hits.map((h) => h.title)).toEqual(["Handwritten zephyr"]);
+    expect(human.id).not.toBe(generated.id);
+  });
+
 });
