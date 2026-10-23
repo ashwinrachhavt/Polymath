@@ -19,7 +19,7 @@ export function sanitizeLinkText(title: string): string {
  * real Markdown link to the target's canonical route - render and click
  * resolve to the destination itself, never to a dangling [[title]].
  */
-export function linkTargetInsertion(match: LinkTarget): string | { type: string; text: string; marks: { type: string; attrs: { href: string } }[] }[] {
+export function linkTargetInsertion(match: LinkTarget): string | { type: string; text: string; marks?: { type: string; attrs: { href: string } }[] }[] {
   if (!match.href) return `[[${sanitizeLinkText(match.title)}]] `;
   return [
     { type: "text", text: sanitizeLinkText(match.title), marks: [{ type: "link", attrs: { href: match.href } }] },
