@@ -179,14 +179,16 @@ export function WorkList({
           return;
         }
         if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
-        const done = new Set(result.completed);
-        setSelection((prev) => prev.filter((id) => !done.has(id)));
+        // Clear the whole selection: the refresh reconciles every row to the
+        // server, so keeping skipped ids selected could name rows the list no
+        // longer shows. The message carries the per-item truth instead.
+        setSelection([]);
         setBulkResult({
           kind: "info",
           message:
             result.skipped.length === 0
               ? `Completed ${result.completed.length} task${result.completed.length === 1 ? "" : "s"}.`
-              : `Completed ${result.completed.length} of ${ids.length}. ${result.skipped.length} could not be completed (already done or no longer available) and ${result.skipped.length === 1 ? "stays" : "stay"} selected.`,
+              : `Completed ${result.completed.length} of ${ids.length}. ${result.skipped.length} could not be completed (already done or no longer available).`,
         });
         router.refresh();
       } catch {
