@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { createDoclingDockerProvider } from "@/integrations/extraction/docling-docker";
 import { createLlamaParseProvider } from "@/integrations/extraction/llamaparse";
+import { openRouterVisionProviderFromEnv } from "@/integrations/extraction/openrouter-vision";
 import { createPdfTextLayerProvider } from "@/integrations/extraction/pdf-text-layer";
 import { createReductoProvider } from "@/integrations/extraction/reducto";
 import { createPlainTextProvider } from "@/integrations/extraction/plain-text";
@@ -34,7 +35,10 @@ import { clearRestoreOnNewExtraction } from "./versions";
  *
  * Provider resolution: docling-serve in docker locally; Reducto or LlamaParse
  * on Vercel where the docker is unreachable. Env decides — the presence of each
- * provider's URL/key picks the adapter; the text-layer reader is the floor.
+ * provider's URL/key picks the adapter; the text-layer reader is the floor for
+ * text PDFs. The last resort for what the floor cannot read (scans, images) is
+ * vision OCR through the workspace's OpenRouter key — off by default, enabled
+ * with OCR_PROVIDER=openrouter, metered per page (openrouter-vision.ts).
  */
 
 export async function extractionProvider(): Promise<ExtractionProvider> {
@@ -206,6 +210,21 @@ export async function extractDocument(
         mimeType: document.mimeType,
       });
       if (fallback.ok) result = fallback;
+    }
+    // Vision OCR is the last resort before failure, and only ever by explicit
+    // opt-in (OCR_PROVIDER=openrouter): reading a scan sends its pages to a
+    // metered model, so the workspace turns it on knowing the rate. The free
+    // paths above always get the document first. A failure here replaces the
+    // earlier error because it names the page and reason that matter now.
+    if (!result.ok) {
+      const vision = openRouterVisionProviderFromEnv(process.env);
+      if (vision) {
+        result = await vision.extract({
+          bytes,
+          filename: input.documentId,
+          mimeType: document.mimeType ?? "application/octet-stream",
+        });
+      }
     }
   } catch (cause) {
     // Setup/storage/transport exceptions must release the retry claim too. Keep

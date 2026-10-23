@@ -10,9 +10,18 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
 const provider = vi.hoisted(() => ({ extract: vi.fn<() => Promise<ExtractionResult>>() }));
+const vision = vi.hoisted(() => ({
+  extract: vi.fn<() => Promise<ExtractionResult>>(),
+  enabled: { current: false },
+}));
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 vi.mock("@/integrations/object-store/vercel-blob", () => ({ readBlob: vi.fn() }));
 vi.mock("@/integrations/extraction/docling-docker", () => ({ createDoclingDockerProvider: () => provider }));
+// The OCR rescue is resolved through this factory; the mock decides per test
+// whether the opt-in is on, without stubbing process.env at all.
+vi.mock("@/integrations/extraction/openrouter-vision", () => ({
+  openRouterVisionProviderFromEnv: () => (vision.enabled.current ? vision : null),
+}));
 
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { readBlob } from "@/integrations/object-store/vercel-blob";
@@ -21,12 +30,13 @@ beforeAll(() => { holder.db = handle?.db; });
 afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 beforeEach(() => {
   vi.clearAllMocks();
+  vision.enabled.current = false;
   vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture");
   vi.mocked(readBlob).mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
   provider.extract.mockResolvedValue({ ok: true, text: "Extracted text", spans: [], pageCount: 1, extractor: "fixture@1" });
 });
 
-async function seed(status?: "failed" | "succeeded" | "pending" | "skipped") {
+async function seed(status?: "failed" | "succeeded" | "pending" | "skipped", mimeType = "application/pdf") {
   const db = holder.db!;
   const auth = { ...await seedWorkspace(db, `extract-${crypto.randomUUID()}`), role: "owner" as const };
   const [blob] = await db.insert(blobObjects).values({
@@ -37,7 +47,7 @@ async function seed(status?: "failed" | "succeeded" | "pending" | "skipped") {
     workspaceId: auth.workspaceId, blobId: blob.id, filename: "fixture.pdf",
   }).returning();
   const [doc] = await db.insert(documents).values({
-    workspaceId: auth.workspaceId, title: "Fixture", fileId: file.id, mimeType: "application/pdf",
+    workspaceId: auth.workspaceId, title: "Fixture", fileId: file.id, mimeType,
   }).returning();
   const [extraction] = status ? await db.insert(documentExtractions).values({
     workspaceId: auth.workspaceId, documentId: doc.id, contentHash: blob.contentHash,
@@ -80,6 +90,35 @@ suite("document extraction retry and claim invariants (real Postgres)", () => {
     if (!result.ok) expect(result.error).toBe("docling-serve returned no readable text");
     const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, extraction.id));
     expect(row).toMatchObject({ status: "failed", text: null, error: "docling-serve returned no readable text" });
+  });
+
+  it("an unreadable image falls through to the opted-in vision OCR rescue", async () => {
+    // The hosted primary cannot read it, and for an image there is no floor:
+    // the opt-in metered rescue is the only rung left, and its success is the
+    // extraction's success — with its own extractor id recorded.
+    const { auth, doc } = await seed("failed", "image/png");
+    provider.extract.mockResolvedValueOnce({ ok: false, error: "fixture cannot read images", extractor: "fixture@1" });
+    vision.enabled.current = true;
+    vision.extract.mockResolvedValueOnce({
+      ok: true, text: "Scanned receipt text", spans: [{ page: 1, start: 0, end: 19 }],
+      pageCount: 1, extractor: "openrouter-vision:fixture@hosted",
+    });
+    const result = await extractDocument(auth, { documentId: doc.id });
+    expect(result).toMatchObject({ ok: true, text: "Scanned receipt text", deduplicated: false });
+    expect(vision.extract).toHaveBeenCalledOnce();
+    const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, result.extractionId!));
+    expect(row).toMatchObject({ status: "succeeded", extractor: "openrouter-vision:fixture@hosted", error: null });
+  });
+
+  it("without the OCR opt-in an unreadable image stays a failure and the metered route is never consulted", async () => {
+    const { auth, doc } = await seed("failed", "image/png");
+    provider.extract.mockResolvedValueOnce({ ok: false, error: "fixture cannot read images", extractor: "fixture@1" });
+    vision.enabled.current = false;
+    const result = await extractDocument(auth, { documentId: doc.id });
+    expect(result).toEqual({ ok: false, extractionId: expect.any(String), error: "fixture cannot read images" });
+    expect(vision.extract).not.toHaveBeenCalled();
+    const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, result.extractionId!));
+    expect(row).toMatchObject({ status: "failed", text: null, error: "fixture cannot read images" });
   });
 
   it("successful evidence is immutable and deduplicates without reading or paying again", async () => {
