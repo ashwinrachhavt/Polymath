@@ -33,6 +33,40 @@ async function seed(slug: string) {
   return ownerAuth(userId, workspaceId);
 }
 
+suite("last task handoff", () => {
+  it("returns the latest closed session's next step, skips sessions without one, and hides other tenants", async () => {
+    const auth = await seed("focus-handoff");
+    const other = await seed("focus-handoff-other");
+    const task = await work.createOwnerTask(auth, { title: "Ship the handoff cue" });
+
+    // No history at all: null, not a placeholder.
+    expect(await queries.getLastTaskHandoff(auth, task.id)).toBeNull();
+
+    const one = await focus.startFocusSession(auth, { taskId: task.id });
+    await focus.finishFocusSession(auth, { sessionId: one.id, expectedVersion: one.version, nextStep: "First stop" });
+
+    // A newer closed session that left no next step does not hide the last real handoff.
+    const two = await focus.startFocusSession(auth, { taskId: task.id });
+    await focus.finishFocusSession(auth, { sessionId: two.id, expectedVersion: two.version, whatChanged: "No next step left" });
+
+    const handoff = await queries.getLastTaskHandoff(auth, task.id);
+    expect(handoff?.nextStep).toBe("First stop");
+
+    // A newer handoff wins.
+    const three = await focus.startFocusSession(auth, { taskId: task.id });
+    await focus.finishFocusSession(auth, { sessionId: three.id, expectedVersion: three.version, nextStep: "Pick up here" });
+    expect((await queries.getLastTaskHandoff(auth, task.id))?.nextStep).toBe("Pick up here");
+
+    // Tenancy: the other workspace sees nothing of this task's handoff,
+    // and its own session on its own task stays its own.
+    expect(await queries.getLastTaskHandoff(other, task.id)).toBeNull();
+    const otherTask = await work.createOwnerTask(other, { title: "Unrelated" });
+    const foreign = await focus.startFocusSession(other, { taskId: otherTask.id });
+    await focus.finishFocusSession(other, { sessionId: foreign.id, expectedVersion: foreign.version, nextStep: "Not yours" });
+    expect((await queries.getLastTaskHandoff(auth, otherTask.id))?.nextStep ?? null).toBeNull();
+  });
+});
+
 suite("focus from a task", () => {
   it("validates the task in the workspace and rejects foreign or bogus ids", async () => {
     const auth = await seed("focus-validate");
