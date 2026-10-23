@@ -246,6 +246,13 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           <NoteEditor
             key={selected.id}
             noteId={selected.id}
+            indexNotice={
+              selected.indexed || !selected.currentVersionId
+                ? null
+                : selected.embedError
+                  ? { kind: "failed" as const, error: selected.embedError }
+                  : { kind: "unindexed" as const }
+            }
             initialTitle={selected.title}
             initialVersion={selected.version}
             initialMarkdown={noteMarkdown(selected.draft?.content ?? selected.content)}

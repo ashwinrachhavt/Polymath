@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -177,8 +177,46 @@ function LinkRow({ noteId, outgoing, link, label }: { noteId: string; outgoing: 
   );
 }
 
+/*
+ * Meaning-search indexing state for the open note. Committed versions embed
+ * best-effort at save time, so a note written while the embedding provider
+ * was unconfigured (or a transient failure) stays out of meaning search with
+ * the reason recorded on the artifact. This chip makes that state visible and
+ * offers the same kind of retry the notebook sources have - quiet when the
+ * current version is indexed or nothing is committed yet.
+ */
+export type IndexNotice = { kind: "failed"; error: string } | { kind: "unindexed" };
+
+function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexNotice }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span>{notice.kind === "failed" ? `Not meaning-searchable: ${notice.error}` : "Not meaning-searchable yet"}</span>
+      <button
+        type="button"
+        disabled={pending}
+        className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+        onClick={async () => {
+          setPending(true);
+          setError(null);
+          const result = await retryNoteEmbeddingAction({ artifactId: noteId });
+          setPending(false);
+          if (!result.ok) return setError(result.error);
+          router.refresh();
+        }}
+      >
+        {pending ? "Indexing…" : notice.kind === "failed" ? "Retry indexing" : "Index for meaning search"}
+      </button>
+      {error && <span role="alert" className="text-destructive">{error}</span>}
+    </span>
+  );
+}
+
 export function NoteEditor({
   noteId,
+  indexNotice,
   initialTitle,
   initialVersion,
   initialMarkdown,
@@ -193,6 +231,8 @@ export function NoteEditor({
   related,
 }: {
   noteId: string;
+  /** Null while the current version is meaning-searchable or nothing is committed. */
+  indexNotice: IndexNotice | null;
   initialTitle: string;
   initialVersion: number;
   initialMarkdown: string;
@@ -538,6 +578,11 @@ export function NoteEditor({
                 Note details
               </Button>
             </div>
+            {indexNotice && (
+              <div className="mt-1.5 text-xs text-muted-foreground">
+                <MeaningIndexStatus noteId={noteId} notice={indexNotice} />
+              </div>
+            )}
           </div>
           <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
           {ai && (

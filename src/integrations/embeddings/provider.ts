@@ -13,7 +13,8 @@ export const EMBEDDING_DIMENSIONS = 1536;
 export interface EmbeddingProvider {
   /** Stored with every vector, e.g. "openai:text-embedding-3-small". */
   readonly model: string;
-  embed(values: string[]): Promise<number[][]>;
+  /** The signal bounds a hung call; providers must pass it to their transport. */
+  embed(values: string[], options?: { signal?: AbortSignal }): Promise<number[][]>;
 }
 
 export class EmbeddingUnconfiguredError extends Error {
@@ -49,11 +50,12 @@ function openAiProvider(env: NodeJS.ProcessEnv): EmbeddingProvider {
   const openai = createOpenAI({ apiKey });
   return {
     model: `openai:${OPENAI_MODEL}`,
-    async embed(values) {
+    async embed(values, options) {
       const { embeddings } = await embedMany({
         model: openai.embedding(OPENAI_MODEL),
         values,
         maxParallelCalls: 2,
+        abortSignal: options?.signal,
       });
       return embeddings;
     },
@@ -75,7 +77,7 @@ export function openRouterProvider(
   const model = env.EMBEDDING_MODEL || OPENROUTER_DEFAULT_MODEL;
   return {
     model: `openrouter:${model}`,
-    async embed(values) {
+    async embed(values, options) {
       const out: number[][] = [];
       for (let i = 0; i < values.length; i += BATCH_SIZE) {
         const batch = values.slice(i, i + BATCH_SIZE);
@@ -83,6 +85,7 @@ export function openRouterProvider(
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model, input: batch, dimensions: EMBEDDING_DIMENSIONS }),
+          signal: options?.signal ?? null,
         });
         if (!res.ok) throw new Error(`Embedding request failed (HTTP ${res.status}).`);
         const json = (await res.json()) as { data?: { index: number; embedding: number[] }[] };
