@@ -84,6 +84,11 @@ export async function loadAssistantProfileAction(): Promise<Result<{ profile: { 
     return { ok: false, error: error instanceof Error ? error.message : "Sign-in is not configured on this deployment." };
   }
   try {
+    // Member+, not viewer: this is the first surface exposing the raw brief,
+    // which carries the owner's personal working preferences, and no
+    // established policy shares it with viewers. Minimum is the editing role
+    // until the owner decides who else may read it (recorded as open).
+    requireRole(auth, "member");
     return { ok: true, profile: await getDefaultProfile(auth) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not load the assistant profile." };
