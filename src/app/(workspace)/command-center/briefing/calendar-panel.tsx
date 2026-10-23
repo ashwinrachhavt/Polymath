@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Empty, Panel, Status } from "@/components/workspace/ui";
+import { Empty, Panel } from "@/components/workspace/ui";
 import { getTodayAgenda, type AgendaAccount } from "@/domains/integrations/calendar-agenda";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
@@ -37,7 +37,7 @@ function AccountAgenda({ account, timezone, single }: { account: AgendaAccount; 
     <div>
       {!single ? <p className="pt-2 text-xs font-medium text-muted-foreground">{account.alias}</p> : null}
       {account.events.length === 0 ? (
-        <p className="py-2 text-[13px] text-muted-foreground">Nothing scheduled{single ? "" : ` on ${account.alias}`} today.</p>
+        <p className="py-2 text-[13px] text-muted-foreground">No events on the {single ? "primary calendar" : `${account.alias} primary calendar`} today.</p>
       ) : (
         <div className="divide-y divide-border">
           {account.events.map((event) => (
@@ -75,8 +75,8 @@ export async function CalendarPanel() {
     <Panel
       title="Today's agenda"
       description={`${agenda.day} · ${agenda.timezone} · read ${timeAgo(agenda.asOf)}`}
-      actions={<Status>{agenda.accounts.length} {agenda.accounts.length === 1 ? "calendar" : "calendars"}</Status>}
     >
+      <p className="pb-1 text-[11px] text-muted-foreground">Each account&apos;s primary calendar{agenda.accounts.length > 1 ? "s" : ""}.</p>
       {agenda.accounts.map((account) => (
         <AccountAgenda key={account.alias} account={account} timezone={agenda.timezone} single={agenda.accounts.length === 1} />
       ))}
