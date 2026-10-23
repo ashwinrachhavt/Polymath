@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -34,7 +34,7 @@ async function seed(slug: string) {
 }
 
 suite("last task handoff", () => {
-  it("returns the latest closed session's next step, skips sessions without one, and hides other tenants", async () => {
+  it("hands off only from the latest completed session, never an older one, and hides other tenants", async () => {
     const auth = await seed("focus-handoff");
     const other = await seed("focus-handoff-other");
     const task = await work.createOwnerTask(auth, { title: "Ship the handoff cue" });
@@ -44,18 +44,26 @@ suite("last task handoff", () => {
 
     const one = await focus.startFocusSession(auth, { taskId: task.id });
     await focus.finishFocusSession(auth, { sessionId: one.id, expectedVersion: one.version, nextStep: "First stop" });
+    expect((await queries.getLastTaskHandoff(auth, task.id))?.nextStep).toBe("First stop");
 
-    // A newer closed session that left no next step does not hide the last real handoff.
+    // The latest closed session left no next step: the answer is null, NOT
+    // the older session's stale instruction presented as "last time".
     const two = await focus.startFocusSession(auth, { taskId: task.id });
     await focus.finishFocusSession(auth, { sessionId: two.id, expectedVersion: two.version, whatChanged: "No next step left" });
-
-    const handoff = await queries.getLastTaskHandoff(auth, task.id);
-    expect(handoff?.nextStep).toBe("First stop");
+    expect(await queries.getLastTaskHandoff(auth, task.id)).toBeNull();
 
     // A newer handoff wins.
     const three = await focus.startFocusSession(auth, { taskId: task.id });
     await focus.finishFocusSession(auth, { sessionId: three.id, expectedVersion: three.version, nextStep: "Pick up here" });
     expect((await queries.getLastTaskHandoff(auth, task.id))?.nextStep).toBe("Pick up here");
+
+    // Completion chronology, not start order: a session that started first
+    // but finished last is the latest. Backdate the fourth session's start
+    // before the third's; its later end still wins.
+    const four = await focus.startFocusSession(auth, { taskId: task.id });
+    await focus.finishFocusSession(auth, { sessionId: four.id, expectedVersion: four.version, nextStep: "Started first, ended last" });
+    await db.execute(sql`update focus_sessions set started_at = now() - interval '2 hours' where id = ${four.id}`);
+    expect((await queries.getLastTaskHandoff(auth, task.id))?.nextStep).toBe("Started first, ended last");
 
     // Tenancy: the other workspace sees nothing of this task's handoff,
     // and its own session on its own task stays its own.

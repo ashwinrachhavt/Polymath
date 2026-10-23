@@ -58,12 +58,14 @@ export async function listFocusHistory(auth: AuthContext, limit = 30, taskId?: s
 }
 
 /*
- * The continuity cue for starting work on a task: where the last closed
- * session said to pick it up. "Latest" is the session's startedAt - the
- * same ordering listFocusHistory uses - and tenant and task are both
- * filtered here, in the owning data layer. A task with no recorded
- * handoff (no sessions, or none that left a next step) yields null and
- * the surface shows nothing rather than a placeholder.
+ * The continuity cue for starting work on a task: where the task's latest
+ * closed session said to pick it up. "Latest" is completion chronology
+ * (endedAt), not when the session started - a long session that began
+ * first but ended last is the most recent thing the owner did. The
+ * handoff comes from that session only: if it left no next step the
+ * answer is null, never an older session's stale instruction dressed up
+ * as "last time". Tenant and task are both filtered here, in the owning
+ * data layer; null means the surface shows nothing, not a placeholder.
  */
 export async function getLastTaskHandoff(
   auth: AuthContext,
@@ -78,10 +80,10 @@ export async function getLastTaskHandoff(
         eq(focusSessions.taskId, taskId),
         inArray(focusSessions.state, ["finished", "abandoned", "interrupted"]),
         isNull(focusSessions.archivedAt),
-        isNotNull(focusSessions.nextStep),
+        isNotNull(focusSessions.endedAt),
       ),
     )
-    .orderBy(desc(focusSessions.startedAt))
+    .orderBy(desc(focusSessions.endedAt))
     .limit(1);
   return row?.nextStep ? { nextStep: row.nextStep, startedAt: row.startedAt } : null;
 }
