@@ -31,13 +31,14 @@ export type AreaListItem = {
     recallCorrect: number;
     recallTotal: number;
     /**
-     * Recall attempts with typed text. The review UI unmounts the attempt
-     * field at reveal, so typing provably precedes seeing the answer - but
-     * typing is optional and unaided mental recall leaves no trace, so this
-     * is "typed before reveal", not the spec's "answers without looking".
-     * That measure stays unresolved until a grounded capture exists.
+     * Recall attempts with typed text, exactly as recorded. The review UI
+     * only offers the attempt field before the reveal, but that is normal
+     * UI flow, not a server-enforced boundary, and typing is optional -
+     * unaided mental recall leaves no trace. So this is "typed attempts",
+     * no more: the spec's "answers without looking" stays unresolved until
+     * a grounded capture exists.
      */
-    typedBeforeReveal: number;
+    typedAttempts: number;
     claimsAccepted: number;
     claimsDecided: number;
   };
@@ -67,7 +68,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
     manual_links: string;
     recall_attempts: string;
     recall_correct: string;
-    typed_before_reveal: string;
+    typed_attempts: string;
     claims_decided: string;
     claims_accepted: string;
     last_activity_at: string | null;
@@ -96,7 +97,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
         where c.artifact_id in (select id from linked) and r.outcome = 'correct') as recall_correct,
       (select count(*)::text from card_reviews r
         join cards c on c.id = r.card_id
-        where c.artifact_id in (select id from linked) and r.response_text is not null) as typed_before_reveal,
+        where c.artifact_id in (select id from linked) and r.response_text is not null) as typed_attempts,
       (select count(*)::text from claims cl
         where cl.artifact_id in (select id from linked) and cl.status in ('accepted', 'rejected')) as claims_decided,
       (select count(*)::text from claims cl
@@ -117,7 +118,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
   const confidence = {
     recallCorrect: Number(row?.recall_correct ?? 0),
     recallTotal: effort.recallAttempts,
-    typedBeforeReveal: Number(row?.typed_before_reveal ?? 0),
+    typedAttempts: Number(row?.typed_attempts ?? 0),
     claimsAccepted: Number(row?.claims_accepted ?? 0),
     claimsDecided: Number(row?.claims_decided ?? 0),
   };

@@ -77,8 +77,8 @@ export default async function AreasPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">Confidence</span> - recalled{" "}
-                      {ratio(area.confidence.recallCorrect, area.confidence.recallTotal)}; typed before reveal{" "}
-                      {ratio(area.confidence.typedBeforeReveal, area.confidence.recallTotal)}; claims accepted{" "}
+                      {ratio(area.confidence.recallCorrect, area.confidence.recallTotal)}; typed attempts{" "}
+                      {ratio(area.confidence.typedAttempts, area.confidence.recallTotal)}; claims accepted{" "}
                       {ratio(area.confidence.claimsAccepted, area.confidence.claimsDecided)}
                     </div>
                   </div>
