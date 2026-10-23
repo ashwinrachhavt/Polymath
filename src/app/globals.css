@@ -366,6 +366,12 @@ outline-offset: 2px;
 outline: 1px solid var(--border);
 outline-offset: -1px;
 }
+/* A composer draws its focus ring on the surrounding panel
+   (has-[:focus-visible]:ring-3); the textarea's own outline would double it.
+   Unlayered so it beats the universal focus outline above. */
+.composer-input:focus-visible {
+outline: none;
+}
 select {
 min-height: 32px;
 max-width: 100%;

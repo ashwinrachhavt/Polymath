@@ -261,7 +261,7 @@ export function ChatSurface({
       >
         <Textarea
           aria-label={composerLabel}
-          className="max-h-48 min-h-[52px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+          className="composer-input max-h-48 min-h-[52px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
