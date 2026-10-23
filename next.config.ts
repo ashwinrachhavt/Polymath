@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import { withEve } from "eve/next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    agentUpgrade: "security",
+  },
   async redirects() {
     // Reviews, Activity, and Settings are shared routes (spec § The suite):
     // real pages at their canonical unprefixed paths, so no redirect here —
