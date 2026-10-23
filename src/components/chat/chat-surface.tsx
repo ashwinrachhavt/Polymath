@@ -9,6 +9,17 @@ import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
+import { MessageFeedback } from "./message-feedback";
+
+/**
+ * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
+ * blockIdFor in stream-contract.ts); the run_event it lands in carries the
+ * same turnId, so feedback addresses the row through it.
+ */
+function turnIdOf(blockId: string): string {
+  const parts = blockId.split(":");
+  return parts.length >= 2 ? parts[1] : blockId;
+}
 
 /*
  * ChatSurface — the one chat interface.
@@ -190,6 +201,9 @@ export function ChatSurface({
               ) : (
                 <div key={block.id} className="max-w-[72ch] text-[13px] leading-6">
                   <Markdown text={block.text} />
+                  {block.kind === "assistant" && block.done ? (
+                    <MessageFeedback runId={runId} turnId={turnIdOf(block.id)} initial={null} />
+                  ) : null}
                 </div>
               ),
             )}

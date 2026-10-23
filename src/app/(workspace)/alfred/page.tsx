@@ -19,11 +19,11 @@ import type { PickableSkill } from "./skills/slash-skill-menu";
 import { getProfileModelPolicy } from "@/domains/agents/queries";
 import { availableModels, resolveModelId } from "@/domains/agents/models";
 
-export const metadata = { title: "Assistant · Polymath" };
+export const metadata = { title: "Polymath" };
 
 /*
- * The Assistant is home: one composer, then the conversations that already
- * exist. The rail names the destination, so the page opens with the question
+ * Polymath is home: one composer, then the conversations that already exist.
+ * The rail names the destination, so the page opens with the question
  * rather than a title restating it (agents/design.md: no oversized H1s, the
  * greeting is the whole of the header here).
  *
@@ -166,7 +166,7 @@ export default function AlfredPage() {
 
 function AlfredSkeleton() {
   return (
-    <div role="status" aria-label="Loading assistant" className="page-content flex flex-1 flex-col gap-10 pt-16">
+    <div role="status" aria-label="Loading Polymath" className="page-content flex flex-1 flex-col gap-10 pt-16">
       <Skeleton className="mx-auto h-7 w-80 max-w-full" />
       <Skeleton className="mx-auto h-24 w-full max-w-2xl" />
     </div>
