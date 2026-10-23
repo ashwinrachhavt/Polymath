@@ -294,6 +294,14 @@ export async function completeTask(
 export type BulkCompleteOutcome = {
   completed: string[];
   skipped: string[];
+  /**
+   * Threw mid-write: that row's real state is unknown - it may have
+   * completed before the error. Named so the caller can say "check it" -
+   * never silently counted either way and never retried automatically. The
+   * batch stops at the first unknown: every id after it is unattempted,
+   * which the caller can compute from the three lists and the request.
+   */
+  unknown: string[];
   quartzEarned: boolean;
 };
 
@@ -305,13 +313,21 @@ export type BulkCompleteOutcome = {
  * bulk path bypasses nothing. Each completion is its own transaction: an id
  * that no longer qualifies (already terminal, or not visible in this
  * workspace) lands in `skipped` and neither rolls back nor silently absorbs
- * the ones that did complete. Sequential on purpose: the audit trail's order
- * is the caller's order.
+ * the ones that did complete. An unexpected error lands in `unknown` and
+ * stops the batch: the completed prefix is real and reported, the failed
+ * id's state is honestly uncertain, and nothing past it was attempted.
+ * Sequential on purpose: the audit trail's order is the caller's order.
  */
 export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
-  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], quartzEarned: false };
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], quartzEarned: false };
   for (const taskId of taskIds) {
-    const result = await completeTask(auth, { taskId });
+    let result: Awaited<ReturnType<typeof completeTask>>;
+    try {
+      result = await completeTask(auth, { taskId });
+    } catch {
+      outcome.unknown.push(taskId);
+      break;
+    }
     if (result) {
       outcome.completed.push(result.id);
       outcome.quartzEarned ||= result.quartzEarned;

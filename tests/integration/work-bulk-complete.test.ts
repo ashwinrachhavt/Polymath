@@ -70,6 +70,48 @@ suite("bulk complete", () => {
     expect(completedSubjects).not.toContain(foreign);
   });
 
+  it("two concurrent completes of the same task write one completion, not two", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `bulk-race-${Date.now()}`);
+    const a = ownerAuth(userId, workspaceId);
+    const id = (await work.createOwnerTask(a, { title: "Race me" })).id;
+
+    // The guard lives in the UPDATE's WHERE clause: the loser blocks on the
+    // row lock, re-evaluates the predicate against the winner's committed
+    // state, and matches nothing. One row, one audit, one completion - never
+    // a double write or a second Quartz check.
+    const [first, second] = await Promise.all([
+      work.completeTasks(a, [id]),
+      work.completeTasks(a, [id]),
+    ]);
+    expect(first.completed.length + second.completed.length).toBe(1);
+    expect(first.skipped.length + second.skipped.length).toBe(1);
+    expect(first.unknown).toEqual([]);
+    expect(second.unknown).toEqual([]);
+
+    const completions = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.completed")));
+    expect(completions).toHaveLength(1);
+  });
+
+  it("an unexpected error lands in unknown, keeps the completed prefix, and stops the batch", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `bulk-error-${Date.now()}`);
+    const a = ownerAuth(userId, workspaceId);
+    const one = (await work.createOwnerTask(a, { title: "Before the error" })).id;
+    const two = (await work.createOwnerTask(a, { title: "After the error" })).id;
+    // A malformed uuid makes Postgres raise inside the write - an unexpected
+    // error, distinct from a guard no-op. Its true state is "unknown", the
+    // completed prefix stays reported, and the task after it is never tried.
+    const outcome = await work.completeTasks(a, [one, "not-a-uuid", two]);
+    expect(outcome.completed).toEqual([one]);
+    expect(outcome.skipped).toEqual([]);
+    expect(outcome.unknown).toEqual(["not-a-uuid"]);
+
+    const [after] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, two));
+    expect(after.status).toBe("inbox");
+  });
+
   it("earns the daily Quartz on the batch's first completion", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `bulk-quartz-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);

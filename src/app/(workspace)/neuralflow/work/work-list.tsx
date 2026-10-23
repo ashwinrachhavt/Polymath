@@ -100,15 +100,17 @@ export function WorkList({
   // - an invisible id can never ride into a later bulk action.
   const [selection, setSelection] = useState<string[]>([]);
   const [bulkResult, setBulkResult] = useState<{ kind: "info" | "error"; message: string } | null>(null);
+  const [pending, startTransition] = useTransition();
   // Prune during render when the items prop changes (filter, page, refresh):
   // a row that left the screen leaves the selection in the same render, so
-  // the count the action bar shows never includes an invisible id.
+  // the count the action bar shows never includes an invisible id. While a
+  // request is in flight the ids it captured stay displayed as-is - the
+  // outcome message reports against the captured set, not a list that moved.
   const [lastItems, setLastItems] = useState(items);
-  if (items !== lastItems) {
+  if (items !== lastItems && !pending) {
     setLastItems(items);
     setSelection((prev) => pruneSelection(prev, new Set(items.map((item) => item.row.id))));
   }
-  const [pending, startTransition] = useTransition();
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
 
@@ -179,17 +181,30 @@ export function WorkList({
           return;
         }
         if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
-        // Clear the whole selection: the refresh reconciles every row to the
-        // server, so keeping skipped ids selected could name rows the list no
-        // longer shows. The message carries the per-item truth instead.
-        setSelection([]);
-        setBulkResult({
-          kind: "info",
-          message:
-            result.skipped.length === 0
-              ? `Completed ${result.completed.length} task${result.completed.length === 1 ? "" : "s"}.`
-              : `Completed ${result.completed.length} of ${ids.length}. ${result.skipped.length} could not be completed (already done or no longer available).`,
-        });
+        if (result.unknown.length > 0) {
+          // The batch stopped early: known completions stand, the unknown ids
+          // stay selected for a manual, looked-at retry - never an automatic
+          // one, because each may already be done - and the rest were not
+          // attempted.
+          setSelection(result.unknown);
+          const unattempted = ids.length - result.completed.length - result.skipped.length - result.unknown.length;
+          setBulkResult({
+            kind: "error",
+            message: `Stopped early. Completed ${result.completed.length} of ${ids.length}${result.skipped.length ? `; ${result.skipped.length} could not be completed` : ""}. ${result.unknown.length} may or may not have completed - ${result.unknown.length === 1 ? "it stays" : "they stay"} selected, check before retrying.${unattempted > 0 ? ` ${unattempted} were not attempted.` : ""}`,
+          });
+        } else {
+          // Clear the whole selection: the refresh reconciles every row to
+          // the server, so keeping skipped ids selected could name rows the
+          // list no longer shows. The message carries the per-item truth.
+          setSelection([]);
+          setBulkResult({
+            kind: "info",
+            message:
+              result.skipped.length === 0
+                ? `Completed ${result.completed.length} task${result.completed.length === 1 ? "" : "s"}.`
+                : `Completed ${result.completed.length} of ${ids.length}. ${result.skipped.length} could not be completed (already done or no longer available).`,
+          });
+        }
         router.refresh();
       } catch {
         // The request may have completed a prefix of the selection before it

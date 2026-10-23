@@ -1,14 +1,32 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import postgres from "postgres";
 
 /*
- * Bulk edit on the Work list (Product Spec: "bulk edit"): select several
- * tasks, complete them in one action, and the outcome is honest - the
- * message says exactly what completed, and after a reload the completed work
- * is gone from the open list (nothing here lives in browser storage). The
- * per-item guards the bulk path composes over (terminal tasks and other
- * workspaces are skipped and named, never absorbed) are covered against real
- * Postgres in tests/integration/work-bulk-complete.test.ts.
+ * Bulk edit on the Work list (Product Spec: "bulk edit"): select tasks,
+ * complete them in one action, and the outcome is honest - the bar shows the
+ * real selected count, the message says exactly what completed and what did
+ * not, and a reload proves the server's truth (nothing lives in browser
+ * storage). The per-item guards the bulk path composes over are covered
+ * against real Postgres in tests/integration/work-bulk-complete.test.ts.
  */
+
+function db(): postgres.Sql | null {
+  if (!process.env.DATABASE_URL) {
+    try {
+      process.loadEnvFile();
+    } catch {
+      // No .env locally; CI exports DATABASE_URL.
+    }
+  }
+  return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
+}
+
+async function addTask(page: import("@playwright/test").Page, title: string) {
+  await page.getByLabel("New task title").fill(title);
+  await page.getByRole("button", { name: "Add task" }).click();
+  // The link (not the optimistic span) means the server row is back.
+  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
+}
 
 test("select tasks, complete them in bulk, and it sticks after reload", async ({ page }) => {
   const tag = Date.now().toString(36);
@@ -16,16 +34,13 @@ test("select tasks, complete them in bulk, and it sticks after reload", async ({
   const b = `Bulk two ${tag}`;
   await page.goto("/neuralflow/work?view=saved");
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
-
-  for (const title of [a, b]) {
-    await page.getByLabel("New task title").fill(title);
-    await page.getByRole("button", { name: "Add task" }).click();
-    // The link (not the optimistic span) means the server row is back.
-    await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
-  }
+  await addTask(page, a);
+  await addTask(page, b);
 
   await page.getByLabel(`Select ${a}`).check();
   await page.getByLabel(`Select ${b}`).check();
+  // The action bar reflects the actual selection state, not a claim.
+  await expect(page.getByLabel(`Select ${a}`)).toBeChecked();
   await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Complete 2 selected" }).click();
   await expect(page.getByText("Completed 2 tasks.", { exact: true })).toBeVisible();
@@ -34,4 +49,39 @@ test("select tasks, complete them in bulk, and it sticks after reload", async ({
   await page.reload();
   await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+});
+
+test("a task that moved on behind the page's back is named as not completed, never shown as done", async ({ page }) => {
+  const sql = db();
+  if (!sql) {
+    test.skip(true, "DATABASE_URL required to move a task mid-journey");
+    return;
+  }
+  const tag = Date.now().toString(36);
+  const a = `Bulk partial ${tag}`;
+  const b = `Bulk moved ${tag}`;
+  try {
+    await page.goto("/neuralflow/work?view=saved");
+    await addTask(page, a);
+    await addTask(page, b);
+
+    // b completes elsewhere before the page acts on it.
+    await sql`update tasks set status = 'done', completed_at = now(), version = version + 1 where title = ${b}`;
+
+    await page.getByLabel(`Select ${a}`).check();
+    await page.getByLabel(`Select ${b}`).check();
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Complete 2 selected" }).click();
+    await expect(
+      page.getByText("Completed 1 of 2. 1 could not be completed (already done or no longer available).", { exact: true }),
+    ).toBeVisible();
+
+    // The server's truth after reload: both left the open list - a through
+    // this action, b through the earlier completion this one honestly named.
+    await page.reload();
+    await expect(page.getByRole("link", { name: a, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
+  } finally {
+    await sql.end();
+  }
 });
