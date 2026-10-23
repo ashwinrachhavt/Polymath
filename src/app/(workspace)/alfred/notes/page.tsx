@@ -105,6 +105,14 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const notes = found.items;
   const allTags = await listNoteTags(auth);
   const areaNames = list.q ? await listSearchAreaNames(auth) : [];
+  // When the requested area is unavailable the control must still show a set
+  // state - rendering "All areas" while results are suppressed would imply an
+  // unfiltered scope. The synthetic option is labeled generically: echoing the
+  // requested name back could disclose (or confirm) another tenant's area.
+  const areaOptions = [
+    ...areaNames.map((n) => ({ value: n, label: n })),
+    ...(areaResolution?.status === "unavailable" && requestedArea ? [{ value: requestedArea, label: "Unavailable area" }] : []),
+  ];
   const selected = id ? await getNote(auth, id) : null;
   const versions = selected ? await listNoteVersions(auth, selected.id) : [];
   const outlinks = selected ? await listNoteOutlinks(auth, selected.id) : [];
@@ -135,7 +143,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                 // renders whenever a search is active, even with no areas yet,
                 // so a requested-but-unavailable area stays visible as a set
                 // filter rather than vanishing from the UI.
-                { key: "area", label: "Area", allLabel: "All areas", options: areaNames.map((n) => ({ value: n, label: n })) },
+                { key: "area", label: "Area", allLabel: "All areas", options: areaOptions },
               ]
             : []),
         ]}
