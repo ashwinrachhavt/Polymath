@@ -74,3 +74,70 @@ describe("notion tool schemas", () => {
     expect(TOOL_SCHEMAS.notion_search.safeParse({ query: "" }).success).toBe(false);
   });
 });
+
+describe("notion read safety rails", () => {
+  it("sends a fixed endpoint and body shape - only query and page_size carry caller values", async () => {
+    const captured: import("@/domains/integrations/transport").PostReadRequest[] = [];
+    const transport = fixtureTransport(
+      [{ method: "POST", endpointPrefix: "https://api.notion.com/v1/search", status: 200, body: { results: [] } }],
+      captured,
+    );
+    const hostile = 'x"}}POST https://evil.example DELETE';
+    await searchNotion(transport, { connectedAccountId: ACCOUNT, query: hostile, limit: 5 });
+    expect(captured).toHaveLength(1);
+    const request = captured[0] as import("@/domains/integrations/transport").PostReadRequest;
+    expect(request.endpoint).toBe("https://api.notion.com/v1/search");
+    expect(request.connectedAccountId).toBe(ACCOUNT);
+    // The hostile string travels as an inert body field; the shape never changes.
+    expect(Object.keys(request.body).sort()).toEqual(["page_size", "query", "sort"]);
+    expect(request.body.query).toBe(hostile);
+    expect(request.body.page_size).toBe(5);
+    expect(request.headers).toEqual({ "Notion-Version": "2022-06-28" });
+  });
+
+  it("passes the connected account through verbatim and takes the page id only from arguments", async () => {
+    const captured: import("@/domains/integrations/transport").TransportRequest[] = [];
+    const transport = fixtureTransport(
+      [
+        { method: "GET", endpointPrefix: `https://api.notion.com/v1/pages/${PAGE_ID}`, status: 200, body: { id: PAGE_ID, properties: {} } },
+        { method: "GET", endpointPrefix: `https://api.notion.com/v1/blocks/${PAGE_ID}/children`, status: 200, body: { results: [] } },
+      ],
+      captured,
+    );
+    await readNotionPage(transport, { connectedAccountId: ACCOUNT, pageId: PAGE_ID });
+    expect(captured.map((r) => r.connectedAccountId)).toEqual([ACCOUNT, ACCOUNT]);
+    for (const request of captured) {
+      expect(request.endpoint.startsWith("https://api.notion.com/")).toBe(true);
+      expect(request.method).toBe("GET");
+    }
+  });
+
+  it("clips an over-long page and marks it truncated", async () => {
+    const big = "x".repeat(9000);
+    const transport = fixtureTransport([
+      { method: "GET", endpointPrefix: `https://api.notion.com/v1/pages/${PAGE_ID}`, status: 200, body: { id: PAGE_ID, properties: {} } },
+      {
+        method: "GET",
+        endpointPrefix: `https://api.notion.com/v1/blocks/${PAGE_ID}/children`,
+        status: 200,
+        body: { results: [{ id: "b1", type: "paragraph", paragraph: { rich_text: [{ plain_text: big }] } }], has_more: false },
+      },
+    ]);
+    const result = await readNotionPage(transport, { connectedAccountId: ACCOUNT, pageId: PAGE_ID });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.markdown.length).toBeLessThanOrEqual(4100);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("marks a page with more blocks as truncated", async () => {
+    const transport = fixtureTransport([
+      { method: "GET", endpointPrefix: `https://api.notion.com/v1/pages/${PAGE_ID}`, status: 200, body: { id: PAGE_ID, properties: {} } },
+      { method: "GET", endpointPrefix: `https://api.notion.com/v1/blocks/${PAGE_ID}/children`, status: 200, body: { results: [], has_more: true } },
+    ]);
+    const result = await readNotionPage(transport, { connectedAccountId: ACCOUNT, pageId: PAGE_ID });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.truncated).toBe(true);
+  });
+});

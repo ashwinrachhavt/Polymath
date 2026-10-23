@@ -27,9 +27,10 @@ function matches(route: FixtureRoute, request: TransportRequest): boolean {
   return true;
 }
 
-export function fixtureTransport(routes: FixtureRoute[]): Transport {
+export function fixtureTransport(routes: FixtureRoute[], captured?: (PostReadRequest | TransportRequest)[]): Transport {
   return {
     async postRead(request: PostReadRequest): Promise<TransportResult> {
+      captured?.push(request);
       const route = routes.find((r) => r.method === "POST" && request.endpoint.startsWith(r.endpointPrefix));
       if (!route) throw new Error(`fixtureTransport: no POST route for ${request.endpoint}`);
       if (route.status >= 400) {
@@ -48,6 +49,7 @@ export function fixtureTransport(routes: FixtureRoute[]): Transport {
       return { ok: true, status: route.status, data: route.body };
     },
     async read(request): Promise<TransportResult> {
+      captured?.push(request);
       const route = routes.find((candidate) => matches(candidate, request));
       if (!route) {
         throw new Error(
