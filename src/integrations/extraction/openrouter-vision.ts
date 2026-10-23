@@ -88,7 +88,14 @@ const PROMPT =
 
 const chatResponse = z.object({
   choices: z
-    .array(z.object({ message: z.object({ content: z.string().nullish() }).optional() }))
+    .array(
+      z.object({
+        message: z
+          .object({ content: z.string().nullish(), refusal: z.string().nullish() })
+          .optional(),
+        finish_reason: z.string().nullish(),
+      }),
+    )
     .min(1),
 });
 
@@ -134,7 +141,17 @@ export function createOpenRouterVisionProvider(
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = chatResponse.safeParse(await response.json());
     if (!body.success) throw new Error("unreadable response");
-    const text = body.data.choices[0]?.message?.content?.trim() ?? "";
+    const choice = body.data.choices[0];
+    // A bounded page is only honest if the bound is enforced: a page cut off
+    // at the output cap, filtered, or refused is a FAILED page, never a
+    // truncated transcription filed as complete text.
+    const reason = choice?.finish_reason;
+    if (reason === "length") {
+      throw new Error(`page exceeded the ${MAX_PAGE_OUTPUT_TOKENS}-token output cap (dense page; split it shorter)`);
+    }
+    if (reason && reason !== "stop") throw new Error(`provider ended the page: ${reason}`);
+    if (choice?.message?.refusal) throw new Error("provider refused the page");
+    const text = choice?.message?.content?.trim() ?? "";
     if (!text || text === UNREADABLE) throw new Error("page unreadable");
     return text;
   }

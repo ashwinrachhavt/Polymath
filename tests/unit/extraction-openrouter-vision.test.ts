@@ -151,6 +151,50 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
     }
   });
 
+  it("a page cut off at the output cap (finish_reason=length) is a failed page, never a truncated page filed as complete", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: "Half a page of text" }, finish_reason: "length" }] }),
+      ),
+    );
+    const provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
+    const result = await provider.extract({
+      bytes: await scannedPdf(1),
+      filename: "scan.pdf",
+      mimeType: "application/pdf",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("page 1");
+      expect(result.error).toContain("output cap");
+    }
+  });
+
+  it("a content-filtered or refused page is a failed page with the provider's reason class", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: null }, finish_reason: "content_filter" }] }),
+      ),
+    );
+    let provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
+    let result = await provider.extract({ bytes: PNG_BYTES, filename: "scan.png", mimeType: "image/png" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("content_filter");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: null, refusal: "cannot transcribe" }, finish_reason: "stop" }] }),
+      ),
+    );
+    provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
+    result = await provider.extract({ bytes: PNG_BYTES, filename: "scan.png", mimeType: "image/png" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("refused");
+  });
+
   it("the overall deadline aborts in-flight page reads, and a timed-out page fails the whole extraction - never partial text", async () => {
     // A provider that hangs until the abort signal fires. The deadline covers
     // split + every page request + cleanup, not any single request.
