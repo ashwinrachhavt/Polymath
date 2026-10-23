@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toAgendaEvent, workspaceDayWindow } from "@/domains/integrations/calendar-agenda";
+import { sanitizedReason, toAgendaEvent, workspaceDayWindow } from "@/domains/integrations/calendar-agenda";
 
 describe("workspaceDayWindow", () => {
   const now = new Date("2026-10-23T18:00:00Z");
@@ -59,8 +59,32 @@ describe("toAgendaEvent", () => {
     expect(toAgendaEvent({ id: "e4", status: "confirmed" })).toBeNull();
   });
 
+  it("passes boundary-spanning events through with their real start/end", () => {
+    // Google already filters by overlap with the window; an event that began
+    // yesterday or spans midnight keeps its true times so the panel can
+    // render it as continuing.
+    const overnight = toAgendaEvent({ id: "e7", status: "confirmed", summary: "Red-eye", start: { dateTime: "2026-10-22T23:00:00Z" }, end: { dateTime: "2026-10-23T01:00:00Z" } });
+    expect(overnight).toMatchObject({ startsAt: "2026-10-22T23:00:00Z", endsAt: "2026-10-23T01:00:00Z", allDay: false });
+    const multiDay = toAgendaEvent({ id: "e8", status: "confirmed", summary: "Offsite", start: { date: "2026-10-22" }, end: { date: "2026-10-25" } });
+    expect(multiDay).toMatchObject({ startsAt: "2026-10-22", endsAt: "2026-10-25", allDay: true });
+  });
+
   it("names an untitled event honestly and trims blank summaries", () => {
     expect(toAgendaEvent({ id: "e5", status: "confirmed", summary: "  ", start: { date: "2026-10-23" } })?.title).toBe("(untitled event)");
     expect(toAgendaEvent({ id: "e6", status: "confirmed", start: { date: "2026-10-23" } })?.title).toBe("(untitled event)");
+  });
+});
+
+describe("sanitizedReason", () => {
+  it("passes through known-safe shapes and rewrites anything else", () => {
+    expect(sanitizedReason(new Error("COMPOSIO_API_KEY is not set."))).toBe("Calendar sync is not configured on this deployment yet.");
+    expect(sanitizedReason(new Error("Google Calendar read failed (HTTP 500)."))).toBe("Google Calendar could not be read (HTTP 500).");
+    expect(sanitizedReason(new Error("Google Calendar returned an unexpected response."))).toBe("Google Calendar returned an unexpected response.");
+  });
+
+  it("never leaks raw provider or network detail", () => {
+    expect(sanitizedReason(new Error("Request to https://backend.composio.dev/x?connected_account_id=ca_secret&access_token=ya29.leaked failed: 401 invalid_token"))).toBe("Google Calendar could not be read.");
+    expect(sanitizedReason(new TypeError("fetch failed"))).toBe("Google Calendar could not be read.");
+    expect(sanitizedReason("a string, not an Error")).toBe("Google Calendar could not be read.");
   });
 });

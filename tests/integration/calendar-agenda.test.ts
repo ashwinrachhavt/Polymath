@@ -39,10 +39,10 @@ let b: { userId: string; workspaceId: string };
 const ctx = (w: { userId: string; workspaceId: string }) => ({ ...w, role: "owner" as const });
 const NOW = new Date("2026-10-23T18:00:00Z");
 
-const client = (events: object[] | Error): GoogleCalendarClient => ({
+const client = (events: object[] | Error, truncated = false): GoogleCalendarClient => ({
   async listEventsUpdatedSince() {
     if (events instanceof Error) throw events;
-    return { events: events as never, newestUpdated: null };
+    return { events: events as never, newestUpdated: null, truncated };
   },
 });
 
@@ -87,9 +87,9 @@ suite("getTodayAgenda (real Postgres)", () => {
           return { events: [
             { id: "e1", status: "confirmed", summary: "Design review", start: { dateTime: "2026-10-23T16:00:00Z" }, end: { dateTime: "2026-10-23T17:00:00Z" } },
             { id: "e2", status: "cancelled", summary: "Ghost", start: { dateTime: "2026-10-23T18:00:00Z" } },
-          ], newestUpdated: null } as never;
+          ], newestUpdated: null, truncated: false } as never;
         }
-        return { events: [], newestUpdated: null };
+        return { events: [], newestUpdated: null, truncated: false };
       },
     });
 
@@ -104,7 +104,7 @@ suite("getTodayAgenda (real Postgres)", () => {
     // work-cal: one live event, the cancelled one dropped.
     expect(byStatus.get("work-cal")).toMatchObject({ status: "ok", events: [{ id: "e1", title: "Design review", allDay: false }] });
     // personal-cal: provider failure is named, never a silent empty list.
-    expect(byStatus.get("personal-cal")).toEqual({ status: "unavailable", alias: "personal-cal", reason: "Google Calendar read failed (HTTP 500)." });
+    expect(byStatus.get("personal-cal")).toEqual({ status: "unavailable", alias: "personal-cal", reason: "Google Calendar could not be read (HTTP 500)." });
     // pending-cal: account exists, no Composio connection yet.
     expect(byStatus.get("pending-cal")).toEqual({ status: "unconfigured", alias: "pending-cal" });
     // connecting, other-provider, and other-workspace accounts are never read.
@@ -114,11 +114,32 @@ suite("getTodayAgenda (real Postgres)", () => {
     expect(seenWindows[workId]).toEqual({ timeMin: "2026-10-23T00:00:00.000Z", timeMax: "2026-10-24T00:00:00.000Z" });
   });
 
+  it("reports a truncated read and a credential-carrying error as named unavailability, never ok", async () => {
+    const solo = await seedWorkspace(handle!.db, `agenda-tr-${crypto.randomUUID()}`);
+    await handle!.db.insert(externalAccounts).values([
+      { workspaceId: solo.workspaceId, provider: "google-calendar", alias: "busy-cal", status: "active", composioConnectedAccountId: `ca_${crypto.randomUUID()}` },
+      { workspaceId: solo.workspaceId, provider: "google-calendar", alias: "leaky-cal", status: "active", composioConnectedAccountId: `ca_${crypto.randomUUID()}` },
+    ]);
+    const rows = await handle!.db.select().from(externalAccounts);
+    const busyId = rows.find((r) => r.alias === "busy-cal")!.composioConnectedAccountId!;
+    const result = await getTodayAgenda(ctx(solo), {
+      now: NOW,
+      clientFor: (id) => id === busyId
+        ? client([{ id: "e1", start: { date: "2026-10-23" } }], true)
+        : client(new Error("Request failed for ca_secret with access_token=ya29.leaked: 401 invalid_token")),
+    });
+    expect(result.status).toBe("connected");
+    if (result.status !== "connected") return;
+    const byAlias = new Map(result.accounts.map((acc) => [acc.alias, acc]));
+    expect(byAlias.get("busy-cal")).toEqual({ status: "unavailable", alias: "busy-cal", reason: "This calendar has more events today than can be shown." });
+    expect(byAlias.get("leaky-cal")).toEqual({ status: "unavailable", alias: "leaky-cal", reason: "Google Calendar could not be read." });
+  });
+
   it("reports a genuinely free day as ok with zero events", async () => {
     const solo = await seedWorkspace(handle!.db, `agenda-solo-${crypto.randomUUID()}`);
     // Composio ids are globally unique (external_accounts_composio_key).
     await handle!.db.insert(externalAccounts).values({ workspaceId: solo.workspaceId, provider: "google-calendar", alias: "only-cal", status: "active", composioConnectedAccountId: `ca_${crypto.randomUUID()}` });
     const result = await getTodayAgenda(ctx(solo), { now: NOW, clientFor: () => client([]) });
-    expect(result).toMatchObject({ status: "connected", accounts: [{ status: "ok", alias: "only-cal", events: [] }] });
+    expect(result).toMatchObject({ status: "connected", accounts: [{ status: "ok", alias: "only-cal", calendar: "primary", events: [] }] });
   });
 });
