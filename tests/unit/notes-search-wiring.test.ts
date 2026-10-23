@@ -1,6 +1,7 @@
 import { createElement as h, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SearchAreaResolution } from "@/domains/knowledge/area-resolve";
 
 /*
  * Pins the notes-search filter wiring end to end at the component level: the
@@ -35,7 +36,7 @@ vi.mock("@/domains/knowledge/notes", () => ({
 vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));
 const areaResolve = vi.hoisted(() => ({
   listSearchAreaNames: vi.fn(async () => ["Training"]),
-  resolveSearchArea: vi.fn(async () => ({ status: "resolved" as const, name: "Training", tags: ["training"] })),
+  resolveSearchArea: vi.fn(async (): Promise<SearchAreaResolution> => ({ status: "resolved", name: "Training", tags: ["training"] })),
 }));
 vi.mock("@/domains/knowledge/area-resolve", () => areaResolve);
 const toolbarProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
