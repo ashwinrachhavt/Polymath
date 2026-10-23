@@ -209,8 +209,12 @@ export async function listOpenTasks(auth: AuthContext) {
  */
 export async function completeTask(
   auth: AuthContext,
-  input: { taskId: string },
+  input: { taskId: string; sentence?: string },
 ): Promise<{ id: string; quartzEarned: boolean } | null> {
+  // The completion question ("what did you actually do?") is optional to
+  // answer; a blank or whitespace-only answer records no sentence. The action
+  // caps the length; the domain trims defensively.
+  const note = input.sentence?.trim().slice(0, 1000) || undefined;
   return withTransaction(async (tx) => {
     const [task] = await tx
       .update(tasks)
@@ -245,13 +249,17 @@ export async function completeTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Completed task "${task.title}"`,
-        metadata: { settledEdges },
+        // The sentence is durable even when no stone is earned today: it
+        // rides on the stone when one is awarded, and stays on the
+        // completion's audit row either way. The settled blocker edges ride
+        // alongside so a later reopen undoes by identity.
+        metadata: note ? { settledEdges, completionNote: note } : { settledEdges },
       },
       tx,
     );
     // A10 Quartz rule: first completed task of the day earns the daily
     // Quartz. Same transaction, skip-silent when the day already has one.
-    const quartzEarned = await recordDailyQuartz(tx, auth, task.id);
+    const quartzEarned = await recordDailyQuartz(tx, auth, task.id, note);
     return { id: task.id, quartzEarned };
   });
 }

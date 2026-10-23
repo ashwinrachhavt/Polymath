@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useOptimistic, useRef, useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
@@ -77,15 +78,31 @@ export function WorkList({
   showQuickAdd: boolean;
   emptyState: React.ReactNode;
 }) {
+  const router = useRouter();
   const [optimisticItems, change] = useOptimistic(items, apply);
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
+  // unrecorded: a typed sentence the server confirmed is NOT on the recorded
+  // completion. When the server cannot confirm either way, the copy claims
+  // neither; a confirmed-recorded sentence clears its draft.
+  const [error, setError] = useState<{ id: string; message: string; unrecorded?: string } | null>(null);
+  // Completion asks the spec's question first: "what did you actually do?"
+  // The sentence rides onto the day's stone when one is earned; answering is
+  // optional - "Just complete" finishes with no sentence. The draft lives in
+  // state so a failed completion reopens the question with the typed
+  // sentence intact rather than losing it.
+  const [asking, setAsking] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
   const [reward, setReward] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const intent = useRef<string | null>(null);
   const key = () => (intent.current ??= crypto.randomUUID());
 
-  function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; quartzEarned?: boolean }>, applyChange: Change) {
+  function run(
+    id: string,
+    fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean; sentenceRecorded?: boolean }>,
+    applyChange: Change,
+    onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
+  ) {
     setError(null);
     startTransition(async () => {
       change(applyChange);
@@ -94,6 +111,7 @@ export function WorkList({
         if (!result.ok) {
           intent.current = null;
           setError({ id, message: result.error ?? "The write failed." });
+          onError?.(result.kind ?? "retryable", result.sentenceRecorded);
         } else {
           intent.current = null;
           if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
@@ -101,7 +119,35 @@ export function WorkList({
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
         setError({ id, message: "Could not reach the server. Try again." });
+        onError?.("retryable");
       }
+    });
+  }
+
+  function submitCompletion(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const sentence = (drafts[id] ?? "").trim();
+    setAsking(null);
+    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, (kind, recorded) => {
+      if (kind === "conflict") {
+        // The task's state moved on: never offer another completion -
+        // reconcile the list with the server. Say the sentence was not
+        // recorded ONLY when the server checked the completed task's audit
+        // row and found it absent; when the check confirms this exact
+        // sentence was recorded (a lost response after commit), clear the
+        // draft - the work is safely on the stone/audit trail.
+        if (sentence && recorded === true) {
+          setDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+        } else if (sentence && recorded === false) {
+          setError({ id, message: "This task was already completed.", unrecorded: sentence });
+        }
+        router.refresh();
+        return;
+      }
+      // Retryable or a rejected sentence: the row returns and the question
+      // reopens; the draft map still holds the sentence, so nothing the
+      // person typed is lost.
+      setAsking(id);
     });
   }
 
@@ -170,7 +216,8 @@ export function WorkList({
           const row = item.row;
           const optimistic = row.id.startsWith("optimistic-");
           return (
-            <li key={row.id} className="flex items-start justify-between gap-3 py-3">
+            <li key={row.id} className="py-3">
+              <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 {optimistic ? (
                   <span className="text-[13px] font-medium text-muted-foreground">{row.title}</span>
@@ -219,13 +266,52 @@ export function WorkList({
                       variant="outline"
                       disabled={pending}
                       aria-label={`Done: complete ${row.title}`}
-                      onClick={() => run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id })}
+                      aria-expanded={asking === row.id}
+                      onClick={() => setAsking(asking === row.id ? null : row.id)}
                     >
                       Done
                     </Button>
                   </div>
-                  {error?.id === row.id ? <p role="alert" className="text-xs text-destructive">{error.message}</p> : null}
+                  {error?.id === row.id ? (
+                    <>
+                      <p role="alert" className="text-xs text-destructive">{error.message}</p>
+                      {error.unrecorded ? (
+                        <p className="max-w-xs text-right text-xs text-muted-foreground">
+                          Your sentence was not recorded: &quot;{error.unrecorded}&quot;
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
+              ) : null}
+              </div>
+              {asking === row.id ? (
+                <form onSubmit={(event) => submitCompletion(event, row.id)} className="ml-auto mt-1.5 flex w-full max-w-xs flex-col items-end gap-1.5">
+                  <label className="w-full text-xs text-muted-foreground" htmlFor={`sentence-${row.id}`}>
+                    What did you actually do?
+                  </label>
+                  <Input
+                    id={`sentence-${row.id}`}
+                    name="sentence"
+                    maxLength={280}
+                    placeholder="One sentence"
+                    autoFocus
+                    disabled={pending}
+                    value={drafts[row.id] ?? ""}
+                    onChange={(event) => setDrafts((prev) => ({ ...prev, [row.id]: event.target.value }))}
+                  />
+                  <div className="flex gap-1">
+                    <Button type="submit" size="sm" disabled={pending}>
+                      Complete
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setAsking(null); run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id }); }}>
+                      Just complete
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAsking(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
               ) : null}
             </li>
           );

@@ -1,5 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { auditEvents } from "@/domains/audit/schema";
 import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -56,6 +57,101 @@ suite("reward rules", () => {
       .where(eq(rewardDefinitions.workspaceId, auth.workspaceId));
     expect(quartz.key).toBe("quartz");
     expect(quartz.points).toBe(10);
+  });
+
+  it("the completion sentence rides on the stone, and stays on the audit row when no stone is earned", async () => {
+    const auth = await seed("completion-sentence");
+    const first = await work.createOwnerTask(auth, { title: "First" });
+    const second = await work.createOwnerTask(auth, { title: "Second" });
+    await work.completeTask(auth, { taskId: first.id, sentence: "  Shipped the onboarding fix.  " });
+    await work.completeTask(auth, { taskId: second.id, sentence: "Wrote the retro notes." });
+
+    const ledger = await ledgerFor(auth.workspaceId);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].subjectId).toBe(first.id);
+    expect(ledger[0].note).toBe("Shipped the onboarding fix.");
+
+    // No second stone today, but the second sentence is not lost: every
+    // completion's audit row carries its note whether or not a stone was.
+    const audits = await db
+      .select({ subjectId: auditEvents.subjectId, metadata: auditEvents.metadata })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed")));
+    const bySubject = new Map(audits.map((a) => [a.subjectId, a.metadata as { completionNote?: string } | null]));
+    expect(bySubject.get(first.id)?.completionNote).toBe("Shipped the onboarding fix.");
+    expect(bySubject.get(second.id)?.completionNote).toBe("Wrote the retro notes.");
+  });
+
+  it("a racing double completion writes exactly one audit row and one stone", async () => {
+    const auth = await seed("double-complete");
+    const task = await work.createOwnerTask(auth, { title: "Race me" });
+    const [a, b] = await Promise.all([
+      work.completeTask(auth, { taskId: task.id, sentence: "first click" }),
+      work.completeTask(auth, { taskId: task.id, sentence: "second click" }),
+    ]);
+    // The guarded UPDATE lets exactly one racer through; the other gets null.
+    expect([a, b].filter((r) => r !== null)).toHaveLength(1);
+    expect((await ledgerFor(auth.workspaceId))).toHaveLength(1);
+    const audits = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+    expect(audits).toHaveLength(1);
+  });
+
+  it("lost response after commit: the conflict read confirms the sentence was recorded", async () => {
+    // Simulates a request that committed but whose response never arrived:
+    // the completion IS on the task and its sentence IS on the audit row, so
+    // the conflict state must confirm recorded - never claim it was lost.
+    const auth = await seed("lost-response");
+    const queries = await import("@/domains/work/queries");
+    const task = await work.createOwnerTask(auth, { title: "Committed silently" });
+    const first = await work.completeTask(auth, { taskId: task.id, sentence: "Finished the migration." });
+    expect(first).not.toBeNull();
+
+    const retry = await work.completeTask(auth, { taskId: task.id, sentence: "Finished the migration." });
+    expect(retry).toBeNull();
+    const state = await queries.getCompletionConflictState(auth, task.id);
+    expect(state).toEqual({ status: "done", completionNote: "Finished the migration." });
+    // The loser wrote nothing: one audit row, one stone.
+    expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
+    const audits = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+    expect(audits).toHaveLength(1);
+  });
+
+  it("a completed-elsewhere task without a note reports no recorded sentence", async () => {
+    const auth = await seed("conflict-nonote");
+    const queries = await import("@/domains/work/queries");
+    const task = await work.createOwnerTask(auth, { title: "Done quietly" });
+    await work.completeTask(auth, { taskId: task.id });
+    const state = await queries.getCompletionConflictState(auth, task.id);
+    expect(state).toEqual({ status: "done", completionNote: null });
+  });
+
+  it("cancelled and missing tasks are not 'already completed'", async () => {
+    const auth = await seed("conflict-kinds");
+    const queries = await import("@/domains/work/queries");
+    const taskCommands = await import("@/domains/work/task-commands");
+    const cancelled = await work.createOwnerTask(auth, { title: "Cancelled" });
+    await taskCommands.updateTask(auth, { taskId: cancelled.id, expectedVersion: 1, patch: { status: "cancelled" } });
+    // The completion guard refuses a cancelled task, and the conflict read
+    // says cancelled - never "already completed".
+    expect(await work.completeTask(auth, { taskId: cancelled.id })).toBeNull();
+    expect((await queries.getCompletionConflictState(auth, cancelled.id))?.status).toBe("cancelled");
+    // A task the workspace cannot see reads as unavailable, not completed.
+    expect(await queries.getCompletionConflictState(auth, crypto.randomUUID())).toBeNull();
+  });
+
+  it("a blank or missing answer records no sentence", async () => {
+    const auth = await seed("completion-blank");
+    const blank = await work.createOwnerTask(auth, { title: "Quiet" });
+    await work.completeTask(auth, { taskId: blank.id, sentence: "   " });
+    const ledger = await ledgerFor(auth.workspaceId);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].note).toBeNull();
   });
 
   it("a disabled quartz definition skips the award without blocking completion", async () => {

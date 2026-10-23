@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
-import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
+import { getRewardsOverview, pickRewardAnnouncement, type RewardsOverview } from "@/domains/gamification/queries";
 import { getAuthContext } from "@/lib/auth";
 import { CoachMark } from "@/components/shell/coach-mark";
 import { ClaimShardButton } from "./claim-button";
@@ -21,6 +21,24 @@ export const metadata = { title: "Stones & rewards · Polymath" };
 
 function when(iso: Date): string {
   return iso.toISOString().slice(0, 16).replace("T", " ") + "Z";
+}
+
+type LedgerRow = RewardsOverview["ledger"][number];
+
+/** One stone in the collection: what was earned, when, and the person's own sentence when they gave one. */
+export function LedgerEntry({ entry }: { entry: LedgerRow }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p className="text-[13px] font-medium">{entry.definitionLabel}</p>
+        <p className="text-xs text-muted-foreground">
+          {entry.reason.replaceAll("_", " ")} · {when(entry.createdAt)}
+        </p>
+        {entry.note ? <p className="mt-0.5 text-xs text-muted-foreground">&quot;{entry.note}&quot;</p> : null}
+      </div>
+      <p className="readout text-[13px]">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
+    </div>
+  );
 }
 
 async function Rewards() {
@@ -88,15 +106,7 @@ async function Rewards() {
       <Panel title="Ledger" description="The ledger is append-only; a reversal is a new negative row, never a delete.">
         <div className="flex flex-col gap-4">
           {overview.ledger.map((entry) => (
-            <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-medium">{entry.definitionLabel}</p>
-                <p className="text-xs text-muted-foreground">
-                  {entry.reason.replaceAll("_", " ")} · {when(entry.createdAt)}
-                </p>
-              </div>
-              <p className="readout text-[13px]">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
-            </div>
+            <LedgerEntry key={entry.id} entry={entry} />
           ))}
           {!overview.ledger.length ? (
             <Empty title="Nothing earned yet" />
