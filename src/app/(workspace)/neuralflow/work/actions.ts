@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { completeTask, createOwnerTask } from "@/domains/work/commands";
+import { completeTask, reopenTask, createOwnerTask } from "@/domains/work/commands";
 import { getCompletionConflictState } from "@/domains/work/queries";
 import {
   DependencyCycleError,
@@ -132,6 +132,42 @@ export async function completeTaskAction(
       : { ok: false, kind: "conflict", error: "This task was already completed.", sentenceRecorded: false };
   }
   return { ok: false, kind: "conflict", error: "This task was already completed." };
+}
+
+/*
+ * Undo a terminal transition (Product Spec: "Undo for every terminal
+ * transition"). A completed or cancelled task comes back as `ready`. The
+ * earned stone and the audit history stand - reopening reopens the task,
+ * it does not rewrite what happened.
+ */
+export async function reopenTaskAction(
+  taskId: string,
+  expectedVersion: number,
+): Promise<{ ok: true; from: "done" | "cancelled"; note: string | null } | { ok: false; error: string }> {
+  const parsed = z.string().uuid().safeParse(taskId);
+  if (!parsed.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return { ok: false, error: "That task no longer exists." };
+  }
+
+  const auth = await authorize();
+  const reopened = await reopenTask(auth, { taskId: parsed.data, expectedVersion });
+  revalidate(auth);
+  if (reopened && reopened !== "stale" && reopened !== "not_terminal") {
+    // Scoped undo, said out loud: an edge that changed since the completion
+    // is left exactly as it is, and the user hears that.
+    const note =
+      reopened.skippedChangedEdges > 0
+        ? `Reopened. ${reopened.skippedChangedEdges} blocker link${reopened.skippedChangedEdges === 1 ? "" : "s"} changed since completion and ${reopened.skippedChangedEdges === 1 ? "was" : "were"} left as-is.`
+        : null;
+    return { ok: true, from: reopened.from, note };
+  }
+  if (reopened === "stale") {
+    // ABA defense: the view saw an older transition. Undoing it would revert
+    // a newer reopen-and-recomplete the clicker never saw.
+    return { ok: false, error: "This task changed since you loaded it. Reload to see the latest." };
+  }
+  if (reopened === "not_terminal") return { ok: false, error: "Only a completed or cancelled task can be reopened." };
+  return { ok: false, error: "That task no longer exists." };
 }
 
 /*

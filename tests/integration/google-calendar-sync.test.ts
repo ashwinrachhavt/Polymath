@@ -37,7 +37,7 @@ function fake(batches: GoogleEvent[][], seen: Array<string | null>): GoogleCalen
   return {
     async listEventsUpdatedSince(updatedMin) {
       seen.push(updatedMin);
-      return { events: batches[i++] ?? [], newestUpdated: `2026-10-0${i}T00:00:00.000Z` };
+      return { events: batches[i++] ?? [], newestUpdated: `2026-10-0${i}T00:00:00.000Z`, truncated: false };
     },
   };
 }

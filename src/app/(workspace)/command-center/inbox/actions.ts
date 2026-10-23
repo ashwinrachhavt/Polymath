@@ -2,9 +2,11 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
+import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-templates";
 import {
   ConflictError,
   StaleWriteError,
+  convertCaptureToDraft,
   convertCaptureToNote,
   convertCaptureToTask,
   createCapture,
@@ -35,13 +37,16 @@ function fail(error: unknown): { ok: false; error: string } {
 }
 
 export async function captureTextAction(input: { text: string }): Promise<
-  { ok: true; id: string } | { ok: false; error: string }
+  { ok: true; id: string } | { ok: false; error: string; existingId?: string }
 > {
   const auth = await authorize();
   let capture: { id: string };
   try {
     capture = await createCapture(auth, input);
   } catch (error) {
+    // A duplicate already names the capture it collided with; pass the id so
+    // the notice can open it.
+    if (error instanceof ConflictError) return { ok: false, error: error.message, existingId: error.existingId };
     return fail(error);
   }
   revalidate(auth);
@@ -56,6 +61,27 @@ export async function makeTaskAction(input: { captureId: string; expectedVersion
     return fail(error);
   }
   updateTag(tasksTag(auth));
+  revalidate(auth);
+  return { ok: true };
+}
+
+const makeDraftInput = z.object({
+  captureId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  template: z.enum(DRAFT_TEMPLATES),
+});
+
+/** Turn a capture into a starter draft (email / product spec / tech spec) - one transaction, same guards as note conversion. */
+export async function makeDraftAction(input: { captureId: string; expectedVersion: number; template: DraftTemplate }): Promise<Result> {
+  const auth = await authorize();
+  const parsed = makeDraftInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That draft request was malformed. Reload and try again." };
+  try {
+    await convertCaptureToDraft(auth, parsed.data);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidatePath("/alfred/notes");
   revalidate(auth);
   return { ok: true };
 }

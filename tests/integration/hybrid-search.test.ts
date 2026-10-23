@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
+import { artifacts } from "@/domains/knowledge/schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -22,7 +24,7 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
-import { fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
+import { countMeaningUncovered, fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
 import { syncThreadToGraph } from "@/domains/knowledge/thread-graph";
 
 function vec(dims: number[]): number[] {
@@ -69,6 +71,8 @@ suite("hybrid search (real Postgres)", () => {
     expect(exact.hits[0].title).toBe("Compound interest");
     expect(exact.hits[0].why.keywordRank).toBe(1);
     expect(exact.hits[0].snippet).toContain("[[earnings]]");
+    // Freshness is visible: every hit carries the artifact's last edit time.
+    expect(exact.hits[0].updatedAt).toBeInstanceOf(Date);
     const typo = await searchKnowledge(auth, { query: "sourdogh", mode: "keyword" });
     expect(typo.hits[0].title).toBe("Sourdough starter");
     expect(typo.hits[0].why.titleMatch).toBe(true);
@@ -122,5 +126,100 @@ suite("hybrid search (real Postgres)", () => {
     const res = await searchKnowledge(auth, { query: "nonprofits", mode: "keyword", kinds: ["transcript"] });
     expect(res.hits.map((h) => h.id)).toEqual([first.artifactId]);
     expect(res.hits[0].kind).toBe("transcript");
+  });
+});
+
+suite("search filters (real Postgres)", () => {
+  it("kind restricts both legs, and an unknown kind matches nothing instead of reaching SQL", async () => {
+    const auth = await workspace();
+    await write(auth, "Keyword note", "zephyr across the sky");
+    await write(auth, "Keyword zettel", "zephyr across the sky", undefined, "zettel");
+    const zettels = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["zettel"] });
+    expect(zettels.hits.map((h) => h.title)).toEqual(["Keyword zettel"]);
+    // Kinds are interpolated into SQL: a bogus kind must be rejected, not passed through.
+    const bogus = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["note; drop table artifacts--"] });
+    expect(bogus.hits).toEqual([]);
+  });
+
+  it("from/to bound the last edit (updated_at) on the keyword and meaning legs alike", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    const fresh = await write(auth, "Fresh zephyr", "zephyr today", p);
+    const stale = await write(auth, "Stale zephyr", "zephyr long ago", p);
+    await holder.db!.update(artifacts).set({ updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) }).where(eq(artifacts.id, stale.id));
+    const week = await searchKnowledge(auth, { query: "zephyr", provider: p, filters: { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } });
+    expect(week.hits.map((h) => h.title)).toEqual(["Fresh zephyr"]);
+    const beforeYesterday = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { to: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    expect(beforeYesterday.hits.map((h) => h.title)).toEqual(["Stale zephyr"]);
+    expect(fresh.id).not.toBe(stale.id);
+  });
+
+  it("provenance is generation provenance exactly: produced_by_run_id set or null", async () => {
+    const auth = await workspace();
+    const human = await write(auth, "Handwritten zephyr", "zephyr by hand");
+    const generated = await write(auth, "Generated zephyr", "zephyr by run");
+    await holder.db!.update(artifacts).set({ producedByRunId: crypto.randomUUID() }).where(eq(artifacts.id, generated.id));
+    const agentOnly = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "agent" } });
+    expect(agentOnly.hits.map((h) => h.title)).toEqual(["Generated zephyr"]);
+    const notAgent = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "not-agent" } });
+    expect(notAgent.hits.map((h) => h.title)).toEqual(["Handwritten zephyr"]);
+    expect(human.id).not.toBe(generated.id);
+  });
+
+  it("areaTags are the area dimension's artifact linkage: any declared tag matches, normalized", async () => {
+    const auth = await workspace();
+    const inArea = await write(auth, "Training zephyr", "zephyr training log");
+    const alsoIn = await write(auth, "Nutrition zephyr", "zephyr nutrition");
+    await write(auth, "Budget zephyr", "zephyr budget");
+    await holder.db!.update(artifacts).set({ tags: ["health"] }).where(eq(artifacts.id, inArea.id));
+    await holder.db!.update(artifacts).set({ tags: ["training-log"] }).where(eq(artifacts.id, alsoIn.id));
+    // An area declared as {health, training-log} covers both tagged notes; the
+    // untagged one stays out. Case and whitespace are normalized to the stored
+    // lowercase form.
+    const hits = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { areaTags: ["Health", " training-log "] } });
+    expect(hits.hits.map((h) => h.title).sort()).toEqual(["Nutrition zephyr", "Training zephyr"]);
+    // An area with no usable tags filters nothing rather than matching nothing.
+    const all = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { areaTags: [" ", ""] } });
+    expect(all.hits).toHaveLength(3);
+    // The coverage count honors the same predicate set: one uncovered note in
+    // the health area, three unfiltered (none of the three embedded).
+    expect(await countMeaningUncovered(auth, { filters: { areaTags: ["health"] } })).toBe(1);
+    expect(await countMeaningUncovered(auth, {})).toBe(3);
+  });
+
+  it("counts exactly what the meaning leg cannot see, with the same kinds, filters and tenant scope", async () => {
+    const auth = await workspace();
+    const other = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    // Covered: embedded at the current version.
+    await write(auth, "Covered zephyr", "zephyr indexed fine", p);
+    // Failed: the auto-embed has no real key, so embed_error is set and no
+    // current-version rows exist.
+    await write(auth, "Failed zephyr", "zephyr failed to index");
+    // Pending: a real failure record cleared - text, no embedding, no error.
+    const pending = await write(auth, "Pending zephyr", "zephyr never attempted");
+    await holder.db!.update(artifacts).set({ embedError: null }).where(eq(artifacts.id, pending.id));
+    // Empty text is skipped by design: nothing to index, never counted.
+    await createNote(auth, { title: "Blank zephyr", kind: "note" });
+    expect(await countMeaningUncovered(auth, {})).toBe(2);
+    expect(await countMeaningUncovered(auth, { kinds: ["zettel"] })).toBe(0);
+    // Same filters as the search: excluding both uncovered notes zeroes the count.
+    expect(await countMeaningUncovered(auth, { filters: { to: new Date(Date.now() - 1000) } })).toBe(0);
+    // Tenant scope: the other workspace never sees these.
+    expect(await countMeaningUncovered(other, {})).toBe(0);
+  });
+
+  it("stale chunks after an edit do not rank, and the artifact reads as uncovered", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    const note = await write(auth, "Shifting note", "zephyr first draft", p);
+    // Control: the current-version chunk ranks before the edit.
+    const before = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
+    expect(before.hits.map((h) => h.title)).toContain("Shifting note");
+    // Edit: v2 commits, the auto-embed fails without a real key, v1 chunks go stale.
+    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: 2, content: { format: "markdown", text: "entirely ordinary replacement words" }, plainText: "entirely ordinary replacement words" });
+    const after = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
+    expect(after.hits.map((h) => h.title)).not.toContain("Shifting note");
+    expect(await countMeaningUncovered(auth, {})).toBe(1);
   });
 });
