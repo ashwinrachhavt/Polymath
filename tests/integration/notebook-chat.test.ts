@@ -57,7 +57,7 @@ suite("notebook chat (real Postgres)", () => {
     const chat = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     await runFor(a, dossier.id, 'Using only the documents in the dossier "Housing", write a draft report: rent terms.');
     const chats = await listNotebookChats(a, dossier.id);
-    expect(chats.map((c) => c.runId)).toEqual([chat.runId]);
+    expect(chats.map((c) => c.runId)).toEqual([chat.id]);
   });
 
   it("never leaks another workspace's chats", async () => {
