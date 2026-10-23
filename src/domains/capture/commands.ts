@@ -9,6 +9,10 @@ import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { findCaptureIdByUrl } from "./queries";
+import { putBlob } from "@/integrations/object-store/object-store";
+import type { FileValidationResult } from "@/lib/file-validation";
+import { sha256Hex } from "@/lib/hash";
+import { blobObjects } from "../audit/schema";
 import { captures, captureSource } from "./schema";
 
 /*
@@ -114,6 +118,102 @@ export async function createCapture(
     }
     throw cause;
   }
+}
+
+/**
+ * File/screenshot capture (ASH-220): the `file` kind had a schema seat
+ * (captures.blobId) but no writer. The bytes land in the object store FIRST;
+ * the blob_objects row and the capture then commit in one transaction, so
+ * there is never a capture pointing at bytes that failed to record, nor a
+ * recorded blob without its capture. Retry safety belongs to the caller's
+ * receipt (the route checks Idempotency-Key BEFORE calling this): a bare
+ * retry without the key stores a second object, same as document intake.
+ *
+ * A sniff failure still captures - quarantined, never silently filed under
+ * the client's claimed type: a preserved original beats a lost upload. A
+ * quarantined capture carries rawPayload.quarantined and octet-stream, and
+ * nothing downstream may promise its content (no extraction, no search text,
+ * no preview) - the capture IS the file, its filename is the only label.
+ * Verified files are likewise not extracted here: `text` stays null, so
+ * search and semantic surfaces never imply the file's contents are readable.
+ */
+export async function createFileCapture(
+  auth: AuthContext,
+  input: {
+    bytes: Uint8Array;
+    /** The uploader's filename - a label only, never trusted for type (validateFile already sniffed). */
+    filename: string;
+    /** From validateFile. A failed verdict quarantines the original rather than rejecting it. */
+    verdict: FileValidationResult;
+    /** sha256 hex of the bytes when the caller already has it. */
+    contentHash?: string;
+    source?: (typeof captureSource.enumValues)[number];
+    /**
+     * First-party idempotency key. The ROUTE checks the receipt before the
+     * blob write (a replay must not store a second object); the receipt here
+     * is the in-transaction backstop that serializes racing first attempts.
+     */
+    idempotencyKey?: string;
+  },
+): Promise<{ captureId: string; quarantined: boolean; contentHash: string }> {
+  const filename = input.filename.trim().slice(0, 500);
+  if (!filename) throw new ConflictError("Name the file.");
+  const contentHash = input.contentHash ?? (await sha256Hex(input.bytes));
+  const mimeType = input.verdict.ok ? input.verdict.mimeType : "application/octet-stream";
+  // Network write outside the transaction: a storage failure throws before any
+  // row exists, so the caller gets a clean error and nothing half-created.
+  const stored = await putBlob({ bytes: input.bytes, filename, contentType: mimeType, workspaceId: auth.workspaceId, contentHash });
+  const { value } = await withTransaction(async (tx) => {
+    return withReceipt(tx, auth, input.idempotencyKey, { op: "createFileCapture", contentHash, filename }, async () => {
+    const blobRow =
+      (await tx
+        .insert(blobObjects)
+        .values({
+          workspaceId: auth.workspaceId,
+          storageKey: stored.storageKey,
+          contentHash,
+          sizeBytes: input.bytes.byteLength,
+          mimeType,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .onConflictDoNothing({ target: blobObjects.storageKey })
+        .returning({ id: blobObjects.id }))[0] ??
+      (
+        await tx
+          .select({ id: blobObjects.id })
+          .from(blobObjects)
+          .where(eq(blobObjects.storageKey, stored.storageKey))
+      )[0];
+      if (!blobRow) throw new Error("blob row missing after insert");
+      const [capture] = await tx
+        .insert(captures)
+        .values({
+          workspaceId: auth.workspaceId,
+          kind: "file",
+          source: input.source ?? "quick_capture",
+          rawPayload: {
+            filename,
+            mimeType,
+            sizeBytes: input.bytes.byteLength,
+            contentHash,
+            ...(input.verdict.ok ? {} : { quarantined: true }),
+          },
+          text: null,
+          blobId: blobRow.id,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning();
+      await recordAudit(
+        auth,
+        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
+        tx,
+      );
+      return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
+    });
+  });
+  return value;
 }
 
 /**
