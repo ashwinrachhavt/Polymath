@@ -442,6 +442,13 @@
       "tag": "0236_artifact_source_indexes",
       "when": 1792712000000,
       "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "tag": "0237_account_capability_overrides",
+      "when": 1792727159173,
+      "breakpoints": true
     }
   ]
 }

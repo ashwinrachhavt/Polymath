@@ -41,6 +41,8 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
     capabilities: connector.capabilities,
     riskByCapability: connector.riskByCapability,
     accessTiers: connector.accessTiers,
+    configured: connector.configured,
+    missingConfig: connector.missingConfig,
     accounts: connector.accounts.map((account) => ({
       id: account.id,
       alias: account.alias,
@@ -50,6 +52,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
       allowRead: account.allowRead,
       allowWrite: account.allowWrite,
       accessTier: account.accessTier,
+      disabledCapabilities: account.disabledCapabilities,
       lastHealthyAt: account.lastHealthyAt ? account.lastHealthyAt.toISOString() : null,
       lastError: account.lastError,
       version: account.version,

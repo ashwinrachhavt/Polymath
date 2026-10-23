@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccountControls, ConnectButton, TierPicker } from "./connector-controls";
+import { AccountControls, CapabilitySwitches, ConnectButton, TierPicker } from "./connector-controls";
 
 /*
  * One card per provider, and the card says what the person can do next.
@@ -22,6 +22,7 @@ export type CatalogAccount = {
   allowRead: boolean;
   allowWrite: boolean;
   accessTier: string | null;
+  disabledCapabilities: string[];
   lastHealthyAt: string | null;
   lastError: string | null;
   version: number;
@@ -33,6 +34,8 @@ export type CatalogConnector = {
   capabilities: string[];
   riskByCapability: Record<string, string>;
   accessTiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
+  configured: boolean;
+  missingConfig: string[];
   accounts: CatalogAccount[];
 };
 
@@ -43,6 +46,9 @@ const EXPIRED_ATTEMPT_MESSAGE = "That connection attempt expired. Start again.";
 
 export function cardState(connector: CatalogConnector): CardState {
   if (connector.accounts.some((account) => account.status === "active")) return "connected";
+  // An unconfigured deployment cannot complete any handshake, so nothing on
+  // the card may offer Connect — not even to resume a half-open attempt.
+  if (!connector.configured) return "needs_config";
   const live = connector.accounts.filter((account) => account.status === "connecting");
   if (
     live.some(
@@ -204,6 +210,15 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                               current={account.accessTier}
                               tiers={connector.accessTiers}
                             />
+                            <div className="mt-3">
+                              <CapabilitySwitches
+                                provider={connector.provider}
+                                accountId={account.id}
+                                expectedVersion={account.version}
+                                current={account.accessTier}
+                                disabled={account.disabledCapabilities}
+                              />
+                            </div>
                             <div className="mt-2">
                               <AccountControls
                                 provider={connector.provider}
@@ -224,6 +239,9 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                             <p className="mt-1 text-xs text-muted-foreground">{accountLabel(account.status)}.</p>
                           </div>
                         ))}
+                      <div className="pt-3">
+                        <ConnectButton provider={connector.provider} label="Connect another" />
+                      </div>
                     </div>
                   ) : null}
 
@@ -233,7 +251,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                         <div key={account.id} className="mb-2">
                           <p className="text-[13px] font-medium">{account.alias}</p>
                           <p className="mt-1 mb-2 text-xs text-muted-foreground">Finish connecting to start using it.</p>
-                          <ConnectButton provider={connector.provider} defaultAlias={account.alias} label="Finish connecting" />
+                          <ConnectButton provider={connector.provider} alias={account.alias} label="Finish connecting" />
                         </div>
                       ))}
                     </div>
@@ -241,7 +259,7 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
 
                   {state === "available" ? (
                     <div className="border-t border-border pt-3">
-                      <ConnectButton provider={connector.provider} defaultAlias="" promptForAlias />
+                      <ConnectButton provider={connector.provider} />
                     </div>
                   ) : null}
 
@@ -255,12 +273,19 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                           ) : null}
                           <ConnectButton
                             provider={connector.provider}
-                            defaultAlias={account.alias}
+                            alias={account.status === "revoked" ? undefined : account.alias}
                             label="Reconnect"
                           />
                         </div>
                       ))}
                     </div>
+                  ) : null}
+
+                  {state === "needs_config" ? (
+                    <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+                      Setup needed on this deployment: set {connector.missingConfig.join(" and ")}. Until then{" "}
+                      {connector.displayName} cannot connect.
+                    </p>
                   ) : null}
 
                   {state === "coming_soon" ? (

@@ -3,7 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { PROVIDER_TIERS, type Provider } from "./capabilities";
+import { CAPABILITIES, PROVIDER_TIERS, type Capability, type Provider } from "./capabilities";
 import { externalAccounts, integrationCatalog } from "./schema";
 
 /*
@@ -173,6 +173,149 @@ export async function setAccountAccessTier(
       tx,
     );
     return updated;
+  });
+}
+
+/**
+ * Fine-grained control under the tier: one capability switched off (or back
+ * on) for one account. The tier stays the ceiling — a switch can never grant
+ * what the tier does not — so a capability outside the current tier is
+ * rejected with copy that points at the tier control, not the switch.
+ */
+export async function setAccountCapability(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; capability: string; enabled: boolean },
+) {
+  return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select({
+        provider: externalAccounts.provider,
+        alias: externalAccounts.alias,
+        accessTier: externalAccounts.accessTier,
+        disabledCapabilities: externalAccounts.disabledCapabilities,
+      })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
+      .limit(1);
+    if (!account) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    const capability = input.capability as Capability;
+    if (!CAPABILITIES[capability]) {
+      throw new ConflictError(`"${input.capability}" is not a capability this product has.`);
+    }
+    const tierId = account.accessTier ?? "read_only";
+    const tier = PROVIDER_TIERS[account.provider as Provider]?.find((t) => t.id === tierId);
+    if (!tier?.capabilities.includes(capability)) {
+      throw new ConflictError(
+        `That is not part of the ${tier?.label ?? "current"} tier for "${account.alias}". Raise the tier first.`,
+      );
+    }
+    const disabled = new Set((account.disabledCapabilities as string[]) ?? []);
+    if (input.enabled) {
+      disabled.delete(capability);
+    } else {
+      disabled.add(capability);
+    }
+    const [updated] = await tx
+      .update(externalAccounts)
+      .set({
+        disabledCapabilities: [...disabled],
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.id, input.accountId),
+          eq(externalAccounts.version, input.expectedVersion),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      {
+        action: "integration.account_capability_set",
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector ${updated.alias}: ${capability} ${input.enabled ? "on" : "off"}`,
+        metadata: { capability, enabled: input.enabled },
+      },
+      tx,
+    );
+    return updated;
+  });
+}
+
+/**
+ * Renaming is how an auto-named connection becomes "work" or "personal"
+ * after the fact: connect never asks for a name up front, so this is the
+ * only naming moment. Aliases stay workspace-unique across providers because
+ * models choose accounts by alias.
+ */
+export async function renameAccount(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; alias: string },
+) {
+  const alias = input.alias.trim();
+  if (!alias) throw new ConflictError("A name is required - models choose accounts by name.");
+  if (alias.length > 60) throw new ConflictError("Account names are capped at 60 characters.");
+  return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select({ alias: externalAccounts.alias })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
+      .limit(1);
+    if (!account) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    if (account.alias === alias) return { renamed: false };
+    const [taken] = await tx
+      .select({ provider: externalAccounts.provider })
+      .from(externalAccounts)
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.alias, alias),
+          sql`${externalAccounts.id} <> ${input.accountId}`,
+        ),
+      )
+      .limit(1);
+    if (taken) {
+      throw new ConflictError(`"${alias}" is already the name of your ${taken.provider} account. Pick another name.`);
+    }
+    let updated;
+    try {
+      [updated] = await tx
+        .update(externalAccounts)
+        .set({ alias, version: sql`${externalAccounts.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
+        .where(
+          and(
+            eq(externalAccounts.workspaceId, auth.workspaceId),
+            eq(externalAccounts.id, input.accountId),
+            eq(externalAccounts.version, input.expectedVersion),
+          ),
+        )
+        .returning();
+    } catch (cause) {
+      if ((cause as { cause?: { code?: string } })?.cause?.code === "23505") {
+        throw new ConflictError(`The name "${alias}" is already used for another account.`);
+      }
+      throw cause;
+    }
+    if (!updated) {
+      throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      { action: "integration.account_renamed", subjectType: "external_account", subjectId: updated.id, summary: `Connector renamed: "${account.alias}" is now "${alias}"` },
+      tx,
+    );
+    return { renamed: true };
   });
 }
 
