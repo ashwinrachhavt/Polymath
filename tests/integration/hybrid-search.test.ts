@@ -166,6 +166,27 @@ suite("search filters (real Postgres)", () => {
     expect(human.id).not.toBe(generated.id);
   });
 
+  it("areaTags are the area dimension's artifact linkage: any declared tag matches, normalized", async () => {
+    const auth = await workspace();
+    const inArea = await write(auth, "Training zephyr", "zephyr training log");
+    const alsoIn = await write(auth, "Nutrition zephyr", "zephyr nutrition");
+    await write(auth, "Budget zephyr", "zephyr budget");
+    await holder.db!.update(artifacts).set({ tags: ["health"] }).where(eq(artifacts.id, inArea.id));
+    await holder.db!.update(artifacts).set({ tags: ["training-log"] }).where(eq(artifacts.id, alsoIn.id));
+    // An area declared as {health, training-log} covers both tagged notes; the
+    // untagged one stays out. Case and whitespace are normalized to the stored
+    // lowercase form.
+    const hits = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { areaTags: ["Health", " training-log "] } });
+    expect(hits.hits.map((h) => h.title).sort()).toEqual(["Nutrition zephyr", "Training zephyr"]);
+    // An area with no usable tags filters nothing rather than matching nothing.
+    const all = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { areaTags: [" ", ""] } });
+    expect(all.hits).toHaveLength(3);
+    // The coverage count honors the same predicate set: one uncovered note in
+    // the health area, three unfiltered (none of the three embedded).
+    expect(await countMeaningUncovered(auth, { filters: { areaTags: ["health"] } })).toBe(1);
+    expect(await countMeaningUncovered(auth, {})).toBe(3);
+  });
+
   it("counts exactly what the meaning leg cannot see, with the same kinds, filters and tenant scope", async () => {
     const auth = await workspace();
     const other = await workspace();
