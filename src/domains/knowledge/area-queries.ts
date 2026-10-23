@@ -30,8 +30,14 @@ export type AreaListItem = {
   confidence: {
     recallCorrect: number;
     recallTotal: number;
-    /** Recall attempts where the person typed an answer before the reveal. */
-    answeredWithoutLooking: number;
+    /**
+     * Recall attempts with typed text. The review UI unmounts the attempt
+     * field at reveal, so typing provably precedes seeing the answer - but
+     * typing is optional and unaided mental recall leaves no trace, so this
+     * is "typed before reveal", not the spec's "answers without looking".
+     * That measure stays unresolved until a grounded capture exists.
+     */
+    typedBeforeReveal: number;
     claimsAccepted: number;
     claimsDecided: number;
   };
@@ -61,7 +67,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
     manual_links: string;
     recall_attempts: string;
     recall_correct: string;
-    answered_without_looking: string;
+    typed_before_reveal: string;
     claims_decided: string;
     claims_accepted: string;
     last_activity_at: string | null;
@@ -90,7 +96,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
         where c.artifact_id in (select id from linked) and r.outcome = 'correct') as recall_correct,
       (select count(*)::text from card_reviews r
         join cards c on c.id = r.card_id
-        where c.artifact_id in (select id from linked) and r.response_text is not null) as answered_without_looking,
+        where c.artifact_id in (select id from linked) and r.response_text is not null) as typed_before_reveal,
       (select count(*)::text from claims cl
         where cl.artifact_id in (select id from linked) and cl.status in ('accepted', 'rejected')) as claims_decided,
       (select count(*)::text from claims cl
@@ -111,7 +117,7 @@ async function measureArea(auth: AuthContext, area: AreaRow) {
   const confidence = {
     recallCorrect: Number(row?.recall_correct ?? 0),
     recallTotal: effort.recallAttempts,
-    answeredWithoutLooking: Number(row?.answered_without_looking ?? 0),
+    typedBeforeReveal: Number(row?.typed_before_reveal ?? 0),
     claimsAccepted: Number(row?.claims_accepted ?? 0),
     claimsDecided: Number(row?.claims_decided ?? 0),
   };

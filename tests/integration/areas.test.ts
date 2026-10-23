@@ -130,7 +130,7 @@ suite("areas", () => {
       .insert(cards)
       .values({ workspaceId, prompt: "What does Raft guarantee?", answer: "Leader completeness.", artifactId: noteA, sourceTitle: "Area test note" })
       .returning({ id: cards.id });
-    // Two of the three attempts typed an answer before the reveal.
+    // Two of the three attempts carry typed text (only possible pre-reveal).
     await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "correct", responseText: "Leader completeness" });
     await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "correct", responseText: "One leader per term" });
     await db.insert(cardReviews).values({ workspaceId, cardId: card.id, outcome: "wrong" });
@@ -146,7 +146,7 @@ suite("areas", () => {
     expect(measured.confidence).toEqual({
       recallCorrect: 2,
       recallTotal: 3,
-      answeredWithoutLooking: 2,
+      typedBeforeReveal: 2,
       claimsAccepted: 1,
       claimsDecided: 2,
     });
