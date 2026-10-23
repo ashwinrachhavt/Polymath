@@ -321,6 +321,7 @@ export default function NotebookSurface({
               subject={{ type: "dossier", id: notebook.dossierId }}
               title={notebook.title}
               placeholder="Ask about these sources"
+              showHeader={false}
             />
           ) : activeChat ? (
             <div>
