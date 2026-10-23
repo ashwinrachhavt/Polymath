@@ -37,6 +37,7 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "linear.issue.read",
   "calendar.read",
   "notion.read",
+  "notion.page.read",
   // NotebookLM parity. Opening a notebook reads its sources and artifacts.
   "notebook.open",
   // Run follow-ups become reviewable task proposals, never silent task
@@ -87,6 +88,7 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "linear.issue.read",
       "calendar.read",
       "notion.read",
+  "notion.page.read",
       "notebook.open",
       // Prepare-risk proposal writes gained with the tasks_propose tool;
       // without this, existing profiles would fail closed on every call.

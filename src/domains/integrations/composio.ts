@@ -253,6 +253,46 @@ export async function executeComposioGraphqlRead(call: {
   return { ok: true, data: "data" in body ? body.data : body };
 }
 
+/*
+ * A constant-body POST read (Notion search). Same seam discipline as the
+ * GraphQL read: the provider module fixes the endpoint and the body shape,
+ * caller-supplied values travel inside the body only after validation, and
+ * the proxy still answers `{ data: <provider body> }`. There is no method
+ * parameter - a POST read cannot become anything else from here.
+ */
+export async function executeComposioPostRead(call: {
+  connectedAccountId: string;
+  endpoint: string;
+  body: Record<string, unknown>;
+  headers?: Record<string, string>;
+}): Promise<ComposioCallResult> {
+  const apiKey = process.env.COMPOSIO_API_KEY;
+  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  let response: Response;
+  try {
+    response = await fetch(EXECUTE_PROXY_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        connected_account_id: call.connectedAccountId,
+        endpoint: call.endpoint,
+        method: "POST",
+        body: call.body,
+        parameters,
+      }),
+    });
+  } catch {
+    return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
+  }
+  if (!response.ok) {
+    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
+  }
+  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
+  return { ok: true, data: "data" in body ? body.data : body };
+}
+
 /** A write call: the method is fixed at the type level, and guarded at runtime. */
 export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
 

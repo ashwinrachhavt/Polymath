@@ -24,6 +24,7 @@ const migrationSql = [
   "0231_comms_tiers.sql",
   "0232_workmgmt_tiers.sql",
   "0233_crm_tiers.sql",
+  "0238_notion_access_tiers.sql",
 ]
   .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
@@ -105,10 +106,15 @@ describe("tier helpers", () => {
   it("lowestTierId is the first tier, null when a provider has none", () => {
     expect(lowestTierId("gmail")).toBe("read_only");
     expect(lowestTierId("github")).toBe("read_only");
-    // Notion joins the Provider union in Task 9 with no tiers; the null path
-    // is reached today only through this cast, but it is the contract.
-    const notion = "notion" as Provider;
-    expect(lowestTierId(notion)).toBeNull();
+    // Every union member ships tiers now, so the null path is reached only
+    // through a cast of a catalogue provider outside the union, like jira.
+    const jira = "jira" as Provider;
+    expect(lowestTierId(jira)).toBeNull();
+  });
+
+  it("notion ships one read_only tier over its search and page read", () => {
+    expect(PROVIDER_TIERS.notion.map((t) => t.id)).toEqual(["read_only"]);
+    expect(tierCapabilities("notion", "read_only")).toEqual(["notion.read", "notion.page.read"]);
   });
 });
 
