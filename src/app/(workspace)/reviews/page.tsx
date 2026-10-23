@@ -121,7 +121,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   return (
     <Screen
       title="Reviews"
-      description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected and runs it once.`}
+      description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
     >
       <ListToolbar
         searchPlaceholder="Search proposals"

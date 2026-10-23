@@ -188,13 +188,19 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
      * owner never reviewed. The executor compares at send time.
      */
     let connectedAccountId: string | null = null;
+    let senderLabel: string | null = null;
     if (draft.externalAccountId) {
       const [account] = await tx
-        .select({ composioConnectedAccountId: externalAccounts.composioConnectedAccountId })
+        .select({
+          composioConnectedAccountId: externalAccounts.composioConnectedAccountId,
+          alias: externalAccounts.alias,
+          displayName: externalAccounts.displayName,
+        })
         .from(externalAccounts)
         .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, draft.externalAccountId)))
         .limit(1);
       connectedAccountId = account?.composioConnectedAccountId ?? null;
+      senderLabel = account ? (account.displayName ?? account.alias) : null;
     }
 
     const { proposalId, deduplicated } = await createProposal(tx, auth, {
@@ -219,6 +225,7 @@ export async function requestSendApproval(auth: AuthContext, input: { correspond
           contactId: draft.contactId,
           externalAccountId: draft.externalAccountId,
           connectedAccountId,
+          sender: senderLabel,
           subject: draft.subject,
           body: draft.body,
         },
