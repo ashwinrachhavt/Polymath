@@ -244,6 +244,14 @@ export function ChatSurface({
         )}
       </div>
 
+      {chat.connection === "done" ? (
+        // A finished run refuses follow-ups (409 run_finished): no dead input,
+        // just the honest ended state. Continuation is the page's own
+        // affordance (Retry on a run, New conversation on a notebook).
+        <p className="rounded-2xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+          This conversation has ended.
+        </p>
+      ) : (
       <form
         className="rounded-2xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
         onSubmit={(event) => {
@@ -272,21 +280,20 @@ export function ChatSurface({
           </p>
         )}
         <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <span className="px-1 text-[11px] text-muted-foreground">
-            {chat.connection === "done" ? "This conversation has ended" : "Enter to send · Shift+Enter for a new line"}
-          </span>
+          <span className="px-1 text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
           <Button
             type="submit"
             size="icon"
             aria-label={sending ? "Sending" : "Send"}
             title={sending ? "Sending" : "Send"}
             className="size-8 shrink-0 rounded-full"
-            disabled={!draft.trim() || sending || chat.connection === "done"}
+            disabled={!draft.trim() || sending}
           >
             <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
       </form>
+      )}
     </section>
   );
 }
