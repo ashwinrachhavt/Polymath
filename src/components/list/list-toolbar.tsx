@@ -50,6 +50,36 @@ export function ListToolbar({
   const [draft, setDraft] = useState(urlQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastPushed = useRef(urlQuery);
+  // Mirror of draft for the blur flush: React state lags inside the same
+  // event that clears it (Escape), so the flush reads the ref, not the state.
+  const draftRef = useRef(draft);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelPendingSearch() {
+    if (debounceRef.current !== null) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+  }
+
+  /*
+   * Commit the draft immediately instead of waiting out the debounce. Every
+   * gesture that can start a navigation — clicking a row link, tabbing to one
+   * and pressing Enter, activating a button — first moves focus out of this
+   * field, so flushing on blur orders the search's router.replace BEFORE the
+   * navigation's router.push. Without it a debounce that fires mid-navigation
+   * aborts that navigation and rewrites the URL from stale params, silently
+   * dropping the destination (the user clicked a task and stayed on the
+   * list). Dispatch order is what makes this deterministic; it does not rely
+   * on the search winning any race.
+   */
+  function flushSearch() {
+    cancelPendingSearch();
+    const next = draftRef.current.trim();
+    if (next === urlQuery) return;
+    lastPushed.current = next;
+    push({ [qKey]: next || undefined });
+  }
 
   function push(patch: Record<string, string | undefined>) {
     const next = new URLSearchParams(params.toString());
@@ -72,12 +102,17 @@ export function ListToolbar({
   }, [urlQuery]);
 
   useEffect(() => {
+    draftRef.current = draft;
     if (draft.trim() === urlQuery) return;
     const id = setTimeout(() => {
       lastPushed.current = draft.trim();
       push({ [qKey]: draft.trim() || undefined });
     }, SEARCH_DELAY_MS);
-    return () => clearTimeout(id);
+    debounceRef.current = id;
+    return () => {
+      clearTimeout(id);
+      if (debounceRef.current === id) debounceRef.current = null;
+    };
     // push closes over params; the debounce only needs to restart on typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
@@ -111,8 +146,12 @@ export function ListToolbar({
             placeholder={searchPlaceholder}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onBlur={flushSearch}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
+                // Clear without the blur flush resurrecting the typed draft.
+                cancelPendingSearch();
+                draftRef.current = "";
                 setDraft("");
                 e.currentTarget.blur();
               }
