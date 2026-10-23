@@ -114,7 +114,7 @@ suite("proposal-aware continuation (Neon)", () => {
         createdBy: auth.userId,
         updatedBy: auth.userId,
       });
-    const detail = await getDraftDetail(auth, oldArtifactId);
-    expect(detail.pendingRevisions).toBe(1);
+    const detail = (await getDraftDetail(auth, oldArtifactId))!;
+    expect(detail!.pendingRevisions).toBe(1);
   });
 });

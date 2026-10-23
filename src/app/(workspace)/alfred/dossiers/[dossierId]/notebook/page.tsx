@@ -110,8 +110,9 @@ async function NotebookData({
       {draftDetail && linkable ? (
         <section aria-label="Draft workbench" className="page-content mt-6">
           <DraftWorkbench
-            suggestedNextStep={artifactNextStep(draftDetail.artifact.status)}
+            suggestedNextStep={artifactNextStep(draftDetail.artifact.status, draftDetail.pendingRevisions)}
             artifact={draftDetail.artifact}
+            versions={draftDetail.versions}
             text={draftDetail.text}
             sources={draftDetail.sources}
             links={draftDetail.links}

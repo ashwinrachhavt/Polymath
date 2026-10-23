@@ -79,7 +79,7 @@ export default function NotebookSurface({
   /** This notebook's generate/research runs, newest first. */
   runs?: NotebookRun[];
   /** Draft artifact per producing run, when one exists. */
-  runDrafts?: Record<string, { artifactId: string; status: string }>;
+  runDrafts?: Record<string, { artifactId: string; status: string; version: number }>;
   /** The most recent grounded answer, when one exists. */
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
 }) {
