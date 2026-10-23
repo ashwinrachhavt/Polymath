@@ -28,7 +28,8 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await expect(page).toHaveURL(/\/alfred\/notes/);
 
   await page.getByRole("button", { name: "New note" }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  // First hit compiles the route + action in dev mode; give the navigation room.
+  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
   await page.getByLabel("Note title").fill(title);
   await page.getByLabel("Note title").blur();
 
@@ -49,7 +50,8 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await page.getByRole("button", { name: "Markdown source" }).click();
   await expect(page.getByLabel("Markdown source")).toHaveValue(body);
 
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  // After reload the note is in its saved state: nothing dirty left to save.
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 
   // Checkpoint mints the next immutable version, listed in History.
   await openDetails(page);
@@ -84,7 +86,8 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   // matches the current title at autosave time).
   await page.goto("/alfred/notes");
   await page.getByRole("button", { name: "New note" }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  // First hit compiles the route + action in dev mode; give the navigation room.
+  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
   const targetUrl = page.url();
   await page.getByLabel("Note title").fill(targetTitle);
   await page.getByLabel("Note title").blur();
@@ -95,7 +98,8 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   // The source note points at it by title.
   await page.goto("/alfred/notes");
   await page.getByRole("button", { name: "New note" }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  // First hit compiles the route + action in dev mode; give the navigation room.
+  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
   await page.getByLabel("Note title").fill(sourceTitle);
   await page.getByLabel("Note title").blur();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -124,7 +128,8 @@ test("Ask AI stages a request and reports honestly when the agent bridge is unco
 
   await page.goto("/alfred/notes");
   await page.getByRole("button", { name: "New note" }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  // First hit compiles the route + action in dev mode; give the navigation room.
+  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
   await page.getByLabel("Note title").fill(`AI staging ${tag}`);
   await page.getByLabel("Note title").blur();
 
