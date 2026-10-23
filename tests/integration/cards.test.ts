@@ -231,9 +231,17 @@ suite("zettel cards and recall", () => {
       code: "source_not_found",
     });
 
-    // Unarchiving returns the card to the queue.
+    // A stale or direct review submission against the archived-source card
+    // loses too: gradeable is exactly servable, never just "loaded earlier".
+    await expect(
+      commands.reviewCard(auth, { cardId: proposed.id, expectedVersion: 2, outcome: "correct" }),
+    ).rejects.toMatchObject({ code: "source_unavailable" });
+
+    // Unarchiving returns the card to the queue and to review.
     await db.update(artifacts).set({ archivedAt: null }).where(eq(artifacts.id, artifactId));
     expect(await queries.countDueCards(auth)).toBe(1);
+    const reviewed = await commands.reviewCard(auth, { cardId: proposed.id, expectedVersion: 2, outcome: "correct" });
+    expect(reviewed.id).toBe(proposed.id);
   });
 
   it("keeps the card and its review history when the source is deleted", async () => {
@@ -281,6 +289,15 @@ suite("zettel cards and recall", () => {
     const first = listed.items.find((item) => item.id === proposed.id)!;
     expect(first.sourceId).toBeNull();
     expect(first.sourceTitle).toBe("Distributed systems notes");
+
+    // Reviewing a deleted-source card is refused: history is preserved, but
+    // grading stays consistent with the queue, which no longer serves it.
+    // (The card was reviewed above, so wind its due date back to reach the
+    // source guard rather than the not-due guard.)
+    await db.update(cards).set({ dueAt: new Date(Date.now() - 60_000) }).where(eq(cards.id, proposed.id));
+    await expect(
+      commands.reviewCard(auth, { cardId: proposed.id, expectedVersion: 3, outcome: "correct" }),
+    ).rejects.toMatchObject({ code: "source_unavailable" });
   });
 
   it("searches card sources by title and skips archived notes", async () => {

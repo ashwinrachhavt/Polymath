@@ -26,6 +26,7 @@ export class CardError extends Error {
     public readonly code:
       | "card_not_found"
       | "source_not_found"
+      | "source_unavailable"
       | "stale_write"
       | "not_due"
       | "empty_field",
@@ -201,8 +202,13 @@ export async function reviewCard(
           easeFactor: cards.easeFactor,
           reviewCount: cards.reviewCount,
           version: cards.version,
+          // A card is gradeable exactly when it is servable: the queue joins
+          // out archived and deleted sources, so a stale or direct submission
+          // against one must lose here too, not slip a review past the guard.
+          sourceAvailable: sql<boolean>`(${artifacts.id} is not null and ${artifacts.archivedAt} is null)`,
         })
         .from(cards)
+        .leftJoin(artifacts, eq(artifacts.id, cards.artifactId))
         .where(and(eq(cards.id, input.cardId), eq(cards.workspaceId, auth.workspaceId)))
         .limit(1);
       if (!card || card.version !== input.expectedVersion) {
@@ -210,6 +216,12 @@ export async function reviewCard(
       }
       if (card.state !== "scheduled" || !card.dueAt || card.dueAt > now) {
         throw new CardError("not_due", "That card is not due for review.");
+      }
+      if (!card.sourceAvailable) {
+        throw new CardError(
+          "source_unavailable",
+          "That card's source was archived or deleted. Unarchive the note to keep reviewing, or retire the card.",
+        );
       }
       const next = nextRecallDue(
         { intervalDays: card.intervalDays, easeFactor: card.easeFactor, reviewCount: card.reviewCount },
