@@ -2,7 +2,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "./resolve";
-import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { contactPoints, organizations, partyEmployment, people } from "./schema";
 

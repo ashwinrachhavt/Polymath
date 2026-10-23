@@ -3,7 +3,6 @@ import { auth } from "@clerk/nextjs/server";
 import { connection } from "next/server";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveCompanionToken, resolveMachineClient } from "@/domains/identity/machine";
-import { sha256Hex } from "./hash";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { ForbiddenRoleError } from "./auth/guards";
 import { problemResponse } from "./problems";

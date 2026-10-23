@@ -3,7 +3,6 @@
 import { createEngine } from "@/domains/agents/engine";
 import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { ensureProfile } from "@/domains/agents/commands";
-import { getProfileByName } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
