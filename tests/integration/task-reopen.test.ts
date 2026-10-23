@@ -1,7 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
+import { rewardLedger } from "@/domains/gamification/schema";
 import { taskDependencies, tasks } from "@/domains/work/schema";
+import { sql } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -96,6 +98,58 @@ suite("reopenTask - undo for terminal transitions", () => {
       .from(auditEvents)
       .where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.reopened")));
     expect(audits).toHaveLength(1);
+  });
+
+  it("reopening twice in a row only wins once (stale second click)", async () => {
+    const { a } = await setup("double");
+    const { id } = await work.createOwnerTask(a, { title: "Click twice" });
+    await work.completeTask(a, { taskId: id });
+    expect(await work.reopenTask(a, { taskId: id })).not.toBeNull();
+    expect(await work.reopenTask(a, { taskId: id })).toBeNull();
+  });
+
+  it("keeps edges resolved by another path: only its own terminalization is undone", async () => {
+    const { a, workspaceId } = await setup("other-path");
+    const { id: blocker } = await work.createOwnerTask(a, { title: "Already done" });
+    await work.completeTask(a, { taskId: blocker });
+    // Deterministic discrimination without sleeps: the completion reads as
+    // 10s old, so the edge linked below (resolved by the pre-done insert
+    // rule, not by the completion) lands clearly after the terminal time.
+    await db.execute(sql`update tasks set completed_at = now() - interval '10 seconds' where id = ${blocker}`);
+    const { id: blocked } = await work.createOwnerTask(a, { title: "Linked later" });
+    await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
+    expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
+    expect(await work.reopenTask(a, { taskId: blocker })).not.toBeNull();
+    const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
+    expect(edge.resolvedAt).not.toBeNull();
+    expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
+  });
+
+  it("re-complete after reopen settles edges once, earns no second stone the same day", async () => {
+    const { a, workspaceId } = await setup("recomplete");
+    const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
+    const { id: blocked } = await work.createOwnerTask(a, { title: "Behind the gate" });
+    await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
+    const first = await work.completeTask(a, { taskId: blocker });
+    expect(first).not.toBeNull();
+    const ledgerCount = async () =>
+      (await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, workspaceId))).length;
+    const stonesAfterFirst = await ledgerCount();
+
+    // Reopening itself writes no ledger row: scoped undo, not history edits.
+    expect(await work.reopenTask(a, { taskId: blocker })).not.toBeNull();
+    expect(await ledgerCount()).toBe(stonesAfterFirst);
+
+    // Re-completing settles the same edges again (once - they are rows, not
+    // events) and the daily-stone idempotency key refuses a second award.
+    const second = await work.completeTask(a, { taskId: blocker });
+    expect(second).not.toBeNull();
+    expect(second?.quartzEarned).toBe(false);
+    expect(await ledgerCount()).toBe(stonesAfterFirst);
+    expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, blocker));
+    expect(row.status).toBe("done");
+    expect(row.completedAt).not.toBeNull();
   });
 
   it("cannot reopen another workspace's task", async () => {

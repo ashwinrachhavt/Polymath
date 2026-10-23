@@ -68,15 +68,27 @@ async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Re
   await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic, payload });
 }
 
-/** Mark edges this task was blocking as resolved (or unresolved on reopen). */
-export async function settleBlockers(tx: TxDrizzle, auth: AuthContext, taskId: string, done: boolean) {
+/**
+ * Mark edges this task was blocking as resolved (or unresolved on reopen).
+ * `resolvedAtOrBefore` scopes an un-settle to the edges this task's own
+ * terminalization settled: an edge recorded resolved another way (linked
+ * against an already-done blocker) is not this transition's to undo.
+ */
+export async function settleBlockers(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  taskId: string,
+  done: boolean,
+  resolvedAtOrBefore?: Date,
+) {
   await tx.execute(sql`
     update task_dependencies
        set resolved_at = ${done ? sql`now()` : sql`null`}, updated_at = now(), updated_by = ${auth.userId},
            version = version + 1
      where workspace_id = ${auth.workspaceId}
        and ((kind = 'blocks' and task_id = ${taskId}) or (kind = 'blocked_by' and depends_on_task_id = ${taskId}))
-       and (resolved_at is not null) <> ${done}`);
+       and (resolved_at is not null) <> ${done}
+       ${resolvedAtOrBefore ? sql`and resolved_at <= ${resolvedAtOrBefore.toISOString()}` : sql``}`);
 }
 
 /** Patch a task if `expectedVersion` still matches; the row's version is the guard. */

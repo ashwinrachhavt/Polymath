@@ -272,7 +272,7 @@ export async function reopenTask(
 ): Promise<{ id: string; from: "done" | "cancelled" } | null> {
   return withTransaction(async (tx) => {
     const [before] = await tx
-      .select({ status: tasks.status, title: tasks.title })
+      .select({ status: tasks.status, title: tasks.title, completedAt: tasks.completedAt, cancelledAt: tasks.cancelledAt })
       .from(tasks)
       .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
       .limit(1);
@@ -298,8 +298,17 @@ export async function reopenTask(
     // Lost the race to another reopen (or a concurrent patch): nothing to record.
     if (!task) return null;
 
-    // Whatever this task was blocking waits on it again.
-    await settleBlockers(tx, auth, task.id, false);
+    // Whatever this task's own terminalization resolved waits on it again.
+    // Edges resolved another way (linked against the task while it was
+    // already done or cancelled) are not this transition's to undo and stay
+    // resolved. The terminal timestamp anchors that scope; a one-second
+    // margin covers JS-vs-database clock skew inside the settling
+    // transaction, nothing more. A terminal row without its timestamp is a
+    // data surprise - skip the un-settle rather than guess.
+    const terminalAt = before.status === "done" ? before.completedAt : before.cancelledAt;
+    if (terminalAt) {
+      await settleBlockers(tx, auth, task.id, false, new Date(terminalAt.getTime() + 1000));
+    }
 
     await recordAudit(
       auth,
