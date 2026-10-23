@@ -80,6 +80,15 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const rows = found.items;
   const filtered = Boolean(list.q || list.filters.kind || list.filters.status);
+  // The row's destination follows what can open it: a wiki page has a reader,
+  // a generated Studio kind opens in the draft workbench, and only the
+  // human-written kinds may mount the Notes editor (whose autosave would
+  // clobber structured content).
+  const hrefFor = (row: { id: string; kind: string; isWiki: boolean }): string => {
+    if (row.isWiki) return `/alfred/artifacts/${row.id}`;
+    if (kindLabel[row.kind] && row.kind !== "zettel") return `/alfred/dossiers?draft=${row.id}`;
+    return `/alfred/notes?id=${row.id}`;
+  };
 
   return (
     <Screen title="Artifacts" description="Everything the assistant generated that you kept.">
@@ -120,10 +129,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
             {rows.map((row) => (
               <li key={row.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <Link
-                    href={row.isWiki ? `/alfred/artifacts/${row.id}` : `/alfred/notes?id=${row.id}`}
-                    className="text-[13px] font-medium underline-offset-4 hover:underline"
-                  >
+                  <Link href={hrefFor(row)} className="text-[13px] font-medium underline-offset-4 hover:underline">
                     {row.title}
                   </Link>
                   <span className="flex items-center gap-2">

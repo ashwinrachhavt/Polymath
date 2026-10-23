@@ -67,13 +67,20 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
         const payload = (await response.json().catch(() => null)) as
           | { documentId?: string; fileStatus?: string; title?: string }
           | null;
-        if (!response.ok || !payload?.documentId) {
+        // Quarantine must be checked before the documentId test: a quarantined
+        // file answers 200 with a fileId and no documentId, so the generic
+        // upload-failed branch would otherwise swallow the specific reason.
+        if (!response.ok || !payload) {
           const problem = payload && "title" in payload ? payload.title : null;
           setError(problem ?? `${file.name} could not be uploaded (${response.status}).`);
           return;
         }
         if (payload.fileStatus === "quarantined") {
           setError(`We kept ${file.name} but could not identify its type, so it is not in the notebook.`);
+          return;
+        }
+        if (!payload.documentId) {
+          setError(`${file.name} could not be uploaded (${response.status}).`);
           return;
         }
         const out = await attachToNotebookAction({ dossierId, documentIds: [payload.documentId] });

@@ -80,18 +80,12 @@ describe("navigation", () => {
   });
 
   /*
-   * The IA simplification removed seven destinations from the rail. Their
-   * hrefs must be gone (Dossiers was renamed to Notebook, so "Notebook" the
-   * label lives on at /alfred/dossiers; the removed destinations are known by
-   * their addresses). The /apps preview tools keep their donor labels; only
-   * the rail governs.
+   * The IA simplification removed seven destinations from the rail (Sources,
+   * Wiki, Learning, Spending, Opportunities, Focus, and the old Notebook at
+   * /alfred/notebook). The exact-order test above already fails if any of them
+   * returns, so no separate negative assertion is kept; /apps preview tools
+   * keep their donor labels, only the rail governs.
    */
-  it("keeps the seven removed destinations off the rail", () => {
-    const removedHrefs = ["/alfred/sources", "/alfred/wiki", "/alfred/learning", "/command-center/spending", "/command-center/opportunities", "/neuralflow/focus", "/alfred/notebook"];
-    for (const destination of destinations) {
-      expect(removedHrefs, destination.href).not.toContain(destination.href);
-    }
-  });
 
   it("rails exactly the simplified sixteen destinations in order", () => {
     expect(destinations.map((destination) => destination.label)).toEqual([

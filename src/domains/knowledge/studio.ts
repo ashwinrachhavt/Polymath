@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { actionProposals } from "@/domains/actions/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -68,12 +68,23 @@ export async function startStudioGenerate(
   if (!dossier) throw new StudioError("dossier_not_found", "No such dossier.");
 
   // The prompt needs the pinned documents so the model can cite by id.
+  // Same rule as dossierDocumentIds: a landed capture binds by file; a queued
+  // URL or YouTube capture has no file yet and binds by its canonical address.
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
     .from(dossierSources)
     .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
     .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        or(
+          and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+          and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+        ),
+      ),
+    )
     .where(and(eq(dossierSources.dossierId, dossier.id), eq(dossierSources.workspaceId, auth.workspaceId)));
 
   const objective = buildObjective(kind, {
@@ -164,12 +175,24 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
 
     await tx.insert(artifactLinks).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "run", targetId: run.id, label: "produced by" });
     if (dossierSubject?.id) {
+      // Same file-or-address rule as startStudioGenerate above: a queued URL or
+      // YouTube capture is a pinned source before its bytes land, so its
+      // document still gets the artifact link.
       const pinned = await tx
         .select({ documentId: documents.id, hash: dossierSources.pinnedContentHash })
         .from(dossierSources)
         .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
         .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
-        .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+        .innerJoin(
+          documents,
+          and(
+            eq(documents.workspaceId, auth.workspaceId),
+            or(
+              and(eq(documents.fileId, sources.fileId), isNotNull(documents.fileId)),
+              and(isNotNull(sources.url), eq(documents.sourceUrl, sources.url)),
+            ),
+          ),
+        )
         .where(and(eq(dossierSources.dossierId, dossierSubject.id), eq(dossierSources.workspaceId, auth.workspaceId)));
       for (const p of pinned) {
         await tx

@@ -144,7 +144,11 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       id: row.id,
       label: row.title,
       context: `Opportunity · ${row.stage.replace("_", " ")}`,
-      href: `/command-center/opportunities?id=${row.id}`,
+      // Opportunities left the rail in the IA simplification; People is the
+      // canonical screen their records live under. People takes no id param,
+      // so the row opens the list; the record itself is reachable through its
+      // company's context (P1 TODO: an opportunity inspector restores the deep link).
+      href: "/command-center/relationships/people",
     })),
     ...documentRows.map((row) => ({
       kind: "document" as const,

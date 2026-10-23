@@ -1,4 +1,4 @@
--- 0234: drop the Learning/teaching feature (IA simplification, owner decision).
+-- 0235: drop the Learning/teaching feature (IA simplification, owner decision).
 --
 -- Learning had no future in the product and its data was accepted as
 -- test-scale loss, so every learning object goes: the four tables (decks,

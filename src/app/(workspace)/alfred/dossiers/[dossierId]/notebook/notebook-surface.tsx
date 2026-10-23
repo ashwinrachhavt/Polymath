@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { BookmarkPlus, FileText, Image, Loader2, NotebookPen, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ export default function NotebookSurface({
   /** The most recent grounded answer, when one exists. */
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
 }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<StudioOutput>("report");
   const [brief, setBrief] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -145,7 +147,8 @@ export default function NotebookSurface({
     try {
       const response = await fetch(`/api/v1/dossiers/${notebook.dossierId}/generate`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        // A paid run starts here; the key makes a double click apply once.
+        headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ brief, kind: selected }),
       });
       if (!response.ok) {
@@ -153,6 +156,7 @@ export default function NotebookSurface({
         throw new Error(problem?.title ?? "The run could not be started.");
       }
       setBrief("");
+      router.refresh();
       setMessage("Run started. It writes a draft for review below; nothing publishes.");
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "The run could not be started.");
@@ -169,6 +173,7 @@ export default function NotebookSurface({
       const result = await researchDossierCompanyAction({ dossierId: notebook.dossierId, companyName, idempotencyKey: crypto.randomUUID() });
       if (!result.ok) throw new Error(result.error);
       setCompanyName("");
+      router.refresh();
       setMessage(`Case study drafted from ${result.manifestSize} pinned ${result.manifestSize === 1 ? "source" : "sources"}.`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "The research pass failed.");

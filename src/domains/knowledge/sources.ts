@@ -15,9 +15,10 @@ import { sources } from "./schema";
  * notebook's placeholder for a queued capture) is updated in place instead, so
  * one material is one row and the notebook's binding survives.
  *
- * `dossiers.ts` and `zettels.ts` build document-backed sources with their own
- * lookups (fileId-keyed, no URL); those stay where they are until a second
- * caller needs the same shape.
+ * `dossiers.ts` binds document-backed sources by fileId or address (a queued
+ * capture has no file yet, so the url branch is load-bearing); `zettels.ts`
+ * stays fileId-keyed. Those lookups live where they are until a second caller
+ * needs the same shape.
  */
 
 export async function recordSource(
