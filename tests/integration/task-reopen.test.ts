@@ -100,6 +100,20 @@ suite("reopenTask - undo for terminal transitions", () => {
     expect(edges.filter((e) => e.resolvedAt === null)).toHaveLength(1);
   });
 
+  it("re-saving a done task does not clobber the completion's attribution", async () => {
+    const { a } = await setup("resave");
+    const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
+    const { id: blocked } = await work.createOwnerTask(a, { title: "Behind" });
+    await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
+    await work.completeTask(a, { taskId: blocker }); // v2, settles and names the edge
+    // The detail form always sends its status: editing a done task's title
+    // re-sends status "done". That re-save is not a transition and must not
+    // overwrite the attribution with an empty set.
+    await cmd.updateTask(a, { taskId: blocker, expectedVersion: 2, idempotencyKey: key(), patch: { title: "Gate (renamed)", status: "done" } });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 3 })).toEqual({ id: blocker, from: "done" });
+    expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(1);
+  });
+
   it("ABA: a stale view cannot undo a newer reopen-and-recomplete", async () => {
     const { a } = await setup("aba");
     const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
