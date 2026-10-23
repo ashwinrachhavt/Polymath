@@ -19,5 +19,5 @@ SET "access_tiers" = '[{"id":"read_only","label":"Read only","description":"Agen
 WHERE provider = 'linkedin';
 
 UPDATE "integration_catalog"
-SET "access_tiers" = '[{"id":"read_only","label":"Read only","description":"Agents can read your Instagram profile and recent media.","capabilities":["instagram.profile.read","instagram.media.read"]}]'::jsonb
+SET "access_tiers" = '[{"id":"read_only","label":"Read only","description":"Agents can read your Instagram profile and recent media. Needs a Business or Creator account.","capabilities":["instagram.profile.read","instagram.media.read"]}]'::jsonb
 WHERE provider = 'instagram';

@@ -332,7 +332,7 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
     {
       id: "read_only",
       label: "Read only",
-      description: "Agents can read your Instagram profile and recent media.",
+      description: "Agents can read your Instagram profile and recent media. Needs a Business or Creator account.",
       capabilities: ["instagram.profile.read", "instagram.media.read"],
     },
   ],
