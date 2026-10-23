@@ -451,7 +451,7 @@ export async function editGeneratedDraft(
         .returning({ id: artifactVersions.id });
       await tx
         .update(artifacts)
-        .set({ currentVersionId: version.id })
+        .set({ currentVersionId: version.id, embedError: null })
         .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
       await tx.insert(auditEvents).values({
         workspaceId: auth.workspaceId,

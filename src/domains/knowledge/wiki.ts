@@ -107,6 +107,7 @@ async function appendVersion(tx: Tx, auth: AuthContext, artifactId: string, text
     .update(artifacts)
     .set({
       currentVersionId: version.id,
+      embedError: null,
       updatedAt: new Date(),
       updatedBy: auth.userId,
       version: sql`${artifacts.version} + 1`,
