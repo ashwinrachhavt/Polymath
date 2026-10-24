@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Paperclip, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
@@ -10,6 +10,7 @@ import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
+import { ComposerPlus } from "./composer-plus";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -89,7 +90,9 @@ export function ChatSurface({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMessage[]>([]);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Set by a send: the owner's own message always scrolls into view, even when
   // they had scrolled up to reread something.
   const forceScrollRef = useRef(false);
@@ -156,6 +159,32 @@ export function ChatSurface({
     } finally {
       setSending(false);
     }
+  }
+
+  /*
+   * Attach captures into the inbox through the same multipart route the
+   * command layer uses; the run stays text-only. The hint line reports the
+   * outcome so a capture never reads as it joining this conversation.
+   */
+  function attachFile(file: File) {
+    if (file.size > 4 * 1024 * 1024) {
+      setAttachNote("Captures are limited to 4 MB - the file was not attached.");
+      return;
+    }
+    setAttachNote(`Capturing ${file.name}…`);
+    const form = new FormData();
+    form.set("file", file);
+    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+      .then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 413) { setAttachNote("That file is over the 4 MB limit."); return; }
+          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
+          setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
+          return;
+        }
+        setAttachNote(`Captured ${file.name} to your inbox.`);
+      })
+      .catch(() => setAttachNote("Could not capture the file. Try again."));
   }
 
   return (
@@ -262,12 +291,12 @@ export function ChatSurface({
         // A finished run refuses follow-ups (409 run_finished): no dead input,
         // just the honest ended state. Continuation is the page's own
         // affordance (Retry on a run, New conversation on a notebook).
-        <p className="rounded-2xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+        <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
           This conversation has ended.
         </p>
       ) : (
       <form
-        className="rounded-2xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
+        className="rounded-xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
         onSubmit={(event) => {
           event.preventDefault();
           void send();
@@ -293,8 +322,23 @@ export function ChatSurface({
             {sendError}
           </p>
         )}
-        <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <span className="px-1 text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
+        <div className="flex items-center justify-between gap-2 px-2 pb-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <ComposerPlus
+              label="Add to message"
+              items={[
+                {
+                  label: "Attach a file",
+                  hint: "Captured to your inbox, up to 4 MB",
+                  icon: <Paperclip aria-hidden />,
+                  onSelect: () => fileInputRef.current?.click(),
+                },
+              ]}
+            />
+            <span className="px-1 truncate text-[11px] text-muted-foreground">
+              {attachNote ?? "Enter to send · Shift+Enter for a new line"}
+            </span>
+          </div>
           <Button
             type="submit"
             size="icon"
@@ -306,6 +350,18 @@ export function ChatSurface({
             <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) attachFile(file);
+            event.target.value = "";
+          }}
+        />
       </form>
       )}
     </section>

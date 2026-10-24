@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { ArrowUp, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowUp, Paperclip, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ComposerPlus } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
@@ -30,6 +31,8 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [skillId, setSkillId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /*
    * "/" as the first character opens the skill menu; the rest of the draft
@@ -42,6 +45,33 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   function pickSkill(skill: PickableSkill) {
     setSkillId(skill.id);
     setDraft("");
+  }
+
+  /*
+   * Attach captures the file into the inbox through the same multipart route
+   * the command layer uses (server actions cap below the upload ceiling); the
+   * conversation itself stays text-only. The note names what happened so the
+   * file landing in the inbox never reads as it joining this run.
+   */
+  function attachFile(file: File) {
+    if (file.size > 4 * 1024 * 1024) {
+      setAttachNote("Captures are limited to 4 MB - the file was not attached.");
+      return;
+    }
+    setAttachNote(`Capturing ${file.name}…`);
+    const form = new FormData();
+    form.set("file", file);
+    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+      .then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 413) { setAttachNote("That file is over the 4 MB limit."); return; }
+          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
+          setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
+          return;
+        }
+        setAttachNote(`Captured ${file.name} to your inbox.`);
+      })
+      .catch(() => setAttachNote("Could not capture the file. Try again."));
   }
 
   async function send() {
@@ -110,27 +140,48 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
           }}
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          {/*
-           * The slash menu is the only way to pin a skill; the picker dropdown
-           * is gone. When one is pinned, a chip names it and offers the
-           * unpin, so the state stays visible without a control that fronts
-           * every conversation.
-           */}
-          {skillId ? (
-            <button
-              type="button"
-              onClick={() => setSkillId("")}
-              aria-label={`Unpin skill ${skills.find((skill) => skill.id === skillId)?.name ?? skillId}`}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-6 items-center gap-1 rounded-md px-2 text-[12px] outline-none"
-            >
-              {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
-              <X aria-hidden className="size-3" />
-            </button>
-          ) : (
-            <span className="px-1 text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line
-            </span>
-          )}
+          <div className="flex min-w-0 items-center gap-1">
+            <ComposerPlus
+              label="Add to message"
+              items={[
+                ...(skills.length > 0
+                  ? [{
+                      label: "Pin a skill",
+                      hint: "Give this conversation a procedure to follow",
+                      icon: <Puzzle aria-hidden />,
+                      onSelect: () => setDraft("/"),
+                    }]
+                  : []),
+                {
+                  label: "Attach a file",
+                  hint: "Captured to your inbox, up to 4 MB",
+                  icon: <Paperclip aria-hidden />,
+                  onSelect: () => fileInputRef.current?.click(),
+                },
+              ]}
+            />
+            {/*
+             * The slash menu is the only way to pin a skill; the picker dropdown
+             * is gone. When one is pinned, a chip names it and offers the
+             * unpin, so the state stays visible without a control that fronts
+             * every conversation.
+             */}
+            {skillId ? (
+              <button
+                type="button"
+                onClick={() => setSkillId("")}
+                aria-label={`Unpin skill ${skills.find((skill) => skill.id === skillId)?.name ?? skillId}`}
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-6 items-center gap-1 rounded-md px-2 text-[12px] outline-none"
+              >
+                {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
+                <X aria-hidden className="size-3" />
+              </button>
+            ) : (
+              <span className="px-1 truncate text-[11px] text-muted-foreground">
+                {attachNote ?? "Enter to send · Shift+Enter for a new line"}
+              </span>
+            )}
+          </div>
           <Button
             type="submit"
             size="icon"
@@ -141,6 +192,18 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
             <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) attachFile(file);
+            event.target.value = "";
+          }}
+        />
       </div>
       {error ? (
         <p role="status" className="text-destructive mt-2 text-[12px]">
