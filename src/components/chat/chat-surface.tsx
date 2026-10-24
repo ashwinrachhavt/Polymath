@@ -277,9 +277,14 @@ export function ChatSurface({
           <details className="group mt-3 rounded-xl border border-border text-[12px]">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               <BookOpen aria-hidden className="size-3.5 shrink-0" />
-              <span className="shrink-0 font-medium text-foreground/80">Sources · {chat.citations.length}</span>
+              {/* Citations are passages, so one document can back several. The
+                  chip names the documents; the count would read as "5 sources"
+                  for one document. */}
+              <span className="shrink-0 font-medium text-foreground/80">
+                Sources · {new Set(chat.citations.map((citation) => citation.documentId)).size}
+              </span>
               <span className="min-w-0 flex-1 truncate group-open:hidden">
-                {chat.citations.map((citation) => citation.title).join(", ")}
+                {[...new Set(chat.citations.map((citation) => citation.title))].join(", ")}
               </span>
               <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
