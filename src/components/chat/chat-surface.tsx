@@ -314,10 +314,12 @@ export function ChatSurface({
         )}
       </div>
 
-      {chat.connection === "done" ? (
+      {chat.connection === "done" && !chat.lastFailedTurn ? (
         // A finished run refuses follow-ups (409 run_finished): no dead input,
         // just the honest ended state. Continuation is the page's own
-        // affordance (Retry on a run, New conversation on a notebook).
+        // affordance (Retry on a run, New conversation on a notebook). A
+        // failed turn is NOT this state: the session takes follow-ups, so the
+        // stream ending leaves the composer open with the failure alert.
         <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
           This conversation has ended.
         </p>

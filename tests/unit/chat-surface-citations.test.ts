@@ -40,6 +40,7 @@ function stateWith(citations: ChatState["citations"]): () => ChatState {
     connection: "streaming",
     error: null,
     retryable: true,
+    lastFailedTurn: false,
   });
 }
 

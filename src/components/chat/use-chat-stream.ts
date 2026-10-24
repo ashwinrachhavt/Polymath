@@ -33,6 +33,12 @@ export type ChatState = {
   error: string | null;
   /** Whether Retry can help once the connection is in the error state. */
   retryable: boolean;
+  /**
+   * The latest turn failed but the session continues: the surface shows the
+   * failure alert and keeps the composer open, instead of reading the ended
+   * stream state as "this conversation has ended".
+   */
+  lastFailedTurn: boolean;
 };
 
 const MAX_BACKOFF_MS = 8_000;
@@ -62,6 +68,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     connection: runId && options.enabled !== false ? "connecting" : "waiting",
     error: null,
     retryable: true,
+    lastFailedTurn: false,
   }));
 
   // Bumped by retry(): a new value restarts the connection effect with a fresh
@@ -171,8 +178,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               // conversation has ended" with no error text while the row said
               // waiting_input, and blocked the continuation path. The message
               // state below carries the failure into the surface's alert.
+              // The `end` frame that follows a failed turn still terminates
+              // the CONNECTION (the stream is over) but the surface reads the
+              // lastFailedTurn flag, not the ended state, so the composer
+              // stays and the error explains the failed reply.
               if (frame.state === "failed") {
-                setState((prev) => ({ ...prev, connection: "waiting", error: "The last reply failed. You can send another message." }));
+                setState((prev) => ({ ...prev, connection: "waiting", error: "The last reply failed. You can send another message.", lastFailedTurn: true }));
               }
             }
             if (frame.type === "error") {
@@ -189,7 +200,10 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
           }
           scheduleFlush();
           if (terminal) {
-            setState((prev) => ({ ...prev, connection: "done" }));
+            // A failed turn ends the stream, not the conversation: the error
+            // and the open composer survive (chat-surface reads lastFailedTurn
+            // before its ended banner).
+            setState((prev) => (prev.lastFailedTurn ? prev : { ...prev, connection: "done" }));
             return;
           }
         }
