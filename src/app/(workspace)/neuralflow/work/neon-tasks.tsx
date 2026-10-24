@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
-import { listWorkPageForPage, listWorkRowsForPage, getTaskDetailForPage, getActiveFocusSessionForPage, listFocusHistoryForPage } from "./data";
+import { listWorkPageForPage, listWorkRowsForPage, getTaskDetailForPage, getActiveFocusSessionForPage, getLastTaskHandoffForPage, listFocusHistoryForPage } from "./data";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
@@ -78,6 +78,9 @@ export async function NeonTasks({
     selectedTask && /^[0-9a-f-]{36}$/i.test(selectedTask) ? listWorkRowsForPage(auth, "open") : ([] as WorkRow[]),
     getActiveFocusSessionForPage(auth),
   ]);
+  // Where the live session's task was last picked up - the start-moment
+  // continuity cue; null when no closed session left a next step.
+  const lastHandoff = activeSession?.taskId ? await getLastTaskHandoffForPage(auth, activeSession.taskId) : null;
   const focusHistory = detail ? await listFocusHistoryForPage(auth, 10, detail.task.id) : [];
   const provenance = detail ? await getTaskProvenance(auth, detail.task.id) : [];
   const candidates = detail ? openRows.filter((r) => r.id !== detail.task.id).map((r) => ({ id: r.id, title: r.title })) : [];
@@ -96,12 +99,26 @@ export async function NeonTasks({
       title="Work"
     >
       {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
+      {/* The day's companion tools, reached from the day itself rather than
+          the tab row. Projects stay in the More index and command layer. */}
+      {scope === "today" && !selectedTask ? (
+        <nav aria-label="Related tools" className="-mt-2 mb-4 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
+        </nav>
+      ) : null}
       {activeSession ? (
         <Panel
           className="mb-6 border-app-accent/40"
           title={activeSession.subject || "Focus session"}
           description={activeSession.state === "running" ? "A focus session is running." : "A focus session is paused."}
         >
+          {lastHandoff ? (
+            <p className="mb-3 border-b border-border pb-3 text-[13px] text-muted-foreground">
+              Last time: {lastHandoff.nextStep}
+            </p>
+          ) : null}
           <ActiveSessionControls
             key={`${activeSession.id}:${activeSession.version}`}
             session={{

@@ -446,7 +446,49 @@
     {
       "idx": 237,
       "version": "7",
-      "tag": "0237_daybook_pins",
+      "tag": "0237_account_capability_overrides",
+      "when": 1792727159173,
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "tag": "0238_notion_access_tiers",
+      "when": 1792742686006,
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "tag": "0239_social_access_tiers",
+      "when": 1792745300000,
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "tag": "0240_zettel_recall",
+      "when": 1792745300001,
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "tag": "0241_areas",
+      "when": 1792749511210,
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "tag": "0242_reward_ledger_note",
+      "when": 1792757100000,
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "tag": "0243_daybook_pins",
       "when": 1792798400000,
       "breakpoints": true
     }

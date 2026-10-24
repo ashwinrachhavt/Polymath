@@ -90,7 +90,7 @@ const asNumber = (value: unknown): number | null => (typeof value === "number" ?
  * `DocumentCitation` (src/domains/knowledge/agent-search.ts) — keep the two in
  * step when the citation shape changes.
  */
-function citationsFromToolOutput(output: unknown): ChatCitation[] {
+export function citationsFromToolOutput(output: unknown): ChatCitation[] {
   const list = (output as { results?: unknown } | null | undefined)?.results;
   if (!Array.isArray(list)) return [];
   const seen = new Set<string>();

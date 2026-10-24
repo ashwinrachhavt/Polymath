@@ -94,7 +94,7 @@ export async function KnowledgeSurface({
         <div className="page-content">
           <EmptyState
             title="Knowledge storage is not configured"
-            description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and DOCLING_SERVE_URL or LLAMAPARSE_API_KEY."
+            description="Set DATABASE_URL and apply the database migrations to upload and review documents. Extraction also requires private Blob storage (BLOB_READ_WRITE_TOKEN, or Vercel OIDC with BLOB_STORE_ID) and a hosted reader (DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter)."
           />
         </div>
       </>
@@ -169,6 +169,12 @@ export async function KnowledgeSurface({
         <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">Documents</span>
         <Link href="/alfred/knowledge/zettels" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
           Zettels
+        </Link>
+        <Link href="/alfred/knowledge/cards" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+          Cards
+        </Link>
+        <Link href="/alfred/knowledge/areas" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+          Areas
         </Link>
       </nav>
 

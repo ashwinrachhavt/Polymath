@@ -87,10 +87,13 @@ describe("navigation", () => {
    * keep their donor labels, only the rail governs.
    */
 
-  it("rails exactly the simplified sixteen destinations in order", () => {
+  it("rails exactly the simplified fifteen destinations in order", () => {
+    // Conversations left the rail when its threads moved into the Assistant;
+    // the route still resolves (old links keep working) but it is no longer a
+    // destination.
     expect(destinations.map((destination) => destination.label)).toEqual([
       "Assistant", "Today", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
-      "Artifacts", "Skills", "People", "Companies", "Conversations", "Connectors",
+      "Artifacts", "Skills", "People", "Companies", "Connectors",
       "Reviews", "Activity", "Settings",
     ]);
   });

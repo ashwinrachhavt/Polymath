@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { Status } from "@/components/workspace/ui";
-import { searchKnowledge, type SearchHit, type SearchResult } from "@/domains/knowledge/retrieval";
+import { timeAgo } from "@/lib/time";
+import { countMeaningUncoveredByState, searchKnowledge, type SearchFilters, type SearchHit, type SearchResult } from "@/domains/knowledge/retrieval";
 import type { AuthContext } from "@/lib/auth";
 
 /*
@@ -49,7 +50,10 @@ function HitList({ result, hrefFor, selectedId, note }: { result: SearchResult; 
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{hit.title}</span>
-                  {KIND_LABEL[hit.kind] && <Status>{KIND_LABEL[hit.kind]}</Status>}
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">edited {timeAgo(hit.updatedAt)}</span>
+                    {KIND_LABEL[hit.kind] && <Status>{KIND_LABEL[hit.kind]}</Status>}
+                  </span>
                 </span>
                 {hit.snippet && <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{marked(hit.snippet)}</span>}
                 <Why hit={hit} />
@@ -62,14 +66,38 @@ function HitList({ result, hrefFor, selectedId, note }: { result: SearchResult; 
   );
 }
 
-async function Ranked(props: { auth: AuthContext; q: string; hrefFor: (id: string) => string; selectedId?: string }) {
-  const result = await searchKnowledge(props.auth, { query: props.q, limit: 20 });
-  const note = result.meaning === "ok" ? undefined : "Showing keyword matches only. Meaning search is not available right now.";
+/** The scope every search leg and the coverage count share, parsed from the URL by the page. */
+export type SearchScope = { kinds?: readonly string[]; filters?: SearchFilters };
+
+export async function Ranked(props: { auth: AuthContext; q: string; scope?: SearchScope; hrefFor: (id: string) => string; selectedId?: string }) {
+  const result = await searchKnowledge(props.auth, { query: props.q, limit: 20, kinds: props.scope?.kinds, filters: props.scope?.filters });
+  let note: string | undefined;
+  if (result.meaning === "ok") {
+    // Partial indexing is named, never presented as a complete search: same
+    // kinds/filters/tenant as the search itself, with current text, without a
+    // current-version embedding row. The count never sees the query text.
+    const { pending, failed } = await countMeaningUncoveredByState(props.auth, { kinds: props.scope?.kinds, filters: props.scope?.filters });
+    const uncovered = pending + failed;
+    if (uncovered > 0) {
+      // Name each state for what it actually is: pending means no pass has
+      // completed for the current version (never "being indexed" - there is
+      // no live job signal), failed means the last pass recorded an error.
+      // Retry lives on the surfaces that own it (the note's own status chip),
+      // not promised here across kinds that have no retry route.
+      const states = [
+        pending > 0 ? `${pending} not indexed yet` : null,
+        failed > 0 ? `${failed} with a failed indexing pass` : null,
+      ].filter(Boolean).join(", ");
+      note = `${uncovered} ${uncovered === 1 ? "item" : "items"} in the selected filters ${uncovered === 1 ? "is" : "are"} not meaning-searchable (${states}) and may be missing from these results.`;
+    }
+  } else {
+    note = "Showing keyword matches only. Meaning search is not available right now.";
+  }
   return <HitList result={result} hrefFor={props.hrefFor} selectedId={props.selectedId} note={note} />;
 }
 
-export async function SearchResults(props: { auth: AuthContext; q: string; hrefFor: (id: string) => string; selectedId?: string }) {
-  const quick = await searchKnowledge(props.auth, { query: props.q, limit: 20, mode: "keyword" });
+export async function SearchResults(props: { auth: AuthContext; q: string; scope?: SearchScope; hrefFor: (id: string) => string; selectedId?: string }) {
+  const quick = await searchKnowledge(props.auth, { query: props.q, limit: 20, mode: "keyword", kinds: props.scope?.kinds, filters: props.scope?.filters });
   return (
     <Suspense fallback={<HitList result={quick} hrefFor={props.hrefFor} selectedId={props.selectedId} note="Refining by meaning…" />}>
       <Ranked {...props} />

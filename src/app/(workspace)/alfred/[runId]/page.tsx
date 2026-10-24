@@ -7,7 +7,7 @@ import { Markdown } from "@/components/markdown";
 import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
-import { getRun } from "@/domains/agents/queries";
+import { getRun, getRunUsage, type RunUsage } from "@/domains/agents/queries";
 import { listThreads } from "@/domains/agents/thread";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
@@ -25,6 +25,21 @@ export const metadata = { title: "Conversation · Polymath" };
  * and the routes to act.
  */
 
+/*
+ * What the run has cost, from its recorded usage events. Every total is
+ * labeled "recorded": the recording contract does not guarantee completeness
+ * (a step may report no usage, usage without a price, or a dropped bridge
+ * write), so even a finished run's figure is what was recorded, not a
+ * guaranteed final bill. Missing cost stays missing - never rendered as zero.
+ */
+function costLabel(usage: RunUsage | null, finished: boolean): string | null {
+  if (!usage) return finished ? "no usage recorded" : null;
+  if (usage.usd === null) return "cost not recorded";
+  const n = Number(usage.usd);
+  const usd = Number.isFinite(n) ? (n >= 0.01 ? n.toFixed(2) : n.toFixed(4)) : usage.usd;
+  return `$${usd} recorded${finished ? "" : " so far"}`;
+}
+
 async function ConversationSurface({ runId }: { runId: string }) {
   await connection();
   const auth = await getAuthContext();
@@ -35,16 +50,21 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [threads, drafts] = await Promise.all([
+  const [threads, drafts, usage] = await Promise.all([
     listThreads(auth.workspaceId, [run.id]),
     draftsForRuns(auth, [run.id]),
+    getRunUsage(auth.workspaceId, run.id),
   ]);
 
   const thread = threads.get(run.id) ?? [];
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
-  const isLive = !["succeeded", "failed", "cancelled"].includes(run.state) && !unavailable;
+  const finished = ["succeeded", "failed", "cancelled"].includes(run.state);
+  // A live run streams when the bridge is up; without it the run still takes a
+  // follow-up and a stop through the plain API controls - a waiting run is a
+  // conversation, not a dead end.
+  const isLive = !finished && !unavailable;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -61,6 +81,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <p className="text-muted-foreground truncate text-[11px]">
               Started {timeAgo(run.createdAt)}
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
+              {costLabel(usage, finished) ? ` · ${costLabel(usage, finished)}` : null}
             </p>
           </div>
         </div>
@@ -78,8 +99,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <ChatSurface
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
-              optimisticMessage={run.objective}
               placeholder="Reply to continue…"
+              composerLabel="Follow-up message"
+              emptyText="This conversation has no messages yet."
               showHeader={false}
               className="min-h-0 flex-1"
             />
@@ -88,32 +110,33 @@ async function ConversationSurface({ runId }: { runId: string }) {
               This conversation has no messages yet.
             </p>
           ) : (
-            thread.map((entry) => (
-              <article key={entry.sequence} className="flex flex-col gap-1.5">
-                <p className="text-muted-foreground text-xs">
-                  {entry.kind === "user" ? "You" : entry.kind === "assistant" ? "Polymath" : entry.kind === "reasoning" ? "Thinking" : "Run"}
-                  {" · "}
-                  {timeAgo(entry.at)}
-                </p>
-                {entry.kind === "assistant" ? (
-                  <div className="text-[13px] leading-relaxed">
+            <div className="space-y-4">
+              {thread.map((entry) =>
+                entry.kind === "user" ? (
+                  <div key={entry.sequence} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                    {entry.text}
+                  </div>
+                ) : entry.kind === "assistant" ? (
+                  <div key={entry.sequence} className="max-w-[72ch] text-[13px] leading-6">
                     <Markdown text={entry.text} />
                   </div>
                 ) : entry.kind === "reasoning" ? (
                   // The model's visible rationale, kept from the live stream. A
                   // quiet disclosure, not a transcript body: it is evidence for
                   // the answer above it, not the thing being read.
-                  <details className="max-w-[72ch]">
-                    <summary className="text-muted-foreground cursor-pointer text-[13px] hover:text-foreground">
+                  <details key={entry.sequence} className="max-w-[72ch]">
+                    <summary className="text-muted-foreground cursor-pointer text-[12px] hover:text-foreground">
                       Show thinking
                     </summary>
                     <p className="text-muted-foreground mt-2 text-[13px] whitespace-pre-wrap">{entry.text}</p>
                   </details>
                 ) : (
-                  <p className="text-[13px] whitespace-pre-wrap">{entry.text}</p>
-                )}
-              </article>
-            ))
+                  <p key={entry.sequence} className="text-muted-foreground text-[12px]">
+                    {entry.text} · {timeAgo(entry.at)}
+                  </p>
+                ),
+              )}
+            </div>
           )}
 
           {run.error ? (
@@ -121,12 +144,18 @@ async function ConversationSurface({ runId }: { runId: string }) {
           ) : null}
           {/* The live composer above already sends messages; the only action it
               lacks is stopping the run. A finished run takes Retry here. */}
-          {!isLive ? (
+          {finished ? (
             <RunControls runId={run.id} finished />
-          ) : unavailable ? null : (
+          ) : unavailable ? (
+            <RunControls runId={run.id} finished={false} />
+          ) : (
             <ChatCancel runId={run.id} />
           )}
-          <DraftControls runId={run.id} draft={drafts.get(run.id) ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
+          <DraftControls
+            runId={run.id}
+            draft={drafts.get(run.id) ?? null}
+            canSave={(run.state === "succeeded" || run.state === "waiting_input") && thread.some((entry) => entry.kind === "assistant")}
+          />
         </section>
       </div>
     </div>

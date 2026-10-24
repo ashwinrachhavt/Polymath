@@ -46,6 +46,9 @@ describe("provider capability catalog", () => {
         "canva",
         "hubspot",
         "stripe",
+        "notion",
+        "linkedin",
+        "instagram",
       ]).toContain(spec.provider);
       // A provider's capability prefix is its name without separators
       // ("google-calendar" → "googlecalendar."), so one provider's ids stay
@@ -107,11 +110,11 @@ describe("provider capability catalog", () => {
  * Polymath-native tools are not provider capabilities: they read Polymath's own
  * tables and never leave the workspace, so they have no provider row.
  *
- * `calendar.read` and `notion.read` are provider capabilities whose catalog
- * rows belong to later slices; they are default-granted today, so the catalog
- * test would otherwise fail on a capability that is real but not yet defined
- * here. Listing them explicitly keeps the gap visible instead of widening the
- * rule.
+ * `calendar.read` is a provider capability whose catalog row belongs to a
+ * later slice; it is default-granted today, so the catalog test would
+ * otherwise fail on a capability that is real but not yet defined here.
+ * Listing it explicitly keeps the gap visible instead of widening the rule.
+ * (`notion.read` left this list when the Notion read tools shipped.)
  */
 // Polymath-native capabilities: they reach no provider, so they have no
 // catalog row and never will.
@@ -130,7 +133,7 @@ const NATIVE_TOOLS = [
   "web.fetch",
   "artifacts.revise",
 ];
-const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read", "notion.read"];
+const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 
 describe("the default profile's tools all resolve", () => {
   it("only grants a catalogued, native, or explicitly deferred capability", () => {

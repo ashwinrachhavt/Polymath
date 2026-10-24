@@ -7,6 +7,11 @@ import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifa
  * A citation renders as a numbered reference into the source list the caller
  * passes. That is the NotebookLM gesture: the marker in the text and the entry
  * in the list are the same number.
+ *
+ * Every generated-text element carries wrap-anywhere: content is model output
+ * inside schema length caps, not guaranteed breakable, and one unbroken string
+ * must not size the layout (a 500-char bullet otherwise blows a mobile page
+ * past the viewport through min-content sizing).
  */
 
 export type CitationSource = { documentId: string; title: string };
@@ -33,7 +38,7 @@ export function DeckView({ content, sources }: { content: DeckContent; sources: 
         return (
           <li key={`${i}-${slide.title}`} className="panel rounded-xl p-5">
             <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-[15px] font-medium">
+              <h3 className="wrap-anywhere text-[15px] font-medium">
                 {slide.title}
                 {cites.map((index) => (
                   <CitationMarker key={index} index={index} />
@@ -48,12 +53,12 @@ export function DeckView({ content, sources }: { content: DeckContent; sources: 
                 {slide.bullets.map((bullet, b) => (
                   <li key={b} className="flex gap-2 text-[13px] leading-relaxed">
                     <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
-                    <span>{bullet}</span>
+                    <span className="wrap-anywhere">{bullet}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {slide.note && <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">{slide.note}</p>}
+            {slide.note && <p className="mt-3 wrap-anywhere border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">{slide.note}</p>}
             {cites.length === 0 && (
               <p className="mt-3 text-xs text-muted-foreground">Unsourced slide. Edit it to cite a document.</p>
             )}
@@ -67,7 +72,7 @@ export function DeckView({ content, sources }: { content: DeckContent; sources: 
 export function InfographicView({ content, sources }: { content: InfographicContent; sources: CitationSource[] }) {
   return (
     <article className="panel rounded-xl p-6">
-      <h2 className="text-lg font-medium">{content.headline}</h2>
+      <h2 className="wrap-anywhere text-lg font-medium">{content.headline}</h2>
 
       {content.stats.length > 0 && (
         <dl className={content.layout === "stats" ? "mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3" : "mt-4 flex flex-wrap gap-6"}>
@@ -75,8 +80,8 @@ export function InfographicView({ content, sources }: { content: InfographicCont
             const index = stat.citation ? sources.findIndex((s) => s.documentId === stat.citation) : -1;
             return (
               <div key={`${i}-${stat.label}`} className="min-w-0">
-                <dt className="text-xs text-muted-foreground">{stat.label}</dt>
-                <dd className="readout mt-1 text-2xl">
+                <dt className="wrap-anywhere text-xs text-muted-foreground">{stat.label}</dt>
+                <dd className="readout mt-1 wrap-anywhere text-2xl">
                   {stat.value}
                   {index >= 0 && <CitationMarker index={index} />}
                 </dd>
@@ -90,8 +95,8 @@ export function InfographicView({ content, sources }: { content: InfographicCont
         <div className="mt-6 space-y-4">
           {content.sections.map((section, i) => (
             <section key={`${i}-${section.heading}`}>
-              <h3 className="text-[13px] font-medium">{section.heading}</h3>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{section.body}</p>
+              <h3 className="wrap-anywhere text-[13px] font-medium">{section.heading}</h3>
+              <p className="mt-1 wrap-anywhere text-[13px] leading-relaxed text-muted-foreground">{section.body}</p>
             </section>
           ))}
         </div>
@@ -103,7 +108,7 @@ export function InfographicView({ content, sources }: { content: InfographicCont
             {markers(content.citations, sources).map((index) => (
               <li key={index} className="text-xs text-muted-foreground">
                 <span className="readout mr-1">{index + 1}.</span>
-                {sources[index].title}
+                <span className="wrap-anywhere">{sources[index].title}</span>
               </li>
             ))}
           </ol>

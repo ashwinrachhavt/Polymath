@@ -6,8 +6,9 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
-import { embedArtifact } from "./embedding";
-import { artifactLinks, artifactVersions, artifacts, recoveryCopies, workingDrafts } from "./schema";
+import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
+import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
+import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 
 /*
  * The notes core (ASH-138 / B04): user-written rich notes on the artifact
@@ -190,7 +191,7 @@ export async function createNoteInTx(
       createdBy: auth.userId,
     })
     .returning({ id: artifactVersions.id });
-  await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+  await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
   await recordAudit(
     auth,
     { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
@@ -290,7 +291,7 @@ export async function commitNoteSnapshot(
           createdBy: auth.userId,
         })
         .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
-      await tx.update(artifacts).set({ currentVersionId: snapshot.id }).where(eq(artifacts.id, artifact.id));
+      await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, artifact.id));
       await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
       await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
       await recordAudit(
@@ -483,6 +484,10 @@ export type NoteDetail = {
   updatedAt: Date;
   content: NoteContent | null;
   draft: { content: NoteContent; baseVersionId: string | null; updatedAt: Date } | null;
+  /** Last indexing failure, if the embedding pass recorded one on this artifact. */
+  embedError: string | null;
+  /** Whether the CURRENT committed version has vectors - the note answers meaning search. */
+  indexed: boolean;
 };
 
 export async function getNote(auth: AuthContext, artifactId: string): Promise<NoteDetail | null> {
@@ -501,6 +506,10 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
         tags: artifacts.tags,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
+        embedError: artifacts.embedError,
+        // The coverage check countMeaningUncovered applies fleet-wide, per note:
+        // vectors exist for the version the card currently points at.
+        indexed: sql<boolean>`exists (select 1 from ${embeddings} where ${embeddings.workspaceId} = ${auth.workspaceId} and ${embeddings.ownerType} = ${ARTIFACT_EMBEDDING_OWNER_TYPE} and ${embeddings.ownerId} = ${artifacts.id} and ${embeddings.sourceVersionId} = ${artifacts.currentVersionId})`,
         content: artifactVersions.content,
         draftContent: workingDrafts.content,
         draftBaseVersionId: workingDrafts.baseVersionId,
@@ -526,10 +535,41 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       tags: readTags(row.tags),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      // Mapped, never raw: the column is plain text and the UI renders it,
+      // so only authored categories may reach the screen (#255's lesson).
+      embedError: safeArtifactEmbedError(row.embedError),
+      indexed: row.indexed,
       content: (row.content as NoteContent | null) ?? null,
       draft: row.draftContent ? { content: row.draftContent as NoteContent, baseVersionId: row.draftBaseVersionId, updatedAt: row.draftUpdatedAt! } : null,
     };
   });
+}
+
+/*
+ * Retry a note's meaning indexing on demand (the notes-side counterpart of
+ * the notebook source retry). The commit path embeds best-effort and records
+ * a failure on artifacts.embed_error without blocking the save, so a note
+ * written while the provider was unconfigured stays out of meaning search
+ * until someone asks again. Same artifact guard as getNote: the row must be
+ * this workspace's live note/zettel, or the retry would index something the
+ * caller cannot see. The outcome is embedArtifact's own: succeeded / skipped
+ * (no text) / failed (reason recorded on the artifact again).
+ */
+export async function retryNoteEmbedding(
+  auth: AuthContext,
+  input: { artifactId: string; provider?: EmbeddingProvider; batchTimeoutMs?: number },
+): Promise<ArtifactEmbedOutcome> {
+  if (!z.string().uuid().safeParse(input.artifactId).success) throw new NoteNotFoundError();
+  const row = await withTransaction(async (tx) => {
+    const [found] = await tx
+      .select({ id: artifacts.id, kind: artifacts.kind })
+      .from(artifacts)
+      .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
+      .limit(1);
+    return found ?? null;
+  });
+  if (!row || !(LINKABLE_KINDS as readonly string[]).includes(row.kind)) throw new NoteNotFoundError();
+  return embedArtifact(auth, { artifactId: row.id, provider: input.provider, batchTimeoutMs: input.batchTimeoutMs });
 }
 
 /*

@@ -50,7 +50,29 @@ export class ComposioNotConfiguredError extends Error {
   readonly code = "composio_not_configured";
 }
 
-function authConfigEnvName(provider: string) {
+/*
+ * A hosted-link request that reached Composio and failed. The status is kept
+ * on the error because a 401 is a deployment problem (the stored API key is
+ * invalid) with a different fix than a provider outage, and the account row
+ * should say so instead of rotting into a misleading "expired".
+ */
+export class ComposioLinkError extends Error {
+  readonly code = "composio_link_failed";
+  readonly status: number;
+  constructor(status: number) {
+    // Keep the "failed (N)" phrasing the client test pins; the 401 tail
+    // names the cause so the card's lastError says what to fix. The key
+    // itself never appears in the message.
+    super(
+      status === 401
+        ? "Composio link request failed (401): the deployment's COMPOSIO_API_KEY is invalid."
+        : `Composio link request failed (${status}).`,
+    );
+    this.status = status;
+  }
+}
+
+export function authConfigEnvName(provider: string) {
   return `COMPOSIO_AUTH_CONFIG_${provider.toUpperCase().replace(/-/g, "_")}`;
 }
 
@@ -83,7 +105,7 @@ export async function createHostedConnectLink(input: {
     }),
   });
   if (!response.ok) {
-    throw new Error(`Composio link request failed (${response.status}).`);
+    throw new ComposioLinkError(response.status);
   }
   const body = (await response.json()) as { redirect_url: string; connected_account_id: string; expires_at: string };
   return { redirectUrl: body.redirect_url, connectedAccountId: body.connected_account_id, expiresAt: body.expires_at };
@@ -136,51 +158,49 @@ export type ComposioCallResult =
  *    provider call inside a turn hides the failure from the user.
  *  - the caller has already checked the run's policy snapshot; this function
  *    cannot see a policy and must not be the only gate.
- *
- * The proxy answers `{ data: <provider body> }`; a bare body is accepted too,
- * because the two shipped clients had to handle both shapes.
  */
-export async function executeComposioRead(call: ComposioCall): Promise<ComposioCallResult> {
-  if (!READ_METHODS.has(call.method)) throw new ComposioReadOnlyViolationError(call.method);
+/*
+ * The one POST through the proxy that every read path shares. The proxy
+ * answers `{ data: <provider body> }`; a bare body is accepted too, because
+ * the two shipped clients had to handle both shapes. No retry anywhere here:
+ * silently retrying a provider call inside a turn hides the failure from the
+ * user. The write path keeps its own fetch - its timeout makes a failure
+ * `ambiguous`, a deliberately different contract.
+ */
+async function postThroughProxy(payload: Record<string, unknown>): Promise<ComposioCallResult> {
   const apiKey = process.env.COMPOSIO_API_KEY;
-  if (!apiKey) {
-    return {
-      ok: false,
-      code: "not_configured",
-      message: "Composio is not configured on this deployment yet.",
-    };
-  }
-  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
-  for (const [name, value] of Object.entries(call.query ?? {})) {
-    parameters.push({ name, value, type: "query" });
-  }
+  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
   let response: Response;
   try {
     response = await fetch(EXECUTE_PROXY_URL, {
       method: "POST",
       headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        connected_account_id: call.connectedAccountId,
-        endpoint: call.endpoint,
-        method: call.method,
-        ...(call.body === undefined ? {} : { body: call.body }),
-        parameters,
-      }),
+      body: JSON.stringify(payload),
     });
   } catch {
     return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
   }
   if (!response.ok) {
-    return {
-      ok: false,
-      code: "provider_error",
-      status: response.status,
-      message: `The connected service returned ${response.status}.`,
-    };
+    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
   }
   const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
   if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
   return { ok: true, data: "data" in body ? body.data : body };
+}
+
+export async function executeComposioRead(call: ComposioCall): Promise<ComposioCallResult> {
+  if (!READ_METHODS.has(call.method)) throw new ComposioReadOnlyViolationError(call.method);
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  for (const [name, value] of Object.entries(call.query ?? {})) {
+    parameters.push({ name, value, type: "query" });
+  }
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: call.method,
+    ...(call.body === undefined ? {} : { body: call.body }),
+    parameters,
+  });
 }
 
 /*
@@ -205,37 +225,43 @@ export async function executeComposioGraphqlRead(call: {
   variables?: Record<string, unknown>;
 }): Promise<ComposioCallResult> {
   if (!/^\s*query\b/.test(call.query) || GRAPHQL_FORBIDDEN.test(call.query)) throw new ComposioGraphqlNotQueryError();
-  const apiKey = process.env.COMPOSIO_API_KEY;
-  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
-  let response: Response;
-  try {
-    response = await fetch(EXECUTE_PROXY_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        connected_account_id: call.connectedAccountId,
-        endpoint: call.endpoint,
-        method: "POST",
-        body: { query: call.query, variables: call.variables ?? {} },
-        parameters: [],
-      }),
-    });
-  } catch {
-    return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
-  }
-  if (!response.ok) {
-    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
-  }
-  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
-  if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
-  return { ok: true, data: "data" in body ? body.data : body };
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: "POST",
+    body: { query: call.query, variables: call.variables ?? {} },
+    parameters: [],
+  });
+}
+
+/*
+ * A constant-body POST read (Notion search). Same seam discipline as the
+ * GraphQL read: the provider module fixes the endpoint and the body shape,
+ * caller-supplied values travel inside the body only after validation, and
+ * the proxy still answers `{ data: <provider body> }`. There is no method
+ * parameter - a POST read cannot become anything else from here.
+ */
+export async function executeComposioPostRead(call: {
+  connectedAccountId: string;
+  endpoint: string;
+  body: Record<string, unknown>;
+  headers?: Record<string, string>;
+}): Promise<ComposioCallResult> {
+  const parameters = Object.entries(call.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
+  return postThroughProxy({
+    connected_account_id: call.connectedAccountId,
+    endpoint: call.endpoint,
+    method: "POST",
+    body: call.body,
+    parameters,
+  });
 }
 
 /** A write call: the method is fixed at the type level, and guarded at runtime. */
 export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
 
 export type ComposioWriteResult =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; /** The provider's own HTTP status, from the proxy's 200 envelope, when present. */ providerStatus?: number }
   // `ambiguous` is the important one: the request may have reached the provider.
   // Anything that cannot prove "not sent" belongs here, and the executor turns
   // it into UNKNOWN rather than a retry.
@@ -284,8 +310,18 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
   }
   if (!response.ok) {
     const status = response.status;
-    // A 5xx may mean the provider accepted the request and failed afterwards.
-    // Only a 4xx proves the call was refused before it took effect.
+    /*
+     * This status is the PROXY's own, not the provider's. Composio's proxy
+     * contract (docs.composio.dev /reference/v3/api-reference/tools
+     * /postToolsExecuteProxy, fetched 2026-10-23) returns the provider's
+     * response - including the provider's error status - inside a 200
+     * envelope (`status` field). A non-200 here is the proxy's documented
+     * own error (400 invalid proxy request, 401 bad project key, 403/404
+     * account problems, 422 invalid account state, 429 rate limit refused,
+     * 501 unsupported): every one refuses BEFORE dispatch, so the call
+     * provably never reached the provider. A 5xx says nothing about whether
+     * the proxy dispatched first, so it stays ambiguous.
+     */
     return status >= 400 && status < 500
       ? { ok: false, code: "provider_error", status, message: `The connected service rejected the call (${status}).` }
       : { ok: false, code: "ambiguous", status, message: `The connected service returned ${status}.` };
@@ -293,9 +329,13 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
   // A 2xx whose body cannot be parsed is still a success at the provider with
   // no id we can record, which the caller cannot distinguish from a lost
   // response. Say so rather than inventing an outcome.
-  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  const body = (await response.json().catch(() => null)) as { data?: unknown; status?: unknown } | null;
   if (body === null) {
     return { ok: false, code: "ambiguous", status: response.status, message: "The connected service returned no parseable body." };
   }
-  return { ok: true, data: "data" in body ? body.data : body };
+  // The envelope carries the provider's own status (`status`, required by the
+  // contract) alongside the provider body (`data`). Surface it: a provider
+  // 4xx arrives here as a proxy 200 and must not read as success.
+  const providerStatus = typeof body.status === "number" ? body.status : undefined;
+  return { ok: true, data: "data" in body ? body.data : body, providerStatus };
 }

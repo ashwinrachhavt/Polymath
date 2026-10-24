@@ -222,7 +222,7 @@ async function ensureDefinition(
  * Called from task completion, inside the same transaction. Never throws for
  * game reasons: a disabled definition or an already-awarded day simply skips.
  */
-export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId: string): Promise<boolean> {
+export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId: string, note?: string): Promise<boolean> {
   const rows = await tx.execute(sql`
     select to_char(timezone(coalesce(
       (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
@@ -246,6 +246,7 @@ export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId
       reason: "task_completed",
       subjectType: "task",
       subjectId: taskId,
+      note: note ?? null,
       points: definition.points,
       idempotencyKey: `quartz:${day}`,
     })

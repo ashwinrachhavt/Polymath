@@ -123,17 +123,35 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "document-extraction-hosted",
     label: "Hosted document extraction",
-    watches: ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY"],
-    // Mirrors extractionProvider(): any one selects a hosted reader; with none,
-    // the in-process text-layer reader still handles text PDFs, so this entry is
-    // about scans and images, not about reading working at all.
-    ready: (env) => has(env, "DOCLING_SERVE_URL") || has(env, "REDUCTO_API_KEY") || has(env, "LLAMAPARSE_API_KEY"),
-    missing: (env) =>
-      has(env, "DOCLING_SERVE_URL") || has(env, "REDUCTO_API_KEY") || has(env, "LLAMAPARSE_API_KEY")
-        ? []
-        : ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY"],
+    watches: ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER", "OCR_MODEL", "OCR_ALLOW_UNVERIFIED_UPSTREAM"],
+    // Mirrors extractionProvider() plus the vision-OCR rescue in
+    // extractDocument(): a hosted reader is configured by any one of the three
+    // provider keys, or by the explicit OCR_PROVIDER=openrouter opt-in with the
+    // workspace's OpenRouter key. An OpenRouter key alone does NOT count — the
+    // metered route is opt-in, never inferred. With none, the in-process
+    // text-layer reader still handles text PDFs, so this entry is about scans
+    // and images, not about reading working at all.
+    ready: (env) =>
+      has(env, "DOCLING_SERVE_URL") ||
+      has(env, "REDUCTO_API_KEY") ||
+      has(env, "LLAMAPARSE_API_KEY") ||
+      (set(env, "OCR_PROVIDER")?.toLowerCase() === "openrouter" && has(env, "OPENROUTER_API_KEY")),
+    missing: (env) => {
+      if (
+        has(env, "DOCLING_SERVE_URL") ||
+        has(env, "REDUCTO_API_KEY") ||
+        has(env, "LLAMAPARSE_API_KEY") ||
+        (set(env, "OCR_PROVIDER")?.toLowerCase() === "openrouter" && has(env, "OPENROUTER_API_KEY"))
+      ) {
+        return [];
+      }
+      // The opt-in was set but its key is missing: name the key, not the menu.
+      if (set(env, "OCR_PROVIDER")?.toLowerCase() === "openrouter") return ["OPENROUTER_API_KEY"];
+      return ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER=openrouter (uses OPENROUTER_API_KEY)"];
+    },
     subject: "Scanned PDFs and images cannot be read; text-layer PDFs still can",
-    action: "set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY",
+    action:
+      "set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter to read scans through the workspace's OpenRouter key (metered by model input/output tokens; OCR_MAX_PAGES caps pages per extraction; OCR_MODEL picks the model)",
   },
   {
     id: "web-search-keyed",
@@ -199,13 +217,14 @@ const DEFINITIONS: readonly Definition[] = [
     id: "email-send",
     label: "Email sending",
     watches: ["COMPOSIO_API_KEY"],
-    // There is no MailSender implementation in the codebase — only the refusing
-    // default port. No environment variable makes this work, so reporting it
-    // ready on a Composio key would be the exact lie this module exists to stop.
-    ready: () => false,
-    missing: () => [],
-    subject: "Approved messages cannot leave the workspace; the send adapter is not implemented",
-    action: "ship a MailSender adapter, then wire it to the connected account",
+    // Mirrors gmailMailSender(): the adapter refuses before dispatch without
+    // the Composio project key. The connected Gmail account is workspace data
+    // the send executor checks per send, not env, so "ready" here means the
+    // deployment can send for a workspace that has one connected.
+    ready: (env) => has(env, "COMPOSIO_API_KEY"),
+    missing: (env) => (has(env, "COMPOSIO_API_KEY") ? [] : ["COMPOSIO_API_KEY"]),
+    subject: "Approved messages cannot leave the workspace",
+    action: "set COMPOSIO_API_KEY and connect a Gmail account",
   },
   {
     id: "private-file-storage",

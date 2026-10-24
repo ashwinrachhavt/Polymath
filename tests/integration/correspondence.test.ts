@@ -92,9 +92,18 @@ suite("correspondence", () => {
     ).rejects.toMatchObject({ code: "stale_write" });
   });
 
+  it("the approval gate refuses a contact with no email address", async () => {
+    const auth = await seed("corr-gate-no-email");
+    const contact = await crm.createContact(auth, { fullName: "No Mailbox" });
+    const draft = await correspondence.draftCorrespondence(auth, { contactId: contact.id, subject: "Hi", body: "Hello" });
+    await expect(
+      correspondence.requestSendApproval(auth, { correspondenceId: draft.id, expectedVersion: draft.version }),
+    ).rejects.toThrow(/email address/);
+  });
+
   it("the approval gate links one proposal and never sends", async () => {
     const auth = await seed("corr-gate");
-    const contact = await crm.createContact(auth, { fullName: "Katherine Johnson" });
+    const contact = await crm.createContact(auth, { fullName: "Katherine Johnson", primaryEmail: `kj-${Date.now()}@example.test` });
     const draft = await correspondence.draftCorrespondence(auth, { contactId: contact.id, subject: "Orbits", body: "Numbers attached." });
 
     const first = await correspondence.requestSendApproval(auth, { correspondenceId: draft.id, expectedVersion: draft.version });

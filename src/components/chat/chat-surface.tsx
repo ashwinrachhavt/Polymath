@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
-import { useChatStream } from "./use-chat-stream";
+import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 
@@ -43,6 +43,10 @@ export type ChatSurfaceProps = {
    */
   optimisticMessage?: string;
   placeholder?: string;
+  /** Accessible name for the composer; pages that frame it as a reply pass their own. */
+  composerLabel?: string;
+  /** Empty-transcript line; pages with a stored record say so instead of prompting. */
+  emptyText?: string;
   /** Receives citations a tool produced, as the knowledge domain's own type. */
   onCitation?: (citations: DocumentCitation[]) => void;
   /** Title shown in the surface header; defaults to the subject type. */
@@ -63,6 +67,8 @@ export function ChatSurface({
   subject,
   optimisticMessage,
   placeholder = "Ask about this",
+  composerLabel = "Message",
+  emptyText,
   onCitation,
   title,
   showHeader = true,
@@ -169,9 +175,10 @@ export function ChatSurface({
       ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
-        {transcript.length === 0 && !optimistic && waiting.length === 0 && !busy ? (
+        {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
           <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
-            Ask a question. Answers cite the {subject.type === "dossier" ? "pinned sources" : "sources"} they use.
+            {emptyText ??
+              `Ask a question. Answers cite the ${subject.type === "dossier" ? "pinned sources" : "sources"} they use.`}
           </p>
         ) : (
           <div className="space-y-4">
@@ -199,72 +206,30 @@ export function ChatSurface({
           </div>
         )}
 
-        {(() => {
-          /*
-           * The activity line is evidence, not telemetry: a reader should learn
-           * what the assistant looked at, in the product's vocabulary, without
-           * seeing tool plumbing. Internal lookups with nothing to say (a
-           * registry search, a self-check) are dropped entirely; the rest get
-           * a human label and a count, and errors stay visible in red.
-           */
-          const INTERNAL_TOOLS = /^(eve__|search_models|search_registry|notebook_open)/;
-          const TOOL_LABELS: Array<[RegExp, string]> = [
-            [/tasks_recent/i, "Checked completed tasks"],
-            [/tasks_read|tasks\./i, "Checked open tasks"],
-            [/documents_search|documents\./i, "Searched your documents"],
-            [/wiki_read|wiki\./i, "Checked the wiki"],
-            [/wiki_ingest/i, "Updated the wiki"],
-            [/wiki_lint/i, "Wiki health check"],
-            [/gmail/i, "Checked Gmail"],
-            [/calendar/i, "Checked calendar"],
-            [/web_search/i, "Searched the web"],
-            [/web_fetch/i, "Read a web page"],
-          ];
-          const visible = chat.tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
-          if (visible.length === 0) return null;
-          const labelOf = (raw: string) =>
-            TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
-          return (
-            <ul className="mt-4 space-y-1" aria-label="Tool activity">
-              {visible.map((tool) => {
-                const Glyph = toolGlyph(tool.label);
-                const count = /^\d+$/.test(tool.detail ?? "");
-                return (
-                  <li key={tool.callId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <Glyph aria-hidden className="size-3.5 shrink-0" />
-                    <span>{labelOf(tool.label)}</span>
-                    <span
-                      className={
-                        tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""
-                      }
-                    >
-                      {tool.status === "running"
-                        ? "…"
-                        : tool.status === "ok"
-                          ? count
-                            ? `${tool.detail} matches`
-                            : ""
-                          : (tool.detail ?? "failed")}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          );
-        })()}
+        <ToolActivity tools={chat.tools} busy={busy} />
 
         {chat.citations.length > 0 && (
-          <ul className="mt-4 space-y-2 border-t border-border pt-3" aria-label="Citations">
-            {chat.citations.map((citation) => (
-              <li key={`${citation.documentId}:${citation.span.start}`} className="text-[12px]">
-                {/* The passage is evidence for the answer, so it leads; the
-                    title is the pointer. Chunks arrive mid-sentence, so the
-                    line is trimmed to a readable start before clamping. */}
-                <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
-                <p className="font-medium">{citation.title}</p>
-              </li>
-            ))}
-          </ul>
+          <details className="group mt-3 rounded-xl border border-border text-[12px]">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <BookOpen aria-hidden className="size-3.5 shrink-0" />
+              <span className="shrink-0 font-medium text-foreground/80">Sources · {chat.citations.length}</span>
+              <span className="min-w-0 flex-1 truncate group-open:hidden">
+                {chat.citations.map((citation) => citation.title).join(", ")}
+              </span>
+              <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
+            </summary>
+            <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
+              {chat.citations.map((citation) => (
+                <li key={`${citation.documentId}:${citation.span.start}`}>
+                  <p className="font-medium">{citation.title}</p>
+                  {/* The passage is evidence for the answer. Chunks arrive
+                      mid-sentence, so the line is trimmed to a readable start
+                      before clamping. */}
+                  <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
 
         {chat.error && (
@@ -279,16 +244,24 @@ export function ChatSurface({
         )}
       </div>
 
+      {chat.connection === "done" ? (
+        // A finished run refuses follow-ups (409 run_finished): no dead input,
+        // just the honest ended state. Continuation is the page's own
+        // affordance (Retry on a run, New conversation on a notebook).
+        <p className="rounded-2xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+          This conversation has ended.
+        </p>
+      ) : (
       <form
-        className="border-t border-border pt-3"
+        className="rounded-2xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
         onSubmit={(event) => {
           event.preventDefault();
           void send();
         }}
       >
         <Textarea
-          aria-label="Message"
-          className="min-h-[64px] resize-none text-[13px]"
+          aria-label={composerLabel}
+          className="composer-input max-h-48 min-h-[52px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -302,17 +275,25 @@ export function ChatSurface({
           }}
         />
         {sendError && (
-          <p role="alert" className="mt-2 text-[12px] text-destructive">
+          <p role="alert" className="px-3.5 pb-1 text-[12px] text-destructive">
             {sendError}
           </p>
         )}
-        <div className="mt-2 flex items-center justify-end gap-2">
-          <Button type="submit" size="sm" disabled={!draft.trim() || sending || chat.connection === "done"}>
-            <ArrowUp aria-hidden />
-            {sending ? "Sending" : "Send"}
+        <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+          <span className="px-1 text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
+          <Button
+            type="submit"
+            size="icon"
+            aria-label={sending ? "Sending" : "Send"}
+            title={sending ? "Sending" : "Send"}
+            className="size-8 shrink-0 rounded-full"
+            disabled={!draft.trim() || sending}
+          >
+            <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
       </form>
+      )}
     </section>
   );
 }
@@ -331,6 +312,82 @@ export function ChatCancel({ runId }: { runId: string }) {
       <Square aria-hidden />
       Stop
     </Button>
+  );
+}
+
+const INTERNAL_TOOLS = /^(eve__|search_models|search_registry|notebook_open)/;
+const TOOL_LABELS: Array<[RegExp, string]> = [
+  [/tasks_recent/i, "Checked completed tasks"],
+  [/tasks_read|tasks\./i, "Checked open tasks"],
+  [/documents_search|documents\./i, "Searched your documents"],
+  [/wiki_read|wiki\./i, "Checked the wiki"],
+  [/wiki_ingest/i, "Updated the wiki"],
+  [/wiki_lint/i, "Wiki health check"],
+  [/gmail/i, "Checked Gmail"],
+  [/calendar/i, "Checked calendar"],
+  [/web_search/i, "Searched the web"],
+  [/web_fetch/i, "Read a web page"],
+];
+
+const toolLabel = (raw: string) => TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
+
+/*
+ * Tool activity, said the way a good chat product says it: one quiet pill that
+ * names what the assistant did, expandable to the steps underneath. While a
+ * step runs the pill stays open so progress is visible; once every step
+ * settles it closes to a single summary line. Internal lookups with nothing
+ * to say (a registry search, a self-check) never appear.
+ */
+function ToolActivity({ tools, busy }: { tools: ChatState["tools"]; busy: boolean }) {
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const visible = tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
+  if (visible.length === 0) return null;
+  const running = visible.filter((tool) => tool.status === "running");
+  const expanded = toggled ?? (running.length > 0 || busy);
+  const summary =
+    running.length > 0
+      ? `${toolLabel(running[running.length - 1].label)}…`
+      : visible.length === 1
+        ? toolLabel(visible[0].label)
+        : `Used ${visible.length} tools`;
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-muted/30 text-[12px]">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setToggled(!expanded)}
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown aria-hidden className={`size-3.5 shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`} />
+        <span className="min-w-0 flex-1 truncate text-left">{summary}</span>
+        {running.length > 0 ? <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" /> : null}
+      </button>
+      {expanded ? (
+        <ul className="space-y-1 border-t border-border px-3 py-2" aria-label="Tool activity">
+          {visible.map((tool) => {
+            const Glyph = toolGlyph(tool.label);
+            const count = /^\d+$/.test(tool.detail ?? "");
+            return (
+              <li key={tool.callId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <Glyph aria-hidden className="size-3.5 shrink-0" />
+                <span>{toolLabel(tool.label)}</span>
+                <span
+                  className={tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""}
+                >
+                  {tool.status === "running"
+                    ? "\u2026"
+                    : tool.status === "ok"
+                      ? count
+                        ? `${tool.detail} matches`
+                        : ""
+                      : (tool.detail ?? "failed")}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

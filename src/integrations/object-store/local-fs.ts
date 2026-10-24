@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
@@ -49,4 +49,13 @@ export async function readLocalBlob(storageKey: string): Promise<Uint8Array> {
     throw new Error("Stored blob exceeds the extraction size limit");
   }
   return new Uint8Array(await readFile(full));
+}
+
+/** Best-effort removal of an object this run just wrote; a missing file is already gone. */
+export async function deleteLocalBlob(storageKey: string): Promise<void> {
+  try {
+    await unlink(resolveKey(storageKey));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") throw error;
+  }
 }

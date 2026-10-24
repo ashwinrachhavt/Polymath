@@ -28,6 +28,9 @@
             </button>
           </li>
           <li>
+            <button class="nav-btn" data-panel="outbox">Pending Sync</button>
+          </li>
+          <li>
             <button class="nav-btn" data-panel="settings">Settings</button>
           </li>
         </ul>
@@ -96,6 +99,25 @@
         </div>
 
         <!-- Settings panel -->
+        <div id="panel-outbox" class="panel">
+          <div class="panel-header">
+            <h2>Pending Sync</h2>
+            <div class="panel-actions">
+              <button id="btn-refresh-outbox" class="btn btn-secondary">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <p class="panel-hint">
+            Captures stored on this device that have not reached Polymath yet.
+            They retry on their own; nothing here is lost when you close the
+            browser.
+          </p>
+          <div id="outbox-list" class="card-list">
+            <p class="empty-state">Loading...</p>
+          </div>
+        </div>
+
         <div id="panel-settings" class="panel">
           <div class="panel-header">
             <h1>Settings</h1>

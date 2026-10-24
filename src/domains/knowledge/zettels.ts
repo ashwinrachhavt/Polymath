@@ -233,7 +233,7 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
         createdBy: auth.userId,
       })
       .returning({ id: artifactVersions.id });
-    await tx.update(artifacts).set({ currentVersionId: cardVersion.id }).where(eq(artifacts.id, card.id));
+    await tx.update(artifacts).set({ currentVersionId: cardVersion.id, embedError: null }).where(eq(artifacts.id, card.id));
     await tx.insert(artifactLinks).values({
       workspaceId: auth.workspaceId,
       artifactId: card.id,

@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { agentProfiles, agentRuns } from "@/domains/agents/schema";

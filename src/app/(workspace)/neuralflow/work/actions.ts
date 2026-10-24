@@ -3,7 +3,8 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { completeTask, createOwnerTask } from "@/domains/work/commands";
+import { completeTask, completeTasks, reopenTask, createOwnerTask } from "@/domains/work/commands";
+import { getCompletionConflictState } from "@/domains/work/queries";
 import {
   DependencyCycleError,
   RankOrderError,
@@ -86,20 +87,110 @@ export async function createTaskAction(input: {
   return { ok: true, taskId: id };
 }
 
+const completionSentence = z
+  .string()
+  .trim()
+  .max(280, "Keep the sentence under 280 characters.")
+  .optional();
+
+export type CompleteTaskResult =
+  | { ok: true; quartzEarned: boolean }
+  // conflict: the task's real state already moved on - retrying the
+  // completion is wrong, the list should reconcile instead. sentenceRecorded
+  // is set only when a sentence was submitted AND the completed task's audit
+  // row was checked: true = this exact sentence is on the recorded
+  // completion, false = it is not; unset = nothing claimed. validation: the
+  // sentence itself was rejected; editing and resubmitting is right.
+  | { ok: false; kind: "conflict" | "validation"; error: string; sentenceRecorded?: boolean };
+
 export async function completeTaskAction(
   taskId: string,
-): Promise<{ ok: true; quartzEarned: boolean } | { ok: false; error: string }> {
+  sentence?: string,
+): Promise<CompleteTaskResult> {
   const parsed = z.string().uuid().safeParse(taskId);
-  if (!parsed.success) return { ok: false, error: "That task no longer exists." };
+  if (!parsed.success) return { ok: false, kind: "conflict", error: "That task no longer exists." };
+  const noted = completionSentence.safeParse(sentence);
+  if (!noted.success) return { ok: false, kind: "validation", error: noted.error.issues[0]?.message ?? "That sentence is too long." };
 
   const auth = await authorize();
-  const done = await completeTask(auth, { taskId: parsed.data });
+  const done = await completeTask(auth, { taskId: parsed.data, sentence: noted.data });
   revalidate(auth);
-  // Already done leaves the row alone and says so, rather than pretending the
-  // second click did something.
-  return done
-    ? { ok: true, quartzEarned: done.quartzEarned }
-    : { ok: false, error: "This task was already completed. Reload to see it." };
+  if (done) return { ok: true, quartzEarned: done.quartzEarned };
+
+  // The guarded UPDATE matched no row. Find out why before saying anything:
+  // a cancelled or inaccessible task is not "already completed", and when a
+  // response was lost after commit, this request's sentence may actually be
+  // recorded - check the completed task's audit row before claiming either.
+  const state = await getCompletionConflictState(auth, parsed.data);
+  if (!state) return { ok: false, kind: "conflict", error: "That task is not available in this workspace." };
+  if (state.status === "cancelled") return { ok: false, kind: "conflict", error: "That task was cancelled, not completed." };
+  if (state.status !== "done") return { ok: false, kind: "conflict", error: "That task could not be completed. Reload to see its current state." };
+  const submitted = noted.data;
+  if (submitted) {
+    return state.completionNote === submitted
+      ? { ok: false, kind: "conflict", error: "This task was already completed - with this sentence recorded.", sentenceRecorded: true }
+      : { ok: false, kind: "conflict", error: "This task was already completed.", sentenceRecorded: false };
+  }
+  return { ok: false, kind: "conflict", error: "This task was already completed." };
+}
+
+/*
+ * Bulk edit (Product Spec: "bulk edit"). Completes each selected task through
+ * the same guarded command the single Done button uses and reports the
+ * outcome per item: nothing is shown as done that did not complete, and a
+ * task that was already terminal or left the workspace is named as skipped,
+ * not absorbed. No per-item sentence - the completion question stays a
+ * single-task affordance; completing with no sentence is the same "Just
+ * complete" the row button already offers.
+ */
+const bulkCompleteInput = z.array(z.string().uuid()).min(1).max(100);
+
+export async function completeTasksAction(
+  taskIds: string[],
+): Promise<{ ok: true; completed: string[]; skipped: string[]; unknown: string[]; unattempted: string[]; quartzEarned: boolean } | { ok: false; error: string }> {
+  const parsed = bulkCompleteInput.safeParse(taskIds);
+  if (!parsed.success) return { ok: false, error: "Select between 1 and 100 tasks." };
+
+  const auth = await authorize();
+  const outcome = await completeTasks(auth, [...new Set(parsed.data)]);
+  revalidate(auth);
+  return { ok: true, ...outcome };
+}
+
+/*
+ * Undo a terminal transition (Product Spec: "Undo for every terminal
+ * transition"). A completed or cancelled task comes back as `ready`. The
+ * earned stone and the audit history stand - reopening reopens the task,
+ * it does not rewrite what happened.
+ */
+export async function reopenTaskAction(
+  taskId: string,
+  expectedVersion: number,
+): Promise<{ ok: true; from: "done" | "cancelled"; note: string | null } | { ok: false; error: string }> {
+  const parsed = z.string().uuid().safeParse(taskId);
+  if (!parsed.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return { ok: false, error: "That task no longer exists." };
+  }
+
+  const auth = await authorize();
+  const reopened = await reopenTask(auth, { taskId: parsed.data, expectedVersion });
+  revalidate(auth);
+  if (reopened && reopened !== "stale" && reopened !== "not_terminal") {
+    // Scoped undo, said out loud: an edge that changed since the completion
+    // is left exactly as it is, and the user hears that.
+    const note =
+      reopened.skippedChangedEdges > 0
+        ? `Reopened. ${reopened.skippedChangedEdges} blocker link${reopened.skippedChangedEdges === 1 ? "" : "s"} changed since completion and ${reopened.skippedChangedEdges === 1 ? "was" : "were"} left as-is.`
+        : null;
+    return { ok: true, from: reopened.from, note };
+  }
+  if (reopened === "stale") {
+    // ABA defense: the view saw an older transition. Undoing it would revert
+    // a newer reopen-and-recomplete the clicker never saw.
+    return { ok: false, error: "This task changed since you loaded it. Reload to see the latest." };
+  }
+  if (reopened === "not_terminal") return { ok: false, error: "Only a completed or cancelled task can be reopened." };
+  return { ok: false, error: "That task no longer exists." };
 }
 
 /*

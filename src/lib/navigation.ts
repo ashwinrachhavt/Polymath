@@ -8,7 +8,6 @@ import {
   Layers,
   LayoutList,
   Library,
-  MessagesSquare,
   NotebookPen,
   Puzzle,
   Settings,
@@ -120,13 +119,6 @@ export const destinations: Destination[] = [
     label: "Companies",
     purpose: "The organizations your people belong to.",
     icon: Briefcase,
-    group: "command-center",
-  },
-  {
-    href: "/command-center/conversations",
-    label: "Conversations",
-    purpose: "Pick up agent threads where you left them.",
-    icon: MessagesSquare,
     group: "command-center",
   },
   {

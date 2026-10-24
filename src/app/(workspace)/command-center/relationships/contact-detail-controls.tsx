@@ -173,7 +173,12 @@ export function ResolveFollowUpButton({
 }
 
 /* C03 correspondence islands: compose a draft, gate its send, cancel it. */
-import { cancelCorrespondenceAction, draftCorrespondenceAction, requestSendApprovalAction } from "./actions";
+import {
+  cancelCorrespondenceAction,
+  draftCorrespondenceAction,
+  requestSendApprovalAction,
+  sendApprovedCorrespondenceAction,
+} from "./actions";
 
 export function CorrespondenceForm({ contactId }: { contactId: string }) {
   const { error, setError, pending, startTransition } = useActionError();
@@ -240,6 +245,44 @@ export function RequestSendApprovalButton({
       >
         Request send approval
       </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
+}
+
+/*
+ * The last step of the send journey, shown only once Reviews approved the
+ * exact draft on screen. Approval decided that it may leave; this click is
+ * when it leaves. The result text says what actually happened, including the
+ * "unknown" case that needs reconciliation instead of a blind retry.
+ */
+export function SendApprovedButton({ correspondenceId }: { correspondenceId: string }) {
+  const { error, setError, pending, startTransition } = useActionError();
+  const [notice, setNotice] = useState<string | null>(null);
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        type="button"
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          setNotice(null);
+          startTransition(async () => {
+            const result = await sendApprovedCorrespondenceAction({ correspondenceId });
+            if (!result.ok) {
+              setError(result.error);
+            } else if (result.state === "unknown") {
+              setNotice("The provider did not confirm the send. Check the mailbox, then reconcile it below before retrying.");
+            } else if (result.state === "failed") {
+              setNotice("The provider refused the send. Edit the draft and request approval again.");
+            }
+          });
+        }}
+      >
+        Send now
+      </Button>
+      {notice ? <span className="text-xs text-muted-foreground">{notice}</span> : null}
       {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
     </span>
   );

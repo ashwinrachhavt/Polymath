@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -7,11 +7,16 @@ import { documentClassificationProposals, documents } from "./schema";
 import { classifyDocument, type DocumentType } from "./vocabulary";
 
 /*
- * B02 (ASH-143): classification as a proposal, never an auto-accept. The
- * rules classifier runs at the end of the proposal pass; a model proposer
- * plugs in behind the same row with its own proposer id. One open proposal
- * per (document, proposer); accepting sets documents.doc_type - the single
- * doc-type signal obligations and naming consume - in the same transaction.
+ * B02 (ASH-143): classification runs at the end of the proposal pass, and
+ * stays a proposal, never an auto-accept - with one scoped exception the
+ * owner asked for (ASH-202): a bank statement the rules read with high
+ * confidence is accepted in the same pass, because the upload -> detect ->
+ * export flow is only useful if nobody has to confirm the obvious first.
+ * Every other type, and every medium or low verdict, waits for the owner as
+ * an open proposal. A model proposer plugs in behind the same row with its
+ * own proposer id. One open proposal per (document, proposer); accepting
+ * sets documents.doc_type - the single doc-type signal obligations and
+ * naming consume - in the same transaction.
  */
 
 export const RULES_CLASSIFIER = "rules@v1";
@@ -38,6 +43,55 @@ export async function proposeClassification(
     filename: input.filename,
   });
   if (result.docType === "other" && result.signals.length === 0) return { proposed: false };
+
+  // The one scoped auto-accept: a high-confidence bank statement. Every
+  // other type or confidence waits for the owner as an open proposal, and
+  // the accepted row still records the basis for the decision.
+  if (result.docType === "statement" && result.confidence === "high") {
+    await withTransaction(async (tx) => {
+      await tx.insert(documentClassificationProposals).values({
+        workspaceId: auth.workspaceId,
+        documentId: input.documentId,
+        extractionId: input.extractionId ?? null,
+        proposedType: result.docType,
+        confidence: result.confidence,
+        signals: result.signals,
+        proposer: RULES_CLASSIFIER,
+        status: "accepted",
+        decidedBy: auth.userId,
+        decidedAt: sql`now()`,
+        createdBy: auth.userId,
+      });
+      // The re-check inside the transaction keeps a concurrent manual accept
+      // the winner: doc_type is only ever written where it is still unset.
+      await tx
+        .update(documents)
+        .set({
+          docType: result.docType,
+          updatedAt: sql`now()`,
+          updatedBy: auth.userId,
+          version: sql`${documents.version} + 1`,
+        })
+        .where(
+          and(
+            eq(documents.id, input.documentId),
+            eq(documents.workspaceId, auth.workspaceId),
+            isNull(documents.docType),
+          ),
+        );
+      await recordAudit(
+        auth,
+        {
+          action: "document.classified",
+          subjectType: "document",
+          subjectId: input.documentId,
+          summary: `Classified as ${result.docType} (${RULES_CLASSIFIER}, high confidence, accepted on upload)`,
+        },
+        tx,
+      );
+    });
+    return { proposed: false, docType: result.docType };
+  }
 
   const inserted = await db
     .insert(documentClassificationProposals)

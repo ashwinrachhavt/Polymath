@@ -124,6 +124,29 @@ export function classifyDocument(input: ClassifyInput): DocumentClassification {
   if (mentions(/\breceipt\b|\bpayment received\b/) && has(fields, "invoice_total", "amount_paid")) {
     return { docType: "receipt", confidence: "medium", signals: ["word:receipt", "money field"] };
   }
+  // Bank statements: the balances the statement prints about itself are the
+  // strongest signal, then its own structural vocabulary. One weak word alone
+  // stays a low-confidence proposal.
+  const openingBalance = mentions(/\b(beginning|opening)\s+balance\b/);
+  const closingBalance = mentions(/\b(ending|closing|current)\s+balance\b/);
+  const statementPeriod = mentions(/\bstatement\s+period\b|\bbilling\s+period\b/);
+  const transactionLedger = mentions(/\btransaction\s+(details|history|activity)\b|\baccount\s+activity\b/);
+  if ((openingBalance && closingBalance) || (statementPeriod && (openingBalance || closingBalance))) {
+    const signals = [
+      ...(openingBalance ? ["opening balance"] : []),
+      ...(closingBalance ? ["closing balance"] : []),
+      ...(statementPeriod ? ["statement period"] : []),
+    ];
+    return { docType: "statement", confidence: "high", signals };
+  }
+  if (statementPeriod || transactionLedger || ((openingBalance || closingBalance) && mentions(/\baccount\b/))) {
+    const signal = statementPeriod
+      ? "statement period"
+      : transactionLedger
+        ? "transaction ledger"
+        : "balance line";
+    return { docType: "statement", confidence: "medium", signals: [signal] };
+  }
   if (mentions(/\bstatement\b|\baccount balance\b|\bbilling period\b/)) {
     return { docType: "statement", confidence: "low", signals: ["word:statement"] };
   }

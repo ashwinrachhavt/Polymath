@@ -8,7 +8,10 @@ import { renderToStaticMarkup } from "react-dom/server";
  * panel whose job is describing a not-fully-configured deployment (ASH-193).
  * These tests pin the no-Clerk contract: the page renders the panel without
  * asking for auth, and the preferences actions answer { ok: false } instead
- * of rejecting the server-action call.
+ * of rejecting the server-action call. The failure is the named
+ * "not configured" result: the library throw that produced it can carry
+ * internal detail, so the authored fallback - not the thrown message - is
+ * what crosses the action boundary (same rule as the driver errors).
  */
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
@@ -56,13 +59,17 @@ describe("settings actions without Clerk configured", () => {
   it("loadPreferencesAction returns a named failure instead of throwing", async () => {
     const result = await loadPreferencesAction();
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("Clerk");
+    if (!result.ok) {
+      expect(result.error).toBe("Sign-in is not configured on this deployment.");
+      expect(result.error).not.toContain("auth() threw");
+    }
     expect(getPreferences).not.toHaveBeenCalled();
   });
 
   it("savePreferencesAction returns a named failure instead of throwing", async () => {
     const result = await savePreferencesAction({ expectedVersion: 0, timezone: "UTC" });
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("Sign-in is not configured on this deployment.");
     expect(updatePreferences).not.toHaveBeenCalled();
   });
 });

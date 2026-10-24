@@ -3,7 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { createProposal } from "@/domains/actions/commands";
+import { createProposal, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { decideAndRecordToolInvocation } from "./authorization";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
@@ -15,6 +15,9 @@ import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/d
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
 import { GENERIC_READS, genericList } from "@/domains/integrations/reads/generic";
 import { readLinearIssue, searchLinearIssues } from "@/domains/integrations/reads/linear";
+import { readNotionPage, searchNotion } from "@/domains/integrations/reads/notion";
+import { getInstagramProfile, listInstagramMedia } from "@/domains/integrations/reads/instagram";
+import { getLinkedInProfile } from "@/domains/integrations/reads/linkedin";
 import { listSlackChannels, readSlackChannel } from "@/domains/integrations/reads/slack";
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -83,7 +86,19 @@ type ParsedThread = {
 };
 type ParsedSend = { ok: true; generic?: undefined; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
 
-const OTHER_READS = ["github_search", "github_read_issue", "slack_list_channels", "slack_read_channel", "linear_search_issues", "linear_read_issue"] as const;
+const OTHER_READS = [
+  "github_search",
+  "github_read_issue",
+  "slack_list_channels",
+  "slack_read_channel",
+  "linear_search_issues",
+  "linear_read_issue",
+  "notion_search",
+  "notion_read_page",
+  "linkedin_get_profile",
+  "instagram_get_profile",
+  "instagram_list_media",
+] as const;
 type OtherRead = (typeof OTHER_READS)[number];
 type ParsedGeneric = {
   ok: true;
@@ -173,6 +188,8 @@ function parseCall(tool: string, input: unknown): ParsedCall {
           ? `issue:${args.owner}/${args.repo}#${args.number}`
           : name === "linear_read_issue"
             ? `issue:linear:${String(args.identifier).toUpperCase()}`
+            : name === "notion_read_page"
+              ? `page:notion:${args.pageId}`
             : undefined,
     };
   }
@@ -473,6 +490,18 @@ export function createGateway({ transport }: { transport: Transport }) {
       };
     }
 
+    // 2c. The account's own fine-grained switches, live with the tier: the
+    // owner can turn one capability off for this connection without lowering
+    // the tier, and that has to bite at once too.
+    if (account.disabledCapabilities.includes(capability)) {
+      return {
+        ok: false,
+        status: 403,
+        code: "permission_denied",
+        message: `"${account.alias}" has this switched off in Connectors.`,
+      };
+    }
+
     // 3. Reserve the budget before anything is fetched. The reservation is the
     // row the next concurrent caller counts, so the cap holds under a burst;
     // the grant gate runs first so a denied call spends nothing.
@@ -518,7 +547,7 @@ export function createGateway({ transport }: { transport: Transport }) {
       return read(context, parsed, account.alias, account.connectedAccountId, reservation);
     }
     return parsed.tool === "gmail_send"
-      ? proposeSend(context, capability, parsed, account.alias, reservation)
+      ? proposeSend(context, capability, parsed, account, reservation)
       : read(context, parsed, account.alias, account.connectedAccountId, reservation);
   }
 
@@ -562,7 +591,15 @@ export function createGateway({ transport }: { transport: Transport }) {
     provider: string,
     alias: string | undefined,
   ): Promise<
-    | { ok: true; alias: string; connectedAccountId: string; accessTier: string }
+    | {
+        ok: true;
+        alias: string;
+        connectedAccountId: string;
+        externalAccountId: string;
+        displayName: string | null;
+        accessTier: string;
+        disabledCapabilities: string[];
+      }
     | { ok: false; outcome: GatewayOutcome }
   > {
     const resolved = await resolveConnectedAccount(context.auth, provider, alias);
@@ -691,6 +728,42 @@ export function createGateway({ transport }: { transport: Transport }) {
         outcome = r.ok ? { ok: true, ...truncateList("channels", r.channels, {}, LIMITS.maxResponseBytes), count: r.channels.length } : r;
         break;
       }
+      case "notion_search": {
+        const r = await searchNotion(transport, { connectedAccountId, query: String(other.args.query), limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        break;
+      }
+      case "notion_read_page": {
+        const r = await readNotionPage(transport, { connectedAccountId, pageId: String(other.args.pageId) });
+        outcome = r.ok
+          ? {
+              ok: true,
+              text: JSON.stringify({ page: r.item, markdown: r.markdown, ...(r.truncated ? { truncated: true } : {}) }),
+              truncated: r.truncated,
+              count: 1,
+            }
+          : r;
+        break;
+      }
+      case "linkedin_get_profile": {
+        const r = await getLinkedInProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_get_profile": {
+        const r = await getInstagramProfile(transport, { connectedAccountId });
+        outcome = r.ok
+          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
+          : r;
+        break;
+      }
+      case "instagram_list_media": {
+        const r = await listInstagramMedia(transport, { connectedAccountId, limit });
+        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        break;
+      }
       case "slack_read_channel": {
         const r = await readSlackChannel(transport, { connectedAccountId, channel: String(other.args.channel), limit });
         outcome = r.ok
@@ -726,9 +799,10 @@ export function createGateway({ transport }: { transport: Transport }) {
     context: GatewayContext,
     capability: Capability,
     parsed: ParsedSend,
-    accountAlias: string,
+    account: { alias: string; externalAccountId: string; connectedAccountId: string; displayName: string | null },
     reservation: { reservationId: string; startedAt: number },
   ): Promise<GatewayOutcome> {
+    const accountAlias = account.alias;
     const { to, subject, body, messageId } = parsed.args;
     const inReplyTo = messageId;
     const dedupeKey = `gmail.mcp:${context.auth.workspaceId}:${to}:${subject}:${inReplyTo ?? ""}`;
@@ -753,12 +827,29 @@ export function createGateway({ transport }: { transport: Transport }) {
       // A replayed intent resolves the proposal that already exists; appending a
       // revision would make the owner approve the same intent twice.
       if (!proposal.deduplicated) {
+        /*
+         * Pin the sender the gateway already resolved for this call, so the
+         * review card shows the exact account BEFORE the decision and the
+         * approval binds this revision unchanged. The executor re-resolves
+         * and refuses when the identity no longer matches.
+         */
+        const pinned = withSenderAccountPin(
+          {
+            resolved: true,
+            externalAccountId: account.externalAccountId,
+            connectedAccountId: account.connectedAccountId,
+            alias: account.alias,
+            sender: account.displayName ?? account.alias,
+          },
+          { to, subject, body, inReplyTo, accountAlias },
+          { to, subject, body },
+        );
         await tx.insert(actionRevisions).values({
           workspaceId: context.auth.workspaceId,
           proposalId: proposal.proposalId,
           revisionNumber: 1,
-          payload: { to, subject, body, inReplyTo, accountAlias },
-          preview: { to, subject, body },
+          payload: pinned.payload,
+          preview: pinned.preview,
           createdBy: context.auth.userId,
         });
         return { ...proposal, bodyChanged: false };

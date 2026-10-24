@@ -37,6 +37,7 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
         reason: rewardLedger.reason,
         subjectType: rewardLedger.subjectType,
         subjectId: rewardLedger.subjectId,
+        note: rewardLedger.note,
         points: rewardLedger.points,
         idempotencyKey: rewardLedger.idempotencyKey,
         createdAt: rewardLedger.createdAt,

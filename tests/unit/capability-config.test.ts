@@ -88,10 +88,12 @@ describe("capabilityStatus", () => {
     });
   });
 
-  it("email sending is never ready, because no send adapter exists", () => {
-    const send = find({ COMPOSIO_API_KEY: "k" }, "email-send");
-    expect(send.configured).toBe(false);
-    expect(send.reason).toContain("send adapter is not implemented");
+  it("email sending is ready only with the Composio key the Gmail adapter needs", () => {
+    const missing = find({}, "email-send");
+    expect(missing.configured).toBe(false);
+    expect(missing.missingEnv).toContain("COMPOSIO_API_KEY");
+    expect(missing.reason).toContain("connect a Gmail account");
+    expect(find({ COMPOSIO_API_KEY: "k" }, "email-send").configured).toBe(true);
   });
 
   it("local development has working file storage without a cloud key", () => {
@@ -101,8 +103,10 @@ describe("capabilityStatus", () => {
 
   it("splits ready from missing for the settings panel", () => {
     const { configured, missing } = capabilitySummary({ OPENROUTER_API_KEY: "k", COMPOSIO_API_KEY: "c" });
-    expect(configured.map((c) => c.id)).toEqual(expect.arrayContaining(["generation", "embeddings", "calendar-sync"]));
-    expect(missing.map((c) => c.id)).toEqual(expect.arrayContaining(["document-extraction-hosted", "email-send"]));
+    expect(configured.map((c) => c.id)).toEqual(
+      expect.arrayContaining(["generation", "embeddings", "calendar-sync", "email-send"]),
+    );
+    expect(missing.map((c) => c.id)).toEqual(expect.arrayContaining(["document-extraction-hosted"]));
     expect(configured.length + missing.length).toBe(8);
   });
 
@@ -111,5 +115,30 @@ describe("capabilityStatus", () => {
     // hosted reader; with none, the in-process text layer is the floor.
     expect(find({ LLAMAPARSE_API_KEY: "k" }, "document-extraction-hosted").configured).toBe(true);
     expect(find({}, "document-extraction-hosted").configured).toBe(false);
+  });
+
+  describe("vision OCR is opt-in, never inferred from a key's presence", () => {
+    it("an OpenRouter key alone does not configure scan reading", () => {
+      expect(find({ OPENROUTER_API_KEY: "k" }, "document-extraction-hosted").configured).toBe(false);
+    });
+
+    it("OCR_PROVIDER=openrouter with the key is configured", () => {
+      const cap = find({ OCR_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" }, "document-extraction-hosted");
+      expect(cap.configured).toBe(true);
+      expect(cap.missingEnv).toEqual([]);
+    });
+
+    it("OCR_PROVIDER=openrouter without the key names the key, not the menu", () => {
+      const cap = find({ OCR_PROVIDER: "openrouter" }, "document-extraction-hosted");
+      expect(cap.configured).toBe(false);
+      expect(cap.missingEnv).toEqual(["OPENROUTER_API_KEY"]);
+    });
+
+    it("off by default: the enable path is named with its metered shape", () => {
+      const cap = find({}, "document-extraction-hosted");
+      expect(cap.configured).toBe(false);
+      expect(cap.reason).toContain("OCR_PROVIDER=openrouter");
+      expect(cap.reason).toContain("metered");
+    });
   });
 });

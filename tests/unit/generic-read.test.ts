@@ -145,7 +145,7 @@ describe("GENERIC_READS comms cluster", () => {
     const expected: Array<[string, string, string]> = [
       ["discord_list_channels", "https://discord.com/api/v10/users/@me/guilds", ""],
       ["zoom_list_meetings", "https://api.zoom.us/v2/users/me/meetings", "meetings"],
-      ["calendly_list_events", "https://calendly.com/api/v1/users/me/scheduled_events", "collection"],
+      ["calendly_list_events", "https://api.calendly.com/scheduled_events", "collection"],
     ];
     for (const [tool, endpoint, listPath] of expected) {
       const spec = GENERIC_READS[tool];
@@ -193,7 +193,7 @@ describe("GENERIC_READS work-management cluster", () => {
 describe("GENERIC_READS crm/finance cluster", () => {
   it("registers canva, hubspot and stripe specs with their real endpoints and listPaths", () => {
     const expected: Array<[string, string, string]> = [
-      ["canva_list_designs", "https://www.canva.com/api/v1/designs", "items"],
+      ["canva_list_designs", "https://api.canva.com/rest/v1/designs", "items"],
       ["hubspot_list_contacts", "https://api.hubapi.com/crm/v3/objects/contacts", "results"],
       ["stripe_list_payments", "https://api.stripe.com/v1/charges", "data"],
     ];
@@ -220,6 +220,136 @@ describe("GENERIC_READS crm/finance cluster", () => {
     expect(GENERIC_READS.figma_list_files).toBeUndefined();
     expect(GENERIC_READS.dropbox_list_files).toBeUndefined();
     expect(GENERIC_READS.salesforce_search_records).toBeUndefined();
+  });
+});
+
+describe("GENERIC_READS preflight specs", () => {
+  /** Answers by endpoint, recording the request sequence. */
+  function sequencedTransport(routes: Record<string, TransportResult>, seen: TransportRequest[]): Transport {
+    return {
+      async read(request: TransportRequest) {
+        seen.push(request);
+        const response = routes[request.endpoint];
+        if (!response) throw new Error(`no route for ${request.endpoint}`);
+        return response;
+      },
+    };
+  }
+
+  it("calendly resolves the user and organization URIs before listing events", async () => {
+    const seen: TransportRequest[] = [];
+    const transport = sequencedTransport(
+      {
+        "https://api.calendly.com/users/me": {
+          ok: true,
+          status: 200,
+          data: {
+            resource: {
+              uri: "https://api.calendly.com/users/USERID",
+              current_organization: "https://api.calendly.com/organizations/ORGID",
+            },
+          },
+        },
+        "https://api.calendly.com/scheduled_events": {
+          ok: true,
+          status: 200,
+          data: { collection: [{ name: "Intro call", start_time: "2026-10-24T17:00:00Z" }] },
+        },
+      },
+      seen,
+    );
+
+    const result = await genericList(transport, GENERIC_READS.calendly_list_events!, { connectedAccountId: "ca_1" });
+
+    expect(seen.map((request) => request.endpoint)).toEqual([
+      "https://api.calendly.com/users/me",
+      "https://api.calendly.com/scheduled_events",
+    ]);
+    expect(seen[1]!.query).toMatchObject({
+      user: "https://api.calendly.com/users/USERID",
+      organization: "https://api.calendly.com/organizations/ORGID",
+      count: "25",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0]).toContain("Intro call");
+  });
+
+  it("calendly fails honestly when the profile lacks the URIs, and never lists", async () => {
+    const seen: TransportRequest[] = [];
+    const transport = sequencedTransport(
+      { "https://api.calendly.com/users/me": { ok: true, status: 200, data: { resource: {} } } },
+      seen,
+    );
+
+    const result = await genericList(transport, GENERIC_READS.calendly_list_events!, { connectedAccountId: "ca_1" });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "provider_error",
+      message: "Calendly did not return the account profile the event list needs.",
+    });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("asana sends the workspace gid its assignee filter requires", async () => {
+    const seen: TransportRequest[] = [];
+    const transport = sequencedTransport(
+      {
+        "https://app.asana.com/api/1.0/users/me": {
+          ok: true,
+          status: 200,
+          data: { data: { gid: "me-gid", workspaces: [{ gid: "ws-1", name: "My Workspace" }] } },
+        },
+        "https://app.asana.com/api/1.0/tasks": {
+          ok: true,
+          status: 200,
+          data: { data: [{ gid: "t1", name: "Ship it", due_on: "2026-10-25" }] },
+        },
+      },
+      seen,
+    );
+
+    const result = await genericList(transport, GENERIC_READS.asana_list_tasks!, { connectedAccountId: "ca_1" });
+
+    expect(seen[1]!.query).toMatchObject({ workspace: "ws-1", assignee: "me" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0]).toContain("Ship it");
+  });
+
+  it("asana fails honestly when the account has no workspace", async () => {
+    const seen: TransportRequest[] = [];
+    const transport = sequencedTransport(
+      { "https://app.asana.com/api/1.0/users/me": { ok: true, status: 200, data: { data: { workspaces: [] } } } },
+      seen,
+    );
+
+    const result = await genericList(transport, GENERIC_READS.asana_list_tasks!, { connectedAccountId: "ca_1" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain("workspace");
+    expect(seen).toHaveLength(1);
+  });
+
+  it("canva maps the recorded Connect API item shape (top-level id)", async () => {
+    // Recorded from the live API on the connected account, 2026-10-23.
+    const transport = fakeTransport({
+      ok: true,
+      status: 200,
+      data: {
+        items: [
+          {
+            id: "DAHYbXUuHe0",
+            title: "Pitch deck",
+            owner: { user_id: "oUZXRA-GFRoe2D9ofIl7eE", team_id: "oBZXR0hMdLXDWjHKpyF6_4" },
+          },
+        ],
+      },
+    });
+
+    const result = await genericList(transport, GENERIC_READS.canva_list_designs!, { connectedAccountId: "ca_1" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0]).toBe("Pitch deck — DAHYbXUuHe0");
   });
 });
 

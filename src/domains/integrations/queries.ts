@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { authConfigEnvName } from "./composio";
 import { externalAccounts, integrationCatalog, syncCursors } from "./schema";
 
 /*
@@ -16,6 +17,10 @@ export type ConnectorCard = {
   riskByCapability: Record<string, string>;
   requiresApproval: boolean;
   accessTiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
+  /** False when this deployment lacks the env the OAuth flow needs; the card says so instead of offering a doomed Connect. */
+  configured: boolean;
+  /** The env vars an operator must set before this provider can connect. */
+  missingConfig: string[];
   accounts: Array<{
     id: string;
     alias: string;
@@ -25,6 +30,7 @@ export type ConnectorCard = {
     allowRead: boolean;
     allowWrite: boolean;
     accessTier: string | null;
+    disabledCapabilities: string[];
     lastHealthyAt: Date | null;
     lastError: string | null;
     version: number;
@@ -57,13 +63,26 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
       .where(eq(externalAccounts.workspaceId, auth.workspaceId))
       .orderBy(asc(externalAccounts.provider), asc(externalAccounts.alias)),
   ]);
-  return catalog.map((row) => ({
+  // The connect flow needs two kinds of deployment env: the Composio project
+  // key and a per-provider auth config. Naming the missing one on the card is
+  // what keeps "Available" honest — without this check every provider looked
+  // connectable and the attempt rotted into a misleading "expired".
+  const apiKeyConfigured = Boolean(process.env.COMPOSIO_API_KEY);
+  return catalog.map((row) => {
+    const providerEnvVar = authConfigEnvName(row.provider);
+    const missingConfig = [
+      ...(apiKeyConfigured ? [] : ["COMPOSIO_API_KEY"]),
+      ...(process.env[providerEnvVar] ? [] : [providerEnvVar]),
+    ];
+    return {
     provider: row.provider,
     displayName: row.displayName,
     capabilities: row.capabilities as string[],
     riskByCapability: row.riskByCapability as Record<string, string>,
     requiresApproval: row.requiresApproval,
     accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
+    configured: missingConfig.length === 0,
+    missingConfig,
     accounts: accounts
       .filter((account) => account.provider === row.provider)
       .map((account) => ({
@@ -75,11 +94,13 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
         allowRead: account.allowRead,
         allowWrite: account.allowWrite,
         accessTier: account.accessTier,
+        disabledCapabilities: (account.disabledCapabilities as string[]) ?? [],
         lastHealthyAt: account.lastHealthyAt,
         lastError: account.lastError,
         version: account.version,
       })),
-  }));
+    };
+  });
 }
 
 export async function listSyncCursors(auth: AuthContext, accountId: string) {
@@ -110,15 +131,28 @@ export async function resolveConnectedAccount(
   provider: string,
   alias?: string,
 ): Promise<
-  | { ok: true; connectedAccountId: string; alias: string; accessTier: string }
+  | {
+      ok: true;
+      connectedAccountId: string;
+      alias: string;
+      accessTier: string;
+      disabledCapabilities: string[];
+      /** The external_accounts row behind the alias, for approval pinning. */
+      externalAccountId: string;
+      /** The owner's registered label for the account, when set. */
+      displayName: string | null;
+    }
   | { ok: false; code: "not_connected" | "ambiguous"; message: string }
 > {
   const rows = await db
     .select({
+      id: externalAccounts.id,
       alias: externalAccounts.alias,
       status: externalAccounts.status,
       connectedAccountId: externalAccounts.composioConnectedAccountId,
       accessTier: externalAccounts.accessTier,
+      disabledCapabilities: externalAccounts.disabledCapabilities,
+      displayName: externalAccounts.displayName,
     })
     .from(externalAccounts)
     .where(
@@ -159,6 +193,9 @@ export async function resolveConnectedAccount(
     ok: true,
     connectedAccountId: match.connectedAccountId,
     alias: match.alias,
+    externalAccountId: match.id,
+    displayName: match.displayName ?? null,
     accessTier: match.accessTier ?? "read_only",
+    disabledCapabilities: (match.disabledCapabilities as string[]) ?? [],
   };
 }

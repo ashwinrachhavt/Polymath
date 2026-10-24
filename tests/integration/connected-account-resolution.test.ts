@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { externalAccounts } from "@/domains/integrations/schema";
@@ -64,6 +65,14 @@ async function account(
   return composioConnectedAccountId ?? "";
 }
 
+async function rowId(workspaceId: string, alias: string): Promise<string> {
+  const [row] = await holder.db!
+    .select({ id: externalAccounts.id })
+    .from(externalAccounts)
+    .where(and(eq(externalAccounts.workspaceId, workspaceId), eq(externalAccounts.alias, alias)));
+  return row.id;
+}
+
 beforeAll(async () => {
   holder.db = handle?.db;
   a = await seedWorkspace(handle!.db, `rca-${crypto.randomUUID()}`);
@@ -79,11 +88,18 @@ afterAll(async () => { await handle?.client.end(); });
 suite("resolveConnectedAccount (real Postgres)", () => {
   it("resolves an explicit alias, infers a sole account, and refuses ambiguity or a foreign alias", async () => {
     // Explicit alias in the caller's workspace.
+    const [aRow] = await holder.db!
+      .select({ id: externalAccounts.id })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, a.workspaceId), eq(externalAccounts.alias, "work-gmail")));
     expect(await resolveConnectedAccount(ctx(a), "gmail", "work-gmail")).toEqual({
       ok: true,
       connectedAccountId: aWork,
       alias: "work-gmail",
       accessTier: "read_only",
+      disabledCapabilities: [],
+      externalAccountId: aRow.id,
+      displayName: null,
     });
 
     // Another workspace's identically named account (seeded above) is not
@@ -107,11 +123,18 @@ suite("resolveConnectedAccount (real Postgres)", () => {
     // With no alias and exactly one usable account, that account is inferred.
     const c = await seedWorkspace(handle!.db, `rca-${crypto.randomUUID()}`);
     const only = await account(c.workspaceId, { alias: "only", provider: "notion" });
+    const [onlyRow] = await holder.db!
+      .select({ id: externalAccounts.id })
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, c.workspaceId), eq(externalAccounts.alias, "only")));
     expect(await resolveConnectedAccount(ctx(c), "notion")).toEqual({
       ok: true,
       connectedAccountId: only,
       alias: "only",
       accessTier: "read_only",
+      disabledCapabilities: [],
+      externalAccountId: onlyRow.id,
+      displayName: null,
     });
 
     // No account at all is a distinct outcome from ambiguity.
@@ -135,6 +158,9 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: live,
       alias: "live",
       accessTier: "read_only",
+      disabledCapabilities: [],
+      externalAccountId: await rowId(d.workspaceId, "live"),
+      displayName: null,
     });
   });
 
@@ -148,6 +174,9 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: raised,
       alias: "raised",
       accessTier: "read_send",
+      disabledCapabilities: [],
+      externalAccountId: await rowId(e.workspaceId, "raised"),
+      displayName: null,
     });
 
     // Unset is a valid state per the tier contract; it means the narrowest
@@ -165,6 +194,9 @@ suite("resolveConnectedAccount (real Postgres)", () => {
       connectedAccountId: unset.connectedAccountId,
       alias: "unset-tier",
       accessTier: "read_only",
+      disabledCapabilities: [],
+      externalAccountId: await rowId(f.workspaceId, "unset-tier"),
+      displayName: null,
     });
   });
 });

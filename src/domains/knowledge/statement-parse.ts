@@ -94,6 +94,30 @@ export type ParseResult =
     }
   | { status: "unsupported"; reason: string; tablesSeen: number };
 
+/**
+ * The cheap gate before a statement parse is attempted: does this document
+ * read like a bank statement at all? The parser itself stays the authority on
+ * whether the tables yield a ledger; this predicate only decides whether
+ * trying is worthwhile, so an upload of a statement is detected and read
+ * without anyone asking (ASH-202). Two structural markers, or one marker plus
+ * the word "statement" in the text or filename, are enough to try.
+ */
+export function looksLikeStatement(text: string, filename?: string | null): boolean {
+  const body = text.toLowerCase();
+  const name = (filename ?? "").toLowerCase();
+  const markers = [
+    /\b(beginning|opening)\s+balance\b/,
+    /\b(ending|closing|current)\s+balance\b/,
+    /\bstatement\s+period\b/,
+    /\btransaction\s+(details|history|activity)\b/,
+    /\baccount\s+(summary|activity)\b/,
+  ];
+  const hits = markers.filter((re) => re.test(body)).length;
+  if (hits >= 2) return true;
+  if (hits >= 1 && (/\bstatement\b/.test(body) || /\bstatement\b/.test(name))) return true;
+  return false;
+}
+
 const CENT = 0.01;
 
 /**

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -21,6 +21,28 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
     ))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id))
     .limit(limit);
+}
+
+/*
+ * Link-target matches for the note editor's [[ ]] picker (row 36): unarchived
+ * tasks in this workspace whose title matches, routed to the canonical task
+ * destination (taskHref's route). Done and cancelled tasks stay linkable - a
+ * finished task is still a real destination. Tenant-scoped; an archived task
+ * never matches, and a deleted one lands on the work page's empty state. The
+ * route is the canonical /neuralflow/work (Neon-backed, UUID-validated ?task=
+ * detail) - NOT taskHref's /apps/neuralflow/tasks, whose SelectedTask reads
+ * the browser-local preview store and would report every canonical id as
+ * "not found in this preview".
+ */
+export async function searchTasksForLink(auth: AuthContext, query: string, limit = 3) {
+  const like = `%${escapeLike(query.trim())}%`;
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title })
+    .from(tasks)
+    .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(tasks.title, like)))
+    .orderBy(asc(tasks.title), asc(tasks.id))
+    .limit(limit);
+  return rows.map((row) => ({ id: row.id, title: row.title, kind: "task" as const, href: `/neuralflow/work?task=${row.id}` }));
 }
 
 /**
@@ -256,4 +278,35 @@ export async function listTasksDueBetween(
     )
     .orderBy(sql`${tasks.dueAt}`, sql`${tasks.rank} collate "C"`, asc(tasks.id));
   return rows.filter((r): r is typeof r & { dueAt: Date } => r.dueAt !== null);
+}
+
+/**
+ * Truth recovery after completeTask returns null: what the task's state
+ * actually is, plus the completion sentence recorded on its latest
+ * task.completed audit row (null when the recorded completion carried none).
+ * The action layer uses this to say what happened truthfully - a cancelled or
+ * missing task is not "already completed", and a sentence submitted with a
+ * request whose response was lost may in fact have been recorded.
+ */
+export async function getCompletionConflictState(
+  auth: AuthContext,
+  taskId: string,
+): Promise<{ status: string; completionNote: string | null } | null> {
+  const [task] = await db
+    .select({ status: tasks.status })
+    .from(tasks)
+    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+    .limit(1);
+  if (!task) return null;
+  const rows = await db.execute(sql`
+    select metadata->>'completionNote' as note
+    from audit_events
+    where workspace_id = ${auth.workspaceId}
+      and action = 'task.completed'
+      and subject_id = ${taskId}::uuid
+    order by created_at desc
+    limit 1
+  `);
+  const note = (rows as unknown as Array<{ note: string | null }>)[0]?.note ?? null;
+  return { status: task.status, completionNote: note };
 }

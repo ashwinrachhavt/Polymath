@@ -7,11 +7,12 @@ const CandidateFacts = dynamic(() => import("./candidate-facts"), { loading: () 
 const ApiKeysPanel = dynamic(() => import("./api-keys-panel"), { loading: () => <p role="status">Loading API keys…</p> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Panel, Screen, Status, Unavailable } from "@/components/workspace/ui";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Check, Destination, DisabledAction, Select } from "./controls";
-import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
+import { loadAssistantProfileAction, loadPreferencesAction, saveAssistantProfileAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
 import type { LoadedPreferences } from "@/domains/identity/preferences";
 import type { CapabilityStatus } from "@/lib/capability-config";
 import { SchedulerPanel } from "./scheduler-panel";
@@ -42,6 +43,7 @@ const SECTION_GROUPS = [
   {
     label: "Workspace",
     items: [
+      { id: "assistant", label: "Your assistant" },
       { id: "execution-safety", label: "Execution safety" },
       { id: "model-policy", label: "Model and tools" },
       { id: "connectors", label: "Connectors" },
@@ -160,7 +162,68 @@ function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }
   );
 }
 
-export default function Settings({ serverPreferences, capabilities }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[] }) {
+export type AssistantProfile = { name: string; description: string | null; instructions: string | null; version: number };
+
+/*
+ * The assistant's learned brief (spec "It learns your taste"): what onboarding
+ * wrote, open to review and change. Saving empty retires that part of the
+ * brief for future runs; the onboarding interview and the change history are
+ * kept - retiring is not erasing. The profile's name is the machine key runs
+ * resolve by, so it is shown, not edited.
+ *
+ * The draft is controlled state, so a conflict can keep the person's unsaved
+ * edits on screen while showing what the server has now: re-saving targets
+ * the latest version, and "Replace my edits" adopts the server's values.
+ */
+export function AssistantPanel({ profile }: { profile: AssistantProfile }) {
+  const { notify } = useWorkspace();
+  const [saved, setSaved] = useState(profile);
+  const [draft, setDraft] = useState({ description: profile.description ?? "", instructions: profile.instructions ?? "" });
+  const [conflict, setConflict] = useState<AssistantProfile | null>(null);
+  const [saving, setSaving] = useState(false);
+  return (
+    <Panel title="Your assistant" description={`What your assistant knows about how you work, learned during onboarding (profile: ${saved.name}). Edit to correct it; save empty fields to retire them for future runs. Retiring is not erasing: the onboarding interview and the change history are kept.`}>
+      <form className="grid gap-4" onSubmit={(e) => {
+        e.preventDefault();
+        setSaving(true);
+        void saveAssistantProfileAction({ description: draft.description, instructions: draft.instructions, expectedVersion: saved.version }).then((result) => {
+          setSaving(false);
+          if (!result.ok) {
+            if (result.kind === "conflict") {
+              // Keep the draft; show what changed underneath it.
+              void loadAssistantProfileAction().then((loaded) => { if (loaded.ok && loaded.profile) { setSaved(loaded.profile); setConflict(loaded.profile); } });
+              notify("The brief changed elsewhere. Your edits are kept below - review what changed, then save again or replace them.");
+            } else {
+              notify(result.error);
+            }
+            return;
+          }
+          setSaved(result.profile);
+          setDraft({ description: result.profile.description ?? "", instructions: result.profile.instructions ?? "" });
+          setConflict(null);
+          notify("Assistant brief saved. It guides every future run.");
+        });
+      }}>
+        {conflict ? (
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-[13px]">
+            <p className="font-medium">Changed elsewhere while you edited.</p>
+            <p className="mt-1 text-muted-foreground">Latest description: {conflict.description ?? "(retired)"}</p>
+            <p className="mt-0.5 line-clamp-2 text-muted-foreground">Latest brief: {conflict.instructions ?? "(retired)"}</p>
+            <Button type="button" variant="outline" className="mt-2" onClick={() => { setDraft({ description: conflict.description ?? "", instructions: conflict.instructions ?? "" }); setConflict(null); }}>Replace my edits with the latest</Button>
+          </div>
+        ) : null}
+        <Field label="Description - one line on what it is to you"><Textarea name="description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} maxLength={500} rows={2} placeholder="Retired - nothing saved." /></Field>
+        <Field label="Learned brief - how it should write, explain and work with you"><Textarea name="instructions" value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} maxLength={4000} rows={6} placeholder="Retired - nothing saved." /></Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : conflict ? "Save over the latest" : "Save assistant brief"}</Button>
+          <p className="text-xs text-muted-foreground">Changes apply to future runs; running work keeps the brief it started with.</p>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
+export default function Settings({ serverPreferences, capabilities, serverAssistantProfile, browserPreview }: { serverPreferences?: LoadedPreferences; capabilities?: CapabilityStatus[]; serverAssistantProfile?: AssistantProfile | null; browserPreview: boolean }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
   // The server row is the record; `saved` mirrors it here so a form always
   // submits against the version it rendered (compare-and-set on the server).
@@ -176,7 +239,9 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
   const [confirmation, setConfirmation] = useState("");
   const [factsOpen, setFactsOpen] = useState(false);
   const active = useActiveSection();
-  return <Screen title="Settings" description="Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels describe this browser preview or name what is not built yet." actions={<Destination screen="integrations">Connection catalog</Destination>}>
+  return <Screen title="Settings" description={browserPreview
+    ? "This browser preview keeps its own local state; nothing here is an account. The panels below describe what the preview stores or name what is not built yet."
+    : "Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels name this deployment's capabilities and what is not built yet."} actions={<Destination screen="integrations">Connection catalog</Destination>}>
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       <SettingsNav groups={SECTION_GROUPS} active={active} />
 
@@ -239,6 +304,12 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
           </Panel>
         </Section>
 
+        {serverAssistantProfile ? (
+        <Section id="assistant">
+          <AssistantPanel profile={serverAssistantProfile} />
+        </Section>
+        ) : null}
+
         <Section id="execution-safety">
           <Panel title="Execution safety" actions={<Status>{state.preferences.killSwitch ? "Preview kill switch enabled" : "Preview kill switch disabled"}</Status>}>
             <Check label="Keep agent execution and paid-call intent paused" checked={state.preferences.killSwitch} onChange={(killSwitch) => updatePreferences({ killSwitch })}/>
@@ -275,6 +346,7 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="data-retention">
+          {browserPreview ? (
           <Panel title="Data and retention" description="What this preview stores, and where it stops.">
             <dl className="grid gap-3 text-[13px]">
               <div><dt className="text-muted-foreground">Stored</dt><dd>Tasks, notes and checkpoints, captures, contacts, reviews, preferences and activity, in this browser&apos;s local storage.</dd></div>
@@ -282,6 +354,15 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
               <div><dt className="text-muted-foreground">Retention</dt><dd>Until you clear the browser preview, or your browser clears site data.</dd></div>
             </dl>
           </Panel>
+          ) : (
+          <Panel title="Data and retention" description="Where your account data lives on this deployment.">
+            <dl className="grid gap-3 text-[13px]">
+              <div><dt className="text-muted-foreground">Stored</dt><dd>Timezone, week start, appearance and motion save to your account on this deployment&apos;s server and load on every signed-in device.</dd></div>
+              <div><dt className="text-muted-foreground">Sent anywhere</dt><dd>Which providers this deployment can call is read from its environment and named under Configured capabilities above.</dd></div>
+              <div><dt className="text-muted-foreground">Retention</dt><dd>Saved settings persist on the server; they are not tied to this browser.</dd></div>
+            </dl>
+          </Panel>
+          )}
         </Section>
 
         <Section id="candidate-facts">
@@ -292,7 +373,9 @@ export default function Settings({ serverPreferences, capabilities }: { serverPr
         </Section>
 
         <Section id="reset">
-          <Panel title="Reset browser preview" description="Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected.">
+          <Panel title="Reset browser preview" description={browserPreview
+            ? "Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected."
+            : "Clear this browser's local preview edits only - notes, checkpoints, tasks and review decisions stored in this browser. Your account settings and server records are not affected."}>
             <Dialog open={resetOpen} onOpenChange={(open) => { setResetOpen(open); setConfirmation(""); }}>
               <DialogTrigger asChild><Button variant="outline">Clear preview data</Button></DialogTrigger>
               <DialogContent>

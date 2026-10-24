@@ -1,7 +1,8 @@
 "use server";
 
 import { cancelCorrespondence, draftCorrespondence, requestSendApproval } from "@/domains/crm/correspondence";
-import { resolveUnknownSend } from "@/domains/crm/send-executor";
+import { gmailMailSender } from "@/domains/crm/mail-sender";
+import { resolveUnknownSend, sendApprovedCorrespondence } from "@/domains/crm/send-executor";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ImportBusyError, ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
@@ -90,9 +91,9 @@ const contactFields = {
   companyId: uuid.nullable().optional(),
 };
 
-type Result = { ok: true } | { ok: false; error: string };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
-function fail(error: unknown): Result {
+function fail(error: unknown): { ok: false; error: string } {
   if (error instanceof ConflictError || error instanceof StaleWriteError || error instanceof NotFoundError) {
     return { ok: false, error: error.message };
   }
@@ -264,6 +265,34 @@ export async function requestSendApprovalAction(input: { correspondenceId: strin
   }
   revalidate();
   return { ok: true };
+}
+
+/*
+ * The send step of the approval journey: the owner approved the exact
+ * recipient, account, subject and body in Reviews; this executes that
+ * approval through the wired Gmail adapter. The executor re-checks every one
+ * of those bindings at send time, so a draft, contact address or account
+ * changed after approval is refused here, not sent. The outcome is returned
+ * so the screen can say "sent", "failed" or "unknown - reconcile" truthfully.
+ */
+export async function sendApprovedCorrespondenceAction(input: {
+  correspondenceId: string;
+}): Promise<Result<{ state: "sent" | "failed" | "unknown" }>> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const parsed = z.object({ correspondenceId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Malformed send request." };
+  try {
+    const result = await sendApprovedCorrespondence(auth, {
+      correspondenceId: parsed.data.correspondenceId,
+      sender: gmailMailSender(),
+    });
+    revalidate();
+    return { ok: true, state: result.state };
+  } catch (error) {
+    revalidate();
+    return fail(error);
+  }
 }
 
 /*

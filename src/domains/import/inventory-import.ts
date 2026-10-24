@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { calendars, eventAttendees, events } from "@/domains/calendar/schema";
+import { calendars, events } from "@/domains/calendar/schema";
 import { companies, contacts, correspondence } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { contactPoints, organizations, partyEmployment, people } from "@/domains/identity/schema";

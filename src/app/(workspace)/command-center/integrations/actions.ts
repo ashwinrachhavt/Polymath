@@ -1,8 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { registerAccount, revokeConnectedAccount, setAccountAccessTier, setDefaultForWrites } from "@/domains/integrations/commands";
-import { attachProviderLink, beginConnection } from "@/domains/integrations/connect";
+import { headers } from "next/headers";
+import {
+  registerAccount,
+  renameAccount,
+  revokeConnectedAccount,
+  setAccountAccessTier,
+  setAccountCapability,
+  setDefaultForWrites,
+} from "@/domains/integrations/commands";
+import { attachProviderLink, beginConnection, failConnectionAttempt } from "@/domains/integrations/connect";
+import { resolveRequestOrigin } from "@/domains/integrations/origin";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
 import { syncNotionAccount } from "@/domains/integrations/notion";
@@ -89,34 +98,57 @@ export async function revokeAccountAction(input: { accountId: string; expectedVe
 
 /*
  * The OAuth handshake: begin the attempt, ask Composio for the hosted link,
- * store it, hand the browser the hosted URL. Without Composio env this
- * returns a plain-language "not configured" and the account stays
- * `connecting` - nothing half-opens.
+ * store it, hand the browser the hosted URL. Connect never asks for a name
+ * first — with no alias the flow names the account itself and the owner can
+ * rename it afterwards. When the link cannot be created the attempt is
+ * marked failed with the real reason at once: nothing is left in
+ * `connecting` to rot into a misleading "expired".
  */
-export async function startConnectionAction(input: { provider: string; alias: string }): Promise<
+export async function startConnectionAction(input: { provider: string; alias?: string }): Promise<
   { ok: true; redirectUrl: string } | { ok: false; error: string }
 > {
   const auth = await authorize();
-  if (!input.alias.trim()) return { ok: false, error: "An alias is required - models choose accounts by alias." };
+  const alias = input.alias?.trim() ?? "";
   try {
-    const { attempt } = await beginConnection(auth, {
+    const { account, attempt } = await beginConnection(auth, {
       provider: input.provider,
-      alias: input.alias.trim(),
+      ...(alias ? { alias } : {}),
     });
     // The state token is what lets the callback find this attempt. Without it
     // every OAuth return landed on "missing-state" and the account sat in
     // `connecting` forever, which is what a connect that "did nothing" was.
-    const callbackUrl = new URL(
-      "/api/integrations/callback",
-      process.env.APP_ORIGIN ?? "http://localhost:3000",
-    );
-    callbackUrl.searchParams.set("state", attempt.stateToken);
-    const link = await createHostedConnectLink({
-      provider: input.provider,
-      userId: auth.workspaceId,
-      alias: input.alias.trim(),
-      callbackUrl: callbackUrl.toString(),
+    //
+    // APP_ORIGIN wins when set; without it the callback belongs to the origin
+    // the browser actually used. The old localhost fallback sent a hosted
+    // deployment's OAuth return to localhost:3000, so the attempt never
+    // completed and the card said "expired" for a flow that had finished.
+    // The forwarded host is client-supplied, so it is only trusted when the
+    // platform confirms it is this deployment's own (resolveRequestOrigin).
+    const requestHeaders = await headers();
+    const resolved = resolveRequestOrigin({
+      host: requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+      proto: requestHeaders.get("x-forwarded-proto"),
     });
+    if (!resolved.ok) {
+      const reason = resolved.error;
+      await failConnectionAttempt(auth, { accountId: account.id, reason });
+      return { ok: false, error: reason };
+    }
+    const callbackUrl = new URL("/api/integrations/callback", resolved.origin);
+    callbackUrl.searchParams.set("state", attempt.stateToken);
+    let link;
+    try {
+      link = await createHostedConnectLink({
+        provider: input.provider,
+        userId: auth.workspaceId,
+        alias: account.alias,
+        callbackUrl: callbackUrl.toString(),
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "The connection could not start.";
+      await failConnectionAttempt(auth, { accountId: account.id, reason });
+      return { ok: false, error: reason };
+    }
     await attachProviderLink(auth, {
       attemptId: attempt.id,
       redirectUrl: link.redirectUrl,
@@ -126,6 +158,39 @@ export async function startConnectionAction(input: { provider: string; alias: st
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The connection could not start." };
   }
+}
+
+/* One capability switched off (or back on) for one account. The tier stays the ceiling. */
+export async function setAccountCapabilityAction(input: {
+  accountId: string;
+  expectedVersion: number;
+  capability: string;
+  enabled: boolean;
+}): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await setAccountCapability(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/* Naming happens after connect, not before it. */
+export async function renameAccountAction(input: {
+  accountId: string;
+  expectedVersion: number;
+  alias: string;
+}): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await renameAccount(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
 }
 
 /* Read-only pull of the owner's Google Calendar into the week view. Nothing is written to Google. */

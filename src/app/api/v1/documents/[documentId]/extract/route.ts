@@ -24,7 +24,7 @@ export const POST = authedHandler(async (auth, _request, ctx: { params: Promise<
       return problemResponse(
         503,
         "provider_unconfigured",
-        "No extraction provider is configured. Set DOCLING_SERVE_URL or LLAMAPARSE_API_KEY.",
+        "No extraction provider is configured. Set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter.",
       );
     }
     throw error;

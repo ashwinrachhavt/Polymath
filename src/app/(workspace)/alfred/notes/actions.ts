@@ -12,6 +12,7 @@ import {
   listNotes,
   listNoteVersions,
   renameNote,
+  retryNoteEmbedding,
   setNoteTags,
 } from "@/domains/knowledge/notes";
 import { createEngine } from "@/domains/agents/engine";
@@ -20,6 +21,9 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
+import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
+import { searchCapturesForLink } from "@/domains/capture/queries";
+import { searchTasksForLink } from "@/domains/work/queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -114,6 +118,39 @@ const renameInput = z.object({
   title: z.string().trim().min(1).max(300),
   idempotencyKey: key,
 });
+
+const retryEmbedInput = z.object({ artifactId: z.string().uuid() });
+
+/*
+ * Re-run meaning indexing for one note. The commit path embeds best-effort,
+ * so a note saved while the embedding provider was unconfigured (or a
+ * transient failure) carries artifacts.embed_error and stays invisible to
+ * meaning search until this runs. The call is the member's own, scoped to
+ * their workspace's note; the outcome string is the provider's honest state,
+ * never a blanket "indexed".
+ */
+export async function retryNoteEmbeddingAction(input: z.input<typeof retryEmbedInput>): Promise<Result<{ message: string }>> {
+  const auth = await authorize();
+  const parsed = retryEmbedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That note id is not valid." };
+  try {
+    const out = await retryNoteEmbedding(auth, parsed.data);
+    revalidate();
+    if (out.status === "succeeded") return { ok: true, message: "Indexed for meaning search." };
+    if (out.status === "skipped") {
+      const reason = out.reason === "no_text" ? "This note has no text to index yet."
+        : out.reason === "busy" ? "Indexing is already in progress for this note."
+        : out.reason === "edited" ? "This note changed while indexing. Retry to index the latest version."
+        : "That note is not here.";
+      return { ok: false, error: reason };
+    }
+    // Authored categories only: a provider payload must never reach the UI.
+    return { ok: false, error: safeArtifactEmbedError(out.error) ?? "Indexing failed. Retry to try again." };
+  } catch (error) {
+    if (error instanceof NoteNotFoundError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
 
 export async function renameNoteAction(input: z.input<typeof renameInput>): Promise<Result<{ version: number }>> {
   const parsed = renameInput.safeParse(input);
@@ -247,13 +284,25 @@ const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword"
  * An empty query lists recent cards so the menu is useful the moment it opens.
  * A read: membership is enough, and nothing is revalidated.
  */
-export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string }[]> {
+export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string; href?: string }[]> {
   const parsed = findInput.safeParse(input);
   if (!parsed.success) return [];
   const auth = await getAuthContext();
   const query = parsed.data.query.trim();
-  const rows = query
-    ? (await searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 })).hits
-    : await listNotes(auth, 9);
-  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  if (!query) return (await listNotes(auth, 9)).filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  // Row 36: the picker searches beyond knowledge artifacts - captures and
+  // tasks match too. Non-artifact targets carry a canonical href (captures
+  // resolve at the inbox, tasks at the tasks page); the editor inserts those
+  // as real links, since a [[wiki link]] edge can only point at note/zettel.
+  const [knowledge, captureRows, taskRows] = await Promise.all([
+    searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 }),
+    searchCapturesForLink(auth, query),
+    searchTasksForLink(auth, query),
+  ]);
+  const rows: { id: string; title: string; kind: string; href?: string }[] = [
+    ...knowledge.hits.map((r) => ({ id: r.id, title: r.title, kind: r.kind })),
+    ...captureRows,
+    ...taskRows,
+  ];
+  return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8);
 }

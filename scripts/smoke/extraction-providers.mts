@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { createDoclingDockerProvider } from "../../src/integrations/extraction/docling-docker";
 import { createLlamaParseProvider } from "../../src/integrations/extraction/llamaparse";
 import { createReductoProvider } from "../../src/integrations/extraction/reducto";
+import { openRouterVisionProviderFromEnv } from "../../src/integrations/extraction/openrouter-vision";
 import { createPdfTextLayerProvider } from "../../src/integrations/extraction/pdf-text-layer";
 import type { ExtractionProvider } from "../../src/integrations/extraction/provider";
 import { samplePdf } from "../../tests/helpers/sample-pdf";
@@ -42,6 +43,8 @@ const configured: Array<{ name: string; provider: ExtractionProvider | null }> =
       : null,
   },
   { name: "pdf-text-layer@local (floor)", provider: createPdfTextLayerProvider() },
+  // Opt-in metered rescue: only present when OCR_PROVIDER=openrouter is set.
+  { name: "openrouter-vision@hosted", provider: openRouterVisionProviderFromEnv(process.env) },
 ];
 
 export async function runSmoke(): Promise<number> {

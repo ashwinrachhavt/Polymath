@@ -3,9 +3,26 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { revokeAccountAction, setAccountAccessTierAction, setWriteDefaultAction, startConnectionAction, syncGoogleCalendarAction, syncNotionAction } from "./actions";
+import { CAPABILITIES, CAPABILITY_LABELS, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
+import {
+  renameAccountAction,
+  revokeAccountAction,
+  setAccountAccessTierAction,
+  setAccountCapabilityAction,
+  setWriteDefaultAction,
+  startConnectionAction,
+  syncGoogleCalendarAction,
+  syncNotionAction,
+} from "./actions";
 
 /* Connector card islands over the durable integrations rows. */
+
+/*
+ * A provider with no write capability can never honor "Make write default" -
+ * the button is hidden rather than shown to fail, because a card never shows
+ * a control its state cannot honor.
+ */
+const PROVIDERS_WITH_WRITES = new Set<string>(Object.values(CAPABILITIES).filter((spec) => spec.kind === "proposal").map((spec) => spec.provider));
 
 export function AccountControls({
   accountId,
@@ -35,6 +52,7 @@ export function AccountControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <RenameAccount accountId={accountId} version={version} alias={alias} />
       {status !== "revoked" ? (
         <Button
           size="sm"
@@ -50,7 +68,7 @@ export function AccountControls({
           Disconnect
         </Button>
       ) : null}
-      {status === "active" && !isDefault ? (
+      {status === "active" && !isDefault && provider !== undefined && PROVIDERS_WITH_WRITES.has(provider) ? (
         <Button
           size="sm"
           variant="outline"
@@ -81,27 +99,91 @@ export function AccountControls({
   );
 }
 
-/* The hosted-auth entry point: begins the attempt and navigates to Composio. */
+/*
+ * Naming happens after connect, not before it. An auto-named connection
+ * becomes "work" or "personal" here; models choose accounts by this name.
+ */
+function RenameAccount({ accountId, version, alias }: { accountId: string; version: number; alias: string }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(alias);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
+  if (!editing) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          setName(alias);
+          setError(null);
+          setEditing(true);
+        }}
+      >
+        Rename
+      </Button>
+    );
+  }
+
+  const save = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await renameAccountAction({ accountId, expectedVersion: version, alias: name });
+      if (result.ok) {
+        setEditing(false);
+      } else {
+        setError(result.error);
+      }
+    });
+  };
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={60}
+        className="h-8 w-44 text-[13px]"
+        aria-label="Account name"
+        autoFocus
+        onKeyDown={(event) => {
+          if (event.key === "Enter") save();
+          if (event.key === "Escape") setEditing(false);
+        }}
+      />
+      <Button size="sm" variant="outline" disabled={pending || !name.trim()} onClick={save}>
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
+}
+
+/*
+ * The hosted-auth entry point: one click begins the attempt and navigates to
+ * the provider's consent screen. No name is asked for up front; the flow
+ * names the account itself when `alias` is absent (a resume passes the
+ * existing alias so the attempt continues instead of duplicating).
+ */
 export function ConnectButton({
   provider,
-  defaultAlias,
+  alias,
   label = "Connect",
-  promptForAlias = false,
 }: {
   provider: string;
-  defaultAlias: string;
+  alias?: string;
   label?: string;
-  promptForAlias?: boolean;
 }) {
-  const [alias, setAlias] = useState(defaultAlias);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const connect = () => {
     setError(null);
     startTransition(async () => {
-      const result = await startConnectionAction({ provider, alias: alias.trim() });
+      const result = await startConnectionAction(alias ? { provider, alias } : { provider });
       if (result.ok) {
         window.location.assign(result.redirectUrl);
       } else {
@@ -112,17 +194,7 @@ export function ConnectButton({
 
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      {promptForAlias ? (
-        <Input
-          value={alias}
-          onChange={(event) => setAlias(event.target.value)}
-          placeholder="name this account, e.g. work"
-          maxLength={60}
-          className="h-8 w-44 text-[13px]"
-          aria-label="Account name"
-        />
-      ) : null}
-      <Button type="button" variant="outline" size="sm" disabled={pending || (promptForAlias && !alias.trim())} onClick={connect}>
+      <Button type="button" variant="outline" size="sm" disabled={pending} onClick={connect}>
         {pending ? "Opening…" : label}
       </Button>
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
@@ -131,27 +203,33 @@ export function ConnectButton({
 }
 
 /*
- * The one control that sets what agents may do through this connection. Each
- * choice saves itself; the row remounts when the server returns a new
- * version, which is what settles it.
+ * The coarse control: what agents may do through this connection, as one
+ * choice. Each choice saves itself; the row remounts when the server returns
+ * a new version, which is what settles it.
  */
 export function TierPicker({
   accountId,
   expectedVersion,
   current,
   tiers,
+  disabled = [],
 }: {
   provider: string;
   accountId: string;
   expectedVersion: number;
   current: string | null;
-  tiers: Array<{ id: string; label: string; description: string }>;
+  tiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
+  disabled?: string[];
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const active = tiers.find((tier) => tier.id === current) ?? tiers[0];
 
   if (!active) return null;
+
+  // The description names the tier ceiling; when account switches narrow it,
+  // say so right there so the summary never claims access that is off.
+  const narrowed = active.capabilities.filter((capability) => disabled.includes(capability));
 
   const choose = (tierId: string) => {
     setError(null);
@@ -180,6 +258,80 @@ export function TierPicker({
         ))}
       </select>
       <p className="text-xs text-muted-foreground">{active.description}</p>
+      {narrowed.length ? (
+        <p className="text-xs text-muted-foreground">
+          Narrowed by the switches below: {narrowed.map((capability) => CAPABILITY_LABELS[capability as keyof typeof CAPABILITY_LABELS] ?? capability).join(", ")}{" "}
+          {narrowed.length === 1 ? "is" : "are"} off.
+        </p>
+      ) : null}
+      {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
+    </div>
+  );
+}
+
+/*
+ * The fine-grained control under the tier: one switch per capability the
+ * current tier grants. The tier is the ceiling — a switch can only narrow
+ * what this one account allows, never grant above the tier — and the gateway
+ * enforces the switch live on every call, so off means off immediately.
+ */
+export function CapabilitySwitches({
+  provider,
+  accountId,
+  expectedVersion,
+  current,
+  disabled,
+}: {
+  provider: string;
+  accountId: string;
+  expectedVersion: number;
+  current: string | null;
+  disabled: string[];
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const tiers = PROVIDER_TIERS[provider as Provider] ?? [];
+  const active = tiers.find((tier) => tier.id === current) ?? tiers[0];
+
+  if (!active) return null;
+
+  const toggle = (capability: string, enabled: boolean) => {
+    setError(null);
+    startTransition(async () => {
+      const result = await setAccountCapabilityAction({ accountId, expectedVersion, capability, enabled });
+      if (!result.ok) setError(result.error);
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">This account can</p>
+      {active.capabilities.map((capability) => {
+        const enabled = !disabled.includes(capability);
+        return (
+          <div key={capability} className="flex items-center justify-between gap-3">
+            <span className="text-[13px]">{CAPABILITY_LABELS[capability] ?? capability}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enabled}
+              aria-label={CAPABILITY_LABELS[capability] ?? capability}
+              disabled={pending}
+              onClick={() => toggle(capability, !enabled)}
+              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                enabled ? "bg-foreground" : "bg-muted-foreground/30"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
+                  enabled ? "translate-x-4.5 left-0" : "translate-x-0.5 left-0"
+                }`}
+              />
+            </button>
+          </div>
+        );
+      })}
       {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
     </div>
   );

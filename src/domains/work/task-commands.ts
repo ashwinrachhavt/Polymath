@@ -68,15 +68,31 @@ async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Re
   await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic, payload });
 }
 
-/** Mark edges this task was blocking as resolved (or unresolved on reopen). */
-export async function settleBlockers(tx: TxDrizzle, auth: AuthContext, taskId: string, done: boolean) {
-  await tx.execute(sql`
+export type SettledEdge = { id: string; version: number };
+
+/**
+ * Mark edges this task was blocking as resolved (or unresolved on reopen).
+ * Returns the affected edges with their post-touch version so the caller
+ * can record exactly what its transition did: the version is an integer
+ * compare-token, bumped on every later touch of the edge, which lets a
+ * reopen prove the edge was not resolved by some other path since - and
+ * refuse the undo when it cannot prove that.
+ */
+export async function settleBlockers(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  taskId: string,
+  done: boolean,
+): Promise<SettledEdge[]> {
+  const rows = await tx.execute(sql`
     update task_dependencies
        set resolved_at = ${done ? sql`now()` : sql`null`}, updated_at = now(), updated_by = ${auth.userId},
            version = version + 1
      where workspace_id = ${auth.workspaceId}
        and ((kind = 'blocks' and task_id = ${taskId}) or (kind = 'blocked_by' and depends_on_task_id = ${taskId}))
-       and (resolved_at is not null) <> ${done}`);
+       and (resolved_at is not null) <> ${done}
+       returning id, version`);
+  return rows as unknown as SettledEdge[];
 }
 
 /** Patch a task if `expectedVersion` still matches; the row's version is the guard. */
@@ -90,13 +106,19 @@ export async function updateTask(
       // Finishing a task from the board or detail view must earn the same
       // daily Quartz as the list's Done button, so note the prior status.
       let finishing = false;
-      if (p.status === "done") {
+      // A terminal transition only truly happens from a non-terminal state:
+      // re-saving an already-done task with status "done" (the detail form
+      // always sends its status) must not overwrite the attribution the real
+      // transition recorded.
+      let terminalizing = false;
+      if (p.status === "done" || p.status === "cancelled") {
         const [before] = await tx
           .select({ status: tasks.status })
           .from(tasks)
           .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
           .limit(1);
-        finishing = !!before && before.status !== "done";
+        finishing = p.status === "done" && !!before && before.status !== "done";
+        terminalizing = !!before && before.status !== "done" && before.status !== "cancelled";
       }
       const set: Record<string, unknown> = {
         updatedAt: new Date(),
@@ -137,8 +159,16 @@ export async function updateTask(
       }
 
       if (finishing) await recordDailyQuartz(tx, auth, row.id);
-      if (p.status === "done" || p.status === "cancelled") await settleBlockers(tx, auth, row.id, true);
-      else if (p.status !== undefined) await settleBlockers(tx, auth, row.id, false);
+      // A real terminal transition records exactly which edges it settled,
+      // so a later reopen undoes by identity rather than by guesswork. The
+      // settle call itself still runs for any done/cancelled patch (its
+      // resolved_at guard makes a re-save a no-op), but only the transition
+      // from a non-terminal state may claim attribution.
+      const settledEdgeIds =
+        p.status === "done" || p.status === "cancelled" ? await settleBlockers(tx, auth, row.id, true) : undefined;
+      if (p.status !== undefined && p.status !== "done" && p.status !== "cancelled") {
+        await settleBlockers(tx, auth, row.id, false);
+      }
 
       const changed = Object.keys(p).filter((k) => (p as Record<string, unknown>)[k] !== undefined);
       await recordAudit(
@@ -148,7 +178,7 @@ export async function updateTask(
           subjectType: "task",
           subjectId: row.id,
           summary: `Updated task "${row.title}" (${changed.join(", ")})`,
-          metadata: { fields: changed, version: row.version },
+          metadata: { fields: changed, version: row.version, ...(terminalizing ? { settledEdges: settledEdgeIds } : {}) },
         },
         tx,
       );

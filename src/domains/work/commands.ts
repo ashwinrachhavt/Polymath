@@ -1,5 +1,6 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { auditEvents } from "@/domains/audit/schema";
 import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
@@ -208,8 +209,12 @@ export async function listOpenTasks(auth: AuthContext) {
  */
 export async function completeTask(
   auth: AuthContext,
-  input: { taskId: string },
+  input: { taskId: string; sentence?: string },
 ): Promise<{ id: string; quartzEarned: boolean } | null> {
+  // The completion question ("what did you actually do?") is optional to
+  // answer; a blank or whitespace-only answer records no sentence. The action
+  // caps the length; the domain trims defensively.
+  const note = input.sentence?.trim().slice(0, 1000) || undefined;
   return withTransaction(async (tx) => {
     const [task] = await tx
       .update(tasks)
@@ -232,8 +237,10 @@ export async function completeTask(
     // there was no change to record.
     if (!task) return null;
 
-    // Whatever this task was blocking is no longer waiting on it.
-    await settleBlockers(tx, auth, task.id, true);
+    // Whatever this task was blocking is no longer waiting on it. The audit
+    // row records exactly which edges this completion settled, so a later
+    // reopen undoes by identity, not by timestamp guesswork.
+    const settledEdges = await settleBlockers(tx, auth, task.id, true);
 
     await recordAudit(
       auth,
@@ -242,12 +249,197 @@ export async function completeTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Completed task "${task.title}"`,
+        // The sentence is durable even when no stone is earned today: it
+        // rides on the stone when one is awarded, and stays on the
+        // completion's audit row either way. The settled blocker edges ride
+        // alongside so a later reopen undoes by identity.
+        metadata: note ? { settledEdges, completionNote: note } : { settledEdges },
       },
       tx,
     );
     // A10 Quartz rule: first completed task of the day earns the daily
     // Quartz. Same transaction, skip-silent when the day already has one.
-    const quartzEarned = await recordDailyQuartz(tx, auth, task.id);
+    const quartzEarned = await recordDailyQuartz(tx, auth, task.id, note);
     return { id: task.id, quartzEarned };
+  });
+}
+
+/**
+ * Undo a terminal transition (Product Spec: "Undo for every terminal
+ * transition"). Two guards, both on the row itself: the task must be done or
+ * cancelled, and its version must still be the one the caller saw. The
+ * version guard is the ABA defense - a stale "done" view cannot undo a
+ * newer reopen-and-recomplete cycle it never saw. Reopening lands the task
+ * in `ready` - the prior open state is not recorded anywhere, and inventing
+ * one would be a lie.
+ *
+ * Which blocker edges a reopen un-settles is decided by identity, not by
+ * timestamp: every terminalization records the exact edge ids it settled in
+ * its audit row, and the reopen undoes the edges the LATEST terminal audit
+ * event named. An edge resolved any other way - linked against the task
+ * while it was already terminal, for example - was never named and is never
+ * touched. A task terminalized before this attribution existed has no named
+ * edges; its reopen leaves every edge alone rather than guess.
+ *
+ * Scope of the undo, honestly: the task row, its completedAt, and the
+ * blocker edges its own terminalization settled. It does NOT reclaim an
+ * earned stone (the ledger is append-only - the daily-stone idempotency key
+ * refuses a second award the same day; a re-completion on a later day earns
+ * that day's first-completion stone, exactly as completing any other task
+ * that day would), does NOT rewrite the audit history (the terminal row
+ * stands; the reopen adds its own), and cannot undo an external effect
+ * another system already felt.
+ */
+
+export type BulkCompleteOutcome = {
+  completed: string[];
+  skipped: string[];
+  /**
+   * Threw mid-write: that row's real state is unknown - it may have
+   * completed before the error. Named so the caller can say "check it" -
+   * never silently counted either way and never retried automatically. The
+   * batch stops at the first unknown: every id after it is unattempted,
+   * which the caller can compute from the three lists and the request.
+   */
+  unknown: string[];
+  /**
+   * Ids the batch never reached because it stopped at the first unknown.
+   * Returned explicitly - the caller must not have to set-subtract to learn
+   * what was not attempted.
+   */
+  unattempted: string[];
+  quartzEarned: boolean;
+};
+
+/**
+ * Bulk edit (Product Spec: "bulk edit"), scoped to the operation the Work
+ * surface offers: complete. Composes over completeTask one id at a time, so
+ * every per-item guard (status, tenant), audit row, settled-edge attribution
+ * and Quartz rule applies exactly as if each row's Done was clicked - the
+ * bulk path bypasses nothing. Each completion is its own transaction: an id
+ * that no longer qualifies (already terminal, or not visible in this
+ * workspace) lands in `skipped` and neither rolls back nor silently absorbs
+ * the ones that did complete. An unexpected error lands in `unknown` and
+ * stops the batch: the completed prefix is real and reported, the failed
+ * id's state is honestly uncertain, and nothing past it was attempted.
+ * Sequential on purpose: the audit trail's order is the caller's order.
+ */
+export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], unattempted: [], quartzEarned: false };
+  for (const [index, taskId] of taskIds.entries()) {
+    let result: Awaited<ReturnType<typeof completeTask>>;
+    try {
+      result = await completeTask(auth, { taskId });
+    } catch {
+      outcome.unknown.push(taskId);
+      outcome.unattempted = taskIds.slice(index + 1);
+      break;
+    }
+    if (result) {
+      outcome.completed.push(result.id);
+      outcome.quartzEarned ||= result.quartzEarned;
+    } else {
+      outcome.skipped.push(taskId);
+    }
+  }
+  return outcome;
+}
+
+export type ReopenOutcome =
+  | { id: string; from: "done" | "cancelled"; skippedChangedEdges: number }
+  | "stale"
+  | "not_terminal"
+  | null;
+
+export async function reopenTask(
+  auth: AuthContext,
+  input: { taskId: string; expectedVersion: number },
+): Promise<ReopenOutcome> {
+  return withTransaction(async (tx) => {
+    const [before] = await tx
+      .select({ status: tasks.status, version: tasks.version, title: tasks.title })
+      .from(tasks)
+      .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!before) return null;
+    if (before.status !== "done" && before.status !== "cancelled") return "not_terminal";
+    if (before.version !== input.expectedVersion) return "stale";
+
+    // The row's own guard re-checks status and version inside the UPDATE, so
+    // a concurrent reopen or patch between the read and the write loses here.
+    const [task] = await tx
+      .update(tasks)
+      .set({
+        status: "ready",
+        completedAt: null,
+        cancelledAt: null,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+        version: sql`${tasks.version} + 1`,
+      })
+      .where(
+        and(
+          eq(tasks.id, input.taskId),
+          eq(tasks.workspaceId, auth.workspaceId),
+          eq(tasks.version, input.expectedVersion),
+          inArray(tasks.status, ["done", "cancelled"]),
+        ),
+      )
+      .returning({ id: tasks.id });
+    if (!task) return "stale";
+
+    // Exact attribution: the latest terminal audit event names the edges its
+    // transition settled and the version each edge carried right after. An
+    // edge is undone only when its CURRENT version still matches that token -
+    // any later touch (another resolve, an edit) bumps the version, and a
+    // changed edge is refused as ambiguous rather than silently unre-resolved.
+    const [terminal] = await tx
+      .select({ metadata: auditEvents.metadata })
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.subjectType, "task"),
+          eq(auditEvents.subjectId, task.id),
+          inArray(auditEvents.action, ["task.completed", "task.updated"]),
+          sql`${auditEvents.metadata} -> 'settledEdges' is not null`,
+        ),
+      )
+      .orderBy(desc(auditEvents.createdAt))
+      .limit(1);
+    const settledEdges = (terminal?.metadata as { settledEdges?: unknown } | null)?.settledEdges;
+    const unsettled: string[] = [];
+    const skippedChanged: string[] = [];
+    if (Array.isArray(settledEdges)) {
+      for (const entry of settledEdges) {
+        const e = entry as { id?: unknown; version?: unknown };
+        if (typeof e.id !== "string" || typeof e.version !== "number") continue;
+        const rows = await tx.execute(sql`
+          update task_dependencies
+             set resolved_at = null, updated_at = now(), updated_by = ${auth.userId},
+                 version = version + 1
+           where workspace_id = ${auth.workspaceId}
+             and id = ${e.id}::uuid
+             and version = ${e.version}
+             and resolved_at is not null
+           returning id`);
+        if ((rows as unknown as Array<{ id: string }>).length > 0) unsettled.push(e.id);
+        else skippedChanged.push(e.id);
+      }
+    }
+
+    const from = before.status as "done" | "cancelled";
+    await recordAudit(
+      auth,
+      {
+        action: "task.reopened",
+        subjectType: "task",
+        subjectId: task.id,
+        summary: `Reopened task "${before.title}" (was ${from})`,
+        metadata: { from, unsettledEdgeIds: unsettled, skippedChangedEdgeIds: skippedChanged },
+      },
+      tx,
+    );
+    return { id: task.id, from, skippedChangedEdges: skippedChanged.length };
   });
 }

@@ -168,18 +168,16 @@ AssertionError: expected 201 to be 200
 
 **Priority:** P1
 
-- **Ship a `MailSender` adapter.** The send executor is complete — it refuses
-  unapproved sends, binds approval to a revision, and leaves an `unknown`
-  attempt that blocks retry until reconciled. But there is no implementation of
-  the port anywhere in `src/`; `unconfiguredSender` (`src/domains/crm/send-executor.ts`)
-  always throws, so no approved message can leave the workspace. The settings
-  capability panel reports "Email sending is not implemented" for exactly this
-  reason, and the release claim excludes sending until it is untrue. **What:**
-  one adapter over a connected account (Composio Gmail first), wired through the
-  existing `sendApprovedCorrespondence` path with an idempotency key per
-  attempt. **Why:** without it the approval-gated send story is untestable
-  outside unit tests, and the `action_attempts` reconciliation work has no live
-  producer. **Depends on:** an explicit go-ahead before any real send.
+- ~~**Ship a `MailSender` adapter.**~~ **Shipped (2026-10-23).** The Gmail
+  adapter (`src/domains/crm/mail-sender.ts`) wires the existing
+  `sendApprovedCorrespondence` path to Composio Gmail with the attempt id as
+  the message marker; the contact page now offers "Send now" once Reviews has
+  approved the exact draft (recipient address, account, subject and body all
+  pinned at approval time), and the capability panel mirrors the adapter's
+  `COMPOSIO_API_KEY` check. **Still gated:** a real send needs a connected
+  Gmail account and an explicit approval per message; the live journey
+  (approve in Reviews → Send now → mail lands) has not been exercised against
+  a real provider.
 
 ## Inbox / command center
 

@@ -92,7 +92,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         <Textarea
           autoFocus
           aria-label="Start a conversation"
-          className="min-h-[88px] resize-none border-0 bg-transparent pr-12 text-[13px] leading-6 focus-visible:ring-0"
+          className="composer-input min-h-[88px] resize-none border-0 bg-transparent pr-12 text-[13px] leading-6 focus-visible:ring-0"
           placeholder={
             skillId
               ? skills.find((skill) => skill.id === skillId)?.name
@@ -126,14 +126,19 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
               {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
               <X aria-hidden className="size-3" />
             </button>
-          ) : null}
+          ) : (
+            <span className="px-1 text-[11px] text-muted-foreground">
+              Enter to send · Shift+Enter for a new line
+            </span>
+          )}
           <Button
             type="submit"
-            size="icon-sm"
+            size="icon"
             aria-label="Send"
+            className="size-8 shrink-0 rounded-full"
             disabled={!draft.trim() || pending}
           >
-            <ArrowUp aria-hidden />
+            <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
       </div>
