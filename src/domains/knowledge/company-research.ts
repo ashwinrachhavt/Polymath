@@ -406,7 +406,7 @@ export async function runCompanyResearch(
           createdBy: auth.userId,
         })
         .returning({ id: artifactVersions.id });
-      await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+      await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
       for (const m of manifest) {
         await tx.insert(sources).values({
           workspaceId: auth.workspaceId,

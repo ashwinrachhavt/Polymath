@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { Status } from "@/components/workspace/ui";
 import { timeAgo } from "@/lib/time";
-import { countMeaningUncovered, searchKnowledge, type SearchFilters, type SearchHit, type SearchResult } from "@/domains/knowledge/retrieval";
+import { countMeaningUncoveredByState, searchKnowledge, type SearchFilters, type SearchHit, type SearchResult } from "@/domains/knowledge/retrieval";
 import type { AuthContext } from "@/lib/auth";
 
 /*
@@ -76,9 +76,19 @@ export async function Ranked(props: { auth: AuthContext; q: string; scope?: Sear
     // Partial indexing is named, never presented as a complete search: same
     // kinds/filters/tenant as the search itself, with current text, without a
     // current-version embedding row. The count never sees the query text.
-    const uncovered = await countMeaningUncovered(props.auth, { kinds: props.scope?.kinds, filters: props.scope?.filters });
+    const { pending, failed } = await countMeaningUncoveredByState(props.auth, { kinds: props.scope?.kinds, filters: props.scope?.filters });
+    const uncovered = pending + failed;
     if (uncovered > 0) {
-      note = `${uncovered} ${uncovered === 1 ? "item" : "items"} in the selected filters ${uncovered === 1 ? "is" : "are"} not meaning-searchable (indexing failed or is still pending) and may be missing from these results.`;
+      // Name each state for what it actually is: pending means no pass has
+      // completed for the current version (never "being indexed" - there is
+      // no live job signal), failed means the last pass recorded an error.
+      // Retry lives on the surfaces that own it (the note's own status chip),
+      // not promised here across kinds that have no retry route.
+      const states = [
+        pending > 0 ? `${pending} not indexed yet` : null,
+        failed > 0 ? `${failed} with a failed indexing pass` : null,
+      ].filter(Boolean).join(", ");
+      note = `${uncovered} ${uncovered === 1 ? "item" : "items"} in the selected filters ${uncovered === 1 ? "is" : "are"} not meaning-searchable (${states}) and may be missing from these results.`;
     }
   } else {
     note = "Showing keyword matches only. Meaning search is not available right now.";

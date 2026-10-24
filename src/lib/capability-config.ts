@@ -217,13 +217,14 @@ const DEFINITIONS: readonly Definition[] = [
     id: "email-send",
     label: "Email sending",
     watches: ["COMPOSIO_API_KEY"],
-    // There is no MailSender implementation in the codebase — only the refusing
-    // default port. No environment variable makes this work, so reporting it
-    // ready on a Composio key would be the exact lie this module exists to stop.
-    ready: () => false,
-    missing: () => [],
-    subject: "Approved messages cannot leave the workspace; the send adapter is not implemented",
-    action: "ship a MailSender adapter, then wire it to the connected account",
+    // Mirrors gmailMailSender(): the adapter refuses before dispatch without
+    // the Composio project key. The connected Gmail account is workspace data
+    // the send executor checks per send, not env, so "ready" here means the
+    // deployment can send for a workspace that has one connected.
+    ready: (env) => has(env, "COMPOSIO_API_KEY"),
+    missing: (env) => (has(env, "COMPOSIO_API_KEY") ? [] : ["COMPOSIO_API_KEY"]),
+    subject: "Approved messages cannot leave the workspace",
+    action: "set COMPOSIO_API_KEY and connect a Gmail account",
   },
   {
     id: "private-file-storage",

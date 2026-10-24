@@ -233,6 +233,23 @@ export async function embedArtifact(
         .set({ embedError: error })
         .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)));
 
+    // Failure writes name the version they ran against. An edit committed
+    // while this pass was in flight makes the recorded text stale: writing
+    // the old version's failure onto the new version would mislabel it, so a
+    // guarded write that lands on a moved version reports the race instead.
+    // (Success already has the same guard below, before vectors are written.)
+    const recordFailureIfCurrent = async (error: string): Promise<boolean> => {
+      const written = await tx.update(artifacts)
+        .set({ embedError: error })
+        .where(and(
+          eq(artifacts.id, row.id),
+          eq(artifacts.workspaceId, auth.workspaceId),
+          eq(artifacts.currentVersionId, row.currentVersionId!),
+        ))
+        .returning({ id: artifacts.id });
+      return written.length > 0;
+    };
+
     // A twin pass that finished first already indexed this version: join its
     // result, clear any stale recorded failure, and skip the metered call.
     const [existing] = await tx
@@ -254,7 +271,7 @@ export async function embedArtifact(
       provider = input.provider ?? embeddingProvider();
     } catch (cause) {
       const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : SAFE_SETUP;
-      await record(error);
+      if (!(await recordFailureIfCurrent(error))) return { status: "skipped", reason: "edited" };
       return { status: "failed", error };
     }
 
@@ -274,7 +291,7 @@ export async function embedArtifact(
       }
     } catch (cause) {
       logProviderFailure("embedding failed for artifact", row.id, cause);
-      await record(SAFE_FAILED);
+      if (!(await recordFailureIfCurrent(SAFE_FAILED))) return { status: "skipped", reason: "edited" };
       return { status: "failed", error: SAFE_FAILED };
     }
 

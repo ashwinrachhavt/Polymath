@@ -226,7 +226,7 @@ async function execute(auth: AuthContext, proposalId: string, revisionId: string
         .returning({ id: artifactVersions.id });
       await tx
         .update(artifacts)
-        .set({ currentVersionId: version.id })
+        .set({ currentVersionId: version.id, embedError: null })
         .where(and(eq(artifacts.id, payload.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
       await recordAudit(
         auth,

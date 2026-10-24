@@ -108,7 +108,12 @@ export const artifacts = pgTable(
     tags: jsonb("tags").notNull().default([]),
     /** Provenance for generated work: which run or proposal produced it. */
     producedByRunId: uuid("produced_by_run_id"),
-    /** Last card-embedding failure; null after a successful pass. */
+    /**
+     * Last embedding failure recorded against the CURRENT version: a pass
+     * writes it only while its version is still current, and every version
+     * commit clears it, so a stale version's failure never mislabels fresh
+     * text. Null after a successful pass.
+     */
     embedError: text("embed_error"),
     ...mutable,
   },
