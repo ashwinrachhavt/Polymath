@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
+import { io } from "next/cache";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
@@ -42,7 +42,7 @@ function costLabel(usage: RunUsage | null, finished: boolean): string | null {
 }
 
 async function ConversationSurface({ runId }: { runId: string }) {
-  await connection();
+  await io();
   const auth = await getAuthContext();
   // A malformed id would reach Postgres as a uuid cast error and 500; the API
   // route answers 404 for it, and this page must answer the same.
@@ -166,7 +166,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
 
 /*
  * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
- * prerender a route that awaits `connection()` outside one, and the workspace
+ * prerender a route that awaits `io()` outside one, and the workspace
  * group's loading.tsx shell does not count. The fallback matches the shell so a
  * navigation does not flash a second skeleton.
  */
