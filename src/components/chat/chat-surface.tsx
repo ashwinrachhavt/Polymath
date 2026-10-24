@@ -390,6 +390,7 @@ export function ChatCancel({ runId }: { runId: string }) {
       type="button"
       size="sm"
       variant="outline"
+      className="w-fit"
       onClick={() => {
         void fetch(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
       }}
