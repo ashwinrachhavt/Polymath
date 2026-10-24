@@ -38,7 +38,15 @@ const extractor = (cands: Array<{ title: string; claim: string; quote: string }>
   name: "fake@1", extract: async () => cands,
 });
 
-beforeAll(() => { holder.db = handle?.db; });
+// Regression: generation keys unset for the whole suite. With the shell's
+// OPENROUTER_API_KEY, extractDocument's proposal pass raced the test's own
+// inserts. Found by /ship on 2026-10-24; same failure on origin/main.
+beforeAll(() => {
+  holder.db = handle?.db;
+  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("GEMINI_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
+});
 afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture"); });
 

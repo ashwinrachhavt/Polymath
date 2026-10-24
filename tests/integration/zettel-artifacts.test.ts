@@ -47,7 +47,18 @@ const extractor = (cands: Array<{ title: string; claim: string; quote: string }>
   name: "fake@1", extract: async () => cands,
 });
 
-beforeAll(() => { holder.db = handle?.db; });
+// Regression: the suite runs with generation and embedding keys unset. With
+// the developer's OPENROUTER_API_KEY in the shell, extractDocument's
+// runProposalPass created proposals with the real provider first, so the
+// test's own fake-extractor insert hit the (documentId, dedupeKey) conflict,
+// returned nothing, and every acceptOne destructure broke. Found by /ship on
+// 2026-10-24; same failure on origin/main.
+beforeAll(() => {
+  holder.db = handle?.db;
+  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("GEMINI_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
+});
 afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture"); });
 
