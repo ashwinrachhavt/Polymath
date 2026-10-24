@@ -164,6 +164,14 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             }
             if (frame.type === "turn") {
               setState((prev) => ({ ...prev, connection: frame.state === "waiting" ? "waiting" : prev.connection }));
+              // A failed turn ends this conversation: the session's turn is
+              // over and the run row may still say "running" (the bridge
+              // closes on session events, which may never come). Keep the
+              // composer closed instead of inviting a follow-up that 409s.
+              if (frame.state === "failed") {
+                setState((prev) => ({ ...prev, connection: "done" }));
+                terminal = true;
+              }
             }
             if (frame.type === "error") {
               setState((prev) => ({ ...prev, error: frame.message }));

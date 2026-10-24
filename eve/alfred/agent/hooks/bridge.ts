@@ -314,5 +314,25 @@ export default defineHook({
         }),
       );
     },
+
+    async "turn.failed"(event, ctx) {
+      const workspaceId = workspaceIdOf(ctx);
+      const runId = await runIdOf(ctx);
+      if (!workspaceId || !runId) return;
+      // A failed turn is also not a terminal run: the session can take another
+      // message, so session.completed/session.failed stay the only closes. But
+      // the run must not keep saying "running" while nothing computes — that
+      // left the UI offering Stop on a conversation the stream had already
+      // ended. Park it the same way turn.completed does.
+      await guarded("turn.failed", () =>
+        recordRoundEvent({
+          runId,
+          workspaceId,
+          type: "turn.failed",
+          data: { turnId: event.data.turnId },
+        }),
+      );
+      await guarded("turn.failed waiting state", () => markWaitingForInput({ runId, workspaceId }));
+    },
   },
 });
