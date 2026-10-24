@@ -11,7 +11,6 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
-import { markdownToPlainText } from "@/lib/display-text";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 
 /*
@@ -305,7 +304,7 @@ export function NoteEditor({
           artifactId: noteId,
           expectedVersion: versionRef.current,
           content: body(markdown),
-          plainText: markdownToPlainText(markdown),
+          plainText: markdown,
           idempotencyKey: crypto.randomUUID(),
         });
         if (!result.ok) {
@@ -372,7 +371,7 @@ export function NoteEditor({
         artifactId: noteId,
         expectedVersion: versionRef.current,
         content: body(text),
-        plainText: markdownToPlainText(text),
+        plainText: text,
         idempotencyKey: crypto.randomUUID(),
       }),
     );
@@ -472,7 +471,7 @@ export function NoteEditor({
         runId: ai.runId,
         expectedVersion: versionRef.current,
         content: body(next),
-        plainText: markdownToPlainText(next),
+        plainText: next,
         idempotencyKey: crypto.randomUUID(),
       }),
     );

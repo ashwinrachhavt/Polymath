@@ -4,12 +4,19 @@
  * rows, headers and briefing cards show them as plain text: markdown syntax
  * leaking into a title reads as corruption, and a long raw URL pushes out the
  * words a person scans for.
+ *
+ * Emphasis markers strip only when they hug their content without a space and
+ * sit at a word edge — `**bold**` and `_it_` go, `2 * 3 * 4` and
+ * `snake_case_name` stay. The marker side must not follow/lead an alnum and
+ * the content must not start/end with a space.
  */
+const EMPHASIS = /(^|[^\w*_[`\\])([*_~]{1,3})(?=\S)([^*_\s][^*_]*?)(?<=\S)\2(?![\w*_])/g;
+
 export function displayTitle(raw: string): string {
   const text = raw
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
-    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, "$1")
+    .replace(EMPHASIS, "$1$3")
     .replace(/^#{1,6}\s+/gm, "");
   return text.replace(/\s+/g, " ").trim();
 }
@@ -25,7 +32,7 @@ export function markdownToPlainText(markdown: string): string {
     .replace(/```[\s\S]*?```/g, (m) => m.replace(/```\w*\n?|```/g, ""))
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
-    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, "$1")
+    .replace(EMPHASIS, "$1$3")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^\s*([-*+]|\d+\.)\s+/gm, "");
 }

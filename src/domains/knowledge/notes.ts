@@ -406,10 +406,11 @@ function readTags(raw: unknown): string[] {
  * The list previews what the person last wrote, not the last checkpoint: an
  * autosave-only note (the normal case) has no artifactVersions row yet, so a
  * preview keyed on plainText alone rendered blank until the first explicit
- * checkpoint. The working draft is markdown; the page trims it for display.
+ * checkpoint. Draft content is uncapped, so the excerpt clamps to 500 chars;
+ * the page trims markdown for display.
  */
 const noteExcerptSql = sql<string | null>`coalesce(
-  ${workingDrafts.content} ->> 'text',
+  left(${workingDrafts.content} ->> 'text', 500),
   ${artifactVersions.plainText}
 )`;
 

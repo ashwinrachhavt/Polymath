@@ -227,6 +227,7 @@ export function WorkList({
     const title = parsed.title;
     if (!title) return;
     setAddError(null);
+    setAddNotice(null);
     startTransition(async () => {
       change({
         type: "add",

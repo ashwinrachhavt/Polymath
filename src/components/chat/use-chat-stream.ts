@@ -164,13 +164,15 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             }
             if (frame.type === "turn") {
               setState((prev) => ({ ...prev, connection: frame.state === "waiting" ? "waiting" : prev.connection }));
-              // A failed turn ends this conversation: the session's turn is
-              // over and the run row may still say "running" (the bridge
-              // closes on session events, which may never come). Keep the
-              // composer closed instead of inviting a follow-up that 409s.
+              // A failed turn surfaces the failure but does NOT end the
+              // conversation: the bridge parks the run at waiting_input and
+              // the session still takes follow-ups (eve protocol). The old
+              // behaviour — treating the frame as terminal — showed "This
+              // conversation has ended" with no error text while the row said
+              // waiting_input, and blocked the continuation path. The message
+              // state below carries the failure into the surface's alert.
               if (frame.state === "failed") {
-                setState((prev) => ({ ...prev, connection: "done" }));
-                terminal = true;
+                setState((prev) => ({ ...prev, connection: "waiting", error: "The last reply failed. You can send another message." }));
               }
             }
             if (frame.type === "error") {

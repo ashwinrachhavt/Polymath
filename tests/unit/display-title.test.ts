@@ -31,6 +31,17 @@ describe("displayTitle", () => {
   it("reduces an image to its alt text", () => {
     expect(displayTitle("![diagram](https://example.com/x.png) explain")).toBe("diagram explain");
   });
+
+  // Regression (adversarial F4): the emphasis strip used to eat intra-word
+  // markers, so math and identifiers lost their separators.
+  it("keeps multiplication and snake_case intact", () => {
+    expect(displayTitle("what is 2 * 3 * 4")).toBe("what is 2 * 3 * 4");
+    expect(displayTitle("snake_case_name stays")).toBe("snake_case_name stays");
+  });
+
+  it("still strips real emphasis around words", () => {
+    expect(displayTitle("this is **bold** and _it_")).toBe("this is bold and it");
+  });
 });
 
 /*

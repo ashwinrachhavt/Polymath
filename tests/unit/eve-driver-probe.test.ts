@@ -43,4 +43,18 @@ describe("eve liveness probe", () => {
     });
     expect(isEveAlive("http://127.0.0.1:59999")).toBe(false);
   });
+
+  /*
+   * Value: protects=the probe never declaring a broken eve server alive;
+   * fails_when=a 500 counts as reachable and a stream opens onto a server
+   * that cannot serve the turn; why_new=extends the ISSUE-003 regression with
+   * the status-code branch the fix introduced; seam=execFileSync argv/return
+   * spy; no_claim=eve's own health route behaviour.
+   */
+  it("reports a dead server on a non-2xx answer", () => {
+    // A 500 from the health route means eve is up but broken; claiming alive
+    // would open a stream that cannot serve the turn.
+    vi.spyOn(cp("child_process") as typeof import("child_process"), "execFileSync").mockReturnValue("500");
+    expect(isEveAlive("http://127.0.0.1:59999")).toBe(false);
+  });
 });
