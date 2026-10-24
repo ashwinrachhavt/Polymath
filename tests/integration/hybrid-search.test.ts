@@ -41,8 +41,17 @@ const provider = (concepts: Record<string, number[]>): EmbeddingProvider => ({
   }),
 });
 
-beforeAll(() => { holder.db = handle?.db; });
-afterAll(async () => { await handle?.client.end(); });
+// Regression: provider keys unset for the whole suite; the first test only
+// stubbed them later, so a real-provider embed row landed first with the
+// shell's OPENROUTER_API_KEY. Found by /ship on 2026-10-24; same failure on
+// origin/main.
+beforeAll(() => {
+  holder.db = handle?.db;
+  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("GEMINI_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
+});
+afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 
 const workspace = async () => ({ ...await seedWorkspace(holder.db!, `hs-${crypto.randomUUID()}`), role: "owner" as const });
 type Auth = Awaited<ReturnType<typeof workspace>>;
@@ -94,12 +103,13 @@ suite("hybrid search (real Postgres)", () => {
   it("falls back to keyword alone when no provider is configured", async () => {
     const auth = await workspace();
     await write(auth, "Stoicism", "Control what you can.");
-    vi.stubEnv("OPENROUTER_API_KEY", "");
-    vi.stubEnv("OPENAI_API_KEY", "");
+    // The suite already runs with the keys stubbed empty (beforeAll); the
+    // explicit stubs here keep this test's intent readable without its
+    // former unstubAllEnvs, which re-exposed the shell's real keys to every
+    // test after it.
     const res = await searchKnowledge(auth, { query: "stoicism" });
     expect(res.meaning).toBe("unconfigured");
     expect(res.hits[0].title).toBe("Stoicism");
-    vi.unstubAllEnvs();
   });
 
   it("never crosses a workspace boundary", async () => {

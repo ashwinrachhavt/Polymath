@@ -3,6 +3,34 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## QA deferred findings (2026-10-24, /qa full-product run)
+
+**Priority:** P2
+
+- **Stone collection vocabulary contradicts the spec.**
+  `/apps/neuralflow/rewards` shows "20 points from the ledger", "+10 pts",
+  "Active days", and a "streak day" reward kind — the product spec says stones
+  are never points and never a streak (agents/product.md; ASH-220 §6 has the
+  owner decision pending). Fix after the owner rules on the model.
+- **Connectors "Setup needed" cards expose `COMPOSIO_AUTH_CONFIG_*` env-var
+  names** in an end-user surface. Move the variable into a collapsed detail or
+  an owner-facing settings surface; the card should say what to do, not what
+  to deploy. Full audit: `.gstack/qa-reports/run-20261024T193102Z/ui-audit.md`.
+
+**Priority:** P3
+
+- **Briefing "Agents overnight" renders whole prompts as titles.** One run row
+  showed a full JSON-schema instruction block. displayTitle (branch
+  `feat/qa-full-product-fixes`) strips the markdown, but long raw prompts
+  still dominate the card; a short generated label with the full prompt behind
+  run detail is the upgrade.
+- **Sources chip expanded list leaves one document's passages ungrouped.**
+  The collapsed chip is deduped (2026-10-24); the expanded list could group
+  passages per document.
+- **`/today` is a dead route** with a 404 page ("Back to the briefing"). The
+  rail links to the briefing, so no user path hits it, but the route should
+  redirect instead of 404-ing.
+
 ## IA simplification follow-ups (2026-10-22)
 
 **Priority:** P1

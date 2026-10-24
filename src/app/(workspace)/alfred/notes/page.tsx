@@ -12,6 +12,7 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
+import { markdownToPlainText } from "@/lib/display-text";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 import { NotebookWorkspace } from "./notebook-workspace";
 import { SearchResults, type SearchScope } from "./search-results";
@@ -212,7 +213,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                           {note.hasDraft && <Status>draft</Status>}
                         </span>
                       </span>
-                      {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
+                      {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{markdownToPlainText(note.excerpt)}</span>}
                     </Link>
                   </li>
                 ))}
@@ -235,7 +236,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                     {note.hasDraft && <Status>draft</Status>}
                   </span>
                 </span>
-                {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note.excerpt}</span>}
+                {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{markdownToPlainText(note.excerpt)}</span>}
               </Link>
             </li>
           ))}

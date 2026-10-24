@@ -93,6 +93,7 @@ export function WorkList({
   const [asking, setAsking] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
+  const [addNotice, setAddNotice] = useState<string | null>(null);
   const [reward, setReward] = useState<string | null>(null);
   // Bulk edit (Product Spec: "bulk edit"). Selection only ever names rows on
   // screen: the effect below prunes it against the rendered items, so a
@@ -226,6 +227,7 @@ export function WorkList({
     const title = parsed.title;
     if (!title) return;
     setAddError(null);
+    setAddNotice(null);
     startTransition(async () => {
       change({
         type: "add",
@@ -257,6 +259,12 @@ export function WorkList({
         }
         intent.current = null;
         input.value = "";
+        // The created task's status (inbox) may sit outside this view's
+        // filter, so the optimistic row vanishes when the transition
+        // settles. Refresh the list and say where the task went instead of
+        // letting it look lost.
+        router.refresh();
+        setAddNotice("Added to Inbox. Find it under List.");
       } catch {
         setAddError("Could not reach the server. Try again.");
       }
@@ -275,6 +283,7 @@ export function WorkList({
           </div>
           {reward ? <p role="status" className="text-xs text-muted-foreground">{reward}</p> : null}
           {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
+          {addNotice ? <p role="status" className="text-xs text-muted-foreground">{addNotice}</p> : null}
         </form>
       ) : null}
       {optimisticItems.length === 0 ? emptyState : null}

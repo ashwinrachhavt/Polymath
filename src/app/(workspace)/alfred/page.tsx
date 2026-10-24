@@ -9,6 +9,7 @@ import { isWorkspaceOnboarded } from "@/domains/agents/onboarding";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { listSkills } from "@/domains/skills/queries";
 import { timeAgo, timeAgoShort } from "@/lib/time";
+import { displayTitle } from "@/lib/display-text";
 import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
@@ -138,7 +139,7 @@ export async function AlfredSurface() {
                   href={`/alfred/${run.id}`}
                   className="hover:bg-muted/50 flex items-center gap-3 py-2.5 text-[13px]"
                 >
-                  <span className="min-w-0 flex-1 truncate">{run.objective}</span>
+                  <span className="min-w-0 flex-1 truncate">{displayTitle(run.objective)}</span>
                   <span className="text-muted-foreground shrink-0 text-[11px]">
                     {timeAgo(run.createdAt)}
                   </span>

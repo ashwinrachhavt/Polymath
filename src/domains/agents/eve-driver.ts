@@ -35,20 +35,21 @@ type EveTarget =
 /**
  * Whether an eve dev server answers at this base. A state file can outlive its
  * server (a crash skips the cleanup that removes it), so a file hit is not
- * proof of reachability; a cheap POST does not mutate anything (an
- * unauthenticated call is rejected after the ping).
+ * proof of reachability. The probe must be side-effect free: in development
+ * the eve channel authenticates any loopback caller, so a POST here would
+ * create a real session — and the probe runs on every stream open.
  */
-function isEveAlive(base: string): boolean {
+export function isEveAlive(base: string): boolean {
   try {
     // ponytail: bounded sync probe; run-start frequency only.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { execFileSync } = require("child_process") as typeof import("child_process");
-    execFileSync(
+    const code = execFileSync(
       "curl",
-      ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", `${base}/eve/v1/session`, "-X", "POST"],
+      ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", `${base}/eve/v1/health`],
       { stdio: "pipe", timeout: 3000 },
-    );
-    return true;
+    ).toString();
+    return code.trim().startsWith("2");
   } catch {
     return false;
   }

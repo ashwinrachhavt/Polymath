@@ -141,6 +141,43 @@ suite("notes core", () => {
     expect(rows).toHaveLength(1);
   });
 
+  /*
+   * Value: protects=the list preview showing what the person last wrote, not
+   * the last checkpoint; fails_when=an autosave-only note lists a blank
+   * excerpt until its first explicit checkpoint; why_new=the excerpt query
+   * changed to coalesce the working draft and no unit seam exists for SQL;
+   * seam=notes.listNotes against real Postgres; no_claim=the page's
+   * markdown-stripping render (display-title.test.ts owns that).
+   */
+  it("previews the working draft when there is no committed version yet", async () => {
+    // Regression: the excerpt used to read plainText only, so an autosave-only
+    // note — the normal case — listed a blank preview until the first
+    // explicit checkpoint.
+    const auth = await seed("notes-excerpt-draft");
+    const created = await notes.createNote(auth, { title: "Draft only", idempotencyKey: crypto.randomUUID() });
+    await notes.autosaveNoteDraft(auth, {
+      artifactId: created.id,
+      expectedVersion: 1,
+      content: { format: "markdown", text: "# Working draft body" },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    const listed = (await notes.listNotes(auth)).find((n) => n.id === created.id);
+    expect(listed?.excerpt).toBe("# Working draft body");
+  });
+
+  /*
+   * Value: protects=the committed note's preview surviving the coalesce
+   * reorder; fails_when=the draft leg of the coalesce shadows or breaks the
+   * plainText fallback; why_new=same excerpt query change; seam=notes.listNotes
+   * against real Postgres; no_claim=markdown rendering.
+   */
+  it("falls back to the committed plainText when no working draft exists", async () => {
+    const auth = await seed("notes-excerpt-committed");
+    const created = await notes.createNote(auth, { title: "Committed", content: doc("v1"), plainText: "committed body", idempotencyKey: crypto.randomUUID() });
+    const listed = (await notes.listNotes(auth)).find((n) => n.id === created.id);
+    expect(listed?.excerpt).toBe("committed body");
+  });
+
   it("drops the edge when the reference leaves the body, and never self-links", async () => {
     const auth = await seed("notes-unlink");
     const target = await notes.createNote(auth, { title: "Glossary", idempotencyKey: crypto.randomUUID() });

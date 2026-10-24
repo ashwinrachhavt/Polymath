@@ -36,7 +36,16 @@ const fakeProvider = (byText: Record<string, number[]>): EmbeddingProvider => ({
   embed: async (values) => values.map((t) => byText[t] ?? vec([0])),
 });
 
-beforeAll(() => { holder.db = handle?.db; });
+// Regression: the whole suite runs with the provider keys unset. The first
+// test only stubbed them later, so with OPENROUTER_API_KEY in the developer's
+// shell, commitNoteSnapshot's best-effort embed wrote a real-provider row
+// before the test's own fakeProvider pass — and the model assertion failed.
+// Found by /ship on 2026-10-24; same failure on origin/main.
+beforeAll(() => {
+  holder.db = handle?.db;
+  vi.stubEnv("OPENAI_API_KEY", "");
+  vi.stubEnv("OPENROUTER_API_KEY", "");
+});
 afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 
 const workspace = async () => ({ ...await seedWorkspace(holder.db!, `sr-${crypto.randomUUID()}`), role: "owner" as const });

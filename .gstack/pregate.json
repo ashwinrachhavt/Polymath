@@ -46,5 +46,9 @@
     "tests/unit/quiz-generator.test.ts": [],
     "tests/unit/run-details.test.ts": [],
     "src/db/migrations/0235_drop_learning.sql": []
-  }
+  },
+  "serial_patterns": [
+    "tests/integration/**",
+    "tests/db/**"
+  ]
 }
