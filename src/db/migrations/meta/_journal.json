@@ -488,22 +488,29 @@
     {
       "idx": 243,
       "version": "7",
-      "tag": "0243_capture_enrichment",
-      "when": 1792797488000,
+      "tag": "0243_daybook_pins",
+      "when": 1792798400000,
       "breakpoints": true
     },
     {
       "idx": 244,
       "version": "7",
-      "tag": "0244_run_message_feedback",
-      "when": 1792799000000,
+      "tag": "0244_capture_enrichment",
+      "when": 1792798460000,
       "breakpoints": true
     },
     {
       "idx": 245,
       "version": "7",
-      "tag": "0243_daybook_pins",
-      "when": 1792890000000,
+      "tag": "0245_run_message_feedback",
+      "when": 1792798520000,
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "tag": "0246_connector_catalog_refocus",
+      "when": 1792798580000,
       "breakpoints": true
     }
   ]

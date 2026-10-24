@@ -1,4 +1,4 @@
--- 0243: capture enrichment columns. The classifier ladder (capture.enrichment_requested)
+-- 0244: capture enrichment columns. The classifier ladder (capture.enrichment_requested)
 -- writes structured signal here so every later tier starts from signal, not raw payload:
 -- cleaned text, a structure verdict from regex heuristics, and the LLM's topic/domain
 -- reading. Enrichment is additive signal on the capture, never a rewrite of raw_payload.
