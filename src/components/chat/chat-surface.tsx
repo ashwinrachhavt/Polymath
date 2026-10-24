@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, ChevronDown, Paperclip, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
@@ -10,7 +10,7 @@ import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
-import { ComposerPlus, attachFileItem, type RecordReference } from "./composer-plus";
+import { ComposerPlus, type RecordReference } from "./composer-plus";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -92,14 +92,14 @@ export function ChatSurface({
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
   const [plusOpen, setPlusOpen] = useState(false);
   const [plusQuery, setPlusQuery] = useState("");
   useEffect(() => {
     if (!plusOpen) return;
     const controller = new AbortController();
-    setRecords(null);
+    // Fetching lands in the timeout, so every setRecords call is async from
+    // React's view — no synchronous setState inside the effect body.
     const timer = setTimeout(() => {
       void fetch(`/api/v1/records/search?q=${encodeURIComponent(plusQuery)}`, { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : { records: [] }))
@@ -360,7 +360,7 @@ export function ChatSurface({
                 setPlusOpen(open);
                 if (!open) setPlusQuery("");
               }}
-              items={[attachFileItem(() => fileInputRef.current?.click())]}
+              onFile={attachFile}
             />
             <span className="px-1 truncate text-[11px] text-muted-foreground">
               {attachNote ?? "Enter to send · Shift+Enter for a new line"}
@@ -377,18 +377,6 @@ export function ChatSurface({
             <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          aria-hidden
-          tabIndex={-1}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) attachFile(file);
-            event.target.value = "";
-          }}
-        />
       </form>
       )}
     </section>

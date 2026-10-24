@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Loader2, MessageSquare, Paperclip, Plus, Search } from "lucide-react";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
@@ -54,6 +54,7 @@ export function ComposerPlus({
   onReference,
   onQueryChange,
   onOpenChange,
+  onFile,
   label = "Add to message",
   disabled = false,
   className,
@@ -67,6 +68,8 @@ export function ComposerPlus({
   onQueryChange?: (query: string) => void;
   /** Fires when the menu opens or closes; lets the caller gate the search fetch. */
   onOpenChange?: (open: boolean) => void;
+  /** Receives the picked file; renders the hidden input itself when set. */
+  onFile?: (file: File) => void;
   /** Accessible name; the home composer and reply composer frame it differently. */
   label?: string;
   disabled?: boolean;
@@ -78,8 +81,9 @@ export function ComposerPlus({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
-
-  if (items.length === 0 && !onReference) return null;
+  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [lastKey, setLastKey] = useState("");
 
   const grouped: Array<{ kind: RecordReference["kind"]; rows: RecordReference[] }> = [];
   for (const record of records ?? []) {
@@ -94,24 +98,22 @@ export function ComposerPlus({
 
   // Reset the highlight when the result set changes, during render (the
   // React-recommended alternative to an effect setState).
-  const [lastKey, setLastKey] = useState("");
   const key = records === undefined ? "" : String(flat.length);
   if (key !== lastKey) {
     setLastKey(key);
     setActive(0);
   }
 
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      // Focus lands in the search box when the menu opens; Radix's onOpenAutoFocus
-      // would fight the popover's own focus return, so this owns it.
-      requestAnimationFrame(() => searchRef.current?.focus());
-    }
-  }, [open]);
-
   function changeOpen(next: boolean) {
     setOpen(next);
+    if (next) {
+      // Fresh menu, fresh search. The focus lands here too: Radix's
+      // onOpenAutoFocus would fight the popover's own focus return, so the
+      // open transition owns both.
+      setQuery("");
+      onQueryChange?.("");
+      requestAnimationFrame(() => searchRef.current?.focus());
+    }
     onOpenChange?.(next);
   }
 
@@ -137,6 +139,21 @@ export function ComposerPlus({
       commit(flat[active]);
     }
   }
+
+  // The ref read lives in this click handler, so the rule can see it never
+  // runs during render.
+  function pickFile() {
+    fileInputRef.current?.click();
+  }
+  function fileChosen(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) onFile?.(file);
+    event.target.value = "";
+  }
+
+  // A plus that opens an empty menu is chrome lying about capability. Checked
+  // after the hooks, which must run unconditionally.
+  if (items.length === 0 && !onReference && !onFile) return null;
 
   return (
     <Popover.Root open={open} onOpenChange={changeOpen}>
@@ -252,18 +269,50 @@ export function ComposerPlus({
               ))}
             </div>
           ) : null}
+
+          {onFile ? (
+            <div className={cn("border-border pt-1 pb-0.5", items.length > 0 && "border-t")}>
+              <button
+                type="button"
+                onClick={() => {
+                  // The menu closes BEFORE the picker opens: the hidden input
+                  // lives outside this portal (below), so it stays mounted and
+                  // its change event always fires.
+                  setOpen(false);
+                  onOpenChange?.(false);
+                  pickFile();
+                }}
+                className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none"
+              >
+                <Paperclip aria-hidden className="text-muted-foreground size-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">Attach a file</span>
+                  <span className="text-muted-foreground block truncate text-[11px]">
+                    Captured to your inbox, up to 4 MB
+                  </span>
+                </span>
+              </button>
+            </div>
+          ) : null}
         </Popover.Content>
       </Popover.Portal>
+      {/*
+       * The file input lives OUTSIDE the popover portal: an input mounted
+       * inside Popover.Content unmounts when the menu closes, and the file
+       * chooser's change event then fires on a dead node — the picked file
+       * never reaches onFile. Mounted here, it survives the close.
+       */}
+      {onFile ? (
+        <input
+          ref={fileInputRef}
+          id={fileInputId}
+          type="file"
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={fileChosen}
+        />
+      ) : null}
     </Popover.Root>
   );
-}
-
-/** The standard attach action shared by both composers; onFile opens the caller's file picker. */
-export function attachFileItem(onOpenPicker: () => void): ComposerPlusItem {
-  return {
-    label: "Attach a file",
-    hint: "Captured to your inbox, up to 4 MB",
-    icon: <Paperclip aria-hidden />,
-    onSelect: onOpenPicker,
-  };
 }

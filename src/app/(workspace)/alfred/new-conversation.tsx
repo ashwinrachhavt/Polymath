@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUp, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ComposerPlus, attachFileItem, type RecordReference } from "@/components/chat/composer-plus";
+import { ComposerPlus, type RecordReference } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
@@ -32,7 +32,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
 
   /*
@@ -46,7 +45,8 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   useEffect(() => {
     if (!plusOpen) return;
     const controller = new AbortController();
-    setRecords(null);
+    // Fetching lands in the timeout, so every setRecords call is async from
+    // React's view — no synchronous setState inside the effect body.
     const timer = setTimeout(() => {
       void fetch(`/api/v1/records/search?q=${encodeURIComponent(plusQuery)}`, { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : { records: [] }))
@@ -180,6 +180,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
               records={records}
               onReference={insertReference}
               onQueryChange={setPlusQuery}
+              onFile={attachFile}
               onOpenChange={(open) => {
                 setPlusOpen(open);
                 if (!open) setPlusQuery("");
@@ -193,7 +194,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
                       onSelect: () => setDraft("/"),
                     }]
                   : []),
-                attachFileItem(() => fileInputRef.current?.click()),
               ]}
             />
             {/*
@@ -228,18 +228,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
             <ArrowUp aria-hidden className="size-4" />
           </Button>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          aria-hidden
-          tabIndex={-1}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) attachFile(file);
-            event.target.value = "";
-          }}
-        />
       </div>
       {error ? (
         <p role="status" className="text-destructive mt-2 text-[12px]">

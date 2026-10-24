@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ComposerPlus, attachFileItem, type ComposerPlusItem } from "@/components/chat/composer-plus";
+import { ComposerPlus, type ComposerPlusItem } from "@/components/chat/composer-plus";
 
 /*
  * The composer plus button: present when the caller has something to offer,
@@ -47,10 +47,12 @@ describe("composer plus", () => {
     expect(markup).toContain("aria-expanded=\"false\"");
   });
 
-  it("the attach item carries the limit wording the API enforces", () => {
-    const item = attachFileItem(() => {});
-    expect(item.label).toBe("Attach a file");
-    expect(item.hint).toContain("4 MB");
-    expect(item.hint).toContain("inbox");
+  it("renders the trigger when onFile alone is offered", () => {
+    // The menu body mounts on open (Radix's behavior, not ours to pin here);
+    // the static contract is that a file-only caller still gets the button.
+    const markup = renderToStaticMarkup(
+      createElement(ComposerPlus, { onFile: () => {} }),
+    );
+    expect(markup).toContain("aria-haspopup=\"dialog\"");
   });
 });
