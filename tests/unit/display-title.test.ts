@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayTitle } from "@/lib/display-text";
+import { displayTitle, markdownToPlainText } from "@/lib/display-text";
 
 /*
  * Regression: ISSUE-001 — raw markdown leaked into conversation titles.
@@ -30,5 +30,27 @@ describe("displayTitle", () => {
 
   it("reduces an image to its alt text", () => {
     expect(displayTitle("![diagram](https://example.com/x.png) explain")).toBe("diagram explain");
+  });
+});
+
+/*
+ * Regression: ISSUE-004 — the notes editor sent raw markdown as `plainText`,
+ * so list previews showed `# When most projects begin…` with syntax intact.
+ * Found by /qa on 2026-10-24
+ * Report: .gstack/qa-reports/run-20261024T193102Z/qa-report-localhost-2026-10-24.md
+ */
+describe("markdownToPlainText", () => {
+  it("strips a leading heading marker but keeps the line", () => {
+    expect(markdownToPlainText("# When most projects begin\nBody here.")).toBe(
+      "When most projects begin\nBody here.",
+    );
+  });
+
+  it("unwraps links and emphasis inside a line", () => {
+    expect(markdownToPlainText("See [the spec](/docs) for **details**.")).toBe("See the spec for details.");
+  });
+
+  it("keeps list item text without the bullet marker", () => {
+    expect(markdownToPlainText("- first\n- second")).toBe("first\nsecond");
   });
 });
