@@ -172,7 +172,9 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
           </Field>
         </div>
         <Field label="Why it's on the list">
-          <Input name="rationale" defaultValue={data.rationale ?? ""} maxLength={500} placeholder="Why this matters" />
+          {/* A reason runs to a sentence or two: multiline like Notes, not a
+              single-line input that hides most of a 500-char value. */}
+          <textarea name="rationale" defaultValue={data.rationale ?? ""} maxLength={500} rows={2} placeholder="Why this matters" className="w-full rounded-md border border-input bg-background p-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring" />
         </Field>
         <Field label="Notes">
           <textarea name="description" defaultValue={data.description ?? ""} rows={3} className="w-full rounded-md border border-input bg-background p-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring" />
