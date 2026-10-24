@@ -130,6 +130,14 @@ jobs:
       - run: pnpm e2e
         env:
           PERF_BUDGET_ENFORCE: "1"
+      # Hydrated visual evidence for journeys that capture review pixels
+      # (currently the bulk-complete specs); empty when none ran.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bulk-complete-pixels
+          path: test-results/bulk-pixels/
+          if-no-files-found: ignore
 
   # Python capability sidecar (ADR 0008): lint + tests, with the pgvector
   # round-trip running against real Postgres so vector schema drift fails CI.

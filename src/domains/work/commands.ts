@@ -290,6 +290,61 @@ export async function completeTask(
  * stands; the reopen adds its own), and cannot undo an external effect
  * another system already felt.
  */
+
+export type BulkCompleteOutcome = {
+  completed: string[];
+  skipped: string[];
+  /**
+   * Threw mid-write: that row's real state is unknown - it may have
+   * completed before the error. Named so the caller can say "check it" -
+   * never silently counted either way and never retried automatically. The
+   * batch stops at the first unknown: every id after it is unattempted,
+   * which the caller can compute from the three lists and the request.
+   */
+  unknown: string[];
+  /**
+   * Ids the batch never reached because it stopped at the first unknown.
+   * Returned explicitly - the caller must not have to set-subtract to learn
+   * what was not attempted.
+   */
+  unattempted: string[];
+  quartzEarned: boolean;
+};
+
+/**
+ * Bulk edit (Product Spec: "bulk edit"), scoped to the operation the Work
+ * surface offers: complete. Composes over completeTask one id at a time, so
+ * every per-item guard (status, tenant), audit row, settled-edge attribution
+ * and Quartz rule applies exactly as if each row's Done was clicked - the
+ * bulk path bypasses nothing. Each completion is its own transaction: an id
+ * that no longer qualifies (already terminal, or not visible in this
+ * workspace) lands in `skipped` and neither rolls back nor silently absorbs
+ * the ones that did complete. An unexpected error lands in `unknown` and
+ * stops the batch: the completed prefix is real and reported, the failed
+ * id's state is honestly uncertain, and nothing past it was attempted.
+ * Sequential on purpose: the audit trail's order is the caller's order.
+ */
+export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], unattempted: [], quartzEarned: false };
+  for (const [index, taskId] of taskIds.entries()) {
+    let result: Awaited<ReturnType<typeof completeTask>>;
+    try {
+      result = await completeTask(auth, { taskId });
+    } catch {
+      outcome.unknown.push(taskId);
+      outcome.unattempted = taskIds.slice(index + 1);
+      break;
+    }
+    if (result) {
+      outcome.completed.push(result.id);
+      outcome.quartzEarned ||= result.quartzEarned;
+    } else {
+      outcome.skipped.push(taskId);
+    }
+  }
+  return outcome;
+}
+
 export type ReopenOutcome =
   | { id: string; from: "done" | "cancelled"; skippedChangedEdges: number }
   | "stale"
