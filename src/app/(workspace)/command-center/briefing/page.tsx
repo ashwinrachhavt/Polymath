@@ -52,6 +52,7 @@ async function Briefing() {
       title="Briefing"
       actions={
         <>
+          <Button variant="outline" size="sm" asChild><Link href={`/command-center/briefing/day/${briefing.today}`}>This day</Link></Button>
           <Button variant="outline" size="sm" asChild><Link href="/command-center/inbox">Clarify inbox</Link></Button>
           <Button variant="outline" size="sm" asChild><Link href="/neuralflow/work">Open Work</Link></Button>
         </>
