@@ -178,7 +178,26 @@ async function NotebookData({
   );
 }
 
-export default async function NotebookPage({
+export default function NotebookPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ dossierId: string }>;
+  searchParams: Promise<{ draft?: string; chat?: string }>;
+}) {
+  // Both promises are unwrapped inside the boundary (the notes page's
+  // pattern): awaiting searchParams — or making this page component async —
+  // outside Suspense made every client-side navigation to this route
+  // non-instant; Next logged "encountered URL data during prerendering or a
+  // navigation".
+  return (
+    <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
+      <NotebookSearchParams params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function NotebookSearchParams({
   params,
   searchParams,
 }: {
