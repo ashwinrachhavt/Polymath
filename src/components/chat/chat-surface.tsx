@@ -10,7 +10,7 @@ import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
-import { ComposerPlus } from "./composer-plus";
+import { ComposerPlus, attachFileItem, type RecordReference } from "./composer-plus";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -93,6 +93,28 @@ export function ChatSurface({
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [plusQuery, setPlusQuery] = useState("");
+  useEffect(() => {
+    if (!plusOpen) return;
+    const controller = new AbortController();
+    setRecords(null);
+    const timer = setTimeout(() => {
+      void fetch(`/api/v1/records/search?q=${encodeURIComponent(plusQuery)}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : { records: [] }))
+        .then((body: { records?: RecordReference[] }) => setRecords(body.records ?? []))
+        .catch(() => setRecords([]));
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [plusOpen, plusQuery]);
+
+  function insertReference(markdown: string) {
+    setDraft((current) => (current.trim() ? `${current.trimEnd()} ${markdown} ` : `${markdown} `));
+  }
   // Set by a send: the owner's own message always scrolls into view, even when
   // they had scrolled up to reread something.
   const forceScrollRef = useRef(false);
@@ -296,7 +318,7 @@ export function ChatSurface({
         </p>
       ) : (
       <form
-        className="rounded-xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
+        className="relative rounded-xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
         onSubmit={(event) => {
           event.preventDefault();
           void send();
@@ -304,7 +326,7 @@ export function ChatSurface({
       >
         <Textarea
           aria-label={composerLabel}
-          className="composer-input max-h-48 min-h-[52px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+          className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -318,22 +340,27 @@ export function ChatSurface({
           }}
         />
         {sendError && (
-          <p role="alert" className="px-3.5 pb-1 text-[12px] text-destructive">
+          <p role="alert" className="absolute inset-x-3.5 bottom-11 pb-1 text-[12px] text-destructive">
             {sendError}
           </p>
         )}
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
+        {/*
+         * The plus sits inside the input's frame, bottom-left, like the send
+         * button sits inside it bottom-right: the composer is one surface,
+         * not a toolbar under a box.
+         */}
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
           <div className="flex min-w-0 items-center gap-1">
             <ComposerPlus
               label="Add to message"
-              items={[
-                {
-                  label: "Attach a file",
-                  hint: "Captured to your inbox, up to 4 MB",
-                  icon: <Paperclip aria-hidden />,
-                  onSelect: () => fileInputRef.current?.click(),
-                },
-              ]}
+              records={records}
+              onReference={insertReference}
+              onQueryChange={setPlusQuery}
+              onOpenChange={(open) => {
+                setPlusOpen(open);
+                if (!open) setPlusQuery("");
+              }}
+              items={[attachFileItem(() => fileInputRef.current?.click())]}
             />
             <span className="px-1 truncate text-[11px] text-muted-foreground">
               {attachNote ?? "Enter to send · Shift+Enter for a new line"}

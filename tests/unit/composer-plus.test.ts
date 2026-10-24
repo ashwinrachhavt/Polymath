@@ -1,13 +1,14 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ComposerPlus, type ComposerPlusItem } from "@/components/chat/composer-plus";
+import { ComposerPlus, attachFileItem, type ComposerPlusItem } from "@/components/chat/composer-plus";
 
 /*
  * The composer plus button: present when the caller has something to offer,
- * absent otherwise, and the menu items render with their hints. Popover
- * interactivity is Radix's; the static contract pinned here is presence and
- * labelling, which is what the accessibility and copy rules govern.
+ * absent otherwise. Popover interactivity and the live record search are
+ * Radix's and the API's; the static contract pinned here is presence,
+ * labelling, and the attach item's shape, which is what the accessibility
+ * and copy rules govern.
  */
 
 const item = (label: string): ComposerPlusItem => ({
@@ -18,7 +19,7 @@ const item = (label: string): ComposerPlusItem => ({
 });
 
 describe("composer plus", () => {
-  it("renders nothing when the caller offers no items", () => {
+  it("renders nothing when the caller offers no items and no reference picking", () => {
     const markup = renderToStaticMarkup(createElement(ComposerPlus, { items: [] }));
     expect(markup).toBe("");
   });
@@ -33,17 +34,23 @@ describe("composer plus", () => {
     expect(markup).toContain("aria-label=\"Add to message\"");
   });
 
-  it("renders each item's label and hint in the closed-state portal markup", () => {
+  it("renders a closed-state trigger (Radix owns the open menu body)", () => {
     // Radix renders closed portal content only as the trigger; the menu body
-    // mounts on open, which is Radix's behavior, not ours to pin here. The
-    // item list flows into the content component, so a caller passing items
-    // sees them on open by construction.
+    // mounts on open, which is Radix's behavior, not ours to pin here.
     const markup = renderToStaticMarkup(
       createElement(ComposerPlus, {
         items: [item("Pin a skill"), item("Attach a file")],
+        onReference: () => {},
       }),
     );
     expect(markup).toContain("aria-haspopup=\"dialog\"");
     expect(markup).toContain("aria-expanded=\"false\"");
+  });
+
+  it("the attach item carries the limit wording the API enforces", () => {
+    const item = attachFileItem(() => {});
+    expect(item.label).toBe("Attach a file");
+    expect(item.hint).toContain("4 MB");
+    expect(item.hint).toContain("inbox");
   });
 });

@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
-import { ArrowUp, Paperclip, Puzzle, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ComposerPlus } from "@/components/chat/composer-plus";
+import { ComposerPlus, attachFileItem, type RecordReference } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
@@ -33,6 +33,35 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+
+  /*
+   * Record search for the plus menu. ComposerPlus reports open state and
+   * query changes; this effect debounces the fetch so a typed word does not
+   * cost a request per keystroke. `records === null` means "searching";
+   * closed-state `undefined` renders no result section at all.
+   */
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [plusQuery, setPlusQuery] = useState("");
+  useEffect(() => {
+    if (!plusOpen) return;
+    const controller = new AbortController();
+    setRecords(null);
+    const timer = setTimeout(() => {
+      void fetch(`/api/v1/records/search?q=${encodeURIComponent(plusQuery)}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : { records: [] }))
+        .then((body: { records?: RecordReference[] }) => setRecords(body.records ?? []))
+        .catch(() => setRecords([]));
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [plusOpen, plusQuery]);
+
+  function insertReference(markdown: string) {
+    setDraft((current) => (current.trim() ? `${current.trimEnd()} ${markdown} ` : `${markdown} `));
+  }
 
   /*
    * "/" as the first character opens the skill menu; the rest of the draft
@@ -122,7 +151,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         <Textarea
           autoFocus
           aria-label="Start a conversation"
-          className="composer-input min-h-[88px] resize-none border-0 bg-transparent pr-12 text-[13px] leading-6 focus-visible:ring-0"
+          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] leading-6 focus-visible:ring-0"
           placeholder={
             skillId
               ? skills.find((skill) => skill.id === skillId)?.name
@@ -139,10 +168,22 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
             }
           }}
         />
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
+        {/*
+         * The plus sits inside the input's frame, bottom-left, like the send
+         * button sits inside it bottom-right: the composer is one surface,
+         * not a toolbar under a box.
+         */}
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
           <div className="flex min-w-0 items-center gap-1">
             <ComposerPlus
               label="Add to message"
+              records={records}
+              onReference={insertReference}
+              onQueryChange={setPlusQuery}
+              onOpenChange={(open) => {
+                setPlusOpen(open);
+                if (!open) setPlusQuery("");
+              }}
               items={[
                 ...(skills.length > 0
                   ? [{
@@ -152,12 +193,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
                       onSelect: () => setDraft("/"),
                     }]
                   : []),
-                {
-                  label: "Attach a file",
-                  hint: "Captured to your inbox, up to 4 MB",
-                  icon: <Paperclip aria-hidden />,
-                  onSelect: () => fileInputRef.current?.click(),
-                },
+                attachFileItem(() => fileInputRef.current?.click()),
               ]}
             />
             {/*
