@@ -4,6 +4,7 @@ import { Panel, Status } from "@/components/workspace/ui";
 import { countPendingProposals, listTopPendingProposals } from "@/domains/actions/queries";
 import { overnightRuns } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
+import { displayTitle } from "@/lib/display-text";
 
 /*
  * The agent half of the Briefing: what ran, and what is waiting on the owner.
@@ -103,7 +104,7 @@ export async function AgentPanels() {
               <div>
                 <p className="text-[13px] font-medium">{run.profileName ?? "alfred"}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {run.summary ?? run.objective} · {runStateLabel[run.state] ?? run.state}
+                  {run.summary ?? displayTitle(run.objective)} · {runStateLabel[run.state] ?? run.state}
                 </p>
               </div>
               <span className="readout text-xs text-muted-foreground">{timeLabel(run.endedAt ?? run.createdAt)}</span>

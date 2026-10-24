@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { displayTitle } from "@/lib/display-text";
 
 export type HistoryMenuRow = { id: string; objective: string; time: string; href?: string };
 export type HistoryMenuGroup = { key: string; label: string; rows: HistoryMenuRow[] };
@@ -93,7 +94,7 @@ export function HistoryMenu({ groups }: { groups: HistoryMenuGroup[] }) {
                           onClick={() => setOpen(false)}
                           className="hover:bg-muted focus-visible:ring-ring flex h-8 items-center gap-3 rounded-md px-2 text-[13px] outline-none focus-visible:ring-3"
                         >
-                          <span className="min-w-0 flex-1 truncate">{row.objective}</span>
+                          <span className="min-w-0 flex-1 truncate">{displayTitle(row.objective)}</span>
                           <span className="text-muted-foreground shrink-0 text-[12px]">
                             {row.time}
                           </span>

@@ -8,6 +8,7 @@ import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
+import { displayTitle } from "@/lib/display-text";
 import { getRun, getRunUsage, type RunUsage } from "@/domains/agents/queries";
 import { listThreads } from "@/domains/agents/thread";
 import { draftsForRuns } from "@/domains/knowledge/studio";
@@ -78,7 +79,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
       <header className="page-header border-border bg-background/95 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex w-full max-w-[var(--page-width)] items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[14px] leading-tight font-medium">{run.objective}</h1>
+            <h1 className="truncate text-[14px] leading-tight font-medium">{displayTitle(run.objective)}</h1>
             <p className="text-muted-foreground truncate text-[11px]">
               Started {timeAgo(run.createdAt)}
               {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
