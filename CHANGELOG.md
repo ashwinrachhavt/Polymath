@@ -4,6 +4,40 @@
 
 ### Fixed
 
+- Conversations: a title that started with a pasted link (for example
+  "[Note: …](/alfred/notes?note=…) Summarize this") showed the raw markdown on
+  the home list, the history menu, the run header and the briefing card. Every
+  surface now shows the link's words as plain text.
+- Conversations: a run whose turn failed kept saying "running" and offered a
+  Stop button under "This conversation has ended". The failed turn now ends
+  the conversation cleanly, and the run parks as waiting for input instead of
+  running forever.
+- Conversations: the Stop button under a live conversation stretched across
+  the full page width, reading as a second message box. It is a normal-size
+  button now.
+- Conversations: the Sources chip on a cited answer counted retrieved
+  passages, so one document read as "Sources · 5" with its name repeated five
+  times. The chip now counts distinct documents and lists each title once.
+- Work: adding a task from the Today quick-add made it look lost — the row
+  flashed and vanished because new tasks start in the Inbox, which Today does
+  not list. The list now refreshes and says "Added to Inbox. Find it under
+  List."
+- Notes: list previews showed raw markdown ("# When most projects begin…")
+  because the editor sent the markdown source as plain text. Previews now get
+  real plain text, and every note shows what you last typed rather than the
+  last explicit checkpoint (autosave-only notes no longer show a blank
+  preview).
+- Polymath: reloading a conversation page spawned orphaned background agent
+  sessions (the agent-side "infinite loop"). The health probe is now
+  side-effect free.
+- Notebook: navigating to a notebook from the rail was non-instant and logged
+  a Next.js URL-data warning on every visit. Notebook pages now stream the
+  same way Notes does.
+- Local development: four integration test suites (semantic relations, zettel
+  artifacts, zettel card views, hybrid search) passed in CI but failed on a
+  developer machine that had provider API keys set. They now isolate from the
+  shell's keys entirely.
+
 - Chrome connector: queued captures are now bound to the destination they
   were saved for (server origin + credential hash, never the credential). An
   account switch, key rotation, or server change parks them as "account
