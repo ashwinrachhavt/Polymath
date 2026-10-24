@@ -505,13 +505,6 @@
       "tag": "0245_run_message_feedback",
       "when": 1792798520000,
       "breakpoints": true
-    },
-    {
-      "idx": 246,
-      "version": "7",
-      "tag": "0246_connector_catalog_refocus",
-      "when": 1792798580000,
-      "breakpoints": true
     }
   ]
 }
