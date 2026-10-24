@@ -402,6 +402,17 @@ function readTags(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((tag): tag is string => typeof tag === "string") : [];
 }
 
+/*
+ * The list previews what the person last wrote, not the last checkpoint: an
+ * autosave-only note (the normal case) has no artifactVersions row yet, so a
+ * preview keyed on plainText alone rendered blank until the first explicit
+ * checkpoint. The working draft is markdown; the page trims it for display.
+ */
+const noteExcerptSql = sql<string | null>`coalesce(
+  ${workingDrafts.content} ->> 'text',
+  ${artifactVersions.plainText}
+)`;
+
 export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS): Promise<NoteListItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
@@ -412,7 +423,7 @@ export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly (
         status: artifacts.status,
         version: artifacts.version,
         updatedAt: artifacts.updatedAt,
-        excerpt: artifactVersions.plainText,
+        excerpt: noteExcerptSql,
         tags: artifacts.tags,
         draftArtifactId: workingDrafts.artifactId,
       })
@@ -448,7 +459,7 @@ export async function pageNotes(
           status: artifacts.status,
           version: artifacts.version,
           updatedAt: artifacts.updatedAt,
-          excerpt: artifactVersions.plainText,
+          excerpt: noteExcerptSql,
           tags: artifacts.tags,
           draftArtifactId: workingDrafts.artifactId,
         })
