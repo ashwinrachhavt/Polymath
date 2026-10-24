@@ -87,6 +87,7 @@ export type CardData = {
   id: string;
   title: string;
   description: string | null;
+  rationale: string | null;
   status: Status;
   priority: Priority;
   dueDate: string | null; // yyyy-mm-dd
@@ -127,6 +128,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
         patch: {
           title: String(f.get("title") || "").trim(),
           description: String(f.get("description") || "").trim() || null,
+          rationale: String(f.get("rationale") || "").trim() || null,
           status: f.get("status") as Status,
           priority: f.get("priority") as Priority,
           dueAt: due ? new Date(`${due}T12:00:00Z`).toISOString() : null,
@@ -169,6 +171,9 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             <Input name="estimate" type="number" min={0} defaultValue={data.estimateMinutes ?? ""} />
           </Field>
         </div>
+        <Field label="Why it's on the list">
+          <Input name="rationale" defaultValue={data.rationale ?? ""} maxLength={500} placeholder="Why this matters" />
+        </Field>
         <Field label="Notes">
           <textarea name="description" defaultValue={data.description ?? ""} rows={3} className="w-full rounded-md border border-input bg-background p-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring" />
         </Field>
