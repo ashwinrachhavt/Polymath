@@ -526,6 +526,13 @@
       "when": 1793052810000,
       "tag": "0248_notebooks_from_dossiers",
       "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1793052811000,
+      "tag": "0249_notebook_id_columns",
+      "breakpoints": true
     }
   ]
 }
