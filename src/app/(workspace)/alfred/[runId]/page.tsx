@@ -10,11 +10,13 @@ import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
 import { getRun, getRunUsage, type RunUsage } from "@/domains/agents/queries";
+import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
 import { listThreads } from "@/domains/agents/thread";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { RunControls } from "../run-controls";
+import { RunReview } from "./run-review";
 import { DraftControls } from "../draft-controls";
 
 export const metadata = { title: "Conversation · Polymath" };
@@ -53,10 +55,11 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [threads, drafts, usage] = await Promise.all([
+  const [threads, drafts, usage, reviews] = await Promise.all([
     listThreads(auth.workspaceId, [run.id]),
     draftsForRuns(auth, [run.id]),
     getRunUsage(auth.workspaceId, run.id),
+    getRunReviews(auth.workspaceId, run.id),
   ]);
 
   const thread = threads.get(run.id) ?? [];
@@ -164,6 +167,29 @@ async function ConversationSurface({ runId }: { runId: string }) {
               canSave={(run.state === "succeeded" || run.state === "waiting_input") && thread.some((entry) => entry.kind === "assistant")}
             />
           </div>
+
+          {/* The run's review block: the agent's self-critique proposal and the
+              operator's verdict. Finished runs only - a live run's review would
+              be a verdict on a run that has not finished being itself. An empty
+              critique renders nothing, per the spec. */}
+          {finished ? (
+            <RunReview
+              runId={run.id}
+              initial={{
+                critique: reviews.critique
+                  ? {
+                      gotWrong: reviews.critique.gotWrong,
+                      wasThin: reviews.critique.wasThin,
+                      wouldDoDifferently: reviews.critique.wouldDoDifferently,
+                      dismissedAt: reviews.critique.dismissedAt,
+                    }
+                  : null,
+                feedback: reviews.feedback
+                  ? { verdict: reviews.feedback.verdict, reasons: reviews.feedback.reasons, note: reviews.feedback.note }
+                  : null,
+              }}
+            />
+          ) : null}
         </section>
       </div>
     </div>
