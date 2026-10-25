@@ -14,6 +14,7 @@ import {
   weekdayOfKey,
 } from "@/lib/local-date";
 import { listHref, type RawSearchParams } from "@/lib/list-params";
+import { PrepButton } from "./prep-button";
 
 /*
  * Today's Flow (ASH-185, Dao layout): Upcoming, Focus Windows and Next Events
@@ -130,7 +131,10 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: AuthContext; raw?: 
               {next.map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate">{e.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{when(e.startsAt, timezone)}</span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <PrepButton eventId={e.id} />
+                    <span className="text-xs text-muted-foreground">{when(e.startsAt, timezone)}</span>
+                  </span>
                 </li>
               ))}
             </ul>
