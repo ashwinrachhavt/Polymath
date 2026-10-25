@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 
@@ -42,5 +43,16 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // nobody holds and every page would redirect to sign-in mid-stream. Failing
   // loudly beats a suite that cannot boot.
 
-  return <AppShell storageScope={storageScope} clerkConfigured={clerkConfigured}>{children}</AppShell>;
+  // Clerk's client runtime mounts here, not in the root layout: the public
+  // landing route renders no Clerk UI, so it should not pay clerk-js's
+  // ~220 KB first-load. Sign-in and sign-up wrap themselves because their
+  // Clerk components need the same context.
+  if (!clerkConfigured) {
+    return <AppShell storageScope={storageScope} clerkConfigured={false}>{children}</AppShell>;
+  }
+  return (
+    <ClerkAuthProvider>
+      <AppShell storageScope={storageScope} clerkConfigured>{children}</AppShell>
+    </ClerkAuthProvider>
+  );
 }
