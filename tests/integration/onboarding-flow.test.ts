@@ -217,3 +217,72 @@ suite("onboarding interview flow", () => {
     ).rejects.toThrow(/changed in another tab/);
   });
 });
+
+/*
+ * The full journey at the action layer (ASH-296 acceptance 1-2): start the
+ * interview, the agent's final turn lands as a persisted message, the confirm
+ * action parses the edited brief and commits - profile brief, session row,
+ * onboarded_at, audit - and the gate flips. A fake SessionDriver stands in
+ * for Eve and auth is the seeded owner, so no live model runs and no shared
+ * workspace marker moves.
+ */
+suite("onboarding interview journey (action layer)", () => {
+  it("interview -> brief -> confirm -> committed and gated", async () => {
+    const seeded = await seedWorkspace(db, `onb-journey-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const starts: string[] = [];
+
+    const { runId } = await onboarding.startOnboardingRun(auth, fakeDriver(starts));
+
+    // The agent's closing turn: summary plus the fenced payload, persisted
+    // exactly the way the bridge writes assistant messages.
+    await eventBridge.recordRoundEvent({
+      runId,
+      workspaceId: seeded.workspaceId,
+      type: "message",
+      data: {
+        role: "assistant",
+        content:
+          'You write software and live in Notion and Gmail; shipping the research library matters most, and I am Jarvis.\n\n```onboarding-brief\n{"role":"Software engineer","tools":["Notion","Gmail"],"priorities":["Ship the research library"],"agentName":"Jarvis"}\n```',
+      },
+    });
+
+    const reading = await onboarding.readOnboardingRun(auth, runId);
+    expect(reading?.brief?.agentName).toBe("Jarvis");
+
+    // The confirm click is what the card sends: the (possibly edited) brief
+    // plus the profile version the card rendered at.
+    await onboarding.completeOnboarding(auth, {
+      ...reading!.brief!,
+      expectedVersion: reading!.profileVersion ?? undefined,
+    });
+
+    const [profile] = await db
+      .select()
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "alfred")))
+      .limit(1);
+    expect(profile.description).toContain("Software engineer");
+    expect(profile.description).toContain("Notion, Gmail");
+    expect(profile.description).toContain("Ship the research library");
+
+    expect(await onboarding.isWorkspaceOnboarded(seeded.workspaceId)).toBe(true);
+    expect(await onboardedAt(seeded.workspaceId)).not.toBeNull();
+
+    const [session] = await db
+      .select()
+      .from(onboardingSessions)
+      .where(and(eq(onboardingSessions.workspaceId, seeded.workspaceId), isNull(onboardingSessions.archivedAt)))
+      .limit(1);
+    expect(session.status).toBe("completed");
+
+    const audit = await db.execute(
+      sql`select action, summary from audit_events where workspace_id = ${seeded.workspaceId} and action = 'onboarding.completed'`,
+    );
+    expect(audit.length).toBe(1);
+    expect((audit[0] as { summary: string }).summary).toContain("Jarvis");
+
+    // One interview run, one driver session: the journey never forked.
+    expect(starts).toHaveLength(1);
+  });
+});
