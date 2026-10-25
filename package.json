@@ -22,7 +22,8 @@
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "prepare": "git config core.hooksPath scripts/hooks"
+    "prepare": "git config core.hooksPath scripts/hooks",
+    "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.101",

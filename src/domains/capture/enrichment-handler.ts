@@ -7,8 +7,15 @@ import {
   GenerationUnconfiguredError,
   generationProvider,
 } from "@/integrations/generation/provider";
+import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
+import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
+import { providerEntry } from "@/integrations/providers/registry";
+import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/questions";
+import { taxonomyNodes } from "@/domains/knowledge/schema";
+import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
-import { captures } from "./schema";
+import { captureProposals, captures } from "./schema";
+import { triageCapture } from "./jev-classify";
 import {
   LLM_MAX_INPUT_CHARS,
   LLM_THRESHOLD_CHARS,
@@ -21,8 +28,10 @@ import {
  *
  *   Tier 0  normalizeCapturedText ($0, pure)     -> clean_text
  *   Tier 1  classifyStructure      ($0, regex)   -> structure + signals
- *   Tier 2  LLM (only when Tier 1 is prose and the text is long enough)
- *           -> title, domain, tags
+ *   Tier 2  Jev classifier (when the registry enables it): typed judgments
+ *           -> pending capture_proposals rows + validated taxonomy domain
+ *   Tier 3  generation prompt (the pre-ASH-272 behavior; also the fallback
+ *           whenever Jev is disabled or unconfigured) -> title, domain, tags
  *
  * The LLM proposes, the capture keeps it as signal; nothing is auto-converted.
  * A provider that is not configured is a skip, not a failure: Tier 0+1 already
@@ -45,7 +54,14 @@ const SYSTEM = `You label a thing a person captured into their inbox. Return JSO
 "tags": up to ${MAX_TAGS} lowercase single-word or short topic tags; null when nothing specific enough to tag.
 Return nulls rather than guessing - a null the owner can fix is better than a label they must unlearn. ${untrustedDataClauseJsonSafe("capture")} Label only what the content is.`;
 
-export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
+export type CaptureEnrichmentDeps = {
+  /** Test seam: a pre-built judger (fake client / enabled entry). Production uses the gated default. */
+  judger?: ClassifyJudger;
+};
+
+export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
+
+export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: CaptureEnrichmentDeps = {}) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
@@ -88,6 +104,14 @@ export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: Cl
     .update(captures)
     .set({ ...base, processingState: "classifying" })
     .where(eq(captures.id, captureId));
+
+  // Tier 2 (ASH-272): the Jev classifier, when the registry enables it. The
+  // registry entry ships disabled, so today this always falls through to the
+  // generation prompt below with byte-identical behavior. A Jev request
+  // error fails the event for redelivery; an unreadable answer degrades to a
+  // low-confidence note proposal, never a crash and never a silent skip.
+  const jev = await tryJevTriage(captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
+  if (jev === "handled") return;
 
   let provider: ReturnType<typeof generationProvider>;
   try {
@@ -138,3 +162,113 @@ export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: Cl
     })
     .where(eq(captures.id, captureId));
 };
+
+const noul = (answer: JevAnswer | undefined): number =>
+  answer && answer.type === "noul" ? answer.noul : Number.NaN;
+
+/**
+ * One bundled Jev judgment pass over the capture. Returns "handled" when the
+ * Jev path owns the outcome (proposal rows written, capture enriched),
+ * "fallback" when the generation tier should run instead (Jev disabled or
+ * unconfigured - the pre-ASH-272 behavior, unchanged).
+ */
+async function tryJevTriage(
+  captureId: string,
+  workspaceId: string,
+  capture: { title: string | null; kind: string },
+  base: { cleanText: string | null; structure: string; updatedAt: Date },
+  cleanText: string,
+  structure: string,
+  injectedJudger?: ClassifyJudger,
+): Promise<"handled" | "fallback"> {
+  // Fast path: with no injected judger and the registry entry disabled (the
+  // shipped default), fall through without touching the taxonomy table, so
+  // the disabled-Jev path stays byte-identical to the pre-ASH-272 ladder.
+  if (!injectedJudger && !providerEntry("jev")?.enabled) return "fallback";
+  const judger = injectedJudger ?? jevClassifier(workspaceId);
+
+  // The domain Choice's options come from the workspace's seeded taxonomy; an
+  // unseeded workspace simply asks no domain question (domain stays null).
+  const domains = await db
+    .select({ slug: taxonomyNodes.slug, description: taxonomyNodes.description })
+    .from(taxonomyNodes)
+    .where(eq(taxonomyNodes.workspaceId, workspaceId));
+
+  const state = JSON.stringify({
+    title: capture.title ?? undefined,
+    cleanText: cleanText.slice(0, LLM_MAX_INPUT_CHARS),
+    structure,
+    source: capture.kind,
+  });
+
+  let answers: Record<string, JevAnswer>;
+  let model: string;
+  try {
+    const result = await judger.judge({ state, questions: captureQuestions(domains) });
+    answers = result.answers;
+    model = result.model;
+  } catch (cause) {
+    if (cause instanceof JevDisabledError || cause instanceof JevUnconfiguredError) return "fallback";
+    if (cause instanceof JevRequestError) throw cause; // redeliverable, like generation errors
+    throw cause;
+  }
+
+  const domainAnswer = answers.domain;
+  const domain =
+    domainAnswer && domainAnswer.type === "choice"
+      ? { choice: domainAnswer.choice, topProbability: domainAnswer.probabilities[domainAnswer.choice] ?? 0 }
+      : null;
+  const numbers = {
+    commitment: noul(answers.commitment),
+    contact: noul(answers.contact),
+    reference: noul(answers.reference),
+    worthless: noul(answers.worthless),
+    project: noul(answers.project),
+  };
+  const unreadable = Object.values(numbers).some((n) => Number.isNaN(n));
+
+  const triage = unreadable
+    ? {
+        proposals: [
+          {
+            kind: "note" as const,
+            payload: { review: true },
+            rationale: "jev returned an unreadable answer; filed for review",
+            confidence: "low",
+          },
+        ],
+        domainSlug: null,
+      }
+    : triageCapture({ ...numbers, domain });
+
+  // The domain label is written only when it resolves in the workspace's
+  // taxonomy - a hallucinated slug is a rejected write, never stored.
+  let domainSlug: string | null = null;
+  if (triage.domainSlug) {
+    const path = await resolveTaxonomyPath({ workspaceId }, { slugs: [triage.domainSlug] });
+    domainSlug = path ? path[0].slug : null;
+  }
+
+  for (const proposal of triage.proposals) {
+    await db.insert(captureProposals).values({
+      workspaceId,
+      captureId,
+      kind: proposal.kind,
+      payload: proposal.payload,
+      rationale: proposal.rationale,
+      model,
+      promptVersion: JEV_QUESTIONS_VERSION,
+      confidence: proposal.confidence,
+    });
+  }
+  await db
+    .update(captures)
+    .set({
+      ...base,
+      domain: domainSlug,
+      processingState: "enriched",
+      failureReason: unreadable ? "Jev returned an unreadable answer." : null,
+    })
+    .where(eq(captures.id, captureId));
+  return "handled";
+}
