@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -22,7 +22,7 @@ export class ProjectError extends Error {
 
 type Tx = Parameters<Parameters<typeof withTransaction>[0]>[0];
 
-async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null; title: string }): Promise<string> {
+async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null; sourceUrl: string | null; title: string }): Promise<string> {
   if (doc.fileId) {
     const [existing] = await tx
       .select({ id: sources.id })
@@ -31,9 +31,20 @@ async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null
       .limit(1);
     if (existing) return existing.id;
   }
+  // A queued capture has no file yet: its placeholder source carries the
+  // address, so the notebook binds by url and the landing handler reuses this
+  // row instead of writing a second one.
+  if (doc.sourceUrl) {
+    const [existing] = await tx
+      .select({ id: sources.id })
+      .from(sources)
+      .where(and(eq(sources.workspaceId, auth.workspaceId), eq(sources.url, doc.sourceUrl)))
+      .limit(1);
+    if (existing) return existing.id;
+  }
   const [created] = await tx
     .insert(sources)
-    .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, fileId: doc.fileId, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, fileId: doc.fileId, url: doc.sourceUrl, createdBy: auth.userId, updatedBy: auth.userId })
     .returning({ id: sources.id });
   return created.id;
 }
@@ -43,7 +54,7 @@ async function attach(tx: Tx, auth: AuthContext, projectId: string, documentIds:
   const ids = [...new Set(documentIds)];
   if (ids.length === 0) return 0;
   const docs = await tx
-    .select({ id: documents.id, fileId: documents.fileId, title: documents.title })
+    .select({ id: documents.id, fileId: documents.fileId, sourceUrl: documents.sourceUrl, title: documents.title })
     .from(documents)
     .where(and(inArray(documents.id, ids), eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`));
   if (docs.length !== ids.length) {
@@ -153,7 +164,13 @@ export async function projectDocumentIds(auth: AuthContext, projectId: string): 
     .select({ id: documents.id })
     .from(notebookSources)
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(documents, and(
+      eq(documents.workspaceId, auth.workspaceId),
+      // A queued capture has no fileId yet, so it binds by its source address;
+      // an extracted document binds by file. SQL null never equals null, so the
+      // file arm simply misses until extraction lands.
+      or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
+    ))
     .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   return [...new Set(rows.map((r) => r.id))];
 }
@@ -178,7 +195,13 @@ export async function getProjectDetail(auth: AuthContext, projectId: string) {
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
     .from(notebookSources)
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
-    .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
+    .innerJoin(documents, and(
+      eq(documents.workspaceId, auth.workspaceId),
+      // A queued capture has no fileId yet, so it binds by its source address;
+      // an extracted document binds by file. SQL null never equals null, so the
+      // file arm simply misses until extraction lands.
+      or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
+    ))
     .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   const seen = new Set<string>();
   return { ...project, documents: docs.filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true))) };
