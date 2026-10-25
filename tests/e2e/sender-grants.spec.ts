@@ -6,6 +6,13 @@ import postgres from "postgres";
  * connector card, the toggle journey (check an alias, save, persisted) and
  * the copy that explains the unrestricted default. No model involved.
  * Screenshots upload as the feature-pixels CI artifact.
+ *
+ * The grant is ONE workspace-scoped row (action_policies, capability
+ * gmail.send), so the two viewport passes cannot run as separate parallel
+ * tests: concurrent saves/revokes on the singleton row race each other (the
+ * observed [mobile] flake waiting on "Sending grants saved."). One test
+ * walks the viewports sequentially with the row reset before each pass, so
+ * every assertion still runs at both sizes with exactly one writer.
  */
 
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
@@ -28,46 +35,46 @@ function db(): postgres.Sql | null {
 }
 
 /** One active gmail account so the connector card renders its grant block. */
-async function seedGmailAccount(): Promise<boolean> {
+async function seedGmailAccount(): Promise<string | null> {
   const client = db();
-  if (!client) return false;
+  if (!client) return null;
   try {
     const [owner] = await client<{ workspace_id: string }[]>`
       select m.workspace_id
       from memberships m join users u on u.id = m.user_id
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
-    if (!owner) return false;
+    if (!owner) return null;
+    await client`delete from external_accounts where alias = ${ALIAS}`;
     await client`
       insert into external_accounts (workspace_id, provider, alias, status, composio_connected_account_id, access_tier)
-      values (${owner.workspace_id}, 'gmail', ${ALIAS}, 'active', ${`ca_e2e_${crypto.randomUUID()}`}, 'read_only')
-      on conflict do nothing`;
-    return true;
+      values (${owner.workspace_id}, 'gmail', ${ALIAS}, 'active', ${`ca_e2e_${crypto.randomUUID()}`}, 'read_only')`;
+    return owner.workspace_id;
   } finally {
     await client.end();
   }
 }
 
-async function removeSeeded(): Promise<void> {
+/** Never-saved state: the unrestricted-default copy only renders with no row. */
+async function resetGrant(workspaceId: string): Promise<void> {
   const client = db();
   if (!client) return;
   try {
-    await client`delete from external_accounts where alias = ${ALIAS}`;
+    await client`
+      delete from action_policies where workspace_id = ${workspaceId} and capability = 'gmail.send'`;
   } finally {
     await client.end();
   }
 }
 
-test.afterAll(async () => {
-  await removeSeeded();
-});
+test("grant and revoke a sending alias", async ({ page }) => {
+  test.setTimeout(180_000);
+  const workspaceId = await seedGmailAccount();
+  test.skip(!workspaceId, "DATABASE_URL not configured");
 
-for (const vp of VIEWPORTS) {
-  test(`grant and revoke a sending alias [${vp.name}]`, async ({ page }) => {
-    test.setTimeout(90_000);
+  for (const vp of VIEWPORTS) {
+    await resetGrant(workspaceId!);
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    test.skip(!(await seedGmailAccount()), "DATABASE_URL not configured");
-
     await page.goto("/command-center/integrations");
     const grants = page.getByTestId("sender-grants");
     await expect(grants).toBeVisible({ timeout: 30_000 });
@@ -92,5 +99,5 @@ for (const vp of VIEWPORTS) {
     await grantsAfter.getByRole("checkbox", { name: ALIAS }).uncheck();
     await grantsAfter.getByRole("button", { name: /save|grant/i }).click();
     await expect(grantsAfter.getByText("Sending grants saved.")).toBeVisible({ timeout: 30_000 });
-  });
-}
+  }
+});
