@@ -84,6 +84,10 @@ test("the island renders a live conversation", async ({ page }) => {
 test("the island settles on a labelled failure surface when no runtime is reachable", async ({ page }) => {
   test.setTimeout(120_000); // first-hit dev compile of the island chunk, then the start-action round trip
   await page.goto("/dev/onboarding-fixtures?state=island");
+  // Evidence for the state the island is in before it settles: if the start
+  // never returns, this is the shot that shows it.
+  await page.waitForTimeout(5_000);
+  await page.screenshot({ path: "test-results/onboarding-pixels/island-starting.png", fullPage: true, ...HIDE_DEV_CHROME });
   // The island mounts and starts its run. How far it gets depends on the
   // harness env: no bridge secret fails the start outright (the island's own
   // error card); a secret without a reachable Eve starts the run and the

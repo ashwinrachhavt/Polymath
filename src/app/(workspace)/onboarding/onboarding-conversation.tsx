@@ -41,13 +41,20 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
     startedRef.current = true;
     let cancelled = false;
     void (async () => {
-      const result = await startOnboardingAction();
-      if (cancelled) return;
-      if (!result.ok) {
-        setError(result.message);
-        return;
+      try {
+        const result = await startOnboardingAction();
+        if (cancelled) return;
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        setRunId(result.runId);
+      } catch {
+        // A rejected action call (module load, network, a 500 outside the
+        // action's own labelling) must land on the same labelled surface -
+        // "Starting the interview…" is never the end state.
+        if (!cancelled) setError("The interview could not be reached. Check the connection and retry.");
       }
-      setRunId(result.runId);
     })();
     return () => {
       cancelled = true;
