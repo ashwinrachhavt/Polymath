@@ -158,3 +158,156 @@ export async function completeOnboarding(
     return { brief };
   });
 }
+
+/* ------------------------------------------------------------------------- *
+ * The agent-led interview (ASH-296).
+ *
+ * The interview is a real run through the engine — transcript in run_events,
+ * spend reserved, reload-safe by construction — started with a fixed
+ * objective that scripts the conversation and a tool ceiling of none. The
+ * agent's final turn closes with a fenced `onboarding-brief` JSON payload
+ * riding the ordinary assistant message (see onboarding-brief.ts); the
+ * confirm card is derived from that persisted event, never from browser
+ * state, and the commit path is the unchanged completeOnboarding above.
+ * ------------------------------------------------------------------------- */
+
+import { agentRuns } from "./schema";
+import { desc, inArray } from "drizzle-orm";
+import { createEngine, type SessionDriver } from "./engine";
+import { createEveDriver, eveAgentForProfile } from "./eve-driver";
+import { listThreads, type ThreadEntry } from "./thread";
+import {
+  extractOnboardingBrief,
+  prefillOnboardingFromThread,
+  ONBOARDING_BRIEF_FENCE,
+  type OnboardingBrief,
+} from "./onboarding-brief";
+
+export const ONBOARDING_OBJECTIVE = [
+  "onboarding-interview v1",
+  "This session is the workspace's first-run onboarding interview. You are the person's own agent, meeting them for the first time.",
+  "Learn four things, in one short warm conversation: (1) what they do — their role, (2) which tools they work in every day, (3) what they most want to get done, (4) what they would like to call you.",
+  "Ask about one topic at a time, with at most one clarifying follow-up per topic. The whole interview is at most 6 turns; when you know all four, close.",
+  "On your final turn, write a two-sentence summary of what you learned, then emit exactly this fenced block as the last thing in your reply:",
+  ONBOARDING_BRIEF_FENCE,
+  '{"role":"...","tools":["..."],"priorities":["..."],"agentName":"..."}',
+  "```",
+  'The fence must contain only valid JSON with exactly those keys, and no text follows it. If they did not pick a name, use "Alfred".',
+].join("\n");
+
+const LIVE_RUN_STATES = ["queued", "running", "waiting_input", "waiting_approval"] as const;
+
+/** The workspace's in-flight interview run, if one is open. */
+export async function findLiveOnboardingRun(workspaceId: string) {
+  const [run] = await db
+    .select({ id: agentRuns.id, state: agentRuns.state })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.workspaceId, workspaceId),
+        eq(agentRuns.objective, ONBOARDING_OBJECTIVE),
+        inArray(agentRuns.state, [...LIVE_RUN_STATES]),
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+  return run ?? null;
+}
+
+/** The most recent interview run in any state — for reload-after-finish recovery. */
+export async function findLatestOnboardingRun(workspaceId: string) {
+  const [run] = await db
+    .select({ id: agentRuns.id, state: agentRuns.state })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.workspaceId, workspaceId), eq(agentRuns.objective, ONBOARDING_OBJECTIVE)))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+  return run ?? null;
+}
+
+/**
+ * Start the interview run, or resume the one already open. Resume-first is
+ * what makes the page reload-safe: two starts (a double mount, a retried
+ * action) converge on one run instead of forking two sessions and two spend
+ * reservations. The in-progress session row is claimed before the run exists
+ * so an abandoned interview still resumes (its row stays in_progress until
+ * completeOnboarding flips it).
+ */
+export async function startOnboardingRun(
+  auth: AuthContext,
+  driver?: SessionDriver,
+): Promise<{ runId: string; resumed: boolean }> {
+  const live = await findLiveOnboardingRun(auth.workspaceId);
+  if (live) return { runId: live.id, resumed: true };
+
+  const session = await getOnboardingSession(auth.workspaceId);
+  if (!session) {
+    try {
+      await db.insert(onboardingSessions).values({
+        workspaceId: auth.workspaceId,
+        userId: auth.userId,
+        status: "in_progress",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      });
+    } catch {
+      // A concurrent start claimed the live-session slot first; the run below
+      // is still resume-first, so the worst case is the other tab's run.
+    }
+  }
+
+  await ensureProfile(auth.workspaceId, "alfred");
+  const engine = createEngine(driver ?? createEveDriver(eveAgentForProfile("alfred")));
+  const { runId } = await engine.start({
+    auth,
+    profileName: "alfred",
+    objective: ONBOARDING_OBJECTIVE,
+    subjects: [],
+    // The interview is conversation only: no tools, and a dime of headroom.
+    estimateUsd: "0.10",
+    allowedTools: [],
+  });
+  return { runId, resumed: false };
+}
+
+export type OnboardingRunReading = {
+  thread: ThreadEntry[];
+  /** The validated brief from the final turn, when the agent emitted a well-formed one. */
+  brief: OnboardingBrief | null;
+  /** Salvaged fields for the extraction-failure form; empty when nothing parseable was said. */
+  prefill: Partial<OnboardingBrief>;
+  /** The alfred profile version at read time, so the confirm submit carries the race guard. */
+  profileVersion: number | null;
+};
+
+/**
+ * Read an interview run's thread and derive what the confirm card needs.
+ * Scoped to the workspace through listThreads; the last assistant message is
+ * where the brief lives, so only that text is parsed.
+ */
+export async function readOnboardingRun(auth: AuthContext, runId: string): Promise<OnboardingRunReading | null> {
+  const [run] = await db
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, auth.workspaceId)))
+    .limit(1);
+  if (!run) return null;
+
+  const [threads, [profile]] = await Promise.all([
+    listThreads(auth.workspaceId, [runId]),
+    db
+      .select({ version: agentProfiles.version })
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "alfred")))
+      .limit(1),
+  ]);
+  const thread = threads.get(runId) ?? [];
+  const lastAssistant = [...thread].reverse().find((entry) => entry.kind === "assistant");
+  const text = lastAssistant?.text ?? "";
+  return {
+    thread,
+    brief: extractOnboardingBrief(text),
+    prefill: prefillOnboardingFromThread(text),
+    profileVersion: profile?.version ?? null,
+  };
+}
