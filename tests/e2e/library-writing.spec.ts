@@ -99,7 +99,9 @@ for (const vp of VIEWPORTS) {
     await page.getByRole("button", { name: "Write from library" }).click();
     await page.getByLabel("Draft topic").fill("the price of unobtanium futures in 1932");
     await page.getByRole("button", { name: "Draft", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("No relevant library passages", { timeout: 30_000 });
+    // The refusal copy is the honest empty-library sentence, not a generated
+    // article; Next's route announcer also has role=alert, so match by text.
+    await expect(page.getByText(/The library has nothing on/)).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/library-empty-refusal-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 }
