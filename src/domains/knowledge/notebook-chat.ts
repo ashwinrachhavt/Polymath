@@ -49,7 +49,7 @@ export async function listNotebookChats(auth: AuthContext, dossierId: string, li
     .where(
       and(
         eq(agentRuns.workspaceId, auth.workspaceId),
-        sql`${agentRuns.subjects} @> ${JSON.stringify([{ type: "dossier", id: dossierId }])}::jsonb`,
+        sql`${agentRuns.subjects} @> ${JSON.stringify([{ type: "project", id: dossierId }])}::jsonb`,
         sql`${agentRuns.objective} like ${NOTEBOOK_CHAT_OBJECTIVE_PREFIX + "%"}`,
       ),
     )
