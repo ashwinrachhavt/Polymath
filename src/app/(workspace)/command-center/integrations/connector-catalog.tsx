@@ -121,11 +121,11 @@ function accountLabel(status: string): string {
 
 export function ConnectorCatalog({
   connectors,
-  authorizedSenders,
+  authorizedSenders = null,
 }: {
   connectors: CatalogConnector[];
   /** ASH-289: the gmail.send grant; absent means unrestricted. */
-  authorizedSenders: string[] | null;
+  authorizedSenders?: string[] | null;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
