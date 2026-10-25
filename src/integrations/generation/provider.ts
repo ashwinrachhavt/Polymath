@@ -49,6 +49,7 @@ export class GenerationRequestError extends Error {
 /** One call never hangs a run. */
 export const GENERATION_TIMEOUT_MS = 30_000;
 
+import { fixtureProvider } from "./fixture";
 import { geminiProvider } from "./gemini";
 import { openRouterProvider } from "./openrouter";
 
@@ -58,6 +59,13 @@ export function generationProvider(
 ): GenerationProvider {
   const choice = env.GENERATION_PROVIDER?.toLowerCase();
   switch (choice) {
+    // E2E journeys only: deterministic and free, explicit opt-in, never a
+    // key-detected default. And it fails closed: a production process that
+    // somehow carries GENERATION_PROVIDER=fixture gets the same unconfigured
+    // error as a keyless run (which callers skip), never fixture content.
+    case "fixture":
+      if (env.NODE_ENV === "production") throw new GenerationUnconfiguredError();
+      return fixtureProvider();
     case "gemini":
       return geminiProvider(env, fetchImpl);
     case "openrouter":

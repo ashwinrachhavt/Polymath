@@ -8,6 +8,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { requireRole } from "@/lib/auth/guards";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { checkSenderAlias, senderAliasPolicy } from "./policy";
 import { actionReviews, actionRevisions } from "./schema";
 
 /*
@@ -23,7 +24,7 @@ const ACCOUNT_PIN_PROVIDERS: Record<string, string> = { "gmail.send": "gmail" };
 
 export type SenderAccountPin =
   | { resolved: true; externalAccountId: string; connectedAccountId: string; alias: string; sender: string }
-  | { resolved: false; alias: string | null; provider: string };
+  | { resolved: false; alias: string | null; provider: string; reason?: string };
 
 /** Resolve the sender identity a revision of this capability would send from. */
 export async function senderAccountPin(
@@ -33,8 +34,20 @@ export async function senderAccountPin(
 ): Promise<SenderAccountPin | null> {
   const provider = ACCOUNT_PIN_PROVIDERS[capability];
   if (!provider) return null;
-  const resolved = await resolveConnectedAccount(auth, provider, accountAlias ?? undefined);
-  if (!resolved.ok) return { resolved: false, alias: accountAlias, provider };
+  // ASH-289: a sending grant scopes to explicitly authorized aliases. An
+  // unauthorized alias never binds into a revision, and with a list
+  // configured an unnamed sender resolves only inside it - the one connected
+  // account is never substituted silently.
+  const policy = await senderAliasPolicy(auth.workspaceId, capability);
+  const verdict = checkSenderAlias(policy, accountAlias);
+  if (!verdict.allowed) return { resolved: false, alias: accountAlias, provider, reason: verdict.reason };
+  const resolved = await resolveConnectedAccount(
+    auth,
+    provider,
+    accountAlias ?? undefined,
+    policy.configured ? policy.aliases : undefined,
+  );
+  if (!resolved.ok) return { resolved: false, alias: accountAlias, provider, reason: resolved.message };
   return {
     resolved: true,
     externalAccountId: resolved.externalAccountId,
