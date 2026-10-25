@@ -94,7 +94,7 @@ function slug(text: string): string {
 }
 
 function renderPathNote(draft: LearningPathDraft): string {
-  const md: string[] = [`# ${draft.pathTitle}`, "", draft.overview, ""];
+  const md: string[] = [draft.overview, ""];
   if (draft.notes?.length) {
     md.push("## Reading sequence");
     draft.notes.forEach((n, i) => md.push(`${i + 1}. ${n.title}`));

@@ -124,7 +124,10 @@ for (const vp of VIEWPORTS) {
 
     // Success navigates to the path note.
     await expect(page).toHaveURL(/\/artifacts\/[0-9a-f-]{36}/, { timeout: 60_000 });
-    await expect(page.getByText("Understanding distributed consensus")).toBeVisible();
+    // Page title carries the path title (the body starts with the overview).
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Understanding distributed consensus" }),
+    ).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-note-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.goto("/alfred/knowledge/cards");
