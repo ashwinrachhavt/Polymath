@@ -96,6 +96,21 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText("Add task: Follow up with Marcus: confirm the launch date").first()).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/debrief-reviews-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
+    // Full-page stitching paints the sticky mobile nav mid-list; prove at the
+    // real viewport that the last proposal's controls scroll fully clear.
+    if (vp.name === "mobile") {
+      const lastApprove = page.getByRole("button", { name: "Approve" }).last();
+      await lastApprove.scrollIntoViewIfNeeded();
+      const approveBox = await lastApprove.boundingBox();
+      const navBox = await page.getByRole("navigation", { name: "Destinations" }).boundingBox();
+      expect(approveBox, "last proposal's Approve has a box").not.toBeNull();
+      expect(navBox, "mobile bottom nav has a box").not.toBeNull();
+      expect(
+        approveBox!.y + approveBox!.height,
+        "last proposal's controls render above the bottom nav",
+      ).toBeLessThanOrEqual(navBox!.y);
+    }
+
     // Cardinality, scoped to THIS transcript: .first() tolerates leftovers
     // from earlier attempts, but one debrief must produce exactly its three
     // proposals - never duplicates from the same transcript.
