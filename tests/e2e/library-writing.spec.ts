@@ -44,6 +44,9 @@ async function seedLibraryDocument(): Promise<boolean> {
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
     if (!owner) return false;
+    // Idempotent: each viewport's test reseeds, and a duplicate title would
+    // surface as two same-named Sources bullets in the rendered draft.
+    await client`delete from documents where title = ${DOC_TITLE}`;
     const [doc] = await client<{ id: string }[]>`
       insert into documents (workspace_id, title, mime_type)
       values (${owner.workspace_id}, ${DOC_TITLE}, 'text/plain')
