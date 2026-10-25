@@ -153,6 +153,9 @@ for (const vp of VIEWPORTS) {
 
     await row.getByRole("button", { name: "Refresh" }).click();
     await expect(row.getByRole("alert")).toContainText("does not exist", { timeout: 30_000 });
+    // The error must not crush the row: title and time stay visible (mobile wraps below).
+    await expect(row.getByText(EVENT_TITLE)).toBeVisible();
+    await expect(row.getByText(/[AP]M/)).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/prep-refresh-error-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 }
