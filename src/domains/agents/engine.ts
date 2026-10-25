@@ -64,6 +64,12 @@ export interface AgentEngine {
     retryOfRunId?: string;
     /** Pins the run to one installed skill for its whole life. */
     skillId?: string;
+    /*
+     * Overrides the profile's tool ceiling for this run only. Frozen into the
+     * policy snapshot like the profile's own list, so the gateway and executor
+     * read it the same way. [] means the run can call no tools at all.
+     */
+    allowedTools?: string[];
   }): Promise<{ runId: string; reservationId: string }>;
   signal(runId: string, signal: string, auth: AuthContext): Promise<void>;
   resume(runId: string, auth: AuthContext): Promise<void>;
@@ -179,7 +185,7 @@ export function createEngine(
       const policy: PolicySnapshot = {
         profileId: profile.id,
         model,
-        allowedTools: profile.allowedTools,
+        allowedTools: input.allowedTools ?? profile.allowedTools,
         allowedAccounts: profile.allowedAccounts,
         budgetUsd: profile.budgetPolicy,
         auth: input.auth,

@@ -15,12 +15,24 @@ import { completeOnboardingAction } from "./actions";
  * rendered as one form on purpose. What is learned becomes the supervisor
  * agent's brief; the person meets an agent that already knows them.
  */
-export function OnboardingInterview() {
+export function OnboardingInterview({
+  initial,
+  notice,
+}: {
+  /*
+   * The extraction-failure surface: when the interview's brief could not be
+   * parsed, the flow routes here with whatever fields could be salvaged from
+   * the thread, so the person corrects rather than re-types.
+   */
+  initial?: { agentName?: string; role?: string; tools?: string[]; priorities?: string[] };
+  /** Why the form is standing in for the conversation; omitted on the plain form. */
+  notice?: string;
+} = {}) {
   const router = useRouter();
-  const [agentName, setAgentName] = useState("");
-  const [role, setRole] = useState("");
-  const [tools, setTools] = useState("");
-  const [priorities, setPriorities] = useState("");
+  const [agentName, setAgentName] = useState(initial?.agentName ?? "");
+  const [role, setRole] = useState(initial?.role ?? "");
+  const [tools, setTools] = useState(initial?.tools?.join(", ") ?? "");
+  const [priorities, setPriorities] = useState(initial?.priorities?.join("; ") ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +74,12 @@ export function OnboardingInterview() {
           Tell it who you are and what matters; it starts knowing that.
         </p>
       </header>
+
+      {notice ? (
+        <p role="status" className="text-muted-foreground text-[13px] leading-relaxed">
+          {notice}
+        </p>
+      ) : null}
 
       <form
         className="flex flex-col gap-4"
