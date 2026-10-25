@@ -129,9 +129,9 @@ export async function TodaysFlow({ auth, raw = {} }: { auth: AuthContext; raw?: 
           ) : (
             <ul className="flex flex-col gap-2">
               {next.map((e) => (
-                <li key={e.id} className="flex items-center justify-between gap-3">
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-3">
                   <span className="min-w-0 truncate">{e.title}</span>
-                  <span className="flex shrink-0 items-center gap-3">
+                  <span className="flex min-w-0 max-w-full flex-wrap items-center gap-3">
                     <PrepButton eventId={e.id} />
                     <span className="text-xs text-muted-foreground">{when(e.startsAt, timezone)}</span>
                   </span>

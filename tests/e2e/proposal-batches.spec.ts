@@ -8,7 +8,17 @@ import postgres from "postgres";
  * journey lives in meeting-debrief.spec.ts since ASH-303 merged.
  *
  * Screenshots land in test-results/feature-pixels/ and upload as the
- * feature-pixels CI artifact. The seeded rows are removed in afterAll.
+ * feature-pixels CI artifact.
+ *
+ * Isolation: fullyParallel runs both viewport journeys at once against one
+ * scratch database, and the batch/receipt key derives from the GOAL text.
+ * A shared goal made the sibling's afterAll delete poison the receipt: the
+ * loser replayed the deleted note's id and the action honestly refused
+ * ("path note was deleted") - the page stayed put and toHaveURL timed out.
+ * Each viewport therefore learns its own goal; the fixture's canned answer
+ * keeps the asserted titles identical. No cleanup: replaying a namespaced
+ * goal is idempotent by design, and a per-worker afterAll cannot know which
+ * viewport's rows are safe to delete.
  */
 
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
@@ -28,25 +38,6 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-async function removeSeeded(): Promise<void> {
-  const client = db();
-  if (!client) return;
-  try {
-    // The batch's proposals and cards reference the path note; removing
-    // them first keeps the developer's queue clean. The path note is
-    // created by the journey itself, so it is caught by title.
-    await client`delete from action_proposals where dedupe_key like 'tasks:learning-path:%' or dedupe_key like 'notes:learning-path:%'`;
-    await client`delete from cards where source_title = 'Understanding distributed consensus'`;
-    await client`delete from artifacts where title = 'Understanding distributed consensus'`;
-  } finally {
-    await client.end();
-  }
-}
-
-test.afterAll(async () => {
-  await removeSeeded();
-});
-
 for (const vp of VIEWPORTS) {
   test(`a learning goal proposes notes, tasks and cards [${vp.name}]`, async ({ page }) => {
     test.setTimeout(120_000);
@@ -59,7 +50,7 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("heading", { name: "Learning path", exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-form-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
-    await page.getByLabel("Learning goal").fill("understand distributed consensus");
+    await page.getByLabel("Learning goal").fill(`understand distributed consensus (${vp.name})`);
     await page.getByRole("button", { name: "Propose learning path" }).click();
 
     // Success navigates to the path note.
@@ -71,7 +62,9 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-note-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.goto("/alfred/knowledge/cards");
-    await expect(page.getByText("What does a quorum prevent?")).toBeVisible({ timeout: 30_000 });
+    // The sibling viewport's path proposes an identical card; .first() is the
+    // honest scope, matching the Reviews assertions below.
+    await expect(page.getByText("What does a quorum prevent?").first()).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-card-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.goto("/reviews");
