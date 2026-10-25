@@ -395,7 +395,11 @@ function fixtureAdapters(): ProfileResearchAdapters {
 }
 
 function defaultAdapters(auth: AuthContext): ProfileResearchAdapters {
-  if (process.env.GENERATION_PROVIDER === "fixture") return fixtureAdapters();
+  // Fail closed: even if the fixture env were set on a deployment, a
+  // production server never serves fixture search/fetch - it takes the real
+  // quota-gated providers. The e2e harness runs next dev (NODE_ENV !=
+  // production), so the journeys keep their hermetic fixture.
+  if (process.env.GENERATION_PROVIDER === "fixture" && process.env.NODE_ENV !== "production") return fixtureAdapters();
   return {
     async search(query, limit) {
       const res = await searchWebForAgent(auth, { query, limit });

@@ -18,8 +18,6 @@ export const metadata = { title: "Company · Polymath" };
  * stays where it was: the companies panel on the Contacts screen.
  */
 
-const BASE = "/command-center/relationships/companies";
-
 export default async function CompanyProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await io();
