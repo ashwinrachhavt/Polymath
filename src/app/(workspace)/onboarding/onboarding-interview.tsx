@@ -58,7 +58,7 @@ export function OnboardingInterview() {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-medium">Meet your agent</h1>
         <p className="text-muted-foreground text-[13px] leading-relaxed">
-          This agent is yours — your representation, not a generic assistant.
+          This agent is yours: your representation, not a generic assistant.
           Tell it who you are and what matters; it starts knowing that.
         </p>
       </header>

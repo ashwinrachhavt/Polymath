@@ -165,7 +165,7 @@ export default function ApiKeysPanel() {
         <DialogContent>
           <DialogTitle>Your new API key</DialogTitle>
           <DialogDescription>
-            Shown once. Paste it into the client now — Polymath stores only its digest, so it cannot be shown again.
+            Shown once. Paste it into the client now. Polymath stores only its digest and cannot show it again.
           </DialogDescription>
           <p className="readout mt-2 break-all rounded-md border border-border bg-muted/60 p-3 text-[13px]">{shownToken}</p>
           <div className="mt-4 flex items-center gap-3">

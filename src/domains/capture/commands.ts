@@ -103,9 +103,12 @@ export async function createCapture(
           { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind}` },
           tx,
         );
-        // A URL capture promises the page's content. The scrape is long work,
-        // so it parks in the outbox instead of holding the request open.
-        if (capture.kind === "url" && capture.url) {
+        // A URL capture promises the page's content; a page grab from the
+        // companion carries its own text, but that text is flattened innerText,
+        // not markdown — the scrape replaces it with the page's real structure
+        // once it lands (the grab survives in rawPayload). The scrape is long
+        // work, so it parks in the outbox instead of holding the request open.
+        if (capture.url) {
           await enqueueOutbox(tx, auth, {
             topic: CAPTURE_URL_CONTENT_TOPIC,
             payload: { captureId: capture.id, url: capture.url },

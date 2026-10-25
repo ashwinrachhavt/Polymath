@@ -372,15 +372,20 @@ outline-offset: -1px;
 .composer-input:focus-visible {
 outline: none;
 }
-select {
-min-height: 32px;
-max-width: 100%;
-border: 1px solid var(--input);
-border-radius: 4px;
-padding: 4px 8px;
-background: var(--card);
-color: var(--foreground);
-font: inherit;
+/* Native selects that do not use the Select component keep a baseline. In the
+   base layer so the component's height, padding, radius and type utilities win;
+   unlayered, this rule silently overrode all of them. */
+@layer base {
+  select {
+    min-height: 32px;
+    max-width: 100%;
+    border: 1px solid var(--input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    background: var(--card);
+    color: var(--foreground);
+    font: inherit;
+  }
 }
 input,
 textarea {
@@ -464,11 +469,12 @@ transition-duration: 0.01ms !important;
 }
 
 @keyframes file-chip-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
+  0%,
   100% {
-    transform: translateX(250%);
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.45;
   }
 }
 
@@ -476,8 +482,7 @@ transition-duration: 0.01ms !important;
   content: "";
   position: absolute;
   inset: 0;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, var(--color-foreground, currentColor), transparent);
+  background: var(--color-foreground, currentColor);
   opacity: 0.35;
   animation: file-chip-shimmer 1.8s ease-in-out infinite;
 }

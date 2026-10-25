@@ -183,7 +183,7 @@ export function StatementPanel({
         <div className="mt-3">
           <p className="text-muted-foreground text-xs">
             Every row carries the running balance forward. The CSV has three columns:
-            date, description, amount — money out is negative.
+            date, description, amount. Money out is negative.
           </p>
           {statement.totalsStatus === "match" ? (
             <p className="text-muted-foreground mt-1 text-xs">
@@ -209,7 +209,7 @@ export function StatementPanel({
             {statement.mismatches.slice(0, 5).map((mismatch, index) => (
               <li key={`${mismatch.occurredOn}-${index}`} className="text-muted-foreground">
                 {mismatch.occurredOn} · {mismatch.description.slice(0, 60)} · {money(mismatch.amount)}
-                {" — expected "}
+                {" · expected "}
                 {money(mismatch.expectedBalance)} but the statement says {money(mismatch.actualBalance)}
               </li>
             ))}

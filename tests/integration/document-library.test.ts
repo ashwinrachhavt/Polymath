@@ -140,6 +140,22 @@ suite("document library", () => {
     expect(activity.some((a) => a.kind === "moved" && a.detail.to === "the library root")).toBe(true);
   });
 
+  it("listFolders counts documents inside a folder, not the folder-vs-document id coincidence", async () => {
+    // Regression: the count subquery rendered drizzle's unqualified column as
+    // "id", which inside `from documents d` bound to d.id, so d.folder_id = d.id
+    // never matched and every folder read as 0 documents (the folder tiles lied
+    // even while opening them showed the files).
+    const auth = await seedAuth("counts");
+    const folder = await folders.createFolder(auth, { name: "Statements" });
+    await seedDocument(auth, { title: "Statement one", folderId: folder.id });
+    await seedDocument(auth, { title: "Statement two", folderId: folder.id });
+    await seedDocument(auth, { title: "At root", folderId: null });
+
+    const folderList = await library.listFolders(auth);
+    const counted = folderList.find((f) => f.id === folder.id);
+    expect(counted?.documentCount).toBe(2);
+  });
+
   it("listDocuments: keyset pages neither skip nor repeat, filters compose", async () => {
     const auth = await seedAuth("pages");
     const folder = await folders.createFolder(auth, { name: "Invoices" });

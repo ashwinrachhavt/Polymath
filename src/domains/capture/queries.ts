@@ -55,6 +55,8 @@ const listColumns = {
   version: captures.version,
   convertedType: captures.convertedType,
   convertedId: captures.convertedId,
+  // Enrichment's short noun phrase; the list's label leads with it.
+  title: captures.title,
   // A file capture has no text; its only searchable label is the filename.
   preview: sql<string | null>`coalesce(left(${captures.text}, 300), ${captures.rawPayload}->>'filename')`,
 };

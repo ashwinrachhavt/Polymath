@@ -40,7 +40,7 @@ describe("StatementPanel", () => {
     );
     expect(html).toContain("/api/v1/documents/doc-1/statement");
     expect(html).toContain("Download CSV");
-    expect(html).toContain("money out is negative");
+    expect(html).toContain("Money out is negative");
     expect(html).toContain("10");
   });
 

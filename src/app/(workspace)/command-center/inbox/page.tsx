@@ -50,20 +50,23 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   await io();
   const auth = await getAuthContext();
   const kind = list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined;
-  const [found, tabs, selected] = await Promise.all([
-    searchCapturesForPage(auth, {
-      filter,
-      kind,
-      query: list.q,
-      limit: list.pageSize,
-      offset: offsetFor(list.page, list.pageSize),
-    }),
+  const found = await searchCapturesForPage(auth, {
+    filter,
+    kind,
+    query: list.q,
+    limit: list.pageSize,
+    offset: offsetFor(list.page, list.pageSize),
+  });
+  const rows = found.items;
+  // No ?id= reads as "show the newest": the detail pane is the working half of
+  // the screen, and an empty void beside the list is wasted on a hint sentence.
+  const effectiveSelectedId = selectedId ?? rows[0]?.id ?? null;
+  const [tabs, selected] = await Promise.all([
     countInboxTabsForPage(auth),
     // The detail pane is a view of the record, not of the current filter: a
     // capture outside the view still renders, the list just shows no highlight.
-    selectedId ? getCaptureForPage(auth, selectedId) : Promise.resolve(null),
+    effectiveSelectedId ? getCaptureForPage(auth, effectiveSelectedId) : Promise.resolve(null),
   ]);
-  const rows = found.items;
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
   const page = list.page;
@@ -139,13 +142,14 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
           <div className="min-h-0 flex-1 overflow-y-auto">
             <InboxList
               view={filter}
-              selectedId={selectedId}
+              selectedId={effectiveSelectedId}
               rawQuery={query}
               rows={rows.map((capture) => ({
                 id: capture.id,
                 processingState: capture.processingState,
                 kind: capture.kind,
                 createdAt: capture.createdAt.toISOString(),
+                title: capture.title,
                 preview: capture.preview,
                 url: capture.url,
                 version: capture.version,
@@ -186,6 +190,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                     processingState: selected.processingState,
                     kind: selected.kind,
                     createdAt: selected.createdAt.toISOString(),
+                    title: selected.title,
                     text: selected.text,
                     url: selected.url,
                     rawPayload: selected.rawPayload,

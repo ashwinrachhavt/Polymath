@@ -115,35 +115,38 @@ export function InboxDetail({
         <h2
           ref={headingRef}
           tabIndex={-1}
-          className="font-display text-balance text-2xl leading-tight break-words focus-visible:outline-none"
+          className="text-balance text-[17px] leading-snug font-medium break-words focus-visible:outline-none"
         >
-          {capture.kind === "url" && capture.url && isHttpUrl(capture.url) ? (
-            <a href={capture.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
-              {capture.url}
-            </a>
-          ) : (
-            title
-          )}
+          {title}
         </h2>
+        {capture.kind === "url" && capture.url && isHttpUrl(capture.url) && capture.url !== title ? (
+          <a
+            href={capture.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground mt-0.5 block truncate text-xs underline-offset-4 hover:underline"
+          >
+            {capture.url}
+          </a>
+        ) : null}
 
-        <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
-          <dt className="text-muted-foreground">Status</dt>
-          <dd className="flex items-center gap-1.5 text-foreground">
-            <span aria-hidden className="size-1.5 rounded-full bg-primary" />
-            {captureStateLabel(state)}
-          </dd>
-          <dt className="text-muted-foreground">Kind</dt>
-          <dd className="text-foreground">{captureKindLabel(capture.kind)}</dd>
-          <dt className="text-muted-foreground">Captured</dt>
-          <dd className="text-foreground">
-            <time dateTime={capture.createdAt} suppressHydrationWarning>
-              {when(capture.createdAt)}
-            </time>
-          </dd>
-        </dl>
+        {/* One meta line, not a definition grid: state, kind, captured. The dot
+            carries "state can change"; the words carry which state. */}
+        <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 text-xs">
+          <span className="text-foreground">{captureStateLabel(state)}</span>
+          <span aria-hidden>·</span>
+          <span>{captureKindLabel(capture.kind)}</span>
+          <span aria-hidden>·</span>
+          <time dateTime={capture.createdAt} suppressHydrationWarning>
+            {when(capture.createdAt)}
+          </time>
+        </p>
       </header>
 
-      <div className="mt-6 border-border border-t pt-6">
+      {/* Keyed by capture id: CaptureBody holds the draft and a Tiptap editor
+          in mount-time state, and switching captures in place kept the previous
+          capture's text under the new one's title. A new id remounts the body. */}
+      <div key={capture.id} className="mt-6 border-border border-t pt-6">
         {capture.kind === "file" ? (
           <FileCapturePanel captureId={capture.id} rawPayload={capture.rawPayload} />
         ) : isUrlOnly ? (

@@ -19,7 +19,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="page-header border-border bg-background/95 sticky top-12 z-10 border-b backdrop-blur">
+    <header className="page-header border-border bg-background/95 sticky top-(--topbar-h, 3rem) z-10 border-b backdrop-blur">
       <div className="screen-heading">
         <div className="min-w-0 flex-1">
           <h1 className="screen-title">{title}</h1>

@@ -654,7 +654,7 @@ export function NoteEditor({
                               <span className="font-medium">Version {v.versionNumber}</span>
                               <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
                             </span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` — ${v.note}` : ""}</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` · ${v.note}` : ""}</span>
                           </li>
                         ))}
                       </ul>

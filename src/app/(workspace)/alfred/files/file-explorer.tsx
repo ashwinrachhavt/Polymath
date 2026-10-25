@@ -203,7 +203,7 @@ export function FileExplorer({
     setNotice(
       failures.length === 0
         ? `${targets.length} read.`
-        : `${targets.length - failures.length} read. ${failures.length} failed — ${failures[0]}${failures.length > 1 ? ` and ${failures.length - 1} more` : ""}.`,
+        : `${targets.length - failures.length} read. ${failures.length} failed. First: ${failures[0]}${failures.length > 1 ? ` and ${failures.length - 1} more` : ""}.`,
     );
     router.refresh();
   }
@@ -464,9 +464,9 @@ export function FileExplorer({
 
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Documents">
         <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2.5 md:px-5">
-          <label className="relative min-w-[12rem] flex-1">
+          <label className="border-input bg-background focus-within:ring-ring relative min-w-[12rem] flex-1 rounded-md border transition-shadow focus-within:ring-3">
             <span className="sr-only">Search documents</span>
-            <Search aria-hidden className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-4" />
+            <Search aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
             <input
               ref={searchRef}
               type="search"
@@ -474,19 +474,39 @@ export function FileExplorer({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchAll())}
               placeholder="Filter loaded, Enter searches everything  ( / )"
-              className="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border pr-2 pl-8 text-[13px] outline-none focus-visible:ring-2"
+              className="min-h-9 w-full bg-transparent pr-3 pl-8 text-[13px] outline-none"
             />
           </label>
-          <Select value={sort} onChange={(e) => changeSort(e.target.value as ServerSort)} aria-label="Sort by" className="w-40">
+          <Select
+            variant="ghost"
+            value={sort}
+            onChange={(e) => changeSort(e.target.value as ServerSort)}
+            aria-label="Sort by"
+            className="w-40 shrink-0"
+          >
             {SERVER_SORTS.map((o) => (
               <option key={o.id} value={o.id}>{o.label}</option>
             ))}
           </Select>
-          <div role="group" aria-label="View" className="border-input flex overflow-hidden rounded-md border">
-            <button type="button" aria-pressed={view === "list"} aria-label="List view" onClick={() => chooseView("list")} className={`grid size-9 place-items-center ${view === "list" ? "bg-muted" : "hover:bg-muted"}`}>
+          <div role="group" aria-label="View" className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              aria-pressed={view === "list"}
+              aria-label="List view"
+              title="List view"
+              onClick={() => chooseView("list")}
+              className={`grid size-8 place-items-center rounded-md transition-colors ${view === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60"}`}
+            >
               <List aria-hidden className="size-4" />
             </button>
-            <button type="button" aria-pressed={view === "grid"} aria-label="Grid view" onClick={() => chooseView("grid")} className={`grid size-9 place-items-center ${view === "grid" ? "bg-muted" : "hover:bg-muted"}`}>
+            <button
+              type="button"
+              aria-pressed={view === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+              onClick={() => chooseView("grid")}
+              className={`grid size-8 place-items-center rounded-md transition-colors ${view === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60"}`}
+            >
               <LayoutGrid aria-hidden className="size-4" />
             </button>
           </div>
@@ -502,7 +522,7 @@ export function FileExplorer({
               void uploadFiles(files);
             }}
           />
-          <Button type="button" onClick={() => fileInputRef.current?.click()}>
+          <Button type="button" size="lg" onClick={() => fileInputRef.current?.click()}>
             <Upload aria-hidden className="size-4" /> Upload
           </Button>
         </div>

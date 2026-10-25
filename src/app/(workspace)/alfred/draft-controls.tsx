@@ -39,10 +39,15 @@ export function DraftControls({
   if (!draft) {
     if (!canSave) return null;
     return (
-      <div className="flex flex-col gap-1">
-        <Button size="sm" variant="outline" className="w-fit" disabled={pending} onClick={() => call("/api/v1/drafts", { runId })}>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => call("/api/v1/drafts", { runId })}
+          className="text-muted-foreground hover:text-foreground w-fit rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
           Save the answer as a draft
-        </Button>
+        </button>
         {error ? <p role="alert" className="text-destructive text-xs">{error}</p> : null}
       </div>
     );

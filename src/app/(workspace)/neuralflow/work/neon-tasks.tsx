@@ -66,10 +66,8 @@ export async function NeonTasks({
   });
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const rows = found.rows;
-  const win = found.window;
   // Reordering is a rank between two neighbours; with rows hidden by a filter
   // the neighbours are not adjacent in the real order, so moves wait for a clear list.
-  const canMove = scope !== "done" && !filtered;
   // Detail, its focus history, the live session and the move targets are
   // independent reads. The live session renders wherever on Work the owner
   // is; Work is the focus surface since the rail lost the Focus tab.
@@ -102,16 +100,7 @@ export async function NeonTasks({
     <Screen
       title="Work"
     >
-      {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
-      {/* The day's companion tools, reached from the day itself rather than
-          the tab row. Projects stay in the More index and command layer. */}
-      {scope === "today" && !selectedTask ? (
-        <nav aria-label="Related tools" className="-mt-2 mb-4 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
-        </nav>
-      ) : null}
+
       {activeSession ? (
         <Panel
           className="mb-6 border-app-accent/40"
@@ -163,7 +152,6 @@ export async function NeonTasks({
             />
           </div>
           <WorkList
-            canMove={canMove}
             showQuickAdd={scope !== "done"}
             emptyState={
               <NoResults
@@ -172,7 +160,7 @@ export async function NeonTasks({
                 emptyTitle={scope === "today" ? "Nothing committed for today" : scope === "done" ? "No finished tasks yet" : "No open tasks"}
               />
             }
-            items={rows.map((row, i) => ({
+            items={rows.map((row) => ({
               row: {
                 id: row.id,
                 title: row.title,
@@ -186,8 +174,6 @@ export async function NeonTasks({
               },
               href: listHref(BASE, raw, { view: "saved", task: row.id }),
               selected: detail?.task.id === row.id,
-              up: win[i + found.lead - 1] ? { after: win[i + found.lead - 2]?.id, before: win[i + found.lead - 1]!.id } : null,
-              down: win[i + found.lead + 1] ? { after: win[i + found.lead + 1]!.id, before: win[i + found.lead + 2]?.id } : null,
             }))}
           />
           <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
@@ -244,6 +230,17 @@ export async function NeonTasks({
           {detail ? <TaskEvidence items={provenance} /> : null}
         </Panel>
       </div>
+
+      {/* The day's context sits under the committed work: the tasks are the
+          screen's question; Upcoming, Focus Windows and Next Events follow. */}
+      {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
+      {scope === "today" && !selectedTask ? (
+        <nav aria-label="Related tools" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
+        </nav>
+      ) : null}
     </Screen>
   );
 }

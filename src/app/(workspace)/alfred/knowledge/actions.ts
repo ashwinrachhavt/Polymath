@@ -7,6 +7,7 @@ import { acceptFieldProposal, deferFieldProposal, partyAttribute, rejectFieldPro
 import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/knowledge/parties";
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
 import { captureUrl } from "@/domains/knowledge/capture-url";
+import { createFolder, FolderError } from "@/domains/knowledge/folders";
 import { acceptZettel, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { applyTitle } from "@/domains/knowledge/naming";
@@ -49,6 +50,38 @@ function alreadyDecided(what: string): Error {
 function wrap(what: string, cause: unknown): never {
   if (isAlreadyDecided(cause)) throw alreadyDecided(what);
   throw cause;
+}
+
+export type CreateFolderResult = { ok: true; folderId: string; name: string } | { ok: false; error: string };
+
+/*
+ * New folder from the vault's New menu. Folders come from the same versioned,
+ * audited domain the Files explorer uses; this action only adds the vault's
+ * revalidation target and turns a known folder error into a sentence the
+ * dialog can show. Everything else is a real fault and is rethrown.
+ */
+export async function createVaultFolder(folderName: string, parentId: string | null): Promise<CreateFolderResult> {
+  const auth = await authorize();
+  let name: string;
+  try {
+    name = z.string().trim().min(1).max(120).parse(folderName);
+  } catch {
+    return { ok: false, error: "A folder needs a name under 120 characters." };
+  }
+  let parent: string | null;
+  try {
+    parent = parentId === null ? null : uuid.parse(parentId);
+  } catch {
+    return { ok: false, error: "That folder is no longer available. Reload and try again." };
+  }
+  try {
+    const folder = await createFolder(auth, { name, parentId: parent });
+    revalidate();
+    return { ok: true, folderId: folder.id, name: folder.name };
+  } catch (cause) {
+    if (cause instanceof FolderError) return { ok: false, error: cause.message };
+    throw cause;
+  }
 }
 
 const partyDecision: z.ZodType<PartyDecision> = z.discriminatedUnion("action", [

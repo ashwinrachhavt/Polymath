@@ -172,7 +172,7 @@ export async function listFolders(auth: AuthContext): Promise<LibraryFolder[]> {
       version: documentFolders.version,
       documentCount: sql<number>`(
         select count(*)::int from documents d
-        where d.folder_id = ${documentFolders.id} and d.archived_at is null
+        where d.folder_id = document_folders.id and d.archived_at is null
       )`,
     })
     .from(documentFolders)
