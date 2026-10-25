@@ -18,6 +18,7 @@ import {
   settleAttempt,
 } from "./attempts";
 import { StaleRevisionError } from "./commands";
+import { checkSenderAlias, senderAliasPolicy } from "./policy";
 import { actionAttempts, actionProposals, actionRevisions, actionReviews, executionSettings } from "./schema";
 
 /*
@@ -268,6 +269,16 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   }
   if (pin.externalAccountId !== account.externalAccountId || pin.connectedAccountId !== account.connectedAccountId) {
     throw new SendNotAllowedError("The sending account no longer matches the approved revision. Review and approve a fresh revision.");
+  }
+
+  // ASH-289: the sending grant is re-read at execution, not borrowed from the
+  // approval. Tightening the authorized senders revokes an already-approved
+  // proposal rather than grandfathering it; the pin carries the alias it was
+  // approved with, and only an authorized alias may send.
+  if (checked.provider === "gmail") {
+    const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
+    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
+    if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
   }
 
   return { ...checked, connectedAccountId: account.connectedAccountId };
