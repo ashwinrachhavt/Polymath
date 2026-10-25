@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db as defaultDb } from "@/lib/db";
 import { taxonomyNodes } from "./schema";
@@ -14,13 +14,11 @@ import { taxonomyNodes } from "./schema";
  * hallucinated slug is a rejected write, not a data bug.
  *
  * The alfred taxonomy was user-grown at runtime; Polymath v1 ships the seed
- * only (SEED_TAXONOMY below). The table is CRUD-ready - upsertTaxonomyNode
- * is the seam a later node-management surface uses.
+ * only (SEED_TAXONOMY below). When a node-management surface arrives it
+ * brings its own write seam; nothing here anticipates one.
  */
 
 export type TaxonomyNode = typeof taxonomyNodes.$inferSelect;
-
-export type TaxonomyTreeNode = TaxonomyNode & { children: TaxonomyTreeNode[] };
 
 /** The seed catalog. Each description is the selection criterion the classifier's question criteria quote. */
 export const SEED_TAXONOMY: ReadonlyArray<{
@@ -82,31 +80,6 @@ export async function seedTaxonomyCatalog(
     });
 }
 
-/** Nested read of the live catalog, optionally narrowed to one domain. */
-export async function getTaxonomyTree(
-  auth: Pick<AuthContext, "workspaceId">,
-  input: { domainSlug?: string } = {},
-): Promise<TaxonomyTreeNode[]> {
-  const rows = await defaultDb
-    .select()
-    .from(taxonomyNodes)
-    .where(and(
-      eq(taxonomyNodes.workspaceId, auth.workspaceId),
-      isNull(taxonomyNodes.archivedAt),
-      input.domainSlug ? eq(taxonomyNodes.slug, input.domainSlug) : undefined,
-    ))
-    .orderBy(asc(taxonomyNodes.sortOrder), asc(taxonomyNodes.slug));
-  const byParent = new Map<string | null, TaxonomyNode[]>();
-  for (const row of rows) {
-    const siblings = byParent.get(row.parentSlug) ?? [];
-    siblings.push(row);
-    byParent.set(row.parentSlug, siblings);
-  }
-  const build = (parentSlug: string | null): TaxonomyTreeNode[] =>
-    (byParent.get(parentSlug) ?? []).map((node) => ({ ...node, children: build(node.slug) }));
-  return build(input.domainSlug ?? null);
-}
-
 /**
  * Validate a [domain, subdomain, microtopic] chain against the live catalog.
  * Returns the resolved nodes, or null when any slug is missing, archived, or
@@ -137,50 +110,3 @@ export async function resolveTaxonomyPath(
   return path;
 }
 
-/**
- * Seed + future CRUD seam. Not exposed via UI or route in ASH-272; the
- * composite self-FK enforces same-workspace parents at the database.
- */
-export async function upsertTaxonomyNode(
-  auth: AuthContext,
-  input: {
-    slug: string;
-    displayName: string;
-    level: 1 | 2 | 3;
-    parentSlug?: string | null;
-    description?: string | null;
-    sortOrder?: number;
-  },
-): Promise<TaxonomyNode> {
-  if (input.level === 1 && input.parentSlug) throw new Error("a domain (level 1) has no parent");
-  if (input.level > 1 && !input.parentSlug) throw new Error("a subdomain or microtopic needs a parent slug");
-  const [node] = await defaultDb
-    .insert(taxonomyNodes)
-    .values({
-      workspaceId: auth.workspaceId,
-      slug: input.slug,
-      displayName: input.displayName,
-      level: input.level,
-      parentSlug: input.parentSlug ?? null,
-      description: input.description ?? null,
-      sortOrder: input.sortOrder ?? 0,
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    })
-    .onConflictDoUpdate({
-      target: [taxonomyNodes.workspaceId, taxonomyNodes.slug],
-      set: {
-        displayName: sql`excluded.display_name`,
-        level: sql`excluded.level`,
-        parentSlug: sql`excluded.parent_slug`,
-        description: sql`excluded.description`,
-        sortOrder: sql`excluded.sort_order`,
-        archivedAt: null,
-        updatedAt: sql`now()`,
-        updatedBy: auth.userId,
-        version: sql`${taxonomyNodes.version} + 1`,
-      },
-    })
-    .returning();
-  return node;
-}
