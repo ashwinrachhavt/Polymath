@@ -60,8 +60,11 @@ export function generationProvider(
   const choice = env.GENERATION_PROVIDER?.toLowerCase();
   switch (choice) {
     // E2E journeys only: deterministic and free, explicit opt-in, never a
-    // key-detected default.
+    // key-detected default. And it fails closed: a production process that
+    // somehow carries GENERATION_PROVIDER=fixture gets the same unconfigured
+    // error as a keyless run (which callers skip), never fixture content.
     case "fixture":
+      if (env.NODE_ENV === "production") throw new GenerationUnconfiguredError();
       return fixtureProvider();
     case "gemini":
       return geminiProvider(env, fetchImpl);
