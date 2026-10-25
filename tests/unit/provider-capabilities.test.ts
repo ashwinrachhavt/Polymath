@@ -99,7 +99,16 @@ describe("provider capability catalog", () => {
     for (const [capability, spec] of entries) {
       expect(PROVIDER_TOOLS[spec.tool as keyof typeof PROVIDER_TOOLS], capability).toBe(capability);
     }
-    expect(Object.keys(PROVIDER_TOOLS).length).toBe(entries.length);
+    // The mapping is surjective, not bijective: a second tool may share a
+    // capability when it IS that capability under the same ceiling - the
+    // Writer's draft tool is gmail.send (ASH-281), so one snapshot entry
+    // governs the draft and the send. What must hold: no tool routes to a
+    // capability the catalog does not know, and no tool name is claimed twice.
+    const capabilities = new Set(entries.map(([capability]) => capability));
+    for (const [tool, capability] of Object.entries(PROVIDER_TOOLS)) {
+      expect(capabilities.has(capability), `${tool} -> ${capability}`).toBe(true);
+    }
+    expect(Object.keys(PROVIDER_TOOLS).length).toBeGreaterThanOrEqual(entries.length);
   });
 
   it("bounds results inside the limit the gateway clamps to", () => {

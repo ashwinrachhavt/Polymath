@@ -130,6 +130,10 @@ export const PROVIDER_TOOLS = {
   gmail_search: "gmail.read",
   gmail_read_thread: "gmail.thread.read",
   gmail_send: "gmail.send",
+  // The Writer's draft tool: reads a thread and files a gmail.send proposal.
+  // Its capability IS gmail.send, so the snapshot ceiling, the tier gate and
+  // the effect executor all treat a Writer draft exactly like a send intent.
+  writer_draft_reply: "gmail.send",
   github_search: "github.read",
   github_read_issue: "github.issue.read",
   slack_list_channels: "slack.channels.read",
