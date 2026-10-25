@@ -33,7 +33,7 @@ export function WriteFromLibrary() {
 
   return (
     <span className="flex items-center gap-2">
-      {error ? <span role="alert" className="max-w-72 truncate text-xs text-destructive">{error}</span> : null}
+      {error ? <span role="alert" className="max-w-72 text-xs text-destructive">{error}</span> : null}
       <form
         onSubmit={(event) => {
           event.preventDefault();
