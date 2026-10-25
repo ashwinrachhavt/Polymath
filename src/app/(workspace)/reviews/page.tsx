@@ -102,6 +102,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     status: item.status,
     expectedEffect: item.expectedEffect,
     accountAlias: item.accountAlias,
+    dedupeKey: item.dedupeKey,
     createdAt: item.createdAt.toISOString(),
     expiresAt: item.expiresAt?.toISOString() ?? null,
     decidedAt: item.decidedAt?.toISOString() ?? null,

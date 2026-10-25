@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull, lt, ne, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
+import { writeFollowUp } from "@/domains/crm/followups";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { tasks } from "@/domains/work/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -120,6 +121,83 @@ export async function createEvent(
         tx,
       );
       return { id: row.id, version: row.version };
+    });
+    return value;
+  });
+}
+
+/*
+ * The follow-up reminder (ASH-288): the calendar event and the followUps row
+ * are one commit, so a half-written reminder is impossible - the approved
+ * proposal either leaves both or neither. A newer reminder supersedes the
+ * task's open follow-ups explicitly (P-07), named by supersededBy.
+ */
+export async function createFollowUpReminder(
+  auth: AuthContext,
+  input: Keyed & {
+    title: string;
+    startsAt: Date;
+    endsAt: Date;
+    /** The reason, in the owner's words; becomes the follow-up's note. */
+    reason: string;
+    contactId?: string | null;
+    taskId?: string | null;
+  },
+): Promise<{ id: string; version: number; followUpId: string; superseded: number }> {
+  checkRange(input.startsAt, input.endsAt);
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createFollowUpReminder", ...input }, async () => {
+      if (input.taskId) {
+        const [task] = await tx
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+          .limit(1);
+        if (!task) throw new Error("task not found in workspace");
+      }
+      const calendarId = await ensureLocalCalendar(tx, auth);
+      const [row] = await tx
+        .insert(events)
+        .values({
+          workspaceId: auth.workspaceId,
+          calendarId,
+          title: input.title,
+          description: input.reason,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning({ id: events.id, version: events.version });
+      if (input.taskId) {
+        await tx.insert(eventLinks).values({
+          workspaceId: auth.workspaceId,
+          eventId: row.id,
+          targetType: "task",
+          targetId: input.taskId,
+          label: "Follow-up",
+        });
+      }
+      const followUp = await writeFollowUp(tx, {
+        workspaceId: auth.workspaceId,
+        contactId: input.contactId ?? null,
+        taskId: input.taskId ?? null,
+        dueAt: input.startsAt,
+        note: input.reason,
+        createdBy: auth.userId,
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "event.follow_up_created",
+          subjectType: "event",
+          subjectId: row.id,
+          summary: `Created follow-up reminder "${input.title}"`,
+          metadata: { taskId: input.taskId ?? null, contactId: input.contactId ?? null, followUpId: followUp.id, superseded: followUp.superseded },
+        },
+        tx,
+      );
+      return { id: row.id, version: row.version, followUpId: followUp.id, superseded: followUp.superseded };
     });
     return value;
   });
