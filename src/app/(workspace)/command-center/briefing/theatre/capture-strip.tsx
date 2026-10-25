@@ -26,10 +26,16 @@ export function CaptureStrip({ captures }: { captures: CaptureChip[] }) {
 
   const label = (chip: CaptureChip) => chip.title ?? chip.text?.slice(0, 60) ?? chip.url ?? "Capture";
 
-  const pick = async (chipId: string, hour: number) => {
+  // The picker offers the next eight whole hours, never a slot that has
+  // already passed - the server refuses those anyway.
+  const upcoming = Array.from({ length: 8 }, (_, i) => {
     const slot = new Date();
     slot.setMinutes(0, 0, 0);
-    slot.setHours(hour);
+    slot.setHours(slot.getHours() + i + 1);
+    return slot;
+  });
+
+  const pick = async (chipId: string, slot: Date) => {
     const result = await scheduleCaptureAction({ captureId: chipId, scheduledAt: slot.toISOString(), idempotencyKey: crypto.randomUUID() });
     if (result.ok) router.refresh();
     setPicking(null);
@@ -61,15 +67,15 @@ export function CaptureStrip({ captures }: { captures: CaptureChip[] }) {
             <div className="absolute top-full left-0 z-20 mt-1 w-44 rounded-md border border-border bg-background p-2 shadow-md" role="menu">
               <p className="mb-1 text-[11px] font-medium text-muted-foreground">Plan it for…</p>
               <div className="grid grid-cols-4 gap-1">
-                {Array.from({ length: 12 }, (_, i) => i + 8).map((hour) => (
+                {upcoming.map((slot) => (
                   <button
-                    key={hour}
+                    key={slot.toISOString()}
                     type="button"
                     role="menuitem"
                     className="rounded px-1 py-1 text-[11px] hover:bg-muted"
-                    onClick={() => void pick(chip.id, hour)}
+                    onClick={() => void pick(chip.id, slot)}
                   >
-                    {String(hour).padStart(2, "0")}:00
+                    {String(slot.getHours()).padStart(2, "0")}:00
                   </button>
                 ))}
               </div>
