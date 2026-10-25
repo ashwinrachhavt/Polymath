@@ -18,7 +18,7 @@ const HIDE_DEV_CHROME = { style: "nextjs-portal { display: none }" } as const;
 const states = [
   { state: "confirm", ready: (page: import("@playwright/test").Page) => page.getByRole("button", { name: /confirm/i }) },
   { state: "status", ready: (page: import("@playwright/test").Page) => page.getByText(/agent runtime is not reachable/i) },
-  { state: "form", ready: (page: import("@playwright/test").Page) => page.getByRole("button", { name: /continue/i }) },
+  { state: "form", ready: (page: import("@playwright/test").Page) => page.getByRole("button", { name: /start working/i }) },
   {
     state: "form-salvage",
     ready: (page: import("@playwright/test").Page) => page.getByText(/summary could not be read/i),
@@ -27,6 +27,7 @@ const states = [
 
 for (const { state, ready } of states) {
   test(`onboarding ${state} state renders`, async ({ page }) => {
+    test.setTimeout(90_000); // first-hit dev compile of the fixture route under two workers
     await page.goto(`/dev/onboarding-fixtures?state=${state}`);
     await ready(page).first().waitFor();
     await expect(page.getByText("Something went wrong")).toHaveCount(0);
@@ -81,6 +82,7 @@ test("the island renders a live conversation", async ({ page }) => {
 });
 
 test("the island settles on a labelled failure surface when no runtime is reachable", async ({ page }) => {
+  test.setTimeout(120_000); // first-hit dev compile of the island chunk, then the start-action round trip
   await page.goto("/dev/onboarding-fixtures?state=island");
   // The island mounts and starts its run. How far it gets depends on the
   // harness env: no bridge secret fails the start outright (the island's own
@@ -97,7 +99,7 @@ test("the island settles on a labelled failure surface when no runtime is reacha
         /The interview could not start|not reachable from this deployment|no agent session|Agent execution is unavailable/,
       )
       .first(),
-  ).toBeVisible({ timeout: 20_000 });
+  ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
   await page.screenshot({ path: "test-results/onboarding-pixels/island-settled.png", fullPage: true, ...HIDE_DEV_CHROME });
 });
