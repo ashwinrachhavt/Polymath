@@ -9,6 +9,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getReadableDocument } from "@/domains/knowledge/reading";
 import { listPassages, segmentText } from "@/domains/knowledge/passages";
 import { ReadingShell } from "./reading-tracker";
+import { SummaryPanel } from "./summary-panel";
 
 export const metadata = { title: "Read · Polymath" };
 
@@ -73,11 +74,14 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
             extraction from Knowledge.
           </p>
         ) : (
-          <ReadingShell
-            documentId={doc.id}
-            segments={segmentText(doc.extraction.text ?? "", passages)}
-            canSave={auth.role !== "viewer"}
-          />
+          <>
+            <SummaryPanel documentId={doc.id} canSummarize={auth.role !== "viewer"} />
+            <ReadingShell
+              documentId={doc.id}
+              segments={segmentText(doc.extraction.text ?? "", passages)}
+              canSave={auth.role !== "viewer"}
+            />
+          </>
         )}
       </div>
     </div>
