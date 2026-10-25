@@ -25,8 +25,8 @@ export function PrepButton({ eventId }: { eventId: string }) {
 
   if (artifactId) {
     return (
-      <span className="flex shrink-0 items-center gap-2 text-xs">
-        {error ? <span role="alert" className="text-destructive">{error}</span> : null}
+      <span className="flex max-w-full shrink-0 flex-wrap items-center gap-2 text-xs">
+        {error ? <span role="alert" className="w-full text-destructive sm:w-auto">{error}</span> : null}
         <Link href={`/artifacts/${artifactId}`} className="underline underline-offset-2 hover:text-foreground">
           Prep ready
         </Link>
@@ -43,8 +43,8 @@ export function PrepButton({ eventId }: { eventId: string }) {
   }
 
   return (
-    <span className="flex shrink-0 items-center gap-2 text-xs">
-      {error ? <span role="alert" className="text-destructive">{error}</span> : null}
+    <span className="flex max-w-full shrink-0 flex-wrap items-center gap-2 text-xs">
+      {error ? <span role="alert" className="w-full text-destructive sm:w-auto">{error}</span> : null}
       <button
         type="button"
         disabled={pending}
