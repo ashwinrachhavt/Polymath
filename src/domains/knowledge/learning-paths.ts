@@ -1,7 +1,9 @@
+import { and, eq, isNull, like } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { proposeTask } from "@/domains/work/proposals";
+import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import {
@@ -12,6 +14,7 @@ import {
 import { proposeCard } from "./cards";
 import { proposeNote } from "./note-proposals";
 import { createNoteInTx } from "./notes";
+import { artifacts, artifactVersions, cards } from "./schema";
 
 /*
  * Learning paths (ASH-300): from a goal like "understand X," one pass
@@ -137,8 +140,23 @@ export async function generateLearningPath(
   const draft = parseLearningPathAnswer(out.text);
 
   // The path note exists before the proposals: the cards cite it, and the
-  // owner can read the shape of the path while deciding the rest.
-  const artifactId = await withTransaction(async (tx) => {
+  // owner can read the shape of the path while deciding the rest. A retried
+  // generation reuses the existing path note (recognized by its marker
+  // sentence) instead of stacking duplicates.
+  const marker = "waiting as proposals";
+  const [existingPath] = await db
+    .select({ id: artifacts.id })
+    .from(artifacts)
+    .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(
+      eq(artifacts.workspaceId, auth.workspaceId),
+      eq(artifacts.kind, "note"),
+      eq(artifacts.title, draft.pathTitle),
+      isNull(artifacts.archivedAt),
+      like(artifactVersions.plainText, `%${marker}%`),
+    ))
+    .limit(1);
+  const artifactId = existingPath?.id ?? await withTransaction(async (tx) => {
     const note = await createNoteInTx(tx, auth, { title: draft.pathTitle, kind: "note", plainText: renderPathNote(draft) });
     return note.id;
   });
@@ -164,6 +182,20 @@ export async function generateLearningPath(
     else taskProposalIds.push(r.proposalId);
   }
   for (const [i, card] of (draft.cards ?? []).entries()) {
+    // Cards skip the proposal queue (they arrive in the proposed state), so
+    // their retry safety is a content lookup: a retried generation re-cites
+    // the existing card for the same prompt rather than doubling the deck.
+    // proposeCard's own receipt key stays per-batch-position for first runs.
+    const prompt = card.prompt.trim();
+    const [existing] = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .where(and(eq(cards.workspaceId, auth.workspaceId), eq(cards.prompt, prompt)))
+      .limit(1);
+    if (existing) {
+      cardIds.push(existing.id);
+      continue;
+    }
     const r = await proposeCard(auth, {
       prompt: card.prompt,
       answer: card.answer,

@@ -92,9 +92,9 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/debrief-done-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.goto("/reviews");
-    await expect(page.getByText("Add task: Send the Q3 roadmap")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Add note: Pricing decision")).toBeVisible();
-    await expect(page.getByText("Add task: Follow up with Marcus: confirm the launch date")).toBeVisible();
+    await expect(page.getByText("Add task: Send the Q3 roadmap").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Add note: Pricing decision").first()).toBeVisible();
+    await expect(page.getByText("Add task: Follow up with Marcus: confirm the launch date").first()).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/debrief-reviews-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
   });
 
@@ -122,8 +122,8 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-card-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.goto("/reviews");
-    await expect(page.getByText("Add note: Why consensus is hard")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Add task: Sketch Raft's election on paper")).toBeVisible();
+    await expect(page.getByText("Add note: Why consensus is hard").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Add task: Sketch Raft's election on paper").first()).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-reviews-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
   });
 }
