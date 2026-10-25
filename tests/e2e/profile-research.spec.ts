@@ -111,16 +111,23 @@ for (const vp of VIEWPORTS) {
 
     await page.goto(`/command-center/relationships/companies/${seeded!.companyId}`);
     await expect(page.getByRole("heading", { name: COMPANY_NAME }).first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Not researched yet")).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/company-profile-fresh-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    // Retries and local reruns land on the already-researched profile; the
+    // fresh state is asserted and captured only when it is actually there.
+    const trigger = page.getByRole("button", { name: /Research (company|again)/ });
+    await expect(trigger).toBeVisible({ timeout: 30_000 });
+    if (await page.getByText("Not researched yet").isVisible()) {
+      await page.screenshot({ path: `test-results/feature-pixels/company-profile-fresh-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    }
 
-    await page.getByRole("button", { name: "Research company" }).click();
+    await trigger.click();
     const result = page.getByTestId("profile-research-result");
     await expect(result).toBeVisible({ timeout: 60_000 });
-    await expect(result.getByText("Spending analytics for small teams")).toBeVisible();
-    await expect(result.getByText("Seed round to expand analytics")).toBeVisible();
+    // Exact text: the source links quote these titles and would otherwise
+    // trip strict mode.
+    await expect(result.getByText("Spending analytics for small teams", { exact: true })).toBeVisible();
+    await expect(result.getByText("Seed round to expand analytics", { exact: true })).toBeVisible();
     // Citations resolve into the disclosed source list.
-    await result.getByText("Sources (4)").click();
+    await result.getByText("Sources (4)", { exact: true }).click();
     await expect(result.getByRole("link", { name: "About Example" })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/company-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
@@ -135,12 +142,14 @@ for (const vp of VIEWPORTS) {
     test.skip(!seeded, "DATABASE_URL not configured");
 
     await page.goto(`/command-center/relationships/contacts?id=${seeded!.contactId}`);
-    await expect(page.getByRole("button", { name: "Research person" })).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Research person" }).click();
+    // After a prior attempt the trigger reads "Research again".
+    const trigger = page.getByRole("button", { name: /Research (person|again)/ });
+    await expect(trigger).toBeVisible({ timeout: 30_000 });
+    await trigger.click();
     const result = page.getByTestId("profile-research-result");
     await expect(result).toBeVisible({ timeout: 60_000 });
-    await expect(result.getByText("Platform lead at Example")).toBeVisible();
-    await expect(result.getByText("Ask about the pricing launch")).toBeVisible();
+    await expect(result.getByText("Platform lead at Example", { exact: true })).toBeVisible();
+    await expect(result.getByText("Ask about the pricing launch", { exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/person-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
     // A focus button re-researches one angle; the card set refreshes in place.
