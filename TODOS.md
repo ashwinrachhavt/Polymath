@@ -255,3 +255,30 @@ AssertionError: expected 201 to be 200
   `docs/superpowers/specs/2026-10-20-inbox-redesign-and-extraction-cleanup.md`;
   revisit when the first keyboard-first feedback arrives. **Depends on:**
   the two-pane inbox shipping first.
+
+## In-product waitlist funnel (deferred from GTM CEO review, 2026-10-24)
+
+**Priority:** P3
+**What:** Replace the hosted-form (Tally) waitlist capture with an in-product funnel:
+public `waitlist` table (unique email, contextual ask, confirmed state — declared
+13th-table tenancy exception outside the workspace_id spine), 5/hr/IP rate limiter
+(Postgres counter; note VPN/NAT false-positives), honeypot, double opt-in via Resend,
+owner-only `/admin/waitlist` surface with bot-filtered view counters.
+**Why:** Keeps signup data in the product being pitched and removes the third-party
+dependency — but only worth it once the funnel has real traffic.
+**Pros:** Data ownership; admin + metrics native; no per-response cost.
+**Cons:** New email integration from zero (no adapter exists —
+`src/domains/crm/send-executor.ts` is the port pattern; needs DNS SPF/DKIM + secret),
+cron wiring for the 30-day purge and 7-day token expiry
+(`src/app/api/internal/cron/route.ts`), view counting conflicts with cacheComponents
+prerendering (beacon route needed), invite SLA unspecified, confirmed-address
+re-submission must never re-send (enumeration vector), drizzle-kit only globs
+`src/domains/*/schema.ts` so the schema file must live in a domain folder.
+**Context:** Deferred by /plan-ceo-review outside voice (Codex quota exhausted; native
+fallback found 9 findings) and owner decision 2026-10-24: six scope items to collect
+emails for a page with zero visitors was premature infrastructure. Upgrade trigger:
+~50 confirmed signups via the hosted form, or when the landing page moves to in-product
+capture for launch. Landing route itself IS in scope now (proposal-hero, static,
+mobile-width) — only the capture backend is deferred.
+**Effort:** human M (2-3 days) / CC ~1-2 hours.
+**Depends on:** hosted-form funnel producing real traffic first.
