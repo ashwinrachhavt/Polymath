@@ -20,6 +20,7 @@ const VIEWER_READS: Record<string, string> = {
   findLinkTargetsAction: "read-only search of the workspace cards for the [[ picker; no write",
   loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
   loadKnowledgeDebtAction: "read-only knowledge-debt signals over the caller's own workspace rows",
+  loadOutcomeNarrativeAction: "read-only weekly narrative composed server-side from the caller's own sessions and stones (ASH-280)",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
 };
 
