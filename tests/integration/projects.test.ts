@@ -23,7 +23,7 @@ vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(asy
 
 import { embedExtraction } from "@/domains/knowledge/embedding";
 import { ProjectError, attachDocuments, createProject, projectDocumentIds, listProjects } from "@/domains/knowledge/projects";
-import { projectSources } from "@/domains/knowledge/schema";
+import { notebookSources } from "@/domains/knowledge/schema";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
@@ -88,7 +88,7 @@ suite("projects (real Postgres + pgvector)", () => {
     const pay = await seed(a, PAYROLL, "payroll", provider);
     const d = await createProject(a, { name: "  Housing  ", documentIds: [lease.id, pay.id, lease.id] });
     expect(d.title).toBe("Housing");
-    const rows = await holder.db!.select().from(projectSources).where(eq(projectSources.projectId, d.id));
+    const rows = await holder.db!.select().from(notebookSources).where(eq(notebookSources.notebookId, d.id));
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => typeof r.pinnedContentHash === "string" && r.pinnedContentHash.length > 0)).toBe(true);
     expect((await projectDocumentIds(a, d.id))!.sort()).toEqual([lease.id, pay.id].sort());

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentRuns } from "@/domains/agents/schema";
-import { documents, projects } from "@/domains/knowledge/schema";
+import { documents, notebooks } from "@/domains/knowledge/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -83,7 +83,7 @@ suite("project routes (real Postgres)", () => {
     const { project } = await created.json();
     expect(project).toMatchObject({ title: "Rental papers" });
     const listed = await (await listProjects()).json();
-    expect(listed.projects).toContainEqual(expect.objectContaining({ id: project.id, documentCount: 1 }));
+    expect(listed.notebooks).toContainEqual(expect.objectContaining({ id: project.id, documentCount: 1 }));
   });
 
   it("rejects a document from another workspace with 422 and creates nothing", async () => {
@@ -91,7 +91,7 @@ suite("project routes (real Postgres)", () => {
     const res = await createProject({ name: "Nope", documentIds: [foreignId] });
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({ code: "documents_not_found" });
-    const rows = await holder.db!.select().from(projects).where(eq(projects.workspaceId, a.workspaceId));
+    const rows = await holder.db!.select().from(notebooks).where(eq(notebooks.workspaceId, a.workspaceId));
     expect(rows.map((r) => r.title)).not.toContain("Nope");
   });
 

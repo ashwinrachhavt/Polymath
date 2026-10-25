@@ -519,6 +519,13 @@
       "tag": "0247_drive_tiers",
       "when": 1793052800000,
       "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1793052810000,
+      "tag": "0248_notebooks_from_dossiers",
+      "breakpoints": true
     }
   ]
 }

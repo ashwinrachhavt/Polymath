@@ -4,7 +4,7 @@ import { ensureProfile } from "@/domains/agents/commands";
 import { db } from "@/lib/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { memberships } from "@/domains/identity/schema";
-import { projectMemories, projects } from "./schema";
+import { notebookMemories, notebooks } from "./schema";
 import { buildProjectContextPrefix } from "./project-settings";
 
 /*
@@ -22,16 +22,16 @@ export async function startAutomationRun(input: { workspaceId: string; projectId
   if (unavailable) throw new Error(unavailable);
 
   const [project] = await db
-    .select({ id: projects.id, title: projects.title, instructions: projects.instructions })
-    .from(projects)
-    .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, input.workspaceId), isNull(projects.archivedAt)))
+    .select({ id: notebooks.id, title: notebooks.title, instructions: notebooks.instructions })
+    .from(notebooks)
+    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, input.workspaceId), isNull(notebooks.archivedAt)))
     .limit(1);
   if (!project) throw new Error("No such project.");
 
   const memories = await db
-    .select({ content: projectMemories.content })
-    .from(projectMemories)
-    .where(and(eq(projectMemories.workspaceId, input.workspaceId), eq(projectMemories.projectId, input.projectId), isNull(projectMemories.archivedAt)))
+    .select({ content: notebookMemories.content })
+    .from(notebookMemories)
+    .where(and(eq(notebookMemories.workspaceId, input.workspaceId), eq(notebookMemories.notebookId, input.projectId), isNull(notebookMemories.archivedAt)))
     .orderBy(sql`created_at desc`)
     .limit(50);
 

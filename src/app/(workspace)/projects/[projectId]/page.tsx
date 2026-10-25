@@ -31,7 +31,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
     return <div className="page-content text-[13px] text-muted-foreground">This project does not exist.</div>;
   }
 
-  const [sessions, automations, memories, connectors, projectAccounts, sources] = await Promise.all([
+  const [sessions, automations, memories, connectors, notebookAccounts, sources] = await Promise.all([
     db
       .select({ id: threads.id, title: threads.title, updatedAt: threads.updatedAt, profileName: agentProfiles.name })
       .from(threads)
@@ -119,7 +119,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
             c.accounts.map((account) => ({
               id: account.id,
               label: `${c.displayName}${account.alias ? ` — ${account.alias}` : ""}`,
-              enabled: projectAccounts.some((row) => row.gatewayAccountId === account.id && row.enabled),
+              enabled: notebookAccounts.some((row) => row.gatewayAccountId === account.id && row.enabled),
             })),
           )}
         />

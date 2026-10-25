@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { documentExtractions, documents, projectSources, projects, sources } from "./schema";
+import { documentExtractions, documents, notebookSources, notebooks, sources } from "./schema";
 import { agentRuns } from "@/domains/agents/schema";
 
 /*
@@ -59,10 +59,10 @@ async function attach(tx: Tx, auth: AuthContext, projectId: string, documentIds:
       .limit(1);
     const sourceId = await sourceFor(tx, auth, doc);
     const rows = await tx
-      .insert(projectSources)
-      .values({ workspaceId: auth.workspaceId, projectId, sourceId, pinnedContentHash: latest?.contentHash ?? null })
-      .onConflictDoNothing({ target: [projectSources.projectId, projectSources.sourceId] })
-      .returning({ id: projectSources.id });
+      .insert(notebookSources)
+      .values({ workspaceId: auth.workspaceId, notebookId: projectId, sourceId, pinnedContentHash: latest?.contentHash ?? null })
+      .onConflictDoNothing({ target: [notebookSources.notebookId, notebookSources.sourceId] })
+      .returning({ id: notebookSources.id });
     attached += rows.length;
   }
   return attached;
@@ -73,9 +73,9 @@ export async function createProject(auth: AuthContext, input: { name: string; do
   if (!name || name.length > 200) throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
   return withTransaction(async (tx) => {
     const [project] = await tx
-      .insert(projects)
+      .insert(notebooks)
       .values({ workspaceId: auth.workspaceId, title: name, createdBy: auth.userId, updatedBy: auth.userId })
-      .returning({ id: projects.id, title: projects.title });
+      .returning({ id: notebooks.id, title: notebooks.title });
     if (input.documentIds?.length) await attach(tx, auth, project.id, input.documentIds); // a foreign id throws and rolls the project back too
     return project;
   });
@@ -84,9 +84,9 @@ export async function createProject(auth: AuthContext, input: { name: string; do
 export async function attachDocuments(auth: AuthContext, input: { projectId: string; documentIds: string[] }) {
   return withTransaction(async (tx) => {
     const [project] = await tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, auth.workspaceId)))
+      .select({ id: notebooks.id })
+      .from(notebooks)
+      .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!project) throw new ProjectError("project_not_found", "No such project.");
     return { attached: await attach(tx, auth, input.projectId, input.documentIds) };
@@ -96,25 +96,25 @@ export async function attachDocuments(auth: AuthContext, input: { projectId: str
 export async function listProjects(auth: AuthContext) {
   return db
     .select({
-      id: projects.id,
-      title: projects.title,
-      emoji: projects.emoji,
-      description: projects.description,
-      pinnedAt: projects.pinnedAt,
-      updatedAt: projects.updatedAt,
-      documentCount: sql<number>`(select count(*)::int from ${projectSources} ps where ps.project_id = "projects"."id")`,
+      id: notebooks.id,
+      title: notebooks.title,
+      emoji: notebooks.emoji,
+      description: notebooks.description,
+      pinnedAt: notebooks.pinnedAt,
+      updatedAt: notebooks.updatedAt,
+      documentCount: sql<number>`(select count(*)::int from ${notebookSources} ps where ps.notebook_id = "notebooks"."id")`,
     })
-    .from(projects)
-    .where(and(eq(projects.workspaceId, auth.workspaceId), sql`${projects.archivedAt} is null`))
-    .orderBy(desc(projects.updatedAt));
+    .from(notebooks)
+    .where(and(eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
+    .orderBy(desc(notebooks.updatedAt));
 }
 
 export async function setProjectPinned(auth: AuthContext, input: { projectId: string; pinned: boolean }) {
   const [row] = await db
-    .update(projects)
-    .set({ pinnedAt: input.pinned ? new Date() : null, updatedAt: new Date(), updatedBy: auth.userId, version: sql`${projects.version} + 1` })
-    .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, auth.workspaceId), sql`${projects.archivedAt} is null`))
-    .returning({ id: projects.id, pinnedAt: projects.pinnedAt });
+    .update(notebooks)
+    .set({ pinnedAt: input.pinned ? new Date() : null, updatedAt: new Date(), updatedBy: auth.userId, version: sql`${notebooks.version} + 1` })
+    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
+    .returning({ id: notebooks.id, pinnedAt: notebooks.pinnedAt });
   if (!row) throw new ProjectError("project_not_found", "No such project.");
   return row;
 }
@@ -123,7 +123,7 @@ export async function updateProject(
   auth: AuthContext,
   input: { projectId: string; title?: string; description?: string; instructions?: string; emoji?: string },
 ) {
-  const patch: Record<string, unknown> = { updatedAt: new Date(), updatedBy: auth.userId, version: sql`${projects.version} + 1` };
+  const patch: Record<string, unknown> = { updatedAt: new Date(), updatedBy: auth.userId, version: sql`${notebooks.version} + 1` };
   if (input.title !== undefined) {
     const name = input.title.trim();
     if (!name || name.length > 200) throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
@@ -133,10 +133,10 @@ export async function updateProject(
   if (input.instructions !== undefined) patch.instructions = input.instructions.trim() || null;
   if (input.emoji !== undefined) patch.emoji = input.emoji.trim() || null;
   const [row] = await db
-    .update(projects)
+    .update(notebooks)
     .set(patch)
-    .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, auth.workspaceId), sql`${projects.archivedAt} is null`))
-    .returning({ id: projects.id, title: projects.title, description: projects.description, instructions: projects.instructions, emoji: projects.emoji });
+    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
+    .returning({ id: notebooks.id, title: notebooks.title, description: notebooks.description, instructions: notebooks.instructions, emoji: notebooks.emoji });
   if (!row) throw new ProjectError("project_not_found", "No such project.");
   return row;
 }
@@ -144,17 +144,17 @@ export async function updateProject(
 /** The document ids a project holds, or null when the project is not in this workspace. */
 export async function projectDocumentIds(auth: AuthContext, projectId: string): Promise<string[] | null> {
   const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, auth.workspaceId)))
+    .select({ id: notebooks.id })
+    .from(notebooks)
+    .where(and(eq(notebooks.id, projectId), eq(notebooks.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!project) return null;
   const rows = await db
     .select({ id: documents.id })
-    .from(projectSources)
-    .innerJoin(sources, eq(sources.id, projectSources.sourceId))
+    .from(notebookSources)
+    .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
     .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
-    .where(and(eq(projectSources.projectId, projectId), eq(projectSources.workspaceId, auth.workspaceId)));
+    .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   return [...new Set(rows.map((r) => r.id))];
 }
 
@@ -162,24 +162,24 @@ export async function projectDocumentIds(auth: AuthContext, projectId: string): 
 export async function getProjectDetail(auth: AuthContext, projectId: string) {
   const [project] = await db
     .select({
-      id: projects.id,
-      title: projects.title,
-      description: projects.description,
-      descriptionSeed: projects.descriptionSeed,
-      instructions: projects.instructions,
-      emoji: projects.emoji,
-      pinnedAt: projects.pinnedAt,
+      id: notebooks.id,
+      title: notebooks.title,
+      description: notebooks.description,
+      descriptionSeed: notebooks.descriptionSeed,
+      instructions: notebooks.instructions,
+      emoji: notebooks.emoji,
+      pinnedAt: notebooks.pinnedAt,
     })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, auth.workspaceId), sql`${projects.archivedAt} is null`))
+    .from(notebooks)
+    .where(and(eq(notebooks.id, projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
     .limit(1);
   if (!project) return null;
   const docs = await db
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
-    .from(projectSources)
-    .innerJoin(sources, eq(sources.id, projectSources.sourceId))
+    .from(notebookSources)
+    .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
     .innerJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
-    .where(and(eq(projectSources.projectId, projectId), eq(projectSources.workspaceId, auth.workspaceId)));
+    .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   const seen = new Set<string>();
   return { ...project, documents: docs.filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true))) };
 }

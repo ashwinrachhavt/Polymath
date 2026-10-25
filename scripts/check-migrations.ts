@@ -33,8 +33,14 @@ export function checkMigrations(current: MigrationState, base: MigrationState): 
     if (!tags.has(tag)) errors.push(`SQL has no journal entry: ${tag}`);
     if (tag in base.sql && base.sql[tag] !== sql) errors.push(`Published SQL changed: ${tag}`);
   }
+  // The base's SQL set is keyed by loose files, but only journal entries are
+  // published checkpoints: a file merged without a journal entry (0225 was)
+  // never ran on any database, so deleting it repairs history rather than
+  // rewriting it.
+  const baseTags = new Set(base.entries.map((entry) => entry.tag));
   for (const tag of Object.keys(base.sql)) {
-    if (!(tag in current.sql)) errors.push(`Published SQL removed: ${tag}`);
+    if (tag in current.sql) continue;
+    if (baseTags.has(tag)) errors.push(`Published SQL removed: ${tag}`);
   }
   return errors;
 }
