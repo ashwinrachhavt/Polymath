@@ -448,8 +448,10 @@ export function ChatCancel({ runId }: { runId: string }) {
 
 /*
  * The action toolbar under a finished assistant message: copy, then like and
- * dislike. It fades in on hover of the message and stays for keyboard focus,
- * so the transcript reads clean while the actions stay discoverable.
+ * dislike. Icons rest at a quiet muted tone and come forward on hover, so the
+ * actions stay discoverable and keyboard-visible (a hover-only reveal would
+ * hide them from axe and from keyboard users) without shouting in the
+ * transcript.
  */
 function MessageToolbar({ runId, turnId, text }: { runId: string; turnId: string; text: string }) {
   const [copied, setCopied] = useState(false);
@@ -463,13 +465,13 @@ function MessageToolbar({ runId, turnId, text }: { runId: string; turnId: string
     }
   }
   return (
-    <div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
+    <div className="mt-1 flex items-center gap-0.5">
       <button
         type="button"
         aria-label={copied ? "Copied" : "Copy"}
         title={copied ? "Copied" : "Copy"}
         onClick={() => void copy()}
-        className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+        className="text-muted-foreground/70 hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
       >
         {copied ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />}
       </button>
