@@ -98,11 +98,15 @@ describe("connector catalog pixel harness", () => {
     const html = renderToStaticMarkup(createElement(ConnectorCatalog, { connectors: fixtures }));
     expect(html).toContain("work-gmail");
     expect(html).toContain("No health check yet");
-    expect(html).toContain("Narrowed by the switches below: Prepare send proposals is off.");
+    // gmail.send is switched off on the fixture account, so the Send switch
+    // reads off; the old tier select and "Narrowed by" copy are gone.
+    expect(html).toContain('aria-label="Send"');
+    expect(html).toContain('aria-checked="false"');
+    expect(html).not.toContain("Narrowed by the switches below");
+    expect(html).not.toContain("Agent access");
     expect(html).toContain("Setup needed");
     expect(html).toContain("Coming soon");
     expect(html).toContain("Invalid API key (401)");
-    expect(html).toContain("Needs a Business or Creator account");
     // instagram's active, non-default account must NOT offer a write default:
     // the provider has no write capability, so the control would be a lie.
     expect(html).not.toContain("Make write default");

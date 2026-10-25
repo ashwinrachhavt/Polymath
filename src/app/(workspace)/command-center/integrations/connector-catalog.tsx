@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccountControls, CapabilitySwitches, ConnectButton, TierPicker } from "./connector-controls";
+import { AccessToggles, AccountControls, ConnectButton } from "./connector-controls";
 
 /*
  * One card per provider, and the card says what the person can do next.
@@ -205,23 +205,13 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                                 ? `Healthy ${account.lastHealthyAt.slice(0, 16).replace("T", " ")}Z`
                                 : "No health check yet"}
                             </p>
-                            <TierPicker
+                            <AccessToggles
                               provider={connector.provider}
                               accountId={account.id}
                               expectedVersion={account.version}
-                              current={account.accessTier}
-                              tiers={connector.accessTiers}
+                              currentTier={account.accessTier}
                               disabled={account.disabledCapabilities}
                             />
-                            <div className="mt-3">
-                              <CapabilitySwitches
-                                provider={connector.provider}
-                                accountId={account.id}
-                                expectedVersion={account.version}
-                                current={account.accessTier}
-                                disabled={account.disabledCapabilities}
-                              />
-                            </div>
                             <div className="mt-2">
                               <AccountControls
                                 provider={connector.provider}

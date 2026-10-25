@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CAPABILITIES, CAPABILITY_LABELS, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
+import { CAPABILITIES, PROVIDER_TIERS, type Capability, type Provider } from "@/domains/integrations/capabilities";
+import { accessToggleState, writeCapability } from "@/domains/integrations/access-toggles";
 import {
   renameAccountAction,
   revokeAccountAction,
@@ -203,135 +204,151 @@ export function ConnectButton({
 }
 
 /*
- * The coarse control: what agents may do through this connection, as one
- * choice. Each choice saves itself; the row remounts when the server returns
- * a new version, which is what settles it.
+ * The owner's view of what agents may do through one account: a Read switch
+ * and, when the provider can act at all, a Write switch (Send for Gmail).
+ * The tier machinery underneath is unchanged — Write on raises the tier to
+ * the one granting the write capability, Write off narrows via the account's
+ * disabled list — so the gateway's live checks are untouched.
  */
-export function TierPicker({
-  accountId,
-  expectedVersion,
-  current,
-  tiers,
-  disabled = [],
-}: {
-  provider: string;
-  accountId: string;
-  expectedVersion: number;
-  current: string | null;
-  tiers: Array<{ id: string; label: string; description: string; capabilities: string[] }>;
-  disabled?: string[];
-}) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const active = tiers.find((tier) => tier.id === current) ?? tiers[0];
-
-  if (!active) return null;
-
-  // The description names the tier ceiling; when account switches narrow it,
-  // say so right there so the summary never claims access that is off.
-  const narrowed = active.capabilities.filter((capability) => disabled.includes(capability));
-
-  const choose = (tierId: string) => {
-    setError(null);
-    startTransition(async () => {
-      const result = await setAccountAccessTierAction({ accountId, expectedVersion, tierId });
-      if (!result.ok) setError(result.error);
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-muted-foreground" htmlFor={`tier-${accountId}`}>
-        Agent access
-      </label>
-      <select
-        id={`tier-${accountId}`}
-        value={active.id}
-        disabled={pending}
-        onChange={(event) => choose(event.target.value)}
-        className="h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]"
-      >
-        {tiers.map((tier) => (
-          <option key={tier.id} value={tier.id}>
-            {tier.label}
-          </option>
-        ))}
-      </select>
-      <p className="text-xs text-muted-foreground">{active.description}</p>
-      {narrowed.length ? (
-        <p className="text-xs text-muted-foreground">
-          Narrowed by the switches below: {narrowed.map((capability) => CAPABILITY_LABELS[capability as keyof typeof CAPABILITY_LABELS] ?? capability).join(", ")}{" "}
-          {narrowed.length === 1 ? "is" : "are"} off.
-        </p>
-      ) : null}
-      {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
-    </div>
-  );
-}
-
-/*
- * The fine-grained control under the tier: one switch per capability the
- * current tier grants. The tier is the ceiling — a switch can only narrow
- * what this one account allows, never grant above the tier — and the gateway
- * enforces the switch live on every call, so off means off immediately.
- */
-export function CapabilitySwitches({
+export function AccessToggles({
   provider,
   accountId,
   expectedVersion,
-  current,
+  currentTier,
   disabled,
 }: {
   provider: string;
   accountId: string;
   expectedVersion: number;
-  current: string | null;
+  currentTier: string | null;
   disabled: string[];
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const tiers = PROVIDER_TIERS[provider as Provider] ?? [];
-  const active = tiers.find((tier) => tier.id === current) ?? tiers[0];
+  const providerKey = provider as Provider;
+  const tiers = PROVIDER_TIERS[providerKey] ?? [];
+  const state = accessToggleState(providerKey, currentTier, disabled);
+  const write = writeCapability(providerKey);
 
-  if (!active) return null;
+  if (!tiers.length) return null;
 
-  const toggle = (capability: string, enabled: boolean) => {
+  const run = async (steps: Array<{ expectedVersion: number; call: () => Promise<{ ok: true } | { ok: false; error: string }>}>) => {
     setError(null);
     startTransition(async () => {
-      const result = await setAccountCapabilityAction({ accountId, expectedVersion, capability, enabled });
-      if (!result.ok) setError(result.error);
+      // Each call bumps the account version, so a later step in the same
+      // transition must expect the bumped version. A failed step is reported
+      // as-is; earlier steps are not rolled back.
+      for (const step of steps) {
+        const result = await step.call();
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+      }
     });
   };
 
+  // Write on = raise the tier first (a capability outside the tier is
+  // rejected by the command), then clear any disable on the write capability.
+  const writeOn = () => {
+    const tierId = tiers.find((tier) => write && tier.capabilities.includes(write))?.id;
+    if (!tierId || !write) return;
+    const steps = [{ expectedVersion, call: () => setAccountAccessTierAction({ accountId, expectedVersion, tierId }) }];
+    if (disabled.includes(write)) {
+      steps.push({
+        expectedVersion: expectedVersion + 1,
+        call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + 1, capability: write, enabled: true }),
+      });
+    }
+    run(steps);
+  };
+
+  // Read off = disable every read capability the current tier grants. This is
+  // a legal narrowing, so no tier change is involved.
+  const readOff = () => {
+    const granted = tiers.find((tier) => tier.id === currentTier)?.capabilities ?? [];
+    const reads = granted.filter((capability) => CAPABILITIES[capability as Capability]?.kind === "read" && !disabled.includes(capability));
+    if (!reads.length) return;
+    run(reads.map((capability, index) => ({
+      expectedVersion: expectedVersion + index,
+      call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + index, capability, enabled: false }),
+    })));
+  };
+
+  // Read on = re-enable every read capability the current tier grants.
+  const readOn = () => {
+    const granted = tiers.find((tier) => tier.id === currentTier)?.capabilities ?? [];
+    const reads = granted.filter((capability) => CAPABILITIES[capability as Capability]?.kind === "read" && disabled.includes(capability));
+    if (!reads.length) return;
+    run(reads.map((capability, index) => ({
+      expectedVersion: expectedVersion + index,
+      call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + index, capability, enabled: true }),
+    })));
+  };
+
+  // Write off = disable the write capability only. Dropping the tier would be
+  // redundant: capability switches may narrow, so the tier stays as the
+  // ceiling and re-enabling is one switch flip away.
+  const writeOff = () => {
+    if (!write) return;
+    run([{ expectedVersion, call: () => setAccountCapabilityAction({ accountId, expectedVersion, capability: write, enabled: false }) }]);
+  };
+
+  const toggleRow = (
+    label: string,
+    description: string,
+    on: boolean,
+    available: boolean,
+    toggle: () => void,
+  ) => (
+    <div className="flex items-start justify-between gap-3">
+      <span className="min-w-0">
+        <span className="block text-[13px]">{label}</span>
+        <span className="block text-xs text-muted-foreground">{description}</span>
+      </span>
+      {available ? (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={label}
+          disabled={pending}
+          onClick={toggle}
+          className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+            on ? "bg-foreground" : "bg-muted-foreground/30"
+          }`}
+        >
+          <span
+            aria-hidden
+            className={`absolute top-0.5 left-0 h-4 w-4 rounded-full bg-background transition-transform ${
+              on ? "translate-x-4.5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <p className="text-xs text-muted-foreground">This account can</p>
-      {active.capabilities.map((capability) => {
-        const enabled = !disabled.includes(capability);
-        return (
-          <div key={capability} className="flex items-center justify-between gap-3">
-            <span className="text-[13px]">{CAPABILITY_LABELS[capability] ?? capability}</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={enabled}
-              aria-label={CAPABILITY_LABELS[capability] ?? capability}
-              disabled={pending}
-              onClick={() => toggle(capability, !enabled)}
-              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                enabled ? "bg-foreground" : "bg-muted-foreground/30"
-              }`}
-            >
-              <span
-                aria-hidden
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
-                  enabled ? "translate-x-4.5 left-0" : "translate-x-0.5 left-0"
-                }`}
-              />
-            </button>
-          </div>
-        );
-      })}
+    <div className="flex flex-col gap-2">
+      {toggleRow(
+        "Read",
+        "Agents can read",
+        state.read.on,
+        state.read.available,
+        state.read.on ? readOff : readOn,
+      )}
+      {state.write
+        ? toggleRow(
+            state.write.label,
+            state.write.label === "Send"
+              ? "Agents can draft send proposals for your approval"
+              : "Agents can draft proposals for your approval",
+            state.write.on,
+            state.write.available,
+            state.write.on ? writeOff : writeOn,
+          )
+        : null}
       {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
     </div>
   );
