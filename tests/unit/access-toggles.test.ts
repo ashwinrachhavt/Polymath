@@ -69,6 +69,19 @@ describe("accessToggleState", () => {
     expect(steps).toEqual([{ kind: "capability", capability: "gmail.send", expectedVersion: 0, enabled: true }]);
   });
 
+  it("write on for a tier-less account raises to the write tier first", () => {
+    const steps = planToggleSteps({ provider: "gmail", currentTier: null, disabled: ["gmail.send"], toggle: "write", on: true });
+    expect(steps).toEqual([
+      { kind: "tier", tierId: "read_send", expectedVersion: 0 },
+      { kind: "capability", capability: "gmail.send", expectedVersion: 1, enabled: true },
+    ]);
+  });
+
+  it("read off for a tier-less account plans nothing", () => {
+    const steps = planToggleSteps({ provider: "gmail", currentTier: null, disabled: [], toggle: "read", on: false });
+    expect(steps).toEqual([]);
+  });
+
   it("read on for an unknown tier id behaves like a tier-less account", () => {
     const steps = planToggleSteps({ provider: "gmail", currentTier: "nonexistent", disabled: [], toggle: "read", on: true });
     expect(steps).toEqual([{ kind: "tier", tierId: "read_only", expectedVersion: 0 }]);

@@ -102,9 +102,10 @@ export function planToggleSteps(input: {
     if (!write) return [];
     const writeTier = tiers.find((t) => t.capabilities.includes(write));
     if (!writeTier) return [];
-    // Already on the write tier: the capability enable alone settles it, and
-    // a same-tier set would only burn a version bump.
-    if (tier && tier.id !== writeTier.id) {
+    // Not already on the write tier — including a tier-less account, which the
+    // server resolves to read_only and would reject the capability enable —
+    // so raise first. A same-tier set would only burn a version bump.
+    if (!tier || tier.id !== writeTier.id) {
       steps.push({ kind: "tier", tierId: writeTier.id, expectedVersion: version++ });
     }
     if (off.has(write)) {
@@ -114,9 +115,11 @@ export function planToggleSteps(input: {
   }
 
   if (!tier) {
-    // Unknown or unset tier: the switch must still do what it says. Raise to
-    // the lowest tier first, then enable its reads (some may already be
-    // recorded as disabled on the account).
+    // Unknown or unset tier: the switch must still do what it says. Read OFF
+    // has nothing to disable — no tier grants reads — so it is a no-op. Read
+    // ON raises to the lowest tier first, then enables its reads (some may
+    // already be recorded as disabled on the account).
+    if (!on) return [];
     const lowest = tiers[0];
     if (!lowest) return [];
     steps.push({ kind: "tier", tierId: lowest.id, expectedVersion: version++ });
