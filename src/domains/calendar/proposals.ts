@@ -23,6 +23,7 @@ import {
   blockTimeForTask,
   cancelEvent,
   createEvent,
+  createFollowUpReminder,
   moveEvent,
 } from "./commands";
 
@@ -47,6 +48,18 @@ import {
 export type CalendarChange =
   | { kind: "block"; taskId: string; minutes?: number; utcOffsetMinutes?: number }
   | { kind: "create"; title: string; startsAt: string; endsAt: string }
+  // ASH-288: the reminder half of a follow-up pair. Approval creates the
+  // event AND the followUps row (reason + date) in one commit, superseding
+  // the task's open follow-ups explicitly.
+  | {
+      kind: "follow_up";
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      reason: string;
+      contactId?: string | null;
+      taskId?: string | null;
+    }
   | { kind: "move"; eventId: string; expectedVersion: number; startsAt: string; endsAt: string; title?: string }
   | { kind: "cancel"; eventId: string; expectedVersion: number; title?: string };
 
@@ -56,6 +69,9 @@ const CALENDAR_PROPOSE_CAPABILITY = "calendar.propose";
 const CAPABILITY = {
   block: "calendar.block",
   create: "calendar.event.create",
+  // A follow-up reminder IS a calendar event create with a followUps row
+  // attached; same capability, same executor checks.
+  follow_up: "calendar.event.create",
   move: "calendar.event.move",
   cancel: "calendar.event.cancel",
 } as const;
@@ -69,6 +85,11 @@ function describe(change: CalendarChange): { title: string; effect: string } {
       };
     case "create":
       return { title: `Add event: ${change.title}`, effect: `Adds "${change.title}" on your calendar.` };
+    case "follow_up":
+      return {
+        title: change.title,
+        effect: `Adds a 30-minute reminder on your calendar and records the follow-up with its reason${change.taskId ? ", superseding the task's open follow-ups" : ""}.`,
+      };
     case "move":
       return { title: `Move event${change.title ? `: ${change.title}` : ""}`, effect: "Moves the event to the proposed time." };
     case "cancel":
@@ -245,6 +266,18 @@ async function runCommand(auth: AuthContext, proposalId: string, change: Calenda
       return (await blockTimeForTask(auth, { taskId: change.taskId, minutes: change.minutes, utcOffsetMinutes: change.utcOffsetMinutes, idempotencyKey })).id;
     case "create":
       return (await createEvent(auth, { title: change.title, startsAt: new Date(change.startsAt), endsAt: new Date(change.endsAt), idempotencyKey })).id;
+    case "follow_up":
+      return (
+        await createFollowUpReminder(auth, {
+          title: change.title,
+          startsAt: new Date(change.startsAt),
+          endsAt: new Date(change.endsAt),
+          reason: change.reason,
+          contactId: change.contactId ?? null,
+          taskId: change.taskId ?? null,
+          idempotencyKey,
+        })
+      ).id;
     case "move":
       return (await moveEvent(auth, { eventId: change.eventId, expectedVersion: change.expectedVersion, startsAt: new Date(change.startsAt), endsAt: new Date(change.endsAt), title: change.title, idempotencyKey })).id;
     case "cancel":

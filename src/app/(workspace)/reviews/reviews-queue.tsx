@@ -31,6 +31,8 @@ export type QueueCardData = {
   status: string;
   expectedEffect: string;
   accountAlias: string | null;
+  /** The proposing path's intent key; the follow-up pair groups on it (ASH-288). */
+  dedupeKey?: string | null;
   createdAt: string;
   expiresAt: string | null;
   decidedAt: string | null;
@@ -402,17 +404,62 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
     });
   }
 
+  /*
+   * The follow-up pair renders as one group (ASH-288): the email and the
+   * reminder were proposed together, so the reviewer judges them together -
+   * while each card keeps its own approve/reject. Grouping keys off the
+   * shared dedupe suffix (the session id), never off adjacency or timing.
+   */
+  const followUpGroup = /^(?:calendar:)?followup-(?:email|reminder):(.+)$/;
+  type Row = { kind: "single"; item: QueueCardData } | { kind: "group"; key: string; items: QueueCardData[] };
+  const rows: Row[] = [];
+  const groups = new Map<string, Extract<Row, { kind: "group" }>>();
+  for (const item of optimisticItems) {
+    const match = item.dedupeKey ? followUpGroup.exec(item.dedupeKey) : null;
+    if (!match) {
+      rows.push({ kind: "single", item });
+      continue;
+    }
+    const key = match[1];
+    let group = groups.get(key);
+    if (!group) {
+      group = { kind: "group", key, items: [] };
+      groups.set(key, group);
+      rows.push(group);
+    }
+    group.items.push(item);
+  }
+
+  const card = (item: QueueCardData) => (
+    <ProposalCard
+      key={`${item.id}-${item.version}`}
+      item={item}
+      error={errors[item.id] ?? null}
+      outcome={outcomes[item.id] ?? null}
+      decide={decide}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      {optimisticItems.map((item) => (
-        <ProposalCard
-          key={`${item.id}-${item.version}`}
-          item={item}
-          error={errors[item.id] ?? null}
-          outcome={outcomes[item.id] ?? null}
-          decide={decide}
-        />
-      ))}
+      {rows.map((row) =>
+        row.kind === "single" ? (
+          card(row.item)
+        ) : row.items.length === 1 ? (
+          card(row.items[0])
+        ) : (
+          <section
+            key={`followup-${row.key}`}
+            aria-label="Follow-up pair"
+            className="border-border flex flex-col gap-3 rounded-md border border-dashed p-3"
+          >
+            <p className="text-muted-foreground text-[12px]">
+              One finished session proposed this pair. Each half is approved or rejected on its own.
+            </p>
+            {row.items.map(card)}
+          </section>
+        ),
+      )}
     </div>
   );
 }
