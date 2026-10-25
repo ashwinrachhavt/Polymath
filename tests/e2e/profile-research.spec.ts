@@ -149,7 +149,7 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/company-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
     // The linked contact renders on the profile, and the record panel fits.
-    await expect(page.getByRole("link", { name: CONTACT_NAME })).toBeVisible();
+    await expect(page.getByRole("link", { name: CONTACT_NAME, exact: true })).toBeVisible();
   });
 
   test(`research a person from their profile, then refocus [${vp.name}]`, async ({ page }) => {
