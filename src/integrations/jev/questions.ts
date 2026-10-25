@@ -29,9 +29,12 @@ export const CAPTURE_COMMITMENT: JevNoulQuestion = {
 
 export const CAPTURE_CONTACT: JevNoulQuestion = {
   type: "noul",
-  instructions: "Is this a person's contact details or an introduction to a specific person?",
+  // Wording refined from the ticket's draft ("contact details or an
+  // introduction"): the vendor rule forbids or-joined conditions, and no
+  // proposal has shipped with the draft wording, so the version stays q1.
+  instructions: "Is this capture's subject a specific person the owner might want to reach?",
   criteria: {
-    true: "A business card, signature block, vCard, or a message whose point is introducing one person to the owner.",
+    true: "A business card, signature block, vCard, contact details, or a message whose point is introducing one person to the owner.",
     false: "A person merely mentioned in passing, an author byline, or a company rather than an individual.",
   },
 };

@@ -1,7 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
-import { JevDisabledError, jevClassifier } from "@/integrations/jev/provider";
+import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
 import { JEV_QUESTIONS_VERSION, documentQuestions } from "@/integrations/jev/questions";
 import { db } from "@/lib/db";
 import { documentClassificationProposals, documents } from "./schema";
@@ -29,6 +29,7 @@ const DOC_YES = 0.7;
 export async function proposeJevClassification(
   auth: AuthContext,
   input: { documentId: string; extractionId: string | null; text: string; fieldNames: string[]; filename?: string | null },
+  deps: { judger?: ClassifyJudger } = {},
 ): Promise<{ proposed: boolean; docType?: DocumentType; skipped: "settled" | "disabled" | null }> {
   const [doc] = await db
     .select({ docType: documents.docType })
@@ -44,7 +45,7 @@ export async function proposeJevClassification(
 
   let answers: Record<string, JevAnswer>;
   try {
-    const result = await jevClassifier(auth.workspaceId).judge({
+    const result = await (deps.judger ?? jevClassifier(auth.workspaceId)).judge({
       state: input.text.slice(0, 12_000),
       questions: documentQuestions(documentTypes),
     });

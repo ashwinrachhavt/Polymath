@@ -8,7 +8,7 @@ import {
   generationProvider,
 } from "@/integrations/generation/provider";
 import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
-import { JevDisabledError, jevClassifier } from "@/integrations/jev/provider";
+import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
 import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/questions";
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
@@ -53,7 +53,14 @@ const SYSTEM = `You label a thing a person captured into their inbox. Return JSO
 "tags": up to ${MAX_TAGS} lowercase single-word or short topic tags; null when nothing specific enough to tag.
 Return nulls rather than guessing - a null the owner can fix is better than a label they must unlearn. ${untrustedDataClauseJsonSafe("capture")} Label only what the content is.`;
 
-export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
+export type CaptureEnrichmentDeps = {
+  /** Test seam: a pre-built judger (fake client / enabled entry). Production uses the gated default. */
+  judger?: ClassifyJudger;
+};
+
+export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
+
+export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: CaptureEnrichmentDeps = {}) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
@@ -102,7 +109,7 @@ export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: Cl
   // generation prompt below with byte-identical behavior. A Jev request
   // error fails the event for redelivery; an unreadable answer degrades to a
   // low-confidence note proposal, never a crash and never a silent skip.
-  const jev = await tryJevTriage(captureId, event.workspaceId, capture, base, cleanText, structure);
+  const jev = await tryJevTriage(captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
   if (jev === "handled") return;
 
   let provider: ReturnType<typeof generationProvider>;
@@ -171,8 +178,8 @@ async function tryJevTriage(
   base: { cleanText: string | null; structure: string; updatedAt: Date },
   cleanText: string,
   structure: string,
+  judger: ClassifyJudger = jevClassifier(workspaceId),
 ): Promise<"handled" | "fallback"> {
-  const judger = jevClassifier(workspaceId);
 
   // The domain Choice's options come from the workspace's seeded taxonomy; an
   // unseeded workspace simply asks no domain question (domain stays null).
