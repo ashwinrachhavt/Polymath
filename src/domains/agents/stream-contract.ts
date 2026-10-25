@@ -29,9 +29,9 @@ export type ChatFrame =
   | { type: "delta"; runId: string; blockId: string; text: string; cursor: number }
   /** A block finished; `text` is authoritative and replaces anything accumulated. */
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
-  /** A tool call started or settled. `label` is the human-readable name. */
   /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
-  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; cursor: number }
+  /** `input` is the call's parsed arguments, shown when a tool pill expands. `durationMs` rides the settled frame. */
+  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown; durationMs?: number; cursor: number }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
@@ -197,7 +197,7 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
       const actions = Array.isArray(data.actions) ? data.actions : [];
       const frames: ChatFrame[] = [];
       for (const action of actions) {
-        const a = action as { kind?: string; callId?: string; toolName?: string };
+        const a = action as { kind?: string; callId?: string; toolName?: string; input?: unknown };
         if (a.kind !== "tool-call" || typeof a.callId !== "string") continue;
         frames.push({
           type: "tool",
@@ -205,6 +205,7 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
           callId: a.callId,
           label: a.toolName ?? "tool",
           status: "running",
+          input: a.input ?? undefined,
           cursor,
         });
       }
@@ -232,6 +233,8 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
           detail: succeeded
             ? summaryFromToolOutput(result.output)
             : asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed"),
+          // The result payload itself, so a pill can expand to the real data.
+          input: result.output ?? undefined,
           cursor,
         },
       ];

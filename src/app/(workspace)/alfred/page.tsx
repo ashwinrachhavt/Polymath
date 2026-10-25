@@ -12,6 +12,7 @@ import { timeAgo, timeAgoShort } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
+import { HomeGreeting } from "./home-greeting";
 import { listConversations } from "@/domains/conversations/queries";
 import { HistoryMenu } from "./history-menu";
 import { ModelPicker } from "./model-picker";
@@ -143,7 +144,7 @@ export async function AlfredSurface() {
 function Home({ children }: { children: ReactNode }) {
   return (
     <div className="page-content flex flex-1 flex-col gap-10 pt-16">
-      <h1 className="text-center text-2xl font-medium">What would you like to work on?</h1>
+      <HomeGreeting />
       {children}
     </div>
   );

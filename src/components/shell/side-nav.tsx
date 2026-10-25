@@ -31,7 +31,12 @@ const subscribeToHydration = () => () => {};
 export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  // The Assistant home is a conversation surface, not a browsing one: while a
+  // conversation is live on it the canvas owns the width, so the rail folds to
+  // its icon state. A person who pinned it open (localStorage "0") keeps it.
+  const autoCollapse = pathname === "/alfred";
   const [collapsed, setCollapsed] = useState(false);
+  const [userPinnedOpen, setUserPinnedOpen] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
@@ -39,9 +44,23 @@ export function SideNav() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    if (!autoCollapse) return;
+    const frame = requestAnimationFrame(() => {
+      // "1" means the person already keeps it collapsed; "0" means they
+      // explicitly pinned it open and the auto-collapse does not fight them.
+      const pinned = window.localStorage.getItem(COLLAPSED_KEY);
+      setUserPinnedOpen(pinned === "0");
+      if (pinned !== "0") setCollapsed(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [autoCollapse]);
+
   function toggle() {
     setCollapsed((current) => {
       window.localStorage.setItem(COLLAPSED_KEY, current ? "0" : "1");
+      // Leaving the home releases the auto-collapse claim.
+      setUserPinnedOpen(!current);
       return !current;
     });
   }

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { ChevronDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProviderIcon } from "@/components/chat/provider-icon";
 import { addMemoryAction, createAutomationAction, deleteAutomationAction, deleteMemoryAction, setProjectAccountAction, updateAutomationAction, updateProjectAction } from "./project-actions";
 
 /*
@@ -56,6 +57,20 @@ export function ProjectRightRail({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // While an in-place conversation runs on the page, the rail folds away:
+  // the transcript is the page then, and the settings return on refresh or
+  // when the conversation ends. StartSession announces the same event.
+  const [chatActive, setChatActive] = useState(false);
+
+  useEffect(() => {
+    function onStarted() {
+      setChatActive(true);
+    }
+    window.addEventListener("polymath:chat-started", onStarted);
+    return () => window.removeEventListener("polymath:chat-started", onStarted);
+  }, []);
+
+  if (chatActive) return null;
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -302,18 +317,38 @@ function ConnectorToggle({
   pending: boolean;
   onSet: (gatewayAccountId: string, enabled: boolean) => void;
 }) {
+  // "Label — alias" splits at the em-dash-free separator the caller builds;
+  // the alias is the account's own name and belongs on the second line.
+  const [name, alias] = connector.label.split(" — ");
   return (
-    <li className="flex items-center justify-between gap-2 text-[13px]">
-      <span className="truncate">{connector.label}</span>
-      <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={connector.enabled}
-          disabled={pending}
-          onChange={(event) => onSet(connector.id, event.target.checked)}
+    <li className="flex items-center gap-2.5 py-0.5">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
+        <ProviderIcon provider={alias ?? name} displayName={name} />
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[13px]">{name}</span>
+        {alias && alias !== name ? (
+          <span className="block truncate text-[11px] text-muted-foreground">{alias}</span>
+        ) : null}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={connector.enabled}
+        aria-label={`${connector.enabled ? "Disconnect" : "Connect"} ${name}`}
+        disabled={pending}
+        onClick={() => onSet(connector.id, !connector.enabled)}
+        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
+          connector.enabled ? "bg-primary" : "bg-input"
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`absolute top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform ${
+            connector.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"
+          }`}
         />
-        {connector.enabled ? "Connected" : "Connect"}
-      </label>
+      </button>
     </li>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUp, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,8 @@ import {
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
+import { ChatSurface } from "@/components/chat/chat-surface";
+import { announceChatStarted } from "./home-greeting";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -31,7 +32,6 @@ import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
  * happen is the worst failure this screen can produce.
  */
 export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
-  const router = useRouter();
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const [skillId, setSkillId] = useState("");
@@ -39,6 +39,8 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+  // Set on send: the conversation then renders in place, replacing the composer.
+  const [started, setStarted] = useState<{ runId: string; message: string } | null>(null);
 
   /*
    * Record search for the plus menu. ComposerPlus reports open state and
@@ -121,13 +123,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
     const objective = draft.trim();
     if (!objective || pending) return;
 
-    /*
-     * The conversation opens in place, before the run exists. Waiting for the
-     * server action and then pushing a route meant a keystroke vanished behind a
-     * transaction, a session create, and a full navigation — which reads as lag
-     * even when every part is fast. `router.push` still runs, but only after the
-     * run id is known, and the route it lands on shows this same turn.
-     */
     setPending(true);
     setError(null);
     try {
@@ -136,23 +131,37 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         setError(result.message);
         return;
       }
-      // The typed message crosses to the run page through sessionStorage, not
-      // the URL: a question in the address bar leaks it into history and sync.
-      // The run page reads and clears it, showing the message until the stream
-      // echoes it back — without this the send reads as a page that forgot it.
-      try {
-        sessionStorage.setItem(`chat-optimistic:${result.runId}`, objective);
-      } catch {
-        // A blocked storage leaves the stream echo as the only render; send still works.
-      }
-      // `replace`, not `push`: the empty home is not somewhere to go back to,
-      // and the new conversation is already the thing being viewed.
-      router.replace(`/alfred/${result.runId}`);
+      // The conversation opens here, not on another route: the runId mounts
+      // ChatSurface in place below, and the typed message crosses as the
+      // optimistic message until the stream echoes it. No navigation, no
+      // reload, no lost focus.
+      setStarted({ runId: result.runId, message: objective });
+      announceChatStarted();
     } catch {
       setError("The conversation could not start. Check the connection and try again.");
     } finally {
       setPending(false);
     }
+  }
+
+  // A started conversation replaces the composer in place: the run streams
+  // here, on the home, with no navigation. The URL follows once the person
+  // wants to share or reload; the conversation itself never moved.
+  if (started) {
+    return (
+      <div className="mx-auto flex h-[min(72dvh,720px)] w-full max-w-3xl flex-col">
+        <ChatSurface
+          runId={started.runId}
+          subject={{ type: "project", id: "" }}
+          optimisticMessage={started.message}
+          placeholder="Reply to continue…"
+          composerLabel="Follow-up message"
+          emptyText="This conversation has no messages yet."
+          showHeader={false}
+          className="min-h-0 flex-1"
+        />
+      </div>
+    );
   }
 
   return (

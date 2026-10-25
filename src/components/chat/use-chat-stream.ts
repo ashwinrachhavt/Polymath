@@ -27,7 +27,15 @@ export type ChatConnection = "connecting" | "streaming" | "waiting" | "done" | "
 
 export type ChatState = {
   blocks: ChatBlock[];
-  tools: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string }[];
+  tools: {
+    callId: string;
+    label: string;
+    status: "running" | "ok" | "error";
+    detail?: string;
+    /** The call's arguments (running frame), then the result payload (settled frame). */
+    input?: unknown;
+    output?: unknown;
+  }[];
   citations: ChatCitation[];
   connection: ChatConnection;
   error: string | null;
@@ -166,6 +174,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
                   label: frame.label,
                   status: frame.status,
                   detail: frame.detail,
+                  input: frame.input,
                 }),
               }));
             }
@@ -259,13 +268,23 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
 
 function mergeTool(
   tools: ChatState["tools"],
-  next: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string },
+  next: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown },
 ): ChatState["tools"] {
   const index = tools.findIndex((tool) => tool.callId === next.callId);
-  if (index === -1) return [...tools, next];
-  // A settled frame replaces the running one wholesale; its `detail` (or its
-  // absence) is the outcome, never a leftover from the running frame.
+  if (index === -1) {
+    // A settled frame may arrive without its running twin (a reconnect that
+    // skipped the live window): its input is the result payload, not arguments.
+    return [...tools, next.status === "running" ? { ...next, output: undefined } : { ...next, output: next.input, input: undefined }];
+  }
   const copy = tools.slice();
-  copy[index] = next;
+  const prev = tools[index];
+  // A settled frame replaces the running one wholesale; its `detail` (or its
+  // absence) is the outcome, never a leftover from the running frame. The
+  // running frame's `input` (the call arguments) is kept: the settled frame's
+  // `input` is the result payload and moves to `output`.
+  copy[index] =
+    next.status === "running"
+      ? { ...next }
+      : { ...next, input: prev.input, output: next.input ?? prev.output };
   return copy;
 }

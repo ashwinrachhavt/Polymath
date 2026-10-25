@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Folder, Loader2, Pin, PinOff, Plus , Lock } from "lucide-react";
+import { Folder, Loader2, Pin, PinOff, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { timeAgoShort } from "@/lib/time";
 import { createProjectAction, setProjectPinnedAction } from "./project-actions";
@@ -83,8 +83,10 @@ export function ProjectRow({
     id: string;
     title: string;
     emoji: string | null;
+    description: string | null;
     pinnedAt: Date | null;
     updatedAt: Date;
+    documentCount: number;
   };
 }) {
   const router = useRouter();
@@ -99,16 +101,28 @@ export function ProjectRow({
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-muted/50">
-      <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate text-[15px] hover:underline">
-        {project.emoji ? `${project.emoji} ` : ""}
-        {project.title}
-      </Link>
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Lock aria-hidden className="size-3.5" /> Private
+    <li className="group relative flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-muted/50">
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-[15px]">
+        {project.emoji ?? <Folder className="size-4 text-muted-foreground" />}
       </span>
-      <span className="w-16 text-right text-xs text-muted-foreground">{timeAgoShort(project.updatedAt)}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[15px] font-medium hover:underline">
+            {project.title}
+          </Link>
+          {pinned ? <Pin aria-hidden className="size-3 shrink-0 text-muted-foreground" /> : null}
+        </div>
+        {project.description ? (
+          <p className="mt-0.5 line-clamp-1 text-[13px] text-muted-foreground">{project.description}</p>
+        ) : null}
+        <p className="text-muted-foreground mt-1 text-[12px]">
+          {project.documentCount === 0
+            ? "No sources yet"
+            : `${project.documentCount} source${project.documentCount === 1 ? "" : "s"}`}
+          <span className="px-1.5">·</span>
+          {timeAgoShort(project.updatedAt)}
+        </p>
+      </div>
       <button
         type="button"
         aria-label={pinned ? `Unpin ${project.title}` : `Pin ${project.title}`}
