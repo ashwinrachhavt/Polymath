@@ -75,6 +75,21 @@ describe("webSearchProvider resolution", () => {
     expect(webSearchProvider({ TAVILY_API_KEY: "tv-test" }).name).toBe("tavily");
     expect(webSearchProvider({ BRAVE_SEARCH_API_KEY: "brv-test" }).name).toBe("brave");
     expect(webSearchProvider({ EXA_API_KEY: "exa-test" }).name).toBe("exa");
+    expect(webSearchProvider({ PARALLEL_API_KEY: "pl-test" }).name).toBe("parallel");
+  });
+
+  it("resolves AI Gateway server-tool search by provider suffix", () => {
+    for (const suffix of ["exa", "tako", "parallel", "perplexity"]) {
+      expect(webSearchProvider({ SEARCH_PROVIDER: `ai-gateway-${suffix}`, AI_GATEWAY_API_KEY: "gw-test" }).name).toBe(
+        `ai-gateway-${suffix}`,
+      );
+    }
+  });
+
+  it("refuses an unknown AI Gateway search suffix", () => {
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "ai-gateway-altavista", AI_GATEWAY_API_KEY: "gw" })).toThrow(
+      WebSearchError,
+    );
   });
 
   it("honours an explicit SEARCH_PROVIDER", () => {

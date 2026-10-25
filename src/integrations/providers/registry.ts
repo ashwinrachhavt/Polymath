@@ -217,6 +217,21 @@ const REGISTRY: readonly ProviderEntry[] = [
       "card and excess usage bills. Opt-in only, with the card consent explicit.",
   },
   {
+    id: "ai-gateway-search",
+    capability: "search",
+    freeClass: "paid",
+    enabled: false,
+    allowPaidUsage: false,
+    allowPaidFallback: false,
+    sensitiveDataAllowed: true,
+    quota: null,
+    verifiedAt: CHECKED,
+    verificationSource: "https://vercel.com/docs/ai-gateway/models-and-providers/web-search",
+    notes:
+      "AI Gateway server tools (Exa, Tako, Parallel, Perplexity) billed per 1k requests. " +
+      "The 2026 free promos expired; enable only with an explicit spend decision.",
+  },
+  {
     id: "jina-reader",
     capability: "read",
     freeClass: "recurring",

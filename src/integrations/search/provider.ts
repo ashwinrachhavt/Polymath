@@ -47,10 +47,12 @@ export class WebSearchError extends Error {
 /** One request never hangs a run: providers must finish inside this budget. */
 export const WEB_SEARCH_TIMEOUT_MS = 10_000;
 
+import { aiGatewaySearchProvider, AI_GATEWAY_SEARCH_PROVIDERS } from "./ai-gateway";
 import { braveProvider } from "./brave";
 import { duckDuckGoProvider } from "./duckduckgo";
 import { exaProvider } from "./exa";
 import { firecrawlSearchProvider } from "./firecrawl";
+import { parallelProvider } from "./parallel";
 import { searxngProvider } from "./searxng";
 import { tavilyProvider } from "./tavily";
 
@@ -63,7 +65,20 @@ import { tavilyProvider } from "./tavily";
  */
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
+  const gatewayMatch = choice?.match(/^ai-gateway-(\w+)$/);
+  if (gatewayMatch) {
+    const provider = gatewayMatch[1];
+    if (!(AI_GATEWAY_SEARCH_PROVIDERS as readonly string[]).includes(provider)) {
+      throw new WebSearchError(
+        `Unknown AI Gateway search provider "${provider}". Expected one of ${AI_GATEWAY_SEARCH_PROVIDERS.join(", ")}.`,
+        choice ?? "ai-gateway",
+      );
+    }
+    return aiGatewaySearchProvider(provider as (typeof AI_GATEWAY_SEARCH_PROVIDERS)[number], env);
+  }
   switch (choice) {
+    case "parallel":
+      return parallelProvider(env);
     case "firecrawl":
       return firecrawlSearchProvider(env);
     case "searxng":
@@ -80,13 +95,14 @@ export function webSearchProvider(env: Record<string, string | undefined> = proc
     case "":
       if (env.SEARXNG_URL) return searxngProvider(env);
       if (env.FIRECRAWL_HOSTED_API_KEY) return firecrawlSearchProvider(env);
+      if (env.PARALLEL_API_KEY) return parallelProvider(env);
       if (env.BRAVE_SEARCH_API_KEY) return braveProvider(env);
       if (env.TAVILY_API_KEY) return tavilyProvider(env);
       if (env.EXA_API_KEY) return exaProvider(env);
       return duckDuckGoProvider();
     default:
       throw new WebSearchError(
-        `Unknown SEARCH_PROVIDER "${choice}". Expected firecrawl, searxng, brave, tavily, exa, or duckduckgo.`,
+        `Unknown SEARCH_PROVIDER "${choice}". Expected firecrawl, searxng, brave, tavily, exa, parallel, ai-gateway-<provider>, or duckduckgo.`,
         choice,
       );
   }
