@@ -156,9 +156,12 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
   const row = e2eAccountRow(page);
   await expect(row).toBeVisible();
   await expect(page.locator("article", { hasText: "Gmail" }).getByText("Connected", { exact: true })).toBeVisible();
-  const picker = row.getByLabel("Agent access");
-  await expect(picker).toBeVisible();
-  await expect(picker).toHaveValue("read_only");
+  // The seeded gmail account is read_only: Read on, Send off.
+  const readSwitch = row.getByRole("switch", { name: "Read" });
+  const sendSwitch = row.getByRole("switch", { name: "Send" });
+  await expect(readSwitch).toBeVisible();
+  await expect(readSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(sendSwitch).toHaveAttribute("aria-checked", "false");
 
   // Dropbox's list read is POST-shaped, so it has no tiers — not connectable.
   const dropboxCard = page.locator("article", { hasText: "Dropbox" }).first();
@@ -168,16 +171,17 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
 test("raising the tier persists across a reload, and lowering it back does too", async ({ page }) => {
   await page.goto("/command-center/integrations");
 
-  const picker = e2eAccountRow(page).getByLabel("Agent access");
-  await picker.selectOption("read_send");
-  await expect(picker).toHaveValue("read_send");
+  // Flipping Send on raises the account to the tier granting gmail.send.
+  const row = () => e2eAccountRow(page).getByRole("switch", { name: "Send" });
+  await row().click();
+  await expect(row()).toHaveAttribute("aria-checked", "true");
 
   await page.reload();
-  await expect(e2eAccountRow(page).getByLabel("Agent access")).toHaveValue("read_send");
+  await expect(row()).toHaveAttribute("aria-checked", "true");
 
   await setTier("read_only");
   await page.reload();
-  await expect(e2eAccountRow(page).getByLabel("Agent access")).toHaveValue("read_only");
+  await expect(row()).toHaveAttribute("aria-checked", "false");
 });
 
 test("a send within the tier files a proposal; a send above it is denied naming the tier control", async () => {

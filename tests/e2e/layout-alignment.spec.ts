@@ -10,7 +10,7 @@ for (const width of [390, 1440, 1920]) {
     // The bare /command-center/relationships index redirects to People by
     // design, so measure the canonical screen it lands on rather than a
     // route that never paints.
-    for (const path of ["/settings", "/reviews", "/command-center/relationships/people", "/alfred/knowledge", "/alfred/dossiers", "/more"]) {
+    for (const path of ["/settings", "/reviews", "/command-center/relationships/people", "/alfred/knowledge", "/projects", "/more"]) {
       await page.goto(path);
       await waitSettled(page);
       // Scope to the shell's content main: route-level loading.tsx renders a

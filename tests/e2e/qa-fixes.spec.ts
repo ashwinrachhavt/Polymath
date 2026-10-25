@@ -25,14 +25,14 @@ test("quick-add from Today says the task went to Inbox and lists it there", asyn
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
 });
 
-test("notebook navigation from the rail is instant and console-clean", async ({ page }) => {
+test("projects navigation from the rail is instant and console-clean", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
 
   await page.goto("/alfred/notes");
-  await page.getByRole("link", { name: "Notebook", exact: true }).first().click();
-  await expect(page.getByRole("heading", { level: 1, name: "Notebook" })).toBeVisible();
+  await page.getByRole("link", { name: "Projects", exact: true }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });

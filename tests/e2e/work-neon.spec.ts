@@ -23,7 +23,8 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   const order = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
   expect(order.indexOf(a)).toBeLessThan(order.indexOf(b));
 
-  // Reorder: move the first one down below the second.
+  // Reorder: the controls live on the task's detail card, so select it first.
+  await page.getByRole("link", { name: a, exact: true }).click();
   await page.getByRole("button", { name: `Move ${a} down` }).click();
   await expect
     .poll(async () => {
