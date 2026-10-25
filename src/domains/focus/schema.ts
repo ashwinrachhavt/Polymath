@@ -25,13 +25,6 @@ export const focusSessionState = pgEnum("focus_session_state", [
   "interrupted",
   "finished",
   "abandoned",
-  /*
-   * A capture dropped on a slot (ASH-308). Not a lifecycle state: "planned"
-   * is derived from scheduled_at + started_at. The value exists because
-   * 'running'/'paused' trip the one-live-session index and the closed
-   * states pollute history - see migration 0252.
-   */
-  "scheduled",
 ]);
 
 export const focusSessions = pgTable(
@@ -71,6 +64,7 @@ export const focusSessions = pgTable(
     // At most one live session per workspace; two tabs cannot both own the clock.
     uniqueIndex("focus_sessions_active_idx")
       .on(t.workspaceId)
-      .where(sql`state in ('running', 'paused')`),
+      // A planned row borrows 'paused' but is not live: live means started (ASH-308).
+      .where(sql`state in ('running', 'paused') and ${t.startedAt} is not null`),
   ],
 );

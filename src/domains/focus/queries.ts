@@ -26,7 +26,7 @@ export function withElapsed(session: typeof focusSessions.$inferSelect, now = ne
   return { ...session, elapsedSeconds: session.accumulatedSeconds + openStretch };
 }
 
-/** The one live session (running or paused), or null. */
+/** The one live session (running or paused), or null. Planned rows (started_at null) are not live. */
 export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSessionView | null> {
   const [session] = await db
     .select()
@@ -35,6 +35,7 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
       and(
         eq(focusSessions.workspaceId, auth.workspaceId),
         inArray(focusSessions.state, ["running", "paused"]),
+        isNotNull(focusSessions.startedAt),
         isNull(focusSessions.archivedAt),
       ),
     )

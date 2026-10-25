@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { captures } from "@/domains/capture/schema";
@@ -202,11 +202,12 @@ export async function abandonFocusSession(auth: AuthContext, input: LiveTransiti
 
 /*
  * ASH-308: a capture dropped on a theatre slot becomes a planned session.
- * "Planned" is derived - scheduledAt set, startedAt null, state 'scheduled'
- * (see migration 0252 for why the enum gained the value). The capture row is
- * never mutated; the session points at it. The drag's idempotency key is a
- * request receipt: a double-drop replays the first session, never creates a
- * second one.
+ * "Planned" is derived - scheduledAt set, startedAt null. The ticket forbids
+ * an enum change, so the row borrows state 'paused' and is told apart from a
+ * real paused session by its columns: a real pause always has startedAt and
+ * never has an un-started scheduledAt. The capture row is never mutated; the
+ * session points at it. The drag's idempotency key is a request receipt: a
+ * double-drop replays the first session, never creates a second one.
  */
 export async function scheduleSessionFromCapture(
   auth: AuthContext,
@@ -238,7 +239,9 @@ export async function scheduleSessionFromCapture(
             workspaceId: auth.workspaceId,
             captureId: capture.id,
             subject: capture.title,
-            state: "scheduled",
+            // Borrowed, not meaningful: the enum cannot grow (ticket constraint).
+            // Every read that matters derives "planned" from the columns.
+            state: "paused",
             scheduledAt: input.scheduledAt,
             // The durable clock starts when the session does, not when it is planned.
             startedAt: null,
@@ -276,8 +279,9 @@ export async function unscheduleFocusSession(auth: AuthContext, input: { session
         and(
           eq(focusSessions.id, input.sessionId),
           eq(focusSessions.workspaceId, auth.workspaceId),
-          eq(focusSessions.state, "scheduled"),
+          eq(focusSessions.state, "paused"),
           isNull(focusSessions.startedAt),
+          isNotNull(focusSessions.scheduledAt),
         ),
       )
       .returning({ id: focusSessions.id, subject: focusSessions.subject });
@@ -317,8 +321,9 @@ export async function startScheduledFocusSession(auth: AuthContext, input: { ses
             eq(focusSessions.id, input.sessionId),
             eq(focusSessions.workspaceId, auth.workspaceId),
             eq(focusSessions.version, input.expectedVersion),
-            eq(focusSessions.state, "scheduled"),
+            eq(focusSessions.state, "paused"),
             isNull(focusSessions.startedAt),
+            isNotNull(focusSessions.scheduledAt),
           ),
         )
         .returning();

@@ -3,21 +3,25 @@
  * derived - scheduled_at set, started_at null - so started_at drops its NOT
  * NULL (running sessions still set it explicitly in the start flow).
  *
- * DEVIATION FROM THE TICKET (disclosed in the PR): the ticket says "no
- * change to focus_session_state", but every existing value breaks an
- * invariant for a row that has not run: 'running'/'paused' trip the
- * one-live-session partial unique index, and 'interrupted'/'finished'/
- * 'abandoned' pollute history reads (listFocusHistory filters on those
- * states alone). The row needs a value that means "not started", so the
- * enum gains 'scheduled'. The derivation rule is unchanged: planned is
- * scheduled_at + started_at, never the state.
+ * The ticket forbids changing focus_session_state, so a planned row borrows
+ * 'paused' (the only non-terminal value) and is told apart by its columns:
+ * scheduled_at set, started_at null. That makes the one-live-session unique
+ * index wrong for it - a never-started row is not live - so the index gains
+ * the started_at guard. The tradeoff and the rejected enum alternative are
+ * on the PR and the ticket.
  */
-ALTER TYPE "public"."focus_session_state" ADD VALUE IF NOT EXISTS 'scheduled';--> statement-breakpoint
-
 ALTER TABLE "focus_sessions"
   ADD COLUMN "scheduled_at" timestamptz,
   ADD COLUMN "capture_id" uuid REFERENCES "captures"("id"),
   ALTER COLUMN "started_at" DROP NOT NULL;--> statement-breakpoint
+
+DROP INDEX "focus_sessions_active_idx";--> statement-breakpoint
+
+-- One live session per workspace means one STARTED live session: planned
+-- rows (started_at null) never count.
+CREATE UNIQUE INDEX "focus_sessions_active_idx"
+  ON "focus_sessions" ("workspace_id")
+  WHERE state in ('running', 'paused') AND started_at IS NOT NULL;--> statement-breakpoint
 
 CREATE INDEX "focus_sessions_scheduled_day_idx"
   ON "focus_sessions" ("scheduled_at")
