@@ -5,6 +5,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import { Button } from "@/components/ui/button";
 import { makeDraftAction, makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
+import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { CaptureBody } from "./capture-body";
 import { captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 
@@ -39,10 +40,26 @@ function when(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : stamp.format(date);
 }
 
+const PRIOR_KIND_LABEL: Record<string, string> = {
+  zettel: "Zettel",
+  note: "Note",
+  draft: "Draft",
+  report: "Report",
+  memo: "Memo",
+  transcript: "Conversation",
+};
+
+function priorKindLabel(kind: string): string {
+  return PRIOR_KIND_LABEL[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
 export function InboxDetail({
   capture,
+  priorWriting,
 }: {
   capture: (Omit<InboxRow, "preview"> & { text: string | null; failureReason?: string | null; rawPayload?: unknown }) | null;
+  /** What the workspace already holds about this capture's URL; null for non-URL captures. */
+  priorWriting?: PriorWriting | null;
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -176,6 +193,28 @@ export function InboxDetail({
           />
         )}
       </div>
+
+      {priorWriting && priorWriting.items.length > 0 ? (
+        <section aria-label="What you have written about this" className="mt-6 border-border border-t pt-6">
+          <h3 className="text-[13px] font-medium">What you&apos;ve written about this</h3>
+          <ul className="mt-3 space-y-3">
+            {priorWriting.items.map((item) => (
+              <li key={item.id} className="min-w-0">
+                <Link
+                  href={`/alfred/notes?id=${item.id}`}
+                  className="text-[13px] font-medium underline-offset-2 hover:underline"
+                >
+                  {item.title}
+                </Link>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {item.basis === "from-page" ? `${priorKindLabel(item.kind)} from this page` : "Mentions this link"}
+                </span>
+                {item.excerpt ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.excerpt}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {error ? (
         <p className="mt-3 text-destructive text-[13px]" role="alert">{error}</p>
