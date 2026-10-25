@@ -23,7 +23,7 @@ export function HomeGreeting() {
   }, []);
 
   if (hidden) return null;
-  return <h1 className="text-center text-2xl font-medium">What would you like to work on?</h1>;
+  return <h1 className="screen-title text-center">What would you like to work on?</h1>;
 }
 
 /** Fired by NewConversation when its in-place conversation mounts. */

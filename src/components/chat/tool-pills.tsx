@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronRight, CircleDashed, Loader2, Wrench } from "lucide-react";
+import { Check, ChevronRight, CircleDashed, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "cn";
 import type { ChatState } from "./use-chat-stream";
 import { INTERNAL_TOOLS, toolLabel } from "./tool-labels";
@@ -11,8 +11,13 @@ import { INTERNAL_TOOLS, toolLabel } from "./tool-labels";
  * transcript (Linear-style embedded activity): the turn's tool calls render as
  * a quiet list of pills under the reasoning and above the answer — running
  * with a spinner, settled with their one-line outcome, and each expandable to
- * the real payload. No collapsed "N steps" line: the work is visible where it
- * happened.
+ * a structured preview. No collapsed "N steps" line: the work is visible where
+ * it happened.
+ *
+ * The expansion is the AI Elements Tool pattern: a payload becomes the
+ * component that names what came back — a source list for search results, an
+ * item list for any array, raw JSON only for shapes with no better form. Raw
+ * provider JSON is the fallback, never the default face.
  */
 
 export type ToolEntry = ChatState["tools"][number];
@@ -65,17 +70,137 @@ function ToolPill({ tool }: { tool: ToolEntry }) {
         ) : null}
       </button>
       {open && hasPayload ? (
-        <div className="mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-muted/40 p-2.5">
-          <PayloadSection title={tool.input !== undefined ? "Input" : null} value={tool.input} />
-          <PayloadSection title={tool.output !== undefined ? "Result" : null} value={tool.output} />
+        <div className="mt-1 max-h-72 overflow-auto rounded-lg border border-border bg-card p-3">
+          <ToolInput input={tool.input} />
+          <ToolResult output={tool.output} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function PayloadSection({ title, value }: { title: string | null; value: unknown }) {
-  if (value === undefined || title === null) return null;
+/*
+ * The call's arguments. Query-shaped inputs read as the question asked;
+ * anything else falls back to compact JSON.
+ */
+function ToolInput({ input }: { input: unknown }) {
+  if (input === undefined) return null;
+  const query = (input as { query?: unknown } | null)?.query;
+  if (typeof query === "string" && query.length > 0) {
+    return (
+      <p className="text-muted-foreground text-[12.5px]">
+        <span className="text-[11px] font-medium uppercase tracking-wide">Query</span>
+        <span className="text-foreground ml-2">{query}</span>
+      </p>
+    );
+  }
+  return <JsonBlock value={input} label="Input" />;
+}
+
+/*
+ * The result. Search-shaped outputs (a results array of {title, url} or
+ * {title, snippet}) render as a source list with links, the way AI Elements'
+ * web-preview and sources render citations. Arrays render as countable item
+ * lists. Everything else is compact JSON.
+ */
+function ToolResult({ output }: { output: unknown }) {
+  if (output === undefined) return null;
+  const sources = extractSources(output);
+  if (sources.length > 0) {
+    return (
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sources</p>
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {sources.map((source, index) => (
+            <li key={`${source.url ?? index}`} className="min-w-0">
+              {source.url ? (
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-[13px] text-foreground/90 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ExternalLink aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{source.title}</span>
+                </a>
+              ) : (
+                <span className="flex min-w-0 items-center gap-1.5 px-1 py-0.5 text-[13px] text-foreground/90">
+                  <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground" />
+                  <span className="truncate">{source.title}</span>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const items = extractItemList(output);
+  if (items.length > 0) {
+    return (
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {items.length} item{items.length === 1 ? "" : "s"}
+        </p>
+        <ul className="mt-1.5 flex flex-col gap-0.5">
+          {items.slice(0, 8).map((item, index) => (
+            <li key={index} className="truncate px-1 py-0.5 text-[13px] text-foreground/90">
+              {item}
+            </li>
+          ))}
+          {items.length > 8 ? (
+            <li className="text-muted-foreground px-1 text-[12px]">+{items.length - 8} more</li>
+          ) : null}
+        </ul>
+      </div>
+    );
+  }
+  return <JsonBlock value={output} label="Result" />;
+}
+
+/** A {title, url?} row from a results array; null when the entry has no readable title. */
+function asSource(entry: unknown): { title: string; url?: string } | null {
+  if (typeof entry === "string") return { title: entry };
+  if (entry === null || typeof entry !== "object") return null;
+  const record = entry as Record<string, unknown>;
+  const title = record.title ?? record.name;
+  if (typeof title !== "string" || title.length === 0) return null;
+  const url = typeof record.url === "string" ? record.url : undefined;
+  return { title, url };
+}
+
+/** Search-shaped outputs: any results/messages array whose entries read as sources. */
+function extractSources(output: unknown): Array<{ title: string; url?: string }> {
+  if (output === null || typeof output !== "object") return [];
+  const record = output as Record<string, unknown>;
+  const list = record.results ?? record.messages ?? record.items;
+  if (!Array.isArray(list)) return [];
+  const sources = list.map(asSource).filter((s): s is { title: string; url?: string } => s !== null);
+  // A list where most entries lack titles is data, not sources; only render
+  // as a source list when the shape mostly holds.
+  return sources.length >= Math.ceil(list.length * 0.6) ? sources : [];
+}
+
+/** A list of readable strings from an array of titles/names/lines. */
+function extractItemList(output: unknown): string[] {
+  if (Array.isArray(output)) {
+    return output.map((entry) => (typeof entry === "string" ? entry : null)).filter((s): s is string => s !== null && s.length > 0);
+  }
+  if (output === null || typeof output !== "object") return [];
+  const record = output as Record<string, unknown>;
+  const list = record.results ?? record.items ?? record.lines;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => {
+      if (typeof entry === "string" && entry.length > 0) return entry;
+      const title = (entry as Record<string, unknown> | null)?.title;
+      return typeof title === "string" && title.length > 0 ? title : null;
+    })
+    .filter((s): s is string => s !== null);
+}
+
+/** The fallback: labeled, compact, scrollable JSON. */
+function JsonBlock({ value, label }: { value: unknown; label: string }) {
   let text: string;
   try {
     text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -84,19 +209,8 @@ function PayloadSection({ title, value }: { title: string | null; value: unknown
   }
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
-      <pre className="mt-0.5 overflow-x-auto text-[11.5px] leading-5 text-foreground/90">{text}</pre>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <pre className="mt-1 max-h-48 overflow-auto text-[11.5px] leading-5 text-foreground/90">{text}</pre>
     </div>
-  );
-}
-
-/** A reasoning-style quiet header for a tool cluster, matching the ThinkingPill language. */
-export function ToolActivityHeader({ count, running }: { count: number; running: boolean }) {
-  if (count === 0) return null;
-  return (
-    <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-[12px]">
-      <Wrench aria-hidden className="size-3" />
-      {running ? "Working…" : `${count} step${count === 1 ? "" : "s"}`}
-    </p>
   );
 }

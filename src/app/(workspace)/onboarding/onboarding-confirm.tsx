@@ -62,7 +62,7 @@ export function OnboardingConfirm({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-medium">Is this right?</h1>
+        <h1 className="screen-title">Is this right?</h1>
         <p className="text-muted-foreground text-[13px] leading-relaxed">
           This is what your agent heard. Edit anything it got wrong — this brief
           is exactly what it starts knowing about you.
