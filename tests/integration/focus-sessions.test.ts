@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { captures } from "@/domains/capture/schema";
 import { focusSessions } from "@/domains/focus/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -165,5 +166,126 @@ suite("focus sessions", () => {
     await commands.abandonFocusSession(authB, { sessionId: sessionB.id, expectedVersion: 1 });
     expect((await queries.listFocusHistory(authB)).length).toBe(1);
     expect(await queries.listFocusHistory(authA)).toEqual([]);
+  });
+
+});
+
+/** A capture the theatre can schedule from (ASH-308). */
+async function seedCapture(workspaceId: string, userId: string, title: string) {
+  const [capture] = await db
+    .insert(captures)
+    .values({ workspaceId, kind: "text", rawPayload: { text: title }, text: title, title, createdBy: userId, updatedBy: userId })
+    .returning();
+  return capture;
+}
+
+suite("planned sessions (ASH-308)", () => {
+  it("a planned row cannot pause, resume, finish, or abandon through the lifecycle commands", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-guards-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const capture = await seedCapture(workspaceId, userId, "Read the renewal");
+
+    const { sessionId } = await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: new Date(Date.now() + 3600_000),
+    });
+    const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, sessionId));
+    expect(row.startedAt).toBeNull();
+    expect(row.scheduledAt).not.toBeNull();
+
+    // The borrowed 'paused' state must not admit the row into any lifecycle
+    // transition: each is a stale-write rejection, not a moved clock.
+    for (const transition of [
+      () => commands.pauseFocusSession(auth, { sessionId, expectedVersion: row.version }),
+      () => commands.resumeFocusSession(auth, { sessionId, expectedVersion: row.version }),
+      () => commands.finishFocusSession(auth, { sessionId, expectedVersion: row.version }),
+      () => commands.abandonFocusSession(auth, { sessionId, expectedVersion: row.version }),
+    ]) {
+      await expect(transition()).rejects.toThrowError(/changed since you loaded/);
+    }
+    const [untouched] = await db.select().from(focusSessions).where(eq(focusSessions.id, sessionId));
+    expect(untouched.startedAt).toBeNull();
+    expect(untouched.state).toBe("paused");
+    expect(untouched.version).toBe(row.version);
+  });
+
+  it("a planned row never blocks the one live session", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-live-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const capture = await seedCapture(workspaceId, userId, "Inbox zero");
+    await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: new Date(Date.now() + 3600_000) });
+
+    // Live means started: a planned row does not occupy the slot.
+    const session = await commands.startFocusSession(auth, { subject: "Real work" });
+    expect(session.state).toBe("running");
+    const active = await queries.getActiveFocusSession(auth);
+    expect(active?.id).toBe(session.id);
+  });
+
+  it("a planned row starts only through the scheduled path, with version protection", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-start-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const capture = await seedCapture(workspaceId, userId, "Call the accountant");
+    const { sessionId } = await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: new Date(Date.now() + 3600_000),
+    });
+    const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, sessionId));
+
+    // A stale version is rejected; the row stays planned.
+    await expect(commands.startScheduledFocusSession(auth, { sessionId, expectedVersion: row.version + 1 })).rejects.toThrowError(
+      /changed since you loaded/,
+    );
+
+    const started = await commands.startScheduledFocusSession(auth, { sessionId, expectedVersion: row.version });
+    expect(started.state).toBe("running");
+    expect(started.startedAt).not.toBeNull();
+    // It is now the one live session - and it occupies the slot, so a rival
+    // start conflicts.
+    const active = await queries.getActiveFocusSession(auth);
+    expect(active?.id).toBe(sessionId);
+    await expect(commands.startFocusSession(auth, { subject: "Rival" })).rejects.toThrowError(/already running/);
+
+    // The lifecycle opens up only after the start: pause now works.
+    const paused = await commands.pauseFocusSession(auth, { sessionId, expectedVersion: started.version });
+    expect(paused.state).toBe("paused");
+    expect(paused.startedAt).not.toBeNull();
+  });
+
+  it("a double drop replays the first session instead of creating a second", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-idem-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const capture = await seedCapture(workspaceId, userId, "Sort the receipts");
+    const slot = new Date(Date.now() + 3600_000);
+
+    const first = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: slot, idempotencyKey: "drop-1" });
+    const second = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: slot, idempotencyKey: "drop-1" });
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(second.replayed).toBe(true);
+    const rows = await db.select().from(focusSessions).where(eq(focusSessions.workspaceId, workspaceId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("the day projection sees planned, running, and live sessions and nothing from another workspace", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-day-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const capture = await seedCapture(workspaceId, userId, "Read the contract");
+    const todaySlot = new Date();
+    todaySlot.setHours(todaySlot.getHours() + 2);
+    const { sessionId } = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: todaySlot });
+    const running = await commands.startFocusSession(auth, { subject: "Now" });
+
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + 24 * 3600_000);
+    const day = await queries.listDayFocusSessions(auth, { from, to });
+    const ids = day.map((session) => session.id);
+    expect(ids).toContain(sessionId);
+    expect(ids).toContain(running.id);
+
+    const other = await seedWorkspace(db, `focus-planned-other-${Date.now()}`);
+    const otherAuth = ownerAuth(other.userId, other.workspaceId);
+    const otherDay = await queries.listDayFocusSessions(otherAuth, { from, to });
+    expect(otherDay).toHaveLength(0);
   });
 });

@@ -547,6 +547,13 @@
       "when": 1793200000000,
       "tag": "0251_action_proposal_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1793200001000,
+      "tag": "0252_focus_scheduled_at",
+      "breakpoints": true
     }
   ]
 }

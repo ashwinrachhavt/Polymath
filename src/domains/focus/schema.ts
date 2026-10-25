@@ -37,8 +37,12 @@ export const focusSessions = pgTable(
     subject: text("subject"),
     state: focusSessionState("state").notNull().default("running"),
     plannedMinutes: integer("planned_minutes"),
-    /** Durable clock: startedAt plus accumulated time is authoritative. */
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Durable clock: startedAt plus accumulated time is authoritative. Null while only scheduled (ASH-308). */
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
+    /** The slot a capture was dropped on; set until the session starts. */
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /** The capture this session was scheduled from; the capture row is never mutated. */
+    captureId: uuid("capture_id"),
     lastResumedAt: timestamp("last_resumed_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     /** Seconds accumulated across pauses. */
@@ -53,9 +57,14 @@ export const focusSessions = pgTable(
   },
   (t) => [
     index("focus_sessions_workspace_started_idx").on(t.workspaceId, t.startedAt),
+    index("focus_sessions_scheduled_day_idx")
+      .on(t.scheduledAt)
+      .where(sql`${t.scheduledAt} is not null and ${t.startedAt} is null`),
+    index("focus_sessions_capture_idx").on(t.captureId),
     // At most one live session per workspace; two tabs cannot both own the clock.
     uniqueIndex("focus_sessions_active_idx")
       .on(t.workspaceId)
-      .where(sql`state in ('running', 'paused')`),
+      // A planned row borrows 'paused' but is not live: live means started (ASH-308).
+      .where(sql`state in ('running', 'paused') and ${t.startedAt} is not null`),
   ],
 );
