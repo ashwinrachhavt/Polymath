@@ -6,6 +6,7 @@ import {
   lowestTierId,
   tierAllows,
   tierCapabilities,
+  type Capability,
   type Provider,
 } from "@/domains/integrations/capabilities";
 
@@ -26,6 +27,7 @@ const migrationSql = [
   "0233_crm_tiers.sql",
   "0238_notion_access_tiers.sql",
   "0239_social_access_tiers.sql",
+  "0246_google_docs_sheets_tiers.sql",
 ]
   .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
@@ -127,13 +129,23 @@ describe("PROVIDER_TIERS google cluster", () => {
     }
   });
 
-  it("docs, sheets, jira and salesforce have no tiers — their list reads are not GET-expressible", () => {
+  it("docs and sheets list through Drive's files endpoint, so they each get one read_only tier", () => {
+    for (const [provider, capability] of [
+      ["google-docs", "googledocs.documents.read"],
+      ["google-sheets", "googlesheets.spreadsheets.read"],
+    ] as Array<[Provider, Capability]>) {
+      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(tierCapabilities(provider, "read_only"), provider).toEqual([capability]);
+    }
+  });
+
+  it("jira and salesforce still have no tiers — their list reads are not GET-expressible", () => {
     // These providers stay in the catalog (rows exist) but outside the Provider
     // union: no shipped capability, so no tier offer. Coming soon, honestly.
     const catalog = ["0031_seed_integration_catalog.sql", "0223_connector_catalog_expansion.sql"]
       .map((file) => readFileSync(new URL(`../../src/db/migrations/${file}`, import.meta.url), "utf8"))
       .join("\n");
-    for (const provider of ["google-docs", "google-sheets", "jira", "salesforce"]) {
+    for (const provider of ["jira", "salesforce"]) {
       expect(catalog.includes(`'${provider}'`), provider).toBe(true);
       expect(provider in PROVIDER_TIERS, provider).toBe(false);
     }

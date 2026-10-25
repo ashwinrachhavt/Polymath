@@ -64,6 +64,31 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
       return [f.name ?? "(untitled file)", f.mimeType].filter(Boolean).join(" — ");
     },
   },
+  // Docs and Sheets both list through Drive's files endpoint, filtered by
+  // mimeType — resolveQuery already escapes quotes in {query}, so the Drive
+  // q filter is injection-safe.
+  googledocs_search_files: {
+    tool: "googledocs_search_files",
+    capability: "googledocs.documents.read",
+    endpoint: "https://www.googleapis.com/drive/v3/files",
+    query: { q: "mimeType = 'application/vnd.google-apps.document' and name contains '{query}'", fields: "files(id,name,modifiedTime)" },
+    listPath: "files",
+    itemText: (item) => {
+      const f = item as { name?: string; modifiedTime?: string };
+      return [f.name ?? "(untitled document)", f.modifiedTime?.slice(0, 10)].filter(Boolean).join(" — ");
+    },
+  },
+  googlesheets_list_spreadsheets: {
+    tool: "googlesheets_list_spreadsheets",
+    capability: "googlesheets.spreadsheets.read",
+    endpoint: "https://www.googleapis.com/drive/v3/files",
+    query: { q: "mimeType = 'application/vnd.google-apps.spreadsheet' and name contains '{query}'", fields: "files(id,name,modifiedTime)" },
+    listPath: "files",
+    itemText: (item) => {
+      const f = item as { name?: string; modifiedTime?: string };
+      return [f.name ?? "(untitled spreadsheet)", f.modifiedTime?.slice(0, 10)].filter(Boolean).join(" — ");
+    },
+  },
   // Discord's channel list needs a guild id the tool does not take, so the
   // generic read lists the guilds (servers) the connection can see.
   discord_list_channels: {

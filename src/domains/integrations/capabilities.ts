@@ -33,6 +33,8 @@ export type Provider =
   | "linear"
   | "google-calendar"
   | "google-drive"
+  | "google-docs"
+  | "google-sheets"
   | "discord"
   | "zoom"
   | "calendly"
@@ -82,10 +84,13 @@ export const CAPABILITIES = {
   "linear.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_search_issues" },
   "linear.issue.read": { provider: "linear", kind: "read", riskClass: "read", tool: "linear_read_issue" },
   // Google cluster A: read-only list tools through the generic registry.
-  // Docs and Sheets have no GET list API at a static URL (listing lives in
-  // Drive), so their tools wait for a slice that can express them.
+  // Docs and Sheets list through Drive's files endpoint filtered by mimeType,
+  // which the same generic read expresses — the 0230 comment claiming they
+  // had no GET list API was wrong.
   "googlecalendar.events.read": { provider: "google-calendar", kind: "read", riskClass: "read", tool: "googlecalendar_list_events" },
   "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
+  "googledocs.documents.read": { provider: "google-docs", kind: "read", riskClass: "read", tool: "googledocs_search_files" },
+  "googlesheets.spreadsheets.read": { provider: "google-sheets", kind: "read", riskClass: "read", tool: "googlesheets_list_spreadsheets" },
   // Comms and meetings cluster B: read-only lists through the generic registry.
   "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
   "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
@@ -133,6 +138,8 @@ export const PROVIDER_TOOLS = {
   linear_read_issue: "linear.issue.read",
   googlecalendar_list_events: "googlecalendar.events.read",
   googledrive_search_files: "googledrive.files.read",
+  googledocs_search_files: "googledocs.documents.read",
+  googlesheets_list_spreadsheets: "googlesheets.spreadsheets.read",
   discord_list_channels: "discord.guilds.read",
   zoom_list_meetings: "zoom.meetings.read",
   calendly_list_events: "calendly.events.read",
@@ -237,6 +244,22 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
       label: "Read only",
       description: "Agents can search the files in your Drive.",
       capabilities: ["googledrive.files.read"],
+    },
+  ],
+  "google-docs": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can search your Google Docs.",
+      capabilities: ["googledocs.documents.read"],
+    },
+  ],
+  "google-sheets": [
+    {
+      id: "read_only",
+      label: "Read only",
+      description: "Agents can list your Google Sheets spreadsheets.",
+      capabilities: ["googlesheets.spreadsheets.read"],
     },
   ],
   discord: [
@@ -374,6 +397,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   "linear.issue.read": "Read issues",
   "googlecalendar.events.read": "List events",
   "googledrive.files.read": "Search files",
+  "googledocs.documents.read": "Search documents",
+  "googlesheets.spreadsheets.read": "List spreadsheets",
   "discord.guilds.read": "List servers",
   "zoom.meetings.read": "List meetings",
   "calendly.events.read": "List scheduled events",

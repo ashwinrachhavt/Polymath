@@ -29,6 +29,7 @@ beforeAll(async () => {
     "src/db/migrations/0231_comms_tiers.sql",
     "src/db/migrations/0232_workmgmt_tiers.sql",
     "src/db/migrations/0233_crm_tiers.sql",
+    "src/db/migrations/0246_google_docs_sheets_tiers.sql",
   ]) {
     await handle.client.unsafe(readFileSync(file, "utf8"));
   }
@@ -57,10 +58,20 @@ suite("access tiers", () => {
   });
 
   it("providers without shipped tools have empty tiers", async () => {
-    // Figma, dropbox, notion, docs, sheets, jira, salesforce: no GET-expressible
-    // list read, so no tier offer — the cards render Coming soon.
-    for (const provider of ["figma", "dropbox", "notion", "google-docs", "google-sheets", "jira", "salesforce"]) {
+    // Figma, dropbox, jira, salesforce: no GET-expressible list read, so no
+    // tier offer — the cards render Coming soon. Docs and sheets list through
+    // Drive's files endpoint and gained read_only tiers in 0246.
+    for (const provider of ["figma", "dropbox", "jira", "salesforce"]) {
       expect(await catalogTiers(provider), provider).toEqual([]);
+    }
+    // Docs and sheets gained a read-only tier in 0246.
+    for (const [provider, capability] of [
+      ["google-docs", "googledocs.documents.read"],
+      ["google-sheets", "googlesheets.spreadsheets.read"],
+    ] as Array<[string, string]>) {
+      const tiers = (await catalogTiers(provider)) as Array<{ id: string; capabilities: string[] }>;
+      expect(tiers?.map((tier) => tier.id), provider).toEqual(["read_only"]);
+      expect(tiers?.[0]?.capabilities).toEqual([capability]);
     }
     // Stripe gained a read-only tier in cluster D; its charges are never proposed.
     const stripe = (await catalogTiers("stripe")) as Array<{ id: string }>;

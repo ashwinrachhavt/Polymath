@@ -92,6 +92,8 @@ describe("GENERIC_READS google cluster", () => {
     const expected: Array<[string, string, string]> = [
       ["googlecalendar_list_events", "https://calendar.googleapis.com/calendar/v3/calendars/primary/events", "items"],
       ["googledrive_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
+      ["googledocs_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
+      ["googlesheets_list_spreadsheets", "https://www.googleapis.com/drive/v3/files", "files"],
     ];
     for (const [tool, endpoint, listPath] of expected) {
       const spec = GENERIC_READS[tool];
@@ -99,12 +101,12 @@ describe("GENERIC_READS google cluster", () => {
       expect(spec!.endpoint, tool).toBe(endpoint);
       expect(spec!.listPath, tool).toBe(listPath);
     }
-    expect(entries.length).toBe(2);
+    expect(entries.length).toBe(4);
   });
 
-  it("docs and sheets are absent — their list reads are not GET-expressible", () => {
-    expect(GENERIC_READS.googledocs_list_documents).toBeUndefined();
-    expect(GENERIC_READS.googlesheets_list_sheets).toBeUndefined();
+  it("docs and sheets filter Drive's files list by mimeType", () => {
+    expect(GENERIC_READS.googledocs_search_files!.query?.q).toContain("application/vnd.google-apps.document");
+    expect(GENERIC_READS.googlesheets_list_spreadsheets!.query?.q).toContain("application/vnd.google-apps.spreadsheet");
   });
 
   it("maps a calendar fixture response to one line per event", async () => {
