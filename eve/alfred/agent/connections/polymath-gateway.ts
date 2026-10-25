@@ -3,6 +3,7 @@ import { ConnectionAuthorizationRequiredError, defineMcpClientConnection } from 
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { gatewaySecret, signGatewayToken } from "../../../../src/domains/agents/gateway-token";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
+import { PROVIDER_TOOLS } from "../../../../src/domains/integrations/capabilities";
 
 /*
  * The one door to provider tools.
@@ -27,7 +28,7 @@ const CONNECTION_NAME = "polymath-gateway";
 export default defineMcpClientConnection({
   url: GATEWAY_URL,
   description:
-    "Polymath provider gateway: Gmail search, thread read, and send proposals for the signed-in workspace.",
+    "Polymath provider gateway: search and read tools for the owner's connected accounts, plus send proposals for the signed-in workspace.",
   auth: (ctx) => ({
     // The agent acts as the run, not as a person's stored credential. The
     // gateway still proves the run belongs to the signed-in user on each call.
@@ -80,9 +81,11 @@ export default defineMcpClientConnection({
   // The token is what authorizes; this header lets the gateway reject a driver
   // bound to the wrong session before it acts (route.ts step 6).
   headers: (ctx) => ({ "x-polymath-session": ctx.session.id }),
-  // Only what this slice ships. The gateway refuses anything else, but the
-  // model should not be shown names it can never call.
-  tools: { allow: ["gmail_search", "gmail_read_thread", "gmail_send"] },
+  // Generated from the capability catalog, not hand-listed: a new provider
+  // read ships in PROVIDER_TOOLS and is shown to the model without a second
+  // edit here. The gateway still enforces policy on every call, so widening
+  // the visible surface grants nothing a grant does not.
+  tools: { allow: Object.keys(PROVIDER_TOOLS) },
   // No connection-level approval: a send is a proposal the owner decides in
   // /reviews, and gating twice asks for approval of an approval.
 });
