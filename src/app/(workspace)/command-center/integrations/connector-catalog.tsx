@@ -41,6 +41,15 @@ export type CatalogConnector = {
 
 export type CardState = "needs_config" | "coming_soon" | "available" | "connecting" | "connected" | "action_needed";
 
+/*
+ * Instant providers (spec #316): their catalog capabilities are the derived
+ * instant.* names, and no connection is ever created for them — the card
+ * offers nothing to connect because there is nothing to connect.
+ */
+export function isInstantConnector(connector: CatalogConnector): boolean {
+  return connector.capabilities.some((capability) => capability.startsWith("instant."));
+}
+
 /* connect.ts expires a pending attempt with this message; the card reads it. */
 const EXPIRED_ATTEMPT_MESSAGE = "That connection attempt expired. Start again.";
 
@@ -265,7 +274,7 @@ export function ConnectorCatalog({
                     </div>
                   ) : null}
 
-                  {state === "available" ? (
+                  {state === "available" && !isInstantConnector(connector) ? (
                     <div className="border-t border-border pt-3">
                       <ConnectButton provider={connector.provider} />
                     </div>
@@ -300,6 +309,15 @@ export function ConnectorCatalog({
                     <p className="border-t border-border pt-3 text-xs text-muted-foreground">
                       Connect {connector.displayName} agents once its tools ship.
                     </p>
+                  ) : null}
+
+                  {isInstantConnector(connector) ? (
+                    <div className="border-t border-border pt-3">
+                      <p className="text-[13px] font-medium">No connection needed</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Agents can use this instantly; calls bill the workspace&apos;s tool budget.
+                      </p>
+                    </div>
                   ) : null}
                 </article>
               );

@@ -297,7 +297,7 @@ export async function executeInstantTool(input: {
  * fetch here: the generator (scripts/sync-instant-catalog.ts) owns the live
  * classification; the cron mirrors the committed artifact into the database.
  */
-export async function syncInstantCatalog(input: {
+export async function syncInstantCatalog(_input: {
   apiKey: string;
   now?: Date;
 }): Promise<{ upserted: number; deactivated: number }> {

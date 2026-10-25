@@ -573,6 +573,8 @@ async function instantCall(context: GatewayContext, tool: string, _toolkitSlug: 
 async function instantPropose(context: GatewayContext, tool: string, args: Record<string, unknown>): Promise<GatewayOutcome> {
   // Key-order canonicalization: the same semantic arguments in a different
   // insertion order must dedupe to one proposal, not two approval cards.
+  // Top-level keys only — nested objects with differing order remain distinct
+  // (an accepted ceiling while Instant args stay flat).
   const canonicalArgs = JSON.stringify(args, Object.keys(args).sort());
   const dedupeKey = `instant.mcp:${context.auth.workspaceId}:${tool}:${canonicalArgs}`;
   const created = await withTransaction(async (tx) => {
