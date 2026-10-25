@@ -29,9 +29,9 @@ export type ChatFrame =
   | { type: "delta"; runId: string; blockId: string; text: string; cursor: number }
   /** A block finished; `text` is authoritative and replaces anything accumulated. */
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
-  /** A tool call started or settled. `label` is the human-readable name. */
   /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
-  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; cursor: number }
+  /** `input` is the call's parsed arguments, `input` on a settled frame is the result payload — capped by MAX_TOOL_PAYLOAD. */
+  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown; cursor: number }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
@@ -119,6 +119,25 @@ export function citationsFromToolOutput(output: unknown): ChatCitation[] {
 }
 
 /**
+ * The most payload a tool frame carries on the wire. A result larger than this
+ * is replaced by a marker: the pill then shows the outcome line and the
+ * citation list, not unbounded provider JSON that every viewer's stream would
+ * serialize and every surface's state would hold for the run's lifetime.
+ */
+const MAX_TOOL_PAYLOAD = 8_192;
+
+function capPayload(value: unknown): unknown {
+  let size: number;
+  try {
+    size = typeof value === "string" ? value.length : JSON.stringify(value ?? null)?.length ?? 0;
+  } catch {
+    return String(value);
+  }
+  if (size <= MAX_TOOL_PAYLOAD) return value;
+  return { truncated: true, reason: `Result over ${MAX_TOOL_PAYLOAD} bytes; the full output stays in the run's recorded events.` };
+}
+
+/**
  * One-line outcome for the tool activity list. Counts a list payload rather
  * than pasting it: the line answers "what came back" in a glance, and the full
  * redacted result lives in the conversation page's Details disclosure.
@@ -197,7 +216,7 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
       const actions = Array.isArray(data.actions) ? data.actions : [];
       const frames: ChatFrame[] = [];
       for (const action of actions) {
-        const a = action as { kind?: string; callId?: string; toolName?: string };
+        const a = action as { kind?: string; callId?: string; toolName?: string; input?: unknown };
         if (a.kind !== "tool-call" || typeof a.callId !== "string") continue;
         frames.push({
           type: "tool",
@@ -205,6 +224,7 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
           callId: a.callId,
           label: a.toolName ?? "tool",
           status: "running",
+          input: a.input ?? undefined,
           cursor,
         });
       }
@@ -232,6 +252,10 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
           detail: succeeded
             ? summaryFromToolOutput(result.output)
             : asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed"),
+          // The result payload itself, capped, so a pill can expand to the
+          // real data without the wire or the client state holding unbounded
+          // provider output.
+          input: result.output === undefined ? undefined : capPayload(result.output),
           cursor,
         },
       ];

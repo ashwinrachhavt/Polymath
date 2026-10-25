@@ -16,7 +16,7 @@ const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").m
 function Table({ lines }: { lines: string[] }) {
   const [head, , ...body] = lines;
   return (
-    <table className="my-1 border-collapse text-[12px]">
+    <table className="my-1 border-collapse text-[13px]">
       <thead>
         <tr>
           {cells(head).map((c, i) => (

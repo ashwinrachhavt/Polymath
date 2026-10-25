@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 
@@ -11,11 +11,24 @@ import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
  * second line of defense.
  *
  * Webhooks use HMAC (webhook_inbox), not Clerk sessions — they must stay public.
+ *
+ * createRouteMatcher is deprecated (path matching in middleware is drifting
+ * away from how Next routes requests); these are plain pattern checks so the
+ * same classification keeps working until the checks move into the routes
+ * themselves per Clerk's migration guide.
  */
 
-const isApiRoute = createRouteMatcher(["/api/v1", "/api/v1/(.*)"]);
+function matches(pathname: string, patterns: string[]) {
+  return patterns.some((pattern) =>
+    pattern.endsWith("(.*)")
+      ? pathname === pattern.slice(0, -4) || pathname.startsWith(pattern.slice(0, -4))
+      : pathname === pattern,
+  );
+}
 
-const isPublicRoute = createRouteMatcher([
+const apiPatterns = ["/api/v1", "/api/v1/(.*)"];
+
+const publicPatterns = [
   // The one public marketing route (GTM funnel surface).
   "/landing",
   "/sign-in(.*)",
@@ -28,7 +41,7 @@ const isPublicRoute = createRouteMatcher([
   // agent, not a Clerk session. Clerk here would 307 the agent's own tool call
   // to the sign-in page, which is what "fetch failed" looked like from eve.
   "/api/mcp",
-]);
+];
 
 // The proxy enforces whenever Clerk is configured, regardless of
 // devAuthBypass. The bypass only selects which owner data writes resolve to
@@ -48,8 +61,9 @@ export default clerkConfigured && !(devAuthBypass && process.env.NODE_ENV !== "p
       // sent the token yet), so protecting it makes every cross-origin call
       // impossible. The route's own OPTIONS handler answers it.
       if (request.method === "OPTIONS") return;
-      if (!isPublicRoute(request)) {
-        if (isApiRoute(request)) {
+      const pathname = new URL(request.url).pathname;
+      if (!matches(pathname, publicPatterns)) {
+        if (matches(pathname, apiPatterns)) {
           // Match getAnyAuthContext's supported identities. An API caller gets
           // a 401 problem, not a sign-in redirect: a redirect carries no CORS
           // headers and surfaces to a fetch as an opaque network failure.

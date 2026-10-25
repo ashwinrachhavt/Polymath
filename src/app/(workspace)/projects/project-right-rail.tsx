@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ChevronDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { ProviderIcon } from "@/components/chat/provider-icon";
+import { useChatStarted } from "@/components/chat/chat-events";
 import { addMemoryAction, createAutomationAction, deleteAutomationAction, deleteMemoryAction, setProjectAccountAction, updateAutomationAction, updateProjectAction } from "./project-actions";
 
 /*
@@ -51,11 +54,18 @@ export function ProjectRightRail({
   sources: Array<{ documentId: string; title: string; readiness: string }>;
   automations: Array<{ id: string; prompt: string; schedule: string; enabled: boolean }>;
   memories: Array<{ id: string; content: string }>;
-  connectors: Array<{ id: string; label: string; enabled: boolean }>;
+  connectors: Array<{ id: string; displayName: string; alias: string | null; enabled: boolean }>;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // While an in-place conversation runs on the page, the rail folds away:
+  // the transcript is the page then, and the settings return on refresh or
+  // when the conversation ends. StartSession announces the same event.
+  const [chatActive, setChatActive] = useState(false);
+  useChatStarted(() => setChatActive(true));
+
+  if (chatActive) return null;
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -298,22 +308,28 @@ function ConnectorToggle({
   pending,
   onSet,
 }: {
-  connector: { id: string; label: string; enabled: boolean };
+  connector: { id: string; displayName: string; alias: string | null; enabled: boolean };
   pending: boolean;
   onSet: (gatewayAccountId: string, enabled: boolean) => void;
 }) {
   return (
-    <li className="flex items-center justify-between gap-2 text-[13px]">
-      <span className="truncate">{connector.label}</span>
-      <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={connector.enabled}
-          disabled={pending}
-          onChange={(event) => onSet(connector.id, event.target.checked)}
-        />
-        {connector.enabled ? "Connected" : "Connect"}
-      </label>
+    <li className="flex items-center gap-2.5 py-0.5">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
+        <ProviderIcon provider={connector.alias ?? connector.displayName} displayName={connector.displayName} />
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[13px]">{connector.displayName}</span>
+        {connector.alias && connector.alias !== connector.displayName ? (
+          <span className="block truncate text-[11px] text-muted-foreground">{connector.alias}</span>
+        ) : null}
+      </span>
+      <Switch
+        checked={connector.enabled}
+        disabled={pending}
+        variant="accent"
+        aria-label={`${connector.enabled ? "Disconnect" : "Connect"} ${connector.displayName}`}
+        onCheckedChange={(checked) => onSet(connector.id, checked)}
+      />
     </li>
   );
 }

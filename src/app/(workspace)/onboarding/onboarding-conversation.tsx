@@ -99,7 +99,7 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-medium">The interview could not start</h1>
+          <h1 className="screen-title">The interview could not start</h1>
           <p className="text-muted-foreground text-[13px] leading-relaxed">{error}</p>
         </header>
         <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-3">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-medium">Meet your agent</h1>
+        <h1 className="screen-title">Meet your agent</h1>
         <p className="text-muted-foreground text-[13px] leading-relaxed">
           Four quick questions, and your agent starts knowing who you are. It
           proposes what it heard for your confirmation before anything is saved.

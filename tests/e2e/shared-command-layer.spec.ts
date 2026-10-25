@@ -109,14 +109,14 @@ test("clicking a second capture swaps the detail body with the title, not one tu
   }
   // Two fresh rows at the top of To clarify. Select the first, then the second:
   // the detail pane must show the second capture's own body, not the first's.
+  // Fresh text captures carry no stored title, so the pane renders the body
+  // alone (no derived-first-line heading); assert on the pane's whole text.
   const rows = page.locator("li[data-capture-id]");
   const secondRow = rows.filter({ hasText: second }).first();
   const firstRow = rows.filter({ hasText: first }).first();
   await firstRow.getByRole("link").click();
-  await expect(page.getByRole("article").locator("h2")).toContainText(first);
   await expect(page.getByRole("article")).toContainText(first);
   await secondRow.getByRole("link").click();
-  await expect(page.getByRole("article").locator("h2")).toContainText(second);
   await expect(page.getByRole("article")).toContainText(second);
   // The previous capture's text must be gone from the pane.
   await expect(page.getByRole("article")).not.toContainText(first);

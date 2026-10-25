@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, ChevronDown, Square, Wrench } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Copy, Check, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
-import { useChatStream, type ChatState } from "./use-chat-stream";
+import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
 import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
+import { ToolPills } from "./tool-pills";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -276,10 +277,10 @@ export function ChatSurface({
                 // answer above it, not the thing being read.
                 <ThinkingPill key={block.id} text={block.text} done={block.done} />
               ) : (
-                <div key={block.id} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
+                <div key={block.id} className="group/message mx-auto w-full max-w-[var(--page-width)] font-[family-name:var(--font-reading)] text-[16px] leading-7">
                   <Markdown text={block.text} />
                   {block.kind === "assistant" && block.done ? (
-                    <MessageFeedback runId={runId} turnId={turnIdOf(block.id)} initial={null} />
+                    <MessageToolbar runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
                   ) : null}
                 </div>
               ),
@@ -297,7 +298,7 @@ export function ChatSurface({
           </div>
         )}
 
-        <ToolActivity tools={chat.tools} busy={busy} />
+        <ToolPills tools={chat.tools} />
 
         {chat.citations.length > 0 && (
           <details className="group mt-3 rounded-xl border border-border text-[12px]">
@@ -445,85 +446,36 @@ export function ChatCancel({ runId }: { runId: string }) {
   );
 }
 
-const INTERNAL_TOOLS = /^(eve__|search_models|search_registry|notebook_open)/;
-const TOOL_LABELS: Array<[RegExp, string]> = [
-  [/tasks_recent/i, "Checked completed tasks"],
-  [/tasks_read|tasks\./i, "Checked open tasks"],
-  [/documents_search|documents\./i, "Searched your documents"],
-  [/wiki_read|wiki\./i, "Checked the wiki"],
-  [/wiki_ingest/i, "Updated the wiki"],
-  [/wiki_lint/i, "Wiki health check"],
-  [/gmail_read_thread/i, "Read the thread"],
-  [/gmail/i, "Searched your mail"],
-  [/calendar/i, "Checked calendar"],
-  [/web_search/i, "Searched the web"],
-  [/web_fetch/i, "Read a web page"],
-  // Specific first: /drive/ below also matches googledrive_search_files, and
-  // the /gmail/ entry above also matches gmail_read_thread.
-  [/googledocs_search/i, "Searched your Google Docs"],
-  [/googlesheets/i, "Listed your spreadsheets"],
-  [/googledrive_search|drive_search/i, "Searched your Drive files"],
-  [/drive|files_list|list_files/i, "Listed your Drive files"],
-];
-
-const toolLabel = (raw: string) => TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
-
 /*
- * Tool activity, said the way a good chat product says it: one quiet summary
- * line that expands into a pill per tool call. Live tool frames carry no
- * duration, so a finished set reads "Finished" and a busy one "Working…" —
- * timing is never invented. Internal lookups with nothing to say (a registry
- * search, a self-check) never appear.
+ * The action toolbar under a finished assistant message: copy, then like and
+ * dislike. Icons rest at a quiet muted tone and come forward on hover, so the
+ * actions stay discoverable and keyboard-visible (a hover-only reveal would
+ * hide them from axe and from keyboard users) without shouting in the
+ * transcript.
  */
-function ToolActivity({ tools, busy }: { tools: ChatState["tools"]; busy: boolean }) {
-  const [open, setOpen] = useState(false);
-  const visible = tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
-  if (visible.length === 0) return null;
-  const running = visible.filter((tool) => tool.status === "running");
-  const summary =
-    running.length > 0 || busy ? "Working…" : visible.length > 0 ? `Finished · ${visible.length} steps` : "Finished";
+function MessageToolbar({ runId, turnId, text }: { runId: string; turnId: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // A blocked clipboard is not an error the transcript should carry.
+    }
+  }
   return (
-    <div className="mt-3">
+    <div className="mt-1 flex items-center gap-0.5">
       <button
         type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={copied ? "Copied" : "Copy"}
+        title={copied ? "Copied" : "Copy"}
+        onClick={() => void copy()}
+        className="text-muted-foreground/70 hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ChevronDown aria-hidden className={`size-3 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
-        <span>{summary}</span>
-        {running.length > 0 ? <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" /> : null}
+        {copied ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />}
       </button>
-      {open ? (
-        <ul className="mt-2 flex flex-wrap gap-2" aria-label="Tool activity">
-          {visible.map((tool) => {
-            const count = /^\d+$/.test(tool.detail ?? "");
-            return (
-              <li
-                key={tool.callId}
-                className={`inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-[13px] ${
-                  tool.status === "error" ? "text-destructive" : "text-muted-foreground"
-                }`}
-              >
-                <Wrench aria-hidden className="size-3.5 shrink-0" />
-                <span>
-                  {toolLabel(tool.label)}
-                  {tool.status === "running"
-                    ? "…"
-                    : tool.status === "ok" && count
-                      ? ` · ${tool.detail} matches`
-                      : tool.status === "error"
-                        ? ` · ${tool.detail ?? "failed"}`
-                        : ""}
-                </span>
-                {tool.status === "running" ? (
-                  <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" />
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+      <MessageFeedback runId={runId} turnId={turnId} initial={null} />
     </div>
   );
 }

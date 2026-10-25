@@ -9,6 +9,7 @@ import {
   destinationForPath,
   destinations,
   homeHref,
+  isConversationSurface,
   type Destination,
 } from "@/lib/navigation";
 
@@ -31,6 +32,10 @@ const subscribeToHydration = () => () => {};
 export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  // A conversation surface owns the width: the rail folds to its icon state
+  // while one is live on it. A person who pinned the rail open (localStorage
+  // "0") keeps it open; the auto-collapse does not fight them.
+  const isConversation = isConversationSurface(pathname);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -38,6 +43,14 @@ export function SideNav() {
     const frame = requestAnimationFrame(() => setCollapsed(true));
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    if (!isConversation) return;
+    const frame = requestAnimationFrame(() => {
+      if (window.localStorage.getItem(COLLAPSED_KEY) !== "0") setCollapsed(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isConversation]);
 
   function toggle() {
     setCollapsed((current) => {

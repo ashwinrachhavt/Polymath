@@ -77,7 +77,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
             <span aria-hidden className="flex size-11 items-center justify-center rounded-xl bg-muted">
               <Folder className="size-5 text-muted-foreground" />
             </span>
-            <h1 className="text-2xl font-medium">{project.emoji ? `${project.emoji} ` : ""}{project.title}</h1>
+            <h1 className="screen-title">{project.emoji ? `${project.emoji} ` : ""}{project.title}</h1>
           </div>
           <div className="mt-6">
             <StartSession
@@ -87,7 +87,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
             />
           </div>
           <section aria-label="Sessions" className="mt-10">
-            <h2 className="text-xl font-medium">Sessions</h2>
+            <h2 className="screen-title text-[20px]">Sessions</h2>
             {sessions.length === 0 ? (
               <p className="mt-3 text-[13px] text-muted-foreground">
                 No sessions yet. Start one above and it will use this project&apos;s instructions and sources.
@@ -118,7 +118,8 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
           connectors={connectors.flatMap((c) =>
             c.accounts.map((account) => ({
               id: account.id,
-              label: `${c.displayName}${account.alias ? ` — ${account.alias}` : ""}`,
+              displayName: c.displayName,
+              alias: account.alias ?? null,
               enabled: notebookAccounts.some((row) => row.gatewayAccountId === account.id && row.enabled),
             })),
           )}
