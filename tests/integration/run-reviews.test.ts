@@ -94,10 +94,10 @@ async function succeededRun(slug: string) {
 
 function critiqueHandler() {
   return critique.runCritiqueRequestedHandler(async (workspaceId) => {
-    const [membership] = await db.execute(
+    const rows = await db.execute(
       sql`select user_id from memberships where workspace_id = ${workspaceId} and role = 'owner' and status = 'active' limit 1`,
     );
-    const row = (membership as unknown as { user_id: string }[])[0];
+    const row = (rows as unknown as { user_id: string }[])[0];
     return row ? ownerAuth(row.user_id, workspaceId) : null;
   });
 }
