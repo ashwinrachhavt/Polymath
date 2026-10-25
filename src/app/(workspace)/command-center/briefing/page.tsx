@@ -8,17 +8,23 @@ import { getBriefingForPage } from "./data";
 import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
 import { SpendingPanel } from "./spending-panel";
-import { CalendarPanel } from "./calendar-panel";
 import { OutcomeButton, StartFocusButton } from "./briefing-client";
+import { CaptureStrip } from "./theatre/capture-strip";
+import { getTheatreDay } from "./theatre/theatre-data";
+import { TheatreTimeline } from "./theatre/timeline";
 
 export const metadata = { title: "Briefing · Polymath" };
 
 /*
- * The durable Briefing (ASH-137 A01): three outcomes, today's queue and the
- * waiting list all read the canonical tasks table. Accepting an outcome is a
- * version-checked tag on the task - nothing here schedules, calls a model,
- * or touches a connector. The browser-preview briefing with its local
- * agenda, stones and activity panels stays at /apps/command-center/briefing.
+ * The durable Briefing (ASH-137 A01), now wearing the Day Theatre (ASH-308):
+ * the day reads as one timeline - focus sessions, calendar events, and what
+ * the inbox received - with the decisions strip, waiting list and due panel
+ * unchanged below it. Accepting an outcome is still a version-checked tag on
+ * the task; nothing here schedules, calls a model, or touches a connector.
+ * The theatre never mutates the inbox: dragging a capture onto an hour plans
+ * a session that points at the capture. The browser-preview briefing with
+ * its local agenda, stones and activity panels stays at
+ * /apps/command-center/briefing.
  */
 
 function BriefingTabs({ active }: { active: "briefing" | "spending" }) {
@@ -66,7 +72,7 @@ function TaskRow({ task, outcomeTag, mode }: { task: BriefingTask; outcomeTag: s
 async function Briefing() {
   await io();
   const auth = await getAuthContext();
-  const briefing = await getBriefingForPage(auth);
+  const [briefing, theatre] = await Promise.all([getBriefingForPage(auth), getTheatreDay(auth)]);
   const outcomeTag = `Outcome:${briefing.today}`;
 
   return (
@@ -81,6 +87,30 @@ async function Briefing() {
       }
     >
       <BriefingTabs active="briefing" />
+
+      <Panel
+        title="The day"
+        description="Drag a capture onto an hour to plan it; the theatre refreshes itself while this tab is visible."
+      >
+        <div className="space-y-4">
+          {theatre.errors.captures ? (
+            <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-[12px]" role="alert">
+              Captures unavailable - {theatre.errors.captures}
+            </div>
+          ) : (
+            <CaptureStrip captures={theatre.captures.map((capture) => ({ ...capture, createdAt: capture.createdAt.toISOString() }))} />
+          )}
+          <TheatreTimeline
+            dayStart={theatre.dayStart}
+            renderedAt={theatre.renderedAt}
+            sessions={theatre.sessions}
+            events={theatre.events}
+            sessionError={theatre.errors.sessions}
+            eventError={theatre.errors.events}
+          />
+        </div>
+      </Panel>
+
       <Panel
         title="Three outcomes"
         description="Accepting tags the canonical task for this day; it does not schedule or start work."
@@ -96,10 +126,6 @@ async function Briefing() {
           />
         ) : null}
       </Panel>
-
-      <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the calendar…</p>}>
-        <CalendarPanel />
-      </Suspense>
 
       <Suspense fallback={<p role="status" className="text-[13px] text-muted-foreground">Checking the agents…</p>}>
         <AgentPanels />

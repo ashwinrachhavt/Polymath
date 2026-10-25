@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, or, sql, type SQL, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -148,4 +148,32 @@ export async function countInboxTabs(auth: AuthContext): Promise<Record<InboxFil
 export async function countToClarify(auth: AuthContext): Promise<number> {
   const tabs = await countInboxTabs(auth);
   return tabs.unprocessed;
+}
+
+/*
+ * ASH-308: the theatre's capture strip - what arrived today, in arrival
+ * order. Reads only; the strip never mutates the inbox. Day bounds arrive
+ * pre-resolved (theatre-data owns the workspace-timezone math), so the query
+ * itself stays a plain range read.
+ */
+export async function listCapturesArrivedBetween(auth: AuthContext, input: { from: Date; to: Date }, limit = 50) {
+  return db
+    .select({
+      id: captures.id,
+      title: captures.title,
+      text: captures.text,
+      url: captures.url,
+      processingState: captures.processingState,
+      createdAt: captures.createdAt,
+    })
+    .from(captures)
+    .where(
+      and(
+        eq(captures.workspaceId, auth.workspaceId),
+        gte(captures.createdAt, input.from),
+        lt(captures.createdAt, input.to),
+      ),
+    )
+    .orderBy(desc(captures.createdAt))
+    .limit(limit);
 }

@@ -1,5 +1,7 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import { withReceipt } from "@/domains/audit/receipt";
+import { captures } from "@/domains/capture/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { tasks } from "@/domains/work/schema";
@@ -118,6 +120,11 @@ async function transition(
           eq(focusSessions.workspaceId, auth.workspaceId),
           eq(focusSessions.version, input.expectedVersion),
           sql`${focusSessions.state} in (${sql.join(fromStates.map((s) => sql`${s}`), sql`, `)})`,
+          // Lifecycle transitions move time, so they require a session that
+          // started: a planned row (started_at null, ASH-308) can only be
+          // started, dismissed, or left alone - never paused, resumed,
+          // finished, or abandoned.
+          isNotNull(focusSessions.startedAt),
         ),
       )
       .returning();
@@ -196,4 +203,152 @@ export async function abandonFocusSession(auth: AuthContext, input: LiveTransiti
     }),
     { action: "focus_session.abandoned", summary: "Focus abandoned" },
   );
+}
+
+/*
+ * ASH-308: a capture dropped on a theatre slot becomes a planned session.
+ * "Planned" is derived - scheduledAt set, startedAt null. The ticket forbids
+ * an enum change, so the row borrows state 'paused' and is told apart from a
+ * real paused session by its columns: a real pause always has startedAt and
+ * never has an un-started scheduledAt. The capture row is never mutated; the
+ * session points at it. The drag's idempotency key is a request receipt: a
+ * double-drop replays the first session, never creates a second one.
+ */
+export async function scheduleSessionFromCapture(
+  auth: AuthContext,
+  input: { captureId: string; scheduledAt: Date; idempotencyKey?: string },
+) {
+  if (!(input.scheduledAt instanceof Date) || Number.isNaN(input.scheduledAt.getTime())) {
+    throw new ConflictError("That slot is not a time.");
+  }
+  if (input.scheduledAt.getTime() < Date.now() - 60_000) {
+    throw new ConflictError("That slot has already passed.");
+  }
+  return withTransaction(async (tx) => {
+    const [capture] = await tx
+      .select({ id: captures.id, title: captures.title, text: captures.text })
+      .from(captures)
+      .where(and(eq(captures.id, input.captureId), eq(captures.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!capture) throw new ConflictError("That capture does not exist in this workspace.");
+
+    const { value, replayed } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { captureId: input.captureId, scheduledAt: input.scheduledAt.toISOString() },
+      async () => {
+        const [session] = await tx
+          .insert(focusSessions)
+          .values({
+            workspaceId: auth.workspaceId,
+            captureId: capture.id,
+            // A capture's person-supplied title lives in rawPayload until
+            // enrichment runs, so the column is usually null here; the block
+            // needs a name either way, and the text is the honest fallback.
+            subject: capture.title ?? capture.text?.slice(0, 80) ?? null,
+            // Borrowed, not meaningful: the enum cannot grow (ticket constraint).
+            // Every read that matters derives "planned" from the columns.
+            state: "paused",
+            scheduledAt: input.scheduledAt,
+            // The durable clock starts when the session does, not when it is planned.
+            startedAt: null,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning();
+        await recordAudit(
+          auth,
+          {
+            action: "focus.session_scheduled",
+            subjectType: "focus_session",
+            subjectId: session.id,
+            summary: `Scheduled: ${session.subject ?? "capture"} at ${input.scheduledAt.toISOString()}`,
+          },
+          tx,
+        );
+        return { sessionId: session.id };
+      },
+    );
+    return { sessionId: value.sessionId, replayed };
+  });
+}
+
+/*
+ * Dismissing a scheduled block deletes the row: it never ran, so there is
+ * nothing to preserve. Only a not-yet-started scheduled row can go - a
+ * started session belongs to the lifecycle transitions above.
+ */
+export async function unscheduleFocusSession(auth: AuthContext, input: { sessionId: string }) {
+  return withTransaction(async (tx) => {
+    const [removed] = await tx
+      .delete(focusSessions)
+      .where(
+        and(
+          eq(focusSessions.id, input.sessionId),
+          eq(focusSessions.workspaceId, auth.workspaceId),
+          eq(focusSessions.state, "paused"),
+          isNull(focusSessions.startedAt),
+          isNotNull(focusSessions.scheduledAt),
+        ),
+      )
+      .returning({ id: focusSessions.id, subject: focusSessions.subject });
+    if (!removed) {
+      throw new StaleWriteError("That scheduled session changed since you loaded it. Reload and try again.");
+    }
+    await recordAudit(
+      auth,
+      { action: "focus.session_unscheduled", subjectType: "focus_session", subjectId: removed.id, summary: `Unscheduled: ${removed.subject ?? "capture"}` },
+      tx,
+    );
+    return { sessionId: removed.id };
+  });
+}
+
+/*
+ * scheduled -> started: the existing start flow takes over, but it takes over
+ * THIS row - the planned session becomes the live one rather than spawning a
+ * rival. Same guards as any start: one live session per workspace.
+ */
+export async function startScheduledFocusSession(auth: AuthContext, input: { sessionId: string; expectedVersion: number }) {
+  try {
+    return await withTransaction(async (tx) => {
+      const now = new Date();
+      const [updated] = await tx
+        .update(focusSessions)
+        .set({
+          state: "running",
+          startedAt: now,
+          lastResumedAt: now,
+          version: sql`${focusSessions.version} + 1`,
+          updatedAt: now,
+          updatedBy: auth.userId,
+        })
+        .where(
+          and(
+            eq(focusSessions.id, input.sessionId),
+            eq(focusSessions.workspaceId, auth.workspaceId),
+            eq(focusSessions.version, input.expectedVersion),
+            eq(focusSessions.state, "paused"),
+            isNull(focusSessions.startedAt),
+            isNotNull(focusSessions.scheduledAt),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new StaleWriteError("That scheduled session changed since you loaded it. Reload and try again.");
+      }
+      await recordAudit(
+        auth,
+        { action: "focus_session.started", subjectType: "focus_session", subjectId: updated.id, summary: updated.subject ? `Focus started: ${updated.subject}` : "Focus started" },
+        tx,
+      );
+      return updated;
+    });
+  } catch (cause) {
+    if (isUniqueViolation(cause)) {
+      throw new ConflictError("A focus session is already running. Finish or abandon it first.");
+    }
+    throw cause;
+  }
 }

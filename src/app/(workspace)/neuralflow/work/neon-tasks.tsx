@@ -215,7 +215,7 @@ export async function NeonTasks({
                   {focusHistory.map((session) => (
                     <div key={session.id} className="py-2 first:pt-0">
                       <p className="text-xs text-muted-foreground">
-                        {session.state} · {Math.round(session.elapsedSeconds / 60)} min · {session.startedAt.toISOString().slice(0, 10)}
+                        {session.state} · {Math.round(session.elapsedSeconds / 60)} min · {session.startedAt ? session.startedAt.toISOString().slice(0, 10) : "scheduled"}
                       </p>
                       {session.whatChanged ? <p className="text-[13px]">Changed: {session.whatChanged}</p> : null}
                       {session.nextStep ? <p className="text-[13px] text-muted-foreground">Next: {session.nextStep}</p> : null}
