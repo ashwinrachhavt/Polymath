@@ -1,3 +1,4 @@
+import { outboxEvents } from "@/domains/audit/schema";
 import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
@@ -457,6 +458,23 @@ export async function closeRun(input: {
         },
       );
       if (settled.wasSettled) settledUsd = actualUsd;
+    }
+
+    // A succeeded run earns its self-critique pass (ASH-304). Enqueued in
+    // this transaction so a closed run never loses its critique request, and
+    // deduped on the run id so a redelivered close cannot ask twice. The
+    // critique itself runs outside the run's context and its failure can
+    // never reach back here.
+    if (input.state === "succeeded") {
+      await tx
+        .insert(outboxEvents)
+        .values({
+          workspaceId: input.workspaceId,
+          topic: "run.critique_requested",
+          payload: { runId: input.runId },
+          dispatchKey: input.runId,
+        })
+        .onConflictDoNothing();
     }
 
     return { closed: true, settledUsd };

@@ -472,6 +472,73 @@ export const runEvents = pgTable(
   (t) => [uniqueIndex("run_events_run_sequence_key").on(t.runId, t.sequence)],
 );
 
+/*
+ * Run reviews (ASH-304): the two run-level signals that outlive the run.
+ *
+ * run_kind = 'critique'        the agent's own post-run note (proposed by a
+ *                              separate cheap pass, dismissable, never
+ *                              auto-injected into anything)
+ * run_kind = 'user_feedback'   the operator's run-level verdict with reasons
+ *
+ * Provenance (policy_snapshot, profile_revision_id, model) is copied from the
+ * run at write time so a later regression-corpus phase can replay without
+ * re-deriving what the run ran under. Feedback clears back to neutral by
+ * nulling verdict/reasons/note on the same row - one row per run, enforced
+ * below; the history of the flips lives in the audit rows.
+ */
+export const runReviewKind = pgEnum("run_review_kind", ["critique", "user_feedback"]);
+
+export const FEEDBACK_REASONS = ["wrong", "incomplete", "wrong-target", "messy", "overscoped", "other"] as const;
+
+export const runReviews = pgTable(
+  "run_reviews",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    kind: runReviewKind("kind").notNull(),
+    /** The operator's verdict. NULL on a critique row or a cleared feedback row. */
+    verdict: text("verdict"),
+    /** Why a thumbs-down, from FEEDBACK_REASONS. Empty when not given. */
+    reasons: text("reasons").array().notNull().default([]),
+    /** Optional one-liner with the verdict. */
+    note: text("note"),
+    /** Critique fields; all three optional, all capped (see migration check). */
+    gotWrong: text("got_wrong"),
+    wasThin: text("was_thin"),
+    wouldDoDifferently: text("would_do_differently"),
+    /** What the run ran under, copied at write time for later replay. */
+    policySnapshot: jsonb("policy_snapshot"),
+    profileRevisionId: uuid("profile_revision_id"),
+    model: text("model"),
+    /** A dismissed critique stays stored but stops rendering. */
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    // One feedback row per run; clearing updates it, never stacks another.
+    uniqueIndex("run_reviews_one_feedback_per_run")
+      .on(t.workspaceId, t.runId)
+      .where(sql`kind = 'user_feedback'`),
+    // One critique per run; a redelivered critique event is a no-op.
+    uniqueIndex("run_reviews_one_critique_per_run")
+      .on(t.workspaceId, t.runId)
+      .where(sql`kind = 'critique'`),
+    check("run_reviews_verdict_check", sql`verdict is null or verdict in ('up', 'down')`),
+    check(
+      "run_reviews_reasons_check",
+      sql`reasons <@ array['wrong','incomplete','wrong-target','messy','overscoped','other']::text[]`,
+    ),
+    check(
+      "run_reviews_field_caps",
+      sql`char_length(coalesce(got_wrong, '')) <= 600 and char_length(coalesce(was_thin, '')) <= 600 and char_length(coalesce(would_do_differently, '')) <= 600 and char_length(coalesce(note, '')) <= 280`,
+    ),
+    index("run_reviews_run_idx").on(t.runId),
+  ],
+);
+
 export const runArtifacts = pgTable(
   "run_artifacts",
   {
