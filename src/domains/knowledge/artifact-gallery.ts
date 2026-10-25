@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { markdownToPlainText } from "@/lib/display-text";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts, documents } from "./schema";
@@ -76,7 +77,10 @@ export async function listGalleryArtifacts(
       origin: row.producedByRunId ? "run" : "authored",
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      preview: row.contentText ?? row.plainText ?? "",
+      // The preview is plain text by convention (lib/display-text): strip
+      // whichever source wins - raw markers in a card read as corruption.
+      // Stripping is marker-precise, so already-plain text passes through.
+      preview: markdownToPlainText(row.plainText ?? row.contentText ?? ""),
     }) satisfies GalleryArtifact),
   };
 }
