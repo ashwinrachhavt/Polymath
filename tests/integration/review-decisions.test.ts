@@ -123,7 +123,12 @@ suite("decideProposal", () => {
     });
 
     const [pinned] = await db.select().from(actionRevisions).where(eq(actionRevisions.id, revised.revisionId));
-    expect((pinned.payload as Record<string, unknown>).accountPin).toEqual({ resolved: false, alias: null, provider: "gmail" });
+    expect((pinned.payload as Record<string, unknown>).accountPin).toEqual({
+      resolved: false,
+      alias: null,
+      provider: "gmail",
+      reason: "No gmail account is connected.",
+    });
   });
 
   it("approving flips the status, writes the review, the audit row and the receipt in one transaction", async () => {

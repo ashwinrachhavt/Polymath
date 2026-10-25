@@ -1,6 +1,7 @@
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { Screen } from "@/components/workspace/ui";
+import { senderAliasPolicy } from "@/domains/actions/policy";
 import { listConnectors } from "@/domains/integrations/queries";
 import { getAuthContext } from "@/lib/auth";
 import { ConnectorCatalog, type CatalogConnector } from "./connector-catalog";
@@ -33,7 +34,10 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
   const connectionResult = typeof query.connection === "string" ? query.connection : null;
   const resultMessage = connectionResult ? CONNECTION_RESULT[connectionResult] ?? "The connection did not complete." : null;
   const auth = await getAuthContext();
-  const connectors = await listConnectors(auth);
+  const [connectors, senderPolicy] = await Promise.all([
+    listConnectors(auth),
+    senderAliasPolicy(auth.workspaceId, "gmail.send"),
+  ]);
 
   const catalog: CatalogConnector[] = connectors.map((connector) => ({
     provider: connector.provider,
@@ -77,7 +81,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
         </p>
       ) : null}
 
-      <ConnectorCatalog connectors={catalog} />
+      <ConnectorCatalog connectors={catalog} authorizedSenders={senderPolicy.configured ? senderPolicy.aliases : null} />
 
     </Screen>
   );
