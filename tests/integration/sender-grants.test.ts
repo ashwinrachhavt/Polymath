@@ -146,7 +146,7 @@ suite("sender grants", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("the grant upserts one row per capability, writes its audit row, and clearing lifts the restriction", async () => {
+  it("the grant upserts one row per capability, writes its audit row, and clearing blocks every sender", async () => {
     const { auth, workspaceId } = await seed("grant-crud", ["work"]);
 
     await policy.setSenderAliasGrant(auth, "gmail.send", ["work"]);
@@ -169,7 +169,14 @@ suite("sender grants", () => {
     expect(audits.map((row) => row.action)).toContain("policy.sender_aliases_set");
 
     await policy.setSenderAliasGrant(auth, "gmail.send", []);
+    // Clearing is deliberate: every named sender is refused, and an unnamed
+    // sender resolves inside the empty list and fails honestly. Revoking the
+    // last check must narrow to nothing, never widen back to unrestricted.
     const pin = await actions.senderAccountPin(auth, "gmail.send", "work");
-    expect(pin).toMatchObject({ resolved: true, alias: "work" });
+    expect(pin?.resolved).toBe(false);
+    expect(pin && !pin.resolved && pin.reason).toContain("No sender is authorized");
+    const unnamed = await actions.senderAccountPin(auth, "gmail.send", null);
+    expect(unnamed?.resolved).toBe(false);
+    expect(unnamed && !unnamed.resolved && unnamed.reason).toContain("authorizes no senders");
   });
 });

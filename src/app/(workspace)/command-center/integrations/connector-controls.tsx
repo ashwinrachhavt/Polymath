@@ -361,8 +361,8 @@ export function SenderGrantControls({
     <div className="border-t border-border pt-3" data-testid="sender-grants">
       <p className="text-[13px] font-medium">Sending grants</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Only checked accounts may send email. With none checked, any connected account may send; a proposal that
-        names no account resolves only inside this list.
+        Only checked accounts may send email. Until a grant is saved, any connected account may send; saving with
+        none checked blocks all sending. A proposal that names no account resolves only inside this list.
       </p>
       <div className="mt-2 flex flex-col gap-1.5">
         {aliases.map((alias) => (

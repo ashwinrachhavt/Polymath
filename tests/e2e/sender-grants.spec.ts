@@ -71,8 +71,9 @@ for (const vp of VIEWPORTS) {
     await page.goto("/command-center/integrations");
     const grants = page.getByTestId("sender-grants");
     await expect(grants).toBeVisible({ timeout: 30_000 });
-    // The unrestricted default reads plainly before anything is checked.
-    await expect(grants.getByText(/none checked, any connected account may send/)).toBeVisible();
+    // The copy explains both states: never-saved is unrestricted, saving
+    // with none checked blocks all sending - clearing never widens.
+    await expect(grants.getByText(/Until a grant is saved, any connected account may send/)).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/sender-grants-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     const box = grants.getByRole("checkbox", { name: ALIAS });
@@ -85,7 +86,8 @@ for (const vp of VIEWPORTS) {
     await page.reload();
     await expect(page.getByTestId("sender-grants").getByRole("checkbox", { name: ALIAS })).toBeChecked({ timeout: 30_000 });
 
-    // Revoke: uncheck and save again, leaving the workspace unrestricted.
+    // Revoke: uncheck and save again. Saving empty blocks all sending -
+    // a deliberate narrowing, never a silent return to unrestricted.
     const grantsAfter = page.getByTestId("sender-grants");
     await grantsAfter.getByRole("checkbox", { name: ALIAS }).uncheck();
     await grantsAfter.getByRole("button", { name: /save|grant/i }).click();

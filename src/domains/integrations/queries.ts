@@ -185,7 +185,10 @@ export async function resolveConnectedAccount(
     .limit(25);
 
   const connected = rows.filter((row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0);
-  const usable = restrictToAliases?.length ? connected.filter((row) => restrictToAliases.includes(row.alias)) : connected;
+  // undefined = no grant policy (unrestricted); [] = a grant saved empty,
+  // which blocks every sender - an empty list must NOT fall back to all
+  // connected accounts.
+  const usable = restrictToAliases === undefined ? connected : connected.filter((row) => restrictToAliases.includes(row.alias));
 
   let match: (typeof usable)[number] | undefined;
   if (alias) {
@@ -197,9 +200,12 @@ export async function resolveConnectedAccount(
     return {
       ok: false,
       code: "not_connected",
-      message: restrictToAliases?.length
-        ? `None of the authorized ${provider} senders (${restrictToAliases.join(", ")}) is connected.`
-        : `No ${provider} account is connected.`,
+      message:
+        restrictToAliases === undefined
+          ? `No ${provider} account is connected.`
+          : restrictToAliases.length > 0
+            ? `None of the authorized ${provider} senders (${restrictToAliases.join(", ")}) is connected.`
+            : `Sending is blocked: the ${provider} sending grant authorizes no senders.`,
     };
   } else if (usable.length > 1) {
     return {

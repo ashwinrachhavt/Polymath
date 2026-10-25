@@ -12,10 +12,11 @@ import { actionPolicies } from "./schema";
  * The policy row's free-form constraints bag gains one understood key:
  *   { "allowedSenderAliases": ["work", "newsletters"] }
  * Only capabilities with a sender pin (ACCOUNT_PIN_PROVIDERS, today only
- * gmail.send) consult it. The rule is deny-by-omission only when the list is
- * present and non-empty: a workspace that never configures it keeps today's
- * behavior, and an empty list would read as "no sender may send", which no
- * owner writes on purpose - so it is treated as unconfigured.
+ * gmail.send) consult it. The rule is deny-by-omission once the key exists:
+ * a workspace that never saves a grant keeps today's unrestricted behavior,
+ * but a grant saved with every alias unchecked is a deliberate act - it
+ * blocks ALL sending. Clearing must never widen a tightened grant back to
+ * unrestricted, or an unlisted account could substitute as sender.
  *
  * Enforcement is doubled on purpose: the pin path refuses to bind an
  * unauthorized alias into a NEW revision, and the executor re-checks the
@@ -33,9 +34,11 @@ export type SenderAliasPolicy = { configured: true; aliases: string[] } | { conf
 
 export function parseSenderAliasPolicy(constraints: unknown): SenderAliasPolicy {
   const parsed = constraintsSchema.safeParse(constraints ?? {});
-  const aliases = parsed.success ? (parsed.data.allowedSenderAliases ?? []) : [];
-  const unique = [...new Set(aliases)];
-  return unique.length > 0 ? { configured: true, aliases: unique } : { configured: false };
+  // Absent key (or a bag we cannot read) means the workspace never chose a
+  // policy: unrestricted. A PRESENT list is the owner's choice, including
+  // the empty one that blocks every sender.
+  if (!parsed.success || parsed.data.allowedSenderAliases === undefined) return { configured: false };
+  return { configured: true, aliases: [...new Set(parsed.data.allowedSenderAliases)] };
 }
 
 export async function senderAliasPolicy(workspaceId: string, capability: string): Promise<SenderAliasPolicy> {
@@ -61,7 +64,10 @@ export function checkSenderAlias(policy: SenderAliasPolicy, alias: string | null
   if (alias === null || policy.aliases.includes(alias)) return { allowed: true };
   return {
     allowed: false,
-    reason: `"${alias}" is not an authorized sender for this capability. Authorized: ${policy.aliases.join(", ")}.`,
+    reason:
+      policy.aliases.length > 0
+        ? `"${alias}" is not an authorized sender for this capability. Authorized: ${policy.aliases.join(", ")}.`
+        : "No sender is authorized for this capability; sending stays blocked until a sending grant names one.",
   };
 }
 
@@ -117,7 +123,7 @@ export async function setSenderAliasGrant(
         summary:
           clean.length > 0
             ? `Authorized senders for ${capability}: ${clean.join(", ")}`
-            : `Sender restriction cleared for ${capability}`,
+            : `Sending blocked for ${capability}: no authorized senders`,
         metadata: { aliases: clean },
       },
       tx,
