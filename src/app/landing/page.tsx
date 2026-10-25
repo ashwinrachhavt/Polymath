@@ -31,7 +31,7 @@ export default function LandingPage() {
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-24 text-center">
-        <h1 className="max-w-5xl text-[clamp(2.75rem,8vw,5.75rem)] font-bold leading-[1.04] tracking-[-0.035em] text-balance">
+        <h1 className="max-w-5xl font-[family-name:var(--font-display)] text-[clamp(2.75rem,8vw,4.5rem)] font-bold leading-[1.08] tracking-normal text-balance">
           {/* Notion-style highlight: the action word sits in a pill. */}
           <span className="inline-flex items-center gap-[0.28em] rounded-full bg-[oklch(0.93_0.055_145)] px-[0.38em] py-[0.06em] text-[oklch(0.27_0.008_75)] align-baseline">
             <span
