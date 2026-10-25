@@ -72,6 +72,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Next 16 dropped per-route First Load JS from the build table; this
+      # restores the spec's JS-budget measurement from the build manifest.
+      - run: node scripts/check-route-js.mjs
 
   e2e:
     runs-on: ubuntu-latest
