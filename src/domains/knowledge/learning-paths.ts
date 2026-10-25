@@ -1,10 +1,12 @@
-import { and, eq, isNull, like } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
+import { IdempotencyConflictError, withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { proposeTask } from "@/domains/work/proposals";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { sha256Hex } from "@/lib/hash";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import {
   GenerationUnconfiguredError,
@@ -14,7 +16,7 @@ import {
 import { proposeCard } from "./cards";
 import { proposeNote } from "./note-proposals";
 import { createNoteInTx } from "./notes";
-import { artifacts, artifactVersions, cards } from "./schema";
+import { artifacts, cards } from "./schema";
 
 /*
  * Learning paths (ASH-300): from a goal like "understand X," one pass
@@ -139,29 +141,35 @@ export async function generateLearningPath(
   const out = await provider.generate({ system: SYSTEM, prompt: `GOAL: ${goal}`, json: true });
   const draft = parseLearningPathAnswer(out.text);
 
+  // The batch key binds the goal durably: the slug for readability, a short
+  // hash of the normalized goal so "understand raft" and "understand raft!"
+  // never collide on one path.
+  const batch = `learning-path:${slug(goal)}:${(await sha256Hex(goal.toLowerCase())).slice(0, 10)}`;
+
   // The path note exists before the proposals: the cards cite it, and the
-  // owner can read the shape of the path while deciding the rest. A retried
-  // generation reuses the existing path note (recognized by its marker
-  // sentence) instead of stacking duplicates.
-  const marker = "waiting as proposals";
-  const [existingPath] = await db
+  // owner can read the shape of the path while deciding the rest. Its
+  // identity is the batch receipt, not a content lookup: a retried
+  // generation replays the same note id, and the advisory lock serializes
+  // simultaneous generations of the same goal so the loser replays too.
+  const { value: noteRef } = await withTransaction((tx) =>
+    withReceipt(tx, auth, `${batch}:note`, { goal }, async () => {
+      const note = await createNoteInTx(tx, auth, { title: draft.pathTitle, kind: "note", plainText: renderPathNote(draft) });
+      return { artifactId: note.id };
+    }),
+  );
+  const artifactId = noteRef.artifactId;
+  // A replayed note must still exist to be cited. If the owner deleted it,
+  // say so honestly instead of dangling every citation.
+  const [pathNote] = await db
     .select({ id: artifacts.id })
     .from(artifacts)
-    .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(
-      eq(artifacts.workspaceId, auth.workspaceId),
-      eq(artifacts.kind, "note"),
-      eq(artifacts.title, draft.pathTitle),
-      isNull(artifacts.archivedAt),
-      like(artifactVersions.plainText, `%${marker}%`),
-    ))
+    .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
     .limit(1);
-  const artifactId = existingPath?.id ?? await withTransaction(async (tx) => {
-    const note = await createNoteInTx(tx, auth, { title: draft.pathTitle, kind: "note", plainText: renderPathNote(draft) });
-    return note.id;
-  });
-
-  const batch = `learning-path:${slug(goal)}`;
+  if (!pathNote) {
+    throw new LearningPathNotAllowedError(
+      `The path note for "${goal}" was deleted. Restore it to keep the path, or rephrase the goal to start a fresh one.`,
+    );
+  }
   const noteProposalIds: string[] = [];
   const taskProposalIds: string[] = [];
   const cardIds: string[] = [];
@@ -183,26 +191,37 @@ export async function generateLearningPath(
   }
   for (const [i, card] of (draft.cards ?? []).entries()) {
     // Cards skip the proposal queue (they arrive in the proposed state), so
-    // their retry safety is a content lookup: a retried generation re-cites
-    // the existing card for the same prompt rather than doubling the deck.
-    // proposeCard's own receipt key stays per-batch-position for first runs.
+    // a retried generation re-cites the card this path already has for the
+    // same prompt rather than doubling the deck. Scoping to THIS path note
+    // keeps two goals with a shared prompt on separate cards.
     const prompt = card.prompt.trim();
-    const [existing] = await db
-      .select({ id: cards.id })
-      .from(cards)
-      .where(and(eq(cards.workspaceId, auth.workspaceId), eq(cards.prompt, prompt)))
-      .limit(1);
+    const findCard = () =>
+      db
+        .select({ id: cards.id })
+        .from(cards)
+        .where(and(eq(cards.workspaceId, auth.workspaceId), eq(cards.artifactId, artifactId), eq(cards.prompt, prompt)))
+        .limit(1);
+    const [existing] = await findCard();
     if (existing) {
       cardIds.push(existing.id);
       continue;
     }
-    const r = await proposeCard(auth, {
-      prompt: card.prompt,
-      answer: card.answer,
-      artifactId,
-      idempotencyKey: `${batch}:card:${i}`,
-    });
-    cardIds.push(r.id);
+    try {
+      const r = await proposeCard(auth, {
+        prompt: card.prompt,
+        answer: card.answer,
+        artifactId,
+        idempotencyKey: `${batch}:card:${i}`,
+      });
+      cardIds.push(r.id);
+    } catch (error) {
+      // A simultaneous generation of the same goal proposed this slot first
+      // with a differently worded answer: cite the winner's card.
+      if (!(error instanceof IdempotencyConflictError)) throw error;
+      const [winner] = await findCard();
+      if (!winner) throw error;
+      cardIds.push(winner.id);
+    }
   }
 
   await withTransaction(async (tx) => {

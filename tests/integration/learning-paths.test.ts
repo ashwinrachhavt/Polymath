@@ -87,9 +87,36 @@ suite("learning paths", () => {
     expect(second.noteProposalIds).toHaveLength(0);
     expect(second.taskProposalIds).toHaveLength(0);
     expect(second.deduplicated).toBe(2);
-    // Cards dedupe by idempotency key: the replay returns the same card.
+    // Cards re-cite this path's existing card for the same prompt.
     expect(second.cardIds).toHaveLength(1);
     expect(await db.select({ id: cards.id }).from(cards).where(eq(cards.workspaceId, workspaceId))).toHaveLength(1);
+  });
+
+  it("serializes a simultaneous double generation of the same goal", async () => {
+    const { auth, workspaceId } = await seed("path-race");
+
+    const [a, b] = await Promise.all([
+      paths.generateLearningPath(auth, { goal: "understand distributed consensus" }, { provider: mockProvider }),
+      paths.generateLearningPath(auth, { goal: "understand distributed consensus" }, { provider: mockProvider }),
+    ]);
+
+    // One path note, one deck, one queue: the loser replays the winner.
+    expect(a.artifactId).toBe(b.artifactId);
+    expect(await db.select({ id: cards.id }).from(cards).where(eq(cards.workspaceId, workspaceId))).toHaveLength(1);
+    expect(
+      await db.select({ id: actionProposals.id }).from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId)),
+    ).toHaveLength(2);
+  });
+
+  it("keeps similarly worded goals on separate paths", async () => {
+    const { auth } = await seed("path-similar");
+
+    // Same slug, different goal: the batch key carries a goal hash, so the
+    // two never replay each other's note or cards.
+    const a = await paths.generateLearningPath(auth, { goal: "understand raft" }, { provider: mockProvider });
+    const b = await paths.generateLearningPath(auth, { goal: "understand raft!" }, { provider: mockProvider });
+    expect(a.artifactId).not.toBe(b.artifactId);
+    expect(a.cardIds).not.toEqual(b.cardIds);
   });
 
   it("writes nothing when the model's answer is unusable", async () => {

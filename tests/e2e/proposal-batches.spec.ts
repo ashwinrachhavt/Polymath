@@ -96,6 +96,16 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText("Add note: Pricing decision").first()).toBeVisible();
     await expect(page.getByText("Add task: Follow up with Marcus: confirm the launch date").first()).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/debrief-reviews-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+
+    // Cardinality, scoped to THIS transcript: .first() tolerates leftovers
+    // from earlier attempts, but one debrief must produce exactly its three
+    // proposals - never duplicates from the same transcript.
+    const reader = db();
+    const [{ count }] = await reader!<{ count: string }[]>`
+      select count(*)::text as count from action_proposals
+      where dedupe_key like ${`%meeting-debrief:${artifact!.id}:%`}`;
+    await reader!.end();
+    expect(Number(count)).toBe(3);
   });
 
   test(`a learning goal proposes notes, tasks and cards [${vp.name}]`, async ({ page }) => {
