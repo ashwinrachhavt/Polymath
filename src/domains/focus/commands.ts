@@ -226,7 +226,7 @@ export async function scheduleSessionFromCapture(
   }
   return withTransaction(async (tx) => {
     const [capture] = await tx
-      .select({ id: captures.id, title: captures.title })
+      .select({ id: captures.id, title: captures.title, text: captures.text })
       .from(captures)
       .where(and(eq(captures.id, input.captureId), eq(captures.workspaceId, auth.workspaceId)))
       .limit(1);
@@ -243,7 +243,10 @@ export async function scheduleSessionFromCapture(
           .values({
             workspaceId: auth.workspaceId,
             captureId: capture.id,
-            subject: capture.title,
+            // A capture's person-supplied title lives in rawPayload until
+            // enrichment runs, so the column is usually null here; the block
+            // needs a name either way, and the text is the honest fallback.
+            subject: capture.title ?? capture.text?.slice(0, 80) ?? null,
             // Borrowed, not meaningful: the enum cannot grow (ticket constraint).
             // Every read that matters derives "planned" from the columns.
             state: "paused",

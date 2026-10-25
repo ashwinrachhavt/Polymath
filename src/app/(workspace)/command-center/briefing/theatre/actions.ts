@@ -8,7 +8,8 @@ import {
   unscheduleFocusSession,
 } from "@/domains/focus/commands";
 import { ConflictError, StaleWriteError } from "@/domains/focus/commands";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { requireRole } from "@/lib/auth/guards";
 
 /*
  * The theatre's mutations (ASH-308). Standard server-action order:
@@ -26,6 +27,12 @@ const scheduleSchema = z.object({
 
 export type TheatreActionResult = { ok: true } | { ok: false; message: string };
 
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  return auth;
+}
+
 function labelled(cause: unknown): TheatreActionResult {
   if (cause instanceof ConflictError || cause instanceof StaleWriteError) {
     return { ok: false, message: cause.message };
@@ -34,7 +41,7 @@ function labelled(cause: unknown): TheatreActionResult {
 }
 
 export async function scheduleCaptureAction(input: z.input<typeof scheduleSchema>): Promise<TheatreActionResult> {
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const parsed = scheduleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "That schedule request is not well formed." };
   try {
@@ -53,7 +60,7 @@ export async function scheduleCaptureAction(input: z.input<typeof scheduleSchema
 const unscheduleSchema = z.object({ sessionId: z.string().uuid() });
 
 export async function unscheduleSessionAction(input: z.input<typeof unscheduleSchema>): Promise<TheatreActionResult> {
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const parsed = unscheduleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "That scheduled block is not well formed." };
   try {
@@ -68,7 +75,7 @@ export async function unscheduleSessionAction(input: z.input<typeof unscheduleSc
 const startSchema = z.object({ sessionId: z.string().uuid(), expectedVersion: z.number().int().nonnegative() });
 
 export async function startScheduledSessionAction(input: z.input<typeof startSchema>): Promise<TheatreActionResult> {
-  const auth = await getAuthContext();
+  const auth = await authorize();
   const parsed = startSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "That scheduled block is not well formed." };
   try {

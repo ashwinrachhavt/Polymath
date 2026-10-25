@@ -22,6 +22,8 @@ export type TheatreDay = {
   timezone: string;
   dayStart: string;
   dayEnd: string;
+  /** When the projection was rendered; the client clock hydrates from this. */
+  renderedAt: string;
   sessions: FocusSessionView[];
   events: WeekEvent[];
   captures: Array<{ id: string; title: string | null; text: string | null; url: string | null; processingState: string; createdAt: Date }>;
@@ -51,6 +53,7 @@ async function dayBounds(auth: AuthContext): Promise<{ localDate: string; timezo
 
 export async function getTheatreDay(auth: AuthContext): Promise<TheatreDay> {
   const { localDate, timezone, from, to } = await dayBounds(auth);
+  const renderedAt = new Date().toISOString();
   const errors: TheatreDay["errors"] = {};
 
   const [sessions, events, captures] = await Promise.all([
@@ -73,6 +76,7 @@ export async function getTheatreDay(auth: AuthContext): Promise<TheatreDay> {
     timezone,
     dayStart: from.toISOString(),
     dayEnd: to.toISOString(),
+    renderedAt,
     sessions,
     events,
     captures,

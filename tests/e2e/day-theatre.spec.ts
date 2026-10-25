@@ -110,7 +110,7 @@ test("a session finished behind the page's back shows finished within one poll",
     await page.goto("/command-center/briefing");
     await seedCapture(page, `${tag} anchor`);
     const [capture] = await sql<{ workspace_id: string; created_by: string }[]>`
-      select workspace_id, created_by from captures where title = ${`${tag} anchor`} limit 1`;
+      select workspace_id, created_by from captures where text = ${`${tag} anchor body`} limit 1`;
     // The live slot is unique per workspace: clear any leftover live session
     // from an earlier harness run before taking it.
     await sql`update focus_sessions set state = 'finished', ended_at = now()

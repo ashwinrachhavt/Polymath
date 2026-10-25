@@ -26,12 +26,15 @@ const MIN_PX = 1; // 60px per hour: a quiet day is one calm column.
 
 export function TheatreTimeline({
   dayStart,
+  renderedAt,
   sessions,
   events,
   sessionError,
   eventError,
 }: {
   dayStart: string;
+  /** Server render time: the initial clock, identical on both sides of hydration. */
+  renderedAt: string;
   sessions: FocusSessionView[];
   events: WeekEvent[];
   sessionError?: string;
@@ -40,7 +43,7 @@ export function TheatreTimeline({
   const router = useRouter();
   const { asOf, stale } = useDayPoll();
   const dayStartMs = new Date(dayStart).getTime();
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => new Date(renderedAt).getTime());
   const [refusingSlot, setRefusingSlot] = useState<number | null>(null);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -73,7 +76,7 @@ export function TheatreTimeline({
 
   return (
     <div className="relative" data-testid="theatre-timeline">
-      <p className="mb-2 text-[11px] text-muted-foreground" role="status">
+      <p className="mb-2 text-[11px] text-foreground/80" role="status">
         {stale ? `As of ${asOf ? asOf.toTimeString().slice(0, 5) : "before"} - reconnecting` : asOf ? `Live as of ${asOf.toTimeString().slice(0, 5)}` : "Live"}
       </p>
       <div className="relative border-t border-border" style={{ height: 24 * 60 * MIN_PX }}>

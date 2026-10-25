@@ -16,7 +16,7 @@ export function EventBlock({ event, dayStartMs, nowMs }: { event: WeekEvent; day
       data-testid={`event-${event.id}`}
     >
       <p className="truncate text-[12px] font-medium">{event.title}</p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[11px] text-foreground/80">
         {event.startsAt.toISOString().slice(11, 16)} - {event.endsAt.toISOString().slice(11, 16)}
         {live ? " · now" : ""}
       </p>

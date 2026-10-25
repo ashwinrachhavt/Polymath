@@ -82,7 +82,7 @@ export function SessionBlock({
               <button
                 type="button"
                 aria-label="Dismiss planned session"
-                className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                className="rounded px-1.5 py-0.5 text-[11px] text-foreground/80 hover:bg-muted"
                 onClick={() => onDismiss(model.id)}
               >
                 ×
@@ -90,7 +90,7 @@ export function SessionBlock({
             ) : null}
           </div>
         </div>
-        <p className="text-[11px] text-muted-foreground">planned</p>
+        <p className="text-[11px] text-foreground/80">planned</p>
       </div>
     );
   }
@@ -101,7 +101,7 @@ export function SessionBlock({
       data-testid={`session-${model.id}`}
     >
       <p className="truncate text-[12px] font-medium">{model.subject ?? "Focus session"}</p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[11px] text-foreground/80">
         {model.kind === "active" ? "in progress" : "finished"}
         {model.elapsedMinutes !== null ? ` · ${model.elapsedMinutes}m` : ""}
       </p>

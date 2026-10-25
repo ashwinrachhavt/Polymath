@@ -102,6 +102,7 @@ async function Briefing() {
           )}
           <TheatreTimeline
             dayStart={theatre.dayStart}
+            renderedAt={theatre.renderedAt}
             sessions={theatre.sessions}
             events={theatre.events}
             sessionError={theatre.errors.sessions}
