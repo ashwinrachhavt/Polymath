@@ -637,6 +637,35 @@ with the text centered in it, one step larger."
 
 ---
 
+### Task 9b: Beautiful tool-activity and thinking pills in the chat transcript
+
+**Files:**
+- Modify: `src/components/chat/chat-surface.tsx` (ToolActivity + reasoning rendering)
+- Modify: `src/app/(workspace)/alfred/[runId]/page.tsx` (stored-transcript mirror)
+
+**Interfaces:** none new. Reference (Claude Code style): one collapsed summary line — "Finished 2m 19s" / "Worked 34s" — that expands into a list of pills, one per tool call: a small wrench glyph + the human verb for the tool ("Saving the approved API conventions in Notion"). Thinking is surfaced the same way: a collapsed "Thought for 12s" disclosure whose body is the model's visible rationale.
+
+- [ ] **Step 1: Restyle ToolActivity**
+
+Replace the current "Used N tools" row with: a collapsed summary (`Finished {duration}` when the run ended, `Working…` live) with a chevron; expanded, one pill per tool call — `inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-[13px]`, wrench icon (lucide `Wrench`, `size-3.5`, muted), and the tool's human phrase from the existing `TOOL_LABELS` map (extend entries to full verb phrases where the current label is bare, e.g. "Searched your mail", "Read the thread", "Listed your Drive files"). Collapsed by default; `open` state may default open for the most recent turn only.
+
+- [ ] **Step 2: Thinking pills**
+
+In both the live stream and the stored transcript, render reasoning blocks as a collapsed disclosure: summary `Thought for {duration}` (or "Thought process" when no duration exists), body `text-[13px] text-muted-foreground whitespace-pre-wrap` — replacing the plain "Show thinking" `<details>` where it exists.
+
+- [ ] **Step 3: Verify in the browser (headless)**
+
+Open a conversation with tool calls (e.g. an alfred run that used gmail_search). Expected: one quiet summary line, pills with human verb phrases inside, thinking as its own collapsed pill. Screenshot for the PR.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/components/chat/chat-surface.tsx "src/app/(workspace)/alfred/[runId]/page.tsx"
+git commit -m "style(chat): tool activity and thinking as beautiful pills"
+```
+
+---
+
 ### Task 10: Vault search bar — right-sized
 
 **Files:**
