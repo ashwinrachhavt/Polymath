@@ -67,7 +67,7 @@ export function MeetingsScreen() {
   </Screen>;
 }
 
-import { KnowledgeDebtPanel, ServerWeek } from "./server-week";
+import { KnowledgeDebtPanel, OutcomeNarrativePanel, ServerWeek } from "./server-week";
 export function ReportsScreen() {
   const { state, addArtifact, updateArtifact, notify } = useWorkspace();
   const [end, setEnd] = useState(localDate); const [start, setStart] = useState(() => shiftDate(localDate(), -6)); const [project, setProject] = useState("all");
@@ -97,6 +97,7 @@ export function ReportsScreen() {
   }
   return <Screen title="Reports" description="Reflect on evidence you actually recorded. Focus metrics use local completion rewards; task counts describe current state, not fabricated weekly completion history." actions={<><Button variant="outline" onClick={exportSnapshot}>Export local snapshot</Button><Button onClick={saveSnapshot}>Save snapshot as note</Button></>}>
     <ServerWeek />
+    <OutcomeNarrativePanel />
     <KnowledgeDebtPanel />
     <Panel title="Reflection window"><div className="flex flex-wrap items-end gap-3"><Field label="From"><Input type="date" value={start} onChange={(event) => event.target.value && setStart(event.target.value)} /></Field><Field label="Through"><Input type="date" value={end} onChange={(event) => event.target.value && setEnd(event.target.value)} /></Field><Field label="Project"><Select value={project} onChange={(event) => setProject(event.target.value)}><option value="all">All projects</option>{state.projects.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</Select></Field><Button variant="outline" onClick={() => changePeriod(-7)}>Previous week</Button><Button variant="outline" onClick={() => { setStart(shiftDate(localDate(), -6)); setEnd(localDate()); }}>Last seven days</Button><Button variant="outline" onClick={() => changePeriod(7)}>Next week</Button></div></Panel>
     {start > end && <p role="alert" className="text-[13px] text-destructive">The reporting range is reversed. Select an end date on or after the start.</p>}

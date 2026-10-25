@@ -25,12 +25,26 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-const EVENT_TITLE = "Weekly sync";
-const NOTE_TITLE = "Pricing decision";
-const TASK_TITLE = "Send the Q3 roadmap to Priya Nair";
+/*
+ * fullyParallel runs both viewport x both journey tests at once against one
+ * scratch database, so every seeded row is namespaced per test (tag) and the
+ * seed is idempotent: it clears only its own tag's leftovers before inserting.
+ * No afterAll cleanup - a per-worker afterAll deleting shared names raced
+ * sibling tests mid-flight (desktop's event vanished while mobile waited).
+ */
+
+function names(tag: string) {
+  return {
+    calendar: `E2E Prep Calendar ${tag}`,
+    event: `Weekly sync ${tag}`,
+    email: `priya-${tag}@example.com`,
+    note: `Pricing decision ${tag}`,
+    task: `Send the Q3 roadmap to Priya Nair ${tag}`,
+  };
+}
 
 /** The event, its attendee+contact, the mentioning note and the open loop. */
-async function seedPrepContext(): Promise<boolean> {
+async function seedPrepContext(tag: string): Promise<boolean> {
   const client = db();
   if (!client) return false;
   try {
@@ -42,27 +56,36 @@ async function seedPrepContext(): Promise<boolean> {
     if (!owner) return false;
     const ws = owner.workspace_id;
     const uid = owner.user_id;
+    const n = names(tag);
+
+    // Idempotent per-tag seed: clear only this test's own leftovers.
+    await client`delete from event_attendees where email = ${n.email}`;
+    await client`delete from events where title = ${n.event}`;
+    await client`delete from calendars where name = ${n.calendar}`;
+    await client`delete from contacts where primary_email = ${n.email}`;
+    await client`delete from artifacts where title in (${n.note}, ${`Prep: ${n.event}`})`;
+    await client`delete from tasks where title = ${n.task}`;
 
     const [calendar] = await client<{ id: string }[]>`
       insert into calendars (workspace_id, kind, name, created_by, updated_by)
-      values (${ws}, 'local', 'E2E Prep Calendar', ${uid}, ${uid})
+      values (${ws}, 'local', ${n.calendar}, ${uid}, ${uid})
       returning id`;
     const startsAt = new Date(Date.now() + 2 * 3_600_000);
     const endsAt = new Date(Date.now() + 3 * 3_600_000);
     const [event] = await client<{ id: string }[]>`
       insert into events (workspace_id, calendar_id, title, starts_at, ends_at, created_by, updated_by)
-      values (${ws}, ${calendar.id}, ${EVENT_TITLE}, ${startsAt}, ${endsAt}, ${uid}, ${uid})
+      values (${ws}, ${calendar.id}, ${n.event}, ${startsAt}, ${endsAt}, ${uid}, ${uid})
       returning id`;
     const [contact] = await client<{ id: string }[]>`
       insert into contacts (workspace_id, full_name, primary_email, title, created_by, updated_by)
-      values (${ws}, 'Priya Nair', 'priya@example.com', 'Platform lead', ${uid}, ${uid})
+      values (${ws}, 'Priya Nair', ${n.email}, 'Platform lead', ${uid}, ${uid})
       returning id`;
     await client`
       insert into event_attendees (workspace_id, event_id, email, display_name, contact_id)
-      values (${ws}, ${event.id}, 'priya@example.com', 'Priya Nair', ${contact.id})`;
+      values (${ws}, ${event.id}, ${n.email}, 'Priya Nair', ${contact.id})`;
     const [note] = await client<{ id: string }[]>`
       insert into artifacts (workspace_id, kind, title, status, created_by, updated_by)
-      values (${ws}, 'note', ${NOTE_TITLE}, 'reviewed', ${uid}, ${uid})
+      values (${ws}, 'note', ${n.note}, 'reviewed', ${uid}, ${uid})
       returning id`;
     const [version] = await client<{ id: string }[]>`
       insert into artifact_versions (workspace_id, artifact_id, version_number, content, plain_text, reason, created_by)
@@ -72,39 +95,23 @@ async function seedPrepContext(): Promise<boolean> {
     await client`update artifacts set current_version_id = ${version.id} where id = ${note.id}`;
     await client`
       insert into tasks (workspace_id, title, status, created_by, updated_by)
-      values (${ws}, ${TASK_TITLE}, 'ready', ${uid}, ${uid})`;
+      values (${ws}, ${n.task}, 'ready', ${uid}, ${uid})`;
     return true;
   } finally {
     await client.end();
   }
 }
 
-async function removeSeeded(): Promise<void> {
-  const client = db();
-  if (!client) return;
-  try {
-    await client`delete from events where title = ${EVENT_TITLE}`;
-    await client`delete from calendars where name = 'E2E Prep Calendar'`;
-    await client`delete from contacts where primary_email = 'priya@example.com'`;
-    await client`delete from artifacts where title in (${NOTE_TITLE}, 'Prep: Weekly sync')`;
-    await client`delete from tasks where title = ${TASK_TITLE}`;
-  } finally {
-    await client.end();
-  }
-}
-
-test.afterAll(async () => {
-  await removeSeeded();
-});
-
 for (const vp of VIEWPORTS) {
   test(`generate a prep report from an event [${vp.name}]`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    test.skip(!(await seedPrepContext()), "DATABASE_URL not configured");
+    const tag = `${vp.name}-generate`;
+    const n = names(tag);
+    test.skip(!(await seedPrepContext(tag)), "DATABASE_URL not configured");
 
     await page.goto("/neuralflow/work");
-    const row = page.locator("li", { hasText: EVENT_TITLE }).first();
+    const row = page.locator("li", { hasText: n.event }).first();
     await expect(row.getByRole("button", { name: "Prep" })).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/prep-button-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
@@ -132,5 +139,44 @@ for (const vp of VIEWPORTS) {
       ).toBeLessThanOrEqual(navBox!.y);
       await page.screenshot({ path: `test-results/feature-pixels/prep-report-bottom-${vp.name}.png`, style: HIDE_DEV_CHROME });
     }
+  });
+
+  test(`a failed refresh says so in the ready state [${vp.name}]`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const tag = `${vp.name}-refresh`;
+    const n = names(tag);
+    test.skip(!(await seedPrepContext(tag)), "DATABASE_URL not configured");
+
+    await page.goto("/neuralflow/work");
+    const row = page.locator("li", { hasText: n.event }).first();
+    await row.getByRole("button", { name: "Prep" }).click();
+    await expect(row.getByRole("link", { name: "Prep ready" })).toBeVisible({ timeout: 60_000 });
+
+    // The event vanishing before the refresh is the honest failure: the
+    // action's failure path skips revalidation, so the row stays and the
+    // error must render where the owner clicked - never a silent no-op.
+    // Failure injection is scoped to this test's own event; deleting a shared
+    // title used to delete sibling tests' events mid-flight.
+    const client = db();
+    await client!`delete from event_attendees where email = ${n.email}`;
+    await client!`delete from events where title = ${n.event}`;
+    await client!.end();
+
+    await row.getByRole("button", { name: "Refresh" }).click();
+    await expect(row.getByRole("alert")).toContainText("does not exist", { timeout: 30_000 });
+    // The error must not crush the row: title and time stay visible (mobile wraps below).
+    await expect(row.getByText(n.event)).toBeVisible();
+    const time = row.getByText(/[AP]M/);
+    await expect(time).toBeVisible();
+    // toBeVisible alone passes on overflow; the time must sit inside the row's box.
+    const rowBox = await row.boundingBox();
+    const timeBox = await time.boundingBox();
+    expect(timeBox, "event time has a box").not.toBeNull();
+    expect(
+      timeBox!.x + timeBox!.width,
+      "event time renders inside the row, not clipped off its right edge",
+    ).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+    await page.screenshot({ path: `test-results/feature-pixels/prep-refresh-error-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 }

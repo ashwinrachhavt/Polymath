@@ -326,9 +326,9 @@ export function AccessToggles({
 
 /*
  * ASH-289: the sending grant editor. Each connected Gmail account is one
- * checkbox; only checked aliases may send. An all-unchecked list means NO
- * restriction (the pre-grant behavior), and the copy says so - an owner who
- * wants "nothing sends" revokes the account instead.
+ * checkbox; only checked aliases may send. Until any grant is saved the
+ * account is unrestricted; saving with none checked is a real choice that
+ * blocks every sender, and the copy says so.
  */
 export function SenderGrantControls({
   aliases,
