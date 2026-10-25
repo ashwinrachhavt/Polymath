@@ -226,6 +226,57 @@ export async function pageCompanies(
   return { items, total: totalRow?.total ?? 0 };
 }
 
+export type CompanyDetail = {
+  company: typeof companies.$inferSelect;
+  contacts: Array<{
+    linkId: string;
+    contactId: string;
+    fullName: string;
+    title: string | null;
+    isCurrent: boolean;
+  }>;
+};
+
+/** The company profile read: the record plus its linked contacts, current roles first. */
+export async function getCompanyDetail(
+  auth: AuthContext,
+  input: { companyId: string },
+): Promise<CompanyDetail | null> {
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(
+      and(
+        eq(companies.id, input.companyId),
+        eq(companies.workspaceId, auth.workspaceId),
+        isNull(companies.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!company) return null;
+
+  const contactRows = await db
+    .select({
+      linkId: contactCompanies.id,
+      contactId: contacts.id,
+      fullName: contacts.fullName,
+      title: contactCompanies.title,
+      isCurrent: contactCompanies.isCurrent,
+    })
+    .from(contactCompanies)
+    .innerJoin(contacts, and(eq(contacts.id, contactCompanies.contactId), isNull(contacts.archivedAt)))
+    .where(
+      and(
+        eq(contactCompanies.companyId, company.id),
+        eq(contactCompanies.workspaceId, auth.workspaceId),
+      ),
+    )
+    .orderBy(desc(contactCompanies.isCurrent), asc(contacts.fullName))
+    .limit(50);
+
+  return { company, contacts: contactRows };
+}
+
 /*
  * Read-side seam for other domains: the relationship status a CRM contact
  * carries, keyed by the contact's primary email. The People surface joins on

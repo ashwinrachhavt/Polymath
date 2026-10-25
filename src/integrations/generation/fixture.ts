@@ -3,11 +3,12 @@ import { GenerationUnconfiguredError } from "./provider";
 
 /*
  * The e2e fixture provider (GENERATION_PROVIDER=fixture): deterministic,
- * free, and local. It answers only the four owner-invoked generation
+ * free, and local. It answers only the owner-invoked generation
  * surfaces by the marker phrase in their system prompts, so journeys can
  * click through the whole pipeline - debrief, prep, library draft, learning
- * path - without a model key or a cent of spend. Anything else gets the
- * honest unconfigured error, which callers already treat as a skip.
+ * path, profile research - without a model key or a cent of spend. Anything
+ * else gets the honest unconfigured error, which callers already treat as a
+ * skip.
  *
  * It is selectable only by an explicit env choice, never by key detection,
  * so no deployment drifts into it by accident.
@@ -51,6 +52,28 @@ function learningPathAnswer(): string {
   });
 }
 
+
+function companyProfileAnswer(): string {
+  return JSON.stringify({
+    cards: [
+      { kind: "overview", title: "Spending analytics for small teams", body: "Example builds spending analytics for small finance teams: statement imports, transaction categories and burn by vendor.", citations: [1] },
+      { kind: "offerings", title: "Per-seat pricing with a free tier", body: "Pricing is per seat, free for two seats; the product positions against spreadsheets rather than enterprise suites.", citations: [1, 2] },
+      { kind: "news", title: "Seed round to expand analytics", body: "Example raised $4M led by North Peak in October 2026 to expand its small-team spending analytics.", citations: [3] },
+      { kind: "watch", title: "Eleven-person team, broad promise", body: "An eleven-person Portland team covers imports, categorization and reporting; depth per surface is the open question.", citations: [2] },
+    ],
+  });
+}
+
+function personProfileAnswer(): string {
+  return JSON.stringify({
+    cards: [
+      { kind: "role", title: "Platform lead at Example", body: "Priya Nair leads the platform group at Example, owning pricing and billing infrastructure.", citations: [1] },
+      { kind: "mentions", title: "On pricing analytics", body: "On a September podcast she argued small teams want pricing answers inside the tools they already use, not another dashboard.", citations: [2] },
+      { kind: "talking-points", title: "Ask about the pricing launch", body: "Her team just shipped per-seat pricing; how the free tier converts is a natural opener.", citations: [1, 2] },
+    ],
+  });
+}
+
 export function fixtureProvider(): GenerationProvider {
   return {
     name: "fixture:e2e",
@@ -61,6 +84,8 @@ export function fixtureProvider(): GenerationProvider {
       if (system.includes("meeting prep report")) return { text: prepAnswer() };
       if (system.includes("long-form writing")) return { text: writingAnswer() };
       if (system.includes("learning goal")) return { text: learningPathAnswer() };
+      if (system.includes("company profile card set")) return { text: companyProfileAnswer() };
+      if (system.includes("person profile card set")) return { text: personProfileAnswer() };
       throw new GenerationUnconfiguredError();
     },
   };

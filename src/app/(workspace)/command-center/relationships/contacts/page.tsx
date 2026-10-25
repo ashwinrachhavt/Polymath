@@ -34,6 +34,9 @@ import {
 } from "../contact-detail-controls";
 import { CompanyForm } from "../company-form";
 import { ResearchCompanyButton } from "../research-button";
+import { latestProfileResearch } from "@/domains/knowledge/profile-research";
+import { ProfileResearchCards } from "../profile-research-cards";
+import { ContactResearchControls } from "../profile-research-controls";
 
 export const metadata = { title: "Contacts · Polymath" };
 
@@ -78,6 +81,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
       listCompanies(auth),
     ]);
     const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
+    const researchCardSet = detail ? await latestProfileResearch(auth, { subjectType: "contact", subjectId: detail.contact.id }) : null;
     const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
 
     return (
@@ -100,7 +104,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
             }
           />
         ) : detail ? (
-          <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} />
+          <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} researchCardSet={researchCardSet} />
         ) : (
           <Empty
             title="Contact not found"
@@ -215,7 +219,12 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
               {companyPageData.items.map((company) => (
                 <div key={company.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
                   <div>
-                    <p className="text-[13px] font-medium">{company.name}</p>
+                    <Link
+                      href={`/command-center/relationships/companies/${company.id}`}
+                      className="text-[13px] font-medium underline-offset-4 hover:underline"
+                    >
+                      {company.name}
+                    </Link>
                     <p className="text-xs text-muted-foreground">{company.domain || "No domain recorded"}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -255,10 +264,12 @@ function ContactDetailPanel({
   detail,
   companies,
   correspondence,
+  researchCardSet,
 }: {
   detail: NonNullable<Awaited<ReturnType<typeof getContactDetail>>>;
   companies: Array<{ id: string; name: string }>;
   correspondence: Awaited<ReturnType<typeof listCorrespondence>>;
+  researchCardSet: Awaited<ReturnType<typeof latestProfileResearch>>;
 }) {
   const { contact } = detail;
   const currentCompany = detail.companies.find((company) => company.isCurrent);
@@ -323,6 +334,20 @@ function ContactDetailPanel({
           <ArchiveContactButton contactId={contact.id} version={contact.version} name={contact.fullName} />
         </div>
       </Panel>
+      <Panel
+        title="Research"
+        description="A bounded web pass over this person's public footprint becomes a grounded card set; the focus buttons research one angle."
+      >
+        <div className="space-y-4">
+          <ContactResearchControls contactId={contact.id} researched={researchCardSet !== null} />
+          {researchCardSet ? (
+            <ProfileResearchCards cardSet={researchCardSet} />
+          ) : (
+            <p className="text-[13px] text-muted-foreground">Not researched yet. The first pass searches who they are and what they have said recently.</p>
+          )}
+        </div>
+      </Panel>
+
 
       <Panel title="Follow-ups">
         <div className="mb-4 divide-y divide-border">
