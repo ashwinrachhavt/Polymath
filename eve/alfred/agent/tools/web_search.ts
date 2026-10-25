@@ -18,7 +18,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the public web. Returns ranked results with title, URL and snippet, plus which provider answered. Read-only; the run's frozen policy must allow web.search.",
+    "Search the public web. Returns ranked results with title, URL and snippet, plus which provider answered. Use for current events, prices, documentation, and anything the workspace does not cover; it is the right first call when the question is about the world, not the owner's workspace — workspace content belongs to documents_search. It will not open or read pages (that is web_fetch) and will not search the owner's mail or documents. Snippets can be stale or truncated: fetch the page when a claim will be quoted. Read-only; the run's frozen policy must allow web.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(WEB_SEARCH_MAX_RESULTS).optional(),

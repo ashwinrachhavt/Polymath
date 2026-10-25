@@ -14,7 +14,7 @@ import { listOpenTasks } from "../../../../src/domains/work/queries";
  */
 export default defineTool({
   description:
-    "List the workspace's open tasks. Read-only; the run's frozen policy must allow the tasks.read capability.",
+    "List the workspace's open tasks. Use when the brief needs context on the owner's current workload; it will not show completed work — progress questions need a different source, and an empty list means nothing is open, not that nothing happened. Read-only; the run's frozen policy must allow the tasks.read capability.",
   inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional() }),
   async execute(input, ctx) {
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;

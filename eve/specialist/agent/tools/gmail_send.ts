@@ -18,7 +18,7 @@ import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
  */
 export default defineTool({
   description:
-    "Propose sending an email. Creates a reviewable proposal for the owner; it does not send. The run's frozen policy must allow the gmail.send capability.",
+    "Propose sending an email. Use only when the brief explicitly asks for an outbound message; research-only briefs never need it. It will not send — the owner approves or rejects in Reviews, and nothing leaves their account without that approval. Report a policy refusal as-is rather than rewording and retrying.",
   inputSchema: z.object({
     to: z.string().describe("Recipient address"),
     subject: z.string(),

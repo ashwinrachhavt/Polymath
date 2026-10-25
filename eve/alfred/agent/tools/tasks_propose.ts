@@ -16,7 +16,7 @@ import { proposeTask } from "../../../../src/domains/work/proposals";
  */
 export default defineTool({
   description:
-    "Propose a follow-up task for the owner to review. Call when the run finds work someone should do later - a follow-up from a document, an open question, a next step. Nothing is created until the owner approves it in the review queue; the approval creates the task with links back to the source material. Pass stable source identifiers so a retry resolves the same proposal.",
+    "Propose a follow-up task for the owner to review. Call when the run finds work someone should do later - a follow-up from a document, an open question, a next step. Do not propose work the open-task list already covers (check tasks_read first). Nothing is created until the owner approves it in the review queue; the approval creates the task with links back to the source material. Pass stable source identifiers so a retry resolves the same proposal.",
   inputSchema: z.object({
     title: z.string().min(1).max(500).describe("The task as the owner should see it, imperative mood."),
     description: z.string().max(4000).optional().describe("Why this follow-up matters, with the finding that prompted it."),

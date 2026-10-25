@@ -16,7 +16,7 @@ import { proposeArtifactRevision, ArtifactReviseNotAllowedError } from "../../..
  */
 export default defineTool({
   description:
-    "Propose new content for an existing artifact (a note, report, deck or infographic). Nothing changes until the owner approves it in the review queue; approval appends your content as a new version and keeps the old one. Read the artifact's current content first and revise against it. Pass a stable dedupe id so a retry proposes once.",
+    "Propose new content for an existing artifact (a note, report, deck or infographic). Nothing changes until the owner approves it in the review queue; approval appends your content as a new version and keeps the old one. Read the artifact's current content first and revise against it — proposing without reading risks a stale-version rejection. It will not edit the artifact directly and will not create a new artifact; new work belongs in tasks_propose or a draft. Pass a stable dedupe id so a retry proposes once.",
   inputSchema: z.object({
     artifactId: z.string().uuid(),
     content: z.record(z.string(), z.unknown()).describe("The full proposed content as a JSON object - Tiptap/ProseMirror doc for rich text, or the artifact's structured payload."),
