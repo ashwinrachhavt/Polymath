@@ -7,6 +7,7 @@ import { type BriefingTask } from "@/domains/work/briefing";
 import { getBriefingForPage } from "./data";
 import { getAuthContext } from "@/lib/auth";
 import { AgentPanels } from "./agent-panels";
+import { SpendingPanel } from "./spending-panel";
 import { CalendarPanel } from "./calendar-panel";
 import { OutcomeButton, StartFocusButton } from "./briefing-client";
 
@@ -19,6 +20,27 @@ export const metadata = { title: "Briefing · Polymath" };
  * or touches a connector. The browser-preview briefing with its local
  * agenda, stones and activity panels stays at /apps/command-center/briefing.
  */
+
+function BriefingTabs({ active }: { active: "briefing" | "spending" }) {
+  const tabs = [
+    { id: "briefing" as const, label: "Briefing", href: "/command-center/briefing" },
+    { id: "spending" as const, label: "Spending", href: "/command-center/briefing?tab=spending" },
+  ];
+  return (
+    <nav aria-label="Briefing views" className="-mx-1 flex gap-1 px-1">
+      {tabs.map(({ id, label, href }) => (
+        <Link
+          key={id}
+          href={href}
+          aria-current={active === id ? "page" : undefined}
+          className={`inline-flex min-h-9 items-center rounded-md px-3 text-[13px] font-medium transition-colors ${active === id ? "bg-app-accent text-app-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 function TaskRow({ task, outcomeTag, mode }: { task: BriefingTask; outcomeTag: string; mode: "accept" | "replace" }) {
   return (
@@ -58,6 +80,7 @@ async function Briefing() {
         </>
       }
     >
+      <BriefingTabs active="briefing" />
       <Panel
         title="Three outcomes"
         description="Accepting tags the canonical task for this day; it does not schedule or start work."
@@ -123,10 +146,22 @@ async function Briefing() {
   );
 }
 
-export default function BriefingPage() {
+async function Spending() {
+  await io();
+  return (
+    <Screen title="Briefing">
+      <BriefingTabs active="spending" />
+      <SpendingPanel />
+    </Screen>
+  );
+}
+
+export default async function BriefingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const raw = await searchParams;
+  const tab = typeof raw.tab === "string" ? raw.tab : undefined;
   return (
     <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Preparing the briefing…</p>}>
-      <Briefing />
+      {tab === "spending" ? <Spending /> : <Briefing />}
     </Suspense>
   );
 }
