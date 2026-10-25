@@ -35,6 +35,8 @@ export type QueueCardData = {
   expiresAt: string | null;
   decidedAt: string | null;
   expired: boolean;
+  /** Display-only injection annotations from the proposing path (ASH-281). */
+  flags: unknown;
   latestRevision: { id: string; revisionNumber: number; payload: unknown; preview: unknown } | null;
   proposedBy: string | null;
   reviews: Array<{ id: string; decision: string; note: string | null; createdAt: string }>;
@@ -98,6 +100,54 @@ function SendSummary({ capability, revision }: { capability: string; revision: Q
         </p>
       ) : null}
     </dl>
+  );
+}
+
+/*
+ * What the Writer surfaced with the draft (ASH-281). Flags are requests the
+ * untrusted thread text tried to make - quoted verbatim, never acted on -
+ * and citations are the library passages the draft leans on. Both are read
+ * from the bound revision's preview and the proposal's flags column: what
+ * the reviewer sees is what the approval binds.
+ */
+function DraftGrounding({ flags, revision }: { flags: unknown; revision: QueueCardData["latestRevision"] }) {
+  const flagList = Array.isArray(flags)
+    ? (flags as Array<{ kind?: unknown; messageId?: unknown; excerpt?: unknown }>).filter(
+        (flag) => typeof flag?.excerpt === "string",
+      )
+    : [];
+  const preview = (revision?.preview ?? {}) as { citations?: unknown };
+  const citations = Array.isArray(preview.citations)
+    ? (preview.citations as Array<{ title?: unknown; text?: unknown }>).filter((c) => typeof c?.title === "string")
+    : [];
+  if (flagList.length === 0 && citations.length === 0) return null;
+  return (
+    <div className="mb-3 grid gap-2 text-[13px]">
+      {flagList.length > 0 ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+          <p className="mb-1 text-xs font-medium">
+            The thread asked for something - quoted here, never acted on:
+          </p>
+          <ul className="grid gap-1 text-xs text-muted-foreground">
+            {flagList.map((flag, i) => (
+              <li key={i}>&ldquo;{flag.excerpt as string}&rdquo;</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {citations.length > 0 ? (
+        <div className="rounded-md border border-border bg-muted/40 p-3">
+          <p className="mb-1 text-xs font-medium">Grounded in the library:</p>
+          <ul className="grid gap-1 text-xs text-muted-foreground">
+            {citations.map((citation, i) => (
+              <li key={i}>
+                [{i + 1}] {citation.title as string}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -194,6 +244,7 @@ function ProposalCard({
       </p>
 
       <SendSummary capability={item.capability} revision={item.latestRevision} />
+      <DraftGrounding flags={item.flags} revision={item.latestRevision} />
 
       {item.latestRevision ? (
         <details className="mb-4 text-[13px]">

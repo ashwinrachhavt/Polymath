@@ -106,6 +106,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     expiresAt: item.expiresAt?.toISOString() ?? null,
     decidedAt: item.decidedAt?.toISOString() ?? null,
     expired: isExpired(item.expiresAt),
+    flags: item.flags,
     latestRevision: item.latestRevision,
     proposedBy: item.runId ? (attributions.get(item.runId)?.profileName ?? attributions.get(item.runId)?.objective ?? null) : null,
     reviews: (reviewsByProposal.get(item.id) ?? []).map((review) => ({

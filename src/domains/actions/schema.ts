@@ -101,6 +101,13 @@ export const actionProposals = pgTable(
     /** Which run produced it, when an agent did. */
     runId: uuid("run_id"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /*
+     * Display-only annotations from the proposing path (ASH-281): injection
+     * flags quoted out of untrusted content. Shown on the review card; never
+     * queried, sorted, or enforced on - enforcement stays in the payload and
+     * the executor gates.
+     */
+    flags: jsonb("flags"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decidedBy: uuid("decided_by"),
     /** Set when an edit invalidated a prior approval and re-review is required. */
