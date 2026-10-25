@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Folder, Loader2, Pin, PinOff, Plus } from "lucide-react";
+import { Folder, Loader2, Pin, PinOff, Plus , Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { timeAgoShort } from "@/lib/time";
 import { createProjectAction, setProjectPinnedAction } from "./project-actions";
@@ -106,7 +106,7 @@ export function ProjectRow({
         {project.title}
       </Link>
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <span aria-hidden>🔒</span> Private
+        <Lock aria-hidden className="size-3.5" /> Private
       </span>
       <span className="w-16 text-right text-xs text-muted-foreground">{timeAgoShort(project.updatedAt)}</span>
       <button
