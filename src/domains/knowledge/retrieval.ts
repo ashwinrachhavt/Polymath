@@ -95,6 +95,8 @@ export type SearchHit = {
   };
   /** Matching passage with matches wrapped in [[ ]], or the opening line. */
   snippet: string | null;
+  /** The card's link-graph neighborhood; attached by the caller (see listHitConnections). */
+  connections?: HitConnections;
 };
 
 export type SearchResult = {
@@ -323,4 +325,87 @@ export async function countMeaningUncoveredByState(
   `);
   const row = (rows as unknown as Array<{ pending: number; failed: number }>)[0];
   return { pending: row?.pending ?? 0, failed: row?.failed ?? 0 };
+}
+
+/*
+ * Search reveals connections (spec: finding something also reveals what they
+ * wrote about it, what supports it, and where it became part of a larger
+ * piece of work; a claim leads back to its supporting passage and a related
+ * card includes the reason for the connection where available). One batched
+ * read over the link graph for a page of hits; the caller attaches each entry
+ * to its hit. Explicit edges only: "semantic" candidates are machine guesses
+ * until promoted and "dismissed" edges were rejected, so neither is ever
+ * shown as a connection. Archived cards on the far side are dropped. The
+ * edge's recorded context is the reason/passage the spec asks for - a
+ * "source" edge carries the supporting quote verbatim.
+ */
+export type HitConnection = {
+  id: string;
+  title: string;
+  kind: string;
+  /** Why the edge exists (artifactLinkTypes minus semantic/dismissed). */
+  linkType: string;
+  /** The passage or reason recorded with the edge, when there is one. */
+  context: string | null;
+};
+
+export type HitConnections = {
+  /** Edges this card makes: its source ("what supports it") and the cards it points at. */
+  out: HitConnection[];
+  /** Edges pointing here: cards referencing it, or cards distilled from it. */
+  in: HitConnection[];
+  /** Full edge counts per direction; the arrays are capped for display. */
+  outTotal: number;
+  inTotal: number;
+};
+
+/** How many connections per direction a hit row names before "+N more". */
+export const HIT_CONNECTION_CAP = 3;
+/** Hard row bound per direction for the batch read; hub cards never blow the page up. */
+const HIT_CONNECTION_ROW_LIMIT = 500;
+
+export async function listHitConnections(auth: AuthContext, ids: readonly string[]): Promise<Map<string, HitConnections>> {
+  const byId = new Map<string, HitConnections>();
+  if (!ids.length) return byId;
+  for (const id of ids) byId.set(id, { out: [], in: [], outTotal: 0, inTotal: 0 });
+  // ids are artifact UUIDs read back from this workspace's own search query.
+  const idArray = sql.raw(`array[${ids.map((id) => `'${id}'`).join(",")}]::uuid[]`);
+  const rows = await db.execute(sql`
+    select direction, hit_id, other_id, title, kind, link_type, context, total from (
+      (select 'out' as direction, al.artifact_id as hit_id, t.id as other_id, t.title, t.kind::text, al.link_type, al.context,
+              count(*) over (partition by al.artifact_id) as total
+       from artifact_links al
+       join artifacts t on t.id = al.target_id
+       where al.workspace_id = ${auth.workspaceId}
+         and al.artifact_id = any(${idArray})
+         and al.link_type not in ('semantic', 'dismissed')
+         and t.archived_at is null
+       order by al.created_at desc
+       limit ${HIT_CONNECTION_ROW_LIMIT})
+      union all
+      (select 'in', al.target_id, s.id, s.title, s.kind::text, al.link_type, al.context,
+              count(*) over (partition by al.target_id) as total
+       from artifact_links al
+       join artifacts s on s.id = al.artifact_id
+       where al.workspace_id = ${auth.workspaceId}
+         and al.target_id = any(${idArray})
+         and al.link_type not in ('semantic', 'dismissed')
+         and s.archived_at is null
+       order by al.created_at desc
+       limit ${HIT_CONNECTION_ROW_LIMIT})
+    ) e
+  `);
+  for (const r of rows as unknown as { direction: "out" | "in"; hit_id: string; other_id: string; title: string; kind: string; link_type: string; context: string | null; total: number }[]) {
+    const entry = byId.get(r.hit_id);
+    if (!entry) continue;
+    const total = Number(r.total);
+    if (r.direction === "out") {
+      entry.outTotal = total;
+      if (entry.out.length < HIT_CONNECTION_CAP) entry.out.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
+    } else {
+      entry.inTotal = total;
+      if (entry.in.length < HIT_CONNECTION_CAP) entry.in.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
+    }
+  }
+  return byId;
 }
