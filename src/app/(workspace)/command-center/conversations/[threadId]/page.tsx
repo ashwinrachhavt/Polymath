@@ -32,7 +32,7 @@ async function Timeline({ threadId }: { threadId: string }) {
     >
       <p className="text-[13px]">
         <Link href="/alfred" className="text-muted-foreground underline-offset-4 hover:underline">
-          ← Conversations now live in the Assistant
+          Conversations now live in the Assistant
         </Link>
       </p>
       <div className="space-y-4" aria-label="Timeline">

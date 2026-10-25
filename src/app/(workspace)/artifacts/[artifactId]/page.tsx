@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
+import { ArrowLeft, Copy, Download, MoreHorizontal, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
@@ -49,16 +50,16 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
       <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
         <p className="flex items-center gap-3 text-[13px]">
           <Link href="/artifacts" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
-            <span aria-hidden>←</span> Back to artifacts
+            <ArrowLeft aria-hidden className="size-3.5" /> Back to artifacts
           </Link>
           <span className="flex items-center gap-1.5 text-muted-foreground">
-            <span aria-hidden>🖥️</span> Generated in Polymath
+            <Sparkles aria-hidden className="size-3.5" /> Generated in Polymath
           </span>
         </p>
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <span>…</span>
-          <span aria-hidden>⧉</span>
-          <span aria-hidden>⬇</span>
+          <MoreHorizontal aria-hidden className="size-4" />
+          <Copy aria-hidden className="size-4" />
+          <Download aria-hidden className="size-4" />
           <Link
             href={`/projects`}
             className="rounded-md border border-border px-3 py-1.5 hover:bg-muted"

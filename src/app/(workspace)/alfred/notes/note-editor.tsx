@@ -12,6 +12,7 @@ import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { X } from "lucide-react";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -683,7 +684,7 @@ export function NoteEditor({
                         className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-destructive/50 hover:text-destructive"
                         onClick={() => void saveTags(tags.filter((t) => t !== tag))}
                       >
-                        {tag} ×
+                        {tag} <X aria-hidden className="size-3" />
                       </button>
                     ))}
                     <input
@@ -775,7 +776,7 @@ export function NoteEditor({
                         onClick={async () => { const res = await removeLinkAction({ artifactId: noteId, targetId: r.id, dismiss: true }); if (!res.ok) setError(res.error); else router.refresh(); }}
                         className="mr-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        ×
+                        <X aria-hidden className="size-3.5" />
                       </button>
                     </li>
                   ))}

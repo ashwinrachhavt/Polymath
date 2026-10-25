@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { FileText, LayoutGrid, List, Search } from "lucide-react";
 
 /*
  * Gallery toolbar (filter tabs, search, grid/list toggle) and the artifact
@@ -88,7 +88,7 @@ export function ArtifactCard({ artifact, view }: { artifact: { id: string; title
         </p>
       </div>
       <div className={`mt-3 flex items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
-        <span aria-hidden className="text-sm">📄</span>
+        <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate text-[13px]">{artifact.title}</span>
         <span className="text-xs text-muted-foreground">{artifact.kind}</span>
       </div>
