@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Square, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import { useChatStream, type ChatState } from "./use-chat-stream";
-import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
 import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
@@ -141,8 +140,9 @@ export function ChatSurface({
   const forceScrollRef = useRef(false);
   const chat = useChatStream(runId, { onCitation });
   const busy = chat.connection === "connecting" || chat.connection === "streaming";
-  // Reasoning is available in chat.blocks for a surface that wants it, but the
-  // default transcript shows the conversation: questions and answers.
+  // The transcript renders the conversation: questions, answers, and the
+  // model's rationale as its own collapsed pill. `transcript` (user/assistant
+  // only) still drives optimistic-match, scroll, and pending-message logic.
   const transcript = chat.blocks.filter((block) => block.kind === "user" || block.kind === "assistant");
   /*
    * The message the owner just sent but the stream has not echoed. Shown until
@@ -266,11 +266,15 @@ export function ChatSurface({
           </p>
         ) : (
           <div className="mx-auto w-full max-w-[var(--page-width)] space-y-4">
-            {transcript.map((block) =>
+            {chat.blocks.map((block) =>
               block.kind === "user" ? (
                 <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                   {block.text}
                 </div>
+              ) : block.kind === "reasoning" ? (
+                // The model's visible rationale, collapsed: evidence for the
+                // answer above it, not the thing being read.
+                <ThinkingPill key={block.id} text={block.text} done={block.done} />
               ) : (
                 <div key={block.id} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
                   <Markdown text={block.text} />
@@ -449,71 +453,87 @@ const TOOL_LABELS: Array<[RegExp, string]> = [
   [/wiki_read|wiki\./i, "Checked the wiki"],
   [/wiki_ingest/i, "Updated the wiki"],
   [/wiki_lint/i, "Wiki health check"],
-  [/gmail/i, "Checked Gmail"],
+  [/gmail/i, "Searched your mail"],
   [/calendar/i, "Checked calendar"],
   [/web_search/i, "Searched the web"],
-  [/web_fetch/i, "Read a web page"],
+  [/web_fetch/i, "Read the thread"],
+  [/drive|files_list|list_files/i, "Listed your Drive files"],
 ];
 
 const toolLabel = (raw: string) => TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
 
 /*
- * Tool activity, said the way a good chat product says it: one quiet pill that
- * names what the assistant did, expandable to the steps underneath. While a
- * step runs the pill stays open so progress is visible; once every step
- * settles it closes to a single summary line. Internal lookups with nothing
- * to say (a registry search, a self-check) never appear.
+ * Tool activity, said the way a good chat product says it: one quiet summary
+ * line that expands into a pill per tool call. Live tool frames carry no
+ * duration, so a finished set reads "Finished" and a busy one "Working…" —
+ * timing is never invented. Internal lookups with nothing to say (a registry
+ * search, a self-check) never appear.
  */
 function ToolActivity({ tools, busy }: { tools: ChatState["tools"]; busy: boolean }) {
-  const [toggled, setToggled] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false);
   const visible = tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
   if (visible.length === 0) return null;
   const running = visible.filter((tool) => tool.status === "running");
-  const expanded = toggled ?? (running.length > 0 || busy);
-  const summary =
-    running.length > 0
-      ? `${toolLabel(running[running.length - 1].label)}…`
-      : visible.length === 1
-        ? toolLabel(visible[0].label)
-        : `Used ${visible.length} tools`;
+  const summary = running.length > 0 || busy ? "Working…" : "Finished";
   return (
-    <div className="mt-3 rounded-xl border border-border bg-muted/30 text-[12px]">
+    <div className="mt-3">
       <button
         type="button"
-        aria-expanded={expanded}
-        onClick={() => setToggled(!expanded)}
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ChevronDown aria-hidden className={`size-3.5 shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`} />
-        <span className="min-w-0 flex-1 truncate text-left">{summary}</span>
+        <ChevronDown aria-hidden className={`size-3 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
+        <span>{summary}</span>
         {running.length > 0 ? <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" /> : null}
       </button>
-      {expanded ? (
-        <ul className="space-y-1 border-t border-border px-3 py-2" aria-label="Tool activity">
+      {open ? (
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label="Tool activity">
           {visible.map((tool) => {
-            const Glyph = toolGlyph(tool.label);
             const count = /^\d+$/.test(tool.detail ?? "");
             return (
-              <li key={tool.callId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Glyph aria-hidden className="size-3.5 shrink-0" />
-                <span>{toolLabel(tool.label)}</span>
-                <span
-                  className={tool.status === "error" ? "text-destructive" : tool.status === "ok" ? "text-foreground" : ""}
-                >
+              <li
+                key={tool.callId}
+                className={`inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-[13px] ${
+                  tool.status === "error" ? "text-destructive" : "text-muted-foreground"
+                }`}
+              >
+                <Wrench aria-hidden className="size-3.5 shrink-0" />
+                <span>
+                  {toolLabel(tool.label)}
                   {tool.status === "running"
-                    ? "\u2026"
-                    : tool.status === "ok"
-                      ? count
-                        ? `${tool.detail} matches`
-                        : ""
-                      : (tool.detail ?? "failed")}
+                    ? "…"
+                    : tool.status === "ok" && count
+                      ? ` · ${tool.detail} matches`
+                      : tool.status === "error"
+                        ? ` · ${tool.detail ?? "failed"}`
+                        : ""}
                 </span>
+                {tool.status === "running" ? (
+                  <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" />
+                ) : null}
               </li>
             );
           })}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The model's visible rationale, collapsed the same way tool activity is: a
+ * quiet pill that names it, body kept out of the way until asked for.
+ */
+export function ThinkingPill({ text, done }: { text: string; done: boolean }) {
+  return (
+    <details className="group">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden className="size-3 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
+        {done ? "Thought process" : "Thinking\u2026"}
+      </summary>
+      <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-[13px] leading-6">{text}</p>
+    </details>
   );
 }
 

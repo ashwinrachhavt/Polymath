@@ -4,7 +4,7 @@ import { io } from "next/cache";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
-import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
+import { ChatCancel, ChatSurface, ThinkingPill } from "@/components/chat/chat-surface";
 import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
@@ -130,14 +130,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   </div>
                 ) : entry.kind === "reasoning" ? (
                   // The model's visible rationale, kept from the live stream. A
-                  // quiet disclosure, not a transcript body: it is evidence for
-                  // the answer above it, not the thing being read.
-                  <details key={entry.sequence} className="max-w-[72ch]">
-                    <summary className="text-muted-foreground cursor-pointer text-[12px] hover:text-foreground">
-                      Show thinking
-                    </summary>
-                    <p className="text-muted-foreground mt-2 text-[13px] whitespace-pre-wrap">{entry.text}</p>
-                  </details>
+                  // quiet pill, not a transcript body: it is evidence for the
+                  // answer above it, not the thing being read.
+                  <ThinkingPill key={entry.sequence} text={entry.text} done />
                 ) : (
                   <p key={entry.sequence} className="text-muted-foreground text-[12px]">
                     {entry.text} · {timeAgo(entry.at)}
