@@ -220,6 +220,7 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
       "slack_read_channel",
       "stripe_list_payments",
       "trello_list_cards",
+      "writer_draft_reply",
       "zoom_list_meetings",
     ]);
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
