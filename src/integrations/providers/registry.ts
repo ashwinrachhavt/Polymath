@@ -254,13 +254,16 @@ const REGISTRY: readonly ProviderEntry[] = [
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: false,
-    quota: null,
-    verifiedAt: CHECKED,
-    verificationSource: "https://composio.dev/pricing.md",
+    quota: { unit: "requests", allowance: 100000, renewal: "monthly", allowanceEnv: "COMPOSIO_MONTHLY_TOOL_CALLS" },
+    verifiedAt: "2026-10-25",
+    verificationSource: "https://composio.dev/pricing",
     notes:
-      "Hobby: 100k tool calls/mo (managed OAuth is a <=20k subset), 50k triggers, 1M sandbox LLM " +
-      "tokens, no card. Execution modes have separate allowances; Instant Tools bill the provider's " +
-      "own charges. Not ledger-gated yet — per-mode unit accounting lands with the actions work.",
+      "Hobby: 100k tool calls/mo free (Composio-managed apps are a <=20k subset), 50k triggers, " +
+      "1M sandbox LLM tokens, no card — re-verified 2026-10-25 against the pricing page and " +
+      "pricing.md, which agree. Execution modes have separate allowances; Instant Tools bill the " +
+      "provider's own charges from the Composio balance, separate from plan allowances, and " +
+      "Composio enforces no org-balance limit — spend protection is ours. Not ledger-gated yet — " +
+      "per-mode unit accounting lands with the actions work.",
   },
   {
     id: "openrouter",

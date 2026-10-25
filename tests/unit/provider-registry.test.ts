@@ -61,6 +61,23 @@ describe("ai-gateway-search entry", () => {
   });
 });
 
+describe("composio entry", () => {
+  it("carries a verified spend gate: quota, recent verification, composio.dev source", () => {
+    // Spec #316: the spend guard refuses Composio Instant calls while these
+    // are missing — a regression here silently reopens unbounded spend.
+    const entry = providerEntry("composio")!;
+    expect(entry.enabled).toBe(true);
+    expect(entry.allowPaidUsage).toBe(false);
+    expect(entry.allowPaidFallback).toBe(false);
+    expect(entry.quota).not.toBeNull();
+    expect(entry.quota!.allowance).toBeGreaterThan(0);
+    expect(entry.quota!.renewal).toBe("monthly");
+    expect(entry.verifiedAt).not.toBeNull();
+    expect(entry.verifiedAt! >= "2026-10-25").toBe(true);
+    expect(entry.verificationSource).toContain("composio.dev");
+  });
+});
+
 describe("assertProviderUsable", () => {
   it("fails closed on unknown, disabled and unverified providers", () => {
     expect(() => assertProviderUsable(null, "made-up")).toThrow(ProviderDisabledError);
