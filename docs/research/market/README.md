@@ -22,6 +22,11 @@ where it can **differentiate** (win, mapped to real strengths).
 | 2026-10-25 | [Sunsama](2026-10-25-sunsama.md) | Guided daily planning ritual |
 | 2026-10-25 | [Akiflow](2026-10-25-akiflow.md) | Calendar-first tasks + AI assistant |
 | 2026-10-25 | [Amie](2026-10-25-amie.md) | AI meeting notes (pivot from calendar) |
+| 2026-10-25 | [**Landscape synthesis**](2026-10-25-landscape-synthesis.md) | Cross-cutting signals across all entries |
+| 2026-10-25 | [Logseq](2026-10-25-logseq.md) | Local-first outliner PKM (open source) |
+| 2026-10-25 | [Anytype](2026-10-25-anytype.md) | Local-first encrypted P2P workspace |
+| 2026-10-25 | [Routine](2026-10-25-routine.md) | All-in-one work OS + AI workforce |
+| 2026-10-25 | [Granola](2026-10-25-granola.md) | Botless AI meeting notepad |
 
 ## Method
 
