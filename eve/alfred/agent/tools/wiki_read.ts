@@ -14,7 +14,7 @@ import { WIKI_READ_CAPABILITY } from "../../../../src/domains/knowledge/wiki-age
  */
 export default defineTool({
   description:
-    "Read the workspace wiki: the master index, a topic hub by slug, or one article by artifact id. Use this to answer from the maintained layer before falling back to raw documents. Read-only; the run's frozen policy must allow wiki.read.",
+    "Read the workspace wiki: the master index, a topic hub by slug, or one article by artifact id. Use this to answer from the maintained layer before falling back to raw documents — start here for questions the wiki's topics plausibly cover. It will not search raw passages (that is documents_search) and cannot read a document that was never ingested; an unknown slug or artifact id comes back as an empty result, not an error to retry. Read-only; the run's frozen policy must allow wiki.read.",
   inputSchema: z.object({
     what: z.enum(["index", "topic", "article", "overview"]).describe("index = master index text; overview = topics, articles and log tail; topic/article need slug/artifactId."),
     slug: z.string().min(1).max(61).optional().describe("Topic slug, when what=topic."),

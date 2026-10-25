@@ -18,7 +18,7 @@ import {
  */
 export default defineTool({
   description:
-    "Read a public web page as markdown, or crawl a site to a bounded depth. Use after web_search when a snippet is not enough. Read-only; the run's frozen policy must allow web.fetch.",
+    "Read a public web page as markdown, or crawl a site to a bounded depth. Use after web_search when a snippet is not enough or the owner names a URL. It will not authenticate, fetch paywalled or private pages, or read workspace content; on deployments without a fetch provider it answers 'not configured' — report that, do not retry. Read-only; the run's frozen policy must allow web.fetch.",
   inputSchema: z.object({
     url: z.string().url().describe("Public http(s) URL to read"),
     crawl: z.boolean().optional().describe("Crawl the site instead of reading one page"),

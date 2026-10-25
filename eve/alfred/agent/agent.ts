@@ -59,7 +59,13 @@ const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
  */
 function alfredModel(runModel?: string | null) {
   const wanted = runModel ?? process.env.GEMINI_AGENT_MODEL ?? DEFAULT_MODEL_ID;
-  const entry = modelById(wanted) ?? modelById(DEFAULT_MODEL_ID)!;
+  // A frozen id that left the catalog (a probe-retired entry) must fail the
+  // run loudly: falling back to the default would record one model on the run
+  // row while another answered — the lie the spend contract forbids.
+  const entry = modelById(wanted);
+  if (!entry) {
+    throw new Error(`Model "${wanted}" is not in the catalog. Choose another model; the run's frozen model is never silently substituted.`);
+  }
 
   const apiKey = (process.env[entry.keyEnv] ?? "").trim();
   if (!apiKey) {

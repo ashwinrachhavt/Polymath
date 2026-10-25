@@ -18,7 +18,7 @@ import {
  */
 export default defineTool({
   description:
-    "Read a public web page as markdown, or crawl a site to a bounded depth. Use after web_search when a snippet is not enough. Read-only; the run's frozen policy must allow web.fetch.",
+    "Read a public web page as markdown, or crawl a site to a bounded depth. Use after web_search when a snippet is not enough, or when the owner names a URL directly and its contents matter. It will not log into anything, fetch pages behind authentication, or read the owner's mail and documents — those live elsewhere; and it answers 'not configured' on deployments without a fetch provider rather than falling back. Crawl only when the answer may sit on several pages of the same site; a single page needs no crawl. Read-only; the run's frozen policy must allow web.fetch.",
   inputSchema: z.object({
     url: z.string().url().describe("Public http(s) URL to read"),
     crawl: z.boolean().optional().describe("Crawl the site instead of reading one page"),
@@ -40,6 +40,9 @@ export default defineTool({
       return { ok: false as const, error: "web.fetch is not in this run's policy snapshot" };
     }
 
+    if (input.url.startsWith("ai-gateway://")) {
+      return { ok: false as const, error: "that is a provenance marker from a synthesized search answer, not a fetchable page" };
+    }
     if (input.crawl) {
       return crawlSiteForAgent({ workspaceId, userId }, { url: input.url, limit: input.limit, maxDepth: input.maxDepth });
     }

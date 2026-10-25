@@ -50,6 +50,17 @@ describe("providerRegistry", () => {
   });
 });
 
+describe("ai-gateway-search entry", () => {
+  it("stays disabled and paid-only until the spend is opted into", () => {
+    const entry = providerEntry("ai-gateway-search")!;
+    expect(entry.enabled).toBe(false);
+    expect(entry.freeClass).toBe("paid");
+    expect(entry.allowPaidUsage).toBe(false);
+    expect(entry.allowPaidFallback).toBe(false);
+    expect(entry.verificationSource).toContain("vercel.com");
+  });
+});
+
 describe("assertProviderUsable", () => {
   it("fails closed on unknown, disabled and unverified providers", () => {
     expect(() => assertProviderUsable(null, "made-up")).toThrow(ProviderDisabledError);

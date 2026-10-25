@@ -75,6 +75,24 @@ describe("webSearchProvider resolution", () => {
     expect(webSearchProvider({ TAVILY_API_KEY: "tv-test" }).name).toBe("tavily");
     expect(webSearchProvider({ BRAVE_SEARCH_API_KEY: "brv-test" }).name).toBe("brave");
     expect(webSearchProvider({ EXA_API_KEY: "exa-test" }).name).toBe("exa");
+    // Parallel is card-backed, so a bare key never auto-selects it: the
+    // registry keeps it disabled until the spend is opted into explicitly.
+    expect(webSearchProvider({ PARALLEL_API_KEY: "pl-test" }).name).toBe("duckduckgo");
+    expect(webSearchProvider({ SEARCH_PROVIDER: "parallel", PARALLEL_API_KEY: "pl-test" }).name).toBe("parallel");
+  });
+
+  it("resolves AI Gateway server-tool search by provider suffix", () => {
+    for (const suffix of ["exa", "tako", "parallel", "perplexity"]) {
+      expect(webSearchProvider({ SEARCH_PROVIDER: `ai-gateway-${suffix}`, AI_GATEWAY_API_KEY: "gw-test" }).name).toBe(
+        `ai-gateway-${suffix}`,
+      );
+    }
+  });
+
+  it("refuses an unknown AI Gateway search suffix", () => {
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "ai-gateway-altavista", AI_GATEWAY_API_KEY: "gw" })).toThrow(
+      WebSearchError,
+    );
   });
 
   it("honours an explicit SEARCH_PROVIDER", () => {
@@ -83,10 +101,53 @@ describe("webSearchProvider resolution", () => {
 
   it("fails loudly when a keyed provider is named without its key", () => {
     expect(() => webSearchProvider({ SEARCH_PROVIDER: "brave" })).toThrow(WebSearchError);
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "parallel" })).toThrow(WebSearchError);
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "ai-gateway-exa" })).toThrow(WebSearchError);
+  });
+
+  it("resolves the auto-chain in its documented cost order", () => {
+    const env = {
+      BRAVE_SEARCH_API_KEY: "brv",
+      TAVILY_API_KEY: "tv",
+      EXA_API_KEY: "exa",
+    };
+    expect(webSearchProvider(env).name).toBe("brave");
+    // Firecrawl outranks Brave; a card-backed tier like Parallel never
+    // auto-selects — it needs an explicit SEARCH_PROVIDER.
+    expect(webSearchProvider({ ...env, FIRECRAWL_HOSTED_API_KEY: "fc" }).name).toBe("firecrawl");
   });
 
   it("fails loudly on an unknown provider name", () => {
     expect(() => webSearchProvider({ SEARCH_PROVIDER: "altavista" })).toThrow(WebSearchError);
+  });
+});
+
+describe("searchWebForAgent registry gate", () => {
+  it("fails closed when the resolved provider's registry entry is disabled", async () => {
+    const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
+    // parallel's key is set and SEARCH_PROVIDER names it, but its registry
+    // entry is disabled (card-backed): the call must refuse before any fetch.
+    vi.stubEnv("SEARCH_PROVIDER", "parallel");
+    vi.stubEnv("PARALLEL_API_KEY", "pl-test");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await searchWebForAgent({ workspaceId: "w1" }, { query: "q" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("disabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("maps a gateway adapter name onto its shared registry entry", async () => {
+    const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
+    vi.stubEnv("SEARCH_PROVIDER", "ai-gateway-tako");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "gw-test");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await searchWebForAgent({ workspaceId: "w1" }, { query: "q" });
+    // The ai-gateway-search entry is disabled (post-promo billing): refuse.
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("disabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -2,7 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- Providers: the chat model catalog gains the free tiers the workspace can
+  actually call - Cohere (trial), Mistral (free mode), NVIDIA NIM, OVHcloud,
+  Z AI, and the AI Gateway's free-tier models - each hidden until its key is
+  set, with the probe field saying what verified it. OpenRouter's :free pool
+  is reachable through the existing key.
+- Search: Parallel's direct Search API (5,000 requests/month, card-backed)
+  and the AI Gateway server-tool route (Exa/Tako/Parallel/Perplexity) join
+  the adapter seam, both registry-disabled until the spend is opted into.
+
 ### Fixed
+
+- Search: the provider registry's fail-closed rule is now enforced. A
+  disabled entry (parallel's card-backed tier, the gateway's post-promo
+  billing) refuses at the gate instead of executing because its key is set,
+  and card-backed providers never auto-select without an explicit
+  SEARCH_PROVIDER.
+- Search: a synthesized AI Gateway answer carries an ai-gateway://
+  provenance marker instead of a fabricated citation URL.
+- Agents: a run whose frozen model left the catalog fails loudly instead of
+  silently answering with the default model.
+- Prompts: one shared untrusted-data clause (with a JSON-safe variant for
+  the structured-output surfaces) replaces the five drifting inline copies;
+  Alfred's and the specialist's instructions carry the untrusted-content
+  policy block, and every tool description states when NOT to call it.
+
 
 - Conversations: a title that started with a pasted link (for example
   "[Note: …](/alfred/notes?note=…) Summarize this") showed the raw markdown on

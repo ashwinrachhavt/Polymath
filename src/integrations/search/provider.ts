@@ -47,10 +47,12 @@ export class WebSearchError extends Error {
 /** One request never hangs a run: providers must finish inside this budget. */
 export const WEB_SEARCH_TIMEOUT_MS = 10_000;
 
+import { aiGatewaySearchProvider, AI_GATEWAY_SEARCH_PROVIDERS } from "./ai-gateway";
 import { braveProvider } from "./brave";
 import { duckDuckGoProvider } from "./duckduckgo";
 import { exaProvider } from "./exa";
 import { firecrawlSearchProvider } from "./firecrawl";
+import { parallelProvider } from "./parallel";
 import { searxngProvider } from "./searxng";
 import { tavilyProvider } from "./tavily";
 
@@ -58,12 +60,18 @@ import { tavilyProvider } from "./tavily";
  * Pick the adapter from the environment. SEARCH_PROVIDER wins outright;
  * otherwise a configured local SearXNG instance (SEARXNG_URL) is preferred,
  * then the first configured key in cost order of "has a real free tier"
- * (Brave 2k/mo, Tavily 1k/mo, Exa trial credit), and with nothing configured
+ * (Firecrawl 1k credits/mo, Brave 2k/mo, Tavily 1k/mo, Exa trial credit —
+ * card-backed tiers like Parallel stay out of the auto-chain and need an
+ * explicit SEARCH_PROVIDER), and with nothing configured
  * the zero-key DuckDuckGo adapter so the tool works with no setup and no spend.
  */
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
+  const gatewayProvider = AI_GATEWAY_SEARCH_PROVIDERS.find((p) => `ai-gateway-${p}` === choice);
+  if (gatewayProvider) return aiGatewaySearchProvider(gatewayProvider, env);
   switch (choice) {
+    case "parallel":
+      return parallelProvider(env);
     case "firecrawl":
       return firecrawlSearchProvider(env);
     case "searxng":
@@ -86,7 +94,7 @@ export function webSearchProvider(env: Record<string, string | undefined> = proc
       return duckDuckGoProvider();
     default:
       throw new WebSearchError(
-        `Unknown SEARCH_PROVIDER "${choice}". Expected firecrawl, searxng, brave, tavily, exa, or duckduckgo.`,
+        `Unknown SEARCH_PROVIDER "${choice}". Expected firecrawl, searxng, brave, tavily, exa, parallel, ai-gateway-<provider>, or duckduckgo.`,
         choice,
       );
   }

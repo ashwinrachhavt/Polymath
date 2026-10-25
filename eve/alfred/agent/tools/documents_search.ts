@@ -19,7 +19,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the workspace's documents. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the workspace's documents. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them. Use for any question about the owner's captured files, contracts, notes and imported pages; call it before answering from memory when the question touches workspace content. It will not return whole documents — only passages — and it will not find anything outside what has been captured; an empty result means the corpus lacks the answer. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),

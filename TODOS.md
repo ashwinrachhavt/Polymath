@@ -3,6 +3,38 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Test environment
+
+**Priority:** P2
+
+- **RLS evaluation suite needs a true superuser scratch DB.** rls-evaluation.test.ts
+  (ASH-121 AC05) SET ROLEs a probe role; the local Supabase scratch database's
+  postgres role is not rolsuper, so 2 of 825 integration tests fail locally
+  with "permission denied to set role". CI's own postgres container passes
+  them. Document a non-Supabase TEST_DATABASE_URL for local integration runs.
+  Noticed by /ship on 2026-10-24; not caused by this branch.
+
+## Provider/search follow-ups (2026-10-24, /ship adversarial review)
+
+**Priority:** P2
+
+- **Tool-support provenance for listing-only catalog entries.** ~15 models
+  entered the catalog from a third-party listing without a live probe, and the
+  `tools` field removal left nowhere to record that tool calling is unverified
+  for them. Record tool support per entry (note or probe) before those models
+  run with authored tools. Deferred from: adversarial review finding 5.
+- **Gateway search is an LLM-in-the-loop route.** Each call wraps a chat
+  completion around the query (tokens + per-request billing on both sides).
+  The opt-in point should say so before anyone enables the entry.
+  Deferred from: adversarial review finding 7.
+- **searchCostEstimate settles at the estimate.** withQuota's default books
+  the estimated units even when the response is smaller. Harmless for
+  request-metered units; revisit if a costlier unit type lands.
+  Deferred from: adversarial review finding 8.
+- **Env-var reference rows for the new provider keys.** COHERE/MISTRAL/
+  NVIDIA/OVH/ZAI/AI_GATEWAY keys are documented in .env.example and code but
+  not in agents/reference.md's curated table. Deferred from: docs audit debt.
+
 ## QA deferred findings (2026-10-24, /qa full-product run)
 
 **Priority:** P2

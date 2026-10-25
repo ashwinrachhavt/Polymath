@@ -18,7 +18,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the public web. Returns ranked results with title, URL and snippet, plus which provider answered. Read-only; the run's frozen policy must allow web.search.",
+    "Search the public web. Returns ranked results with title, URL and snippet, plus which provider answered. Use for current facts the brief calls for; it will not open pages (web_fetch does) and does not reach the owner's mail or files. Name the source URL for each claim you take from a result. Read-only; the run's frozen policy must allow web.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(WEB_SEARCH_MAX_RESULTS).optional(),
