@@ -1,6 +1,7 @@
 import { SignIn } from "@clerk/nextjs";
 import { notFound } from "next/navigation";
 import { afterAuthUrl, clerkAppearance } from "@/lib/clerk-appearance";
+import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { clerkConfigured } from "@/lib/clerk";
 
 export const metadata = { title: "Sign in · Polymath" };
@@ -13,11 +14,13 @@ export default function SignInPage() {
   if (!clerkConfigured) notFound();
   return (
     <main className="flex flex-1 items-center justify-center p-6">
-      <SignIn
+      <ClerkAuthProvider>
+        <SignIn
         appearance={clerkAppearance}
         forceRedirectUrl={afterAuthUrl}
         signUpUrl="/sign-up"
       />
+      </ClerkAuthProvider>
     </main>
   );
 }
