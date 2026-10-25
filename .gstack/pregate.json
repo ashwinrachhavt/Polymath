@@ -13,6 +13,8 @@
     "src/db/migrations/meta/_journal.json": [],
     "package.json": [],
     "pnpm-lock.yaml": [],
+    "*-lock.json": [],
+    "skills-lock.json": [],
     "scripts/pair-companion.ts": [
       "tests/integration/companion-token.test.ts"
     ],
@@ -53,6 +55,7 @@
     "tests/db/**"
   ],
   "empty_lanes": [
-    ".env.example"
+    ".env.example",
+    "skills-lock.json"
   ]
 }

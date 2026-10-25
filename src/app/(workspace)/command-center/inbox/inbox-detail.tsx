@@ -8,7 +8,7 @@ import { makeDraftAction, makeDocumentAction,
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { CaptureBody } from "./capture-body";
-import { captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
+import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -96,6 +96,9 @@ export function InboxDetail({
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
   const title = captureTitle(capture);
+  // A name only when one exists apart from the body; an unlabeled text capture
+  // renders its body directly instead of the derived first line twice.
+  const heading = captureDetailHeading(capture);
 
   function saveAsDocument() {
     setError(null);
@@ -139,14 +142,16 @@ export function InboxDetail({
   return (
     <article className="mx-auto flex min-w-0 max-w-3xl flex-col">
       <header>
-        <h2
-          ref={headingRef}
-          tabIndex={-1}
-          className="text-balance text-[17px] leading-snug font-medium break-words focus-visible:outline-none"
-        >
-          {title}
-        </h2>
-        {capture.kind === "url" && capture.url && isHttpUrl(capture.url) && capture.url !== title ? (
+        {heading ? (
+          <h2
+            ref={headingRef}
+            tabIndex={-1}
+            className="text-balance text-[17px] leading-snug font-medium break-words focus-visible:outline-none"
+          >
+            {heading}
+          </h2>
+        ) : null}
+        {capture.kind === "url" && capture.url && isHttpUrl(capture.url) && capture.url !== (heading ?? title) ? (
           <a
             href={capture.url}
             target="_blank"

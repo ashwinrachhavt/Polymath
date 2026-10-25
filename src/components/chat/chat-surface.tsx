@@ -277,7 +277,7 @@ export function ChatSurface({
                 // answer above it, not the thing being read.
                 <ThinkingPill key={block.id} text={block.text} done={block.done} />
               ) : (
-                <div key={block.id} className="group/message mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
+                <div key={block.id} className="group/message mx-auto w-full max-w-[var(--page-width)] font-[family-name:var(--font-reading)] text-[16px] leading-7">
                   <Markdown text={block.text} />
                   {block.kind === "assistant" && block.done ? (
                     <MessageToolbar runId={runId} turnId={turnIdOf(block.id)} text={block.text} />

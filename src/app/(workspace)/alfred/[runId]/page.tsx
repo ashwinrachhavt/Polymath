@@ -127,7 +127,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
                     {entry.text}
                   </div>
                 ) : entry.kind === "assistant" ? (
-                  <div key={entry.sequence} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
+                  <div key={entry.sequence} className="mx-auto w-full max-w-[var(--page-width)] font-[family-name:var(--font-reading)] text-[16px] leading-7">
                     <Markdown text={entry.text} />
                     <MessageFeedback runId={run.id} sequence={entry.sequence} initial={entry.feedback ?? null} />
                   </div>

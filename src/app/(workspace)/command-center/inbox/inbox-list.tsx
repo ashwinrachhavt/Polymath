@@ -91,6 +91,23 @@ export function captureTitle(capture: { title?: string | null; preview?: string 
   return first || capture.url || filename || "Empty capture";
 }
 
+/**
+ * A name the detail pane can put above the body: a stored title, a file's
+ * filename, or the URL of a url-only capture. A bare text capture has no name
+ * apart from its body — the list labels it with the body's first line, and the
+ * detail pane showing that same derived line as a heading printed the words
+ * twice. Null means "render the body alone".
+ */
+export function captureDetailHeading(capture: { title?: string | null; preview?: string | null; text?: string | null; url?: string | null; kind?: string | null; rawPayload?: unknown }): string | null {
+  const named = capture.title?.trim();
+  if (named) return named;
+  // A url-only capture's URL is its identity, not its body.
+  if (capture.kind === "url" && capture.url && !capture.text?.trim()) return capture.url;
+  const filename = ((capture.rawPayload ?? {}) as { filename?: string }).filename?.trim();
+  if (filename) return filename;
+  return null;
+}
+
 function when(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diff / 60_000);

@@ -86,8 +86,7 @@
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
+  --color-foreground: var(--foreground);  --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
@@ -124,8 +123,12 @@
      quiet at 13px. Geist Mono stays for readouts and keyboard hints. */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  /* Page headings only, never UI text. A system serif stack: no download,
-     no shift, renders instantly. */
+  /* Reading surfaces: transcript answers, note bodies, document previews —
+     the text a person reads for a minute, set like Perplexity sets its
+     answers. UI chrome (nav, composer, tables, pills) stays sans. A system
+     serif stack: no download, no shift, renders instantly. */
+  --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  /* Page headings only, never UI text. */
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 
   --tracking-tight: -0.011em;
