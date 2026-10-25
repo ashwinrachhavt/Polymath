@@ -155,7 +155,16 @@ for (const vp of VIEWPORTS) {
     await expect(row.getByRole("alert")).toContainText("does not exist", { timeout: 30_000 });
     // The error must not crush the row: title and time stay visible (mobile wraps below).
     await expect(row.getByText(EVENT_TITLE)).toBeVisible();
-    await expect(row.getByText(/[AP]M/)).toBeVisible();
+    const time = row.getByText(/[AP]M/);
+    await expect(time).toBeVisible();
+    // toBeVisible alone passes on overflow; the time must sit inside the row's box.
+    const rowBox = await row.boundingBox();
+    const timeBox = await time.boundingBox();
+    expect(timeBox, "event time has a box").not.toBeNull();
+    expect(
+      timeBox!.x + timeBox!.width,
+      "event time renders inside the row, not clipped off its right edge",
+    ).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
     await page.screenshot({ path: `test-results/feature-pixels/prep-refresh-error-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 }
