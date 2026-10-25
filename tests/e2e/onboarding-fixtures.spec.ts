@@ -80,11 +80,17 @@ test("the island renders a live conversation", async ({ page }) => {
   await page.screenshot({ path: "test-results/onboarding-pixels/island-conversation.png", fullPage: true, ...HIDE_DEV_CHROME });
 });
 
-test("the island settles on the status card when no runtime is reachable", async ({ page }) => {
+test("the island settles on a labelled failure surface when no runtime is reachable", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=island");
-  // The island mounts and starts its run; without EVE_BASE_URL the start
-  // fails fast and the island swaps to the status card. Give the transition
-  // room, then assert the settled surface, not a spinner.
-  await expect(page.getByText(/could not start|not reachable/i).first()).toBeVisible({ timeout: 15_000 });
+  // The island mounts and starts its run. How far it gets depends on the
+  // harness env: no bridge secret fails the start outright (the island's own
+  // error card); a secret without a reachable Eve starts the run and the
+  // stream answers with a labelled error inside the chat. Both are the
+  // bridge-down journey - the assertion is a named failure, never a spinner
+  // or an error boundary.
+  await expect(
+    page.getByText(/could not start|not reachable|no agent session|execution is unavailable/i).first(),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
   await page.screenshot({ path: "test-results/onboarding-pixels/island-settled.png", fullPage: true, ...HIDE_DEV_CHROME });
 });

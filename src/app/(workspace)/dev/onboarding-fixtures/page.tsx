@@ -10,6 +10,9 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+// Never prerendered: fixtures read URL state and the island touches the server.
+export const dynamic = "force-dynamic";
+
 /*
  * Pixel fixture for the onboarding surfaces (ASH-296). The shared e2e
  * workspace is provisioned already-onboarded and no spec may flip that
