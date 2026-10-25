@@ -15,6 +15,15 @@ describe("generationProvider selection", () => {
     const p = generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" });
     expect(p.registryId).toBe("openrouter");
   });
+  it("serves the fixture provider only outside production", () => {
+    expect(generationProvider({ GENERATION_PROVIDER: "fixture" }).registryId).toBe("fixture");
+    expect(generationProvider({ GENERATION_PROVIDER: "fixture", NODE_ENV: "development" }).registryId).toBe("fixture");
+  });
+  it("fails closed if fixture is set in production", () => {
+    // An env leak must surface as the skippable unconfigured error, never as
+    // fixture content in front of a real caller.
+    expect(() => generationProvider({ GENERATION_PROVIDER: "fixture", NODE_ENV: "production" })).toThrow(GenerationUnconfiguredError);
+  });
   it("takes the free Gemini route only when it is the configured one", () => {
     expect(generationProvider({ GEMINI_API_KEY: "g" }).registryId).toBe("gemini");
     expect(generationProvider({ GENERATION_PROVIDER: "gemini", OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" }).registryId).toBe("gemini");

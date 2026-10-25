@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { FileText, LayoutGrid, List, Search } from "lucide-react";
+import { WriteFromLibrary } from "./write-from-library";
 
 /*
  * Gallery toolbar (filter tabs, search, grid/list toggle) and the artifact
@@ -31,7 +32,7 @@ export function GalleryToolbar({
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <form
         role="search"
         onSubmit={(event) => {
@@ -51,6 +52,7 @@ export function GalleryToolbar({
           />
         </div>
       </form>
+      <WriteFromLibrary />
       <div className="flex items-center rounded-md border border-border" role="group" aria-label="Layout">
         <button
           type="button"
