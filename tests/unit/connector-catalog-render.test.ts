@@ -99,9 +99,10 @@ describe("connector catalog pixel harness", () => {
     expect(html).toContain("work-gmail");
     expect(html).toContain("No health check yet");
     // gmail.send is switched off on the fixture account, so the Send switch
-    // reads off; the old tier select and "Narrowed by" copy are gone.
-    expect(html).toContain('aria-label="Send"');
-    expect(html).toContain('aria-checked="false"');
+    // reads off while Read stays on; the old tier select and "Narrowed by"
+    // copy are gone.
+    expect(html).toContain('aria-checked="false" aria-label="Send"');
+    expect(html).toContain('aria-checked="true" aria-label="Read"');
     expect(html).not.toContain("Narrowed by the switches below");
     expect(html).not.toContain("Agent access");
     expect(html).toContain("Setup needed");

@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CAPABILITIES, PROVIDER_TIERS, type Capability, type Provider } from "@/domains/integrations/capabilities";
-import { accessToggleState, writeCapability } from "@/domains/integrations/access-toggles";
+import { CAPABILITIES, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
+import { accessToggleState, planToggleSteps, type ToggleStep } from "@/domains/integrations/access-toggles";
 import {
   renameAccountAction,
   revokeAccountAction,
@@ -228,18 +228,25 @@ export function AccessToggles({
   const providerKey = provider as Provider;
   const tiers = PROVIDER_TIERS[providerKey] ?? [];
   const state = accessToggleState(providerKey, currentTier, disabled);
-  const write = writeCapability(providerKey);
 
   if (!tiers.length) return null;
 
-  const run = async (steps: Array<{ expectedVersion: number; call: () => Promise<{ ok: true } | { ok: false; error: string }>}>) => {
+  const run = async (steps: ToggleStep[]) => {
     setError(null);
     startTransition(async () => {
       // Each call bumps the account version, so a later step in the same
       // transition must expect the bumped version. A failed step is reported
       // as-is; earlier steps are not rolled back.
       for (const step of steps) {
-        const result = await step.call();
+        const result =
+          step.kind === "tier"
+            ? await setAccountAccessTierAction({ accountId, expectedVersion: step.expectedVersion, tierId: step.tierId })
+            : await setAccountCapabilityAction({
+                accountId,
+                expectedVersion: step.expectedVersion,
+                capability: step.capability,
+                enabled: step.enabled,
+              });
         if (!result.ok) {
           setError(result.error);
           return;
@@ -248,50 +255,12 @@ export function AccessToggles({
     });
   };
 
-  // Write on = raise the tier first (a capability outside the tier is
-  // rejected by the command), then clear any disable on the write capability.
-  const writeOn = () => {
-    const tierId = tiers.find((tier) => write && tier.capabilities.includes(write))?.id;
-    if (!tierId || !write) return;
-    const steps = [{ expectedVersion, call: () => setAccountAccessTierAction({ accountId, expectedVersion, tierId }) }];
-    if (disabled.includes(write)) {
-      steps.push({
-        expectedVersion: expectedVersion + 1,
-        call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + 1, capability: write, enabled: true }),
-      });
-    }
-    run(steps);
-  };
-
-  // Read off = disable every read capability the current tier grants. This is
-  // a legal narrowing, so no tier change is involved.
-  const readOff = () => {
-    const granted = tiers.find((tier) => tier.id === currentTier)?.capabilities ?? [];
-    const reads = granted.filter((capability) => CAPABILITIES[capability as Capability]?.kind === "read" && !disabled.includes(capability));
-    if (!reads.length) return;
-    run(reads.map((capability, index) => ({
-      expectedVersion: expectedVersion + index,
-      call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + index, capability, enabled: false }),
-    })));
-  };
-
-  // Read on = re-enable every read capability the current tier grants.
-  const readOn = () => {
-    const granted = tiers.find((tier) => tier.id === currentTier)?.capabilities ?? [];
-    const reads = granted.filter((capability) => CAPABILITIES[capability as Capability]?.kind === "read" && disabled.includes(capability));
-    if (!reads.length) return;
-    run(reads.map((capability, index) => ({
-      expectedVersion: expectedVersion + index,
-      call: () => setAccountCapabilityAction({ accountId, expectedVersion: expectedVersion + index, capability, enabled: true }),
-    })));
-  };
-
-  // Write off = disable the write capability only. Dropping the tier would be
-  // redundant: capability switches may narrow, so the tier stays as the
-  // ceiling and re-enabling is one switch flip away.
-  const writeOff = () => {
-    if (!write) return;
-    run([{ expectedVersion, call: () => setAccountCapabilityAction({ accountId, expectedVersion, capability: write, enabled: false }) }]);
+  // The step sequence for every flip is the pure plan in access-toggles.ts,
+  // offset by the version the card was rendered with.
+  const flip = (toggle: "read" | "write", on: boolean) => {
+    const steps = planToggleSteps({ provider: providerKey, currentTier, disabled, toggle, on });
+    if (!steps.length) return;
+    run(steps.map((step) => ({ ...step, expectedVersion: step.expectedVersion + expectedVersion })));
   };
 
   const toggleRow = (
@@ -336,7 +305,7 @@ export function AccessToggles({
         "Agents can read",
         state.read.on,
         state.read.available,
-        state.read.on ? readOff : readOn,
+        () => flip("read", !state.read.on),
       )}
       {state.write
         ? toggleRow(
@@ -346,7 +315,7 @@ export function AccessToggles({
               : "Agents can draft proposals for your approval",
             state.write.on,
             state.write.available,
-            state.write.on ? writeOff : writeOn,
+            () => flip("write", !state.write?.on),
           )
         : null}
       {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}

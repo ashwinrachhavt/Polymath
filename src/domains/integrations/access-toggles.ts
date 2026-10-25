@@ -69,3 +69,77 @@ export function accessToggleState(provider: Provider, currentTier: string | null
     },
   };
 }
+
+/*
+ * The server-action plan behind one switch flip, pure so the unit test can
+ * pin the sequence the component issues. Each step bumps the account version,
+ * so a later step's expectedVersion is its index plus the starting version.
+ *
+ * A tier-less or unresolvable current tier makes every toggle meaningful:
+ * Read ON raises the account to the lowest tier (the command would reject a
+ * capability enable outside the tier), then enables the granted reads.
+ */
+export type ToggleStep =
+  | { kind: "tier"; tierId: string; expectedVersion: number }
+  | { kind: "capability"; capability: Capability; expectedVersion: number; enabled: boolean };
+
+export function planToggleSteps(input: {
+  provider: Provider;
+  currentTier: string | null;
+  disabled: string[];
+  toggle: "read" | "write";
+  on: boolean;
+}): ToggleStep[] {
+  const { provider, currentTier, disabled, toggle, on } = input;
+  const tiers = PROVIDER_TIERS[provider] ?? [];
+  const tier = tiers.find((t) => t.id === currentTier);
+  const off = new Set(disabled);
+  const steps: ToggleStep[] = [];
+  let version = 0;
+
+  if (toggle === "write") {
+    const write = writeCapability(provider);
+    if (!write) return [];
+    const writeTier = tiers.find((t) => t.capabilities.includes(write));
+    if (!writeTier) return [];
+    // Already on the write tier: the capability enable alone settles it, and
+    // a same-tier set would only burn a version bump.
+    if (tier && tier.id !== writeTier.id) {
+      steps.push({ kind: "tier", tierId: writeTier.id, expectedVersion: version++ });
+    }
+    if (off.has(write)) {
+      steps.push({ kind: "capability", capability: write, expectedVersion: version++, enabled: true });
+    }
+    return steps;
+  }
+
+  if (!tier) {
+    // Unknown or unset tier: the switch must still do what it says. Raise to
+    // the lowest tier first, then enable its reads (some may already be
+    // recorded as disabled on the account).
+    const lowest = tiers[0];
+    if (!lowest) return [];
+    steps.push({ kind: "tier", tierId: lowest.id, expectedVersion: version++ });
+    for (const capability of lowest.capabilities) {
+      if (CAPABILITIES[capability]?.kind === "read" && off.has(capability)) {
+        steps.push({ kind: "capability", capability, expectedVersion: version++, enabled: true });
+      }
+    }
+    return steps;
+  }
+
+  if (on) {
+    for (const capability of tier.capabilities) {
+      if (CAPABILITIES[capability]?.kind === "read" && off.has(capability)) {
+        steps.push({ kind: "capability", capability, expectedVersion: version++, enabled: true });
+      }
+    }
+  } else {
+    for (const capability of tier.capabilities) {
+      if (CAPABILITIES[capability]?.kind === "read" && !off.has(capability)) {
+        steps.push({ kind: "capability", capability, expectedVersion: version++, enabled: false });
+      }
+    }
+  }
+  return steps;
+}
