@@ -130,10 +130,11 @@ jobs:
       - run: pnpm e2e
         env:
           PERF_BUDGET_ENFORCE: "1"
-          # The generation journeys (meeting prep, write from library) click
-          # through the whole pipeline against the deterministic fixture
-          # provider: no model key, no spend. Callers the fixture does not
-          # know get the same unconfigured error as a keyless run, a skip.
+          # The generation journeys (meeting prep, write from library,
+          # proposal batches) click through the whole pipeline against the
+          # deterministic fixture provider: no model key, no spend. Callers
+          # the fixture does not know get the same unconfigured error as a
+          # keyless run, treated as a skip.
           GENERATION_PROVIDER: fixture
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
@@ -180,6 +181,13 @@ jobs:
       run:
         working-directory: services/sidecar
     steps:
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-error-context
+          path: test-results/**/error-context.md
+          if-no-files-found: ignore
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
