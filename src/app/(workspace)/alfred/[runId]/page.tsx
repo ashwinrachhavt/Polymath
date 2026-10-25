@@ -4,12 +4,13 @@ import { io } from "next/cache";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
-import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
+import { ChatCancel, ChatSurface, ThinkingPill } from "@/components/chat/chat-surface";
 import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
 import { getRun, getRunUsage, type RunUsage } from "@/domains/agents/queries";
+import { modelById } from "@/domains/agents/models";
 import { listThreads } from "@/domains/agents/thread";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
@@ -67,6 +68,8 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // follow-up and a stop through the plain API controls - a waiting run is a
   // conversation, not a dead end.
   const isLive = !finished && !unavailable;
+  // The model's display label, not its provider id — the header speaks product words.
+  const modelLabel = run.model ? (modelById(run.model)?.label ?? run.model) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -76,16 +79,16 @@ async function ConversationSurface({ runId }: { runId: string }) {
        * stays because app screens always name what they show; everything else
        * about the run is in Details.
        */}
-      <header className="page-header border-border bg-background/95 sticky top-0 z-10 border-b backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[var(--page-width)] items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[14px] leading-tight font-medium">{displayTitle(run.objective)}</h1>
-            <p className="text-muted-foreground truncate text-[11px]">
-              Started {timeAgo(run.createdAt)}
-              {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
-              {costLabel(usage, finished) ? ` · ${costLabel(usage, finished)}` : null}
-            </p>
-          </div>
+      <header className="border-border bg-background/95 sticky top-0 z-10 border-b backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[var(--page-width)] items-baseline gap-3 px-6 py-2.5">
+          <h1 className="min-w-0 flex-1 truncate text-[14px] leading-snug font-medium">{displayTitle(run.objective)}</h1>
+          {/* One meta line, small enough to recede: when it started, how it ended, what it recorded. */}
+          <p className="text-muted-foreground shrink-0 text-[11px] whitespace-nowrap">
+            {modelLabel ? `${modelLabel} · ` : ""}
+            {timeAgo(run.createdAt)}
+            {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
+            {costLabel(usage, finished) ? ` · ${costLabel(usage, finished)}` : null}
+          </p>
         </div>
       </header>
 
@@ -112,27 +115,24 @@ async function ConversationSurface({ runId }: { runId: string }) {
               This conversation has no messages yet.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="mx-auto w-full max-w-[var(--page-width)] space-y-3">
               {thread.map((entry) =>
                 entry.kind === "user" ? (
-                  <div key={entry.sequence} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                  // The owner's words stay visible without a slab of chrome: right-aligned,
+                  // tinted only enough to separate from the answer, no big bubble.
+                  <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                     {entry.text}
                   </div>
                 ) : entry.kind === "assistant" ? (
-                  <div key={entry.sequence} className="max-w-[72ch] text-[13px] leading-6">
+                  <div key={entry.sequence} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
                     <Markdown text={entry.text} />
                     <MessageFeedback runId={run.id} sequence={entry.sequence} initial={entry.feedback ?? null} />
                   </div>
                 ) : entry.kind === "reasoning" ? (
                   // The model's visible rationale, kept from the live stream. A
-                  // quiet disclosure, not a transcript body: it is evidence for
-                  // the answer above it, not the thing being read.
-                  <details key={entry.sequence} className="max-w-[72ch]">
-                    <summary className="text-muted-foreground cursor-pointer text-[12px] hover:text-foreground">
-                      Show thinking
-                    </summary>
-                    <p className="text-muted-foreground mt-2 text-[13px] whitespace-pre-wrap">{entry.text}</p>
-                  </details>
+                  // quiet pill, not a transcript body: it is evidence for the
+                  // answer above it, not the thing being read.
+                  <ThinkingPill key={entry.sequence} text={entry.text} done />
                 ) : (
                   <p key={entry.sequence} className="text-muted-foreground text-[12px]">
                     {entry.text} · {timeAgo(entry.at)}
@@ -145,20 +145,25 @@ async function ConversationSurface({ runId }: { runId: string }) {
           {run.error ? (
             <p role="alert" className="text-destructive text-[13px]">{run.error}</p>
           ) : null}
-          {/* The live composer above already sends messages; the only action it
-              lacks is stopping the run. A finished run takes Retry here. */}
-          {finished ? (
-            <RunControls runId={run.id} finished />
-          ) : unavailable ? (
-            <RunControls runId={run.id} finished={false} />
-          ) : (
-            <ChatCancel runId={run.id} />
-          )}
-          <DraftControls
-            runId={run.id}
-            draft={drafts.get(run.id) ?? null}
-            canSave={(run.state === "succeeded" || run.state === "waiting_input") && thread.some((entry) => entry.kind === "assistant")}
-          />
+          {/* One quiet action row under the transcript: the live composer above
+              already sends messages, so this row only carries what it lacks —
+              stop for a live run, retry for a finished one — plus the draft.
+              Text actions, not buttons: they share the transcript's edge and
+              never read as a second composer. */}
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+            {finished ? (
+              <RunControls runId={run.id} finished />
+            ) : unavailable ? (
+              <RunControls runId={run.id} finished={false} />
+            ) : (
+              <ChatCancel runId={run.id} />
+            )}
+            <DraftControls
+              runId={run.id}
+              draft={drafts.get(run.id) ?? null}
+              canSave={(run.state === "succeeded" || run.state === "waiting_input") && thread.some((entry) => entry.kind === "assistant")}
+            />
+          </div>
         </section>
       </div>
     </div>

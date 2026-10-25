@@ -31,6 +31,7 @@ Two route families extend these without being resources of their own:
 |---|---|---|
 | Dossiers | `/v1/dossiers`, `/v1/dossiers/:dossierId/generate` | `GET` lists the workspace's notebooks with document counts; `POST` takes `name` plus `documentIds` (any foreign id fails the whole request with 422); the `generate` child starts a Studio run bound to the notebook and requires `Idempotency-Key`. |
 | Files | `/v1/files` | Multipart upload only (`415` otherwise). Sniffs type by content, returns `201 {documentId, contentHash}` or `200 {fileId, fileStatus: "quarantined"}` (no documentId). `GET ?documentId=` reports extraction progress. |
+| Readiness | `/v1/documents/readiness?ids=<uuid,...>` | Batch pipeline state for 1–50 document ids: `{sources: [{documentId, title, readiness, detail}]}` where readiness is `queued/extracting/embedding/ready/failed/unsupported`. Powers the vault's upload-progress rows; no-store. |
 
 Everything else is a capability over these. A proposal is `POST /v1/proposals`
 with a `target`; a stone is a session outcome, not a resource with its own

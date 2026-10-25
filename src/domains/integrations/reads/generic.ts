@@ -64,6 +64,31 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
       return [f.name ?? "(untitled file)", f.mimeType].filter(Boolean).join(" — ");
     },
   },
+  // Docs and Sheets both list through Drive's files endpoint, filtered by
+  // mimeType; resolveQuery interpolates the search text into {query} and
+  // escapes the Drive q language's quote, so the filter is injection-safe.
+  googledocs_search_files: {
+    tool: "googledocs_search_files",
+    capability: "googledocs.documents.read",
+    endpoint: "https://www.googleapis.com/drive/v3/files",
+    query: { q: "mimeType = 'application/vnd.google-apps.document' and name contains '{query}'", fields: "files(id,name,modifiedTime)" },
+    listPath: "files",
+    itemText: (item) => {
+      const f = item as { name?: string; modifiedTime?: string };
+      return [f.name ?? "(untitled document)", f.modifiedTime?.slice(0, 10)].filter(Boolean).join(" — ");
+    },
+  },
+  googlesheets_list_spreadsheets: {
+    tool: "googlesheets_list_spreadsheets",
+    capability: "googlesheets.spreadsheets.read",
+    endpoint: "https://www.googleapis.com/drive/v3/files",
+    query: { q: "mimeType = 'application/vnd.google-apps.spreadsheet' and name contains '{query}'", fields: "files(id,name,modifiedTime)" },
+    listPath: "files",
+    itemText: (item) => {
+      const f = item as { name?: string; modifiedTime?: string };
+      return [f.name ?? "(untitled spreadsheet)", f.modifiedTime?.slice(0, 10)].filter(Boolean).join(" — ");
+    },
+  },
   // Discord's channel list needs a guild id the tool does not take, so the
   // generic read lists the guilds (servers) the connection can see.
   discord_list_channels: {
@@ -197,13 +222,14 @@ function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<
   if (!spec.query) return undefined;
   const resolved: Record<string, string> = {};
   for (const [key, template] of Object.entries(spec.query)) {
-    if (template === "{query}") {
+    if (template.includes("{query}")) {
       // No search text, no search param: sending an empty filter would be a
       // provider error or, worse, a silently different query.
       if (!query?.trim()) continue;
       // Escape the provider query language's quote (Drive's q): the value is
-      // data, never a filter edit.
-      resolved[key] = query.trim().replaceAll("'", "\\'");
+      // data, never a filter edit. The template may carry other constant
+      // clauses (a mimeType filter), so interpolate rather than substitute.
+      resolved[key] = template.replaceAll("{query}", query.trim().replaceAll("'", "\\'"));
       continue;
     }
     resolved[key] = template;

@@ -10,7 +10,6 @@ import { listRecentRuns } from "@/domains/agents/queries";
 import { listSkills } from "@/domains/skills/queries";
 import { timeAgo, timeAgoShort } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
-import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
 import { listConversations } from "@/domains/conversations/queries";
@@ -39,7 +38,7 @@ export async function AlfredSurface() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <Home>
-        <div className="mx-auto w-full max-w-2xl">
+        <div className="mx-auto w-full max-w-3xl">
           <EmptyState
             title="Agent storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
@@ -89,34 +88,21 @@ export async function AlfredSurface() {
 
   return (
     <Home>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-        {runs.length > 0 || conversationThreads.length > 0 ? (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
+        {conversationThreads.length > 0 ? (
           <div className="flex">
             <HistoryMenu
               groups={[
-                ...groupByRecency(runs).map((group) => ({
-                  key: group.key,
-                  label: group.label,
-                  rows: group.rows.map((run) => ({
-                    id: run.id,
-                    objective: run.objective,
-                    time: timeAgoShort(run.createdAt),
+                {
+                  key: "threads",
+                  label: "Threads",
+                  rows: conversationThreads.map((thread) => ({
+                    id: thread.id,
+                    objective: thread.title || "Untitled conversation",
+                    time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
+                    href: `/command-center/conversations/${thread.id}`,
                   })),
-                })),
-                ...(conversationThreads.length > 0
-                  ? [
-                      {
-                        key: "threads",
-                        label: "Threads",
-                        rows: conversationThreads.map((thread) => ({
-                          id: thread.id,
-                          objective: thread.title || "Untitled conversation",
-                          time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
-                          href: `/command-center/conversations/${thread.id}`,
-                        })),
-                      },
-                    ]
-                  : []),
+                },
               ]}
             />
           </div>
@@ -131,7 +117,7 @@ export async function AlfredSurface() {
       </div>
 
       {recent.length > 0 ? (
-        <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+        <section className="mx-auto flex w-full max-w-3xl flex-col gap-2">
           <ul className="divide-border flex flex-col divide-y border-t">
             {recent.map((run) => (
               <li key={run.id}>
@@ -175,7 +161,7 @@ function AlfredSkeleton() {
   return (
     <div role="status" aria-label="Loading Polymath" className="page-content flex flex-1 flex-col gap-10 pt-16">
       <Skeleton className="mx-auto h-7 w-80 max-w-full" />
-      <Skeleton className="mx-auto h-24 w-full max-w-2xl" />
+      <Skeleton className="mx-auto h-24 w-full max-w-3xl" />
     </div>
   );
 }

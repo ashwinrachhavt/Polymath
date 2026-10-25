@@ -91,6 +91,37 @@ test("bulk archive moves two captures in one pass with per-row errors visible on
   await expect(page.getByRole("list").getByText(second)).toBeVisible();
 });
 
+test("clicking a second capture swaps the detail body with the title, not one turn behind", async ({ page }) => {
+  // Regression: ISSUE-001 — CaptureBody held the draft and Tiptap document in
+  // mount-time state, so switching captures in place kept the previous capture's
+  // text under the new one's title. Found by /qa on 2026-10-25.
+  // Report: .gstack/qa-reports/run-20261025T021256Z/
+  const tag = Date.now().toString(36);
+  const first = `Pane switch one ${tag}`;
+  const second = `Pane switch two ${tag}`;
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  for (const body of [first, second]) {
+    await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(body);
+    await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
+    await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
+    await expect(page.getByRole("article")).toContainText(body);
+  }
+  // Two fresh rows at the top of To clarify. Select the first, then the second:
+  // the detail pane must show the second capture's own body, not the first's.
+  const rows = page.locator("li[data-capture-id]");
+  const secondRow = rows.filter({ hasText: second }).first();
+  const firstRow = rows.filter({ hasText: first }).first();
+  await firstRow.getByRole("link").click();
+  await expect(page.getByRole("article").locator("h2")).toContainText(first);
+  await expect(page.getByRole("article")).toContainText(first);
+  await secondRow.getByRole("link").click();
+  await expect(page.getByRole("article").locator("h2")).toContainText(second);
+  await expect(page.getByRole("article")).toContainText(second);
+  // The previous capture's text must be gone from the pane.
+  await expect(page.getByRole("article")).not.toContainText(first);
+});
+
 test("a capture outside the current filter still renders in the detail pane and the filtered-empty state is distinct", async ({ page }) => {
   const tag = Date.now().toString(36);
   const body = `Filter edge ${tag}`;

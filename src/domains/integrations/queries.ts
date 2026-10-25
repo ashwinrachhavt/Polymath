@@ -1,7 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { authConfigEnvName } from "./composio";
 import { externalAccounts, integrationCatalog, syncCursors } from "./schema";
 
 /*
@@ -37,6 +36,21 @@ export type ConnectorCard = {
   }>;
 };
 
+/**
+ * Whether this deployment can connect providers at all. The Composio project
+ * key is the only deployment env the connect flow needs — auth config ids
+ * resolve from the Composio API at link time, so per-provider
+ * COMPOSIO_AUTH_CONFIG_<PROVIDER> vars are never demanded here.
+ * Extracted pure for the card tests.
+ */
+export function connectorConfigState(env: {
+  composioApiKey?: string;
+  providerEnv: Record<string, string | undefined>;
+}): { configured: boolean; missingConfig: string[] } {
+  const missingConfig = env.composioApiKey ? [] : ["COMPOSIO_API_KEY"];
+  return { configured: missingConfig.length === 0, missingConfig };
+}
+
 export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]> {
   // A connection attempt the owner never finished would leave its account in
   // `connecting` forever — a card that says Connecting on every visit. The
@@ -63,17 +77,16 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
       .where(eq(externalAccounts.workspaceId, auth.workspaceId))
       .orderBy(asc(externalAccounts.provider), asc(externalAccounts.alias)),
   ]);
-  // The connect flow needs two kinds of deployment env: the Composio project
-  // key and a per-provider auth config. Naming the missing one on the card is
-  // what keeps "Available" honest — without this check every provider looked
-  // connectable and the attempt rotted into a misleading "expired".
-  const apiKeyConfigured = Boolean(process.env.COMPOSIO_API_KEY);
+  // The connect flow needs one piece of deployment env: the Composio project
+  // key. Auth config ids are discovered from the Composio API with that key
+  // (see composio.ts), so a missing COMPOSIO_AUTH_CONFIG_<PROVIDER> var is
+  // not a broken deployment — naming it on the card would make every
+  // provider on a working deployment read as "Setup needed".
   return catalog.map((row) => {
-    const providerEnvVar = authConfigEnvName(row.provider);
-    const missingConfig = [
-      ...(apiKeyConfigured ? [] : ["COMPOSIO_API_KEY"]),
-      ...(process.env[providerEnvVar] ? [] : [providerEnvVar]),
-    ];
+    const { configured, missingConfig } = connectorConfigState({
+      composioApiKey: process.env.COMPOSIO_API_KEY,
+      providerEnv: {},
+    });
     return {
     provider: row.provider,
     displayName: row.displayName,

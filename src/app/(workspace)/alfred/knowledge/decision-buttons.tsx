@@ -138,7 +138,7 @@ export function FieldDecisions({
       ) : null}
       {!readable && !editing ? (
         <p id={errorId} className="text-muted-foreground text-xs">
-          This value couldn&apos;t be read with confidence — type the value to accept it.
+          This value could not be read with confidence. Type the value to accept it.
         </p>
       ) : null}
       <ErrorLine id={errorId} error={error} />

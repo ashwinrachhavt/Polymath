@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccountControls, CapabilitySwitches, ConnectButton, TierPicker } from "./connector-controls";
+import { AccessToggles, AccountControls, ConnectButton } from "./connector-controls";
 
 /*
  * One card per provider, and the card says what the person can do next.
@@ -170,21 +170,21 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
       {groups.map(([category, items]) => (
         <section key={category} aria-label={category}>
           <h2 className="pb-2 text-[11px] font-medium text-muted-foreground">{category}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {items.map((connector) => {
               const state = cardState(connector);
               return (
                 <article
                   key={connector.provider}
-                  className={cn("panel flex flex-col gap-3 rounded-xl p-4", state === "coming_soon" && "opacity-70")}
+                  className={cn("panel flex flex-col gap-3 rounded-xl p-3.5", state === "coming_soon" && "opacity-70")}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="product-mark" aria-hidden>
+                    <span className="product-mark size-8" aria-hidden>
                       <ProviderIcon provider={connector.provider} displayName={connector.displayName} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-[13px] font-medium">{connector.displayName}</h3>
+                        <h3 className="min-w-0 truncate text-[13px] font-medium">{connector.displayName}</h3>
                         <Status>{STATE_LABEL[state]}</Status>
                       </div>
                     </div>
@@ -205,23 +205,13 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                                 ? `Healthy ${account.lastHealthyAt.slice(0, 16).replace("T", " ")}Z`
                                 : "No health check yet"}
                             </p>
-                            <TierPicker
+                            <AccessToggles
                               provider={connector.provider}
                               accountId={account.id}
                               expectedVersion={account.version}
-                              current={account.accessTier}
-                              tiers={connector.accessTiers}
+                              currentTier={account.accessTier}
                               disabled={account.disabledCapabilities}
                             />
-                            <div className="mt-3">
-                              <CapabilitySwitches
-                                provider={connector.provider}
-                                accountId={account.id}
-                                expectedVersion={account.version}
-                                current={account.accessTier}
-                                disabled={account.disabledCapabilities}
-                              />
-                            </div>
                             <div className="mt-2">
                               <AccountControls
                                 provider={connector.provider}

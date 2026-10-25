@@ -36,11 +36,18 @@ export function RunControls({ runId, finished }: { runId: string; finished: bool
   }
 
   if (finished) {
+    // One quiet text action on the transcript's edge: a finished run's only job
+    // here is retry, and a button-sized control read as a second composer.
     return (
-      <div className="flex flex-col gap-1">
-        <Button size="sm" variant="outline" className="w-fit" disabled={pending} onClick={() => call("retry")}>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => call("retry")}
+          className="text-muted-foreground hover:text-foreground w-fit rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
           Retry as a new run
-        </Button>
+        </button>
         {error ? <p role="alert" className="text-destructive text-xs">{error}</p> : null}
       </div>
     );

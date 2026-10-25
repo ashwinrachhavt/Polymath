@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { artifacts, type artifactKind } from "@/domains/knowledge/schema";
+import { artifacts, documents, type artifactKind } from "@/domains/knowledge/schema";
 import { threads } from "@/domains/agents/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -21,7 +21,7 @@ const PER_GROUP_LIMIT = 5;
 
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation";
+  kind: "note" | "zettel" | "artifact" | "conversation" | "document";
   title: string;
   /** Where the picker sends a click: the record's own screen. */
   href: string;
@@ -42,7 +42,9 @@ export async function searchRecordsForAttach(
     "document", "memo", "diagram", "transcript", "other",
   ];
 
-  const [artifactRows, threadRows] = await Promise.all([
+  // Order matters: the queries below run artifacts, threads, documents, and the
+  // destructure must name them in that order.
+  const [artifactRows, threadRows, documentRows] = await Promise.all([
     db
       .select({ id: artifacts.id, kind: artifacts.kind, title: artifacts.title, updatedAt: artifacts.updatedAt })
       .from(artifacts)
@@ -70,6 +72,20 @@ export async function searchRecordsForAttach(
       )
       .orderBy(desc(threads.updatedAt))
       .limit(PER_GROUP_LIMIT),
+    // Vault documents, so a message can reference the captured file itself.
+    db
+      .select({ id: documents.id, title: sql<string>`coalesce(${documents.title}, '')`, updatedAt: documents.updatedAt })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.workspaceId, auth.workspaceId),
+          isNull(documents.archivedAt),
+          sql`${documents.title} <> ''`,
+          trimmed ? ilike(documents.title, like) : sql`true`,
+        ),
+      )
+      .orderBy(desc(documents.updatedAt))
+      .limit(PER_GROUP_LIMIT),
   ]);
 
   const references: RecordReference[] = artifactRows
@@ -87,6 +103,14 @@ export async function searchRecordsForAttach(
             ? `/alfred/knowledge/zettels?zettel=${row.id}`
             : `/alfred/artifacts/${row.id}`,
     }));
+  references.push(
+    ...documentRows.map((row) => ({
+      id: row.id,
+      kind: "document" as const,
+      title: row.title ?? "",
+      href: `/alfred/knowledge?doc=${row.id}`,
+    })),
+  );
   references.push(
     ...threadRows.map((row) => ({
       id: row.id,

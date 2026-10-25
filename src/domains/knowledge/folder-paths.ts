@@ -10,7 +10,8 @@ import { documentFolders } from "./schema";
  * relative path per file, and the vault files every document under the folder
  * chain that path names. Folders are created on demand — an upload never
  * fails because its folder does not exist yet. Only subdirectory paths create
- * folders; a bare filename files at the library root.
+ * folders; a bare filename files where the caller points (the library root by
+ * default, or the folder the owner is standing in).
  */
 
 export type FolderPathResult = {
@@ -18,6 +19,13 @@ export type FolderPathResult = {
   folderId: string | null;
   /** Names this call created, for the audit summary. */
   created: string[];
+};
+
+export type FolderPathOptions = {
+  /** Resolve the path underneath this folder instead of the library root. */
+  parentId?: string | null;
+  /** False when the caller writes its own audit row. */
+  audit?: boolean;
 };
 
 /**
@@ -29,16 +37,17 @@ export type FolderPathResult = {
 export async function resolveFolderPath(
   auth: AuthContext,
   path: string,
-  audit = true,
+  options: FolderPathOptions = {},
 ): Promise<FolderPathResult> {
+  const { parentId: baseId = null, audit = true } = options;
   const segments = path
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
-  if (segments.length === 0) return { folderId: null, created: [] };
+  if (segments.length === 0) return { folderId: baseId, created: [] };
 
   const created: string[] = [];
-  let parentId: string | null = null;
+  let parentId = baseId;
   for (const segment of segments) {
     const name = validateFolderName(segment);
     const siblings = await db

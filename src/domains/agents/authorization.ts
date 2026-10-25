@@ -72,6 +72,24 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "slack.read": { capability: "integration.use", effectClass: "read" },
   "linear.read": { capability: "integration.use", effectClass: "read" },
   "linear.issue.read": { capability: "integration.use", effectClass: "read" },
+  /*
+   * The generic registry's reads, same authority as the gateway reads above:
+   * integration use, read-only, no approval. Keyed by the capability names the
+   * gateway dispatches on.
+   */
+  "googlecalendar.events.read": { capability: "integration.use", effectClass: "read" },
+  "googledrive.files.read": { capability: "integration.use", effectClass: "read" },
+  "googledocs.documents.read": { capability: "integration.use", effectClass: "read" },
+  "googlesheets.spreadsheets.read": { capability: "integration.use", effectClass: "read" },
+  "discord.guilds.read": { capability: "integration.use", effectClass: "read" },
+  "zoom.meetings.read": { capability: "integration.use", effectClass: "read" },
+  "calendly.events.read": { capability: "integration.use", effectClass: "read" },
+  "asana.tasks.read": { capability: "integration.use", effectClass: "read" },
+  "trello.cards.read": { capability: "integration.use", effectClass: "read" },
+  "airtable.bases.read": { capability: "integration.use", effectClass: "read" },
+  "canva.designs.read": { capability: "integration.use", effectClass: "read" },
+  "hubspot.contacts.read": { capability: "integration.use", effectClass: "read" },
+  "stripe.payments.read": { capability: "integration.use", effectClass: "read" },
   "gmail.send": {
     capability: "action.execute",
     effectClass: "external_effect",

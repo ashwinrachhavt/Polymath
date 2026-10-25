@@ -59,6 +59,26 @@ describe("genericList", () => {
     expect(seen.request?.query).toMatchObject({ q: "ashwin" });
   });
 
+  it("interpolates and escapes {query} inside a larger Drive q template", async () => {
+    const transport = fakeTransport({ ok: true, status: 200, data: { files: [] } });
+    const seen: { request?: TransportRequest } = {};
+    const spy: Transport = {
+      async read(request: TransportRequest) {
+        seen.request = request;
+        return transport.read(request);
+      },
+    };
+
+    await genericList(spy, GENERIC_READS.googledocs_search_files!, { connectedAccountId: "ca_1", query: "it's q3" });
+    expect(seen.request?.query?.q).toBe("mimeType = 'application/vnd.google-apps.document' and name contains 'it\\'s q3'");
+
+    await genericList(spy, GENERIC_READS.googlesheets_list_spreadsheets!, { connectedAccountId: "ca_1", query: "budget '26" });
+    expect(seen.request?.query?.q).toBe("mimeType = 'application/vnd.google-apps.spreadsheet' and name contains 'budget \\'26'");
+
+    await genericList(spy, GENERIC_READS.googledrive_search_files!, { connectedAccountId: "ca_1", query: "a'b" });
+    expect(seen.request?.query?.q).toBe("name contains 'a\\'b'");
+  });
+
   it("a non-2xx becomes a provider_error with the status", async () => {
     const transport = fakeTransport({ ok: false, code: "provider_error", status: 403, message: "forbidden" });
 
@@ -92,6 +112,8 @@ describe("GENERIC_READS google cluster", () => {
     const expected: Array<[string, string, string]> = [
       ["googlecalendar_list_events", "https://calendar.googleapis.com/calendar/v3/calendars/primary/events", "items"],
       ["googledrive_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
+      ["googledocs_search_files", "https://www.googleapis.com/drive/v3/files", "files"],
+      ["googlesheets_list_spreadsheets", "https://www.googleapis.com/drive/v3/files", "files"],
     ];
     for (const [tool, endpoint, listPath] of expected) {
       const spec = GENERIC_READS[tool];
@@ -99,12 +121,12 @@ describe("GENERIC_READS google cluster", () => {
       expect(spec!.endpoint, tool).toBe(endpoint);
       expect(spec!.listPath, tool).toBe(listPath);
     }
-    expect(entries.length).toBe(2);
+    expect(entries.length).toBe(4);
   });
 
-  it("docs and sheets are absent — their list reads are not GET-expressible", () => {
-    expect(GENERIC_READS.googledocs_list_documents).toBeUndefined();
-    expect(GENERIC_READS.googlesheets_list_sheets).toBeUndefined();
+  it("docs and sheets filter Drive's files list by mimeType", () => {
+    expect(GENERIC_READS.googledocs_search_files!.query?.q).toContain("application/vnd.google-apps.document");
+    expect(GENERIC_READS.googlesheets_list_spreadsheets!.query?.q).toContain("application/vnd.google-apps.spreadsheet");
   });
 
   it("maps a calendar fixture response to one line per event", async () => {

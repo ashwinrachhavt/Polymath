@@ -1,7 +1,16 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
-import { Loader2, MessageSquare, Paperclip, Plus, Search } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  FileText,
+  Layers,
+  Loader2,
+  MessageSquare,
+  NotebookPen,
+  Paperclip,
+  Plus,
+  Search,
+} from "lucide-react";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
 
@@ -30,9 +39,31 @@ export type ComposerPlusItem = {
   onSelect: () => void;
 };
 
+/**
+ * The @-mention state a host derives from its own draft: the token between the
+ * last "@" that starts a word and the caret, when that text has no whitespace.
+ * `start`/`end` are the token's offsets in the draft, so a commit can replace
+ * exactly what the owner typed.
+ */
+export type MentionState = { open: boolean; query: string; start: number; end: number };
+
+/** Derive the @-mention state from a draft and caret position (null when closed). */
+export function mentionAt(draft: string, caret: number): MentionState | null {
+  const before = draft.slice(0, caret);
+  const match = /(^|\s)@([^\s]*)$/.exec(before);
+  if (!match) return null;
+  const start = caret - match[2].length - 1;
+  return { open: true, query: match[2], start, end: caret };
+}
+
+/** Replace an @-token in a draft with the record's link, plus a trailing space. */
+export function replaceMention(draft: string, mention: MentionState, markdown: string): string {
+  return `${draft.slice(0, mention.start)}${markdown} ${draft.slice(mention.end)}`;
+}
+
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation";
+  kind: "note" | "zettel" | "artifact" | "conversation" | "document";
   title: string;
   href: string;
 };
@@ -42,7 +73,22 @@ const KIND_LABELS: Record<RecordReference["kind"], string> = {
   zettel: "Zettel",
   artifact: "Artifact",
   conversation: "Conversation",
+  document: "Document",
 };
+
+/** One glyph per record kind, so a document reads apart from a note at a glance. */
+const KIND_GLYPHS: Record<RecordReference["kind"], typeof FileText> = {
+  note: NotebookPen,
+  zettel: Layers,
+  artifact: Layers,
+  conversation: MessageSquare,
+  document: FileText,
+};
+
+function KindGlyph({ kind, className }: { kind: RecordReference["kind"]; className?: string }) {
+  const Glyph = KIND_GLYPHS[kind];
+  return <Glyph aria-hidden className={cn("text-muted-foreground size-3.5 shrink-0", className)} />;
+}
 
 function referenceLink(record: RecordReference): string {
   return `[${KIND_LABELS[record.kind]}: ${record.title}](${record.href})`;
@@ -58,6 +104,8 @@ export function ComposerPlus({
   label = "Add to message",
   disabled = false,
   className,
+  mention,
+  onMentionPick,
 }: {
   items?: ComposerPlusItem[];
   /** Live lookup results; undefined while idle, null while loading. */
@@ -74,10 +122,29 @@ export function ComposerPlus({
   label?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * @-mention mode: the host derives this from its draft and caret. When set,
+   * open state and query follow it (the textarea is the search field), and a
+   * commit goes to onMentionReplace instead of appending to the draft.
+   */
+  mention?: MentionState | null;
+  /** Receives the picked record in mention mode; the host rewrites its own draft. */
+  onMentionPick?: (record: RecordReference) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // In mention mode the textarea owns open/query; otherwise the popover's own
+  // search input does. The effect reports the open edge so the caller's fetch
+  // gate stays working for both modes without a setState-during-render.
+  const mentionOpen = mention?.open ?? false;
+  useEffect(() => {
+    if (!mention) return;
+    onOpenChange?.(mentionOpen);
+    // Fires on the mention open/close edge only; the callback identity is not
+    // an interesting change and callers pass stable closures.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionOpen]);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
@@ -104,7 +171,11 @@ export function ComposerPlus({
     setActive(0);
   }
 
+  const isOpen = mention ? mentionOpen : open;
+  const activeQuery = mention ? mention.query : query;
+
   function changeOpen(next: boolean) {
+    if (mention) return; // the textarea controls open/close in mention mode
     setOpen(next);
     if (next) {
       // Fresh menu, fresh search. The focus lands here too: Radix's
@@ -118,11 +189,19 @@ export function ComposerPlus({
   }
 
   function changeQuery(next: string) {
+    if (mention) {
+      onQueryChange?.(next);
+      return;
+    }
     setQuery(next);
     onQueryChange?.(next);
   }
 
   function commit(record: RecordReference) {
+    if (mention) {
+      onMentionPick?.(record);
+      return;
+    }
     changeOpen(false);
     onReference?.(referenceLink(record), record);
   }
@@ -156,7 +235,7 @@ export function ComposerPlus({
   if (items.length === 0 && !onReference && !onFile) return null;
 
   return (
-    <Popover.Root open={open} onOpenChange={changeOpen}>
+    <Popover.Root open={isOpen} onOpenChange={changeOpen}>
       <Popover.Trigger
         type="button"
         disabled={disabled}
@@ -180,7 +259,7 @@ export function ComposerPlus({
           onKeyDown={onKeyDown}
           className="bg-popover text-popover-foreground border-border z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border p-1 shadow-md"
         >
-          {onReference ? (
+          {onReference && !mention ? (
             <div className="flex items-center gap-2 border-border border-b px-2.5 pb-1.5">
               <Search aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
               <input
@@ -203,7 +282,7 @@ export function ComposerPlus({
 
           {records !== null && onReference && flat.length === 0 ? (
             <p className="text-muted-foreground px-2.5 py-3 text-[12px]">
-              {query.trim() ? "Nothing matches. Try a different word." : "No records yet."}
+              {activeQuery.trim() ? "Nothing matches. Try a different word." : "No records yet."}
             </p>
           ) : null}
 
@@ -230,11 +309,7 @@ export function ComposerPlus({
                               index === active ? "bg-muted" : "hover:bg-muted/60",
                             )}
                           >
-                            {record.kind === "conversation" ? (
-                              <MessageSquare aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-                            ) : (
-                              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current opacity-40" />
-                            )}
+                            <KindGlyph kind={record.kind} />
                             <span className="min-w-0 flex-1 truncate">{record.title}</span>
                           </button>
                         </li>
@@ -246,7 +321,7 @@ export function ComposerPlus({
             </ul>
           ) : null}
 
-          {items.length > 0 ? (
+          {items.length > 0 && !mention ? (
             <div className="border-border border-t pt-1 pb-0.5">
               {items.map((item) => (
                 <button
@@ -270,7 +345,7 @@ export function ComposerPlus({
             </div>
           ) : null}
 
-          {onFile ? (
+          {onFile && !mention ? (
             <div className={cn("border-border pt-1 pb-0.5", items.length > 0 && "border-t")}>
               <button
                 type="button"

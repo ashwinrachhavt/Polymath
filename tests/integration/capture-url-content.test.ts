@@ -76,6 +76,32 @@ suite("capture url content", () => {
     expect(after).toBe(before);
   });
 
+  it("a companion page grab (text + url) also gets scraped into structure", async () => {
+    // The companion sends document.body.innerText, a flattened wall: the note
+    // it would become has no headings and no paragraphs. The scrape replaces
+    // the grab with the page's markdown; the grab survives in rawPayload.
+    scrape.mockResolvedValue({
+      url: "https://example.com/grab-1",
+      markdown: "# Real structure\n\nParagraph one.\n\nParagraph two.",
+      title: "Real structure",
+      statusCode: 200,
+      error: null,
+    });
+
+    const capture = await commands.createCapture(auth, {
+      text: "At Modal, we like to think that we know a thing or two. We build for the GPUs.",
+      url: `https://example.com/grab-${Date.now()}`,
+      source: "companion",
+    });
+    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.some((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toBe(true);
+
+    await runHandlerFor(capture.id);
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
+    expect(row.text).toContain("# Real structure");
+    expect((row.rawPayload as { text?: string }).text).toContain("At Modal, we like to think");
+  });
+
   it("the handler scrapes a web page into the capture's text", async () => {
     scrape.mockResolvedValue({
       url: "https://example.com/spec-1",

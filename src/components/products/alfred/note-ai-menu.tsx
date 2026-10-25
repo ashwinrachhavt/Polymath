@@ -96,7 +96,7 @@ export function NoteAIMenu({
           <Textarea
             aria-label="Ask about this page"
             rows={3}
-            placeholder="Ask about this page — the answer cites the notes it used"
+            placeholder="Ask about this page. The answer cites the notes it used"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
           />

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -12,7 +12,8 @@ import { requestReceipts } from "@/domains/audit/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { resolveFolderPath } from "@/domains/knowledge/folder-paths";
-import { documents } from "@/domains/knowledge/schema";
+import { FolderError } from "@/domains/knowledge/folders";
+import { documentFolders, documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
 
 /*
@@ -31,7 +32,9 @@ import { currentExtractionSql } from "@/domains/knowledge/versions";
 
 const documentMeta = z.object({
   title: z.string().min(1).max(500),
-  /** Relative folder path from the upload; only subdirectories create folders. */
+  /** The folder the owner is uploading into; absent means the library root. */
+  folderId: z.string().uuid().optional(),
+  /** Relative folder path from the upload; subdirectories are created below folderId. */
   folderPath: z.string().max(1000).optional(),
 });
 
@@ -46,6 +49,7 @@ export const POST = authedHandler(async (auth, request) => {
   const file = form.get("file");
   const parsedTitle = documentMeta.safeParse({
     title: form.get("title"),
+    folderId: form.get("folderId") ?? undefined,
     folderPath: form.get("folderPath") ?? undefined,
   });
   if (!(file instanceof File)) {
@@ -106,15 +110,50 @@ export const POST = authedHandler(async (auth, request) => {
     }
   }
 
+  // The owner is standing in a folder: uploads file there. A dropped
+  // directory keeps its relative structure underneath it. Verify the folder
+  // before creating anything, so a stale tab cannot file into a foreign or
+  // archived folder.
+  const baseFolderId = parsedTitle.data.folderId ?? null;
+  if (baseFolderId) {
+    const [folder] = await db
+      .select({ id: documentFolders.id })
+      .from(documentFolders)
+      .where(
+        and(
+          eq(documentFolders.id, baseFolderId),
+          eq(documentFolders.workspaceId, auth.workspaceId),
+          isNull(documentFolders.archivedAt),
+        ),
+      )
+      .limit(1);
+    if (!folder) return problemResponse(404, "not_found", "That folder is not available.");
+  }
+
+  let targetFolderId = baseFolderId;
+  if (parsedTitle.data.folderPath) {
+    try {
+      targetFolderId = (
+        await resolveFolderPath(auth, parsedTitle.data.folderPath, { parentId: baseFolderId })
+      ).folderId;
+    } catch (error) {
+      // A dropped directory can carry a segment the folder rules reject (too
+      // long, empty after trimming). That is the upload's fault, not a server
+      // fault, so the client gets a readable 400 instead of a 500.
+      if (error instanceof FolderError) {
+        return problemResponse(400, "invalid_folder", error.message);
+      }
+      throw error;
+    }
+  }
+
   let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
     result = await intakeFile(auth, {
       bytes,
       filename: file.name,
       title: parsedTitle.data.title,
-      folderId: parsedTitle.data.folderPath
-        ? (await resolveFolderPath(auth, parsedTitle.data.folderPath)).folderId
-        : null,
+      folderId: targetFolderId,
       verdict,
       contentHash: contentHex,
       origin: "upload",

@@ -115,7 +115,7 @@ function TimelineView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchP
     <div className="flex flex-col gap-4">
       {[...groups.entries()].map(([when, group]) => (
         <section key={when} aria-label={when}>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{when}</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">{when}</h3>
           <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-3">
             {group.map((card) => (
               <li key={card.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">

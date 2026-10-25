@@ -28,7 +28,7 @@ beforeAll(async () => {
   // 0223 seeds the catalog rows the tier files update. Several sibling suites
   // truncate the shared test database, so this suite re-applies the seed too:
   // an UPDATE with no row behind it is the flake this guards against.
-  for (const file of ["0223_connector_catalog_expansion.sql", "0229_access_tiers.sql", "0230_google_tiers.sql", "0231_comms_tiers.sql", "0232_workmgmt_tiers.sql", "0233_crm_tiers.sql"]) {
+  for (const file of ["0223_connector_catalog_expansion.sql", "0229_access_tiers.sql", "0230_google_tiers.sql", "0231_comms_tiers.sql", "0232_workmgmt_tiers.sql", "0233_crm_tiers.sql", "0246_google_docs_sheets_tiers.sql"]) {
     await handle.client.unsafe(readFileSync(`src/db/migrations/${file}`, "utf8"));
   }
 });

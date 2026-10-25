@@ -67,14 +67,3 @@ export function ProviderIcon({ provider, displayName }: { provider: string; disp
   if (!Icon) return <>{displayName.slice(0, 1)}</>;
   return <Icon aria-hidden className="size-4" />;
 }
-
-/** Tool name to a readable label and glyph for chat tool activity. */
-export function toolGlyph(toolName: string) {
-  if (toolName.startsWith("documents") || toolName.startsWith("documents.")) return FileText;
-  // Gmail now arrives as `polymath-gateway__gmail_search` (an MCP connection
-  // tool), and capability labels still read `gmail.…`.
-  if (toolName.includes("gmail")) return Mail;
-  if (toolName.startsWith("calendar")) return CalendarDays;
-  if (toolName.startsWith("notion") || toolName.startsWith("wiki")) return FileText;
-  return MessageSquare;
-}

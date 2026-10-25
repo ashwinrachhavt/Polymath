@@ -37,6 +37,8 @@ describe("provider capability catalog", () => {
         "linear",
         "google-calendar",
         "google-drive",
+        "google-docs",
+        "google-sheets",
         "discord",
         "zoom",
         "calendly",
