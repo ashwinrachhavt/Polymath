@@ -105,12 +105,15 @@ export async function debriefMeetingArtifact(
   deps?: { provider?: GenerationProvider },
 ): Promise<DebriefResult> {
   const [row] = await db
-    .select({ title: artifacts.title, plainText: artifactVersions.plainText })
+    .select({ title: artifacts.title, kind: artifacts.kind, plainText: artifactVersions.plainText })
     .from(artifacts)
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!row) throw new DebriefNotAllowedError("That artifact does not exist in this workspace.");
+  // Scoped to meeting transcripts (ASH-303): a generated note, report, or
+  // learning path is not a meeting and must not be debriefed into one.
+  if (row.kind !== "transcript") throw new DebriefNotAllowedError("Only a meeting transcript can be debriefed.");
   const transcript = (row.plainText ?? "").trim();
   if (!transcript) throw new DebriefNotAllowedError("This artifact has no text to debrief.");
 

@@ -64,7 +64,7 @@ async function seed(slug: string) {
 async function seedTranscript(workspaceId: string, userId: string, plainText: string | null = TRANSCRIPT) {
   const [artifact] = await db
     .insert(artifacts)
-    .values({ workspaceId, kind: "note", title: "Weekly sync", status: "reviewed" })
+    .values({ workspaceId, kind: "transcript", title: "Weekly sync", status: "reviewed" })
     .returning();
   const [v1] = await db
     .insert(artifactVersions)
@@ -172,11 +172,23 @@ suite("meeting debrief", () => {
     expect(rows[0]!.title).toBe("Send the Q3 roadmap");
   });
 
-  it("refuses a missing artifact and an empty transcript before proposing", async () => {
+  it("refuses a missing artifact, a non-transcript, and an empty transcript before proposing", async () => {
     const { auth, workspaceId, userId } = await seed("debrief-refusals");
     await expect(
       debrief.debriefMeetingArtifact(auth, crypto.randomUUID(), { provider: mockProvider }),
     ).rejects.toThrowError(/does not exist/);
+
+    // A generated note is not a meeting transcript and must not debrief.
+    const [note] = await db
+      .insert(artifacts)
+      .values({ workspaceId, kind: "note", title: "Learning path", status: "reviewed" })
+      .returning();
+    const [noteV1] = await db
+      .insert(artifactVersions)
+      .values({ workspaceId, artifactId: note.id, versionNumber: 1, content: { type: "doc", content: [] }, plainText: "Some generated body.", reason: "created", createdBy: userId })
+      .returning();
+    await db.update(artifacts).set({ currentVersionId: noteV1.id }).where(eq(artifacts.id, note.id));
+    await expect(debrief.debriefMeetingArtifact(auth, note.id, { provider: mockProvider })).rejects.toThrowError(/Only a meeting transcript/);
 
     const empty = await seedTranscript(workspaceId, userId, null);
     await expect(debrief.debriefMeetingArtifact(auth, empty.id, { provider: mockProvider })).rejects.toThrowError(/no text to debrief/);

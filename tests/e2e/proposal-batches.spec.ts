@@ -40,7 +40,7 @@ async function seedTranscript(): Promise<{ id: string } | null> {
     if (!owner) return null;
     const [artifact] = await client<{ id: string }[]>`
       insert into artifacts (workspace_id, kind, title, status, created_by, updated_by)
-      values (${owner.workspace_id}, 'note', 'Weekly sync transcript', 'reviewed', ${owner.user_id}, ${owner.user_id})
+      values (${owner.workspace_id}, 'transcript', 'Weekly sync transcript', 'reviewed', ${owner.user_id}, ${owner.user_id})
       returning id`;
     const [version] = await client<{ id: string }[]>`
       insert into artifact_versions (workspace_id, artifact_id, version_number, content, plain_text, reason, created_by)
