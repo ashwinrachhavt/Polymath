@@ -116,5 +116,21 @@ for (const vp of VIEWPORTS) {
     await expect(page).toHaveURL(/\/artifacts\/[0-9a-f-]{36}/, { timeout: 30_000 });
     await expect(page.getByText("Confirm the launch date")).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/prep-report-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+
+    // Full-page stitching paints the sticky mobile nav mid-content. Prove at
+    // the real viewport that the report's last line scrolls fully clear of it.
+    if (vp.name === "mobile") {
+      const lastPoint = page.getByText("Reconfirm annual billing");
+      await lastPoint.scrollIntoViewIfNeeded();
+      const pointBox = await lastPoint.boundingBox();
+      const navBox = await page.getByRole("navigation", { name: "Destinations" }).boundingBox();
+      expect(pointBox, "last talking point has a box").not.toBeNull();
+      expect(navBox, "mobile bottom nav has a box").not.toBeNull();
+      expect(
+        pointBox!.y + pointBox!.height,
+        "last talking point renders above the bottom nav",
+      ).toBeLessThanOrEqual(navBox!.y);
+      await page.screenshot({ path: `test-results/feature-pixels/prep-report-bottom-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    }
   });
 }
