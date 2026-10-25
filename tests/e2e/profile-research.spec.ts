@@ -148,6 +148,19 @@ for (const vp of VIEWPORTS) {
     await expect(result.getByRole("link", { name: "About Example" })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/company-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
+    if (vp.name === "mobile") {
+      // Real-viewport proof, not fullPage stitching: scroll the Offerings
+      // card and the open Sources list into view with keyboard focus moved
+      // off the skip-link, then capture what a phone actually shows - this
+      // distinguishes screenshot stitching from real sticky obstruction.
+      const sourcesToggle = result.getByText("Sources (4)", { exact: true });
+      await sourcesToggle.focus();
+      await result.getByText("Offerings", { exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: "test-results/feature-pixels/company-profile-offerings-viewport-mobile.png", style: HIDE_DEV_CHROME });
+      await sourcesToggle.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: "test-results/feature-pixels/company-profile-sources-viewport-mobile.png", style: HIDE_DEV_CHROME });
+    }
+
     // The linked contact renders on the profile, and the record panel fits.
     await expect(page.getByRole("link", { name: CONTACT_NAME, exact: true })).toBeVisible();
   });
