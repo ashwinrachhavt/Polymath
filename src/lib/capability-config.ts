@@ -166,7 +166,7 @@ const DEFINITIONS: readonly Definition[] = [
     ready: (env) => search(env).ready,
     missing: (env) => search(env).missing,
     subject: "Search falls back to the zero-key DuckDuckGo endpoint, which has no SLA and no quota accounting",
-    action: "set SEARCH_PROVIDER with its matching key, or any one provider key",
+    action: "set SEARCH_PROVIDER with its matching key, or a key the registry enables (SearXNG or Firecrawl)",
   },
   {
     id: "generation",

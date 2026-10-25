@@ -3,6 +3,17 @@
 Deferred work recorded by /ship on 2026-10-18, from the ASH-120 tranche-1 branch
 (`ashwinr/ash-120-workspace-access`). Organized by component; priorities P0–P4.
 
+## Test environment
+
+**Priority:** P2
+
+- **RLS evaluation suite needs a true superuser scratch DB.** rls-evaluation.test.ts
+  (ASH-121 AC05) SET ROLEs a probe role; the local Supabase scratch database's
+  postgres role is not rolsuper, so 2 of 825 integration tests fail locally
+  with "permission denied to set role". CI's own postgres container passes
+  them. Document a non-Supabase TEST_DATABASE_URL for local integration runs.
+  Noticed by /ship on 2026-10-24; not caused by this branch.
+
 ## Provider/search follow-ups (2026-10-24, /ship adversarial review)
 
 **Priority:** P2

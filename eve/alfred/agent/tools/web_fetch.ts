@@ -40,6 +40,9 @@ export default defineTool({
       return { ok: false as const, error: "web.fetch is not in this run's policy snapshot" };
     }
 
+    if (input.url.startsWith("ai-gateway://")) {
+      return { ok: false as const, error: "that is a provenance marker from a synthesized search answer, not a fetchable page" };
+    }
     if (input.crawl) {
       return crawlSiteForAgent({ workspaceId, userId }, { url: input.url, limit: input.limit, maxDepth: input.maxDepth });
     }
