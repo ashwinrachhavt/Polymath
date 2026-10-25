@@ -19,6 +19,8 @@ where it can **differentiate** (win, mapped to real strengths).
 | 2026-10-25 | [mymind](2026-10-25-mymind.md) | AI-organized visual capture |
 | 2026-10-25 | [Recall](2026-10-25-recall.md) | AI knowledge base (summarize + connect + chat) |
 | 2026-10-25 | [Saner.AI](2026-10-25-saner.md) | AI personal assistant (ADHD-positioned) |
+| 2026-10-25 | [Sunsama](2026-10-25-sunsama.md) | Guided daily planning ritual |
+| 2026-10-25 | [Akiflow](2026-10-25-akiflow.md) | Calendar-first tasks + AI assistant |
 
 ## Method
 
