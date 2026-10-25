@@ -34,6 +34,52 @@ for (const { state, ready } of states) {
   });
 }
 
+/*
+ * The island mid-conversation. The stream endpoint is Eve-backed, so the spec
+ * answers it with fabricated ChatFrames (the wire contract from
+ * src/domains/agents/stream-contract.ts): a snapshot of the turns so far and
+ * the turn marker that leaves the conversation open. What renders is the real
+ * ChatSurface and its accumulator - only the transport is staged, which is
+ * also why this can never be evidence the Eve path itself works.
+ */
+test("the island renders a live conversation", async ({ page }) => {
+  const frames = [
+    {
+      type: "snapshot",
+      runId: "fixture-success-run",
+      blocks: [
+        { id: "b1", kind: "user", text: "I'm a solo founder and my inbox runs my day.", done: true },
+        {
+          id: "b2",
+          kind: "assistant",
+          text: "That is exactly what I am here to take off your plate. Which tools do you live in - Gmail, Linear, Calendar, something else?",
+          done: true,
+        },
+        { id: "b3", kind: "user", text: "Gmail and Linear, mostly. Calendar for the external meetings.", done: true },
+        {
+          id: "b4",
+          kind: "assistant",
+          text: "Got it. Last one: what should I watch first - what would make tomorrow morning feel different?",
+          done: true,
+        },
+      ],
+      cursor: 4,
+    },
+    { type: "turn", runId: "fixture-success-run", state: "waiting", cursor: 5 },
+  ];
+  await page.route("**/api/v1/runs/fixture-success-run/stream", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson; charset=utf-8",
+      body: frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n",
+    });
+  });
+  await page.goto("/dev/onboarding-fixtures?state=island-success");
+  await expect(page.getByText("what would make tomorrow morning feel different?")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/onboarding-pixels/island-conversation.png", fullPage: true, ...HIDE_DEV_CHROME });
+});
+
 test("the island settles on the status card when no runtime is reachable", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=island");
   // The island mounts and starts its run; without EVE_BASE_URL the start

@@ -55,6 +55,15 @@ export default async function OnboardingFixturesPage({
       return wrapper(<OnboardingConfirm initial={FIXTURE_BRIEF} profileVersion={0} />);
     case "island":
       return wrapper(<OnboardingConversation />);
+    /*
+     * The successful-conversation state. The island's thread is Eve-backed in
+     * production, so the e2e spec intercepts the run's stream endpoint and
+     * replays fabricated ChatFrames - the REAL ChatSurface and accumulator
+     * render the conversation, only the transport is staged. initialRunId
+     * skips the start action; the brief poll misses silently.
+     */
+    case "island-success":
+      return wrapper(<OnboardingConversation initialRunId="fixture-success-run" />);
     case "status":
       return wrapper(<OnboardingStatusCard reason={BRIDGE_DOWN_REASON} />);
     case "form":
