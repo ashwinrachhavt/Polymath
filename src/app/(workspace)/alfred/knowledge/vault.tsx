@@ -759,7 +759,7 @@ export function DocumentVault({
     <div ref={rootRef} className="relative flex min-h-[60vh] flex-col gap-3">
       {/* One toolbar: search and the quiet +. Nothing else lives here. */}
       <div className="flex items-center gap-2">
-        <div className="border-input bg-background focus-within:ring-ring relative min-w-0 flex-1 rounded-md border transition-shadow focus-within:ring-3">
+        <div className="border-input bg-background focus-within:ring-ring relative w-full max-w-sm min-w-0 rounded-md border transition-shadow focus-within:ring-3">
           <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
           <input
             type="search"
