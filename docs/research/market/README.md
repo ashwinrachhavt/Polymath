@@ -22,6 +22,7 @@ where it can **differentiate** (win, mapped to real strengths).
 | 2026-10-25 | [Sunsama](2026-10-25-sunsama.md) | Guided daily planning ritual |
 | 2026-10-25 | [Akiflow](2026-10-25-akiflow.md) | Calendar-first tasks + AI assistant |
 | 2026-10-25 | [Amie](2026-10-25-amie.md) | AI meeting notes (pivot from calendar) |
+| 2026-10-25 | [**Landscape synthesis**](2026-10-25-landscape-synthesis.md) | Cross-cutting signals across all entries |
 
 ## Method
 
