@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense, useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
-import { PreviewBanner } from "@/components/shell/preview-banner";
 import { isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,7 +48,6 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
                render no top bar, so their anchor is the window's own top. */
             style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
           >
-            <Suspense fallback={null}><PreviewBanner /></Suspense>
             {/* Preview mutations are reachable from canonical routes, so the storage warning must be too. It renders null when empty. */}
             <PreviewStorageWarning />
             {waitingForStorage ? <PreviewSkeleton /> : null}
