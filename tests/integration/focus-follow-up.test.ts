@@ -73,7 +73,6 @@ async function linkContact(auth: AuthContext, taskId: string, name: string, emai
     taskId,
     targetType: "contact",
     targetId: contact.id,
-    createdBy: auth.userId,
   });
   return contact;
 }
