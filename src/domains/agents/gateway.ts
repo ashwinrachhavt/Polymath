@@ -516,7 +516,7 @@ function readFailure(failure: GmailReadFailure): GatewayOutcome {
  * Profile provisioning admits instant.* names through the `gained` array in
  * commands.ts so existing profiles do not dead-403.
  */
-async function instantCall(context: GatewayContext, tool: string, toolkitSlug: string): Promise<GatewayOutcome> {
+async function instantCall(context: GatewayContext, tool: string, _toolkitSlug: string): Promise<GatewayOutcome> {
   if (!toolAllowed(context.run.policySnapshot, tool)) {
     return {
       ok: false,
@@ -542,7 +542,13 @@ async function instantCall(context: GatewayContext, tool: string, toolkitSlug: s
     return { ok: true, result: { content: [{ type: "text", text }] } };
   } catch (cause) {
     if (cause instanceof InstantToolNotExecutableError) {
-      // Refusals are policy outcomes, not crashes: the run sees why.
+      // Deny-by-default does not dead-end the agent: a write-shaped Instant
+      // tool files a proposal the owner decides on (the same trust path as
+      // gmail.send). Every other refusal cause is a policy block, not an
+      // intent to act, and stays a plain 403.
+      if (cause.reason === "write_unverified") {
+        return instantPropose(context, tool, args);
+      }
       return { ok: false, status: 403, code: "permission_denied", message: cause.message };
     }
     if (cause instanceof QuotaExhaustedError) {
@@ -555,6 +561,54 @@ async function instantCall(context: GatewayContext, tool: string, toolkitSlug: s
     }
     throw cause;
   }
+}
+
+/*
+ * Proposal path for write-shaped Instant tools. The arguments are
+ * model-supplied and untrusted: they are copied into the proposal preview as
+ * the thing the owner would be approving, never executed — execution of an
+ * unverified tool happens only after a human approval routes it through the
+ * approved-effect executor.
+ */
+async function instantPropose(context: GatewayContext, tool: string, args: Record<string, unknown>): Promise<GatewayOutcome> {
+  const dedupeKey = `instant.mcp:${context.auth.workspaceId}:${tool}:${JSON.stringify(args)}`;
+  const created = await withTransaction(async (tx) => {
+    const proposal = await createProposal(
+      tx,
+      { workspaceId: context.auth.workspaceId },
+      {
+        capability: tool,
+        riskClass: "external_write",
+        title: `Run Instant tool ${tool}`,
+        expectedEffect: `Executes the Composio Instant tool ${tool} with the attached arguments once you approve.`,
+        dedupeKey,
+        runId: context.run.id,
+        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+      },
+    );
+    if (!proposal.deduplicated) {
+      await tx.insert(actionRevisions).values({
+        workspaceId: context.auth.workspaceId,
+        proposalId: proposal.proposalId,
+        revisionNumber: 1,
+        payload: { tool, args },
+        preview: { tool, args },
+        createdBy: context.auth.userId,
+      });
+    }
+    return proposal;
+  });
+  return {
+    ok: true,
+    result: {
+      content: [{
+        type: "text",
+        text: created.deduplicated
+          ? `A proposal to run ${tool} already awaits your owner's approval.`
+          : `Filed a proposal to run ${tool}; it is awaiting approval and was not executed.`,
+      }],
+    },
+  };
 }
 
 export function createGateway({ transport }: { transport: Transport }) {
