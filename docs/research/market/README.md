@@ -10,6 +10,9 @@ where it can **differentiate** (win, mapped to real strengths).
 | Date | Product | Category |
 | --- | --- | --- |
 | 2026-10-25 | [NotebookLM](2026-10-25-notebooklm.md) | Source-grounded study workspace (parity target) |
+| 2026-10-25 | [Reflect](2026-10-25-reflect.md) | AI-native networked notes (local-first, BYOK) |
+| 2026-10-25 | [Obsidian](2026-10-25-obsidian.md) | Local-first Markdown knowledge base (incumbent) |
+| 2026-10-25 | [Notion](2026-10-25-notion.md) | Team workspace + agent platform |
 
 ## Method
 
