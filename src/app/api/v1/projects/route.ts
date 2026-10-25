@@ -5,11 +5,11 @@ import { problemResponse } from "@/lib/problems";
 import { ProjectError, createProject, listProjects } from "@/domains/knowledge/projects";
 
 /*
- * GET /api/v1/projects — the workspace's projects with source counts.
+ * GET /api/v1/projects - the workspace notebooks (Projects in the UI) with source counts.
  * POST /api/v1/projects — a name plus document ids. Any id outside this
  * workspace fails the whole request with 422 and nothing is created.
  */
-export const GET = authedHandler(async (auth) => Response.json({ projects: await listProjects(auth) }));
+export const GET = authedHandler(async (auth) => Response.json({ notebooks: await listProjects(auth) }));
 
 const create = z.object({
   name: z.string().min(1).max(200),
