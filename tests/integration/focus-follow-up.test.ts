@@ -313,7 +313,7 @@ suite("the Writer pass files the pair", () => {
       .where(
         and(
           eq(actionProposals.workspaceId, auth.workspaceId),
-          eq(actionProposals.dedupeKey, `followup-reminder:${sessionId}`),
+          eq(actionProposals.dedupeKey, `calendar:followup-reminder:${sessionId}`),
         ),
       );
     expect(proposals).toHaveLength(1);
