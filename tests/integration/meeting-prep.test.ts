@@ -110,7 +110,7 @@ suite("meeting prep", () => {
     expect(result.openTaskCount).toBe(1);
 
     const [report] = await db.select().from(artifacts).where(eq(artifacts.id, result.artifactId));
-    expect(report.kind).toBe("report");
+    expect(report.kind).toBe("document");
     expect(report.title).toBe("Prep: Weekly sync");
 
     const [link] = await db

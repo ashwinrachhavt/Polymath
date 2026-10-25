@@ -250,7 +250,7 @@ export async function generateMeetingPrep(
   const artifactId = await withTransaction(async (tx) => {
     const note = await createNoteInTx(tx, auth, {
       title: `Prep: ${ctx.event.title}`,
-      kind: "report",
+      kind: "document",
       plainText: markdown,
     });
     // Link the report back to the event; one prep link per event, refreshed
