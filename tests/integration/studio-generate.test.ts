@@ -105,7 +105,7 @@ suite("Studio Generate (real Postgres)", () => {
       objective: expect.stringContaining('"Housing"'),
     });
     const b = await workspace();
-    await expect(startStudioGenerate(b, { projectId: d.id, brief: "x" }, engine)).rejects.toMatchObject({ code: "dossier_not_found" });
+    await expect(startStudioGenerate(b, { projectId: d.id, brief: "x" }, engine)).rejects.toMatchObject({ code: "project_not_found" });
   });
 
   it("pins a queued URL capture (no file yet) by address, in the objective and in the saved links", async () => {

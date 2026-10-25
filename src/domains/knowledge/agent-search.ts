@@ -53,13 +53,24 @@ export function rrfMerge(ftsHits: ChunkHit[], vectorHits: ChunkHit[], limit: num
     hits.forEach((hit, i) => {
       const key = `${hit.documentId}:${hit.extractionId}:${hit.chunkIndex}`;
       const entry = scores.get(key);
-      if (entry) entry.score += rrf(i);
-      else scores.set(key, { hit, score: rrf(i) });
+      if (entry) {
+        entry.score += rrf(i);
+        // First side keeps its passage text, but an FTS passage has no page -
+        // backfill it from the same passage's vector hit when one saw it.
+        if (entry.hit.span.page == null && hit.span.page != null) {
+          entry.hit = { ...entry.hit, span: { ...entry.hit.span, page: hit.span.page } };
+        }
+      } else scores.set(key, { hit, score: rrf(i) });
     });
   add(ftsHits);
   add(vectorHits);
+  // One passage per document: a repeated-text document fills every chunk with
+  // the query terms, and without this its chunks crowd the other documents
+  // out of the citation list. The best-fused chunk stands for its document.
+  const seen = new Set<string>();
   return [...scores.values()]
     .sort((a, b) => b.score - a.score)
+    .filter((s) => (seen.has(s.hit.documentId) ? false : (seen.add(s.hit.documentId), true)))
     .slice(0, limit)
     .map((s) => s.hit);
 }

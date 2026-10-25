@@ -177,7 +177,7 @@ suite("projects (real Postgres + pgvector)", () => {
     const b = await workspace();
     await seed(a, LEASE, "lease", provider);
     const empty = await createProject(a, { name: "Empty", documentIds: [] });
-    expect(await searchDocumentsForAgent(a, { query: "rent", projectId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "semantic", results: [] });
+    expect(await searchDocumentsForAgent(a, { query: "rent", projectId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "hybrid", results: [] });
     expect(await searchDocumentsForAgent(b, { query: "rent", projectId: empty.id, provider })).toEqual({ ok: false, error: "project not found" });
     expect(await searchDocumentsForAgent(a, { query: "rent", projectId: crypto.randomUUID(), provider })).toEqual({ ok: false, error: "project not found" });
   });

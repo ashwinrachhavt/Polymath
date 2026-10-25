@@ -6,7 +6,7 @@ import { getAuthContext } from "@/lib/auth";
 import { listProjects } from "@/domains/knowledge/projects";
 import { NewProjectButton, ProjectRow, SectionRow } from "./project-list-client";
 
-export const metadata = { title: "Projects · Polymath" };
+export const metadata = { title: "Notebook · Polymath" };
 
 /*
  * The projects screen (Perplexity Spaces parity): pinned projects first, then
@@ -19,7 +19,7 @@ export async function ProjectsSurface() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Projects" purpose="Long-lived homes for a body of work." />
+        <PageHeader title="Notebook" purpose="Long-lived homes for a body of work." />
         <div className="page-content text-muted-foreground text-[13px]">
           Set DATABASE_URL and apply the database migrations to use projects.
         </div>
@@ -33,11 +33,12 @@ export async function ProjectsSurface() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
-        <h1 className="text-lg font-medium">Projects</h1>
-        <NewProjectButton />
-      </div>
-      <div className="flex flex-col gap-6 px-6 py-6">
+      <PageHeader
+        title="Notebook"
+        purpose="Long-lived homes for a body of work, each with its own sources."
+        actions={<NewProjectButton />}
+      />
+      <div className="page-content flex flex-col gap-6">
         {projects.length === 0 ? (
           <p className="text-muted-foreground text-[13px]">
             No projects yet. Create one and it becomes the home for its sources, instructions and generated artifacts.

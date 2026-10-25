@@ -237,7 +237,8 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
  */
 test("removed IA destinations redirect to their new homes, or 404 when the route is gone", async ({ page }) => {
   for (const [from, to] of [
-    ["/alfred/sources", "/alfred/dossiers"],
+    ["/alfred/sources", "/projects"],
+    ["/alfred/dossiers", "/projects"],
     ["/alfred/wiki", "/alfred/knowledge"],
     ["/command-center/spending", "/command-center/briefing?tab=spending"],
     ["/command-center/opportunities", "/command-center/relationships/people"],
