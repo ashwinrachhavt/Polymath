@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-10-25T00:00:00.000Z",
+  "toolkits": [
+    {
+      "slug": "granola",
+      "displayName": "Granola",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "GRANOLA_FETCH_USERS",
+          "name": "Fetch users",
+          "noAuth": true,
+          "riskClass": "read"
+        }
+      ]
+    }
+  ]
+}
