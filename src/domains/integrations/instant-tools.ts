@@ -290,11 +290,12 @@ export async function executeInstantTool(input: {
 }
 
 /**
- * Catalog sync: upsert every toolkit from the generated JSON and DELETE rows
- * whose toolkit no longer appears (display metadata only — no table holds a
- * foreign key into integration_catalog, so deletion cannot orphan anything;
- * the table has no archived_at because it spreads `recorded`, not `mutable`).
- * Bounded: 73 toolkits × 3 pages max, then abort rather than loop forever.
+ * Catalog sync: upsert every toolkit from the generated JSON and delete stale
+ * Instant rows (display metadata only — no table holds a foreign key into
+ * integration_catalog, so deletion cannot orphan anything; the table has no
+ * archived_at because it spreads `recorded`, not `mutable`). No Composio
+ * fetch here: the generator (scripts/sync-instant-catalog.ts) owns the live
+ * classification; the cron mirrors the committed artifact into the database.
  */
 export async function syncInstantCatalog(input: {
   apiKey: string;

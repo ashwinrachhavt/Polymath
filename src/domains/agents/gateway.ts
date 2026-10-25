@@ -14,6 +14,8 @@ import { getDelegationGrant, hashDelegationGrant } from "./delegation";
 import { parkRunForReview } from "./event-bridge";
 import { toolCalls } from "./schema";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, tierAllows, type Capability } from "@/domains/integrations/capabilities";
+import { InstantToolNotExecutableError, InstantTools } from "@/domains/integrations/instant-tools";
+import { QuotaExhaustedError } from "@/integrations/providers/quota";
 import { TOOL_SCHEMAS } from "@/domains/integrations/tool-manifest";
 import { readGmailThread, searchGmailMessages, type GmailReadFailure } from "@/domains/integrations/gmail/reads";
 import { readGithubIssue, searchGithub } from "@/domains/integrations/reads/github";
@@ -499,10 +501,68 @@ function readFailure(failure: GmailReadFailure): GatewayOutcome {
   return { ok: false, status: 502, code: "provider_error", message: failure.message };
 }
 
+/*
+ * The Instant dispatch branch (spec #316, decision D5): a derived instant.*
+ * tool name resolves through the synced Composio catalog, not CAPABILITIES,
+ * and needs no connected account — Composio executes no_auth tools itself and
+ * bills the org balance. The branch still passes the frozen policy-snapshot
+ * gate below: the snapshot is the run-time bound for Instant exactly as for
+ * connected tools.
+ *
+ * The tier gate is deliberately not PROVIDER_TIERS here: an Instant tool is
+ * read-only by construction — executeInstantTool refuses anything its catalog
+ * classification has not proven read (deny-by-default) — so the tier ceiling
+ * and the execute-time refusal are the same check, enforced in one place.
+ * Profile provisioning admits instant.* names through the `gained` array in
+ * commands.ts so existing profiles do not dead-403.
+ */
+async function instantCall(context: GatewayContext, tool: string, toolkitSlug: string): Promise<GatewayOutcome> {
+  if (!toolAllowed(context.run.policySnapshot, tool)) {
+    return {
+      ok: false,
+      status: 403,
+      code: "capability_not_allowed",
+      message: `This run may not use ${tool}.`,
+    };
+  }
+  const args = context.args !== null && typeof context.args === "object" ? (context.args as Record<string, unknown>) : {};
+  try {
+    const result = await InstantTools.executeInstantTool({
+      toolSlug: tool,
+      args,
+      workspaceId: context.auth.workspaceId,
+    });
+    if (!result.ok) {
+      if (result.code === "not_configured") {
+        return { ok: false, status: 503, code: "integration_not_configured", message: result.message };
+      }
+      return { ok: false, status: 502, code: "provider_error", message: result.message };
+    }
+    const text = JSON.stringify(result.data);
+    return { ok: true, result: { content: [{ type: "text", text }] } };
+  } catch (cause) {
+    if (cause instanceof InstantToolNotExecutableError) {
+      // Refusals are policy outcomes, not crashes: the run sees why.
+      return { ok: false, status: 403, code: "permission_denied", message: cause.message };
+    }
+    if (cause instanceof QuotaExhaustedError) {
+      return {
+        ok: false,
+        status: 429,
+        code: "quota_exhausted",
+        message: `The Instant tool allowance is exhausted (${cause.message})`,
+      };
+    }
+    throw cause;
+  }
+}
+
 export function createGateway({ transport }: { transport: Transport }) {
   async function call(context: GatewayContext): Promise<GatewayOutcome> {
     const capability = PROVIDER_TOOLS[context.tool as keyof typeof PROVIDER_TOOLS];
     if (!capability) {
+      const instant = InstantTools.resolveInstantCapability(context.tool);
+      if (instant) return instantCall(context, context.tool, instant.toolkitSlug);
       // Unknown before any read of the database: a scanner learns only that the
       // name is not in the catalog.
       return { ok: false, status: 404, code: "not_found", message: "No such provider tool." };
