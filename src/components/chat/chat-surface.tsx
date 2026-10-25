@@ -457,6 +457,8 @@ const TOOL_LABELS: Array<[RegExp, string]> = [
   [/calendar/i, "Checked calendar"],
   [/web_search/i, "Searched the web"],
   [/web_fetch/i, "Read the thread"],
+  // Specific first: /drive/ below also matches googledrive_search_files.
+  [/googledrive_search|drive_search/i, "Searched your Drive files"],
   [/drive|files_list|list_files/i, "Listed your Drive files"],
 ];
 
@@ -474,7 +476,8 @@ function ToolActivity({ tools, busy }: { tools: ChatState["tools"]; busy: boolea
   const visible = tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
   if (visible.length === 0) return null;
   const running = visible.filter((tool) => tool.status === "running");
-  const summary = running.length > 0 || busy ? "Working…" : "Finished";
+  const summary =
+    running.length > 0 || busy ? "Working…" : visible.length > 0 ? `Finished · ${visible.length} steps` : "Finished";
   return (
     <div className="mt-3">
       <button
