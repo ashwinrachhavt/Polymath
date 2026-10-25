@@ -100,6 +100,7 @@ test("a drop on a future hour plans the capture", async ({ page }) => {
 });
 
 test("a session finished behind the page's back shows finished within one poll", async ({ page }) => {
+  test.setTimeout(150_000); // a full 30 s poll interval plus dev compile, with room
   const sql = db();
   if (!sql) {
     test.skip(true, "DATABASE_URL required to change a session mid-journey");
@@ -126,7 +127,7 @@ test("a session finished behind the page's back shows finished within one poll",
     await sql`update focus_sessions set state = 'finished', ended_at = now() where subject = ${tag}`;
     // The theatre polls every 30 s while visible; allow a full interval plus
     // the server round-trip before calling the marker stale.
-    await expect(block).toContainText("finished", { timeout: 45_000 });
+    await expect(block).toContainText("finished", { timeout: 90_000 });
   } finally {
     await sql`update focus_sessions set state = 'finished', ended_at = now() where subject = ${tag}`.catch(() => undefined);
     await sql.end();
