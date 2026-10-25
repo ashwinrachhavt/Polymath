@@ -1,14 +1,19 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captureProposals, captures } from "@/domains/capture/schema";
-import { seedTaxonomyCatalog } from "@/domains/knowledge/taxonomy";
 import { documentClassificationProposals, documents, taxonomyNodes } from "@/domains/knowledge/schema";
 import type { JevClient } from "@/integrations/jev/client";
-import { jevClassifier } from "@/integrations/jev/provider";
 import { JEV_QUESTIONS_VERSION } from "@/integrations/jev/questions";
 import type { ProviderEntry } from "@/integrations/providers/registry";
-import { drizzleQuotaStore } from "@/integrations/providers/quota";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
+
+/*
+ * Import discipline: anything that reaches @/lib/db (taxonomy.ts, the jev
+ * provider, the quota store) must be lazy-imported AFTER makeTestDb has
+ * pointed DATABASE_URL at the scratch database - top-level imports of those
+ * modules bind the default URL at load time and fail auth in CI. Schema
+ * files and pure modules are safe at the top.
+ */
 
 /*
  * Integration coverage for the ASH-272 Jev classifier against a real scratch
@@ -23,10 +28,16 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
+let seedTaxonomyCatalog: typeof import("@/domains/knowledge/taxonomy").seedTaxonomyCatalog;
+let jevClassifier: typeof import("@/integrations/jev/provider").jevClassifier;
+let drizzleQuotaStore: typeof import("@/integrations/providers/quota").drizzleQuotaStore;
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  ({ seedTaxonomyCatalog } = await import("@/domains/knowledge/taxonomy"));
+  ({ jevClassifier } = await import("@/integrations/jev/provider"));
+  ({ drizzleQuotaStore } = await import("@/integrations/providers/quota"));
 });
 
 afterAll(async () => {
