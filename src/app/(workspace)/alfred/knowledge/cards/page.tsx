@@ -12,6 +12,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { CardControls, NewCardForm } from "./card-controls";
+import { LearningPathForm } from "./learning-path-form";
 
 export const metadata = { title: "Cards · Polymath" };
 
@@ -87,6 +88,10 @@ async function CardsSurface({ searchParams }: { searchParams: Promise<RawSearchP
 
       <Panel title="New card" description="A card cites its source; it enters review only after you accept it.">
         <NewCardForm sources={sources} />
+      </Panel>
+
+      <Panel title="Learning path" description="From a goal, a proposed sequence of notes, practice tasks and recall cards - nothing lands without your approval.">
+        <LearningPathForm />
       </Panel>
 
       <Panel>
