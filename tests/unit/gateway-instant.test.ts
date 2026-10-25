@@ -128,20 +128,40 @@ suite("gateway Instant proposal routing (write_unverified)", () => {
   });
 
   it("does NOT file a proposal for a registry_unverified refusal (403 only)", async () => {
+    const { workspaceId } = await seedWorkspace(db, `gw-instant-noprop-regr-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth("00000000-0000-0000-0000-00000000000a", workspaceId);
     vi.spyOn(instant.InstantTools, "executeInstantTool").mockRejectedValue(
       new instant.InstantToolNotExecutableError("registry_unverified", "instant.hackernews.hackernews_get_frontpage"),
     );
     const g = gateway.createGateway({ transport: {} as never });
-    const outcome = await g.call(runContext(["instant.hackernews.hackernews_get_frontpage"], "instant.hackernews.hackernews_get_frontpage"));
+    const outcome = await g.call({
+      auth,
+      run: { id: RUN_ID, policySnapshot: { allowedTools: ["instant.hackernews.hackernews_get_frontpage"] } },
+      tool: "instant.hackernews.hackernews_get_frontpage",
+      args: {},
+    });
     expect(outcome).toMatchObject({ ok: false, status: 403, code: "permission_denied" });
+    const { actionProposals } = await import("@/domains/actions/schema");
+    const rows = await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+    expect(rows).toHaveLength(0);
   });
 
   it("does NOT file a proposal for a not_no_auth refusal (403 only)", async () => {
+    const { workspaceId } = await seedWorkspace(db, `gw-instant-noprop-noauth-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth("00000000-0000-0000-0000-00000000000a", workspaceId);
     vi.spyOn(instant.InstantTools, "executeInstantTool").mockRejectedValue(
       new instant.InstantToolNotExecutableError("not_no_auth", "instant.hackernews.hackernews_get_frontpage"),
     );
     const g = gateway.createGateway({ transport: {} as never });
-    const outcome = await g.call(runContext(["instant.hackernews.hackernews_get_frontpage"], "instant.hackernews.hackernews_get_frontpage"));
+    const outcome = await g.call({
+      auth,
+      run: { id: RUN_ID, policySnapshot: { allowedTools: ["instant.hackernews.hackernews_get_frontpage"] } },
+      tool: "instant.hackernews.hackernews_get_frontpage",
+      args: {},
+    });
     expect(outcome).toMatchObject({ ok: false, status: 403, code: "permission_denied" });
+    const { actionProposals } = await import("@/domains/actions/schema");
+    const rows = await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+    expect(rows).toHaveLength(0);
   });
 });

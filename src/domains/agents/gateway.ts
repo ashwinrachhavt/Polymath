@@ -571,7 +571,10 @@ async function instantCall(context: GatewayContext, tool: string, _toolkitSlug: 
  * approved-effect executor.
  */
 async function instantPropose(context: GatewayContext, tool: string, args: Record<string, unknown>): Promise<GatewayOutcome> {
-  const dedupeKey = `instant.mcp:${context.auth.workspaceId}:${tool}:${JSON.stringify(args)}`;
+  // Key-order canonicalization: the same semantic arguments in a different
+  // insertion order must dedupe to one proposal, not two approval cards.
+  const canonicalArgs = JSON.stringify(args, Object.keys(args).sort());
+  const dedupeKey = `instant.mcp:${context.auth.workspaceId}:${tool}:${canonicalArgs}`;
   const created = await withTransaction(async (tx) => {
     const proposal = await createProposal(
       tx,
