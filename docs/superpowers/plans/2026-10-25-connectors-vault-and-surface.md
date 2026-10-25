@@ -189,19 +189,33 @@ googlesheets_list_spreadsheets:
 
 - [ ] **Step 6: Migration `0246_google_docs_sheets_tiers.sql`**
 
-Follow migration 0230's exact shape:
+The migration must also re-assert the whole static catalog, because deployed databases may predate 0223's expansion (verified 2026-10-25: a dev DB was missing `google-calendar` entirely, which is why the briefing's "Connect Google Calendar" button dead-ends and the Connectors page shows no calendar card). Use `on conflict (provider) do nothing` for the inserts so an up-to-date DB is untouched, then the tier updates. Follow migration 0223's exact catalog-row shape:
 
 ```sql
--- 0246: tier offers for Google Docs and Sheets. Both list through Drive's
--- files endpoint filtered by mimeType, which the generic read can express —
--- the 0230 comment claiming otherwise was wrong. Capability ids are the
--- enforcement source; keep in step with PROVIDER_TIERS (provider-tiers.test.ts).
+-- 0246: Google Docs and Sheets read tiers, plus a catalog backfill: databases
+-- seeded before 0223 lack several providers entirely (verified 2026-10-25: a
+-- dev database had no google-calendar row, so the briefing's connect button
+-- dead-ended and no calendar card could render). The inserts are no-ops on a
+-- current database.
+insert into integration_catalog (provider, display_name, capabilities, risk_by_capability, requires_approval)
+values
+  ('google-calendar', 'Google Calendar', '["read_events", "write_events"]'::jsonb, '{"read_events": "read", "write_events": "external_write"}'::jsonb, true),
+  ('google-docs', 'Google Docs', '["read_documents", "write_documents"]'::jsonb, '{"read_documents": "read", "write_documents": "external_write"}'::jsonb, true),
+  ('google-sheets', 'Google Sheets', '["read_sheets", "write_sheets"]'::jsonb, '{"read_sheets": "read", "write_sheets": "external_write"}'::jsonb, true),
+  ('google-drive', 'Google Drive', '["read_files", "upload_files"]'::jsonb, '{"read_files": "read", "upload_files": "external_write"}'::jsonb, true)
+on conflict (provider) do nothing;
+
+UPDATE integration_catalog SET access_tiers = '[{"id":"read_only","label":"Read only","description":"Agents can list upcoming events on your calendar.","capabilities":["googlecalendar.events.read"]}]'::jsonb
+WHERE provider = 'google-calendar';
+
 UPDATE integration_catalog SET access_tiers = '[{"id":"read_only","label":"Read only","description":"Agents can search your Google Docs.","capabilities":["googledocs.documents.read"]}]'::jsonb
 WHERE provider = 'google-docs';
 
 UPDATE integration_catalog SET access_tiers = '[{"id":"read_only","label":"Read only","description":"Agents can list your Google Sheets spreadsheets.","capabilities":["googlesheets.spreadsheets.read"]}]'::jsonb
 WHERE provider = 'google-sheets';
 ```
+
+Then also ensure Google Calendar's tier exists where it was missing: 0230 already wrote it for up-to-date DBs; the re-assert above makes it idempotent. If the local DB was missing `google-calendar`, apply the full migration set before verifying (`agents/reference.md` documents the apply command).
 
 - [ ] **Step 7: Run tests to verify they pass**
 
