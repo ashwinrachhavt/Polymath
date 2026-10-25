@@ -58,7 +58,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
           </span>
         </p>
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <DebriefButton artifactId={artifactId} />
+          {artifact.kind === "transcript" ? <DebriefButton artifactId={artifactId} /> : null}
           <MoreHorizontal aria-hidden className="size-4" />
           <Copy aria-hidden className="size-4" />
           <Download aria-hidden className="size-4" />
