@@ -19,6 +19,7 @@ const VIEWER_READS: Record<string, string> = {
   getNoteAIRunOutputAction: "read-only poll of a run's output",
   findLinkTargetsAction: "read-only search of the workspace cards for the [[ picker; no write",
   loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
+  loadKnowledgeDebtAction: "read-only knowledge-debt signals over the caller's own workspace rows",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
 };
 

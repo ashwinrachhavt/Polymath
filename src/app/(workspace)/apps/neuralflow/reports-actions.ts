@@ -1,6 +1,7 @@
 "use server";
 
 import { getPreferences } from "@/domains/identity/preferences";
+import { getKnowledgeDebt, type KnowledgeDebt } from "@/domains/knowledge/debt";
 import { getWeeklyReview, weekStartFor, type WeeklyReview } from "@/domains/work/reports";
 import { getAuthContext } from "@/lib/auth";
 
@@ -13,5 +14,14 @@ export async function loadWeeklyReviewAction(input: { start?: string }): Promise
     return { ok: true, review: await getWeeklyReview(auth, { start, timezone: prefs.timezone }) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not load the weekly review." };
+  }
+}
+
+export async function loadKnowledgeDebtAction(): Promise<{ ok: true; debt: KnowledgeDebt } | { ok: false; error: string }> {
+  const auth = await getAuthContext();
+  try {
+    return { ok: true, debt: await getKnowledgeDebt(auth) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load the knowledge debt report." };
   }
 }
