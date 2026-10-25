@@ -45,8 +45,7 @@ async function seedPrepContext(): Promise<boolean> {
 
     const [calendar] = await client<{ id: string }[]>`
       insert into calendars (workspace_id, kind, name, created_by, updated_by)
-      values (${ws}, 'local', 'Primary', ${uid}, ${uid})
-      on conflict (workspace_id, name) do update set updated_at = now()
+      values (${ws}, 'local', 'E2E Prep Calendar', ${uid}, ${uid})
       returning id`;
     const startsAt = new Date(Date.now() + 2 * 3_600_000);
     const endsAt = new Date(Date.now() + 3 * 3_600_000);
@@ -57,7 +56,6 @@ async function seedPrepContext(): Promise<boolean> {
     const [contact] = await client<{ id: string }[]>`
       insert into contacts (workspace_id, full_name, primary_email, title, created_by, updated_by)
       values (${ws}, 'Priya Nair', 'priya@example.com', 'Platform lead', ${uid}, ${uid})
-      on conflict (workspace_id, primary_email) do update set updated_at = now()
       returning id`;
     await client`
       insert into event_attendees (workspace_id, event_id, email, display_name, contact_id)
@@ -86,6 +84,7 @@ async function removeSeeded(): Promise<void> {
   if (!client) return;
   try {
     await client`delete from events where title = ${EVENT_TITLE}`;
+    await client`delete from calendars where name = 'E2E Prep Calendar'`;
     await client`delete from contacts where primary_email = 'priya@example.com'`;
     await client`delete from artifacts where title in (${NOTE_TITLE}, 'Prep: Weekly sync')`;
     await client`delete from tasks where title = ${TASK_TITLE}`;
