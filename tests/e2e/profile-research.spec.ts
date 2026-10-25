@@ -30,7 +30,7 @@ function db(): postgres.Sql | null {
 const COMPANY_NAME = "Example";
 const COMPANY_DOMAIN = "example.com";
 const CONTACT_NAME = "Priya Nair";
-const CONTACT_EMAIL = "priya@example.com";
+const CONTACT_EMAIL = "priya.nair+profile-research@example.com";
 
 type Seeded = { companyId: string; contactId: string };
 
@@ -48,53 +48,59 @@ async function seedResearchSubjects(): Promise<Seeded | null> {
     const ws = owner.workspace_id;
     const uid = owner.user_id;
 
-    const [existing] = await client<{ id: string }[]>`
-      select id from companies where workspace_id = ${ws} and name = ${COMPANY_NAME} and archived_at is null limit 1`;
-    const companyId =
-      existing?.id ??
-      (
-        await client<{ id: string }[]>`
-        insert into companies (workspace_id, name, domain, description, created_by, updated_by)
-        values (${ws}, ${COMPANY_NAME}, ${COMPANY_DOMAIN}, 'Spending analytics for small teams', ${uid}, ${uid})
-        returning id`
-      )[0].id;
+    // The viewport tests run fully parallel against one shared database, so
+    // serialize the seed itself; without the lock two tests can both find the
+    // company missing and race the unique (workspace_id, domain) index.
+    await client`select pg_advisory_lock(920291)`;
+    try {
+      const [existing] = await client<{ id: string }[]>`
+        select id from companies where workspace_id = ${ws} and domain = ${COMPANY_DOMAIN} and archived_at is null limit 1`;
+      const companyId =
+        existing?.id ??
+        (
+          await client<{ id: string }[]>`
+          insert into companies (workspace_id, name, domain, description, created_by, updated_by)
+          values (${ws}, ${COMPANY_NAME}, ${COMPANY_DOMAIN}, 'Spending analytics for small teams', ${uid}, ${uid})
+          on conflict do nothing
+          returning id`
+        )[0]?.id ??
+        (
+          await client<{ id: string }[]>`
+          select id from companies where workspace_id = ${ws} and domain = ${COMPANY_DOMAIN} limit 1`
+        )[0].id;
 
-    const [existingContact] = await client<{ id: string }[]>`
-      select id from contacts where workspace_id = ${ws} and primary_email = ${CONTACT_EMAIL} and archived_at is null limit 1`;
-    const contactId =
-      existingContact?.id ??
-      (
-        await client<{ id: string }[]>`
-        insert into contacts (workspace_id, full_name, primary_email, title, created_by, updated_by)
-        values (${ws}, ${CONTACT_NAME}, ${CONTACT_EMAIL}, 'Platform lead', ${uid}, ${uid})
-        returning id`
-      )[0].id;
+      const [existingContact] = await client<{ id: string }[]>`
+        select id from contacts where workspace_id = ${ws} and primary_email = ${CONTACT_EMAIL} and archived_at is null limit 1`;
+      const contactId =
+        existingContact?.id ??
+        (
+          await client<{ id: string }[]>`
+          insert into contacts (workspace_id, full_name, primary_email, title, created_by, updated_by)
+          values (${ws}, ${CONTACT_NAME}, ${CONTACT_EMAIL}, 'Platform lead', ${uid}, ${uid})
+          on conflict do nothing
+          returning id`
+        )[0]?.id ??
+        (
+          await client<{ id: string }[]>`
+          select id from contacts where workspace_id = ${ws} and primary_email = ${CONTACT_EMAIL} limit 1`
+        )[0].id;
 
-    await client`
-      insert into contact_companies (workspace_id, contact_id, company_id, title, is_current, created_by, updated_by)
-      values (${ws}, ${contactId}, ${companyId}, 'Platform lead', true, ${uid}, ${uid})
-      on conflict do nothing`;
-    return { companyId, contactId };
+      const [existingLink] = await client<{ id: string }[]>`
+        select id from contact_companies where contact_id = ${contactId} and company_id = ${companyId} limit 1`;
+      if (!existingLink) {
+        await client`
+          insert into contact_companies (workspace_id, contact_id, company_id, title, is_current)
+          values (${ws}, ${contactId}, ${companyId}, 'Platform lead', true)
+          on conflict do nothing`;
+      }
+      return { companyId, contactId };
+    } finally {
+      await client`select pg_advisory_unlock(920291)`;
+    }
   } finally {
     await client.end();
   }
 }
-
-async function removeSeeded(): Promise<void> {
-  const client = db();
-  if (!client) return;
-  try {
-    await client`delete from artifacts where title in ('Research: Example', 'Research: Priya Nair')`;
-    await client`delete from contacts where primary_email = ${CONTACT_EMAIL}`;
-    await client`delete from companies where name = ${COMPANY_NAME} and domain = ${COMPANY_DOMAIN}`;
-  } finally {
-    await client.end();
-  }
-}
-
-test.afterAll(async () => {
-  await removeSeeded();
-});
 
 for (const vp of VIEWPORTS) {
   test(`research a company from its profile [${vp.name}]`, async ({ page }) => {
