@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
 import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
+import { providerEntry } from "@/integrations/providers/registry";
 import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/questions";
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
@@ -178,8 +179,13 @@ async function tryJevTriage(
   base: { cleanText: string | null; structure: string; updatedAt: Date },
   cleanText: string,
   structure: string,
-  judger: ClassifyJudger = jevClassifier(workspaceId),
+  injectedJudger?: ClassifyJudger,
 ): Promise<"handled" | "fallback"> {
+  // Fast path: with no injected judger and the registry entry disabled (the
+  // shipped default), fall through without touching the taxonomy table, so
+  // the disabled-Jev path stays byte-identical to the pre-ASH-272 ladder.
+  if (!injectedJudger && !providerEntry("jev")?.enabled) return "fallback";
+  const judger = injectedJudger ?? jevClassifier(workspaceId);
 
   // The domain Choice's options come from the workspace's seeded taxonomy; an
   // unseeded workspace simply asks no domain question (domain stays null).
