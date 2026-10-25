@@ -607,17 +607,22 @@ export function DocumentVault({
   // a failure reason. Five minutes per batch is the ceiling — after that the
   // row says honestly that the vault will catch up on its own, and polling
   // stops instead of spinning forever against a stuck queue.
-  const pendingIds = useMemo(
+  // The dependency is the joined key, not the memo array: the tick's own
+  // setUploads would otherwise hand the memo a new identity every render and
+  // restart the interval per tick, pacing fetches by network speed instead of
+  // the 2 s cadence. A string compares by value, so only a membership change
+  // (a row finishing, giving up, or a new upload) re-arms the effect.
+  const pendingKey = useMemo(
     () =>
       uploads
         .filter((u) => u.state === "busy" && u.documentId && !u.gaveUp)
-        .map((u) => u.documentId as string),
+        .map((u) => u.documentId as string)
+        .join(","),
     [uploads],
   );
-  const gaveUpRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (pendingIds.length === 0) return;
-    const pollIds = pendingIds;
+    if (!pendingKey) return;
+    const pollIds = pendingKey.split(",");
     const startedAt = Date.now();
     const POLL_MS = 2_000;
     const GIVE_UP_MS = 5 * 60_000;
@@ -625,15 +630,16 @@ export function DocumentVault({
     const tick = async () => {
       if (Date.now() - startedAt > GIVE_UP_MS) {
         // Ceiling reached: these rows say honestly that the vault will catch up
-        // on its own, and the poller excludes them instead of spinning forever.
-        for (const id of pollIds) gaveUpRef.current.add(id);
-        setUploads((prev) =>
-          prev.map((u) =>
+        // on its own, and the poller drops them (gaveUp) instead of spinning
+        // forever. Surviving rows re-arm with a fresh window.
+        setUploads((prev) => {
+          if (!prev.some((u) => u.state === "busy" && u.documentId && pollIds.includes(u.documentId))) return prev;
+          return prev.map((u) =>
             u.state === "busy" && u.documentId && pollIds.includes(u.documentId)
               ? { ...u, gaveUp: true, phase: "Still reading — the vault row will update on its own." }
               : u,
-          ),
-        );
+          );
+        });
         return;
       }
       try {
@@ -643,16 +649,27 @@ export function DocumentVault({
           sources?: Array<{ documentId: string; readiness: SourceReadiness; detail: string | null }>;
         };
         const byId = new Map((body.sources ?? []).map((s) => [s.documentId, s]));
-        setUploads((prev) =>
-          prev.map((u) => {
+        setUploads((prev) => {
+          // Write only when a row actually moved: returning prev here keeps
+          // renders (and therefore the effect's key) untouched on quiet ticks.
+          let changed = false;
+          const next = prev.map((u) => {
             if (u.state !== "busy" || !u.documentId) return u;
             const source = byId.get(u.documentId);
             if (!source) return u;
             const { phase, terminal } = phaseForReadiness(source.readiness, source.detail);
-            if (!terminal) return { ...u, phase };
-            return terminal === "done" ? { ...u, phase, state: "done" } : { ...u, phase, state: "error" };
-          }),
-        );
+            if (!terminal) {
+              if (u.phase === phase) return u;
+              changed = true;
+              return { ...u, phase };
+            }
+            changed = true;
+            return terminal === "done"
+              ? { ...u, phase, state: "done" as const }
+              : { ...u, phase, state: "error" as const };
+          });
+          return changed ? next : prev;
+        });
       } catch {
         // The poller is a status read, not a mutation: a failed tick is silent
         // and the next interval retries. Swallowing here is the honest choice.
@@ -661,7 +678,7 @@ export function DocumentVault({
     void tick();
     const timer = setInterval(() => void tick(), POLL_MS);
     return () => clearInterval(timer);
-  }, [pendingIds]);
+  }, [pendingKey]);
 
   // The whole surface is a dropzone. A directory drop carries entries with
   // full paths; files dropped from outside a folder window do not.
@@ -948,7 +965,10 @@ export function DocumentVault({
                   item.state === "error" ? "bg-destructive/10 text-destructive" : "bg-muted/60 text-muted-foreground",
                 )}
               >
-                <span className="min-w-0 truncate" title={item.state === "error" || item.phase ? item.phase ?? item.note : undefined}>
+                <span
+                  className="min-w-0 truncate"
+                  title={item.state === "error" ? (item.note ?? item.phase) : item.phase}
+                >
                   {item.name}
                 </span>
                 <span className={cn("readout shrink-0", item.state === "error" && "text-destructive")}>

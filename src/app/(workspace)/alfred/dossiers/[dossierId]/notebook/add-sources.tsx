@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,18 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
   const [picked, setPicked] = useState("");
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  // The background readiness poll outlives the click that started it; these
+  // let it stop cleanly when the pane unmounts.
+  const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    abortRef.current = new AbortController();
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingVault, setAddingVault] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -89,10 +101,13 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
         const out = await attachToNotebookAction({ dossierId, documentIds: [payload.documentId] });
         if (out.ok) {
           setMessage(out.message);
-          // The document is attached; its read and index still run. Poll until
-          // it is ready or failed so the status line tells the truth about the
-          // pipeline, not just the attach.
-          setUploadMessage(await pollReadiness(payload.documentId, `${file.name} added.`));
+          // The document is attached; its read and index still run. The poll
+          // rides in the background so the buttons free up right away — only
+          // the status line keeps reporting the pipeline.
+          void pollReadiness(payload.documentId, `${file.name} added.`).then((note) => {
+            if (!mountedRef.current) return;
+            setUploadMessage(note);
+          });
         } else setError(out.message);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : `${file.name} could not be uploaded.`);
@@ -111,7 +126,10 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
         if (out.ok) {
           setPicked("");
           setMessage(out.message);
-          setUploadMessage(await pollReadiness(picked, out.message));
+          void pollReadiness(picked, out.message).then((note) => {
+            if (!mountedRef.current) return;
+            setUploadMessage(note);
+          });
         } else setError(out.message);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "The source could not be added.");
@@ -125,18 +143,23 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
    * Poll GET /api/v1/documents/readiness for one just-attached document, every
    * 2 s, until it reaches ready or failed — five minutes is the ceiling, after
    * which the note says the pane will catch up rather than claiming a result.
-   * Returns the final status-line copy.
+   * Runs fire-and-forget: it resolves with the final status-line copy and never
+   * blocks the buttons. A failed tick is transient; the next one retries.
+   * Everything stops after unmount — the loop ends and no state is written.
    */
   async function pollReadiness(documentId: string, attachedMessage: string): Promise<string> {
     const POLL_MS = 2_000;
     const GIVE_UP_MS = 5 * 60_000;
     const startedAt = Date.now();
     for (;;) {
+      if (!mountedRef.current) return attachedMessage;
       if (Date.now() - startedAt > GIVE_UP_MS) {
         return "Still reading — the Sources pane will update on its own.";
       }
       try {
-        const response = await fetch(`/api/v1/documents/readiness?ids=${documentId}`);
+        const response = await fetch(`/api/v1/documents/readiness?ids=${documentId}`, {
+          signal: mountedRef.current ? abortRef.current?.signal : undefined,
+        });
         if (response.ok) {
           const body = (await response.json()) as {
             sources?: Array<{ documentId: string; readiness: SourceReadiness; detail: string | null }>;
@@ -146,11 +169,12 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
             const { phase, terminal } = phaseForReadiness(source.readiness, source.detail);
             if (terminal === "done") return attachedMessage;
             if (terminal === "error") return phase;
-            setUploadMessage(phase);
+            if (mountedRef.current) setUploadMessage(phase);
           }
         }
       } catch {
-        // A failed tick is transient; the next one retries.
+        // A failed (or unmount-aborted) tick is transient; the loop exits below
+        // on the mounted check either way.
       }
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
