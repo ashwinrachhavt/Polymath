@@ -49,15 +49,19 @@ export async function senderAliasPolicy(workspaceId: string, capability: string)
 
 export type SenderAliasVerdict = { allowed: true } | { allowed: false; reason: string };
 
-/** The alias check both enforcement points share. */
+/*
+ * The alias check both enforcement points share. A NAMED alias outside the
+ * list is refused outright; an unnamed sender is allowed through so the
+ * resolver can pick inside the list - restricted resolution is what keeps
+ * the one connected account from being substituted for an unauthorized
+ * sender, and it fails honestly when no authorized account is connected.
+ */
 export function checkSenderAlias(policy: SenderAliasPolicy, alias: string | null): SenderAliasVerdict {
   if (!policy.configured) return { allowed: true };
-  if (alias && policy.aliases.includes(alias)) return { allowed: true };
+  if (alias === null || policy.aliases.includes(alias)) return { allowed: true };
   return {
     allowed: false,
-    reason: alias
-      ? `"${alias}" is not an authorized sender for this capability. Authorized: ${policy.aliases.join(", ")}.`
-      : `This capability requires one of the authorized senders: ${policy.aliases.join(", ")}. No account was substituted.`,
+    reason: `"${alias}" is not an authorized sender for this capability. Authorized: ${policy.aliases.join(", ")}.`,
   };
 }
 

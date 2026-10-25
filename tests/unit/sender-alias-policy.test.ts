@@ -40,9 +40,10 @@ describe("checkSenderAlias", () => {
     if (!verdict.allowed) expect(verdict.reason).toContain('"personal" is not an authorized sender');
   });
 
-  it("never substitutes for an unnamed sender", () => {
-    const verdict = checkSenderAlias(policy, null);
-    expect(verdict.allowed).toBe(false);
-    if (!verdict.allowed) expect(verdict.reason).toContain("No account was substituted");
+  it("lets an unnamed sender through to restricted resolution - substitution is prevented there", () => {
+    // The check refuses only a NAMED unauthorized alias. An unnamed sender is
+    // resolved inside the authorized list only, which is where substitution
+    // of an unlisted connected account is prevented.
+    expect(checkSenderAlias(policy, null)).toEqual({ allowed: true });
   });
 });
