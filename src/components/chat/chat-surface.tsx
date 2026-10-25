@@ -453,11 +453,15 @@ const TOOL_LABELS: Array<[RegExp, string]> = [
   [/wiki_read|wiki\./i, "Checked the wiki"],
   [/wiki_ingest/i, "Updated the wiki"],
   [/wiki_lint/i, "Wiki health check"],
+  [/gmail_read_thread/i, "Read the thread"],
   [/gmail/i, "Searched your mail"],
   [/calendar/i, "Checked calendar"],
   [/web_search/i, "Searched the web"],
-  [/web_fetch/i, "Read the thread"],
-  // Specific first: /drive/ below also matches googledrive_search_files.
+  [/web_fetch/i, "Read a web page"],
+  // Specific first: /drive/ below also matches googledrive_search_files, and
+  // the /gmail/ entry above also matches gmail_read_thread.
+  [/googledocs_search/i, "Searched your Google Docs"],
+  [/googlesheets/i, "Listed your spreadsheets"],
   [/googledrive_search|drive_search/i, "Searched your Drive files"],
   [/drive|files_list|list_files/i, "Listed your Drive files"],
 ];
