@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { focusSessions } from "@/domains/focus/schema";
 import { db } from "@/lib/db";
 import { tasks } from "./schema";
+import type { NarrativeSession } from "./outcome-narrative";
 
 /*
  * D15: the weekly review read from server rows. Completions come from
@@ -85,4 +86,29 @@ export async function getWeeklyReview(
     },
     streak: computeStreak(active, end, 7),
   };
+}
+
+/** Finished focus sessions in the week, with the owner's own outcome sentence (ASH-280). */
+export async function listFinishedSessionsInWeek(
+  auth: AuthContext,
+  input: { start: string; timezone: string },
+): Promise<NarrativeSession[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start)) throw new Error("Start must be YYYY-MM-DD.");
+  const end = addDays(input.start, 6);
+  const from = sql`(${input.start}::date)::timestamp at time zone ${input.timezone}`;
+  const to = sql`((${end}::date + 1)::timestamp) at time zone ${input.timezone}`;
+  const rows = await db
+    .select({
+      endedAt: focusSessions.endedAt,
+      seconds: focusSessions.accumulatedSeconds,
+      subject: focusSessions.subject,
+      outcome: focusSessions.outcome,
+      taskTitle: tasks.title,
+    })
+    .from(focusSessions)
+    .leftJoin(tasks, eq(tasks.id, focusSessions.taskId))
+    .where(and(eq(focusSessions.workspaceId, auth.workspaceId), eq(focusSessions.state, "finished"), isNotNull(focusSessions.endedAt), gte(focusSessions.endedAt, from), lt(focusSessions.endedAt, to)))
+    .orderBy(focusSessions.endedAt)
+    .limit(200);
+  return rows.map((r) => ({ endedAt: r.endedAt!.toISOString(), minutes: Math.round(r.seconds / 60), subject: r.subject, outcome: r.outcome, taskTitle: r.taskTitle }));
 }
