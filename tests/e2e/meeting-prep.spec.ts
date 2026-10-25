@@ -133,4 +133,26 @@ for (const vp of VIEWPORTS) {
       await page.screenshot({ path: `test-results/feature-pixels/prep-report-bottom-${vp.name}.png`, style: HIDE_DEV_CHROME });
     }
   });
+
+  test(`a failed refresh says so in the ready state [${vp.name}]`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    test.skip(!(await seedPrepContext()), "DATABASE_URL not configured");
+
+    await page.goto("/neuralflow/work");
+    const row = page.locator("li", { hasText: EVENT_TITLE }).first();
+    await row.getByRole("button", { name: "Prep" }).click();
+    await expect(row.getByRole("link", { name: "Prep ready" })).toBeVisible({ timeout: 60_000 });
+
+    // The event vanishing before the refresh is the honest failure: the
+    // action's failure path skips revalidation, so the row stays and the
+    // error must render where the owner clicked - never a silent no-op.
+    const client = db();
+    await client!`delete from events where title = ${EVENT_TITLE}`;
+    await client!.end();
+
+    await row.getByRole("button", { name: "Refresh" }).click();
+    await expect(row.getByRole("alert")).toContainText("does not exist", { timeout: 30_000 });
+    await page.screenshot({ path: `test-results/feature-pixels/prep-refresh-error-${vp.name}.png`, style: HIDE_DEV_CHROME });
+  });
 }
