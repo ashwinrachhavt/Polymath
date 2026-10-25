@@ -6,6 +6,7 @@ import { withTransaction } from "@/lib/db-transaction";
 import { createProposal, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { decideAndRecordToolInvocation } from "./authorization";
+import { draftReply, WriterDraftError, type ResolvedSenderAccount } from "./writer-draft";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
 import { parkRunForReview } from "./event-bridge";
 import { toolCalls } from "./schema";
@@ -89,6 +90,15 @@ type ParsedThread = {
   resourceRef: string;
 };
 type ParsedSend = { ok: true; generic?: undefined; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
+type ParsedWriterDraft = {
+  ok: true;
+  generic?: undefined;
+  tool: "writer_draft_reply";
+  args: { threadId: string; instruction?: string };
+  accountAlias?: string;
+  destination?: undefined;
+  resourceRef?: string;
+};
 
 const OTHER_READS = [
   "github_search",
@@ -124,7 +134,7 @@ type ParsedOther = {
   resourceRef?: string;
 };
 
-type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedOther | ParsedGeneric | { ok: false; message: string };
+type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedWriterDraft | ParsedOther | ParsedGeneric | { ok: false; message: string };
 
 function invalidArguments(message: string): GatewayOutcome {
   return { ok: false, status: 400, code: "invalid_arguments", message };
@@ -152,6 +162,18 @@ function parseCall(tool: string, input: unknown): ParsedCall {
     return parsed.success
       ? { ok: true, tool: "gmail_search", args: parsed.data, accountAlias: parsed.data.accountAlias }
       : { ok: false, message: firstIssue(parsed.error) };
+  }
+  if (tool === "writer_draft_reply") {
+    const parsed = TOOL_SCHEMAS.writer_draft_reply.safeParse(raw);
+    return parsed.success
+      ? {
+          ok: true as const,
+          tool: "writer_draft_reply" as const,
+          args: { threadId: parsed.data.threadId, instruction: parsed.data.instruction },
+          accountAlias: parsed.data.accountAlias,
+          resourceRef: `thread:${parsed.data.threadId}`,
+        }
+      : { ok: false as const, message: firstIssue(parsed.error) };
   }
   if (tool === "gmail_read_thread") {
     const parsed = TOOL_SCHEMAS.gmail_read_thread.safeParse(raw);
@@ -351,7 +373,7 @@ async function reserveCall(
 function redactArguments(parsed: ParsedCall & { ok: true }): Record<string, unknown> {
   if (parsed.generic) return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_search") return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
-  if (parsed.tool === "gmail_read_thread") return { threadId: parsed.args.threadId };
+  if (parsed.tool === "gmail_read_thread" || parsed.tool === "writer_draft_reply") return { threadId: parsed.args.threadId };
   if (parsed.tool !== "gmail_send") {
     // Reads of other providers: the arguments are queries and ids, never bodies.
     const { accountAlias: _alias, ...rest } = parsed.args as Record<string, unknown>;
@@ -531,7 +553,7 @@ export function createGateway({ transport }: { transport: Transport }) {
     // sends may be legitimate wording revisions. Same tool and same redacted
     // arguments is the identity; the redacted form is what the rows store, so
     // the comparison cannot miss what it already recorded.
-    if (parsed.tool !== "gmail_send") {
+    if (parsed.tool !== "gmail_send" && parsed.tool !== "writer_draft_reply") {
       const parked = await detectLoop(context, parsed);
       if (parked) {
         return {
@@ -550,9 +572,9 @@ export function createGateway({ transport }: { transport: Transport }) {
     if (parsed.generic) {
       return read(context, parsed, account.alias, account.connectedAccountId, reservation);
     }
-    return parsed.tool === "gmail_send"
-      ? proposeSend(context, capability, parsed, account, reservation)
-      : read(context, parsed, account.alias, account.connectedAccountId, reservation);
+    if (parsed.tool === "gmail_send") return proposeSend(context, capability, parsed, account, reservation);
+    if (parsed.tool === "writer_draft_reply") return proposeWriterDraft(context, parsed, account, reservation);
+    return read(context, parsed, account.alias, account.connectedAccountId, reservation);
   }
 
   /**
@@ -919,6 +941,62 @@ export function createGateway({ transport }: { transport: Transport }) {
         ],
       },
     };
+  }
+
+  /*
+   * The Writer's draft path (ASH-281): the ONE proposal path that reads
+   * through the transport first - reading the thread it will answer is the
+   * draft's grounding. The transport's closed read-only surface keeps the
+   * structural rule intact: no proposal path can WRITE through it.
+   */
+  async function proposeWriterDraft(
+    context: GatewayContext,
+    parsed: ParsedWriterDraft,
+    account: ResolvedSenderAccount,
+    reservation: { reservationId: string; startedAt: number },
+  ): Promise<GatewayOutcome> {
+    try {
+      const outcome = await draftReply(
+        context.auth,
+        { runId: context.run.id, threadId: parsed.args.threadId, instruction: parsed.args.instruction },
+        { transport, account },
+      );
+      await settleCall(reservation.reservationId, {
+        ok: true,
+        result: { proposalId: outcome.proposalId, revised: outcome.revised, reopened: outcome.reopened },
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      return {
+        ok: true,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "awaiting_review",
+                proposalId: outcome.proposalId,
+                to: outcome.to,
+                subject: outcome.subject,
+                citations: outcome.citations.length,
+                flags: outcome.flags,
+                ...(outcome.revised ? { revised: true } : {}),
+                ...(outcome.reopened ? { reopened: true } : {}),
+              }),
+            },
+          ],
+        },
+      };
+    } catch (cause) {
+      const code = cause instanceof WriterDraftError ? cause.code : "writer_failed";
+      const message = cause instanceof Error ? cause.message : "The draft could not be written.";
+      await settleCall(reservation.reservationId, {
+        ok: false,
+        errorCode: code,
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      const status = code === "writer_unconfigured" ? 503 : code === "thread_read_failed" ? 502 : 422;
+      return { ok: false, status, code, message };
+    }
   }
 
   return { call };
