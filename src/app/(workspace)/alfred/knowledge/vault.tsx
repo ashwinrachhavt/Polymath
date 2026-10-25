@@ -35,6 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
 import { vaultReview, type VaultReview, type VaultStateKey, type VaultTone } from "@/domains/knowledge/vault-review";
+import { phaseForReadiness } from "@/domains/knowledge/readiness-batch";
+import type { SourceReadiness } from "@/domains/knowledge/source-readiness";
 import { createVaultFolder } from "./actions";
 import { StatementStrip } from "./statement-section";
 
@@ -74,7 +76,18 @@ export type VaultDocument = {
   href: string;
 };
 
-export type VaultUpload = { key: string; name: string; state: "busy" | "done" | "error"; note?: string };
+export type VaultUpload = {
+  key: string;
+  name: string;
+  state: "busy" | "done" | "error";
+  /** Set once /api/v1/files returns 201; the poller then tracks the pipeline. */
+  documentId?: string;
+  /** Set when the poller hit its ceiling: the row stays honest but stops polling. */
+  gaveUp?: boolean;
+  /** What the row says right now — "Reading…", "Queued", a failure reason. */
+  phase?: string;
+  note?: string;
+};
 
 const toneClass: Record<VaultTone, string> = {
   neutral: "text-muted-foreground",
@@ -552,7 +565,9 @@ export function DocumentVault({
           headers: { "Idempotency-Key": crypto.randomUUID() },
           body,
         });
-        const payload = (await response.json().catch(() => null)) as { fileStatus?: string; title?: string } | null;
+        const payload = (await response.json().catch(() => null)) as
+          | { documentId?: string; fileStatus?: string; title?: string }
+          | null;
         if (!response.ok) {
           const problem = payload && "title" in payload ? payload.title : null;
           throw new Error(problem ?? `${file.name} could not be uploaded (${response.status}).`);
@@ -560,7 +575,13 @@ export function DocumentVault({
         if (payload && payload.fileStatus === "quarantined") {
           throw new Error(`We kept ${file.name} but couldn't identify its type, so no document was created.`);
         }
-        setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, state: "done" } : u)));
+        if (payload?.documentId) {
+          // The bytes landed; reading and indexing come next. Keep the row busy
+          // and let the readiness poller move it to Ready or a failure reason.
+          setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, documentId: payload.documentId, phase: "Reading…" } : u)));
+        } else {
+          setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, state: "done" } : u)));
+        }
         router.refresh();
       } catch (cause) {
         const text = cause instanceof Error ? cause.message : `${file.name} could not be uploaded. Check the connection and try again.`;
@@ -580,6 +601,67 @@ export function DocumentVault({
     },
     [upload],
   );
+
+  // While any upload row has a document, poll the readiness projection every
+  // 2 s and move the row: Queued → Reading… → Indexing for search… → Ready, or
+  // a failure reason. Five minutes per batch is the ceiling — after that the
+  // row says honestly that the vault will catch up on its own, and polling
+  // stops instead of spinning forever against a stuck queue.
+  const pendingIds = useMemo(
+    () =>
+      uploads
+        .filter((u) => u.state === "busy" && u.documentId && !u.gaveUp)
+        .map((u) => u.documentId as string),
+    [uploads],
+  );
+  const gaveUpRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (pendingIds.length === 0) return;
+    const pollIds = pendingIds;
+    const startedAt = Date.now();
+    const POLL_MS = 2_000;
+    const GIVE_UP_MS = 5 * 60_000;
+
+    const tick = async () => {
+      if (Date.now() - startedAt > GIVE_UP_MS) {
+        // Ceiling reached: these rows say honestly that the vault will catch up
+        // on its own, and the poller excludes them instead of spinning forever.
+        for (const id of pollIds) gaveUpRef.current.add(id);
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.state === "busy" && u.documentId && pollIds.includes(u.documentId)
+              ? { ...u, gaveUp: true, phase: "Still reading — the vault row will update on its own." }
+              : u,
+          ),
+        );
+        return;
+      }
+      try {
+        const response = await fetch(`/api/v1/documents/readiness?ids=${pollIds.join(",")}`);
+        if (!response.ok) return; // transient; the next tick retries
+        const body = (await response.json()) as {
+          sources?: Array<{ documentId: string; readiness: SourceReadiness; detail: string | null }>;
+        };
+        const byId = new Map((body.sources ?? []).map((s) => [s.documentId, s]));
+        setUploads((prev) =>
+          prev.map((u) => {
+            if (u.state !== "busy" || !u.documentId) return u;
+            const source = byId.get(u.documentId);
+            if (!source) return u;
+            const { phase, terminal } = phaseForReadiness(source.readiness, source.detail);
+            if (!terminal) return { ...u, phase };
+            return terminal === "done" ? { ...u, phase, state: "done" } : { ...u, phase, state: "error" };
+          }),
+        );
+      } catch {
+        // The poller is a status read, not a mutation: a failed tick is silent
+        // and the next interval retries. Swallowing here is the honest choice.
+      }
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [pendingIds]);
 
   // The whole surface is a dropzone. A directory drop carries entries with
   // full paths; files dropped from outside a folder window do not.
@@ -866,9 +948,15 @@ export function DocumentVault({
                   item.state === "error" ? "bg-destructive/10 text-destructive" : "bg-muted/60 text-muted-foreground",
                 )}
               >
-                <span className="min-w-0 truncate">{item.name}</span>
+                <span className="min-w-0 truncate" title={item.state === "error" || item.phase ? item.phase ?? item.note : undefined}>
+                  {item.name}
+                </span>
                 <span className={cn("readout shrink-0", item.state === "error" && "text-destructive")}>
-                  {item.state === "busy" ? "Reading…" : item.state === "done" ? "Added" : "Failed"}
+                  {item.state === "busy"
+                    ? item.phase ?? "Reading…"
+                    : item.state === "done"
+                      ? item.phase ?? "Added"
+                      : item.phase ?? "Failed"}
                 </span>
               </motion.li>
             ))}

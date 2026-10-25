@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { phaseForReadiness } from "@/domains/knowledge/readiness-batch";
+import type { SourceReadiness } from "@/domains/knowledge/source-readiness";
 import { addUrlToNotebookAction, attachToNotebookAction } from "./add-source-actions";
 
 /*
@@ -24,6 +26,7 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
   const [url, setUrl] = useState("");
   const [picked, setPicked] = useState("");
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingVault, setAddingVault] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -84,8 +87,13 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
           return;
         }
         const out = await attachToNotebookAction({ dossierId, documentIds: [payload.documentId] });
-        if (out.ok) setMessage(out.message);
-        else setError(out.message);
+        if (out.ok) {
+          setMessage(out.message);
+          // The document is attached; its read and index still run. Poll until
+          // it is ready or failed so the status line tells the truth about the
+          // pipeline, not just the attach.
+          setUploadMessage(await pollReadiness(payload.documentId, `${file.name} added.`));
+        } else setError(out.message);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : `${file.name} could not be uploaded.`);
       } finally {
@@ -100,15 +108,52 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
       setAddingVault(true);
       try {
         const out = await attachToNotebookAction({ dossierId, documentIds: [picked] });
-        if (out.ok) setPicked("");
-        if (out.ok) setMessage(out.message);
-        else setError(out.message);
+        if (out.ok) {
+          setPicked("");
+          setMessage(out.message);
+          setUploadMessage(await pollReadiness(picked, out.message));
+        } else setError(out.message);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "The source could not be added.");
       } finally {
         setAddingVault(false);
       }
     });
+  }
+
+  /**
+   * Poll GET /api/v1/documents/readiness for one just-attached document, every
+   * 2 s, until it reaches ready or failed — five minutes is the ceiling, after
+   * which the note says the pane will catch up rather than claiming a result.
+   * Returns the final status-line copy.
+   */
+  async function pollReadiness(documentId: string, attachedMessage: string): Promise<string> {
+    const POLL_MS = 2_000;
+    const GIVE_UP_MS = 5 * 60_000;
+    const startedAt = Date.now();
+    for (;;) {
+      if (Date.now() - startedAt > GIVE_UP_MS) {
+        return "Still reading — the Sources pane will update on its own.";
+      }
+      try {
+        const response = await fetch(`/api/v1/documents/readiness?ids=${documentId}`);
+        if (response.ok) {
+          const body = (await response.json()) as {
+            sources?: Array<{ documentId: string; readiness: SourceReadiness; detail: string | null }>;
+          };
+          const source = (body.sources ?? []).find((s) => s.documentId === documentId);
+          if (source) {
+            const { phase, terminal } = phaseForReadiness(source.readiness, source.detail);
+            if (terminal === "done") return attachedMessage;
+            if (terminal === "error") return phase;
+            setUploadMessage(phase);
+          }
+        }
+      } catch {
+        // A failed tick is transient; the next one retries.
+      }
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
   }
 
   return (
@@ -187,6 +232,11 @@ export function AddSources({ dossierId, vault }: { dossierId: string; vault: Vau
       {message && (
         <p role="status" className="text-xs leading-relaxed text-muted-foreground">
           {message}
+        </p>
+      )}
+      {uploadMessage && uploadMessage !== message && (
+        <p role="status" aria-live="polite" className="text-xs leading-relaxed text-muted-foreground">
+          {uploadMessage}
         </p>
       )}
       {error && (
