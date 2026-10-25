@@ -2,14 +2,14 @@ import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
-import { DossierError, createDossier, listDossiers } from "@/domains/knowledge/dossiers";
+import { ProjectError, createProject, listProjects } from "@/domains/knowledge/projects";
 
 /*
- * GET /api/v1/dossiers — the workspace's dossiers with document counts.
- * POST /api/v1/dossiers — a name plus document ids. Any id outside this
+ * GET /api/v1/projects — the workspace's projects with source counts.
+ * POST /api/v1/projects — a name plus document ids. Any id outside this
  * workspace fails the whole request with 422 and nothing is created.
  */
-export const GET = authedHandler(async (auth) => Response.json({ dossiers: await listDossiers(auth) }));
+export const GET = authedHandler(async (auth) => Response.json({ projects: await listProjects(auth) }));
 
 const create = z.object({
   name: z.string().min(1).max(200),
@@ -21,10 +21,10 @@ export const POST = authedHandler(async (auth, request) => {
   const parsed = create.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return problemResponse(422, "invalid_input", "Give the notebook a name.");
   try {
-    const dossier = await createDossier(auth, parsed.data);
-    return Response.json({ dossier }, { status: 201 });
+    const project = await createProject(auth, parsed.data);
+    return Response.json({ project }, { status: 201 });
   } catch (cause) {
-    if (cause instanceof DossierError) return problemResponse(422, cause.code, cause.message);
+    if (cause instanceof ProjectError) return problemResponse(422, cause.code, cause.message);
     throw cause;
   }
 });

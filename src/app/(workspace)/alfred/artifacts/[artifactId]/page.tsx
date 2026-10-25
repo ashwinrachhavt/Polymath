@@ -37,7 +37,7 @@ export default async function WikiArtifactPage({ params }: { params: Promise<{ a
             title="This wiki page is not available."
             description="It may have been regenerated or removed."
             action={
-              <Link href="/alfred/artifacts" className="text-[13px] font-medium underline underline-offset-4">
+              <Link href="/artifacts" className="text-[13px] font-medium underline underline-offset-4">
                 Back to Artifacts
               </Link>
             }

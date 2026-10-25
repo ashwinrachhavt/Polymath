@@ -87,14 +87,14 @@ export const destinations: Destination[] = [
     group: "alfred",
   },
   {
-    href: "/alfred/dossiers",
+    href: "/projects",
     label: "Notebook",
-    purpose: "Research with a bounded set of sources.",
+    purpose: "Long-lived homes for a body of work, each with its own sources.",
     icon: Library,
     group: "alfred",
   },
   {
-    href: "/alfred/artifacts",
+    href: "/artifacts",
     label: "Artifacts",
     purpose: "Everything the assistant made that you kept.",
     icon: Layers,
@@ -166,7 +166,9 @@ const featureRoutes: Record<string, string> = {
   "/apps/command-center/activity": "/activity",
   "/apps/command-center/settings": "/settings",
   "/apps/neuralflow/tasks": "/neuralflow/work",
-  "/apps/alfred/dossiers": "/alfred/dossiers",
+  "/apps/alfred/dossiers": "/projects",
+  "/alfred/dossiers": "/projects",
+  "/alfred/artifacts": "/artifacts",
 };
 
 export const featureDestinations: Destination[] = products.flatMap((product) =>

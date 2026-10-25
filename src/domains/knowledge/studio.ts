@@ -1,4 +1,5 @@
 import { and, count, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { projectSubjectOf } from "@/domains/agents/queries";
 import { z } from "zod";
 import { actionProposals } from "@/domains/actions/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -8,7 +9,7 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { artifactLinks, artifactVersions, artifacts, dossierSources, dossiers, sources } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, projectSources, projects, sources } from "./schema";
 import { documents } from "./schema";
 import { buildObjective } from "./generation-brief";
 import {
@@ -23,7 +24,7 @@ import {
 } from "./artifact-content";
 
 /*
- * Studio Generate: a run that names a dossier, whose output is saved as a DRAFT
+ * Studio Generate: a run that names a project, whose output is saved as a DRAFT
  * artifact linked to the pinned document versions it was built from. The owner
  * then saves (keeps it as reviewed) or discards it. Nothing in this file can
  * publish: no code path sets the `published` status.
@@ -31,7 +32,7 @@ import {
 
 export class StudioError extends Error {
   constructor(
-    public readonly code: "dossier_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind" | "unreadable_output",
+    public readonly code: "project_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind" | "unreadable_output",
     message: string,
   ) {
     super(message);
@@ -52,29 +53,29 @@ export function isGeneratableKind(value: string): value is GeneratableKind {
   return (GENERATABLE_KINDS as readonly string[]).includes(value);
 }
 
-/** Starts the run. The objective names the dossier, and the run is bound to it so search stays inside it. */
+/** Starts the run. The objective names the project, and the run is bound to it so search stays inside it. */
 export async function startStudioGenerate(
   auth: AuthContext,
-  input: { dossierId: string; brief: string; kind?: GeneratableKind },
+  input: { projectId: string; brief: string; kind?: GeneratableKind },
   engine: AgentEngine,
 ) {
   const kind = input.kind ?? "report";
   if (!isGeneratableKind(kind)) throw new StudioError("unsupported_kind", "That artifact kind is not generated here.");
-  const [dossier] = await db
-    .select({ id: dossiers.id, title: dossiers.title })
-    .from(dossiers)
-    .where(and(eq(dossiers.id, input.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
+  const [project] = await db
+    .select({ id: projects.id, title: projects.title })
+    .from(projects)
+    .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, auth.workspaceId)))
     .limit(1);
-  if (!dossier) throw new StudioError("dossier_not_found", "No such dossier.");
+  if (!project) throw new StudioError("project_not_found", "No such project.");
 
   // The prompt needs the pinned documents so the model can cite by id.
-  // Same rule as dossierDocumentIds: a landed capture binds by file; a queued
+  // Same rule as projectDocumentIds: a landed capture binds by file; a queued
   // URL or YouTube capture has no file yet and binds by its canonical address.
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
-    .from(dossierSources)
-    .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
-    .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+    .from(projectSources)
+    .innerJoin(projects, and(eq(projects.id, projectSources.projectId), eq(projects.workspaceId, auth.workspaceId)))
+    .innerJoin(sources, eq(sources.id, projectSources.sourceId))
     .innerJoin(
       documents,
       and(
@@ -85,10 +86,10 @@ export async function startStudioGenerate(
         ),
       ),
     )
-    .where(and(eq(dossierSources.dossierId, dossier.id), eq(dossierSources.workspaceId, auth.workspaceId)));
+    .where(and(eq(projectSources.projectId, project.id), eq(projectSources.workspaceId, auth.workspaceId)));
 
   const objective = buildObjective(kind, {
-    dossierTitle: dossier.title,
+    projectTitle: project.title,
     documents: dedupeDocuments(pinnedDocuments),
     brief: input.brief,
   });
@@ -97,7 +98,7 @@ export async function startStudioGenerate(
     auth,
     profileName: "alfred",
     objective,
-    subjects: [{ type: "dossier", id: dossier.id }],
+    subjects: [{ type: "project", id: project.id }],
     estimateUsd: "0.50",
   });
 }
@@ -110,7 +111,7 @@ function dedupeDocuments(rows: Array<{ id: string; title: string }>): Array<{ id
 
 /**
  * Saves a finished run's last assistant message as a draft artifact. Idempotent
- * per run (one artifact per run). Links the dossier's documents with the
+ * per run (one artifact per run). Links the project's documents with the
  * content hash each was pinned at, and the run itself.
  */
 export async function saveGeneratedDraft(auth: AuthContext, input: { runId: string; title?: string; kind?: GeneratableKind }) {
@@ -154,7 +155,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       plainText = structuredPlainText(parsed);
     }
 
-    const dossierSubject = (Array.isArray(run.subjects) ? (run.subjects as Array<{ type?: string; id?: string }>) : []).find((s) => s?.type === "dossier");
+    const dossierSubject = projectSubjectOf(run.subjects);
     const [artifact] = await tx
       .insert(artifacts)
       .values({
@@ -179,10 +180,10 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       // YouTube capture is a pinned source before its bytes land, so its
       // document still gets the artifact link.
       const pinned = await tx
-        .select({ documentId: documents.id, hash: dossierSources.pinnedContentHash })
-        .from(dossierSources)
-        .innerJoin(dossiers, and(eq(dossiers.id, dossierSources.dossierId), eq(dossiers.workspaceId, auth.workspaceId)))
-        .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+        .select({ documentId: documents.id, hash: projectSources.pinnedContentHash })
+        .from(projectSources)
+        .innerJoin(projects, and(eq(projects.id, projectSources.projectId), eq(projects.workspaceId, auth.workspaceId)))
+        .innerJoin(sources, eq(sources.id, projectSources.sourceId))
         .innerJoin(
           documents,
           and(
@@ -193,7 +194,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
             ),
           ),
         )
-        .where(and(eq(dossierSources.dossierId, dossierSubject.id), eq(dossierSources.workspaceId, auth.workspaceId)));
+        .where(and(eq(projectSources.projectId, dossierSubject.id), eq(projectSources.workspaceId, auth.workspaceId)));
       for (const p of pinned) {
         await tx
           .insert(artifactLinks)
@@ -251,7 +252,7 @@ export async function listDrafts(auth: AuthContext) {
 /* ---------------------------------------------------------------------------
  * Draft workbench: open a saved draft with the pinned sources it stands on,
  * and edit it as a new version under the notebook's optimistic-concurrency
- * guard. Record links (task/contact/opportunity) live in the dossiers app
+ * guard. Record links (task/contact/opportunity) live in the projects-links module
  * module, which owns those cross-domain imports.
  * ------------------------------------------------------------------------- */
 

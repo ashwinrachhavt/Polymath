@@ -59,7 +59,7 @@ describe("ChatSurface sources chip", () => {
       passage("doc-a", "Cardinal handbook", 340),
     ]);
     const html = renderToStaticMarkup(
-      createElement(ChatSurface, { runId: "run-1", subject: { type: "dossier", id: "d1" } }),
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
     );
     expect(html).toContain("Sources · 1");
     expect(html).not.toContain("Sources · 3");
@@ -76,7 +76,7 @@ describe("ChatSurface sources chip", () => {
       passage("doc-b", "Spec", 0),
     ]);
     const html = renderToStaticMarkup(
-      createElement(ChatSurface, { runId: "run-1", subject: { type: "dossier", id: "d1" } }),
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
     );
     expect(html).toContain("Sources · 2");
     expect(html).toContain("Handbook, Spec");

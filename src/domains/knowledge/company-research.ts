@@ -7,7 +7,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { buildKpiPrompt, parseKpiRows, renderKpiTable, validateKpiRows } from "./research-kpis";
 import { searchWebForAgent } from "./web-search";
-import { artifactVersions, artifacts, documents, dossierSources, sources } from "./schema";
+import { artifactVersions, artifacts, documents, projectSources, sources } from "./schema";
 
 /*
  * Company research (ASH-114): an evidence-grounded business case study. The
@@ -203,11 +203,11 @@ async function loadDossierManifest(tx: TxDrizzle, auth: AuthContext, dossierId: 
   // (sources.fileId). Document entries cite their document id as the locator -
   // no URL is fabricated for a record that has none.
   const rows = await tx
-    .select({ sourceId: sources.id, title: sources.title, url: sources.url, fileId: sources.fileId, documentTitle: documents.title, documentId: documents.id, note: dossierSources.note })
-    .from(dossierSources)
-    .innerJoin(sources, eq(sources.id, dossierSources.sourceId))
+    .select({ sourceId: sources.id, title: sources.title, url: sources.url, fileId: sources.fileId, documentTitle: documents.title, documentId: documents.id, note: projectSources.note })
+    .from(projectSources)
+    .innerJoin(sources, eq(sources.id, projectSources.sourceId))
     .leftJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
-    .where(and(eq(dossierSources.workspaceId, auth.workspaceId), eq(dossierSources.dossierId, dossierId)));
+    .where(and(eq(projectSources.workspaceId, auth.workspaceId), eq(projectSources.projectId, dossierId)));
   const now = new Date().toISOString();
   return rows.map((r, i) => ({
     ref: `S${i + 1}`,

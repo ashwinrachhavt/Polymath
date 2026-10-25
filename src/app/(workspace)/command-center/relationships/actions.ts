@@ -23,7 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { companies, relationshipStatus } from "@/domains/crm/schema";
 import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
 import { db } from "@/lib/db";
-import { linkDraftToRecord } from "@/app/(workspace)/alfred/dossiers/links";
+import { linkDraftToRecord } from "@/app/(workspace)/projects-links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 

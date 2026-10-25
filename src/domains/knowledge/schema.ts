@@ -87,12 +87,13 @@ export const claimStatus = pgEnum("claim_status", [
   "retracted",
 ]);
 export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
-export const dossierSourcePolicy = pgEnum("dossier_source_policy", ["bounded", "open"]);
-export const dossierQuestionStatus = pgEnum("dossier_question_status", [
+export const projectSourcePolicy = pgEnum("project_source_policy", ["bounded", "open"]);
+export const projectQuestionStatus = pgEnum("project_question_status", [
   "open",
   "answered",
   "dropped",
 ]);
+export const projectMemorySource = pgEnum("project_memory_source", ["manual", "session"]);
 export const conceptSense = pgEnum("concept_sense", ["ordinary", "technical", "domain"]);
 
 export const artifacts = pgTable(
@@ -699,61 +700,138 @@ export const embeddings = pgTable(
 );
 
 /*
- * A dossier is a source-bounded workspace: a research question, the exact
- * source versions admitted to it, and what has been concluded so far. It is
- * distinct from a project (an outcome) and a thesis (an argument) — it can
- * link to either without collapsing into them.
+ * A project is a long-lived home for a body of work (Perplexity-Spaces
+ * parity): custom instructions, its own source set, connectors scoped from
+ * the workspace's gateway accounts, automations, and memory. It grew out of
+ * the dossier concept and keeps the pinned-source boundary: it admits exact
+ * source versions and the assistant stays inside them.
  */
-export const dossiers = pgTable(
-  "dossiers",
+export const projects = pgTable(
+  "projects",
   {
     id: primaryId(),
     workspaceId: tenantId(),
     title: text("title").notNull(),
-    researchQuestion: text("research_question"),
-    sourcePolicy: dossierSourcePolicy("source_policy").notNull().default("bounded"),
+    description: text("description"),
+    /** The dossier's research question, kept until the project description takes over. */
+    descriptionSeed: text("description_seed"),
+    /** Custom instructions injected into every project-scoped session. */
+    instructions: text("instructions"),
+    emoji: text("emoji"),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    sourcePolicy: projectSourcePolicy("source_policy").notNull().default("bounded"),
     projectId: uuid("project_id"),
     ...mutable,
   },
-  (t) => [index("dossiers_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],
+  (t) => [index("projects_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],
 );
 
-export const dossierSources = pgTable(
-  "dossier_sources",
+export const projectSources = pgTable(
+  "project_sources",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    dossierId: uuid("dossier_id")
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => dossiers.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "cascade" }),
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    /** Pinned version: a dossier's boundary does not drift when a page changes. */
+    /** Pinned version: a project's boundary does not drift when a page changes. */
     pinnedContentHash: text("pinned_content_hash"),
     note: text("note"),
     ...recorded,
   },
   (t) => [
-    uniqueIndex("dossier_sources_key").on(t.dossierId, t.sourceId),
-    index("dossier_sources_source_idx").on(t.sourceId),
+    uniqueIndex("project_sources_key").on(t.projectId, t.sourceId),
+    index("project_sources_source_idx").on(t.sourceId),
   ],
 );
 
-export const dossierQuestions = pgTable(
-  "dossier_questions",
+export const projectQuestions = pgTable(
+  "project_questions",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    dossierId: uuid("dossier_id")
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => dossiers.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "cascade" }),
     question: text("question").notNull(),
-    status: dossierQuestionStatus("status").notNull().default("open"),
+    status: projectQuestionStatus("status").notNull().default("open"),
     answer: text("answer"),
     ...mutable,
   },
-  (t) => [index("dossier_questions_open_idx").on(t.dossierId, t.status)],
+  (t) => [index("project_questions_open_idx").on(t.projectId, t.status)],
+);
+
+/*
+ * Automations: a prompt on a schedule. The cron dispatcher finds due rows and
+ * starts an ordinary agent run bound to the project, so an automation's output
+ * is visible in the same Sessions list as everything else.
+ */
+export const projectAutomations = pgTable(
+  "project_automations",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    /** Cron expression, evaluated in UTC by the dispatcher. */
+    schedule: text("schedule").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    index("project_automations_due_idx").on(t.nextRunAt).where(sql`archived_at is null and enabled is true`),
+    index("project_automations_project_idx").on(t.projectId, t.createdAt),
+  ],
+);
+
+/*
+ * Project memory: what this project remembers, injected into its sessions.
+ * Manual rows are edited in the right rail; session rows are extracted from
+ * conversations and always carry the message they came from.
+ */
+export const projectMemories = pgTable(
+  "project_memories",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    source: projectMemorySource("source").notNull().default("manual"),
+    ...mutable,
+  },
+  (t) => [index("project_memories_project_idx").on(t.projectId, t.createdAt)],
+);
+
+/*
+ * Per-project connector allowlist over the workspace's gateway accounts. No
+ * rows means every account is available - projects created before scoping
+ * keep working; rows make it an allowlist the tool builder reads.
+ */
+export const projectAccounts = pgTable(
+  "project_accounts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    gatewayAccountId: uuid("gateway_account_id").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("project_accounts_key").on(t.projectId, t.gatewayAccountId),
+    index("project_accounts_project_idx").on(t.projectId),
+  ],
 );
 
 /** Dictionary entries: a term, the sense it is being used in, and where it came from. */

@@ -35,7 +35,7 @@ export async function startChatRun(input: {
    * a record to name. The run then carries `subjects: []`, the column's own
    * default — an invented subject with an empty id would be a false link.
    */
-  subject?: { type: "dossier" | "document" | "artifact"; id: string };
+  subject?: { type: "project" | "document" | "artifact"; id: string };
   /** An enabled skill to pin the run to; the engine freezes it into the snapshot. */
   skillId?: string;
 }): Promise<StartChatResult> {

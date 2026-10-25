@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
-import { dossierDocumentIds } from "@/domains/knowledge/dossiers";
+import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { notebookChatObjective } from "@/domains/knowledge/notebook-chat";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -16,8 +16,8 @@ import { requireRole } from "@/lib/auth/guards";
  * cannot call AgentEngine.start itself (it needs an AuthContext and a spend
  * reservation). This is the server half; the surface owns streaming.
  *
- * The run is bound to the dossier through `subjects`, which is what restricts
- * documents.search to that notebook's sources. The dossier is checked for
+ * The run is bound to the project through `subjects`, which is what restricts
+ * documents.search to that project's sources. The project is checked for
  * membership before anything is spent.
  */
 
@@ -29,12 +29,12 @@ async function authorize(): Promise<AuthContext> {
 
 export type StartNotebookRunResult = { ok: true; runId: string } | { ok: false; error: string };
 
-export async function startNotebookRun(input: { dossierId: string; title: string }): Promise<StartNotebookRunResult> {
+export async function startNotebookRun(input: { projectId: string; title: string }): Promise<StartNotebookRunResult> {
   const auth = await authorize();
-  const parsed = z.object({ dossierId: z.uuid(), title: z.string().trim().min(1).max(200) }).parse(input);
+  const parsed = z.object({ projectId: z.uuid(), title: z.string().trim().min(1).max(200) }).parse(input);
 
-  const documents = await dossierDocumentIds(auth, parsed.dossierId);
-  if (documents === null) return { ok: false, error: "That notebook does not exist." };
+  const documents = await projectDocumentIds(auth, parsed.projectId);
+  if (documents === null) return { ok: false, error: "That project does not exist." };
 
   const unavailable = eveBridgeUnavailableReason();
   if (unavailable) return { ok: false, error: unavailable };
@@ -46,7 +46,7 @@ export async function startNotebookRun(input: { dossierId: string; title: string
       auth,
       profileName: "alfred",
       objective: notebookChatObjective(parsed.title),
-      subjects: [{ type: "dossier", id: parsed.dossierId }],
+      subjects: [{ type: "project", id: parsed.projectId }],
       estimateUsd: "0.25",
     });
     return { ok: true, runId };

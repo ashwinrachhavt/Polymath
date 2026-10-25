@@ -14,8 +14,8 @@ import { DeckView, InfographicView, type CitationSource } from "@/components/pro
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
-import { DraftControls } from "../../../draft-controls";
-import { saveAnswerAction } from "../../../save-answer-actions";
+import { DraftControls } from "../../../alfred/draft-controls";
+import { saveAnswerAction } from "../../../alfred/save-answer-actions";
 import { researchDossierCompanyAction } from "../../actions";
 import { startNotebookRun } from "./chat-run-actions";
 import { retryNotebookSourceAction } from "./add-source-actions";
@@ -26,8 +26,8 @@ import { AddSources } from "./add-sources";
  * the grounded conversation in the middle, Studio on the right.
  *
  * The conversation is the shared agent interface — the same ChatSurface the
- * Assistant mounts, bound to this dossier through subjects. What differs is
- * scope, not interface: the run is restricted to this notebook's sources, and
+ * Assistant mounts, bound to this project through subjects. What differs is
+ * scope, not interface: the run is restricted to this project's sources, and
  * the tools that scope allows are documents.search and notebook.open.
  *
  * Conversations persist (ASH-179). The history lists this notebook's chats;
@@ -37,7 +37,7 @@ import { AddSources } from "./add-sources";
  * starts a new conversation, same as the Assistant's own run page.
  *
  * Studio is this notebook's own capability panel: generate a report, deck, or
- * infographic from the pinned sources, research a company dossier-only, and
+ * infographic from the pinned sources, research a company bounded to the project, and
  * review what runs produced.
  */
 
@@ -91,7 +91,7 @@ export default function NotebookSurface({
   runDrafts = {},
   lastAnswer,
 }: {
-  notebook: { dossierId: string; title: string };
+  notebook: { projectId: string; title: string };
   sources: SourceRow[];
   artifacts: GeneratedArtifact[];
   /** The workspace's filed documents, for the pick-from-Vault control. */
@@ -122,7 +122,7 @@ export default function NotebookSurface({
   const [retryNote, setRetryNote] = useState<string | null>(null);
   const citationSources: CitationSource[] = sources.map((s) => ({ documentId: s.documentId, title: s.title }));
 
-  const basePath = `/alfred/dossiers/${notebook.dossierId}/notebook`;
+  const basePath = `/projects/${notebook.projectId}/notebook`;
   // A conversation started in this visit wins over one resumed from the URL;
   // after a refresh it is the same row in the history.
   const liveRunId = startedRunId ?? (activeChat?.live ? activeChat.runId : null);
@@ -133,7 +133,7 @@ export default function NotebookSurface({
     // sits beside a fresh spinner.
     setRetryNote(null);
     setRetrying(documentId);
-    void retryNotebookSourceAction({ dossierId: notebook.dossierId, documentId })
+    void retryNotebookSourceAction({ projectId: notebook.projectId, documentId })
       .then((out) => setRetryNote(out.message))
       .catch((cause: unknown) =>
         setRetryNote(cause instanceof Error ? cause.message : "The source could not be retried."),
@@ -144,7 +144,7 @@ export default function NotebookSurface({
   function beginChat() {
     setMessage(null);
     startStart(async () => {
-      const out = await startNotebookRun({ dossierId: notebook.dossierId, title: notebook.title });
+      const out = await startNotebookRun({ projectId: notebook.projectId, title: notebook.title });
       if (out.ok) {
         setStartedRunId(out.runId);
         // The new conversation joins the history on the next server render.
@@ -180,7 +180,7 @@ export default function NotebookSurface({
     setGenerating(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/v1/dossiers/${notebook.dossierId}/generate`, {
+      const response = await fetch(`/api/v1/projects/${notebook.projectId}/generate`, {
         method: "POST",
         // A paid run starts here; the key makes a double click apply once.
         headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() },
@@ -205,7 +205,7 @@ export default function NotebookSurface({
     setResearching(true);
     setMessage(null);
     try {
-      const result = await researchDossierCompanyAction({ dossierId: notebook.dossierId, companyName, idempotencyKey: crypto.randomUUID() });
+      const result = await researchDossierCompanyAction({ projectId: notebook.projectId, companyName, idempotencyKey: crypto.randomUUID() });
       if (!result.ok) throw new Error(result.error);
       setCompanyName("");
       router.refresh();
@@ -224,7 +224,7 @@ export default function NotebookSurface({
         <div className="flex items-baseline justify-between gap-2 px-1">
           <h2 className="text-[13px] font-medium">Sources</h2>
         </div>
-        <AddSources dossierId={notebook.dossierId} vault={vault} />
+        <AddSources projectId={notebook.projectId} vault={vault} />
         {sources.length === 0 ? (
           <p className="mt-3 px-1 text-xs leading-relaxed text-muted-foreground">
             No sources yet. Add a URL, YouTube link, or file.
@@ -318,7 +318,7 @@ export default function NotebookSurface({
           {liveRunId ? (
             <ChatSurface
               runId={liveRunId}
-              subject={{ type: "dossier", id: notebook.dossierId }}
+              subject={{ type: "project", id: notebook.projectId }}
               title={notebook.title}
               placeholder="Ask about these sources"
               showHeader={false}

@@ -19,7 +19,7 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { editGeneratedDraft, getDraftDetail, saveDraft } from "@/domains/knowledge/studio";
-import { linkDraftToRecord, resolveLinkTitles, unlinkDraftFromRecord } from "@/app/(workspace)/alfred/dossiers/links";
+import { linkDraftToRecord, resolveLinkTitles, unlinkDraftFromRecord } from "@/app/(workspace)/projects-links";
 
 suite("draft workbench (Neon)", () => {
   let auth: ReturnType<typeof ownerAuth>;

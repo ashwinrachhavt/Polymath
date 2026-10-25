@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAuthContext } from "@/lib/auth";
 import { countDocumentInbox, getDocumentInbox, getDocumentReview } from "@/domains/knowledge/queries";
 import { listRecentRuns } from "@/domains/agents/queries";
-import { listAttachableDocuments, listDossiers } from "@/domains/knowledge/dossiers";
+import { listProjects } from "@/domains/knowledge/projects";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/alfred/knowledge/page";
 import { AlfredSurface } from "@/app/(workspace)/alfred/page";
-import { DossiersSurface } from "@/app/(workspace)/alfred/dossiers/page";
+import { ProjectsSurface } from "@/app/(workspace)/projects/page";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { listFolders } from "@/domains/knowledge/library";
 
@@ -28,7 +28,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
 vi.mock("@/domains/conversations/queries", () => ({ listConversations: vi.fn(async () => []) }));
-vi.mock("@/domains/knowledge/dossiers", () => ({ listDossiers: vi.fn(async () => []), dossierDocumentIds: vi.fn(async () => []), getDossierDetail: vi.fn(async () => null), listAttachableDocuments: vi.fn(async () => []), listDossierRuns: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/projects", () => ({ listProjects: vi.fn(async () => []), projectDocumentIds: vi.fn(async () => []), getProjectDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
@@ -212,37 +212,24 @@ describe("live Alfred route functionality", () => {
   });
 });
 
-async function dossiers() {
-  return renderToStaticMarkup(await DossiersSurface({ searchParams: Promise.resolve({}) }));
+async function projects() {
+  return renderToStaticMarkup(await ProjectsSurface());
 }
 
-describe("live dossiers screen", () => {
+describe("live projects screen", () => {
   it("reads Neon: an empty workspace gets the invitation, not the preview", async () => {
-    const html = await dossiers();
-    expect(html).toContain("No notebooks yet");
-    expect(html).toContain("New notebook");
+    const html = await projects();
+    expect(html).toContain("No projects yet");
+    expect(html).toContain("New project");
     expect(html).not.toContain("AlfredScreen");
   });
 
-  it("lists dossiers as links to their notebooks", async () => {
-    vi.mocked(listDossiers).mockResolvedValue([
-      { id: "d1", title: "Rental papers", documentCount: 2 },
+  it("lists projects with titles in the sections", async () => {
+    vi.mocked(listProjects).mockResolvedValue([
+      { id: "d1", title: "Rental papers", emoji: null, description: null, pinnedAt: null, updatedAt: new Date(), documentCount: 2 },
     ] as never);
-    const html = await dossiers();
+    const html = await projects();
     expect(html).toContain("Rental papers");
-    expect(html).toContain("2 documents");
-    expect(html).toContain("/alfred/dossiers/d1/notebook");
-  });
-
-  it("creating a notebook is naming it: no document picker", async () => {
-    vi.mocked(listAttachableDocuments).mockResolvedValue([
-      { id: "doc1", title: "Lease" },
-      { id: "doc2", title: "Inspection" },
-    ] as never);
-    const html = await dossiers();
-    expect(html).toContain("Name the notebook");
-    expect(html).not.toContain("Lease");
-    expect(html).not.toContain("Inspection");
-    expect(listAttachableDocuments).not.toHaveBeenCalled();
+    expect(html).toContain("Your projects");
   });
 });

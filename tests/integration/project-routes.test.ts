@@ -2,13 +2,13 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentRuns } from "@/domains/agents/schema";
-import { documents, dossiers } from "@/domains/knowledge/schema";
+import { documents, projects } from "@/domains/knowledge/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * The dossier HTTP surface end to end: auth mock at the boundary, real routes,
+ * The project HTTP surface end to end: auth mock at the boundary, real routes,
  * real Postgres. The domain invariants (pinning, scoping) live in
- * dossiers.test.ts; this file proves the routes parse, scope, and answer in
+ * projects.test.ts; this file proves the routes parse, scope, and answer in
  * problems+json when they fail.
  */
 
@@ -30,24 +30,24 @@ vi.mock("@/lib/auth", () => ({
     (request: Request, ctx: unknown) => handler(holder.auth!, request, ctx),
 }));
 
-import { GET, POST } from "@/app/api/v1/dossiers/route";
-import { POST as GENERATE } from "@/app/api/v1/dossiers/[dossierId]/generate/route";
+import { GET, POST } from "@/app/api/v1/projects/route";
+import { POST as GENERATE } from "@/app/api/v1/projects/[projectId]/generate/route";
 
 let a: { userId: string; workspaceId: string };
 let b: { userId: string; workspaceId: string };
 let eveCalls: Array<{ url: string; init: RequestInit }> = [];
 
 const json = (body: unknown) => ({ method: "POST" as const, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-const listDossiers = () => GET(new Request("https://axiom.test/api/v1/dossiers"), undefined as never);
-const createDossier = (body: unknown) => POST(new Request("https://axiom.test/api/v1/dossiers", json(body)), undefined as never);
-const generate = (dossierId: string, body: unknown, headers: Record<string, string> = { "Idempotency-Key": crypto.randomUUID() }) =>
+const listProjects = () => GET(new Request("https://axiom.test/api/v1/projects"), undefined as never);
+const createProject = (body: unknown) => POST(new Request("https://axiom.test/api/v1/projects", json(body)), undefined as never);
+const generate = (projectId: string, body: unknown, headers: Record<string, string> = { "Idempotency-Key": crypto.randomUUID() }) =>
   GENERATE(
-    new Request(`https://axiom.test/api/v1/dossiers/${dossierId}/generate`, {
+    new Request(`https://axiom.test/api/v1/projects/${projectId}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
     }),
-    { params: Promise.resolve({ dossierId }) } as never,
+    { params: Promise.resolve({ projectId }) } as never,
   );
 
 async function addDocument(workspaceId: string, userId: string, title: string): Promise<string> {
@@ -75,76 +75,76 @@ beforeEach(() => {
   }));
 });
 
-suite("dossier routes (real Postgres)", () => {
-  it("creates a dossier and lists it with its document count", async () => {
+suite("project routes (real Postgres)", () => {
+  it("creates a project and lists it with its document count", async () => {
     const docId = await addDocument(a.workspaceId, a.userId, "Lease");
-    const created = await createDossier({ name: "Rental papers", documentIds: [docId] });
+    const created = await createProject({ name: "Rental papers", documentIds: [docId] });
     expect(created.status).toBe(201);
-    const { dossier } = await created.json();
-    expect(dossier).toMatchObject({ title: "Rental papers" });
-    const listed = await (await listDossiers()).json();
-    expect(listed.dossiers).toContainEqual(expect.objectContaining({ id: dossier.id, documentCount: 1 }));
+    const { project } = await created.json();
+    expect(project).toMatchObject({ title: "Rental papers" });
+    const listed = await (await listProjects()).json();
+    expect(listed.projects).toContainEqual(expect.objectContaining({ id: project.id, documentCount: 1 }));
   });
 
   it("rejects a document from another workspace with 422 and creates nothing", async () => {
     const foreignId = await addDocument(b.workspaceId, b.userId, "Not yours");
-    const res = await createDossier({ name: "Nope", documentIds: [foreignId] });
+    const res = await createProject({ name: "Nope", documentIds: [foreignId] });
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({ code: "documents_not_found" });
-    const rows = await holder.db!.select().from(dossiers).where(eq(dossiers.workspaceId, a.workspaceId));
+    const rows = await holder.db!.select().from(projects).where(eq(projects.workspaceId, a.workspaceId));
     expect(rows.map((r) => r.title)).not.toContain("Nope");
   });
 
   it("a malformed body is a 422 problem", async () => {
-    const res = await createDossier({ documentIds: [] });
+    const res = await createProject({ documentIds: [] });
     expect(res.status).toBe(422);
     expect(res.headers.get("content-type")).toContain("application/problem+json");
   });
 
-  it("generate starts a run bound to the dossier, once per idempotency key", async () => {
-    const created = await (await createDossier({ name: "Studio source", documentIds: [] })).json();
+  it("generate starts a run bound to the project, once per idempotency key", async () => {
+    const created = await (await createProject({ name: "Studio source", documentIds: [] })).json();
     const key = crypto.randomUUID();
-    const res = await generate(created.dossier.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
+    const res = await generate(created.project.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
     expect(res.status).toBe(201);
     const { runId } = await res.json();
     const [run] = await holder.db!.select().from(agentRuns).where(eq(agentRuns.id, runId));
-    expect(run.objective).toContain('dossier "Studio source"');
+    expect(run.objective).toContain('project "Studio source"');
     expect(eveCalls[0].url).toBe("http://eve.fixture/eve/v1/session");
     // The same key replays the stored run id instead of starting a second Eve session.
-    const replay = await generate(created.dossier.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
+    const replay = await generate(created.project.id, { brief: "Summarise the key dates" }, { "Idempotency-Key": key });
     expect(replay.status).toBe(201);
     expect(await replay.json()).toEqual({ runId });
     expect(eveCalls).toHaveLength(1);
     // A missing or malformed key is refused before anything starts.
-    expect((await generate(created.dossier.id, { brief: "x" }, {})).status).toBe(422);
-    expect((await generate(created.dossier.id, { brief: "x" }, { "Idempotency-Key": "nope" })).status).toBe(422);
+    expect((await generate(created.project.id, { brief: "x" }, {})).status).toBe(422);
+    expect((await generate(created.project.id, { brief: "x" }, { "Idempotency-Key": "nope" })).status).toBe(422);
     expect(eveCalls).toHaveLength(1);
   });
 
   it("a replayed key with a different body is a conflict", async () => {
-    const created = await (await createDossier({ name: "Conflicting", documentIds: [] })).json();
+    const created = await (await createProject({ name: "Conflicting", documentIds: [] })).json();
     const key = crypto.randomUUID();
-    await generate(created.dossier.id, { brief: "first" }, { "Idempotency-Key": key });
-    const conflict = await generate(created.dossier.id, { brief: "second" }, { "Idempotency-Key": key });
+    await generate(created.project.id, { brief: "first" }, { "Idempotency-Key": key });
+    const conflict = await generate(created.project.id, { brief: "second" }, { "Idempotency-Key": key });
     expect(conflict.status).toBe(422);
     expect(await conflict.json()).toMatchObject({ code: "idempotency_conflict" });
   });
 
-  it("generate on an unknown dossier is a 404 problem; a foreign dossier is not found either", async () => {
-    const created = await (await createDossier({ name: "Private", documentIds: [] })).json();
+  it("generate on an unknown project is a 404 problem; a foreign project is not found either", async () => {
+    const created = await (await createProject({ name: "Private", documentIds: [] })).json();
     holder.auth = { ...b, role: "owner" };
-    const foreign = await generate(created.dossier.id, { brief: "x" });
+    const foreign = await generate(created.project.id, { brief: "x" });
     expect(foreign.status).toBe(404);
     holder.auth = { ...a, role: "owner" };
     expect((await generate(crypto.randomUUID(), { brief: "x" })).status).toBe(404);
     expect((await generate("not-a-uuid", { brief: "x" })).status).toBe(404);
-    expect((await generate(created.dossier.id, {})).status).toBe(422);
+    expect((await generate(created.project.id, {})).status).toBe(422);
   });
 
   it("generate without a bridge secret is a 503 problem and starts nothing", async () => {
     vi.stubEnv("EVE_BRIDGE_SECRET", "");
-    const created = await (await createDossier({ name: "No bridge", documentIds: [] })).json();
-    const res = await generate(created.dossier.id, { brief: "x" });
+    const created = await (await createProject({ name: "No bridge", documentIds: [] })).json();
+    const res = await generate(created.project.id, { brief: "x" });
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ code: "agent_bridge_unavailable" });
     expect(eveCalls).toHaveLength(0);

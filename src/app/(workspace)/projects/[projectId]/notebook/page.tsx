@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
-import { dossierDocumentIds, getDossierDetail, listAttachableDocuments, listDossierRuns } from "@/domains/knowledge/dossiers";
+import { getProjectDetail, listAttachableDocuments, listProjectRuns, projectDocumentIds } from "@/domains/knowledge/projects";
 import { listSources } from "@/domains/knowledge/source-readiness";
 import { parseStructuredContent } from "@/domains/knowledge/artifact-content";
 import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
@@ -21,24 +21,24 @@ import {
 import { listThreads, type ThreadEntry } from "@/domains/agents/thread";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { timeAgo } from "@/lib/time";
-import { listLinkableRecords, resolveLinkTitles } from "../../links";
+import { listLinkableRecords, resolveLinkTitles } from "@/app/(workspace)/projects-links";
 import { DraftWorkbench } from "../../draft-workbench";
 import NotebookSurface, { type GeneratedArtifact } from "./notebook-surface";
 
 export const metadata = { title: "Notebook · Polymath" };
 
 /*
- * A notebook is a dossier (NotebookLM parity, S3). This route lives under
- * /alfred/dossiers/<id>/notebook rather than /alfred/notebook/<id> because
+ * A notebook is a project (NotebookLM parity). This route lives under
+ * /projects/<id>/notebook rather than /alfred/notebook/<id> because
  * /alfred/notebook is the notes surface and one URL segment cannot mean two
  * objects.
  *
- * The notebook is the dossier's home: sources, the grounded conversation, and
+ * The notebook is the project's home: sources, the grounded conversation, and
  * Studio (generate, research, draft review). A ?draft= id opens the workbench
  * below the conversation; an id that is missing, foreign, or not a Studio
  * artifact just opens no workbench.
  *
- * Conversations persist (ASH-179): every chat is a run bound to this dossier,
+ * Conversations persist (ASH-179): every chat is a run bound to this project,
  * listed newest first, and ?chat=<runId> resumes one — streamed live while the
  * run is active, read from the stored thread once it has finished, with its
  * last answer saveable to notes. A ?chat= id that is not a conversation of
@@ -48,24 +48,24 @@ export const metadata = { title: "Notebook · Polymath" };
 const FINISHED = ["succeeded", "failed", "cancelled"];
 
 async function NotebookData({
-  dossierId,
+  projectId,
   draftId,
   chatId,
 }: {
-  dossierId: string;
+  projectId: string;
   draftId?: string;
   chatId?: string;
 }) {
   await io();
   const auth = await getAuthContext();
-  const dossier = await getDossierDetail(auth, dossierId);
-  if (!dossier) notFound();
+  const project = await getProjectDetail(auth, projectId);
+  if (!project) notFound();
 
-  const documentIds = (await dossierDocumentIds(auth, dossierId)) ?? [];
+  const documentIds = (await projectDocumentIds(auth, projectId)) ?? [];
   const [sources, vault, chats] = await Promise.all([
     documentIds.length > 0 ? listSources(auth, { documentIds, limit: 100 }) : [],
     listAttachableDocuments(auth),
-    listNotebookChats(auth, dossierId),
+    listNotebookChats(auth, projectId),
   ]);
 
   const activeChat = chatId ? (chats.find((chat) => chat.runId === chatId) ?? null) : null;
@@ -126,7 +126,7 @@ async function NotebookData({
 
   // The Studio Runs panel lists generation/research runs. A conversation is a
   // run too, but it belongs to the chat's own history, not this panel.
-  const runs = (await listDossierRuns(auth, dossierId)).filter((run) => !isNotebookChatObjective(run.objective));
+  const runs = (await listProjectRuns(auth, projectId)).filter((run) => !isNotebookChatObjective(run.objective));
   const runDrafts = await draftsForRuns(auth, runs.map((run) => run.id));
   const draftDetail = draftId ? await getDraftDetail(auth, draftId) : null;
   const [linkTitles, linkable] = draftDetail
@@ -135,9 +135,9 @@ async function NotebookData({
 
   return (
     <>
-      <PageHeader title={dossier.title} />
+      <PageHeader title={project.title} />
       <NotebookSurface
-        notebook={{ dossierId: dossier.id, title: dossier.title }}
+        notebook={{ projectId: project.id, title: project.title }}
         sources={sources}
         artifacts={generated}
         vault={vault.map((doc) => ({ id: doc.id, title: doc.title }))}
@@ -182,7 +182,7 @@ export default function NotebookPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ dossierId: string }>;
+  params: Promise<{ projectId: string }>;
   searchParams: Promise<{ draft?: string; chat?: string }>;
 }) {
   // Both promises are unwrapped inside the boundary (the notes page's
@@ -201,13 +201,13 @@ async function NotebookSearchParams({
   params,
   searchParams,
 }: {
-  params: Promise<{ dossierId: string }>;
+  params: Promise<{ projectId: string }>;
   searchParams: Promise<{ draft?: string; chat?: string }>;
 }) {
-  const [{ dossierId }, search] = await Promise.all([params, searchParams]);
+  const [{ projectId }, search] = await Promise.all([params, searchParams]);
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
-      <NotebookData dossierId={dossierId} draftId={search.draft} chatId={search.chat} />
+      <NotebookData projectId={projectId} draftId={search.draft} chatId={search.chat} />
     </Suspense>
   );
 }

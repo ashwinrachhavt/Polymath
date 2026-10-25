@@ -3,7 +3,7 @@ import { z } from "zod";
 import { toolAllowed } from "../lib/policy";
 // Relative, not "@/...": eve bundles this agent from its own package root and
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
-import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
+import { getRunBySessionRef, projectSubjectOf } from "../../../../src/domains/agents/queries";
 import {
   AGENT_SEARCH_MAX_RESULTS,
   DOCUMENTS_SEARCH_CAPABILITY,
@@ -19,11 +19,11 @@ import {
  */
 export default defineTool({
   description:
-    "Search the workspace's documents. Results are hybrid-fused from vector and full-text rankings; the result's mode field names the path — \"hybrid\", or \"text\" when no embedding provider is configured. Returns the best matching passages with document id, title and character span, so answers can cite them. Use for any question about the owner's captured files, contracts, notes and imported pages; call it before answering from memory when the question touches workspace content. It will not return whole documents — only passages — and it will not find anything outside what has been captured; an empty result means the corpus lacks the answer. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the workspace's documents. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),
-    dossierId: z.string().uuid().optional().describe("Limit the search to one dossier. Ignored when the run is already bound to a dossier."),
+    projectId: z.string().uuid().optional().describe("Limit the search to one project. Ignored when the run is already bound to a project."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -40,15 +40,13 @@ export default defineTool({
       return { ok: false as const, error: "documents.search is not in this run's policy snapshot" };
     }
 
-    // A run started from a dossier stays inside it, whatever the model asks for.
-    const bound = Array.isArray(run.subjects)
-      ? (run.subjects as Array<{ type?: string; id?: string }>).find((x) => x?.type === "dossier" && typeof x.id === "string")
-      : undefined;
+    // A run started from a project stays inside it, whatever the model asks for.
+    const bound = projectSubjectOf(run.subjects);
 
     // Search needs only the workspace; the role is the lowest that can read.
     return searchDocumentsForAgent(
       { userId: current.principalId, workspaceId, role: "viewer" },
-      { query: input.query, limit: input.limit, dossierId: bound?.id ?? input.dossierId },
+      { query: input.query, limit: input.limit, projectId: bound?.id ?? input.projectId },
     );
   },
 });

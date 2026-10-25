@@ -126,6 +126,7 @@ export async function getRunForGateway(runId: string, workspaceId: string) {
       createdBy: agentRuns.createdBy,
       sessionRef: agentRuns.sessionRef,
       policySnapshot: agentRuns.policySnapshot,
+      subjects: agentRuns.subjects,
     })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
@@ -218,6 +219,15 @@ export const RUN_STATES = [
   "failed",
   "cancelled",
 ] as const;
+/** The run's project subject, or null when the run is not project-scoped. */
+export function projectSubjectOf(subjects: unknown): { id: string } | null {
+  if (!Array.isArray(subjects)) return null;
+  for (const subject of subjects as Array<{ type?: string; id?: string }>) {
+    if (subject?.type === "project" && typeof subject.id === "string") return { id: subject.id };
+  }
+  return null;
+}
+
 export type RunStateFilter = (typeof RUN_STATES)[number];
 
 export type RunPageInput = { query?: string; state?: RunStateFilter; limit: number; offset: number };

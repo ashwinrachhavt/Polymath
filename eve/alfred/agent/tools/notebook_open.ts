@@ -18,7 +18,7 @@ export default defineTool({
   description:
     "Open a notebook (a bounded set of sources) and list its sources with their readiness, plus the reports, decks and infographics it has already generated. Use this before answering any question about a notebook's contents so you know what is actually searchable, and before generating anything, so you do not duplicate an existing artifact. It will not search the notebook's sources or read their full text — it shows what exists and how ready each source is. Read-only; the run's frozen policy must allow notebook.open.",
   inputSchema: z.object({
-    dossierId: z.string().uuid().describe("The notebook (dossier) id."),
+    projectId: z.string().uuid().describe("The notebook (dossier) id."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -35,7 +35,7 @@ export default defineTool({
     }
     const summary = await openNotebook(
       { userId: current.principalId, workspaceId, role: "viewer" },
-      { dossierId: input.dossierId },
+      { projectId: input.projectId },
     );
     if (!summary) return { ok: false as const, error: "notebook not found" };
     return { ok: true as const, notebook: summary };
