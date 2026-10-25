@@ -189,7 +189,11 @@ for (const vp of VIEWPORTS) {
     const focusDone = waitForAction(page);
     await page.getByRole("button", { name: "Talking points" }).click();
     await focusDone;
-    await expect(result.getByText("Talking points", { exact: false }).first()).toBeVisible();
+    // The focused pass replaces the rendered set on revalidation: wait for
+    // its own header and the honest gap note - text the full-profile set
+    // already showed (kind labels, card titles) cannot prove the refresh.
+    await expect(result.getByText(/Talking points · \d+ cards? from \d+ sources?/)).toBeVisible();
+    await expect(result.getByText(/dropped - the sources could not ground them/)).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/person-profile-focus-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     // Prove the card grid fits the real viewport: no card is clipped sideways.
