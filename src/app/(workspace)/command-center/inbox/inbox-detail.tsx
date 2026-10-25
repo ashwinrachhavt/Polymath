@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { makeDraftAction, makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
+import { makeDraftAction, makeDocumentAction,
+  makeNoteAction, makeTaskAction, setCaptureStateAction } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { CaptureBody } from "./capture-body";
@@ -57,7 +58,7 @@ export function InboxDetail({
   capture,
   priorWriting,
 }: {
-  capture: (Omit<InboxRow, "preview"> & { text: string | null; failureReason?: string | null; rawPayload?: unknown }) | null;
+  capture: (Omit<InboxRow, "preview"> & { text: string | null; cleanText?: string | null; failureReason?: string | null; rawPayload?: unknown }) | null;
   /** What the workspace already holds about this capture's URL; null for non-URL captures. */
   priorWriting?: PriorWriting | null;
 }) {
@@ -95,6 +96,15 @@ export function InboxDetail({
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
   const title = captureTitle(capture);
+
+  function saveAsDocument() {
+    setError(null);
+    startTransition(async () => {
+      decide("converted");
+      const result = await makeDocumentAction({ captureId: capture!.id, expectedVersion: capture!.version });
+      if (!result.ok) setError(result.error);
+    });
+  }
 
   function saveAsNote() {
     setError(null);
@@ -228,6 +238,11 @@ export function InboxDetail({
                 Save as note
               </Button>
             )}
+            {capture.kind === "file" || !(capture.cleanText ?? capture.text)?.trim() ? null : (
+              <Button size="sm" variant="outline" disabled={pending} onClick={saveAsDocument} title="File the text as a library document; zettel proposals follow">
+                Save to library
+              </Button>
+            )}
             <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
               Make task
             </Button>
@@ -258,6 +273,11 @@ export function InboxDetail({
         {state === "converted" && (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
             <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
+          </Button>
+        ) : null}
+        {state === "converted" && capture.convertedType === "document" && capture.convertedId ? (
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/alfred/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open in Document Vault</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
