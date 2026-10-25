@@ -16,6 +16,9 @@ where it can **differentiate** (win, mapped to real strengths).
 | 2026-10-25 | [Capacities](2026-10-25-capacities.md) | Object-based PKM (typed knowledge graph) |
 | 2026-10-25 | [Tana / Tana Outliner](2026-10-25-tana.md) | PKM outliner; pivot to agentic meetings |
 | 2026-10-25 | [Mem](2026-10-25-mem.md) | AI-first notes; pivot to proactive agent |
+| 2026-10-25 | [mymind](2026-10-25-mymind.md) | AI-organized visual capture |
+| 2026-10-25 | [Recall](2026-10-25-recall.md) | AI knowledge base (summarize + connect + chat) |
+| 2026-10-25 | [Saner.AI](2026-10-25-saner.md) | AI personal assistant (ADHD-positioned) |
 
 ## Method
 
