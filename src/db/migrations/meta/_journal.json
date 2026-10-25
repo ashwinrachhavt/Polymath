@@ -561,6 +561,13 @@
       "when": 1793200002000,
       "tag": "0253_run_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1793200003000,
+      "tag": "0254_instant_catalog",
+      "breakpoints": true
     }
   ]
 }

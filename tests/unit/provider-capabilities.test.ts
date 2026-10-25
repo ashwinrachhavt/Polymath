@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ALLOWED_TOOLS } from "@/domains/agents/commands";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
 import { CAPABILITY_RISK } from "../../eve/alfred/evals/axiom-policy";
+import { deriveInstantCapability, resolveInstantCapability } from "@/domains/integrations/instant-tools";
+import catalogJsonRaw from "@/domains/integrations/instant-catalog.generated.json";
+
+/*
+ * Helpers for the Instant-namespace tests below. The generated JSON crosses a
+ * regeneration boundary, so it is narrowed once here; a malformed file fails
+ * these tests rather than the production gate.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function catalogJson(): { toolkits: Array<{ slug: string; tools: Array<{ slug: string }> }> } {
+  const value = catalogJsonRaw as unknown;
+  if (typeof value !== "object" || value === null || !Array.isArray((value as { toolkits?: unknown }).toolkits)) {
+    throw new Error("instant-catalog.generated.json is malformed; regenerate it.");
+  }
+  return value as { toolkits: Array<{ slug: string; tools: Array<{ slug: string }> }> };
+}
+
+function gainedInstantNames(): string[] {
+  return DEFAULT_ALLOWED_TOOLS.filter((tool) => tool.startsWith("instant."));
+}
 
 /*
  * The capability catalog is the one place a provider capability is defined.
@@ -147,8 +167,9 @@ const NATIVE_TOOLS = [
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 
 describe("the default profile's tools all resolve", () => {
-  it("only grants a catalogued, native, or explicitly deferred capability", () => {
-    const known = new Set<string>([...capabilities, ...NATIVE_TOOLS, ...DEFERRED_PROVIDER_CAPABILITIES]);
+  it("only grants a catalogued, native, explicitly deferred, or Instant-derived capability", () => {
+    const instantNames = new Set(catalogJson().toolkits.flatMap((t) => t.tools.map((x) => deriveInstantCapability(t.slug, x.slug))));
+    const known = new Set<string>([...capabilities, ...NATIVE_TOOLS, ...DEFERRED_PROVIDER_CAPABILITIES, ...instantNames]);
     for (const tool of DEFAULT_ALLOWED_TOOLS) {
       expect(known.has(tool), `${tool} is not a known capability`).toBe(true);
     }
@@ -159,6 +180,58 @@ describe("the default profile's tools all resolve", () => {
     for (const capability of DEFERRED_PROVIDER_CAPABILITIES) {
       expect(CAPABILITY_RISK[capability], capability).toBeDefined();
       expect(capabilities).not.toContain(capability);
+    }
+  });
+});
+
+/*
+ * The Instant namespace (spec #316): derived capability names share the
+ * gateway with hand-registered ones, so a collision would shadow a
+ * hand-registered capability's grant or dispatch. These tests prove the
+ * namespace cannot collide and the gained-array grant stays honest.
+ */
+describe("the Instant derived namespace cannot collide", () => {
+  it("derives names that never shadow a hand-registered capability or tool", () => {
+    const catalog = catalogJson();
+    const adversarialSuffixes = ["gmail_search", "gmail_read_thread", "notion_search", "x1", "Mixed_Case", "with__dashes--and.dots"];
+    for (const toolkit of catalog.toolkits) {
+      for (const suffix of [...adversarialSuffixes, ...toolkit.tools.map((t) => t.slug)]) {
+        const name = deriveInstantCapability(toolkit.slug, suffix);
+        expect(name.startsWith("instant."), name).toBe(true);
+        expect(CAPABILITIES, name).not.toHaveProperty(name);
+        expect(Object.values(PROVIDER_TOOLS), name).not.toContain(name);
+        expect(resolveInstantCapability(name), name).toEqual({ toolkitSlug: toolkit.slug });
+      }
+    }
+  });
+
+  it("grants no instant.* name that shadows a hand-registered capability", () => {
+    // The gained array in commands.ts carries the same names the generated
+    // catalog derives; the point is that none of them is also a
+    // hand-registered capability key (which would double-grant under two
+    // vocabularies).
+    const handRegistered = new Set<string>(capabilities);
+    const instantGranted = gainedInstantNames();
+    expect(instantGranted.length).toBeGreaterThan(0);
+    for (const name of instantGranted) {
+      expect(name.startsWith("instant."), name).toBe(true);
+      expect(handRegistered.has(name), `${name} shadows a hand-registered capability`).toBe(false);
+    }
+  });
+});
+
+describe("the profile-upgrade gained array stays in step with the catalog", () => {
+  it("grants only names that derive from the generated Instant catalog (or a known capability)", () => {
+    // ensureProfile's gained array is not exported; the catalog-side half of
+    // the grant is pinned here: every instant.* name the array could carry
+    // must derive from the committed catalog, so an edit that drifts the two
+    // lists fails the DEFAULT_ALLOWED_TOOLS pins above plus this direction.
+    const derivable = new Set(
+      catalogJson().toolkits.flatMap((t) => t.tools.map((x) => deriveInstantCapability(t.slug, x.slug))),
+    );
+    expect(derivable.size).toBeGreaterThan(0);
+    for (const name of gainedInstantNames()) {
+      expect(derivable.has(name), `${name} does not derive from the committed catalog`).toBe(true);
     }
   });
 });

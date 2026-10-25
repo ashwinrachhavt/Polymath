@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { reconcileUnknownAttempts } from "@/domains/actions/reconciliation";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
+import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
 import { problemResponse } from "@/lib/problems";
 
@@ -59,7 +60,18 @@ async function drain(): Promise<Response> {
     // After the drain: a send that just went UNKNOWN is too young to reconcile,
     // and the row it left is why this runs at all.
     const reconciliation = await reconcileUnknownAttempts({ transport: composioTransport });
-    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled });
+    // The Instant catalog heals daily: toolkits Composio added appear, retired
+    // ones stop being offered. An outage here must not break the rest of the
+    // cron's work — the bootstrap migration already seeded the catalog.
+    let instantSync: { upserted: number; deactivated: number } | { error: string } | null = null;
+    if (process.env.COMPOSIO_API_KEY) {
+      try {
+        instantSync = await InstantTools.syncInstantCatalog({ apiKey: process.env.COMPOSIO_API_KEY });
+      } catch (cause) {
+        instantSync = { error: cause instanceof Error ? cause.message : "unknown error" };
+      }
+    }
+    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync });
   } finally {
     await client.end({ timeout: 5 });
   }
