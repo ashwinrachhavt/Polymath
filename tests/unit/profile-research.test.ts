@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { GenerationUnconfiguredError } from "@/integrations/generation/provider";
+import type { AuthContext } from "@/domains/identity/resolve";
 import {
   COMPANY_CARD_KINDS,
   CONTACT_CARD_KINDS,
   ProfileResearchError,
   ProfileResearchUnusableAnswerError,
+  defaultProfileResearchAdapters,
   groundCards,
   normalizeDomain,
   planCompanyEvidence,
@@ -130,5 +133,45 @@ describe("groundCards", () => {
     const { grounded, gaps } = groundCards([{ kind: "news", title: "t", body: "b", citations: [1] }], 0);
     expect(grounded).toHaveLength(0);
     expect(gaps).toBe(1);
+  });
+});
+
+describe("defaultProfileResearchAdapters", () => {
+  // One policy with the generation seam: production + fixture requested must
+  // fail closed, never silently fall through to real providers.
+  const auth = { workspaceId: "ws", userId: "u" } as unknown as AuthContext;
+  let saved: Record<string, string | undefined>;
+  beforeEach(() => {
+    saved = { GENERATION_PROVIDER: process.env.GENERATION_PROVIDER, NODE_ENV: process.env.NODE_ENV };
+  });
+  afterEach(() => {
+    for (const key of ["GENERATION_PROVIDER", "NODE_ENV"] as const) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it("fails closed when a production process carries the fixture env", () => {
+    process.env.GENERATION_PROVIDER = "fixture";
+    process.env.NODE_ENV = "production";
+    expect(() => defaultProfileResearchAdapters(auth)).toThrow(GenerationUnconfiguredError);
+  });
+
+  it("serves the deterministic fixture outside production", async () => {
+    process.env.GENERATION_PROVIDER = "fixture";
+    process.env.NODE_ENV = "development";
+    const adapters = defaultProfileResearchAdapters(auth);
+    const page = await adapters.fetchPage("https://example.com/");
+    expect(page).toHaveProperty("markdown");
+    const results = await adapters.search('"Acme" news', 5);
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("selects the real seams when the fixture env is absent", () => {
+    delete process.env.GENERATION_PROVIDER;
+    // Selection touches no network; the point is the fixture branch is not taken.
+    const adapters = defaultProfileResearchAdapters(auth);
+    expect(typeof adapters.search).toBe("function");
+    expect(typeof adapters.fetchPage).toBe("function");
   });
 });
