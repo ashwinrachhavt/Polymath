@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { focusSessions } from "./schema";
@@ -16,9 +16,12 @@ export type FocusSessionView = typeof focusSessions.$inferSelect & {
 };
 
 export function withElapsed(session: typeof focusSessions.$inferSelect, now = new Date()): FocusSessionView {
+  // startedAt is null while a session is only scheduled (ASH-308); a running
+  // session always has the clock fields.
+  const clockStart = session.lastResumedAt ?? session.startedAt;
   const openStretch =
-    session.state === "running"
-      ? Math.max(0, Math.floor((now.getTime() - (session.lastResumedAt ?? session.startedAt).getTime()) / 1000))
+    session.state === "running" && clockStart
+      ? Math.max(0, Math.floor((now.getTime() - clockStart.getTime()) / 1000))
       : 0;
   return { ...session, elapsedSeconds: session.accumulatedSeconds + openStretch };
 }
@@ -81,9 +84,36 @@ export async function getLastTaskHandoff(
         inArray(focusSessions.state, ["finished", "abandoned", "interrupted"]),
         isNull(focusSessions.archivedAt),
         isNotNull(focusSessions.endedAt),
+        // A handoff exists only for a session that actually ran.
+        isNotNull(focusSessions.startedAt),
       ),
     )
     .orderBy(desc(focusSessions.endedAt))
     .limit(1);
-  return row?.nextStep ? { nextStep: row.nextStep, startedAt: row.startedAt } : null;
+  return row?.nextStep && row.startedAt ? { nextStep: row.nextStep, startedAt: row.startedAt } : null;
+}
+
+/*
+ * ASH-308: the theatre's day projection over focus. A session belongs to the
+ * day if it is planned for a slot in it (scheduled_at, not yet started), ran
+ * in it (started_at), or is live right now. Day bounds arrive pre-resolved;
+ * the query stays a plain range read.
+ */
+export async function listDayFocusSessions(auth: AuthContext, input: { from: Date; to: Date }) {
+  const rows = await db
+    .select()
+    .from(focusSessions)
+    .where(
+      and(
+        eq(focusSessions.workspaceId, auth.workspaceId),
+        isNull(focusSessions.archivedAt),
+        or(
+          and(gte(focusSessions.scheduledAt, input.from), lt(focusSessions.scheduledAt, input.to), isNull(focusSessions.startedAt)),
+          and(gte(focusSessions.startedAt, input.from), lt(focusSessions.startedAt, input.to)),
+          inArray(focusSessions.state, ["running", "paused"]),
+        ),
+      ),
+    )
+    .orderBy(focusSessions.scheduledAt, focusSessions.startedAt);
+  return rows.map((row) => withElapsed(row));
 }
