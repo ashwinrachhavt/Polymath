@@ -21,6 +21,7 @@ import { proposeFromText, RULES_PROPOSER } from "./field-rules";
 import { flagConflicts, proposeFields } from "./fields";
 import { proposeObligationsFromDocument } from "./obligations";
 import { proposeClassification } from "./classify";
+import { proposeJevClassification } from "./jev-classify";
 import { maybeImportStatement } from "./statement-import";
 import { canonicalFieldName } from "./vocabulary";
 import { proposeParties } from "./parties";
@@ -424,6 +425,15 @@ async function runProposalPass(
     });
     // B02 (ASH-143): classification joins the same review step as a proposal.
     await proposeClassification(auth, {
+      documentId: input.documentId,
+      extractionId: input.extractionId,
+      text: input.text,
+      fieldNames: fields.map((f) => f.fieldName),
+    });
+    // ASH-272: the Jev proposer spends only on genuine uncertainty (rules
+    // said "other" or low confidence) and is a no-op while the registry
+    // entry is disabled.
+    await proposeJevClassification(auth, {
       documentId: input.documentId,
       extractionId: input.extractionId,
       text: input.text,

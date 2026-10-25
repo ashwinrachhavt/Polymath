@@ -533,6 +533,13 @@
       "when": 1793052811000,
       "tag": "0249_notebook_id_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "tag": "0250_taxonomy_nodes",
+      "when": 1793052821000,
+      "breakpoints": true
     }
   ]
 }

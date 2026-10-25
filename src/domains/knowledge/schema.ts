@@ -5,14 +5,17 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
   real,
+  smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   vector,
@@ -1472,3 +1475,43 @@ export const areas = pgTable(
   ],
 );
 
+/*
+ * ASH-272: the knowledge taxonomy catalog, ported from the alfred donor's
+ * master ontology (frozen, read-only). Three levels (domain -> subdomain ->
+ * microtopic); the Jev capture classifier may only ever write labels that
+ * resolve here - "never invent labels" is enforced by resolveTaxonomyPath in
+ * taxonomy.ts and by the composite self-FK, which also keeps a child from
+ * pointing at another workspace's parent (tenant integrity in the database,
+ * not the app). v1 ships the seed only; the shape is CRUD-ready for the
+ * runtime-grown pattern later.
+ */
+export const taxonomyNodes = pgTable(
+  "taxonomy_nodes",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Machine label: lowercase hyphenated, what classifier output references. */
+    slug: text("slug").notNull(),
+    displayName: text("display_name").notNull(),
+    /** 1 = domain, 2 = subdomain, 3 = microtopic. */
+    level: smallint("level").notNull(),
+    parentSlug: text("parent_slug"),
+    /** The selection criterion the classifier's question criteria quote. */
+    description: text("description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...mutable,
+  },
+  (t) => [
+    check("taxonomy_nodes_slug_format", sql.raw(`slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(slug) <= 128`)),
+    check("taxonomy_nodes_level_range", sql.raw(`level between 1 and 3`)),
+    unique("taxonomy_nodes_workspace_slug_key").on(t.workspaceId, t.slug),
+    foreignKey({
+      columns: [t.workspaceId, t.parentSlug],
+      foreignColumns: [t.workspaceId, t.slug],
+      name: "taxonomy_nodes_parent_fk",
+    }).onDelete("cascade"),
+    index("taxonomy_nodes_parent_idx").on(t.workspaceId, t.parentSlug),
+    index("taxonomy_nodes_level_idx").on(t.workspaceId, t.level),
+    index("taxonomy_nodes_tree_idx").on(t.workspaceId, t.parentSlug, t.sortOrder),
+  ],
+);
