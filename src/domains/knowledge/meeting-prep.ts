@@ -1,5 +1,6 @@
 import { and, eq, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { markdownToPlainText } from "@/lib/display-text";
 import { recordAudit } from "@/domains/audit/record";
 import { eventAttendees, eventLinks, events } from "@/domains/calendar/schema";
 import { contacts } from "@/domains/crm/schema";
@@ -202,9 +203,9 @@ function contextPrompt(ctx: Awaited<ReturnType<typeof gatherContext>>): string {
 }
 
 function renderReport(ctx: Awaited<ReturnType<typeof gatherContext>>, draft: MeetingPrepDraft): string {
+  // The artifact page renders the title as its H1; the body opens with the
+  // provenance line, not a duplicate heading.
   const md: string[] = [];
-  md.push(`# Prep: ${ctx.event.title}`);
-  md.push("");
   md.push(`*${ctx.event.startsAt.toISOString().slice(0, 16).replace("T", " ")} - generated from workspace context. Talking points are proposals, not commitments.*`);
   md.push("");
   md.push("## Summary");
@@ -251,7 +252,8 @@ export async function generateMeetingPrep(
     const note = await createNoteInTx(tx, auth, {
       title: `Prep: ${ctx.event.title}`,
       kind: "document",
-      plainText: markdown,
+      content: { kind: "markdown", text: markdown },
+      plainText: markdownToPlainText(markdown),
     });
     // Link the report back to the event; one prep link per event, refreshed
     // on regeneration so the event always points at the latest report.

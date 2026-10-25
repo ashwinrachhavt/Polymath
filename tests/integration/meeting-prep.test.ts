@@ -123,6 +123,12 @@ suite("meeting prep", () => {
     const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, report.currentVersionId!));
     expect(version.plainText).toContain("Confirm the launch date");
     expect(version.plainText).toContain("proposals, not commitments");
+    // The markdown body lives in content; plainText stays the stripped
+    // preview column, and the body does not repeat the artifact's title.
+    const content = version.content as { kind?: string; text?: string };
+    expect(content.kind).toBe("markdown");
+    expect(content.text).toContain("## Summary");
+    expect(content.text).not.toContain("# Prep:");
   });
 
   it("replaces the event's prep link with the newest report on regeneration", async () => {
