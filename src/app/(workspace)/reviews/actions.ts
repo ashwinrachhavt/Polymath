@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { decideProposal, ProposalConflictError, reviseProposal } from "@/domains/actions/commands";
 import { executeApprovedEffect, supportsEffect, type EffectOutcome } from "@/domains/actions/executor";
 import { approveTaskProposal, TaskExecuteNotAllowedError } from "@/domains/work/proposals";
+import { approveNoteProposal, NoteExecuteNotAllowedError } from "@/domains/knowledge/note-proposals";
 import { approveArtifactRevision, ArtifactReviseNotAllowedError } from "@/domains/knowledge/revision-proposals";
 import { actionProposals } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
@@ -127,6 +128,28 @@ export async function decideProposalAction(input: {
         error instanceof TaskExecuteNotAllowedError || error instanceof Error
           ? error.message
           : "The approved task was not created.";
+      return { ok: false, error: message };
+    }
+    revalidate();
+    return { ok: true, outcome: null };
+  }
+
+  if (proposal?.capability === "notes.create") {
+    // Same shape as a task proposal: the approval is the whole decision, so
+    // this queue runs it through the knowledge domain's replay-safe executor
+    // and the approved revision becomes the note.
+    try {
+      await approveNoteProposal(auth, {
+        proposalId: input.proposalId,
+        expectedVersion: input.expectedVersion,
+        revisionId: input.revisionId,
+      });
+    } catch (error) {
+      revalidate();
+      const message =
+        error instanceof NoteExecuteNotAllowedError || error instanceof Error
+          ? error.message
+          : "The approved note was not created.";
       return { ok: false, error: message };
     }
     revalidate();
