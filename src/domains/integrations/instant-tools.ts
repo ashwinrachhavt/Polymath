@@ -216,11 +216,14 @@ export async function executeInstantTool(input: {
   }
   // b/c. Call-time re-checks against the live-cached catalog: no_auth can flip
   // between syncs, and only a proven read runs inline (D5 deny-by-default).
-  const tools = await listInstantTools(resolveInstantCapability(input.toolSlug)?.toolkitSlug ?? "");
-  const tool = tools.find((t) => deriveInstantCapability(
-    resolveInstantCapability(input.toolSlug)?.toolkitSlug ?? "",
-    t.slug,
-  ) === input.toolSlug);
+  // An unknown toolkit resolves to null and is refused BEFORE any fetch — a
+  // typo or a retired toolkit must not become a live Composio call.
+  const toolkitSlug = resolveInstantCapability(input.toolSlug)?.toolkitSlug;
+  if (!toolkitSlug) {
+    throw new InstantToolNotExecutableError("not_no_auth", input.toolSlug);
+  }
+  const tools = await listInstantTools(toolkitSlug);
+  const tool = tools.find((t) => deriveInstantCapability(toolkitSlug, t.slug) === input.toolSlug);
   if (!tool || !tool.noAuth) {
     throw new InstantToolNotExecutableError("not_no_auth", input.toolSlug);
   }
@@ -232,10 +235,6 @@ export async function executeInstantTool(input: {
   const apiKey = input.apiKey ?? process.env.COMPOSIO_API_KEY;
   if (!apiKey) {
     return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
-  }
-  const entry2 = providerEntry("composio");
-  if (!entry2) {
-    throw new InstantToolNotExecutableError("registry_disabled", input.toolSlug);
   }
   const quotaStore = input.quotaStore ?? drizzleQuotaStore();
   /*
@@ -251,7 +250,7 @@ export async function executeInstantTool(input: {
     }
   }
   try {
-    return await withQuota(quotaStore, entry2, input.workspaceId, 1, async () => {
+    return await withQuota(quotaStore, entry, input.workspaceId, 1, async () => {
       let response: Response;
       try {
         response = await fetch(`${INSTANT_EXECUTE_BASE}/${encodeURIComponent(input.toolSlug)}`, {
@@ -362,3 +361,17 @@ export async function syncInstantCatalog(input: {
     .returning({ provider: integrationCatalog.provider });
   return { upserted, deactivated: deleted.length };
 }
+
+/*
+ * The D2 contract: one object is the module's public surface. The named
+ * function exports above remain for internal composition and tests; callers
+ * (the gateway, the cron) go through InstantTools so a later internal split
+ * never touches a call site.
+ */
+export const InstantTools = {
+  syncInstantCatalog,
+  listInstantTools,
+  executeInstantTool,
+  resolveInstantCapability,
+  deriveInstantCapability,
+} as const;
