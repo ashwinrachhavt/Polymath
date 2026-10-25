@@ -88,7 +88,7 @@ export const destinations: Destination[] = [
   },
   {
     href: "/projects",
-    label: "Projects",
+    label: "Notebook",
     purpose: "Long-lived homes for a body of work, each with its own sources.",
     icon: Library,
     group: "alfred",

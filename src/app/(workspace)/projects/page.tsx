@@ -6,7 +6,7 @@ import { getAuthContext } from "@/lib/auth";
 import { listProjects } from "@/domains/knowledge/projects";
 import { NewProjectButton, ProjectRow, SectionRow } from "./project-list-client";
 
-export const metadata = { title: "Projects · Polymath" };
+export const metadata = { title: "Notebook · Polymath" };
 
 /*
  * The projects screen (Perplexity Spaces parity): pinned projects first, then
@@ -19,7 +19,7 @@ export async function ProjectsSurface() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Projects" purpose="Long-lived homes for a body of work." />
+        <PageHeader title="Notebook" purpose="Long-lived homes for a body of work." />
         <div className="page-content text-muted-foreground text-[13px]">
           Set DATABASE_URL and apply the database migrations to use projects.
         </div>
@@ -34,7 +34,7 @@ export async function ProjectsSurface() {
   return (
     <>
       <PageHeader
-        title="Projects"
+        title="Notebook"
         purpose="Long-lived homes for a body of work, each with its own sources."
         actions={<NewProjectButton />}
       />
