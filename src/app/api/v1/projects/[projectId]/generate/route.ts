@@ -11,17 +11,17 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { ensureProfile } from "@/domains/agents/commands";
 import { GENERATABLE_KINDS, StudioError, startStudioGenerate } from "@/domains/knowledge/studio";
 
-/* POST /api/v1/dossiers/:dossierId/generate — Studio Generate: starts a run bound to the dossier. It never publishes. */
-type Ctx = { params: Promise<{ dossierId: string }> };
+/* POST /api/v1/projects/:projectId/generate — Studio Generate: starts a run bound to the project. It never publishes. */
+type Ctx = { params: Promise<{ projectId: string }> };
 
 export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
   requireRole(auth, "member");
-  const { dossierId } = await ctx.params;
-  const id = z.string().uuid().safeParse(dossierId);
+  const { projectId } = await ctx.params;
+  const id = z.string().uuid().safeParse(projectId);
   const body = z
     .object({ brief: z.string().min(1).max(2000), kind: z.enum(GENERATABLE_KINDS).optional() })
     .safeParse(await request.json().catch(() => null));
-  if (!id.success) return problemResponse(404, "not_found", "No such dossier.");
+  if (!id.success) return problemResponse(404, "not_found", "No such project.");
   if (!body.success) return problemResponse(422, "invalid_input", "Say what to generate.");
   // Same contract as POST /v1/runs: the key names one start, so a double click
   // or a network retry cannot start two paid runs. Claim the receipt before the
@@ -59,7 +59,7 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
   }
   try {
     await ensureProfile(auth.workspaceId);
-    const { runId } = await startStudioGenerate(auth, { dossierId: id.data, brief: body.data.brief, kind: body.data.kind }, createEngine(createEveDriver()));
+    const { runId } = await startStudioGenerate(auth, { projectId: id.data, brief: body.data.brief, kind: body.data.kind }, createEngine(createEveDriver()));
     await db
       .update(requestReceipts)
       .set({ statusCode: 201, response: { runId } })

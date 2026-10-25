@@ -1,38 +1,13 @@
 import { memo, type ReactNode } from "react";
+import { inline } from "./markdown-inline";
 
 /*
  * Just enough markdown for agent transcripts: bold, italic, inline code,
  * bullet and numbered lists, and pipe tables. Everything passes through React
  * text nodes - no dangerouslySetInnerHTML, no raw HTML - so model output can
- * only ever render as text, emphasis, lists, and tables.
+ * only ever render as text, emphasis, lists, and tables. The inline rules
+ * live in markdown-inline.tsx, shared with the artifact body renderer.
  */
-
-const INLINE = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|【[^】\n]+】)/g;
-
-function inline(raw: string): ReactNode[] {
-  // Models escape pipes in answers; a citation mark like 【Document: Lease】
-  // becomes a chip instead of raw brackets.
-  const text = raw.replace(/\\\|/g, "|");
-  return text.split(INLINE).map((part, i) => {
-    if (part.startsWith("【") && part.endsWith("】")) {
-      return (
-        <span key={i} className="bg-muted text-muted-foreground mx-0.5 inline-block rounded px-1 py-px align-baseline text-[11px]">
-          {part.slice(1, -1)}
-        </span>
-      );
-    }
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
-      return <code key={i} className="bg-muted rounded px-1 py-0.5 text-[0.85em]">{part.slice(1, -1)}</code>;
-    }
-    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-      return <em key={i}>{part.slice(1, -1)}</em>;
-    }
-    return part;
-  });
-}
 
 const isTableLine = (line: string) => line.trim().startsWith("|") && line.trim().endsWith("|");
 const isSeparatorLine = (line: string) => /^\|?[\s:|-]+\|?$/.test(line.trim()) && line.includes("-");

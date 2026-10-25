@@ -175,8 +175,8 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
     vi.stubEnv("OPENAI_API_KEY", "");
     // An empty boundary matches nothing, never everything.
-    const empty = await searchDocumentsForAgent(a, { query: "rent", dossierId: crypto.randomUUID() });
-    expect(empty).toEqual({ ok: false, error: "dossier not found" });
+    const empty = await searchDocumentsForAgent(a, { query: "rent", projectId: crypto.randomUUID() });
+    expect(empty).toEqual({ ok: false, error: "project not found" });
     await holder.db!.update(documents).set({ archivedAt: new Date() }).where(eq(documents.id, lease.id));
     const res = await searchDocumentsForAgent(a, { query: "rent" });
     expect(res).toEqual({ ok: true, query: "rent", mode: "text", results: [] });

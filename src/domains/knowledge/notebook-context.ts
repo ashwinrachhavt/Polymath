@@ -2,13 +2,13 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { artifactLinks, artifacts } from "@/domains/knowledge/schema";
-import { dossierDocumentIds, getDossierDetail } from "@/domains/knowledge/dossiers";
+import { getProjectDetail, projectDocumentIds } from "@/domains/knowledge/projects";
 import { sourceReadiness, type SourceReadiness } from "@/domains/knowledge/source-readiness";
 
 /*
  * What an agent needs to open a notebook (NotebookLM parity, S6).
  *
- * A "notebook" is a dossier: the existing bounded source set. This module
+ * A "notebook" is a project: the bounded source set. This module
  * resolves one and returns what an agent can act on: the sources, their
  * readiness, and the generated artifacts the notebook already owns. It reads
  * only; generating is Studio's job and drafting is the owner's.
@@ -20,23 +20,23 @@ import { sourceReadiness, type SourceReadiness } from "@/domains/knowledge/sourc
 export const NOTEBOOK_OPEN_CAPABILITY = "notebook.open";
 
 export type NotebookSummary = {
-  dossierId: string;
+  projectId: string;
   title: string;
   sources: Array<{ documentId: string; title: string; readiness: SourceReadiness; kind: "document" | "video" }>;
   /** Generated reports, decks and infographics bound to this notebook. */
   artifacts: Array<{ artifactId: string; title: string; kind: string; status: string }>;
 };
 
-export async function openNotebook(auth: AuthContext, input: { dossierId: string }): Promise<NotebookSummary | null> {
-  const detail = await getDossierDetail(auth, input.dossierId);
+export async function openNotebook(auth: AuthContext, input: { projectId: string }): Promise<NotebookSummary | null> {
+  const detail = await getProjectDetail(auth, input.projectId);
   if (!detail) return null;
 
-  const documentIds = await dossierDocumentIds(auth, input.dossierId);
+  const documentIds = await projectDocumentIds(auth, input.projectId);
   const readiness = documentIds && documentIds.length > 0
     ? await Promise.all(documentIds.map((id) => sourceReadiness(auth, id)))
     : [];
 
-  // Artifacts that link to one of this dossier's documents, newest first. This
+  // Artifacts that link to one of this project's documents, newest first. This
   // is the same link the Studio save writes, so it cannot drift from what the
   // notebook generated. Two bounded queries, never one per document.
   const linked = documentIds && documentIds.length > 0
@@ -64,7 +64,7 @@ export async function openNotebook(auth: AuthContext, input: { dossierId: string
     : [];
 
   return {
-    dossierId: detail.id,
+    projectId: detail.id,
     title: detail.title,
     sources: readiness
       .filter((row): row is NonNullable<typeof row> => row !== null)

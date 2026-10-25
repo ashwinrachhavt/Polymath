@@ -22,8 +22,8 @@ vi.mock("@/integrations/extraction/docling-docker", () => ({ createDoclingDocker
 vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])) }));
 
 import { embedExtraction } from "@/domains/knowledge/embedding";
-import { DossierError, attachDocuments, createDossier, dossierDocumentIds, listDossiers } from "@/domains/knowledge/dossiers";
-import { dossierSources } from "@/domains/knowledge/schema";
+import { ProjectError, attachDocuments, createProject, projectDocumentIds, listProjects } from "@/domains/knowledge/projects";
+import { projectSources } from "@/domains/knowledge/schema";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
@@ -80,19 +80,19 @@ async function seed(auth: { workspaceId: string; userId: string }, text: string,
 const workspace = async () => ({ ...await seedWorkspace(holder.db!, `ds-${crypto.randomUUID()}`), role: "owner" as const });
 
 
-suite("dossiers (real Postgres + pgvector)", () => {
-  it("creates a dossier from a name and document ids, pinning each document's text version", async () => {
+suite("projects (real Postgres + pgvector)", () => {
+  it("creates a project from a name and document ids, pinning each document's text version", async () => {
     const provider = fakeProvider();
     const a = await workspace();
     const lease = await seed(a, LEASE, "lease", provider);
     const pay = await seed(a, PAYROLL, "payroll", provider);
-    const d = await createDossier(a, { name: "  Housing  ", documentIds: [lease.id, pay.id, lease.id] });
+    const d = await createProject(a, { name: "  Housing  ", documentIds: [lease.id, pay.id, lease.id] });
     expect(d.title).toBe("Housing");
-    const rows = await holder.db!.select().from(dossierSources).where(eq(dossierSources.dossierId, d.id));
+    const rows = await holder.db!.select().from(projectSources).where(eq(projectSources.projectId, d.id));
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => typeof r.pinnedContentHash === "string" && r.pinnedContentHash.length > 0)).toBe(true);
-    expect((await dossierDocumentIds(a, d.id))!.sort()).toEqual([lease.id, pay.id].sort());
-    expect((await listDossiers(a)).find((x) => x.id === d.id)).toMatchObject({ title: "Housing", documentCount: 2 });
+    expect((await projectDocumentIds(a, d.id))!.sort()).toEqual([lease.id, pay.id].sort());
+    expect((await listProjects(a)).find((x) => x.id === d.id)).toMatchObject({ title: "Housing", documentCount: 2 });
   });
 
   it("attaching a foreign document fails and writes nothing, including on create", async () => {
@@ -101,22 +101,22 @@ suite("dossiers (real Postgres + pgvector)", () => {
     const b = await workspace();
     const mine = await seed(a, LEASE, "mine", provider);
     const theirs = await seed(b, LEASE, "theirs", provider);
-    await expect(createDossier(a, { name: "Mixed", documentIds: [mine.id, theirs.id] })).rejects.toMatchObject({ code: "documents_not_found" });
-    expect((await listDossiers(a)).some((x) => x.title === "Mixed")).toBe(false);
-    const ok = await createDossier(a, { name: "Mine", documentIds: [mine.id] });
-    await expect(attachDocuments(a, { dossierId: ok.id, documentIds: [theirs.id] })).rejects.toBeInstanceOf(DossierError);
-    expect(await dossierDocumentIds(a, ok.id)).toEqual([mine.id]);
-    await expect(attachDocuments(b, { dossierId: ok.id, documentIds: [theirs.id] })).rejects.toMatchObject({ code: "dossier_not_found" });
-    expect(await dossierDocumentIds(b, ok.id)).toBeNull();
+    await expect(createProject(a, { name: "Mixed", documentIds: [mine.id, theirs.id] })).rejects.toMatchObject({ code: "documents_not_found" });
+    expect((await listProjects(a)).some((x) => x.title === "Mixed")).toBe(false);
+    const ok = await createProject(a, { name: "Mine", documentIds: [mine.id] });
+    await expect(attachDocuments(a, { projectId: ok.id, documentIds: [theirs.id] })).rejects.toBeInstanceOf(ProjectError);
+    expect(await projectDocumentIds(a, ok.id)).toEqual([mine.id]);
+    await expect(attachDocuments(b, { projectId: ok.id, documentIds: [theirs.id] })).rejects.toMatchObject({ code: "project_not_found" });
+    expect(await projectDocumentIds(b, ok.id)).toBeNull();
   });
 
   it("attach is idempotent and rejects a blank name", async () => {
     const provider = fakeProvider();
     const a = await workspace();
     const lease = await seed(a, LEASE, "lease", provider);
-    const d = await createDossier(a, { name: "D", documentIds: [lease.id] });
-    expect(await attachDocuments(a, { dossierId: d.id, documentIds: [lease.id] })).toEqual({ attached: 0 });
-    await expect(createDossier(a, { name: "   ", documentIds: [] })).rejects.toMatchObject({ code: "invalid_name" });
+    const d = await createProject(a, { name: "D", documentIds: [lease.id] });
+    expect(await attachDocuments(a, { projectId: d.id, documentIds: [lease.id] })).toEqual({ attached: 0 });
+    await expect(createProject(a, { name: "   ", documentIds: [] })).rejects.toMatchObject({ code: "invalid_name" });
   });
 
   it("a queued capture binds by address through the real writer path, and landing keeps one source", async () => {
@@ -135,8 +135,8 @@ suite("dossiers (real Postgres + pgvector)", () => {
 
     // Attaching the queued video makes the notebook's placeholder source row,
     // bound by address (sourceFor inserts with the url).
-    const d = await createDossier(a, { name: "Videos", documentIds: [queued.documentId] });
-    expect(await dossierDocumentIds(a, d.id)).toEqual([queued.documentId]);
+    const d = await createProject(a, { name: "Videos", documentIds: [queued.documentId] });
+    expect(await projectDocumentIds(a, d.id)).toEqual([queued.documentId]);
     const beforeRows = await holder.db!.select().from(sources)
       .where(and(eq(sources.url, doc.sourceUrl!), eq(sources.workspaceId, a.workspaceId)));
     expect(beforeRows).toHaveLength(1);
@@ -156,29 +156,29 @@ suite("dossiers (real Postgres + pgvector)", () => {
       .where(and(eq(sources.url, doc.sourceUrl!), eq(sources.workspaceId, a.workspaceId)));
     expect(afterRows).toHaveLength(1);
     expect(afterRows[0].contentHash).toBe("hash-1");
-    expect(await dossierDocumentIds(a, d.id)).toEqual([queued.documentId]);
+    expect(await projectDocumentIds(a, d.id)).toEqual([queued.documentId]);
   });
 
-  it("documents.search with a dossierId only returns that dossier's documents", async () => {
+  it("documents.search with a projectId only returns that project's documents", async () => {
     const provider = fakeProvider();
     const a = await workspace();
     const lease = await seed(a, LEASE, "lease", provider);
     await seed(a, PAYROLL, "payroll", provider);
-    const d = await createDossier(a, { name: "Lease only", documentIds: [lease.id] });
-    const scoped = await searchDocumentsForAgent(a, { query: "payroll overtime wage", dossierId: d.id, limit: 10, provider });
+    const d = await createProject(a, { name: "Lease only", documentIds: [lease.id] });
+    const scoped = await searchDocumentsForAgent(a, { query: "payroll overtime wage", projectId: d.id, limit: 10, provider });
     expect(scoped.ok && scoped.results.length > 0 && scoped.results.every((r) => r.documentId === lease.id)).toBe(true);
     const open = await searchDocumentsForAgent(a, { query: "payroll overtime wage", limit: 1, provider });
     expect(open.ok && open.results[0].title).toBe("payroll");
   });
 
-  it("an empty dossier returns nothing, and an unknown or foreign dossier is an error", async () => {
+  it("an empty project returns nothing, and an unknown or foreign project is an error", async () => {
     const provider = fakeProvider();
     const a = await workspace();
     const b = await workspace();
     await seed(a, LEASE, "lease", provider);
-    const empty = await createDossier(a, { name: "Empty", documentIds: [] });
-    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "semantic", results: [] });
-    expect(await searchDocumentsForAgent(b, { query: "rent", dossierId: empty.id, provider })).toEqual({ ok: false, error: "dossier not found" });
-    expect(await searchDocumentsForAgent(a, { query: "rent", dossierId: crypto.randomUUID(), provider })).toEqual({ ok: false, error: "dossier not found" });
+    const empty = await createProject(a, { name: "Empty", documentIds: [] });
+    expect(await searchDocumentsForAgent(a, { query: "rent", projectId: empty.id, provider })).toEqual({ ok: true, query: "rent", mode: "semantic", results: [] });
+    expect(await searchDocumentsForAgent(b, { query: "rent", projectId: empty.id, provider })).toEqual({ ok: false, error: "project not found" });
+    expect(await searchDocumentsForAgent(a, { query: "rent", projectId: crypto.randomUUID(), provider })).toEqual({ ok: false, error: "project not found" });
   });
 });

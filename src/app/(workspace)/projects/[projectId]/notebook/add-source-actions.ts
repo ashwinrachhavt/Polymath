@@ -5,7 +5,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captureUrl } from "@/domains/knowledge/capture-url";
-import { attachDocuments, DossierError } from "@/domains/knowledge/dossiers";
+import { attachDocuments, ProjectError } from "@/domains/knowledge/projects";
 import { enqueueOutbox } from "@/domains/audit/outbox";
 import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
@@ -32,7 +32,7 @@ import { withTransaction } from "@/lib/db-transaction";
  * stores a status of its own.
  */
 
-const revalidate = (dossierId: string) => revalidatePath(`/alfred/dossiers/${dossierId}/notebook`);
+const revalidate = (projectId: string) => revalidatePath(`/projects/${projectId}/notebook`);
 
 async function authorize(): Promise<AuthContext> {
   const auth = await getAuthContext();
@@ -43,40 +43,40 @@ async function authorize(): Promise<AuthContext> {
 export type AddSourceResult = { ok: boolean; message: string };
 
 /** Attach an already-ingested document to the notebook (Document Vault pick, or a finished upload). */
-export async function attachToNotebookAction(input: { dossierId: string; documentIds: string[] }): Promise<AddSourceResult> {
+export async function attachToNotebookAction(input: { projectId: string; documentIds: string[] }): Promise<AddSourceResult> {
   const auth = await authorize();
   const parsed = z
-    .object({ dossierId: z.uuid(), documentIds: z.array(z.uuid()).min(1).max(200) })
+    .object({ projectId: z.uuid(), documentIds: z.array(z.uuid()).min(1).max(200) })
     .safeParse(input);
   if (!parsed.success) return { ok: false, message: "No document was named." };
   try {
     const { attached } = await attachDocuments(auth, parsed.data);
-    revalidate(parsed.data.dossierId);
+    revalidate(parsed.data.projectId);
     return attached > 0
       ? { ok: true, message: attached === 1 ? "1 source added." : `${attached} sources added.` }
       : { ok: true, message: "Already in this notebook." };
   } catch (cause) {
-    if (cause instanceof DossierError) return { ok: false, message: cause.message };
+    if (cause instanceof ProjectError) return { ok: false, message: cause.message };
     throw cause;
   }
 }
 
 /** Capture a pasted link into the notebook: YouTube is queued, any other URL is fetched inline. */
-export async function addUrlToNotebookAction(input: { dossierId: string; url: string }): Promise<AddSourceResult> {
+export async function addUrlToNotebookAction(input: { projectId: string; url: string }): Promise<AddSourceResult> {
   const auth = await authorize();
   const parsed = z
-    .object({ dossierId: z.uuid(), url: z.string().trim().min(1).max(2000) })
+    .object({ projectId: z.uuid(), url: z.string().trim().min(1).max(2000) })
     .safeParse(input);
   if (!parsed.success) return { ok: false, message: "Paste a link first." };
-  const { dossierId, url } = parsed.data;
+  const { projectId, url } = parsed.data;
 
   if (isYouTubeUrl(url)) {
     const queued = await queueYouTubeCapture(auth, { url });
     if (!queued.ok) return { ok: false, message: queued.error };
-    // The video binds to the notebook by address (see dossiers.sourceFor), so
+    // The video binds to the notebook by address (see projects.sourceFor), so
     // it appears in the pane before the transcript lands.
-    await attachDocuments(auth, { dossierId, documentIds: [queued.documentId] });
-    revalidate(dossierId);
+    await attachDocuments(auth, { projectId, documentIds: [queued.documentId] });
+    revalidate(projectId);
     return { ok: true, message: queued.enqueued ? "Video queued. It reads the transcript next." : "That video is already filed." };
   }
 
@@ -86,25 +86,25 @@ export async function addUrlToNotebookAction(input: { dossierId: string; url: st
   // so its reason is the whole answer.
   if (captured.documentId) {
     try {
-      await attachDocuments(auth, { dossierId, documentIds: [captured.documentId] });
+      await attachDocuments(auth, { projectId, documentIds: [captured.documentId] });
     } catch (cause) {
-      if (cause instanceof DossierError) return { ok: false, message: cause.message };
+      if (cause instanceof ProjectError) return { ok: false, message: cause.message };
       throw cause;
     }
   }
-  revalidate(dossierId);
+  revalidate(projectId);
   if (!captured.ok) return { ok: false, message: captured.error };
   return { ok: true, message: "Source captured. Reading it now." };
 }
 
 /** Re-runs a source's ingest from where it stopped. Same topic the inbox retry uses. */
-export async function retryNotebookSourceAction(input: { dossierId: string; documentId: string }): Promise<AddSourceResult> {
+export async function retryNotebookSourceAction(input: { projectId: string; documentId: string }): Promise<AddSourceResult> {
   const auth = await authorize();
   const parsed = z
-    .object({ dossierId: z.uuid(), documentId: z.uuid() })
+    .object({ projectId: z.uuid(), documentId: z.uuid() })
     .safeParse(input);
   if (!parsed.success) return { ok: false, message: "That source id is not valid." };
-  const { dossierId, documentId } = parsed.data;
+  const { projectId, documentId } = parsed.data;
 
   // The row must be this workspace's, or the retry would mint doomed work for
   // a document that can never be seen here.
@@ -142,7 +142,7 @@ export async function retryNotebookSourceAction(input: { dossierId: string; docu
       const captured = await captureUrl(auth, { url: doc.sourceUrl });
       if (!captured.ok) return { ok: false, message: captured.error };
     }
-    revalidate(dossierId);
+    revalidate(projectId);
     return { ok: true, message: "Fetching the source again." };
   }
 
@@ -155,6 +155,6 @@ export async function retryNotebookSourceAction(input: { dossierId: string; docu
       dispatchKey: `retry:${auth.workspaceId}:${documentId}`,
     });
   });
-  revalidate(dossierId);
+  revalidate(projectId);
   return { ok: true, message: "Queued for another attempt." };
 }

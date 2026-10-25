@@ -1,6 +1,6 @@
 import { EmbeddingUnconfiguredError, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { dossierDocumentIds } from "./dossiers";
+import { projectDocumentIds } from "./projects";
 import { searchChunks, searchChunksFts, type ChunkHit } from "./search";
 
 /*
@@ -66,18 +66,18 @@ export function rrfMerge(ftsHits: ChunkHit[], vectorHits: ChunkHit[], limit: num
 
 export async function searchDocumentsForAgent(
   auth: AuthContext,
-  input: { query: string; limit?: number; provider?: EmbeddingProvider; dossierId?: string },
+  input: { query: string; limit?: number; provider?: EmbeddingProvider; projectId?: string },
 ): Promise<AgentSearchResult> {
   const query = input.query.trim();
   if (!query) return { ok: false, error: "query is empty" };
   const limit = Math.min(Math.max(input.limit ?? 5, 1), AGENT_SEARCH_MAX_RESULTS);
   try {
-    // A dossier narrows the search to its documents. An unknown or foreign
-    // dossier is an error, never a silent search of everything.
+    // A project narrows the search to its documents. An unknown or foreign
+    // project is an error, never a silent search of everything.
     let documentIds: string[] | undefined;
-    if (input.dossierId) {
-      const ids = await dossierDocumentIds(auth, input.dossierId);
-      if (!ids) return { ok: false, error: "dossier not found" };
+    if (input.projectId) {
+      const ids = await projectDocumentIds(auth, input.projectId);
+      if (!ids) return { ok: false, error: "project not found" };
       documentIds = ids;
     }
     let hits: ChunkHit[];

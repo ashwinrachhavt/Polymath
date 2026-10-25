@@ -50,11 +50,11 @@ vi.mock("@/lib/safe-fetch", async (importOriginal) => ({
 
 import { blobObjects, outboxEvents } from "@/domains/audit/schema";
 import { documentExtractions, documents, files, sources } from "@/domains/knowledge/schema";
-import { attachToNotebookAction, addUrlToNotebookAction, retryNotebookSourceAction } from "@/app/(workspace)/alfred/dossiers/[dossierId]/notebook/add-source-actions";
-import { createDossier, dossierDocumentIds } from "@/domains/knowledge/dossiers";
+import { attachToNotebookAction, addUrlToNotebookAction, retryNotebookSourceAction } from "@/app/(workspace)/projects/[projectId]/notebook/add-source-actions";
+import { createProject, projectDocumentIds } from "@/domains/knowledge/projects";
 
 let db: NonNullable<typeof handle>["db"];
-let dossierId: string;
+let projectId: string;
 let otherWorkspaceDossierId: string;
 
 beforeAll(async () => {
@@ -63,12 +63,12 @@ beforeAll(async () => {
   holder.db = db;
   const a = await seedWorkspace(db, `nbadd-${Date.now()}`);
   holder.auth = { ...a, role: "owner" };
-  dossierId = (await createDossier(holder.auth, { name: "Notebook", documentIds: [] })).id;
+  projectId = (await createProject(holder.auth, { name: "Notebook", documentIds: [] })).id;
   // A second workspace proves the scoping checks.
   const b = await seedWorkspace(db, `nbadd-b-${Date.now()}`);
   const savedAuth = holder.auth;
   holder.auth = { ...b, role: "owner" };
-  otherWorkspaceDossierId = (await createDossier(holder.auth, { name: "Elsewhere", documentIds: [] })).id;
+  otherWorkspaceDossierId = (await createProject(holder.auth, { name: "Elsewhere", documentIds: [] })).id;
   holder.auth = savedAuth;
 });
 
@@ -83,7 +83,7 @@ suite("notebook add-source actions (real Postgres)", () => {
       finalUrl: url,
       contentType: "text/html",
     });
-    const out = await addUrlToNotebookAction({ dossierId, url });
+    const out = await addUrlToNotebookAction({ projectId, url });
     expect(out.ok).toBe(true);
 
     const [doc] = await db.select().from(documents)
@@ -93,14 +93,14 @@ suite("notebook add-source actions (real Postgres)", () => {
     // The source row exists and binds through the join the pane reads.
     const [source] = await db.select().from(sources).where(eq(sources.url, url));
     expect(source).toBeTruthy();
-    const bound = await dossierDocumentIds(holder.auth!, dossierId);
+    const bound = await projectDocumentIds(holder.auth!, projectId);
     expect(bound).toContain(doc.id);
   });
 
   it("a failed fetch states its reason and re-runs the capture on retry", async () => {
     const url = `https://example.com/dead-${crypto.randomUUID()}`;
     safeFetch.mockResolvedValue({ ok: false as const, error: "The site answered with status 500." });
-    const out = await addUrlToNotebookAction({ dossierId, url });
+    const out = await addUrlToNotebookAction({ projectId, url });
     expect(out.ok).toBe(false);
     expect(out.message).toBe("The site answered with status 500.");
 
@@ -121,7 +121,7 @@ suite("notebook add-source actions (real Postgres)", () => {
       finalUrl: url,
       contentType: "text/html",
     });
-    const retry = await retryNotebookSourceAction({ dossierId, documentId: doc.id });
+    const retry = await retryNotebookSourceAction({ projectId, documentId: doc.id });
     expect(retry).toMatchObject({ ok: true, message: "Fetching the source again." });
     const [after] = await db.select().from(documents).where(eq(documents.id, doc.id));
     expect(after.fileId).not.toBeNull();
@@ -129,7 +129,7 @@ suite("notebook add-source actions (real Postgres)", () => {
 
   it("a retry on a document outside the workspace refuses; a skipped row refuses with nothing to retry", async () => {
     // A foreign document id is not this workspace's, so no outbox row is minted.
-    const foreign = await retryNotebookSourceAction({ dossierId, documentId: crypto.randomUUID() });
+    const foreign = await retryNotebookSourceAction({ projectId, documentId: crypto.randomUUID() });
     expect(foreign.ok).toBe(false);
 
     // A row no reader accepts has nothing behind the button.
@@ -149,7 +149,7 @@ suite("notebook add-source actions (real Postgres)", () => {
       workspaceId: holder.auth!.workspaceId, documentId: unknown.id, contentHash: crypto.randomUUID(),
       status: "skipped", extractor: "docling@1",
     });
-    const refused = await retryNotebookSourceAction({ dossierId, documentId: unknown.id });
+    const refused = await retryNotebookSourceAction({ projectId, documentId: unknown.id });
     expect(refused).toMatchObject({ ok: false, message: "No reader accepts this source type. There is nothing to retry." });
   });
 
@@ -159,7 +159,7 @@ suite("notebook add-source actions (real Postgres)", () => {
     // below read another run's row.
     const videoId = crypto.randomUUID().replace(/-/g, "").slice(0, 11);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const out = await addUrlToNotebookAction({ dossierId, url });
+    const out = await addUrlToNotebookAction({ projectId, url });
     expect(out.ok).toBe(true);
     const events = await db.select().from(outboxEvents)
       .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId));
@@ -167,7 +167,7 @@ suite("notebook add-source actions (real Postgres)", () => {
 
     // Binding through the join, not just the dossierSources rows: the queued
     // video has no fileId yet, so the address match is what resolves it.
-    const bound = await dossierDocumentIds(holder.auth!, dossierId);
+    const bound = await projectDocumentIds(holder.auth!, projectId);
     const [doc] = await db.select().from(documents)
       .where(and(eq(documents.sourceUrl, url), eq(documents.workspaceId, holder.auth!.workspaceId)));
     expect(doc).toBeTruthy();
@@ -183,12 +183,12 @@ suite("notebook add-source actions (real Postgres)", () => {
       workspaceId: holder.auth!.workspaceId, title: "Vault pick",
       createdBy: holder.auth!.userId, updatedBy: holder.auth!.userId,
     }).returning({ id: documents.id });
-    const out = await attachToNotebookAction({ dossierId, documentIds: [doc.id] });
+    const out = await attachToNotebookAction({ projectId, documentIds: [doc.id] });
     expect(out.ok).toBe(true);
     // Idempotent second attach says so instead of doubling rows.
-    const again = await attachToNotebookAction({ dossierId, documentIds: [doc.id] });
+    const again = await attachToNotebookAction({ projectId, documentIds: [doc.id] });
     expect(again.ok).toBe(true);
-    const foreign = await attachToNotebookAction({ dossierId, documentIds: [crypto.randomUUID()] });
+    const foreign = await attachToNotebookAction({ projectId, documentIds: [crypto.randomUUID()] });
     expect(foreign.ok).toBe(false);
   });
 
@@ -206,18 +206,18 @@ suite("notebook add-source actions (real Postgres)", () => {
       mimeType: "application/pdf",
       createdBy: holder.auth!.userId, updatedBy: holder.auth!.userId,
     }).returning({ id: documents.id });
-    const foreign = await attachToNotebookAction({ dossierId: otherWorkspaceDossierId, documentIds: [doc.id] });
+    const foreign = await attachToNotebookAction({ projectId: otherWorkspaceDossierId, documentIds: [doc.id] });
     expect(foreign.ok).toBe(false);
     const before = (await db.select().from(outboxEvents)
       .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId))).length;
-    const retry = await retryNotebookSourceAction({ dossierId, documentId: doc.id });
+    const retry = await retryNotebookSourceAction({ projectId, documentId: doc.id });
     expect(retry.ok).toBe(true);
     const after = (await db.select().from(outboxEvents)
       .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId))).length;
     expect(after).toBe(before + 1);
     // The dispatch key is per document, not per click: a second click joins
     // the first attempt instead of minting another doomed row.
-    const again = await retryNotebookSourceAction({ dossierId, documentId: doc.id });
+    const again = await retryNotebookSourceAction({ projectId, documentId: doc.id });
     expect(again.ok).toBe(true);
     const final = (await db.select().from(outboxEvents)
       .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId))).length;

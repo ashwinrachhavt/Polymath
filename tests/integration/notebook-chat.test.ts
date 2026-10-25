@@ -22,14 +22,14 @@ import {
   notebookChatLabels,
   notebookChatObjective,
 } from "@/domains/knowledge/notebook-chat";
-import { createDossier } from "@/domains/knowledge/dossiers";
+import { createProject } from "@/domains/knowledge/projects";
 
 beforeAll(() => { holder.db = handle?.db; });
 afterAll(async () => { await handle?.client.end(); });
 
 async function runFor(
   a: { userId: string; workspaceId: string },
-  dossierId: string,
+  projectId: string,
   objective: string,
   state: "queued" | "running" | "succeeded" | "failed" | "cancelled" = "succeeded",
 ) {
@@ -40,7 +40,7 @@ async function runFor(
     objective,
     state,
     policySnapshot: {},
-    subjects: [{ type: "dossier", id: dossierId }],
+    subjects: [{ type: "project", id: projectId }],
   } as typeof agentRuns.$inferInsert).returning();
   return run;
 }
@@ -53,7 +53,7 @@ const workspace = async () => {
 suite("notebook chat (real Postgres)", () => {
   it("lists a notebook's chat runs and excludes Studio Generate runs", async () => {
     const a = await workspace();
-    const dossier = await createDossier(a, { name: "Housing", documentIds: [] });
+    const dossier = await createProject(a, { name: "Housing", documentIds: [] });
     const chat = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     await runFor(a, dossier.id, 'Using only the documents in the dossier "Housing", write a draft report: rent terms.');
     const chats = await listNotebookChats(a, dossier.id);
@@ -63,14 +63,14 @@ suite("notebook chat (real Postgres)", () => {
   it("never leaks another workspace's chats", async () => {
     const a = await workspace();
     const b = await workspace();
-    const dossier = await createDossier(a, { name: "Housing", documentIds: [] });
+    const dossier = await createProject(a, { name: "Housing", documentIds: [] });
     await runFor(a, dossier.id, notebookChatObjective("Housing"));
     expect(await listNotebookChats(b, dossier.id)).toEqual([]);
   });
 
   it("labels a conversation by the first question actually asked", async () => {
     const a = await workspace();
-    const dossier = await createDossier(a, { name: "Housing", documentIds: [] });
+    const dossier = await createProject(a, { name: "Housing", documentIds: [] });
     const fresh = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     const asked = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     // The engine writes the objective as the first user event at start; the
@@ -85,7 +85,7 @@ suite("notebook chat (real Postgres)", () => {
 
   it("recovers the last answer with the citations its tool calls produced", async () => {
     const a = await workspace();
-    const dossier = await createDossier(a, { name: "Housing", documentIds: [] });
+    const dossier = await createProject(a, { name: "Housing", documentIds: [] });
     const chat = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     const documentId = crypto.randomUUID();
     await holder.db!.insert(toolCalls).values({
@@ -112,7 +112,7 @@ suite("notebook chat (real Postgres)", () => {
   it("answers null for a conversation with no assistant reply and for a foreign run", async () => {
     const a = await workspace();
     const b = await workspace();
-    const dossier = await createDossier(a, { name: "Housing", documentIds: [] });
+    const dossier = await createProject(a, { name: "Housing", documentIds: [] });
     const chat = await runFor(a, dossier.id, notebookChatObjective("Housing"));
     expect(await lastGroundedAnswer(a, chat.id)).toBeNull();
     // Same answer as missing: a run in another workspace.

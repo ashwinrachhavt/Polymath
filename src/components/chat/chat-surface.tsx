@@ -40,7 +40,7 @@ function turnIdOf(blockId: string): string {
  */
 
 export type ChatSubject = {
-  type: "dossier" | "document" | "artifact";
+  type: "project" | "document" | "artifact";
   id: string;
 };
 
@@ -262,7 +262,7 @@ export function ChatSurface({
         {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
           <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
             {emptyText ??
-              `Ask a question. Answers cite the ${subject.type === "dossier" ? "pinned sources" : "sources"} they use.`}
+              `Ask a question. Answers cite the ${subject.type === "project" ? "pinned sources" : "sources"} they use.`}
           </p>
         ) : (
           <div className="mx-auto w-full max-w-[var(--page-width)] space-y-4">

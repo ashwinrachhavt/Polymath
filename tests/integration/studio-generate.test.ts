@@ -24,9 +24,9 @@ vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(asy
 import { embedExtraction } from "@/domains/knowledge/embedding";
 import { saveGeneratedDraft, saveDraft, discardDraft, startStudioGenerate, StudioError } from "@/domains/knowledge/studio";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
-import { attachDocuments } from "@/domains/knowledge/dossiers";
+import { attachDocuments } from "@/domains/knowledge/projects";
 import { recordRoundEvent } from "@/domains/agents/event-bridge";
-import { createDossier } from "@/domains/knowledge/dossiers";
+import { createProject } from "@/domains/knowledge/projects";
 import { ensureProfile } from "@/domains/agents/commands";
 import { agentRuns } from "@/domains/agents/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
@@ -82,11 +82,11 @@ const workspace = async () => ({ ...await seedWorkspace(holder.db!, `ds-${crypto
 
 
 
-async function runFor(a: { userId: string; workspaceId: string }, dossierId: string, reply?: string) {
+async function runFor(a: { userId: string; workspaceId: string }, projectId: string, reply?: string) {
   const profileId = await ensureProfile(a.workspaceId);
   const [run] = await holder.db!.insert(agentRuns).values({
     workspaceId: a.workspaceId, agentProfileId: profileId, objective: "Draft", state: "succeeded", policySnapshot: {},
-    subjects: [{ type: "dossier", id: dossierId }],
+    subjects: [{ type: "project", id: projectId }],
   } as typeof agentRuns.$inferInsert).returning();
   if (reply) await recordRoundEvent({ runId: run.id, workspaceId: a.workspaceId, type: "message", data: { role: "assistant", content: reply } });
   return run;
@@ -97,20 +97,20 @@ suite("Studio Generate (real Postgres)", () => {
     const provider = fakeProvider();
     const a = await workspace();
     const lease = await seed(a, LEASE, "lease", provider);
-    const d = await createDossier(a, { name: "Housing", documentIds: [lease.id] });
+    const d = await createProject(a, { name: "Housing", documentIds: [lease.id] });
     const engine = { start: vi.fn(async () => ({ runId: "r", reservationId: "x" })) } as never as import("@/domains/agents/engine").AgentEngine;
-    await startStudioGenerate(a, { dossierId: d.id, brief: "a summary of the rent terms" }, engine);
+    await startStudioGenerate(a, { projectId: d.id, brief: "a summary of the rent terms" }, engine);
     expect((engine.start as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
-      subjects: [{ type: "dossier", id: d.id }],
+      subjects: [{ type: "project", id: d.id }],
       objective: expect.stringContaining('"Housing"'),
     });
     const b = await workspace();
-    await expect(startStudioGenerate(b, { dossierId: d.id, brief: "x" }, engine)).rejects.toMatchObject({ code: "dossier_not_found" });
+    await expect(startStudioGenerate(b, { projectId: d.id, brief: "x" }, engine)).rejects.toMatchObject({ code: "dossier_not_found" });
   });
 
   it("pins a queued URL capture (no file yet) by address, in the objective and in the saved links", async () => {
     const a = await workspace();
-    const d = await createDossier(a, { name: "Research", documentIds: [] });
+    const d = await createProject(a, { name: "Research", documentIds: [] });
     // A queued capture: a document with a sourceUrl and no fileId, the shape a
     // pasted link has before its bytes land.
     const [queued] = await holder.db!.insert(documents).values({
@@ -120,10 +120,10 @@ suite("Studio Generate (real Postgres)", () => {
       createdBy: a.userId,
       updatedBy: a.userId,
     }).returning();
-    await attachDocuments(a, { dossierId: d.id, documentIds: [queued!.id] });
+    await attachDocuments(a, { projectId: d.id, documentIds: [queued!.id] });
 
     const engine = { start: vi.fn(async () => ({ runId: "r", reservationId: "x" })) } as never as import("@/domains/agents/engine").AgentEngine;
-    await startStudioGenerate(a, { dossierId: d.id, brief: "summarize the page" }, engine);
+    await startStudioGenerate(a, { projectId: d.id, brief: "summarize the page" }, engine);
     // The objective names the queued document: the address join found it.
     expect((engine.start as ReturnType<typeof vi.fn>).mock.calls[0][0].objective).toContain(queued!.id);
 
@@ -136,7 +136,7 @@ suite("Studio Generate (real Postgres)", () => {
     const provider = fakeProvider();
     const a = await workspace();
     const lease = await seed(a, LEASE, "lease", provider);
-    const d = await createDossier(a, { name: "Housing", documentIds: [lease.id] });
+    const d = await createProject(a, { name: "Housing", documentIds: [lease.id] });
     const run = await runFor(a, d.id, "Rent is $1,200 a month.");
     const { artifactId, created } = await saveGeneratedDraft(a, { runId: run.id });
     expect(created).toBe(true);
@@ -156,7 +156,7 @@ suite("Studio Generate (real Postgres)", () => {
   it("refuses a run with no output or in another workspace", async () => {
     const a = await workspace();
     const b = await workspace();
-    const d = await createDossier(a, { name: "D", documentIds: [] });
+    const d = await createProject(a, { name: "D", documentIds: [] });
     const quiet = await runFor(a, d.id);
     await expect(saveGeneratedDraft(a, { runId: quiet.id })).rejects.toMatchObject({ code: "no_output" });
     const loud = await runFor(a, d.id, "text");
@@ -165,7 +165,7 @@ suite("Studio Generate (real Postgres)", () => {
 
   it("owner saves (reviewed, never published) or discards, once", async () => {
     const a = await workspace();
-    const d = await createDossier(a, { name: "D", documentIds: [] });
+    const d = await createProject(a, { name: "D", documentIds: [] });
     const keep = await saveGeneratedDraft(a, { runId: (await runFor(a, d.id, "keep me")).id });
     await saveDraft(a, { artifactId: keep.artifactId });
     const [kept] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, keep.artifactId));
@@ -186,7 +186,7 @@ suite("Studio Generate (real Postgres)", () => {
 
   it("a generated-status draft is not decidable: save and discard both refuse and change nothing", async () => {
     const a = await workspace();
-    const d = await createDossier(a, { name: "D", documentIds: [] });
+    const d = await createProject(a, { name: "D", documentIds: [] });
     const { artifactId } = await saveGeneratedDraft(a, { runId: (await runFor(a, d.id, "still generating")).id });
     // A run that has been picked up but not finished moves its artifact to
     // "generated" — the in-between state the UI renders as a spinner. Only a

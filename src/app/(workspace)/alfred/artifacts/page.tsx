@@ -20,7 +20,7 @@ export const metadata = { title: "Artifacts · Polymath" };
  * pages live in Notes. The query owns the boundary; this page only renders.
  */
 
-const BASE = "/alfred/artifacts";
+const BASE = "/artifacts";
 
 const KIND_OPTIONS = [
   { value: "report", label: "Reports" },
@@ -85,8 +85,8 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
   // human-written kinds may mount the Notes editor (whose autosave would
   // clobber structured content).
   const hrefFor = (row: { id: string; kind: string; isWiki: boolean }): string => {
-    if (row.isWiki) return `/alfred/artifacts/${row.id}`;
-    if (kindLabel[row.kind] && row.kind !== "zettel") return `/alfred/dossiers?draft=${row.id}`;
+    if (row.isWiki) return `/artifacts/${row.id}`;
+    if (kindLabel[row.kind] && row.kind !== "zettel") return `/projects?draft=${row.id}`;
     return `/alfred/notes?id=${row.id}`;
   };
 
@@ -118,7 +118,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
               title="Nothing here yet."
               description="Generate a report or deck from a Notebook."
               action={
-                <Link href="/alfred/dossiers" className="text-[13px] font-medium underline underline-offset-4">
+                <Link href="/projects" className="text-[13px] font-medium underline underline-offset-4">
                   Open Notebook
                 </Link>
               }

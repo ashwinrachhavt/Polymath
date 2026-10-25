@@ -22,6 +22,8 @@ import { listSlackChannels, readSlackChannel } from "@/domains/integrations/read
 import type { Transport } from "@/domains/integrations/transport";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { projectSubjectOf } from "./queries";
+import { projectAccountAllowlist } from "@/domains/knowledge/project-settings";
 
 /*
  * The dispatch half of the provider gateway: one authorized tool invocation
@@ -42,6 +44,8 @@ import { resolveConnectedAccount } from "@/domains/integrations/queries";
 export type GatewayRun = {
   id: string;
   policySnapshot: unknown;
+  /** The subjects the run is bound to; a project subject scopes its connectors. */
+  subjects?: unknown;
 };
 
 export type GatewayContext = {
@@ -603,7 +607,26 @@ export function createGateway({ transport }: { transport: Transport }) {
     | { ok: false; outcome: GatewayOutcome }
   > {
     const resolved = await resolveConnectedAccount(context.auth, provider, alias);
-    if (resolved.ok) return resolved;
+    if (resolved.ok) {
+      // A project-scoped run only reaches the accounts the project allowlists.
+      // No rows means unscoped - the workspace's own accounts, unchanged.
+      const projectSubject = projectSubjectOf(context.run.subjects);
+      if (projectSubject) {
+        const allowlist = await projectAccountAllowlist(context.auth, projectSubject.id);
+        if (allowlist !== null && !allowlist.includes(resolved.externalAccountId)) {
+          return {
+            ok: false,
+            outcome: {
+              ok: false,
+              status: 403,
+              code: "account_not_connected",
+              message: `The ${provider} account "${resolved.alias}" is not enabled for the project this session belongs to. Enable it in the project's connectors.`,
+            },
+          };
+        }
+      }
+      return resolved;
+    }
     // permission_denied is no longer a resolution outcome: the tier gate owns
     // it, after the account resolves. Resolution fails only on not_connected
     // or ambiguity.

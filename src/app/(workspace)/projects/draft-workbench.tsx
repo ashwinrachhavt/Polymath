@@ -48,7 +48,7 @@ export function DraftWorkbench({
   const [linkCopied, setLinkCopied] = useState(false);
 
   const dirty = draftText !== text;
-  const stablePath = `/alfred/dossiers?draft=${artifact.id}`;
+  const stablePath = `/projects?draft=${artifact.id}`;
 
   async function copyStableLink() {
     try {
@@ -56,7 +56,7 @@ export function DraftWorkbench({
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     } catch {
-      setError("Copying the link failed. Copy it from the address bar instead.");
+      setError("Copying the link failed — copy it from the address bar instead.");
     }
   }
   const picks = linkable[targetType];
@@ -125,7 +125,7 @@ export function DraftWorkbench({
       <p className="text-muted-foreground text-xs">
         {artifact.status === "draft"
           ? "A draft is visible only here; keeping or discarding it is always your call."
-          : "Kept as reviewed. Edits append a new version; earlier versions below are never overwritten."}
+          : "Kept as reviewed. Edits append a new version — earlier versions below are never overwritten."}
       </p>
       <div className="flex items-center gap-2 text-xs">
         <span className="text-muted-foreground">Stable link:</span>
@@ -157,7 +157,7 @@ export function DraftWorkbench({
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-muted-foreground text-xs">Version history</p>
+        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Version history</p>
         <ul className="flex flex-col gap-1">
           {versions.map((row) => (
             <li key={row.versionNumber} className="flex items-baseline gap-2 text-[13px]">
@@ -171,14 +171,14 @@ export function DraftWorkbench({
               <span className="text-muted-foreground text-xs">
                 {new Date(row.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
               </span>
-              {row.note ? <span className="text-muted-foreground text-xs">Note: {row.note}</span> : null}
+              {row.note ? <span className="text-muted-foreground text-xs">— {row.note}</span> : null}
             </li>
           ))}
         </ul>
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-muted-foreground text-xs">Supporting documents</p>
+        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Supporting documents</p>
         {sources.length === 0 ? (
           <p className="text-muted-foreground text-[13px]">No pinned documents on this draft.</p>
         ) : (
@@ -196,7 +196,7 @@ export function DraftWorkbench({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="font-medium text-muted-foreground text-xs">Attached records</p>
+        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Attached records</p>
         {links.length === 0 ? (
           <p className="text-muted-foreground text-[13px]">Not attached to any task, contact, or opportunity yet.</p>
         ) : (

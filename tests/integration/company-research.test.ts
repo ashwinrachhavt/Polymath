@@ -1,14 +1,14 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { artifacts, artifactVersions, documents, dossiers, dossierSources, files, sources } from "@/domains/knowledge/schema";
+import { artifacts, artifactVersions, documents, projects, projectSources, files, sources } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * ASH-114 orchestration against a real workspace: the report lands as a
  * versioned report artifact with one sources row per manifest entry, the same
- * idempotency key replays instead of duplicating, and dossier-only mode reads
- * the pinned dossier sources without ever calling search.
+ * idempotency key replays instead of duplicating, and project-only mode reads
+ * the pinned project sources without ever calling search.
  */
 
 const handle = makeTestDb();
@@ -62,30 +62,30 @@ suite("runCompanyResearch", () => {
     expect(b.replayed).toBe(true);
   });
 
-  it("dossier-only mode never searches and grounds the report in pinned sources", async () => {
-    const seeded = await seedWorkspace(db, `research-dossier-${Date.now()}`);
+  it("project-only mode never searches and grounds the report in pinned sources", async () => {
+    const seeded = await seedWorkspace(db, `research-project-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
-    const [dossier] = await db
-      .insert(dossiers)
-      .values({ workspaceId: auth.workspaceId, title: "Acme dossier", researchQuestion: "How does Acme make money?", createdBy: auth.userId, updatedBy: auth.userId })
+    const [project] = await db
+      .insert(projects)
+      .values({ workspaceId: auth.workspaceId, title: "Acme project", description: "How does Acme make money?", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
     const [source] = await db
       .insert(sources)
       .values({ workspaceId: auth.workspaceId, kind: "web", title: "Acme about page", url: "https://acme.example/about", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
-    await db.insert(dossierSources).values({ workspaceId: auth.workspaceId, dossierId: dossier.id, sourceId: source.id });
-    // A document-backed source (the product dossier's primary shape): blob -> file -> document, pinned to the same dossier.
+    await db.insert(projectSources).values({ workspaceId: auth.workspaceId, projectId: project.id, sourceId: source.id });
+    // A document-backed source (the product project's primary shape): blob -> file -> document, pinned to the same project.
     const [blob] = await db.insert(blobObjects).values({ workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(), sizeBytes: 4, mimeType: "application/pdf" }).returning();
     const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "acme-10k.pdf" }).returning();
     const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title: "Acme 10-K", fileId: file.id }).returning();
     const [docSource] = await db.insert(sources).values({ workspaceId: auth.workspaceId, kind: "document", title: "Acme 10-K", fileId: file.id, createdBy: auth.userId, updatedBy: auth.userId }).returning();
-    await db.insert(dossierSources).values({ workspaceId: auth.workspaceId, dossierId: dossier.id, sourceId: docSource.id });
+    await db.insert(projectSources).values({ workspaceId: auth.workspaceId, projectId: project.id, sourceId: docSource.id });
     void doc;
 
     let searched = 0;
     const result = await research.runCompanyResearch(
       auth,
-      { companyName: "Acme Corp", mode: "dossier-only", dossierId: dossier.id },
+      { companyName: "Acme Corp", mode: "dossier-only", dossierId: project.id },
       { search: async () => { searched += 1; return []; }, complete: groundedComplete },
     );
     expect(searched).toBe(0);
