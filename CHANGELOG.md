@@ -4,6 +4,11 @@
 
 ### Added
 
+- Reports: a weekly outcome narrative (ASH-280) restates the week from the
+  outcome sentences you wrote on finished focus sessions and the stones you
+  earned. It is composed deterministically, not by a model, and carries no
+  score, points or streak. Keep as note saves it; Discard writes nothing; an
+  empty week shows no narrative.
 - Providers: the chat model catalog gains the free tiers the workspace can
   actually call - Cohere (trial), Mistral (free mode), NVIDIA NIM, OVHcloud,
   Z AI, and the AI Gateway's free-tier models - each hidden until its key is

@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { rewardDefinitions, rewardLedger } from "./schema";
@@ -100,4 +100,31 @@ export function pickRewardAnnouncement(
   );
   if (!entry) return null;
   return { ...entry, milestone: entry.definitionKind === "badge" || entry.definitionThreshold > 1 };
+}
+
+/*
+ * Stones earned in [start, end] (YYYY-MM-DD, inclusive, in `timezone`): earnings
+ * only, so shard claims and adjustments are excluded (ASH-280).
+ */
+export async function listStonesEarnedInRange(
+  auth: AuthContext,
+  input: { start: string; end: string; timezone: string },
+): Promise<Array<{ label: string; note: string | null; createdAt: Date }>> {
+  const from = sql`(${input.start}::date)::timestamp at time zone ${input.timezone}`;
+  const to = sql`((${input.end}::date + 1)::timestamp) at time zone ${input.timezone}`;
+  return db
+    .select({ label: rewardDefinitions.label, note: rewardLedger.note, createdAt: rewardLedger.createdAt })
+    .from(rewardLedger)
+    .innerJoin(rewardDefinitions, eq(rewardDefinitions.id, rewardLedger.rewardDefinitionId))
+    .where(
+      and(
+        eq(rewardLedger.workspaceId, auth.workspaceId),
+        ne(rewardDefinitions.key, "shard"),
+        ne(rewardLedger.reason, "adjustment"),
+        gte(rewardLedger.createdAt, from),
+        lt(rewardLedger.createdAt, to),
+      ),
+    )
+    .orderBy(rewardLedger.createdAt)
+    .limit(200);
 }
