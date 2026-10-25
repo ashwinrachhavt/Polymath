@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
 
 /*
@@ -9,6 +9,17 @@ import postgres from "postgres";
  * fetches). No network, no model key, no spend. Screenshots upload as the
  * feature-pixels CI artifact.
  */
+
+/**
+ * Resolves when this click's server action returns. Proof the triggered run
+ * completed - never satisfied by the previous attempt's rendered card set.
+ */
+function waitForAction(page: Page) {
+  return page.waitForResponse(
+    (res) => res.request().method() === "POST" && res.request().headers()["next-action"] !== undefined && res.ok(),
+    { timeout: 60_000 },
+  );
+}
 
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
 const VIEWPORTS = [
@@ -119,9 +130,15 @@ for (const vp of VIEWPORTS) {
       await page.screenshot({ path: `test-results/feature-pixels/company-profile-fresh-${vp.name}.png`, style: HIDE_DEV_CHROME });
     }
 
+    const actionDone = waitForAction(page);
     await trigger.click();
+    await actionDone;
+    // The controls' completion line renders only from this run's resolved
+    // action (client state, never server-rendered), then the revalidated
+    // card set is asserted.
+    await expect(page.getByText(/\d+ cards? from \d+ sources?\./)).toBeVisible();
     const result = page.getByTestId("profile-research-result");
-    await expect(result).toBeVisible({ timeout: 60_000 });
+    await expect(result).toBeVisible();
     // Exact text: the source links quote these titles and would otherwise
     // trip strict mode.
     await expect(result.getByText("Spending analytics for small teams", { exact: true })).toBeVisible();
@@ -145,16 +162,21 @@ for (const vp of VIEWPORTS) {
     // After a prior attempt the trigger reads "Research again".
     const trigger = page.getByRole("button", { name: /Research (person|again)/ });
     await expect(trigger).toBeVisible({ timeout: 30_000 });
+    const actionDone = waitForAction(page);
     await trigger.click();
+    await actionDone;
+    await expect(page.getByText(/\d+ cards? from \d+ sources?\./)).toBeVisible();
     const result = page.getByTestId("profile-research-result");
-    await expect(result).toBeVisible({ timeout: 60_000 });
+    await expect(result).toBeVisible();
     await expect(result.getByText("Platform lead at Example", { exact: true })).toBeVisible();
     await expect(result.getByText("Ask about the pricing launch", { exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/person-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
     // A focus button re-researches one angle; the card set refreshes in place.
+    const focusDone = waitForAction(page);
     await page.getByRole("button", { name: "Talking points" }).click();
-    await expect(result.getByText("Talking points", { exact: false }).first()).toBeVisible({ timeout: 60_000 });
+    await focusDone;
+    await expect(result.getByText("Talking points", { exact: false }).first()).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/person-profile-focus-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     // Prove the card grid fits the real viewport: no card is clipped sideways.
