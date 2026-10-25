@@ -15,6 +15,7 @@ import { resolveRequestOrigin } from "@/domains/integrations/origin";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
 import { syncNotionAccount } from "@/domains/integrations/notion";
+import { setSenderAliasGrant } from "@/domains/actions/policy";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -219,4 +220,23 @@ export async function syncNotionAction(input: { accountId: string }): Promise<
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The Notion sync failed." };
   }
+}
+
+/*
+ * ASH-289: the sending grant is owner-only - it decides which identities the
+ * workspace will send as, which is the same authority as connecting one.
+ */
+export async function setSenderAliasesAction(input: { aliases: string[] }): Promise<Result> {
+  const auth = await getAuthContext();
+  try {
+    requireRole(auth, "owner");
+    if (!Array.isArray(input.aliases) || input.aliases.some((alias) => typeof alias !== "string")) {
+      return { ok: false, error: "The authorized senders must be a list of account aliases." };
+    }
+    await setSenderAliasGrant(auth, "gmail.send", input.aliases);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
 }

@@ -143,6 +143,12 @@ export async function resolveConnectedAccount(
   auth: AuthContext,
   provider: string,
   alias?: string,
+  /**
+   * ASH-289: when a sending grant names authorized aliases, resolution happens
+   * inside that list only - an unnamed sender never falls back to a connected
+   * account the grant does not cover.
+   */
+  restrictToAliases?: string[],
 ): Promise<
   | {
       ok: true;
@@ -178,7 +184,11 @@ export async function resolveConnectedAccount(
     .orderBy(asc(externalAccounts.alias))
     .limit(25);
 
-  const usable = rows.filter((row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0);
+  const connected = rows.filter((row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0);
+  // undefined = no grant policy (unrestricted); [] = a grant saved empty,
+  // which blocks every sender - an empty list must NOT fall back to all
+  // connected accounts.
+  const usable = restrictToAliases === undefined ? connected : connected.filter((row) => restrictToAliases.includes(row.alias));
 
   let match: (typeof usable)[number] | undefined;
   if (alias) {
@@ -187,7 +197,16 @@ export async function resolveConnectedAccount(
       return { ok: false, code: "not_connected", message: `No connected ${provider} account named "${alias}".` };
     }
   } else if (usable.length === 0) {
-    return { ok: false, code: "not_connected", message: `No ${provider} account is connected.` };
+    return {
+      ok: false,
+      code: "not_connected",
+      message:
+        restrictToAliases === undefined
+          ? `No ${provider} account is connected.`
+          : restrictToAliases.length > 0
+            ? `None of the authorized ${provider} senders (${restrictToAliases.join(", ")}) is connected.`
+            : `Sending is blocked: the ${provider} sending grant authorizes no senders.`,
+    };
   } else if (usable.length > 1) {
     return {
       ok: false,
