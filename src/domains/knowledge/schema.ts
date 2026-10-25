@@ -700,22 +700,23 @@ export const embeddings = pgTable(
 );
 
 /*
- * A project is a long-lived home for a body of work (Perplexity-Spaces
+ * A notebook is a long-lived home for a body of work (Perplexity-Spaces
  * parity): custom instructions, its own source set, connectors scoped from
  * the workspace's gateway accounts, automations, and memory. It grew out of
- * the dossier concept and keeps the pinned-source boundary: it admits exact
- * source versions and the assistant stays inside them.
+ * the dossier concept. Its tables are "notebooks", not "projects": the work
+ * domain already owns a projects table this one once collided with, while
+ * the /projects URL and the rail's Notebook label stay as the user sees them.
  */
-export const projects = pgTable(
-  "projects",
+export const notebooks = pgTable(
+  "notebooks",
   {
     id: primaryId(),
     workspaceId: tenantId(),
     title: text("title").notNull(),
     description: text("description"),
-    /** The dossier's research question, kept until the project description takes over. */
+    /** The dossier's research question, kept until the notebook description takes over. */
     descriptionSeed: text("description_seed"),
-    /** Custom instructions injected into every project-scoped session. */
+    /** Custom instructions injected into every notebook-scoped session. */
     instructions: text("instructions"),
     emoji: text("emoji"),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
@@ -723,60 +724,60 @@ export const projects = pgTable(
     projectId: uuid("project_id"),
     ...mutable,
   },
-  (t) => [index("projects_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],
+  (t) => [index("notebooks_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],
 );
 
-export const projectSources = pgTable(
-  "project_sources",
+export const notebookSources = pgTable(
+  "notebook_sources",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    projectId: uuid("project_id")
+    notebookId: uuid("notebook_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => notebooks.id, { onDelete: "cascade" }),
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    /** Pinned version: a project's boundary does not drift when a page changes. */
+    /** Pinned version: a notebook's boundary does not drift when a page changes. */
     pinnedContentHash: text("pinned_content_hash"),
     note: text("note"),
     ...recorded,
   },
   (t) => [
-    uniqueIndex("project_sources_key").on(t.projectId, t.sourceId),
-    index("project_sources_source_idx").on(t.sourceId),
+    uniqueIndex("notebook_sources_key").on(t.notebookId, t.sourceId),
+    index("notebook_sources_source_idx").on(t.sourceId),
   ],
 );
 
-export const projectQuestions = pgTable(
-  "project_questions",
+export const notebookQuestions = pgTable(
+  "notebook_questions",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    projectId: uuid("project_id")
+    notebookId: uuid("notebook_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => notebooks.id, { onDelete: "cascade" }),
     question: text("question").notNull(),
     status: projectQuestionStatus("status").notNull().default("open"),
     answer: text("answer"),
     ...mutable,
   },
-  (t) => [index("project_questions_open_idx").on(t.projectId, t.status)],
+  (t) => [index("notebook_questions_open_idx").on(t.notebookId, t.status)],
 );
 
 /*
  * Automations: a prompt on a schedule. The cron dispatcher finds due rows and
- * starts an ordinary agent run bound to the project, so an automation's output
+ * starts an ordinary agent run bound to the notebook, so an automation's output
  * is visible in the same Sessions list as everything else.
  */
-export const projectAutomations = pgTable(
-  "project_automations",
+export const notebookAutomations = pgTable(
+  "notebook_automations",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    projectId: uuid("project_id")
+    notebookId: uuid("notebook_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => notebooks.id, { onDelete: "cascade" }),
     prompt: text("prompt").notNull(),
     /** Cron expression, evaluated in UTC by the dispatcher. */
     schedule: text("schedule").notNull(),
@@ -786,51 +787,51 @@ export const projectAutomations = pgTable(
     ...mutable,
   },
   (t) => [
-    index("project_automations_due_idx").on(t.nextRunAt).where(sql`archived_at is null and enabled is true`),
-    index("project_automations_project_idx").on(t.projectId, t.createdAt),
+    index("notebook_automations_due_idx").on(t.nextRunAt).where(sql`archived_at is null and enabled is true`),
+    index("notebook_automations_notebook_idx").on(t.notebookId, t.createdAt),
   ],
 );
 
 /*
- * Project memory: what this project remembers, injected into its sessions.
+ * Notebook memory: what this notebook remembers, injected into its sessions.
  * Manual rows are edited in the right rail; session rows are extracted from
  * conversations and always carry the message they came from.
  */
-export const projectMemories = pgTable(
-  "project_memories",
+export const notebookMemories = pgTable(
+  "notebook_memories",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    projectId: uuid("project_id")
+    notebookId: uuid("notebook_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => notebooks.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     source: projectMemorySource("source").notNull().default("manual"),
     ...mutable,
   },
-  (t) => [index("project_memories_project_idx").on(t.projectId, t.createdAt)],
+  (t) => [index("notebook_memories_notebook_idx").on(t.notebookId, t.createdAt)],
 );
 
 /*
- * Per-project connector allowlist over the workspace's gateway accounts. No
- * rows means every account is available - projects created before scoping
+ * Per-notebook connector allowlist over the workspace's gateway accounts. No
+ * rows means every account is available - notebooks created before scoping
  * keep working; rows make it an allowlist the tool builder reads.
  */
-export const projectAccounts = pgTable(
-  "project_accounts",
+export const notebookAccounts = pgTable(
+  "notebook_accounts",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    projectId: uuid("project_id")
+    notebookId: uuid("notebook_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => notebooks.id, { onDelete: "cascade" }),
     gatewayAccountId: uuid("gateway_account_id").notNull(),
     enabled: boolean("enabled").notNull().default(true),
     ...recorded,
   },
   (t) => [
-    uniqueIndex("project_accounts_key").on(t.projectId, t.gatewayAccountId),
-    index("project_accounts_project_idx").on(t.projectId),
+    uniqueIndex("notebook_accounts_key").on(t.notebookId, t.gatewayAccountId),
+    index("notebook_accounts_notebook_idx").on(t.notebookId),
   ],
 );
 

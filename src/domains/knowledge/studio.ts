@@ -9,7 +9,7 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { artifactLinks, artifactVersions, artifacts, projectSources, projects, sources } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, notebookSources, notebooks, sources } from "./schema";
 import { documents } from "./schema";
 import { buildObjective } from "./generation-brief";
 import {
@@ -62,9 +62,9 @@ export async function startStudioGenerate(
   const kind = input.kind ?? "report";
   if (!isGeneratableKind(kind)) throw new StudioError("unsupported_kind", "That artifact kind is not generated here.");
   const [project] = await db
-    .select({ id: projects.id, title: projects.title })
-    .from(projects)
-    .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, auth.workspaceId)))
+    .select({ id: notebooks.id, title: notebooks.title })
+    .from(notebooks)
+    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!project) throw new StudioError("project_not_found", "No such project.");
 
@@ -73,9 +73,9 @@ export async function startStudioGenerate(
   // URL or YouTube capture has no file yet and binds by its canonical address.
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
-    .from(projectSources)
-    .innerJoin(projects, and(eq(projects.id, projectSources.projectId), eq(projects.workspaceId, auth.workspaceId)))
-    .innerJoin(sources, eq(sources.id, projectSources.sourceId))
+    .from(notebookSources)
+    .innerJoin(notebooks, and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
+    .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
     .innerJoin(
       documents,
       and(
@@ -86,7 +86,7 @@ export async function startStudioGenerate(
         ),
       ),
     )
-    .where(and(eq(projectSources.projectId, project.id), eq(projectSources.workspaceId, auth.workspaceId)));
+    .where(and(eq(notebookSources.notebookId, project.id), eq(notebookSources.workspaceId, auth.workspaceId)));
 
   const objective = buildObjective(kind, {
     projectTitle: project.title,
@@ -180,10 +180,10 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       // YouTube capture is a pinned source before its bytes land, so its
       // document still gets the artifact link.
       const pinned = await tx
-        .select({ documentId: documents.id, hash: projectSources.pinnedContentHash })
-        .from(projectSources)
-        .innerJoin(projects, and(eq(projects.id, projectSources.projectId), eq(projects.workspaceId, auth.workspaceId)))
-        .innerJoin(sources, eq(sources.id, projectSources.sourceId))
+        .select({ documentId: documents.id, hash: notebookSources.pinnedContentHash })
+        .from(notebookSources)
+        .innerJoin(notebooks, and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
+        .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
         .innerJoin(
           documents,
           and(
@@ -194,7 +194,7 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
             ),
           ),
         )
-        .where(and(eq(projectSources.projectId, dossierSubject.id), eq(projectSources.workspaceId, auth.workspaceId)));
+        .where(and(eq(notebookSources.notebookId, dossierSubject.id), eq(notebookSources.workspaceId, auth.workspaceId)));
       for (const p of pinned) {
         await tx
           .insert(artifactLinks)

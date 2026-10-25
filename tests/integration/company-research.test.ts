@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { artifacts, artifactVersions, documents, projects, projectSources, files, sources } from "@/domains/knowledge/schema";
+import { artifacts, artifactVersions, documents, notebooks, notebookSources, files, sources } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -66,20 +66,20 @@ suite("runCompanyResearch", () => {
     const seeded = await seedWorkspace(db, `research-project-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const [project] = await db
-      .insert(projects)
+      .insert(notebooks)
       .values({ workspaceId: auth.workspaceId, title: "Acme project", description: "How does Acme make money?", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
     const [source] = await db
       .insert(sources)
       .values({ workspaceId: auth.workspaceId, kind: "web", title: "Acme about page", url: "https://acme.example/about", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
-    await db.insert(projectSources).values({ workspaceId: auth.workspaceId, projectId: project.id, sourceId: source.id });
+    await db.insert(notebookSources).values({ workspaceId: auth.workspaceId, notebookId: project.id, sourceId: source.id });
     // A document-backed source (the product project's primary shape): blob -> file -> document, pinned to the same project.
     const [blob] = await db.insert(blobObjects).values({ workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(), sizeBytes: 4, mimeType: "application/pdf" }).returning();
     const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "acme-10k.pdf" }).returning();
     const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title: "Acme 10-K", fileId: file.id }).returning();
     const [docSource] = await db.insert(sources).values({ workspaceId: auth.workspaceId, kind: "document", title: "Acme 10-K", fileId: file.id, createdBy: auth.userId, updatedBy: auth.userId }).returning();
-    await db.insert(projectSources).values({ workspaceId: auth.workspaceId, projectId: project.id, sourceId: docSource.id });
+    await db.insert(notebookSources).values({ workspaceId: auth.workspaceId, notebookId: project.id, sourceId: docSource.id });
     void doc;
 
     let searched = 0;
