@@ -372,14 +372,18 @@ export async function listHitConnections(auth: AuthContext, ids: readonly string
   const idArray = sql.raw(`array[${ids.map((id) => `'${id}'`).join(",")}]::uuid[]`);
   const rows = await db.execute(sql`
     select direction, hit_id, other_id, title, kind, link_type, context, total from (
-      (select 'out' as direction, al.artifact_id as hit_id, t.id as other_id, t.title, t.kind::text, al.link_type, al.context,
+      (select 'out' as direction, al.artifact_id as hit_id, al.target_id as other_id,
+              coalesce(t.title, al.label) as title, coalesce(t.kind::text, al.target_type) as kind, al.link_type, al.context,
               count(*) over (partition by al.artifact_id) as total
        from artifact_links al
-       join artifacts t on t.id = al.target_id
+       left join artifacts t on t.id = al.target_id
        where al.workspace_id = ${auth.workspaceId}
          and al.artifact_id = any(${idArray})
          and al.link_type not in ('semantic', 'dismissed')
-         and t.archived_at is null
+         -- Card targets hide when archived; non-card targets (documents,
+         -- threads, ...) live outside the artifact store, so the title the
+         -- edge recorded at write time (label) is the only honest name.
+         and ((t.id is not null and t.archived_at is null) or (t.id is null and al.label is not null))
        order by al.created_at desc
        limit ${HIT_CONNECTION_ROW_LIMIT})
       union all
