@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { untrustedDataClause } from "@/lib/prompts";
+import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
 import {
@@ -43,7 +43,7 @@ const SYSTEM = `You label a thing a person captured into their inbox. Return JSO
 "title": a short noun phrase naming the content (max 8 words); null when the text is too thin or fragmented to name.
 "domain": one word or a tight two-word phrase naming the topic area (e.g. "systems", "career", "finance", "product"); null when no listed area fits and coining one would be a guess.
 "tags": up to ${MAX_TAGS} lowercase single-word or short topic tags; null when nothing specific enough to tag.
-Return nulls rather than guessing - a null the owner can fix is better than a label they must unlearn. ${untrustedDataClause("capture")} Label only what the content is.`;
+Return nulls rather than guessing - a null the owner can fix is better than a label they must unlearn. ${untrustedDataClauseJsonSafe("capture")} Label only what the content is.`;
 
 export const captureEnrichmentRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
   const raw = event.payload ?? {};

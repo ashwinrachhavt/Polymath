@@ -100,13 +100,11 @@ const SEARCH_CHOICES: Record<string, readonly string[]> = {
   "ai-gateway-perplexity": ["AI_GATEWAY_API_KEY"],
   duckduckgo: [],
 };
-const SEARCH_FALLBACK: readonly string[] = [
-  "SEARXNG_URL",
-  "FIRECRAWL_HOSTED_API_KEY",
-  "BRAVE_SEARCH_API_KEY",
-  "TAVILY_API_KEY",
-  "EXA_API_KEY",
-];
+// Mirrors webSearchProvider()'s auto-chain restricted to what the provider
+// registry has enabled: a key whose registry entry is disabled (brave,
+// tavily, exa, parallel — card-backed or unverified) does not make search
+// ready, because the call would fail closed at the gate.
+const SEARCH_FALLBACK: readonly string[] = ["SEARXNG_URL", "FIRECRAWL_HOSTED_API_KEY"];
 const search = (env: Record<string, string | undefined>) =>
   selectorResolution(env, "SEARCH_PROVIDER", SEARCH_CHOICES, SEARCH_FALLBACK);
 

@@ -47,7 +47,7 @@ commit a real value.
 | `DOCLING_SERVE_URL` | Local Docling extraction provider | Falls through to Reducto |
 | `REDUCTO_API_KEY` | Hosted Reducto extraction provider | Falls through to LlamaParse |
 | `LLAMAPARSE_API_KEY` | Hosted extraction provider | Falls through to PDF text layer |
-| `SEARCH_PROVIDER` | `searxng`, `brave`, `tavily`, `exa`, `duckduckgo` | Resolution order applies |
+| `SEARCH_PROVIDER` | `firecrawl`, `searxng`, `brave`, `tavily`, `exa`, `parallel`, `ai-gateway-<provider>`, `duckduckgo` | Resolution order applies |
 | `SEARXNG_URL` | Private metasearch endpoint | Falls back to keyed providers |
 | `FIRECRAWL_API_URL` | Firecrawl endpoint | Crawl unavailable |
 | `FIRECRAWL_API_KEY` | Firecrawl auth | |

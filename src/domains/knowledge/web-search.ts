@@ -1,5 +1,5 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { providerEntry, ProviderDisabledError } from "@/integrations/providers/registry";
+import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, QuotaExhaustedError, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 import { firecrawlSearchCost } from "@/integrations/search/firecrawl";
 import { WebSearchError, webSearchProvider, type WebSearchResponse } from "@/integrations/search/provider";
@@ -47,7 +47,10 @@ export async function searchWebForAgent(
     // per-tool names (ai-gateway-tako, ...) over one shared registry entry.
     const entry = providerEntry(provider.name) ?? providerEntry(provider.name.replace(/^(ai-gateway-).+/, "$1search"));
     if (!entry || !entry.enabled) {
-      return { ok: false, error: `web search provider ${provider.name} is not enabled for this workspace; opt in through the provider registry` };
+      return {
+        ok: false,
+        error: `web search provider ${provider.name} is registered as disabled; enabling it is a code change in the provider registry, not a setting`,
+      };
     }
     const run = () => provider.search(query, limit);
     const results = entry.quota
@@ -55,9 +58,6 @@ export async function searchWebForAgent(
       : await run();
     return { ok: true, provider: provider.name, query, results };
   } catch (cause) {
-    if (cause instanceof ProviderDisabledError) {
-      return { ok: false, error: `web search provider is disabled, try again` };
-    }
     if (cause instanceof QuotaExhaustedError) {
       return { ok: false, error: `free search allowance exhausted for ${cause.provider}; it renews with the next period` };
     }

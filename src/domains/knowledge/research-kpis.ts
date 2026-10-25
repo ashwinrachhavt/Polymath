@@ -1,5 +1,5 @@
 import type { CompanyResearchInput, SourceManifestEntry } from "./company-research";
-import { untrustedDataClause } from "@/lib/prompts";
+import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 
 /*
  * ASH-114 step 5: period-aligned financials and KPIs as structured rows, not
@@ -106,7 +106,7 @@ export const KPI_SYSTEM_RULES = `Answer with ONLY a JSON array of financial figu
 "currency": the currency of the figure.
 "basis": the accounting basis (GAAP, non-GAAP, or another label the source uses).
 "source": the manifest ref "S#" the figure came from.
-Report only figures that appear verbatim in the sources; invent nothing; separate metrics stay separate rows, never merged or derived. If the sources contain no usable figures, answer with [] and nothing else - never estimate a missing figure to fill the shape. ${untrustedDataClause("sources")}`;
+Report only figures that appear verbatim in the sources; invent nothing; separate metrics stay separate rows, never merged or derived. If the sources contain no usable figures, answer with [] and nothing else - never estimate a missing figure to fill the shape. ${untrustedDataClauseJsonSafe("sources")}`;
 
 /** Prompt for the financial section: structured extraction instead of prose. */
 export function buildKpiPrompt(input: CompanyResearchInput, manifest: SourceManifestEntry[]): string {

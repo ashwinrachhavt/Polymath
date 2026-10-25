@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { untrustedDataClause } from "@/lib/prompts";
+import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import {
   GenerationRequestError,
@@ -41,7 +41,7 @@ Each zettel is ONE claim the document actually makes - one idea per note, no com
 "title": a short noun phrase (max 8 words) naming the claim.
 "claim": the document's assertion in your own words, stated as a standalone sentence.
 "quote": copied VERBATIM from the document - the exact passage that supports the claim, never paraphrased, never reconstructed from memory. If you cannot find a supporting passage, drop the claim.
-Return at most 8, strongest claims first. Return {"zettels":[]} when the document makes no clear claims - never invent a claim to fill the shape. ${untrustedDataClause("document")}`;
+Return at most 8, strongest claims first. Return {"zettels":[]} when the document makes no clear claims - never invent a claim to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
 
 function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): ZettelExtractor {
   return {

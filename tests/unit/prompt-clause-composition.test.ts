@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { untrustedDataClause } from "@/lib/prompts";
+import { untrustedDataClause, untrustedDataClauseJsonSafe } from "@/lib/prompts";
 
 /*
  * Value: protects=the hardened SYSTEM prompts actually carry the shared
@@ -50,7 +50,7 @@ describe("hardened prompts carry the shared clause", () => {
       }),
     );
     await openRouterZettelExtractor({ OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv).extract("text");
-    expect(system).toContain(untrustedDataClause("document"));
+    expect(system).toContain(untrustedDataClauseJsonSafe("document"));
   });
 
   it("company research section writer includes the clause in its system prompt", async () => {
@@ -60,6 +60,6 @@ describe("hardened prompts carry the shared clause", () => {
 
   it("KPI extraction rules include the clause", async () => {
     const { KPI_SYSTEM_RULES } = await import("@/domains/knowledge/research-kpis");
-    expect(KPI_SYSTEM_RULES).toContain(untrustedDataClause("sources"));
+    expect(KPI_SYSTEM_RULES).toContain(untrustedDataClauseJsonSafe("sources"));
   });
 });

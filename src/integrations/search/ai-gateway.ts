@@ -62,9 +62,13 @@ export function aiGatewaySearchProvider(
         typeof message?.content === "string"
           ? message.content
           : (message?.content ?? []).map((part) => part.text ?? "").join("");
-      // One synthesized answer, not a URL list — surface it as a single result
-      // so the normalized shape still holds.
-      return text ? [{ title: query, url: "https://ai-gateway.vercel.sh", snippet: text, publishedAt: null }] : [];
+      // The gateway executes the search server-side and returns one grounded
+      // answer; its real citations live in provider_metadata, which this shape
+      // discards. Surfacing the answer as a result with a fabricated URL would
+      // misattribute model prose to a page it did not come from, so the result
+      // carries an ai-gateway:// provenance marker instead of a fake source.
+      // Callers citing this result must name the marker, not a URL.
+      return text ? [{ title: query, url: `ai-gateway://${provider}`, snippet: text, publishedAt: null }] : [];
     },
   };
 }

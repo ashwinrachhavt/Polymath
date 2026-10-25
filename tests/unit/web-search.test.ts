@@ -122,6 +122,35 @@ describe("webSearchProvider resolution", () => {
   });
 });
 
+describe("searchWebForAgent registry gate", () => {
+  it("fails closed when the resolved provider's registry entry is disabled", async () => {
+    const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
+    // parallel's key is set and SEARCH_PROVIDER names it, but its registry
+    // entry is disabled (card-backed): the call must refuse before any fetch.
+    vi.stubEnv("SEARCH_PROVIDER", "parallel");
+    vi.stubEnv("PARALLEL_API_KEY", "pl-test");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await searchWebForAgent({ workspaceId: "w1" }, { query: "q" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("disabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("maps a gateway adapter name onto its shared registry entry", async () => {
+    const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
+    vi.stubEnv("SEARCH_PROVIDER", "ai-gateway-tako");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "gw-test");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await searchWebForAgent({ workspaceId: "w1" }, { query: "q" });
+    // The ai-gateway-search entry is disabled (post-promo billing): refuse.
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("disabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("searchWebForAgent quota gating", () => {
   it("reserves firecrawl credits from the ledger and stops hard at exhaustion", async () => {
     const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
