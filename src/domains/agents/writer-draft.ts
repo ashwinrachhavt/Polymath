@@ -171,8 +171,8 @@ export type DraftReplyOutcome = {
   proposalId: string;
   /** A replay of the same intent with a fresh draft: revision appended, proposal unchanged. */
   revised: boolean;
-  /** The proposal existed in a terminal state and was re-opened with the new draft. */
-  reopened: boolean;
+  /** A re-ask after a decision filed a NEW proposal: decisions are terminal. */
+  fresh: boolean;
   to: string;
   subject: string;
   citations: DocumentCitation[];
@@ -256,9 +256,11 @@ export async function draftReply(
 
   // Deterministic assembly: recipient and threading from the record, words
   // from the Writer. The dedupe key names the exact message being answered,
-  // so a re-ask about the same message revises one proposal instead of
-  // stacking send intents.
-  const dedupeKey = `gmail.writer:${auth.workspaceId}:${input.threadId}:${inReplyTo}`;
+  // so a replay of the same intent revises one proposal instead of stacking
+  // send intents. A DECIDED proposal is terminal (reject -> terminal,
+  // approval binds the exact revision): a genuine re-ask is a new intent and
+  // files a fresh proposal under the next attempt suffix, never a re-open.
+  const baseDedupeKey = `gmail.writer:${auth.workspaceId}:${input.threadId}:${inReplyTo}`;
   const pin = {
     resolved: true as const,
     externalAccountId: deps.account.externalAccountId,
@@ -270,107 +272,98 @@ export async function draftReply(
   const preview = { to: recipient.to, subject, body: reply.body, citations, flags };
 
   return withTransaction(async (tx) => {
-    const created = await createProposal(
-      tx,
-      { workspaceId: auth.workspaceId },
-      {
-        capability: "gmail.send",
-        riskClass: "external_write",
-        targetType: "gmail_thread",
-        accountAlias: deps.account.alias,
-        title: `Reply to ${recipient.to}: ${subject}`,
-        expectedEffect: `Sends a reply from ${deps.account.alias} to ${recipient.to} on thread ${input.threadId}.`,
-        dedupeKey,
-        runId: input.runId,
-        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
-      },
-    );
-
-    if (!created.deduplicated) {
-      const pinned = withSenderAccountPin(pin, payload, preview);
-      await tx.insert(actionRevisions).values({
-        workspaceId: auth.workspaceId,
-        proposalId: created.proposalId,
-        revisionNumber: 1,
-        payload: pinned.payload,
-        preview: pinned.preview,
-        createdBy: auth.userId,
-      });
-      await tx
-        .update(actionProposals)
-        .set({ flags: flags.length > 0 ? flags : null })
-        .where(eq(actionProposals.id, created.proposalId));
-      await recordAudit(
-        auth,
-        {
-          action: "proposal.created",
-          subjectType: "action_proposal",
-          subjectId: created.proposalId,
-          summary: `Writer drafted a reply to ${recipient.to} (${citations.length} citations, ${flags.length} flags)`,
-        },
+    let dedupeKey = baseDedupeKey;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const created = await createProposal(
         tx,
+        { workspaceId: auth.workspaceId },
+        {
+          capability: "gmail.send",
+          riskClass: "external_write",
+          targetType: "gmail_thread",
+          accountAlias: deps.account.alias,
+          title: `Reply to ${recipient.to}: ${subject}`,
+          expectedEffect: `Sends a reply from ${deps.account.alias} to ${recipient.to} on thread ${input.threadId}.`,
+          dedupeKey,
+          runId: input.runId,
+          expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+        },
       );
-      return { proposalId: created.proposalId, revised: false, reopened: false, to: recipient.to, subject, citations, flags };
+
+      if (!created.deduplicated) {
+        const pinned = withSenderAccountPin(pin, payload, preview);
+        await tx.insert(actionRevisions).values({
+          workspaceId: auth.workspaceId,
+          proposalId: created.proposalId,
+          revisionNumber: 1,
+          payload: pinned.payload,
+          preview: pinned.preview,
+          createdBy: auth.userId,
+        });
+        await tx
+          .update(actionProposals)
+          .set({ flags: flags.length > 0 ? flags : null })
+          .where(eq(actionProposals.id, created.proposalId));
+        await recordAudit(
+          auth,
+          {
+            action: "proposal.created",
+            subjectType: "action_proposal",
+            subjectId: created.proposalId,
+            summary: `Writer drafted a reply to ${recipient.to} (${citations.length} citations, ${flags.length} flags)`,
+          },
+          tx,
+        );
+        return { proposalId: created.proposalId, revised: false, fresh: attempt > 0, to: recipient.to, subject, citations, flags };
+      }
+
+      const [proposal] = await tx
+        .select({ status: actionProposals.status })
+        .from(actionProposals)
+        .where(and(eq(actionProposals.id, created.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+        .limit(1);
+      if (!proposal) throw new Error("proposal vanished during re-draft");
+
+      if (proposal.status === "pending") {
+        // Same intent, fresh draft, nothing decided yet: append the revision
+        // that supersedes the earlier wording. No approval exists to outlive
+        // it - the executor refuses any revision but the approved one.
+        const [latest] = await tx
+          .select({ revisionNumber: actionRevisions.revisionNumber })
+          .from(actionRevisions)
+          .where(eq(actionRevisions.proposalId, created.proposalId))
+          .orderBy(desc(actionRevisions.revisionNumber))
+          .limit(1);
+        const pinned = withSenderAccountPin(pin, payload, preview);
+        await tx.insert(actionRevisions).values({
+          workspaceId: auth.workspaceId,
+          proposalId: created.proposalId,
+          revisionNumber: (latest?.revisionNumber ?? 0) + 1,
+          payload: pinned.payload,
+          preview: pinned.preview,
+          createdBy: auth.userId,
+        });
+        await tx
+          .update(actionProposals)
+          .set({ flags: flags.length > 0 ? flags : null, updatedAt: new Date(), updatedBy: auth.userId, version: sql`${actionProposals.version} + 1` })
+          .where(eq(actionProposals.id, created.proposalId));
+        await recordAudit(
+          auth,
+          {
+            action: "proposal.revised",
+            subjectType: "action_proposal",
+            subjectId: created.proposalId,
+            summary: `Writer re-drafted the reply to ${recipient.to}`,
+          },
+          tx,
+        );
+        return { proposalId: created.proposalId, revised: true, fresh: false, to: recipient.to, subject, citations, flags };
+      }
+
+      // Decided: the rejection stands, and an approval bound its exact
+      // revision. The re-ask is a new intent - try the next attempt key.
+      dedupeKey = `${baseDedupeKey}#${attempt + 2}`;
     }
-
-    // Same intent, fresh draft. Pending: append the revision that supersedes
-    // the earlier wording. Decided: re-open with the new draft - a rejection
-    // means "not that wording", and the re-ask is the owner's agent answering
-    // with new wording, which a human must still approve.
-    const [proposal] = await tx
-      .select({ status: actionProposals.status, version: actionProposals.version })
-      .from(actionProposals)
-      .where(and(eq(actionProposals.id, created.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
-      .limit(1);
-    if (!proposal) throw new Error("proposal vanished during re-draft");
-
-    const [latest] = await tx
-      .select({ revisionNumber: actionRevisions.revisionNumber })
-      .from(actionRevisions)
-      .where(eq(actionRevisions.proposalId, created.proposalId))
-      .orderBy(desc(actionRevisions.revisionNumber))
-      .limit(1);
-    const pinned = withSenderAccountPin(pin, payload, preview);
-    await tx.insert(actionRevisions).values({
-      workspaceId: auth.workspaceId,
-      proposalId: created.proposalId,
-      revisionNumber: (latest?.revisionNumber ?? 0) + 1,
-      payload: pinned.payload,
-      preview: pinned.preview,
-      createdBy: auth.userId,
-    });
-    await tx
-      .update(actionProposals)
-      .set({
-        flags: flags.length > 0 ? flags : null,
-        updatedAt: new Date(),
-        updatedBy: auth.userId,
-        version: sql`${actionProposals.version} + 1`,
-        // A decided proposal re-opens; a pending one just carries new wording.
-        ...(proposal.status === "pending" ? {} : { status: "pending" as const, decidedAt: null, decidedBy: null }),
-      })
-      .where(eq(actionProposals.id, created.proposalId));
-    await recordAudit(
-      auth,
-      {
-        action: proposal.status === "pending" ? "proposal.revised" : "proposal.reopened",
-        subjectType: "action_proposal",
-        subjectId: created.proposalId,
-        summary:
-          proposal.status === "pending"
-            ? `Writer re-drafted the reply to ${recipient.to}`
-            : `Writer re-drafted the reply to ${recipient.to}; re-opened for review`,
-      },
-      tx,
-    );
-    return {
-      proposalId: created.proposalId,
-      revised: proposal.status === "pending",
-      reopened: proposal.status !== "pending",
-      to: recipient.to,
-      subject,
-      citations,
-      flags,
-    };
+    throw new WriterDraftError("writer_failed", "The re-ask could not allocate a fresh proposal.");
   });
 }

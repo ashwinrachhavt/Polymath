@@ -963,7 +963,7 @@ export function createGateway({ transport }: { transport: Transport }) {
       );
       await settleCall(reservation.reservationId, {
         ok: true,
-        result: { proposalId: outcome.proposalId, revised: outcome.revised, reopened: outcome.reopened },
+        result: { proposalId: outcome.proposalId, revised: outcome.revised, fresh: outcome.fresh },
         durationMs: Date.now() - reservation.startedAt,
       });
       return {
@@ -980,7 +980,7 @@ export function createGateway({ transport }: { transport: Transport }) {
                 citations: outcome.citations.length,
                 flags: outcome.flags,
                 ...(outcome.revised ? { revised: true } : {}),
-                ...(outcome.reopened ? { reopened: true } : {}),
+                ...(outcome.fresh ? { freshProposal: true } : {}),
               }),
             },
           ],

@@ -13,7 +13,8 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * The assertions are the security properties, not the wording:
  *  - recipient and threading come from the thread record, not the model;
  *  - injection asks in the thread become quoted flags on the proposal;
- *  - a re-ask revises the one deduped proposal; a rejected draft re-opens;
+ *  - a re-ask revises the one deduped proposal; a decided proposal is
+ *    terminal - the re-ask files a fresh proposal that earns its own approval;
  *  - the bound revision carries the account pin the executor requires.
  */
 
@@ -123,7 +124,7 @@ suite("ASH-281 writer draft", () => {
     // The recipient is the newest message not from the connected account.
     expect(outcome.to).toBe("billing@vendor.co");
     expect(outcome.revised).toBe(false);
-    expect(outcome.reopened).toBe(false);
+    expect(outcome.fresh).toBe(false);
     // The injection ask in m1 was quoted, never acted on.
     expect(outcome.flags).toHaveLength(1);
     expect(outcome.flags[0].messageId).toBe("m1");
@@ -179,7 +180,7 @@ suite("ASH-281 writer draft", () => {
 
     expect(second.proposalId).toBe(first.proposalId);
     expect(second.revised).toBe(true);
-    expect(second.reopened).toBe(false);
+    expect(second.fresh).toBe(false);
 
     const revisions = await db
       .select()
@@ -195,8 +196,8 @@ suite("ASH-281 writer draft", () => {
     expect(workspaceId).toBeTruthy();
   });
 
-  it("a rejected draft re-opens when the re-ask arrives", async () => {
-    const { auth, resolved, runId } = await seed("writer-reopen");
+  it("a rejected draft is terminal: the re-ask files a fresh proposal", async () => {
+    const { auth, resolved, runId } = await seed("writer-reject-fresh");
     const thread = [gmailMessage("m1", "Client <client@their.co>", "Draft", "Could you send over the figures?")];
 
     const first = await writerDraft.draftReply(
@@ -223,11 +224,61 @@ suite("ASH-281 writer draft", () => {
       { transport: fakeTransport(thread) as never, account: resolved, provider: fakeProvider as never, search: fakeSearch as never },
     );
 
-    expect(second.proposalId).toBe(first.proposalId);
-    expect(second.reopened).toBe(true);
-    const [proposal] = await db.select().from(actionProposals).where(eq(actionProposals.id, first.proposalId));
-    expect(proposal.status).toBe("pending");
-    expect(proposal.decidedAt).toBeNull();
+    // The rejection stands. The re-ask is a new intent: a new proposal row,
+    // its own revision 1, its own approval to earn. Nothing about the
+    // rejected proposal is revived.
+    expect(second.proposalId).not.toBe(first.proposalId);
+    expect(second.fresh).toBe(true);
+    expect(second.revised).toBe(false);
+    const [rejectedProposal] = await db.select().from(actionProposals).where(eq(actionProposals.id, first.proposalId));
+    expect(rejectedProposal.status).toBe("rejected");
+    expect(rejectedProposal.decidedAt).not.toBeNull();
+    const rejectedRevisions = await db.select().from(actionRevisions).where(eq(actionRevisions.proposalId, first.proposalId));
+    expect(rejectedRevisions).toHaveLength(1);
+    const [freshProposal] = await db.select().from(actionProposals).where(eq(actionProposals.id, second.proposalId));
+    expect(freshProposal.status).toBe("pending");
+  });
+
+  it("an approval cannot survive a re-ask: the fresh proposal starts unapproved", async () => {
+    const { auth, resolved, runId } = await seed("writer-approval-fresh");
+    const thread = [gmailMessage("m1", "Client <client@their.co>", "Draft", "Could you send over the figures?")];
+
+    const first = await writerDraft.draftReply(
+      auth,
+      { runId, threadId: "thread-4" },
+      { transport: fakeTransport(thread) as never, account: resolved, provider: fakeProvider as never, search: fakeSearch as never },
+    );
+    const [rev1] = await db
+      .select()
+      .from(actionRevisions)
+      .where(eq(actionRevisions.proposalId, first.proposalId))
+      .orderBy(desc(actionRevisions.revisionNumber))
+      .limit(1);
+    await commands.decideProposal(auth, {
+      proposalId: first.proposalId,
+      expectedVersion: 1,
+      revisionId: rev1.id,
+      decision: "approved",
+    });
+
+    const second = await writerDraft.draftReply(
+      auth,
+      { runId, threadId: "thread-4" },
+      { transport: fakeTransport(thread) as never, account: resolved, provider: fakeProvider as never, search: fakeSearch as never },
+    );
+
+    // The approval bound the first proposal's exact revision. The re-ask
+    // lands on a new proposal with no decision - the old approval cannot
+    // authorize the new wording, and the approved row keeps its one revision.
+    expect(second.proposalId).not.toBe(first.proposalId);
+    expect(second.fresh).toBe(true);
+    const [approvedProposal] = await db.select().from(actionProposals).where(eq(actionProposals.id, first.proposalId));
+    expect(approvedProposal.status).toBe("approved");
+    const approvedRevisions = await db.select().from(actionRevisions).where(eq(actionRevisions.proposalId, first.proposalId));
+    expect(approvedRevisions).toHaveLength(1);
+    const [freshProposal] = await db.select().from(actionProposals).where(eq(actionProposals.id, second.proposalId));
+    expect(freshProposal.status).toBe("pending");
+    expect(freshProposal.decidedAt).toBeNull();
   });
 
   it("refuses a thread with no external sender instead of inventing a recipient", async () => {
