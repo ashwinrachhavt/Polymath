@@ -158,7 +158,7 @@ export function StatementStrip({ documentId }: { documentId: string }) {
         }
         if (payload) setStatus(payload);
       } catch {
-        setError("Reading the statement failed — network error.");
+        setError("Reading the statement failed. Check the connection and try again.");
       } finally {
         setReading(false);
       }

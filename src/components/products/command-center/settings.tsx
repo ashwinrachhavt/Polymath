@@ -154,7 +154,7 @@ function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }
   const missing = capabilities.filter((c) => !c.configured);
   const ready = capabilities.filter((c) => c.configured);
   return (
-    <Panel title="Configured capabilities" description="What this deployment can run right now, read from its environment. Names only — never values.">
+    <Panel title="Configured capabilities" description="What this deployment can run right now, read from its environment. Names only, never values.">
       {missing.length > 0 ? <div className="flex flex-col gap-3">{missing.map((c) => <Unavailable key={c.id} feature={c.label}>{c.reason} <span className="readout mt-1 block text-xs">{c.missingEnv.join(", ")}</span></Unavailable>)}</div> : null}
       {ready.length > 0 ? <div className="mt-4 flex flex-wrap gap-2">{ready.map((c) => <Status key={c.id}>{c.label} ready</Status>)}</div> : null}
       {missing.length === 0 ? <p className="mt-3 text-[13px] text-muted-foreground">Every integration this release claims is configured.</p> : <p className="mt-3 text-[13px] text-muted-foreground">{missing.length} of {capabilities.length} are not configured. Each one is listed above with the variable that turns it on.</p>}

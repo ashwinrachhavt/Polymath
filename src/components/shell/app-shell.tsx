@@ -41,7 +41,14 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
         <SideNav />
         <div className="flex min-w-0 flex-1 flex-col">
           {!headerless ? <TopBar clerkConfigured={clerkConfigured} /> : null}
-          <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
+          <main
+            id="content"
+            tabIndex={-1}
+            className="flex min-w-0 flex-1 flex-col"
+            /* Sticky headers anchor below the top bar where one exists; /alfred routes
+               render no top bar, so their anchor is the window's own top. */
+            style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
+          >
             <Suspense fallback={null}><PreviewBanner /></Suspense>
             {/* Preview mutations are reachable from canonical routes, so the storage warning must be too. It renders null when empty. */}
             <PreviewStorageWarning />

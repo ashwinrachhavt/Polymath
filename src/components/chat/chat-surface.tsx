@@ -10,7 +10,7 @@ import { useChatStream, type ChatState } from "./use-chat-stream";
 import { toolGlyph } from "./provider-icon";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
-import { ComposerPlus, type RecordReference } from "./composer-plus";
+import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -87,6 +87,26 @@ export function ChatSurface({
   className,
 }: ChatSurfaceProps) {
   const [draft, setDraft] = useState("");
+  const [caret, setCaret] = useState(0);
+  // @-mention: the draft and caret yield the token; whitespace closes it.
+  const mention = mentionAt(draft, caret);
+  const mentionOpen = mention?.open ?? false;
+  const mentionQuery = mention?.query ?? "";
+  // A first message typed on a surface that navigated here (the Assistant home)
+  // crosses via sessionStorage; read once, then clear so a reload never replays it.
+  const [crossedMessage] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const key = `chat-optimistic:${runId}`;
+      const value = window.sessionStorage.getItem(key);
+      if (value === null) return null;
+      window.sessionStorage.removeItem(key);
+      return value;
+    } catch {
+      return null;
+    }
+  });
+  const carried = optimisticMessage ?? crossedMessage;
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -96,12 +116,13 @@ export function ChatSurface({
   const [plusOpen, setPlusOpen] = useState(false);
   const [plusQuery, setPlusQuery] = useState("");
   useEffect(() => {
-    if (!plusOpen) return;
+    if (!plusOpen && !mentionOpen) return;
+    const query = mentionOpen ? mentionQuery : plusQuery;
     const controller = new AbortController();
     // Fetching lands in the timeout, so every setRecords call is async from
     // React's view — no synchronous setState inside the effect body.
     const timer = setTimeout(() => {
-      void fetch(`/api/v1/records/search?q=${encodeURIComponent(plusQuery)}`, { signal: controller.signal })
+      void fetch(`/api/v1/records/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : { records: [] }))
         .then((body: { records?: RecordReference[] }) => setRecords(body.records ?? []))
         .catch(() => setRecords([]));
@@ -110,7 +131,7 @@ export function ChatSurface({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [plusOpen, plusQuery]);
+  }, [plusOpen, plusQuery, mentionOpen, mentionQuery]);
 
   function insertReference(markdown: string) {
     setDraft((current) => (current.trim() ? `${current.trimEnd()} ${markdown} ` : `${markdown} `));
@@ -129,8 +150,8 @@ export function ChatSurface({
    * a duplicate question reads as a double send.
    */
   const optimistic =
-    optimisticMessage && !transcript.some((block) => block.kind === "user" && block.text === optimisticMessage)
-      ? optimisticMessage
+    carried && !transcript.some((block) => block.kind === "user" && block.text === carried)
+      ? carried
       : null;
   const userTexts = transcript.filter((block) => block.kind === "user").map((block) => block.text);
   const waiting = stillPending(pending, userTexts);
@@ -237,6 +258,7 @@ export function ChatSurface({
       ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
+        <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
         {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
           <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
             {emptyText ??
@@ -246,7 +268,7 @@ export function ChatSurface({
           <div className="space-y-4">
             {transcript.map((block) =>
               block.kind === "user" ? (
-                <div key={block.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5">
                   {block.text}
                 </div>
               ) : (
@@ -259,12 +281,12 @@ export function ChatSurface({
               ),
             )}
             {optimistic ? (
-              <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+              <div className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5">
                 {optimistic}
               </div>
             ) : null}
             {waiting.map((entry) => (
-              <div key={entry.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6 opacity-70">
+              <div key={entry.id} className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5 opacity-70">
                 {entry.text}
               </div>
             ))}
@@ -312,6 +334,7 @@ export function ChatSurface({
             ) : null}
           </div>
         )}
+        </div>
       </div>
 
       {chat.connection === "done" && !chat.lastFailedTurn ? (
@@ -336,7 +359,14 @@ export function ChatSurface({
           className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           placeholder={placeholder}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+          }}
+          onSelect={(event) => {
+            const target = event.currentTarget;
+            setCaret(target.selectionStart ?? target.value.length);
+          }}
           onKeyDown={(event) => {
             // Enter that confirms an IME candidate (Japanese, Chinese, Korean) is
             // not a send.
@@ -368,6 +398,11 @@ export function ChatSurface({
                 if (!open) setPlusQuery("");
               }}
               onFile={attachFile}
+              mention={mention}
+              onMentionPick={(record) => {
+                if (!mention) return;
+                setDraft((current) => replaceMention(current, mention, `[${record.title}](${record.href})`));
+              }}
             />
             <span className="px-1 truncate text-[11px] text-muted-foreground">
               {attachNote ?? "Enter to send · Shift+Enter for a new line"}
@@ -393,18 +428,16 @@ export function ChatSurface({
 /** The stop control a surface shows while a turn is live. */
 export function ChatCancel({ runId }: { runId: string }) {
   return (
-    <Button
+    <button
       type="button"
-      size="sm"
-      variant="outline"
-      className="w-fit"
+      className="hover:text-foreground inline-flex items-center gap-1.5 rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       onClick={() => {
         void fetch(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
       }}
     >
-      <Square aria-hidden />
+      <Square aria-hidden className="size-3" />
       Stop
-    </Button>
+    </button>
   );
 }
 

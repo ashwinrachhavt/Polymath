@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
 import { parseQuickAdd } from "@/domains/work/quick-add";
-import { completeTaskAction, completeTasksAction, createTaskAction, moveTaskAction } from "./actions";
+import { completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
 
 /*
@@ -35,14 +35,11 @@ export type WorkListItem = {
   row: WorkListRow;
   href: string;
   selected: boolean;
-  up: { after?: string; before?: string } | null;
-  down: { after?: string; before?: string } | null;
 };
 
 type Change =
   | { type: "add"; row: WorkListRow }
-  | { type: "complete"; id: string }
-  | { type: "move"; id: string; dir: "up" | "down" };
+  | { type: "complete"; id: string };
 
 const statusLabel: Record<WorkListRow["status"], string> = {
   inbox: "Inbox",
@@ -56,26 +53,16 @@ const statusLabel: Record<WorkListRow["status"], string> = {
 
 function apply(items: WorkListItem[], change: Change): WorkListItem[] {
   if (change.type === "complete") return items.filter((item) => item.row.id !== change.id);
-  if (change.type === "add") {
-    const item: WorkListItem = { row: change.row, href: "#", selected: false, up: null, down: null };
-    return [item, ...items];
-  }
-  const index = items.findIndex((item) => item.row.id === change.id);
-  const target = change.dir === "up" ? index - 1 : index + 1;
-  if (index < 0 || target < 0 || target >= items.length) return items;
-  const next = [...items];
-  [next[index], next[target]] = [next[target]!, next[index]!];
-  return next;
+  const item: WorkListItem = { row: change.row, href: "#", selected: false };
+  return [item, ...items];
 }
 
 export function WorkList({
   items,
-  canMove,
   showQuickAdd,
   emptyState,
 }: {
   items: WorkListItem[];
-  canMove: boolean;
   showQuickAdd: boolean;
   emptyState: React.ReactNode;
 }) {
@@ -352,33 +339,9 @@ export function WorkList({
                 </div>
               </div>
               </div>
-              {!optimistic && canMove ? (
+              {!optimistic ? (
                 <div className="flex flex-col items-end gap-1">
                   <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending || !item.up}
-                      aria-label={`Move ${row.title} up`}
-                      onClick={() =>
-                        item.up &&
-                        run(row.id, () => moveTaskAction({ taskId: row.id, expectedVersion: row.version, afterTaskId: item.up!.after, beforeTaskId: item.up!.before, idempotencyKey: key() }), { type: "move", id: row.id, dir: "up" })
-                      }
-                    >
-                      Up
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending || !item.down}
-                      aria-label={`Move ${row.title} down`}
-                      onClick={() =>
-                        item.down &&
-                        run(row.id, () => moveTaskAction({ taskId: row.id, expectedVersion: row.version, afterTaskId: item.down!.after, beforeTaskId: item.down!.before, idempotencyKey: key() }), { type: "move", id: row.id, dir: "down" })
-                      }
-                    >
-                      Down
-                    </Button>
                     <Button
                       size="sm"
                       variant="outline"

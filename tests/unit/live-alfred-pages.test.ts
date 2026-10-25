@@ -91,7 +91,8 @@ describe("live Alfred route functionality", () => {
       {
         id: "doc-fixture", title: "Existing document", filename: "fixture.pdf",
         mimeType: "application/pdf", kind: "file" as const,
-        status: { label: "Filed", tone: "done" as const }, sourceUrl: null,
+        reviewKey: "filed", undecidedProposals: 0,
+        sourceUrl: null,
         updatedAt: new Date().toISOString(), sizeBytes: 1200, pageCount: 2, docType: null,
         href: "/alfred/knowledge?doc=doc-fixture",
       },
@@ -100,6 +101,23 @@ describe("live Alfred route functionality", () => {
     expect(populated).toContain("Existing document");
     expect(populated.match(/aria-label="New"/g)).toHaveLength(1);
     expect(populated).toContain('type="file"');
+    expect(populated).toContain('aria-label="Grid view"');
+  });
+
+  it("says Needs review in the vault, not the review pipeline's field vocabulary", async () => {
+    vi.mocked(getVaultDocuments).mockResolvedValue([
+      {
+        id: "doc-review", title: "Statement", filename: "statement.pdf",
+        mimeType: "application/pdf", kind: "file" as const,
+        reviewKey: "fields_not_proposed", undecidedProposals: 0,
+        sourceUrl: null, updatedAt: new Date().toISOString(), sizeBytes: 1200, pageCount: 2,
+        docType: "statement", href: "/alfred/knowledge?doc=doc-review",
+      },
+    ]);
+    const html = await knowledge();
+    expect(html).toContain("Needs review");
+    expect(html).toContain("Bank statement");
+    expect(html).not.toContain("Fields not proposed");
   });
 
   it("presents a captured URL as a web page, not a file row", async () => {
@@ -107,7 +125,7 @@ describe("live Alfred route functionality", () => {
       {
         id: "page-fixture", title: "Ashwin Rachha", filename: null,
         mimeType: "text/markdown", kind: "web_page" as const,
-        status: { label: "Filed", tone: "done" as const },
+        reviewKey: "filed", undecidedProposals: 0,
         sourceUrl: "https://ashwinrachha.com/",
         updatedAt: new Date().toISOString(), sizeBytes: null, pageCount: null, docType: null,
         href: "/alfred/knowledge?doc=page-fixture",

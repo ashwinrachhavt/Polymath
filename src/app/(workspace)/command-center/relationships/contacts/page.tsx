@@ -291,7 +291,7 @@ function ContactDetailPanel({
             {detail.companies.map((company) => (
               <p key={company.linkId} className="text-xs text-muted-foreground">
                 {company.name}
-                {company.title ? ` — ${company.title}` : ""}{" "}
+                {company.title ? ` · ${company.title}` : ""}{" "}
                 {company.isCurrent ? "(current)" : "(past)"}
               </p>
             ))}
@@ -332,7 +332,7 @@ function ContactDetailPanel({
                 <p className="text-[13px]">{followUp.note || "Follow up"}</p>
                 <p className="text-xs text-muted-foreground">
                   {followUp.dueAt ? `Due ${followUp.dueAt.toISOString().slice(0, 10)}` : "No due date"}
-                  {followUp.status !== "open" ? ` — ${followUp.status}` : ""}
+                  {followUp.status !== "open" ? ` · ${followUp.status}` : ""}
                 </p>
               </div>
               {followUp.status === "open" ? (

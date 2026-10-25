@@ -196,7 +196,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           ).map(([column, columnNotes]) => (
             <section key={column} aria-label={`Tag ${column}`} className="rounded-md border border-border">
               <header className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{column}</span>
+                <span className="text-xs font-medium text-muted-foreground">{column}</span>
                 <span className="text-xs text-muted-foreground">{columnNotes.length}</span>
               </header>
               <ul className="flex flex-col gap-1 p-1.5">

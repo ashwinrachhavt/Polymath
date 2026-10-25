@@ -29,6 +29,7 @@ export type InboxRow = {
   processingState: string;
   kind: string;
   createdAt: string;
+  title: string | null;
   preview: string | null;
   url: string | null;
   version: number;
@@ -75,8 +76,14 @@ export function captureStateLabel(state: string): string {
   return STATE_LABELS[state] ?? state;
 }
 
-/** One line of primary text: the first line of the body, else the URL. */
-export function captureTitle(capture: { preview?: string | null; text?: string | null; url?: string | null; rawPayload?: unknown }): string {
+/**
+ * One line of primary text. Enrichment's short noun phrase leads when it exists
+ * (a capture's title column); the body's first line is the fallback for captures
+ * enrichment has not named, so a pasted essay never titles itself with a paragraph.
+ */
+export function captureTitle(capture: { title?: string | null; preview?: string | null; text?: string | null; url?: string | null; rawPayload?: unknown }): string {
+  const named = capture.title?.trim();
+  if (named) return named;
   const body = capture.preview ?? capture.text ?? "";
   const first = body.trim().split("\n")[0]?.trim();
   // A file capture's only label is its filename.

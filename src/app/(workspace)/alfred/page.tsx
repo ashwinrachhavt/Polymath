@@ -10,7 +10,6 @@ import { listRecentRuns } from "@/domains/agents/queries";
 import { listSkills } from "@/domains/skills/queries";
 import { timeAgo, timeAgoShort } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
-import { groupByRecency } from "@/lib/history-groups";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { NewConversation } from "./new-conversation";
 import { listConversations } from "@/domains/conversations/queries";
@@ -90,33 +89,20 @@ export async function AlfredSurface() {
   return (
     <Home>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-        {runs.length > 0 || conversationThreads.length > 0 ? (
+        {conversationThreads.length > 0 ? (
           <div className="flex">
             <HistoryMenu
               groups={[
-                ...groupByRecency(runs).map((group) => ({
-                  key: group.key,
-                  label: group.label,
-                  rows: group.rows.map((run) => ({
-                    id: run.id,
-                    objective: run.objective,
-                    time: timeAgoShort(run.createdAt),
+                {
+                  key: "threads",
+                  label: "Threads",
+                  rows: conversationThreads.map((thread) => ({
+                    id: thread.id,
+                    objective: thread.title || "Untitled conversation",
+                    time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
+                    href: `/command-center/conversations/${thread.id}`,
                   })),
-                })),
-                ...(conversationThreads.length > 0
-                  ? [
-                      {
-                        key: "threads",
-                        label: "Threads",
-                        rows: conversationThreads.map((thread) => ({
-                          id: thread.id,
-                          objective: thread.title || "Untitled conversation",
-                          time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
-                          href: `/command-center/conversations/${thread.id}`,
-                        })),
-                      },
-                    ]
-                  : []),
+                },
               ]}
             />
           </div>

@@ -135,6 +135,7 @@ export async function KnowledgeSurface({
     return (
       <ReviewWorkbench
         review={review}
+        backHref={params.folder ? `/alfred/knowledge?folder=${params.folder}` : "/alfred/knowledge"}
         zettels={await listZettelProposals(auth, review.document.id)}
         partyOptions={partyOptions as never}
         suggestedTitle={suggestedTitle && suggestedTitle !== review.document.title ? suggestedTitle : null}
@@ -150,7 +151,11 @@ export async function KnowledgeSurface({
     getVaultDocuments(auth, params.folder),
   ]);
 
-  const breadcrumb: { name: string; href: string | null }[] = [];
+  // The vault always has a root crumb, so the toolbar reads the same at the
+  // root and inside a folder (and Drive's location line has a first word).
+  const breadcrumb: { name: string; href: string | null }[] = [
+    { name: "Vault", href: params.folder ? "/alfred/knowledge" : null },
+  ];
   if (params.folder) {
     const chain: { name: string; href: string | null }[] = [];
     let current = folders.find((f) => f.id === params.folder) ?? null;
@@ -158,7 +163,7 @@ export async function KnowledgeSurface({
       chain.unshift({ name: current.name, href: current.id === params.folder ? null : `/alfred/knowledge?folder=${current.id}` });
       current = current.parentId ? (folders.find((f) => f.id === current!.parentId) ?? null) : null;
     }
-    breadcrumb.push({ name: "Vault", href: "/alfred/knowledge" }, ...chain);
+    breadcrumb.push(...chain);
   }
 
   return (
@@ -180,6 +185,7 @@ export async function KnowledgeSurface({
 
       <div className="page-content">
         <DocumentVault
+          key={params.folder ?? "root"}
           folders={folders.map((f) => ({ id: f.id, parentId: f.parentId, name: f.name, documentCount: f.documentCount }))}
           documents={vaultDocuments}
           currentFolderId={params.folder}
@@ -246,6 +252,7 @@ function statementPanelData(
 
 function ReviewWorkbench({
   review,
+  backHref,
   partyOptions,
   suggestedTitle,
   classification,
@@ -255,6 +262,7 @@ function ReviewWorkbench({
 }: {
   zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
+  backHref: string;
   partyOptions: Map<string, { kind: "contact" | "company"; id: string; name: string; via: string }[]>;
   suggestedTitle: string | null;
   classification: Awaited<ReturnType<typeof getOpenClassification>> | null;
@@ -267,7 +275,7 @@ function ReviewWorkbench({
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/alfred/knowledge" className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
+      <Link href={backHref} className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
         Back to vault
       </Link>
 
@@ -365,7 +373,7 @@ function ReviewWorkbench({
             {undecided.length === 0 && fieldProposals.length === 0 ? (
               <p className="text-muted-foreground text-xs">
                 {extraction?.status === "succeeded"
-                  ? "Nothing was extracted — the document had no readable fields."
+                  ? "Nothing was extracted. The document had no readable fields."
                   : "Fields appear here once the document is read."}
               </p>
             ) : (
@@ -397,7 +405,7 @@ function ReviewWorkbench({
                       <p className="text-muted-foreground mt-1 text-xs">
                         {proposal.status === "accepted" ? "Accepted" : "Rejected"}
                         {proposal.acceptedValue != null
-                          ? ` — ${typeof proposal.acceptedValue === "string" ? proposal.acceptedValue : JSON.stringify(proposal.acceptedValue)}`
+                          ? ` · ${typeof proposal.acceptedValue === "string" ? proposal.acceptedValue : JSON.stringify(proposal.acceptedValue)}`
                           : ""}
                       </p>
                     )}
@@ -415,7 +423,7 @@ function ReviewWorkbench({
           <h3 className="text-[13px] font-medium">Proposed follow-up work</h3>
           {obligations.length === 0 ? (
             <p className="text-muted-foreground text-xs">
-              Nothing proposed — no unpaid totals or missing fields were found.
+              Nothing proposed. No unpaid totals or missing fields were found.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -429,7 +437,7 @@ function ReviewWorkbench({
                   ) : (
                     <p className="text-muted-foreground mt-1 text-xs">
                       {obligation.status === "accepted"
-                        ? "Accepted — a task was created."
+                        ? "Accepted. A task was created."
                         : obligation.status === "rejected"
                           ? "Rejected"
                           : "Superseded by a newer document"}

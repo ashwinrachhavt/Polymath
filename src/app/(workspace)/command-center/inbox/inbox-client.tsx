@@ -85,7 +85,7 @@ export function CaptureForm() {
             tabIndex={-1}
             className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/50 px-2 py-1.5 outline-none"
           >
-            <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded bg-card shadow-sm">
+            <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded border border-border/60 bg-card">
               <FileText aria-hidden className="size-4 text-muted-foreground" />
               <span className="file-chip-shimmer absolute inset-x-0 bottom-0 h-px" />
             </span>

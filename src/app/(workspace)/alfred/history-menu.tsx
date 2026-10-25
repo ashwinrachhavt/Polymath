@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus } from "lucide-react";
+import { History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { displayTitle } from "@/lib/display-text";
 
@@ -61,13 +61,15 @@ export function HistoryMenu({ groups }: { groups: HistoryMenuGroup[] }) {
         ref={trigger}
         type="button"
         variant="outline"
-        size="icon"
-        aria-label="New chat"
+        size="sm"
+        aria-label="Chat history"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
+        className="text-muted-foreground hover:text-foreground gap-1.5 rounded-full px-3"
       >
-        <Plus aria-hidden />
+        <History aria-hidden className="size-3.5" />
+        <span className="text-[12px]">History</span>
       </Button>
 
       {open ? (
