@@ -38,7 +38,7 @@ export async function AlfredSurface() {
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <Home>
-        <div className="mx-auto w-full max-w-2xl">
+        <div className="mx-auto w-full max-w-3xl">
           <EmptyState
             title="Agent storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
@@ -88,7 +88,7 @@ export async function AlfredSurface() {
 
   return (
     <Home>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
         {conversationThreads.length > 0 ? (
           <div className="flex">
             <HistoryMenu
@@ -117,7 +117,7 @@ export async function AlfredSurface() {
       </div>
 
       {recent.length > 0 ? (
-        <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+        <section className="mx-auto flex w-full max-w-3xl flex-col gap-2">
           <ul className="divide-border flex flex-col divide-y border-t">
             {recent.map((run) => (
               <li key={run.id}>
@@ -161,7 +161,7 @@ function AlfredSkeleton() {
   return (
     <div role="status" aria-label="Loading Polymath" className="page-content flex flex-1 flex-col gap-10 pt-16">
       <Skeleton className="mx-auto h-7 w-80 max-w-full" />
-      <Skeleton className="mx-auto h-24 w-full max-w-2xl" />
+      <Skeleton className="mx-auto h-24 w-full max-w-3xl" />
     </div>
   );
 }

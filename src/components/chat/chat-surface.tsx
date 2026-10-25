@@ -265,14 +265,14 @@ export function ChatSurface({
               `Ask a question. Answers cite the ${subject.type === "dossier" ? "pinned sources" : "sources"} they use.`}
           </p>
         ) : (
-          <div className="space-y-4">
+          <div className="mx-auto w-full max-w-[var(--page-width)] space-y-4">
             {transcript.map((block) =>
               block.kind === "user" ? (
-                <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5">
+                <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                   {block.text}
                 </div>
               ) : (
-                <div key={block.id} className="max-w-[72ch] text-[13px] leading-6">
+                <div key={block.id} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
                   <Markdown text={block.text} />
                   {block.kind === "assistant" && block.done ? (
                     <MessageFeedback runId={runId} turnId={turnIdOf(block.id)} initial={null} />
@@ -281,12 +281,12 @@ export function ChatSurface({
               ),
             )}
             {optimistic ? (
-              <div className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5">
+              <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                 {optimistic}
               </div>
             ) : null}
             {waiting.map((entry) => (
-              <div key={entry.id} className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5 opacity-70">
+              <div key={entry.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70">
                 {entry.text}
               </div>
             ))}
@@ -356,7 +356,7 @@ export function ChatSurface({
       >
         <Textarea
           aria-label={composerLabel}
-          className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+          className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
           placeholder={placeholder}
           value={draft}
           onChange={(event) => {

@@ -115,16 +115,16 @@ async function ConversationSurface({ runId }: { runId: string }) {
               This conversation has no messages yet.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="mx-auto w-full max-w-[var(--page-width)] space-y-3">
               {thread.map((entry) =>
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
-                  <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[85%] rounded-md px-2.5 py-1 text-[13px] leading-5">
+                  <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                     {entry.text}
                   </div>
                 ) : entry.kind === "assistant" ? (
-                  <div key={entry.sequence} className="max-w-[72ch] text-[13px] leading-6">
+                  <div key={entry.sequence} className="mx-auto w-full max-w-[var(--page-width)] text-[15px] leading-7">
                     <Markdown text={entry.text} />
                     <MessageFeedback runId={run.id} sequence={entry.sequence} initial={entry.feedback ?? null} />
                   </div>

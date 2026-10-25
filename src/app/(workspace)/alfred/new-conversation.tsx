@@ -157,7 +157,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
 
   return (
     <form
-      className="mx-auto flex w-full max-w-2xl flex-col"
+      className="mx-auto flex w-full max-w-3xl flex-col"
       onSubmit={(event) => {
         event.preventDefault();
         void send();
