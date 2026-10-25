@@ -13,7 +13,7 @@ import { WIKI_LINT_CAPABILITY } from "../../../../src/domains/knowledge/wiki-age
  */
 export default defineTool({
   description:
-    "Health-check the workspace wiki: archived pages still registered, articles whose source was archived, empty topics, missing index or log. Reports findings only; never fixes. Read-only; the run's frozen policy must allow wiki.lint.",
+    "Health-check the workspace wiki: archived pages still registered, articles whose source was archived, empty topics, missing index or log. Use when the owner asks about wiki health or something in the wiki looks wrong. It will not repair anything — findings are reported and a fix is the owner's call — and it is not a content search; questions about what the wiki says belong to wiki_read. Read-only; the run's frozen policy must allow wiki.lint.",
   inputSchema: z.object({}),
   async execute(_input, ctx) {
     const current = ctx.session.auth.current;

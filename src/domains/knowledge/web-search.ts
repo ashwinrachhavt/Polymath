@@ -41,12 +41,21 @@ export async function searchWebForAgent(
   const limit = Math.min(Math.max(input.limit ?? 5, 1), WEB_SEARCH_MAX_RESULTS);
   try {
     const provider = webSearchProvider();
-    const entry = providerEntry(provider.name);
+    // Fail closed like every other provider route: a registry-disabled entry
+    // (parallel's card-backed tier, the gateway's post-promo billing) must not
+    // execute because its key happens to be set. The gateway adapters report
+    // per-tool names (ai-gateway-tako, ...) over one shared registry entry.
+    const entry = providerEntry(provider.name) ?? providerEntry(provider.name.replace(/^(ai-gateway-).+/, "$1search"));
+    if (!entry || !entry.enabled) {
+      return {
+        ok: false,
+        error: `web search provider ${provider.name} is registered as disabled; enabling it is a code change in the provider registry, not a setting`,
+      };
+    }
     const run = () => provider.search(query, limit);
-    const results =
-      entry?.quota && entry.enabled
-        ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
-        : await run();
+    const results = entry.quota
+      ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
+      : await run();
     return { ok: true, provider: provider.name, query, results };
   } catch (cause) {
     if (cause instanceof QuotaExhaustedError) {

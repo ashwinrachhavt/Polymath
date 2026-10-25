@@ -12,7 +12,7 @@ import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
  */
 export default defineTool({
   description:
-    "Propose a calendar change for the owner to approve: time-block a task, add an event, move an event, or cancel an event. Creates a reviewable proposal; it does not change the calendar.",
+    "Propose a calendar change for the owner to approve: time-block a task, add an event, move an event, or cancel an event. Use when the brief asks for scheduling work or when the run's findings imply a time commitment the owner should see. It will not change the calendar itself — even after approval the write goes through the owner's calendar, and a refusal from it is reported, not retried. Pass the event's source in the proposal so the owner can judge it.",
   inputSchema: z.object({
     change: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("block"), taskId: z.string().uuid(), minutes: z.number().int().min(5).max(480).optional() }),

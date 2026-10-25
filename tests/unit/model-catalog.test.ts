@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vitest";
+import { MODEL_CATALOG, availableModels, modelById, resolveModelId } from "@/domains/agents/models";
+
+/*
+ * The catalog is the contract between the picker, the spend row, and the
+ * executing agent: every entry must be internally consistent, and the default
+ * must always resolve. These checks run without a network — a live probe is a
+ * separate, deliberate act.
+ */
+
+describe("model catalog invariants", () => {
+  it("has unique ids", () => {
+    const ids = MODEL_CATALOG.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("uses https OpenAI-compatible base URLs", () => {
+    for (const model of MODEL_CATALOG) {
+      expect(model.baseUrl, model.id).toMatch(/^https:\/\//);
+      expect(model.keyEnv, model.id).toMatch(/^[A-Z0-9_]+$/);
+    }
+  });
+
+  it("resolves the default model even when no keys are set", () => {
+    expect(availableModels({})).toEqual([]);
+    expect(modelById(resolveModelId(undefined))).not.toBeNull();
+  });
+
+  it("shows an entry when its key is set", () => {
+    const [entry] = MODEL_CATALOG;
+    expect(availableModels({ [entry.keyEnv]: "k" }).map((m) => m.id)).toContain(entry.id);
+  });
+
+  it("maps a retired model id to the default, not a dead id", () => {
+    expect(resolveModelId("claude-hive-gone")).toBe(resolveModelId(undefined));
+  });
+});

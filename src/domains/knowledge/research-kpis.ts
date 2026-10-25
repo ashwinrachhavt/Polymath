@@ -1,4 +1,5 @@
 import type { CompanyResearchInput, SourceManifestEntry } from "./company-research";
+import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 
 /*
  * ASH-114 step 5: period-aligned financials and KPIs as structured rows, not
@@ -98,7 +99,14 @@ export function renderKpiTable(rows: KpiRow[], dropped: number): string {
   return lines.join("\n");
 }
 
-const KPI_SYSTEM_RULES = `Answer with ONLY a JSON array of financial figures found in the manifest sources. Each element: {"metric","period","value","currency","basis","source"} where metric is one of: ${KPI_METRICS.join(", ")}; period names the reporting period (for example FY2025 or Q2 2025); value is the reported figure with its unit; basis labels the accounting basis (GAAP, non-GAAP, or another label); source is the manifest ref "S#" the figure came from. Report only figures that appear in the sources; invent nothing; separate metrics stay separate rows. If the sources contain no usable figures, answer with [] and nothing else.`;
+export const KPI_SYSTEM_RULES = `Answer with ONLY a JSON array of financial figures found in the manifest sources. Each element has exactly these keys: {"metric","period","value","currency","basis","source"}.
+"metric": one of ${KPI_METRICS.join(", ")}.
+"period": the reporting period the figure is stated for (for example FY2025 or Q2 2025).
+"value": the reported figure with its unit, exactly as the source states it.
+"currency": the currency of the figure.
+"basis": the accounting basis (GAAP, non-GAAP, or another label the source uses).
+"source": the manifest ref "S#" the figure came from.
+Report only figures that appear verbatim in the sources; invent nothing; separate metrics stay separate rows, never merged or derived. If the sources contain no usable figures, answer with [] and nothing else - never estimate a missing figure to fill the shape. ${untrustedDataClauseJsonSafe("sources")}`;
 
 /** Prompt for the financial section: structured extraction instead of prose. */
 export function buildKpiPrompt(input: CompanyResearchInput, manifest: SourceManifestEntry[]): string {

@@ -60,7 +60,13 @@ const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
 export const LINKABLE_KINDS = ["note", "zettel"] as const;
 
 /** Kinds a note command may create: the two linkable kinds, and a transcript (a conversation projected into the graph). */
-export type NoteKind = (typeof LINKABLE_KINDS)[number] | "transcript";
+/*
+ * The projections (thread-graph, document-graph) create their mirrors through
+ * the same versioned container, so the mirror kinds join the union: a
+ * "transcript" mirror of a conversation, a "document" mirror of a captured
+ * source. Neither becomes a [[linkable]] card - LINKABLE_KINDS is unchanged.
+ */
+export type NoteKind = (typeof LINKABLE_KINDS)[number] | "transcript" | "document";
 
 export function extractWikiLinkTitles(markdown: string): string[] {
   const titles = new Set<string>();

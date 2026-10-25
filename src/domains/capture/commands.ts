@@ -6,8 +6,10 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
+import { intakeFile } from "@/domains/knowledge/intake";
 import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
+import { db } from "@/lib/db";
 import { findCaptureIdByUrl } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
 import type { FileValidationResult } from "@/lib/file-validation";
@@ -390,6 +392,75 @@ export async function convertCaptureToNote(
     console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
   return result;
+}
+
+/**
+ * Turn a text capture into a library document (Capture spec: the inbox owns
+ * the triggers that create zettels from captured knowledge). The capture's
+ * cleaned text becomes the document's markdown bytes through the one intake
+ * path, so extraction and the enrichment pipeline (embed, zettel proposals,
+ * link) follow from the extraction event intake writes - no capture-specific
+ * pipeline. The capture's lineage edge (convertedType "document") and the
+ * audit row ride inside intake's transaction: a stale version or an
+ * already-converted capture rolls the whole intake back, never a second
+ * document.
+ */
+export async function convertCaptureToDocument(
+  auth: AuthContext,
+  input: { captureId: string; expectedVersion: number; title?: string },
+) {
+  const [capture] = await db
+    .select()
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+    .limit(1);
+  if (!capture) throw new StaleWriteError("That capture no longer exists. Reload the inbox.");
+  if (capture.processingState === "converted") {
+    throw new ConflictError("That capture was already converted.");
+  }
+  if (capture.version !== input.expectedVersion) {
+    throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+  }
+
+  // The enriched text is the document when the ladder produced it; the raw
+  // paste otherwise. Only text carries in - a file capture's bytes are
+  // already stored under their own filename.
+  const body = (capture.cleanText ?? capture.text ?? "").trim();
+  if (!body) throw new ConflictError("That capture has no text to file.");
+  const firstLine = body.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured text";
+  const title = input.title?.trim() || capture.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+
+  const result = await intakeFile(auth, {
+    bytes: new TextEncoder().encode(body),
+    filename: `${title}.md`,
+    title,
+    verdict: { ok: true, mimeType: "text/markdown" },
+    origin: "capture",
+    inTransaction: async (tx, { documentId }) => {
+      const [updated] = await tx
+        .update(captures)
+        .set({
+          processingState: "converted",
+          convertedType: "document",
+          convertedId: documentId,
+          convertedAt: new Date(),
+          version: sql`${captures.version} + 1`,
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+        })
+        .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
+        .returning();
+      if (!updated) {
+        throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+      }
+      await recordAudit(
+        auth,
+        { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
+        tx,
+      );
+    },
+  });
+  return { documentId: result.documentId, fileId: result.fileId };
 }
 
 /**
