@@ -23,19 +23,18 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   const order = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
   expect(order.indexOf(a)).toBeLessThan(order.indexOf(b));
 
-  // Reorder: the controls live on the task's detail card, so select it first.
-  await page.getByRole("link", { name: a, exact: true }).click();
+  // Reorder: the board's lane cards own reordering since the Work redesign.
+  // The lane text flipping means the server action committed; navigating away
+  // sooner can abort it and read the pre-move rows back.
+  await page.goto("/neuralflow/work?view=board");
   await page.getByRole("button", { name: `Move ${a} down` }).click();
   await expect
     .poll(async () => {
-      const text = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
+      const text = await page.locator("#content").innerText();
       return text.indexOf(b) < text.indexOf(a);
     })
     .toBe(true);
-  // The poll above sees the optimistic order, which applies before the server
-  // action resolves. Every row control is disabled while that transition is
-  // pending, so waiting for one to re-enable means the write has committed;
-  // reloading sooner aborts the request and reads the pre-move rows back.
+  await page.goto("/neuralflow/work?view=saved");
   await expect(page.getByRole("button", { name: `Done: complete ${b}` })).toBeEnabled();
   await page.reload();
   const after = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
