@@ -37,6 +37,11 @@ async function seedWeek(): Promise<boolean> {
       where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
     if (!owner) return false;
     const ws = owner.workspace_id;
+    // Idempotent across viewport reruns: clear earlier seeds so the narrative
+    // lists exactly one bullet (parallel-safe under the single CI worker).
+    await client`delete from reward_ledger where idempotency_key like ${`${STONE_KEY}-%`}`;
+    await client`delete from focus_sessions where outcome = ${OUTCOME}`;
+    await client`delete from tasks where title = ${TASK_TITLE}`;
     const [task] = await client<{ id: string }[]>`
       insert into tasks (workspace_id, title, status) values (${ws}, ${TASK_TITLE}, 'ready') returning id`;
     await client`
@@ -94,7 +99,7 @@ for (const vp of VIEWPORTS) {
     await page.goto("/apps/neuralflow/reports");
     const panel = page.locator("section", { has: page.getByRole("heading", { name: /This week in your words/ }) });
     await expect(panel).toBeVisible({ timeout: 30_000 });
-    await expect(panel.getByText(OUTCOME)).toBeVisible();
+    await expect(panel.getByText(OUTCOME)).toHaveCount(1);
     await expect(panel.getByText(/earned \d+ stones?/)).toBeVisible();
     await expect(panel.getByText(/streak|points|score/i)).toHaveCount(0);
     const before = await narrativeNoteCount();
@@ -124,7 +129,7 @@ test("discard hides the narrative and writes no note", async ({ page }) => {
   const heading = page.getByRole("heading", { name: /This week in your words/ });
   await expect(heading).toBeVisible({ timeout: 30_000 });
   const before = await narrativeNoteCount();
-  await page.getByRole("button", { name: "Discard" }).click();
+  await page.getByRole("button", { name: "Hide for now" }).click();
   await expect(heading).toHaveCount(0);
   expect(await narrativeNoteCount()).toBe(before);
 });
