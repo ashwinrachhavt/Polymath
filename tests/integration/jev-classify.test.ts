@@ -107,7 +107,7 @@ suite("jev capture triage (ASH-272)", () => {
     await seedTaxonomyCatalog(workspaceId, db as never);
     const captureId = await insertCapture(
       workspaceId,
-      "Please send me the updated invoice by Friday so accounting can close the month. This is a real commitment with a deadline, long enough to clear the escalation threshold for the classifier tier without any doubt.",
+      "Please send me the updated invoice by Friday so accounting can close the month. This is a real commitment with a deadline, and it runs long enough to clear the two-hundred-and-eighty character escalation threshold for the classifier tier without any doubt at all - the prose must carry the capture past the gate, so this sentence keeps going with plain commitment language about the invoice, the deadline, and the accounting close.",
     );
     const client = fakeJev(COMMITMENT_ANSWERS);
 
@@ -148,7 +148,7 @@ suite("jev capture triage (ASH-272)", () => {
     await seedTaxonomyCatalog(workspaceId, db as never);
     const captureId = await insertCapture(
       workspaceId,
-      "Half thought, half reminder, genuinely ambiguous prose that is long enough to clear the tier gate easily and then some more words to be sure of it. This sentence only exists to carry the capture well past the two hundred and eighty character escalation threshold.",
+      "Half thought, half reminder, genuinely ambiguous prose that is long enough to clear the tier gate easily and then some more words to be sure of it. This sentence only exists to carry the capture well past the two hundred and eighty character escalation threshold, and the next one keeps the same ambiguous register - maybe a task, maybe a note, maybe nothing at all, padded just enough that the classifier tier cannot be skipped.",
     );
     const band = Object.fromEntries(
       ["commitment", "contact", "reference", "worthless", "project"].map((k) => [k, { type: "noul", noul: 0.5 }]),
@@ -172,7 +172,7 @@ suite("jev capture triage (ASH-272)", () => {
     await seedTaxonomyCatalog(workspaceId, db as never);
     const captureId = await insertCapture(
       workspaceId,
-      "Please review the quarterly numbers with me before the board meeting next week; I promised them a readout and owe them the updated figures by then, so this really cannot slip any further.",
+      "Please review the quarterly numbers with me before the board meeting next week; I promised them a readout and owe them the updated figures by then, so this really cannot slip any further. Padding the prose so the capture clears the two-hundred-and-eighty character escalation gate and actually reaches the classifier - the hallucinated-slug assertion is meaningless if the model tier never runs.",
     );
 
     const { runCaptureEnrichment } = await import("@/domains/capture/enrichment-handler");
