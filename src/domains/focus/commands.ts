@@ -120,6 +120,11 @@ async function transition(
           eq(focusSessions.workspaceId, auth.workspaceId),
           eq(focusSessions.version, input.expectedVersion),
           sql`${focusSessions.state} in (${sql.join(fromStates.map((s) => sql`${s}`), sql`, `)})`,
+          // Lifecycle transitions move time, so they require a session that
+          // started: a planned row (started_at null, ASH-308) can only be
+          // started, dismissed, or left alone - never paused, resumed,
+          // finished, or abandoned.
+          isNotNull(focusSessions.startedAt),
         ),
       )
       .returning();
