@@ -23,7 +23,7 @@ export type IntakeInput = {
   verdict: FileValidationResult;
   /** sha256 hex of the bytes when the caller already has it. */
   contentHash?: string;
-  origin: "upload" | "url" | "crawl" | "youtube";
+  origin: "upload" | "url" | "crawl" | "youtube" | "capture";
   /** Captured documents carry where they came from. */
   sourceUrl?: string;
   /** Folder the document files into; null (the default) is the library root. */
@@ -143,7 +143,7 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       actorId: auth.userId,
       actorKind: "user",
       action: input.verdict.ok
-        ? input.origin === "url" ? "file.captured"
+        ? input.origin === "url" || input.origin === "capture" ? "file.captured"
           : input.origin === "crawl" ? "file.crawled"
             : input.origin === "youtube" ? "file.transcribed"
               : "file.uploaded"
@@ -151,7 +151,7 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       subjectType: input.verdict.ok ? "document" : "file",
       subjectId: input.verdict.ok ? documentId : fileRow.id,
       summary: input.verdict.ok
-        ? input.origin === "url"
+        ? input.origin === "url" || input.origin === "capture"
           ? `Captured ${input.sourceUrl ?? input.filename}`
           : input.origin === "crawl"
             ? `Crawled ${input.sourceUrl ?? input.filename}`

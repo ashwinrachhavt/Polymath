@@ -6,6 +6,7 @@ import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-tem
 import {
   ConflictError,
   StaleWriteError,
+  convertCaptureToDocument,
   convertCaptureToDraft,
   convertCaptureToNote,
   convertCaptureToTask,
@@ -87,6 +88,18 @@ export async function makeDraftAction(input: { captureId: string; expectedVersio
 }
 
 /** Accept a capture into the notebook: the note is created in the same transaction, links resolved. */
+export async function makeDocumentAction(input: { captureId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await convertCaptureToDocument(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidatePath("/alfred/knowledge");
+  revalidate(auth);
+  return { ok: true };
+}
+
 export async function makeNoteAction(input: { captureId: string; expectedVersion: number }): Promise<Result> {
   const auth = await authorize();
   try {
