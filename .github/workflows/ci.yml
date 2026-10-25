@@ -138,6 +138,12 @@ jobs:
           name: bulk-complete-pixels
           path: test-results/bulk-pixels/
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-pixels
+          path: test-results/onboarding-pixels/
+          if-no-files-found: ignore
 
   # Python capability sidecar (ADR 0008): lint + tests, with the pgvector
   # round-trip running against real Postgres so vector schema drift fails CI.
