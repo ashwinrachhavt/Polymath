@@ -7,6 +7,7 @@ import {
   type CaptureKindFilter,
 } from "@/domains/capture/queries";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { listPriorWritingForUrl } from "@/domains/knowledge/prior-writing";
 import { capturesTag } from "@/lib/cache-tags";
 
 /*
@@ -42,5 +43,10 @@ export async function countInboxTabsForPage(auth: AuthContext): Promise<Record<I
  * detail view costs the owner's trust in every row they click.
  */
 export async function getCaptureForPage(auth: AuthContext, id: string) {
-  return getCapture(auth, id);
+  const capture = await getCapture(auth, id);
+  if (!capture) return null;
+  // "Shown what I already wrote about it": a URL capture carries the writing
+  // the workspace already holds about that address (knowledge owns the read).
+  const priorWriting = capture.url ? await listPriorWritingForUrl(auth, { url: capture.url }) : null;
+  return { capture, priorWriting };
 }

@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
+import { DocumentNotFoundError, syncDocumentToGraph } from "@/domains/knowledge/document-graph";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
@@ -51,6 +52,15 @@ export const extractionRequestedHandler: OutboxHandler = async (event) => {
   // `in_progress` elsewhere throws nothing; a provider failure is recorded on
   // the extraction row and is retried by redelivery, so surface it.
   if (!result.ok) throw new Error(result.error);
+  // Mirror the source into the search index (document-graph). A failure here
+  // throws too: redelivery dedupes the extraction and retries the mirror, so
+  // a source never stays invisible because one sync attempt failed.
+  try {
+    await syncDocumentToGraph(auth, documentId);
+  } catch (cause) {
+    if (cause instanceof DocumentNotFoundError) return;
+    throw cause;
+  }
 };
 
 /*
