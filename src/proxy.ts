@@ -16,6 +16,8 @@ import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 const isApiRoute = createRouteMatcher(["/api/v1", "/api/v1/(.*)"]);
 
 const isPublicRoute = createRouteMatcher([
+  // The one public marketing route (GTM funnel surface).
+  "/landing",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/webhooks(.*)",
