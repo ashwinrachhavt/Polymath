@@ -130,6 +130,11 @@ jobs:
       - run: pnpm e2e
         env:
           PERF_BUDGET_ENFORCE: "1"
+          # The proposal-batch journeys click through the whole generation
+          # pipeline against the deterministic fixture provider: no model key,
+          # no spend. Callers the fixture does not know get the same
+          # unconfigured error as a keyless run, which they treat as a skip.
+          GENERATION_PROVIDER: fixture
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4
@@ -143,6 +148,12 @@ jobs:
         with:
           name: onboarding-pixels
           path: test-results/onboarding-pixels/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feature-pixels
+          path: test-results/feature-pixels/
           if-no-files-found: ignore
 
   # Python capability sidecar (ADR 0008): lint + tests, with the pgvector
