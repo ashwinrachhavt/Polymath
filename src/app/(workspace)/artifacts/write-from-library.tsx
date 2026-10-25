@@ -32,7 +32,7 @@ export function WriteFromLibrary() {
   }
 
   return (
-    <span className="flex flex-wrap items-center gap-2">
+    <span className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
       {error ? <span role="alert" className="w-full text-xs text-destructive sm:w-auto sm:max-w-72">{error}</span> : null}
       <form
         onSubmit={(event) => {

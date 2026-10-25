@@ -32,7 +32,7 @@ export function GalleryToolbar({
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <form
         role="search"
         onSubmit={(event) => {
