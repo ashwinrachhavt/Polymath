@@ -22,6 +22,12 @@ import { mergeCompanies, mergeContacts } from "@/domains/crm/dedupe";
 import { and, eq } from "drizzle-orm";
 import { companies, relationshipStatus } from "@/domains/crm/schema";
 import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
+import {
+  CONTACT_RESEARCH_FOCI,
+  ProfileResearchError,
+  runCompanyProfileResearch,
+  runContactProfileResearch,
+} from "@/domains/knowledge/profile-research";
 import { db } from "@/lib/db";
 import { linkDraftToRecord } from "@/app/(workspace)/projects-links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
@@ -395,5 +401,39 @@ export async function mergeCompaniesAction(input: unknown): Promise<{ ok: true; 
     return { ok: true, merged: result.merged, into: result.into };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The merge failed." };
+  }
+}
+
+/*
+ * ASH-291 profile research entry points: one bounded web pass produces a
+ * grounded card set linked to the record. The idempotency key comes from the
+ * client, so a double-click or a retried action replays the first pass
+ * instead of buying a second one.
+ */
+export async function researchCompanyProfileAction(input: { companyId: string; idempotencyKey: string }) {
+  const auth = await authorize();
+  const parsed = z.object({ companyId: z.uuid(), idempotencyKey: z.uuid() }).parse(input);
+  try {
+    const result = await runCompanyProfileResearch(auth, parsed);
+    revalidate();
+    return { ok: true as const, artifactId: result.artifactId, cardCount: result.cardCount, gaps: result.gaps, manifestSize: result.manifestSize };
+  } catch (error) {
+    if (error instanceof ProfileResearchError) return { ok: false as const, error: error.message };
+    throw error;
+  }
+}
+
+export async function researchContactProfileAction(input: { contactId: string; focus?: string; idempotencyKey: string }) {
+  const auth = await authorize();
+  const parsed = z
+    .object({ contactId: z.uuid(), focus: z.enum(CONTACT_RESEARCH_FOCI).optional(), idempotencyKey: z.uuid() })
+    .parse(input);
+  try {
+    const result = await runContactProfileResearch(auth, parsed);
+    revalidate();
+    return { ok: true as const, artifactId: result.artifactId, cardCount: result.cardCount, gaps: result.gaps, manifestSize: result.manifestSize, focus: result.focus };
+  } catch (error) {
+    if (error instanceof ProfileResearchError) return { ok: false as const, error: error.message };
+    throw error;
   }
 }
