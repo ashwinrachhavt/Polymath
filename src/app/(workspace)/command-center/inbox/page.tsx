@@ -182,20 +182,21 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
             capture={
               selected
                 ? {
-                    id: selected.id,
-                    processingState: selected.processingState,
-                    kind: selected.kind,
-                    createdAt: selected.createdAt.toISOString(),
-                    text: selected.text,
-                    url: selected.url,
-                    rawPayload: selected.rawPayload,
-                    version: selected.version,
-                    failureReason: selected.failureReason,
-                    convertedType: selected.convertedType,
-                    convertedId: selected.convertedId,
+                    id: selected.capture.id,
+                    processingState: selected.capture.processingState,
+                    kind: selected.capture.kind,
+                    createdAt: selected.capture.createdAt.toISOString(),
+                    text: selected.capture.text,
+                    url: selected.capture.url,
+                    rawPayload: selected.capture.rawPayload,
+                    version: selected.capture.version,
+                    failureReason: selected.capture.failureReason,
+                    convertedType: selected.capture.convertedType,
+                    convertedId: selected.capture.convertedId,
                   }
                 : null
             }
+            priorWriting={selected?.priorWriting ?? null}
           />
         </section>
       </div>

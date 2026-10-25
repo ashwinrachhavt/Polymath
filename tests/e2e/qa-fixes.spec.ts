@@ -31,8 +31,8 @@ test("notebook navigation from the rail is instant and console-clean", async ({ 
     if (message.type() === "error") consoleErrors.push(message.text());
   });
 
-  await page.goto("/alfred/dossiers");
-  await page.getByRole("link", { name: /documents?$/ }).first().click();
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.goto("/alfred/notes");
+  await page.getByRole("link", { name: "Notebook", exact: true }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Notebook" })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
