@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import type { OnboardingBrief } from "@/domains/agents/onboarding-brief";
 import { OnboardingConfirm } from "../../onboarding/onboarding-confirm";
 import { OnboardingConversation } from "../../onboarding/onboarding-conversation";
@@ -9,9 +10,6 @@ export const metadata = {
   title: "Onboarding fixtures",
   robots: { index: false, follow: false },
 };
-
-// Never prerendered: fixtures read URL state and the island touches the server.
-export const dynamic = "force-dynamic";
 
 /*
  * Pixel fixture for the onboarding surfaces (ASH-296). The shared e2e
@@ -41,12 +39,26 @@ const SALVAGE_NOTICE =
 const BRIDGE_DOWN_REASON =
   "The agent runtime is not reachable from this deployment (EVE_BASE_URL is not set), so the interview cannot start.";
 
-export default async function OnboardingFixturesPage({
+export default function OnboardingFixturesPage({
   searchParams,
 }: {
   searchParams: Promise<{ state?: string }>;
 }) {
+  // Production-inaccessibility is decided before any dynamic data loads.
   if (process.env.NODE_ENV === "production") notFound();
+  // URL state under cacheComponents belongs inside a Suspense boundary.
+  return (
+    <Suspense fallback={null}>
+      <Fixture searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function Fixture({
+  searchParams,
+}: {
+  searchParams: Promise<{ state?: string }>;
+}) {
   const { state = "confirm" } = await searchParams;
 
   const wrapper = (child: React.ReactNode) => (
