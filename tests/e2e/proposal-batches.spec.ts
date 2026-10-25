@@ -116,7 +116,7 @@ for (const vp of VIEWPORTS) {
     await client!.end();
 
     await page.goto("/alfred/knowledge/cards");
-    await expect(page.getByText("Learning path")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Learning path", exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-form-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.getByLabel("Learning goal").fill("understand distributed consensus");
