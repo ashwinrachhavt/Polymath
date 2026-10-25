@@ -1,6 +1,6 @@
 # Market synthesis: the personal-OS / second-brain landscape (2026-10-25)
 
-**Date:** 2026-10-25 · **Analyst:** overnight build session · **Status:** synthesis of the 13 dated entries in this directory; each claim traces to an entry's sources.
+**Date:** 2026-10-25 · **Analyst:** overnight build session · **Status:** synthesis of the 17 dated entries in this directory; each claim traces to an entry's sources.
 
 ## The one sentence
 
@@ -56,6 +56,15 @@ Each pivot traded away a property Axiom holds:
 - **Chat-ops over one's own data** at the right altitude: Aki's "block an
   hour," Amie's MCP, NotebookLM's grounded chat. Alfred's verbs over the
   daybook/tasks/calendar are the same shape.
+- **Botless meeting capture**: Granola AND Amie both won their niche on "no
+  bot joins the call" - consent-friendly capture is the meeting category's
+  settled UX.
+- **MCP exposure of the personal OS**: Amie and Routine both ship it. The
+  user's assistant-of-choice reading their workspace is becoming a
+  distribution expectation (owner decision: the authz boundary).
+- **Named agents/automations as product**: Routine's "AI workforce,"
+  Notion's agents, Tana's agentic meetings - delegation of whole verbs is
+  accepted. The differentiator left open: receipts.
 
 ## Signal 4: The ritual is a moat nobody automated
 
@@ -88,7 +97,8 @@ the AI without the ritual.
 
 - All 13 entries were fetched live 2026-10-25; pricing pages change fast
   and are quoted with dates in each entry.
-- Not covered tonight: Routine, Motion/Reclaim (calendar automation),
-  Fathom/Granola (meeting recording depth), Logseq/Anytype (local-first
-  PKM), Apple's and Google's native assistant moves beyond NotebookLM.
-  These are the next clusters.
+- Covered in the second pass (17 entries now): Routine, Granola, Logseq,
+  Anytype. Not covered: Motion/Reclaim (calendar automation), Fathom
+  (meeting recording depth), Apple's and Google's native assistant moves
+  beyond NotebookLM, and pricing-page deep dives. These are the next
+  clusters.
