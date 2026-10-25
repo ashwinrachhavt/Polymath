@@ -9,6 +9,7 @@ import {
   destinationForPath,
   destinations,
   homeHref,
+  isConversationSurface,
   type Destination,
 } from "@/lib/navigation";
 
@@ -31,12 +32,11 @@ const subscribeToHydration = () => () => {};
 export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  // The Assistant home is a conversation surface, not a browsing one: while a
-  // conversation is live on it the canvas owns the width, so the rail folds to
-  // its icon state. A person who pinned it open (localStorage "0") keeps it.
-  const autoCollapse = pathname === "/alfred";
+  // A conversation surface owns the width: the rail folds to its icon state
+  // while one is live on it. A person who pinned the rail open (localStorage
+  // "0") keeps it open; the auto-collapse does not fight them.
+  const isConversation = isConversationSurface(pathname);
   const [collapsed, setCollapsed] = useState(false);
-  const [userPinnedOpen, setUserPinnedOpen] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
@@ -45,22 +45,16 @@ export function SideNav() {
   }, []);
 
   useEffect(() => {
-    if (!autoCollapse) return;
+    if (!isConversation) return;
     const frame = requestAnimationFrame(() => {
-      // "1" means the person already keeps it collapsed; "0" means they
-      // explicitly pinned it open and the auto-collapse does not fight them.
-      const pinned = window.localStorage.getItem(COLLAPSED_KEY);
-      setUserPinnedOpen(pinned === "0");
-      if (pinned !== "0") setCollapsed(true);
+      if (window.localStorage.getItem(COLLAPSED_KEY) !== "0") setCollapsed(true);
     });
     return () => cancelAnimationFrame(frame);
-  }, [autoCollapse]);
+  }, [isConversation]);
 
   function toggle() {
     setCollapsed((current) => {
       window.localStorage.setItem(COLLAPSED_KEY, current ? "0" : "1");
-      // Leaving the home releases the auto-collapse claim.
-      setUserPinnedOpen(!current);
       return !current;
     });
   }

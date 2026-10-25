@@ -6,7 +6,7 @@ import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
-import { isBrowserPreviewPath } from "@/lib/navigation";
+import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -31,7 +31,7 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
   // Browser-preview records live in localStorage; rendering the server's empty
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
-  const headerless = pathname === "/alfred" || pathname.startsWith("/alfred/");
+  const headerless = isConversationSurface(pathname);
 
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>

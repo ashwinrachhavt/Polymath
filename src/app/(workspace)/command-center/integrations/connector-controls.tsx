@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { CAPABILITIES, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
 import { accessToggleState, planToggleSteps, type ToggleStep } from "@/domains/integrations/access-toggles";
 import {
@@ -277,24 +278,12 @@ export function AccessToggles({
         <span className="block text-xs text-muted-foreground">{description}</span>
       </span>
       {available ? (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label={label}
+        <Switch
+          checked={on}
           disabled={pending}
-          onClick={toggle}
-          className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-            on ? "bg-foreground" : "bg-muted-foreground/30"
-          }`}
-        >
-          <span
-            aria-hidden
-            className={`absolute top-0.5 left-0 h-4 w-4 rounded-full bg-background transition-transform ${
-              on ? "translate-x-4.5" : "translate-x-0.5"
-            }`}
-          />
-        </button>
+          aria-label={label}
+          onCheckedChange={toggle}
+        />
       ) : null}
     </div>
   );

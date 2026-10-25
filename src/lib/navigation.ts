@@ -205,6 +205,15 @@ export function isBrowserPreviewPath(pathname: string) {
     || ["/activity", "/settings"].includes(pathname);
 }
 
+/**
+ * A conversation surface: the transcript is the page, and the shell folds to
+ * it (no header bar, the sidebar collapsed to its icon rail). One definition
+ * so app-shell's headerless and side-nav's auto-collapse cannot drift.
+ */
+export function isConversationSurface(pathname: string) {
+  return pathname === "/alfred" || pathname.startsWith("/alfred/");
+}
+
 export const moreDestination = {
   href: "/more" as const,
   label: "More",

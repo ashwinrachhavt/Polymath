@@ -118,7 +118,8 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
           connectors={connectors.flatMap((c) =>
             c.accounts.map((account) => ({
               id: account.id,
-              label: `${c.displayName}${account.alias ? ` — ${account.alias}` : ""}`,
+              displayName: c.displayName,
+              alias: account.alias ?? null,
               enabled: notebookAccounts.some((row) => row.gatewayAccountId === account.id && row.enabled),
             })),
           )}

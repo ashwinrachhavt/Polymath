@@ -1,32 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useChatStarted } from "@/components/chat/chat-events";
 
 /*
  * The home's greeting line. It disappears the moment a conversation starts in
  * place: the transcript is the page then, and a "What would you like to work
  * on?" above an active conversation is a question already being answered.
- *
- * NewConversation dispatches "polymath:chat-started" on window when the run
- * opens; this listens. A reload resets to the greeting, which is correct —
- * a fresh home has no conversation.
  */
 export function HomeGreeting() {
   const [hidden, setHidden] = useState(false);
-
-  useEffect(() => {
-    function onStarted() {
-      setHidden(true);
-    }
-    window.addEventListener("polymath:chat-started", onStarted);
-    return () => window.removeEventListener("polymath:chat-started", onStarted);
-  }, []);
+  useChatStarted(() => setHidden(true));
 
   if (hidden) return null;
   return <h1 className="screen-title text-center">What would you like to work on?</h1>;
-}
-
-/** Fired by NewConversation when its in-place conversation mounts. */
-export function announceChatStarted() {
-  window.dispatchEvent(new Event("polymath:chat-started"));
 }

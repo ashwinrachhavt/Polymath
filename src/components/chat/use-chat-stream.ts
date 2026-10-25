@@ -274,7 +274,7 @@ function mergeTool(
   if (index === -1) {
     // A settled frame may arrive without its running twin (a reconnect that
     // skipped the live window): its input is the result payload, not arguments.
-    return [...tools, next.status === "running" ? { ...next, output: undefined } : { ...next, output: next.input, input: undefined }];
+    return [...tools, next.status === "running" ? next : { ...next, output: next.input, input: undefined }];
   }
   const copy = tools.slice();
   const prev = tools[index];

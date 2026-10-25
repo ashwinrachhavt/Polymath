@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { Loader2, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ChatSurface } from "@/components/chat/chat-surface";
+import { announceChatStarted } from "@/components/chat/chat-events";
+import { InPlaceChat } from "@/components/chat/in-place-chat";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 
 /*
@@ -45,25 +46,12 @@ export function StartSession({
       }
       setStarted({ runId: result.runId, message: objective });
       // The page folds to the conversation: the right rail listens for this.
-      window.dispatchEvent(new Event("polymath:chat-started"));
+      announceChatStarted();
     });
   }
 
   if (started) {
-    return (
-      <div className="flex h-[min(72dvh,720px)] flex-col">
-        <ChatSurface
-          runId={started.runId}
-          subject={{ type: "project", id: projectId }}
-          optimisticMessage={started.message}
-          placeholder="Reply to continue…"
-          composerLabel="Follow-up message"
-          emptyText="This conversation has no messages yet."
-          showHeader={false}
-          className="min-h-0 flex-1"
-        />
-      </div>
-    );
+    return <InPlaceChat runId={started.runId} subject={{ type: "project", id: projectId }} optimisticMessage={started.message} />;
   }
 
   return (

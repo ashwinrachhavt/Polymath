@@ -11,8 +11,8 @@ import {
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
-import { ChatSurface } from "@/components/chat/chat-surface";
-import { announceChatStarted } from "./home-greeting";
+import { announceChatStarted } from "@/components/chat/chat-events";
+import { InPlaceChat } from "@/components/chat/in-place-chat";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -149,18 +149,12 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   // wants to share or reload; the conversation itself never moved.
   if (started) {
     return (
-      <div className="mx-auto flex h-[min(72dvh,720px)] w-full max-w-3xl flex-col">
-        <ChatSurface
-          runId={started.runId}
-          subject={{ type: "project", id: "" }}
-          optimisticMessage={started.message}
-          placeholder="Reply to continue…"
-          composerLabel="Follow-up message"
-          emptyText="This conversation has no messages yet."
-          showHeader={false}
-          className="min-h-0 flex-1"
-        />
-      </div>
+      <InPlaceChat
+        runId={started.runId}
+        subject={{ type: "project", id: "" }}
+        optimisticMessage={started.message}
+        className="mx-auto flex h-[min(72dvh,720px)] w-full max-w-3xl flex-col"
+      />
     );
   }
 

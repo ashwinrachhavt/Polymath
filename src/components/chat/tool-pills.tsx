@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Check, ChevronRight, CircleDashed, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "cn";
 import type { ChatState } from "./use-chat-stream";
@@ -22,7 +22,9 @@ import { INTERNAL_TOOLS, toolLabel } from "./tool-labels";
 
 export type ToolEntry = ChatState["tools"][number];
 
-export function ToolPills({ tools }: { tools: ToolEntry[] }) {
+// memo, not preference: ChatSurface re-renders on every text delta while the
+// tools array only changes on tool frames, so delta frames skip this subtree.
+export const ToolPills = memo(function ToolPills({ tools }: { tools: ToolEntry[] }) {
   const visible = tools.filter((tool) => !INTERNAL_TOOLS.test(tool.label));
   if (visible.length === 0) return null;
   return (
@@ -32,7 +34,7 @@ export function ToolPills({ tools }: { tools: ToolEntry[] }) {
       ))}
     </div>
   );
-}
+});
 
 function ToolPill({ tool }: { tool: ToolEntry }) {
   const [open, setOpen] = useState(false);
