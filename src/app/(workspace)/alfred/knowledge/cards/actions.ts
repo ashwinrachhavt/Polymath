@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { acceptCard, proposeCard, resumeCard, retireCard, reviewCard, suspendCard } from "@/domains/knowledge/cards";
+import { generateLearningPath, LearningPathNotAllowedError, LearningPathUnusableAnswerError } from "@/domains/knowledge/learning-paths";
 import { listCardSources } from "@/domains/knowledge/card-queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -92,4 +93,27 @@ export async function reviewCardAction(input: unknown) {
   const result = await reviewCard(auth, parsed);
   revalidate();
   return result;
+}
+
+const learningPathSchema = z.object({
+  goal: z.string().trim().min(1).max(300),
+});
+
+export async function generateLearningPathAction(input: { goal: string }) {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const parsed = learningPathSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: "Name the learning goal." };
+  try {
+    const result = await generateLearningPath(auth, parsed.data);
+    revalidatePath("/alfred/knowledge/cards");
+    revalidatePath("/reviews");
+    revalidatePath("/artifacts");
+    return { ok: true as const, artifactId: result.artifactId };
+  } catch (error) {
+    if (error instanceof LearningPathNotAllowedError || error instanceof LearningPathUnusableAnswerError) {
+      return { ok: false as const, error: error.message };
+    }
+    return { ok: false as const, error: error instanceof Error ? error.message : "The learning path did not run." };
+  }
 }
