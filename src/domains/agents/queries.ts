@@ -113,6 +113,84 @@ export async function getRunUsage(workspaceId: string, runId: string): Promise<R
   };
 }
 
+export type UsageLedgerRow = {
+  runId: string;
+  objective: string;
+  state: string;
+  startedAt: Date | null;
+  /** Summed recorded cost; null when no usage event carried a price. */
+  usd: string | null;
+  pricedEvents: number;
+  usageEvents: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export type UsageLedger = {
+  rows: UsageLedgerRow[];
+  /** Runs with usage events but no recorded price: real work, unknown cost. */
+  unpricedRuns: number;
+  /** Total over the window; null when nothing was priced. */
+  totalUsd: string | null;
+};
+
+/**
+ * The workspace spending ledger: one row per run with recorded usage in the
+ * window, newest first. Same derivation and same honesty contract as
+ * getRunUsage - recorded figures, never a guaranteed complete bill; unpriced
+ * work is named, not silently zeroed.
+ */
+export async function getUsageLedger(workspaceId: string, days: number, limit = 50): Promise<UsageLedger> {
+  const rows = await db.execute(sql`
+    select
+      r.id as run_id,
+      r.objective as objective,
+      r.state::text as state,
+      r.started_at as started_at,
+      sum((e.data->>'costUsd')::numeric)::text as usd,
+      count(e.data->>'costUsd')::int as priced_events,
+      count(e.id)::int as usage_events,
+      coalesce(sum((e.data->>'inputTokens')::bigint), 0)::int as input_tokens,
+      coalesce(sum((e.data->>'outputTokens')::bigint), 0)::int as output_tokens
+    from agent_runs r
+    join run_events e
+      on e.run_id = r.id and e.workspace_id = r.workspace_id and e.type = 'usage'
+    where r.workspace_id = ${workspaceId}
+      and r.created_at >= now() - make_interval(days => ${days})
+    group by r.id, r.objective, r.state, r.started_at
+    order by max(e.created_at) desc
+    limit ${limit}
+  `);
+  // db.execute returns timestamptz as text; startedAt is coerced below.
+  const ledger = rows as unknown as {
+    run_id: string; objective: string; state: string; started_at: string | null;
+    usd: string | null; priced_events: number; usage_events: number; input_tokens: number; output_tokens: number;
+  }[];
+  let totalUsd: string | null = null;
+  let unpricedRuns = 0;
+  let total = 0;
+  for (const row of ledger) {
+    if (row.usd === null) unpricedRuns += 1;
+    else total += Number(row.usd);
+  }
+  if (ledger.some((row) => row.usd !== null)) totalUsd = total.toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0");
+  return {
+    rows: ledger.map((row) => ({
+      runId: row.run_id,
+      objective: row.objective,
+      state: row.state,
+      startedAt: row.started_at ? new Date(row.started_at) : null,
+      usd: row.usd,
+      pricedEvents: row.priced_events,
+      usageEvents: row.usage_events,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+    })),
+    unpricedRuns,
+    totalUsd,
+  };
+}
+
 /**
  * The columns the gateway binds a call against. Read fresh on every call and
  * never cached: a cancelled run or a reassigned owner must take effect on the
