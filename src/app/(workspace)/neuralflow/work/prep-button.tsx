@@ -14,23 +14,26 @@ export function PrepButton({ eventId }: { eventId: string }) {
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const run = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await generateMeetingPrepAction({ eventId });
+      if (result.ok) setArtifactId(result.artifactId);
+      else setError(result.error);
+    });
+  };
+
   if (artifactId) {
     return (
       <span className="flex shrink-0 items-center gap-2 text-xs">
+        {error ? <span role="alert" className="text-destructive">{error}</span> : null}
         <Link href={`/artifacts/${artifactId}`} className="underline underline-offset-2 hover:text-foreground">
           Prep ready
         </Link>
         <button
           type="button"
           disabled={pending}
-          onClick={() => {
-            setError(null);
-            startTransition(async () => {
-              const result = await generateMeetingPrepAction({ eventId });
-              if (result.ok) setArtifactId(result.artifactId);
-              else setError(result.error);
-            });
-          }}
+          onClick={run}
           className="text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           {pending ? "Refreshing…" : "Refresh"}
@@ -41,18 +44,11 @@ export function PrepButton({ eventId }: { eventId: string }) {
 
   return (
     <span className="flex shrink-0 items-center gap-2 text-xs">
-      {error ? <span className="text-destructive">{error}</span> : null}
+      {error ? <span role="alert" className="text-destructive">{error}</span> : null}
       <button
         type="button"
         disabled={pending}
-        onClick={() => {
-          setError(null);
-          startTransition(async () => {
-            const result = await generateMeetingPrepAction({ eventId });
-            if (result.ok) setArtifactId(result.artifactId);
-            else setError(result.error);
-          });
-        }}
+        onClick={run}
         className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
       >
         {pending ? "Prepping…" : "Prep"}
