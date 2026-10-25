@@ -1,7 +1,7 @@
 # `make check` is the gate agents/engineering.md names. It calls the same
 # script CI runs, so "passing" has exactly one definition.
 
-.PHONY: install dev check e2e search-up search-down search-logs queue-up queue-down queue-logs
+.PHONY: install dev check e2e search-up search-down search-logs queue-up queue-down queue-logs seed-taxonomy
 
 install:
 	pnpm install
@@ -47,3 +47,7 @@ queue-down:
 
 queue-logs:
 	@tail -f .run/outbox-worker.log
+
+# ASH-272: seed the knowledge taxonomy catalog. Dry run; -- --apply writes.
+seed-taxonomy:
+	pnpm seed:taxonomy

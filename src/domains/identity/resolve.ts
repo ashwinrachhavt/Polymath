@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { seedTaxonomyCatalog } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
 import { memberships, users, workspaces } from "./schema";
 
@@ -84,6 +85,11 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
     .insert(memberships)
     .values({ workspaceId: workspace.id, userId: user.id, role: "owner", status: "active" })
     .onConflictDoNothing({ target: [memberships.workspaceId, memberships.userId] });
+  // ASH-272: a freshly provisioned workspace gets the seeded taxonomy catalog
+  // (idempotent upsert; a race with another provisioner folds). This branch
+  // only runs when no membership existed, so the hot resolve path never pays
+  // for it.
+  await seedTaxonomyCatalog(workspace.id);
   return { userId: user.id, workspaceId: workspace.id, role: "owner" };
 });
 
