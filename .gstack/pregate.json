@@ -5,6 +5,7 @@
     ".serena/**": [],
     ".mcp.json": [],
     ".gitignore": [],
+    ".env.example": [],
     "extensions/**": [],
     "eslint.config.mjs": [],
     "vercel.json": [],
@@ -50,5 +51,8 @@
   "serial_patterns": [
     "tests/integration/**",
     "tests/db/**"
+  ],
+  "empty_lanes": [
+    ".env.example"
   ]
 }

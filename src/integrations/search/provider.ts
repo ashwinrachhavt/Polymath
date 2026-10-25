@@ -60,7 +60,9 @@ import { tavilyProvider } from "./tavily";
  * Pick the adapter from the environment. SEARCH_PROVIDER wins outright;
  * otherwise a configured local SearXNG instance (SEARXNG_URL) is preferred,
  * then the first configured key in cost order of "has a real free tier"
- * (Brave 2k/mo, Tavily 1k/mo, Exa trial credit), and with nothing configured
+ * (Firecrawl 1k credits/mo, Brave 2k/mo, Tavily 1k/mo, Exa trial credit —
+ * card-backed tiers like Parallel stay out of the auto-chain and need an
+ * explicit SEARCH_PROVIDER), and with nothing configured
  * the zero-key DuckDuckGo adapter so the tool works with no setup and no spend.
  */
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
@@ -86,7 +88,6 @@ export function webSearchProvider(env: Record<string, string | undefined> = proc
     case "":
       if (env.SEARXNG_URL) return searxngProvider(env);
       if (env.FIRECRAWL_HOSTED_API_KEY) return firecrawlSearchProvider(env);
-      if (env.PARALLEL_API_KEY) return parallelProvider(env);
       if (env.BRAVE_SEARCH_API_KEY) return braveProvider(env);
       if (env.TAVILY_API_KEY) return tavilyProvider(env);
       if (env.EXA_API_KEY) return exaProvider(env);

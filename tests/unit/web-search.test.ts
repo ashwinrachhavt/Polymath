@@ -75,7 +75,10 @@ describe("webSearchProvider resolution", () => {
     expect(webSearchProvider({ TAVILY_API_KEY: "tv-test" }).name).toBe("tavily");
     expect(webSearchProvider({ BRAVE_SEARCH_API_KEY: "brv-test" }).name).toBe("brave");
     expect(webSearchProvider({ EXA_API_KEY: "exa-test" }).name).toBe("exa");
-    expect(webSearchProvider({ PARALLEL_API_KEY: "pl-test" }).name).toBe("parallel");
+    // Parallel is card-backed, so a bare key never auto-selects it: the
+    // registry keeps it disabled until the spend is opted into explicitly.
+    expect(webSearchProvider({ PARALLEL_API_KEY: "pl-test" }).name).toBe("duckduckgo");
+    expect(webSearchProvider({ SEARCH_PROVIDER: "parallel", PARALLEL_API_KEY: "pl-test" }).name).toBe("parallel");
   });
 
   it("resolves AI Gateway server-tool search by provider suffix", () => {
@@ -98,6 +101,20 @@ describe("webSearchProvider resolution", () => {
 
   it("fails loudly when a keyed provider is named without its key", () => {
     expect(() => webSearchProvider({ SEARCH_PROVIDER: "brave" })).toThrow(WebSearchError);
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "parallel" })).toThrow(WebSearchError);
+    expect(() => webSearchProvider({ SEARCH_PROVIDER: "ai-gateway-exa" })).toThrow(WebSearchError);
+  });
+
+  it("resolves the auto-chain in its documented cost order", () => {
+    const env = {
+      BRAVE_SEARCH_API_KEY: "brv",
+      TAVILY_API_KEY: "tv",
+      EXA_API_KEY: "exa",
+    };
+    expect(webSearchProvider(env).name).toBe("brave");
+    // Firecrawl outranks Brave; a card-backed tier like Parallel never
+    // auto-selects — it needs an explicit SEARCH_PROVIDER.
+    expect(webSearchProvider({ ...env, FIRECRAWL_HOSTED_API_KEY: "fc" }).name).toBe("firecrawl");
   });
 
   it("fails loudly on an unknown provider name", () => {

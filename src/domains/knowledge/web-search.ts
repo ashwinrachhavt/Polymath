@@ -1,5 +1,5 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { providerEntry } from "@/integrations/providers/registry";
+import { providerEntry, ProviderDisabledError } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, QuotaExhaustedError, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 import { firecrawlSearchCost } from "@/integrations/search/firecrawl";
 import { WebSearchError, webSearchProvider, type WebSearchResponse } from "@/integrations/search/provider";
@@ -41,14 +41,23 @@ export async function searchWebForAgent(
   const limit = Math.min(Math.max(input.limit ?? 5, 1), WEB_SEARCH_MAX_RESULTS);
   try {
     const provider = webSearchProvider();
-    const entry = providerEntry(provider.name);
+    // Fail closed like every other provider route: a registry-disabled entry
+    // (parallel's card-backed tier, the gateway's post-promo billing) must not
+    // execute because its key happens to be set. The gateway adapters report
+    // per-tool names (ai-gateway-tako, ...) over one shared registry entry.
+    const entry = providerEntry(provider.name) ?? providerEntry(provider.name.replace(/^(ai-gateway-).+/, "$1search"));
+    if (!entry || !entry.enabled) {
+      return { ok: false, error: `web search provider ${provider.name} is not enabled for this workspace; opt in through the provider registry` };
+    }
     const run = () => provider.search(query, limit);
-    const results =
-      entry?.quota && entry.enabled
-        ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
-        : await run();
+    const results = entry.quota
+      ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
+      : await run();
     return { ok: true, provider: provider.name, query, results };
   } catch (cause) {
+    if (cause instanceof ProviderDisabledError) {
+      return { ok: false, error: `web search provider is disabled, try again` };
+    }
     if (cause instanceof QuotaExhaustedError) {
       return { ok: false, error: `free search allowance exhausted for ${cause.provider}; it renews with the next period` };
     }

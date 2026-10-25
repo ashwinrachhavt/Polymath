@@ -1,6 +1,6 @@
 /*
- * The model catalog: every provider the workspace holds a key for, and only the
- * models that actually answered a probe.
+ * The model catalog: every provider the workspace holds a key for, and the
+ * models a probe answered or a listing named — the probe field says which.
  *
  * Verified 2026-10-21 against the live keys. NVIDIA advertises 83 models in its
  * listing but most return 410 end-of-life or 404 not-found; LLM7 lists 70 and
@@ -44,10 +44,6 @@ export type ModelOption = {
   probe: string;
 };
 
-/*
- * Providers whose every model failed a live probe. Listed so the UI can say why
- * they are absent rather than pretending the workspace never added them.
- */
 export const MODEL_CATALOG: readonly ModelOption[] = [
   {
     id: "gemini-3.5-flash-lite",

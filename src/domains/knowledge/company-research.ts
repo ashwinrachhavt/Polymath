@@ -241,7 +241,7 @@ const COMPLETE_URL = "https://openrouter.ai/api/v1/chat/completions";
 const COMPLETE_MODEL = () => process.env.RESEARCH_MODEL || "openai/gpt-4o-mini";
 const MAX_PROMPT_CHARS = 24_000;
 
-const SECTION_SYSTEM = `You write one section of an evidence-grounded business case study.
+export const SECTION_SYSTEM = `You write one section of an evidence-grounded business case study.
 
 Rules:
 - Cite every factual claim inline as [S#], matching the source manifest in the brief. Place the citation immediately after the statement it supports. A statement without a citation must be explicitly marked as your analysis ("My read: ...").

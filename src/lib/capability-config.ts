@@ -93,6 +93,11 @@ const SEARCH_CHOICES: Record<string, readonly string[]> = {
   brave: ["BRAVE_SEARCH_API_KEY"],
   tavily: ["TAVILY_API_KEY"],
   exa: ["EXA_API_KEY"],
+  parallel: ["PARALLEL_API_KEY"],
+  "ai-gateway-exa": ["AI_GATEWAY_API_KEY"],
+  "ai-gateway-tako": ["AI_GATEWAY_API_KEY"],
+  "ai-gateway-parallel": ["AI_GATEWAY_API_KEY"],
+  "ai-gateway-perplexity": ["AI_GATEWAY_API_KEY"],
   duckduckgo: [],
 };
 const SEARCH_FALLBACK: readonly string[] = [
