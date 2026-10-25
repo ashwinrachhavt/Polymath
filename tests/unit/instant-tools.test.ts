@@ -95,9 +95,9 @@ function stubFetchOnce(status: number, body: unknown) {
 
 describe("deriveInstantCapability / resolveInstantCapability", () => {
   it("derives and round-trips a capability name", () => {
-    const name = deriveInstantCapability("granola", "GRANOLA_FETCH_USERS");
-    expect(name).toBe("instant.granola.granola_fetch_users");
-    expect(resolveInstantCapability(name)).toEqual({ toolkitSlug: "granola" });
+    const name = deriveInstantCapability("hackernews", "HACKERNEWS_GET_FRONTPAGE");
+    expect(name).toBe("instant.hackernews.hackernews_get_frontpage");
+    expect(resolveInstantCapability(name)).toEqual({ toolkitSlug: "hackernews" });
   });
 
   it("collapses non-alphanumerics and trims underscores", () => {
@@ -126,7 +126,7 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
     registryGate.unverified = true;
     try {
       await expect(
-        executeInstantTool({ toolSlug: "instant.granola.granola_fetch_users", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+        executeInstantTool({ toolSlug: "instant.hackernews.hackernews_get_frontpage", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
       ).rejects.toMatchObject({ reason: "registry_unverified" });
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
@@ -142,16 +142,16 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ items: [{ slug: "GRANOLA_FETCH_USERS", name: "Fetch users", no_auth: false }] }),
+          JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: false }] }),
           { status: 200 },
         ),
       ),
     );
-    await listInstantTools("granola");
+    await listInstantTools("hackernews");
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
     await expect(
-      executeInstantTool({ toolSlug: "instant.granola.granola_fetch_users", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+      executeInstantTool({ toolSlug: "instant.hackernews.hackernews_get_frontpage", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
     ).rejects.toMatchObject({ reason: "not_no_auth" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -165,16 +165,16 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ items: [{ slug: "GRANOLA_UNKNOWN_TOOL", name: "Unknown", no_auth: true }] }),
+          JSON.stringify({ items: [{ slug: "HACKERNEWS_UNKNOWN_TOOL", name: "Unknown", no_auth: true }] }),
           { status: 200 },
         ),
       ),
     );
-    await listInstantTools("granola");
+    await listInstantTools("hackernews");
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
     await expect(
-      executeInstantTool({ toolSlug: "instant.granola.granola_unknown_tool", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+      executeInstantTool({ toolSlug: "instant.hackernews.hackernews_unknown_tool", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
     ).rejects.toMatchObject({ reason: "write_unverified" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -186,21 +186,21 @@ describe("listInstantTools cache behavior", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ items: [{ slug: "GRANOLA_FETCH_USERS", name: "Fetch users", no_auth: true }] }),
+          JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: true }] }),
           { status: 200 },
         ),
       ),
     );
-    const first = await listInstantTools("granola");
+    const first = await listInstantTools("hackernews");
     expect(first).toHaveLength(1);
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
-    const second = await listInstantTools("granola");
+    const second = await listInstantTools("hackernews");
     expect(second).toEqual(first);
   });
 
   it("throws when there is no cached copy and the fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
-    await expect(listInstantTools("granola")).rejects.toThrow(/unreachable/);
+    await expect(listInstantTools("hackernews")).rejects.toThrow(/unreachable/);
   });
 });
 
@@ -209,15 +209,15 @@ describe("executeInstantTool provider error mapping", () => {
     // Runs without Postgres: withQuota is asked to passthrough (the atomicity
     // suite below proves the real reserve/settle against a real database).
     quotaSeam.passthrough = false;
-    // The generated JSON classifies granola's tool as a proven read, so a
+    // The generated JSON classifies hackernews's tool as a proven read, so a
     // cache fed from the generated catalog lets the gates pass and the
     // (stubbed) execute call return 429.
-    listCacheSeedForTest("granola", [
-      { slug: "GRANOLA_FETCH_USERS", name: "Fetch users", noAuth: true, riskClass: "read" },
+    listCacheSeedForTest("hackernews", [
+      { slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", noAuth: true, riskClass: "read" },
     ]);
     stubFetchOnce(429, { message: "rate limited" });
     const result = await executeInstantTool({
-      toolSlug: "instant.granola.granola_fetch_users",
+      toolSlug: "instant.hackernews.hackernews_get_frontpage",
       args: {},
       workspaceId: "00000000-0000-0000-0000-000000000000",
       apiKey: "test-key",
@@ -229,12 +229,12 @@ describe("executeInstantTool provider error mapping", () => {
 suite("executeInstantTool spend-guard atomicity (real Postgres)", () => {
   it("writes reserve+settle ledger rows on success", async () => {
     const { workspaceId } = await seedWorkspace(db, `instant-settle-${Date.now()}-${process.pid}`);
-    listCacheSeedForTest("granola", [
-      { slug: "GRANOLA_FETCH_USERS", name: "Fetch users", noAuth: true, riskClass: "read" },
+    listCacheSeedForTest("hackernews", [
+      { slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", noAuth: true, riskClass: "read" },
     ]);
     stubFetchOnce(200, { data: { ok: true } });
     const result = await executeInstantTool({
-      toolSlug: "instant.granola.granola_fetch_users",
+      toolSlug: "instant.hackernews.hackernews_get_frontpage",
       args: {},
       workspaceId,
       apiKey: "test-key",
@@ -262,13 +262,13 @@ suite("executeInstantTool spend-guard atomicity (real Postgres)", () => {
 
   it("releases the reservation when execute throws", async () => {
     const { workspaceId } = await seedWorkspace(db, `instant-release-${Date.now()}-${process.pid}`);
-    listCacheSeedForTest("granola", [
-      { slug: "GRANOLA_FETCH_USERS", name: "Fetch users", noAuth: true, riskClass: "read" },
+    listCacheSeedForTest("hackernews", [
+      { slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", noAuth: true, riskClass: "read" },
     ]);
     // Network failure inside the guarded call: withQuota must release.
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("socket died"); }));
     const result = await executeInstantTool({
-      toolSlug: "instant.granola.granola_fetch_users",
+      toolSlug: "instant.hackernews.hackernews_get_frontpage",
       args: {},
       workspaceId,
       apiKey: "test-key",

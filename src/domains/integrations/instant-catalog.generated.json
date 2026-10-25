@@ -1,14 +1,611 @@
 {
-  "generatedAt": "2026-10-25T00:00:00.000Z",
+  "generatedAt": "2026-10-25T20:44:45.452Z",
   "toolkits": [
     {
-      "slug": "granola",
-      "displayName": "Granola",
+      "slug": "composio",
+      "displayName": "Composio",
       "logoUrl": null,
       "tools": [
         {
-          "slug": "GRANOLA_FETCH_USERS",
-          "name": "Fetch users",
+          "slug": "COMPOSIO_ASK_ORACLE",
+          "name": "Ask Oracle",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_CHECK_ACTIVE_CONNECTION",
+          "name": "Check active connection (deprecated)",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_CHECK_ACTIVE_CONNECTIONS",
+          "name": "Check multiple active connections",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_CREATE_PLAN",
+          "name": "Create Plan",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_ENABLE_TRIGGER",
+          "name": "Enable trigger",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_EXECUTE_AGENT",
+          "name": "Execute agent",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_EXECUTE_TOOL",
+          "name": "Execute Composio Tool",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_GET_DEPENDENCY_GRAPH",
+          "name": "Get Tool Dependency Graph",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_GET_REQUIRED_PARAMETERS",
+          "name": "Get required parameters for connection",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_GET_RESPONSE_SCHEMA",
+          "name": "Get response schema",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_INITIATE_CONNECTION",
+          "name": "Initiate connection",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_LIST_TOOLKITS",
+          "name": "List toolkits",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_LIST_TRIGGERS",
+          "name": "List triggers",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_MANAGE_CONNECTION",
+          "name": "Manage connection",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_MANAGE_CONNECTIONS",
+          "name": "Manage connections",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_MULTI_EXECUTE_TOOL",
+          "name": "Multi Execute Composio Tools",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_REMOTE_BASH_TOOL",
+          "name": "Run bash commands",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_REMOTE_WORKBENCH",
+          "name": "Execute Code remotely in work bench",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_RETRIEVE_TOOLKITS",
+          "name": "Retrieve Toolkits",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_AGENT",
+          "name": "Search agent",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_TOOLS",
+          "name": "Search Composio Tools",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_WAIT_FOR_CONNECTION",
+          "name": "Wait for connection",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_WAIT_FOR_CONNECTIONS",
+          "name": "Wait for connection",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "COMPOSIO_GET_TOOL_SCHEMAS",
+          "name": "Get Tool Schemas",
+          "noAuth": true,
+          "riskClass": "unverified"
+        }
+      ]
+    },
+    {
+      "slug": "composio_search",
+      "displayName": "Composio Search",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "COMPOSIO_SEARCH_DUCK_DUCK_GO_SEARCH",
+          "name": "Composio DuckDuckGo Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_EVENT_SEARCH",
+          "name": "Composio Google Events Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_EXA_ANSWER",
+          "name": "Exa Answer",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_EXA_SIMILARLINK",
+          "name": "Composio Similarlinks",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_FINANCE_SEARCH",
+          "name": "Composio Finance Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_GOOGLE_MAPS_SEARCH",
+          "name": "Composio Google Maps Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_IMAGE_SEARCH",
+          "name": "Composio Image Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_NEWS_SEARCH",
+          "name": "Composio News Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_SCHOLAR_SEARCH",
+          "name": "Composio Scholar Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_SEARCH",
+          "name": "Composio Google Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_SHOPPING_SEARCH",
+          "name": "Composio Shopping Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_TAVILY_SEARCH",
+          "name": "Composio LLM Search",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "COMPOSIO_SEARCH_TRENDS_SEARCH",
+          "name": "Composio Trends Search",
+          "noAuth": true,
+          "riskClass": "read"
+        }
+      ]
+    },
+    {
+      "slug": "hackernews",
+      "displayName": "Hacker News",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "HACKERNEWS_GET_FRONTPAGE",
+          "name": "Get Hackernews Frontpage",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "HACKERNEWS_GET_ITEM_WITH_ID",
+          "name": "Get Hackernews Item",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "HACKERNEWS_GET_LATEST_POSTS",
+          "name": "Get Latest Hackernews Posts",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "HACKERNEWS_GET_TODAYS_POSTS",
+          "name": "Get Hackernews Today Posts",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "HACKERNEWS_GET_USER",
+          "name": "Get Hackernews User",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "HACKERNEWS_SEARCH_POSTS",
+          "name": "Search Hackernews Posts",
+          "noAuth": true,
+          "riskClass": "unverified"
+        }
+      ]
+    },
+    {
+      "slug": "weathermap",
+      "displayName": "OpenWeatherMap",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "WEATHERMAP_WEATHER",
+          "name": "Weather Info",
+          "noAuth": true,
+          "riskClass": "read"
+        }
+      ]
+    },
+    {
+      "slug": "text_to_pdf",
+      "displayName": "Text to PDF",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF",
+          "name": "Convert text to pdf",
+          "noAuth": true,
+          "riskClass": "read"
+        }
+      ]
+    },
+    {
+      "slug": "browser_tool",
+      "displayName": "Browser Tool",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "BROWSER_TOOL_COPY_SELECTED_TEXT",
+          "name": "Copy Selected Text",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_DRAG_AND_DROP",
+          "name": "Drag and Drop",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_FETCH_WEBPAGE",
+          "name": "Fetch Webpage Content",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_GET_CLIPBOARD",
+          "name": "Get Clipboard Content",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_KEYBOARD_SHORTCUT",
+          "name": "Keyboard Shortcut",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_MOUSE_CLICK",
+          "name": "Mouse Click",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_MOUSE_DOUBLE_CLICK",
+          "name": "Mouse Double Click",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_MOUSE_DOWN",
+          "name": "Mouse Down (Press and Hold)",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_MOUSE_MOVE",
+          "name": "Mouse Move",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_MOUSE_UP",
+          "name": "Mouse Up (Release Button)",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_NAVIGATE",
+          "name": "Navigate to URL",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_PASTE_TEXT",
+          "name": "Paste Text",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_PERFORM_WEB_TASK",
+          "name": "AI Perform Web Task",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_SCREENSHOT_WEBPAGE",
+          "name": "Screenshot Webpage",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_SCROLL",
+          "name": "Scroll Page",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_SET_CLIPBOARD",
+          "name": "Set Clipboard Content",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_TAKE_SCREENSHOT",
+          "name": "Take Screenshot",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "BROWSER_TOOL_TYPE_TEXT",
+          "name": "Type Text",
+          "noAuth": true,
+          "riskClass": "unverified"
+        }
+      ]
+    },
+    {
+      "slug": "entelligence",
+      "displayName": "Entelligence",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "ENTELLIGENCE_ADD_A_NEW_REPOSITORY",
+          "name": "Add a new repository",
+          "noAuth": true,
+          "riskClass": "unverified"
+        },
+        {
+          "slug": "ENTELLIGENCE_INTERACT_WITH_THE_REPOSITORY_AGENT",
+          "name": "Interact with the repository agent",
+          "noAuth": true,
+          "riskClass": "unverified"
+        }
+      ]
+    },
+    {
+      "slug": "bench",
+      "displayName": "Bench",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "BENCH_SLEEP",
+          "name": "Sleep",
+          "noAuth": true,
+          "riskClass": "unverified"
+        }
+      ]
+    },
+    {
+      "slug": "cve_now_mcp",
+      "displayName": "cve.now MCP",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "CVE_NOW_MCP_CHECK_STACK",
+          "name": "Check stack",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "CVE_NOW_MCP_GET_VULNERABILITY",
+          "name": "Get vulnerability",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "CVE_NOW_MCP_LIST_FEED",
+          "name": "List feed",
+          "noAuth": true,
+          "riskClass": "read"
+        }
+      ]
+    },
+    {
+      "slug": "gleif",
+      "displayName": "GLEIF API",
+      "logoUrl": null,
+      "tools": [
+        {
+          "slug": "GLEIF_EXPORT_LEI_RECORDS",
+          "name": "Export LEI Records",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_AUTOCOMPLETIONS",
+          "name": "Get Autocompletions",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_FUND_OR_BRANCH_RELATIONSHIP",
+          "name": "Get Fund or Branch Relationship",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_FUZZY_COMPLETIONS",
+          "name": "Get Fuzzy Completions",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_LEI_ISSUER_FOR_RECORD",
+          "name": "Get LEI Issuer for Record",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_LEI_RECORD",
+          "name": "Get LEI Record",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_PARENT_INFORMATION",
+          "name": "Get Parent Information",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_REFERENCE_ITEM",
+          "name": "Get Reference Item",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_RELATED_LEI_RECORD",
+          "name": "Get Related LEI Record",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_GET_SUCCESSOR_ENTITY",
+          "name": "Get Successor Entity (Deprecated)",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_CHILD_ENTITIES",
+          "name": "List Child Entities",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_CHILD_RELATIONSHIPS",
+          "name": "List Child Relationships",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_FUND_OR_BRANCH_ENTITIES",
+          "name": "List Fund or Branch Entities",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_FUND_OR_BRANCH_RELATIONSHIPS",
+          "name": "List Fund or Branch Relationships",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_LEI_FIELD_MODIFICATIONS",
+          "name": "List LEI Field Modifications",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_LEI_ISINS",
+          "name": "List LEI ISINs",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_LEI_ISSUER_JURISDICTIONS",
+          "name": "List LEI Issuer Jurisdictions",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_REFERENCE_DATA",
+          "name": "List Reference Data",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_REGISTRATION_AGENTS",
+          "name": "List Registration Agents",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_LIST_SUCCESSOR_ENTITIES",
+          "name": "List Successor Entities",
+          "noAuth": true,
+          "riskClass": "read"
+        },
+        {
+          "slug": "GLEIF_SEARCH_LEI_RECORDS",
+          "name": "Search LEI Records",
           "noAuth": true,
           "riskClass": "read"
         }

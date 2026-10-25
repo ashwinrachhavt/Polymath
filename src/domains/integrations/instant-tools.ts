@@ -1,4 +1,4 @@
-import { notInArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import catalogJson from "./instant-catalog.generated.json";
 import { integrationCatalog } from "./schema";
 import { db } from "@/lib/db";
@@ -303,36 +303,13 @@ export async function syncInstantCatalog(input: {
   const toolkits = readInstantCatalogJson().toolkits;
   let upserted = 0;
   for (const toolkit of toolkits) {
-    const pages: Array<Array<{ slug?: string; name?: string; no_auth?: boolean }>> = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 3; page += 1) {
-      const url = new URL(`${TOOL_LIST_BASE}`);
-      url.searchParams.set("toolkits", toolkit.slug);
-      url.searchParams.set("limit", "100");
-      if (pageToken) url.searchParams.set("page_token", pageToken);
-      const response = await fetch(url, { headers: { "x-api-key": input.apiKey } });
-      if (!response.ok) {
-        throw new Error(`Composio tool list for "${toolkit.slug}" failed (${response.status}).`);
-      }
-      const body = (await response.json().catch(() => null)) as {
-        items?: Array<{ slug?: string; name?: string; no_auth?: boolean }>;
-        next_cursor?: string;
-      } | null;
-      pages.push(body?.items ?? []);
-      if (!body?.next_cursor) break;
-      pageToken = body.next_cursor;
-    }
-    const all = pages.flat();
-    const capabilityNames = all
-      .filter((t) => t.slug)
-      .map((t) => deriveInstantCapability(toolkit.slug, t.slug as string));
+    // The generated JSON already carries the verified tool list (the generator
+    // applied the deny-by-default classification with the toolkit-level deny
+    // set); the cron upserts exactly that, so the DB mirrors the committed
+    // artifact and the sync adds no classification logic of its own.
+    const capabilityNames = toolkit.tools.map((t) => deriveInstantCapability(toolkit.slug, t.slug));
     const riskByCapability = Object.fromEntries(
-      all
-        .filter((t) => t.slug)
-        .map((t) => [
-          deriveInstantCapability(toolkit.slug, t.slug as string),
-          t.no_auth === true ? "read" : "unverified",
-        ]),
+      toolkit.tools.map((t) => [deriveInstantCapability(toolkit.slug, t.slug), t.riskClass]),
     );
     await db
       .insert(integrationCatalog)
@@ -355,11 +332,31 @@ export async function syncInstantCatalog(input: {
       });
     upserted += 1;
   }
-  const deleted = await db
-    .delete(integrationCatalog)
-    .where(notInArray(integrationCatalog.provider, toolkits.map((t) => t.slug)))
-    .returning({ provider: integrationCatalog.provider });
-  return { upserted, deactivated: deleted.length };
+  /*
+   * Deactivate toolkits the generated catalog no longer carries — but ONLY
+   * Instant rows. The catalog also holds the OAuth providers' display rows
+   * (gmail, github, …); deleting everything absent from the Instant list
+   * would wipe them on the first cron pass (observed live: 28 deletions).
+   * An Instant row is one whose capabilities are instant.*-derived, which the
+   * migration guarantees for every row this sync owns.
+   */
+  const owned = await db
+    .select({ id: integrationCatalog.id, provider: integrationCatalog.provider, capabilities: integrationCatalog.capabilities })
+    .from(integrationCatalog);
+  const instantOwned = owned.filter((row) =>
+    (row.capabilities as string[]).some((c) => c.startsWith("instant.")),
+  );
+  const keep = new Set(toolkits.map((t) => t.slug));
+  const staleIds = instantOwned.filter((row) => !keep.has(row.provider)).map((row) => row.id);
+  let deactivated = 0;
+  if (staleIds.length > 0) {
+    const deleted = await db
+      .delete(integrationCatalog)
+      .where(inArray(integrationCatalog.id, staleIds))
+      .returning({ provider: integrationCatalog.provider });
+    deactivated = deleted.length;
+  }
+  return { upserted, deactivated };
 }
 
 /*
