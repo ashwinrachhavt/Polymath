@@ -89,7 +89,14 @@ test("the island settles on a labelled failure surface when no runtime is reacha
   // bridge-down journey - the assertion is a named failure, never a spinner
   // or an error boundary.
   await expect(
-    page.getByText(/could not start|not reachable|no agent session|execution is unavailable/i).first(),
+    page
+      .getByText(
+        // The three named bridge-down surfaces, and only those: the island's
+        // own error card, the bridge-reason copy, or the stream's labelled
+        // failure frame. Anything else failing still fails this test.
+        /The interview could not start|not reachable from this deployment|no agent session|Agent execution is unavailable/,
+      )
+      .first(),
   ).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
   await page.screenshot({ path: "test-results/onboarding-pixels/island-settled.png", fullPage: true, ...HIDE_DEV_CHROME });
