@@ -219,3 +219,19 @@ describe("the Instant derived namespace cannot collide", () => {
     }
   });
 });
+
+describe("the profile-upgrade gained array stays in step with the catalog", () => {
+  it("grants only names that derive from the generated Instant catalog (or a known capability)", () => {
+    // ensureProfile's gained array is not exported; the catalog-side half of
+    // the grant is pinned here: every instant.* name the array could carry
+    // must derive from the committed catalog, so an edit that drifts the two
+    // lists fails the DEFAULT_ALLOWED_TOOLS pins above plus this direction.
+    const derivable = new Set(
+      catalogJson().toolkits.flatMap((t) => t.tools.map((x) => deriveInstantCapability(t.slug, x.slug))),
+    );
+    expect(derivable.size).toBeGreaterThan(0);
+    for (const name of gainedInstantNames()) {
+      expect(derivable.has(name), `${name} does not derive from the committed catalog`).toBe(true);
+    }
+  });
+});
