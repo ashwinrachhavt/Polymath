@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { markdownToPlainText } from "@/lib/display-text";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
@@ -102,9 +103,9 @@ export function parseLibraryDraft(text: string, sourceCount: number): LibraryDra
 }
 
 function render(draft: LibraryDraft, sources: LibrarySource[]): string {
+  // The artifact page already renders the title as its H1; the body starts
+  // with the drafting disclaimer, not a duplicate heading.
   const md: string[] = [];
-  md.push(`# ${draft.title}`);
-  md.push("");
   md.push("*Drafted from the library only. Paragraphs marked [citation needed] make claims the sources do not support.*");
   md.push("");
   for (const paragraph of draft.paragraphs) {
@@ -113,7 +114,16 @@ function render(draft: LibraryDraft, sources: LibrarySource[]): string {
     md.push("");
   }
   md.push("## Sources");
-  sources.forEach((source, i) => md.push(`[${i + 1}] ${source.title}`));
+  // One line per cited passage number would repeat a document cited twice;
+  // one line per DOCUMENT keeps the list readable while the [n] refs keep
+  // every citation's mapping intact.
+  const byDocument = new Map<string, { title: string; refs: number[] }>();
+  sources.forEach((source, i) => {
+    const entry = byDocument.get(source.documentId) ?? { title: source.title, refs: [] };
+    entry.refs.push(i + 1);
+    byDocument.set(source.documentId, entry);
+  });
+  for (const entry of byDocument.values()) md.push(`- [${entry.refs.join(", ")}] ${entry.title}`);
   return md.join("\n");
 }
 
@@ -156,7 +166,8 @@ export async function draftFromLibrary(
     const note = await createNoteInTx(tx, auth, {
       title: draft.title,
       kind: "document",
-      plainText: markdown,
+      content: { kind: "markdown", text: markdown },
+      plainText: markdownToPlainText(markdown),
     });
     await recordAudit(
       auth,

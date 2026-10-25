@@ -65,10 +65,21 @@ suite("library writing", () => {
     expect(artifact.title).toBe("Where pricing stands");
 
     const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    // plainText is the stripped preview column; the markdown body lives in
+    // the version's content.
     expect(version.plainText).toContain("[1]");
     expect(version.plainText).toContain("[citation needed]");
-    expect(version.plainText).toContain("## Sources");
+    expect(version.plainText).toContain("Sources");
+    expect(version.plainText).not.toContain("##");
     expect(version.plainText).toContain("Pricing decision");
+    const content = version.content as { kind?: string; text?: string };
+    expect(content.kind).toBe("markdown");
+    expect(content.text).toContain("## Sources");
+    // One line per cited document, citation numbers preserved.
+    expect(content.text).toContain("- [1] Pricing decision");
+    expect(content.text).toContain("- [2] Q3 planning");
+    // The body does not repeat the artifact title - the page H1 owns it.
+    expect(content.text).not.toContain("# Where pricing stands");
   });
 
   it("refuses an empty library before any write", async () => {
