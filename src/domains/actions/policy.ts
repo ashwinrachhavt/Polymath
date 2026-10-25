@@ -82,27 +82,34 @@ export async function setSenderAliasGrant(
       ...((existing?.constraints ?? {}) as Record<string, unknown>),
       allowedSenderAliases: clean,
     };
+    let policyId: string;
     if (existing) {
       await tx
         .update(actionPolicies)
         .set({ constraints, updatedAt: new Date(), updatedBy: auth.userId, version: existing.version + 1 })
         .where(and(eq(actionPolicies.id, existing.id), eq(actionPolicies.workspaceId, auth.workspaceId)));
+      policyId = existing.id;
     } else {
-      await tx.insert(actionPolicies).values({
-        workspaceId: auth.workspaceId,
-        capability,
-        riskClass: "external_write",
-        constraints,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      });
+      const [inserted] = await tx
+        .insert(actionPolicies)
+        .values({
+          workspaceId: auth.workspaceId,
+          capability,
+          riskClass: "external_write",
+          constraints,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning({ id: actionPolicies.id });
+      policyId = inserted!.id;
     }
     await recordAudit(
       auth,
       {
         action: "policy.sender_aliases_set",
         subjectType: "action_policy",
-        subjectId: existing?.id ?? capability,
+        // audit_events.subject_id is uuid-typed: the policy row, never the capability string.
+        subjectId: policyId,
         summary:
           clean.length > 0
             ? `Authorized senders for ${capability}: ${clean.join(", ")}`
