@@ -36,14 +36,17 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
 
   // Start once per mount. The action is resume-first, so even a strict-mode
   // double effect converges on one run; the ref just saves the extra call.
+  // No cancel-on-cleanup: strict mode's simulated unmount runs the cleanup
+  // while the component stays alive, and discarding the in-flight result
+  // there is what stranded the island on "Starting the interview…" forever.
+  // A setState after a real unmount is a harmless no-op, and a genuine
+  // remount gets a fresh ref and a resume-first action.
   useEffect(() => {
     if (runId || startedRef.current) return;
     startedRef.current = true;
-    let cancelled = false;
     void (async () => {
       try {
         const result = await startOnboardingAction();
-        if (cancelled) return;
         if (!result.ok) {
           setError(result.message);
           return;
@@ -53,12 +56,9 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
         // A rejected action call (module load, network, a 500 outside the
         // action's own labelling) must land on the same labelled surface -
         // "Starting the interview…" is never the end state.
-        if (!cancelled) setError("The interview could not be reached. Check the connection and retry.");
+        setError("The interview could not be reached. Check the connection and retry.");
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [runId]);
 
   // Watch for the brief: while the conversation is open, ask the server every
