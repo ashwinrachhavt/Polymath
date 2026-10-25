@@ -65,8 +65,8 @@ export const GENERIC_READS: Record<string, GenericReadSpec> = {
     },
   },
   // Docs and Sheets both list through Drive's files endpoint, filtered by
-  // mimeType — resolveQuery already escapes quotes in {query}, so the Drive
-  // q filter is injection-safe.
+  // mimeType; resolveQuery interpolates the search text into {query} and
+  // escapes the Drive q language's quote, so the filter is injection-safe.
   googledocs_search_files: {
     tool: "googledocs_search_files",
     capability: "googledocs.documents.read",
@@ -222,13 +222,14 @@ function resolveQuery(spec: GenericReadSpec, query: string | undefined): Record<
   if (!spec.query) return undefined;
   const resolved: Record<string, string> = {};
   for (const [key, template] of Object.entries(spec.query)) {
-    if (template === "{query}") {
+    if (template.includes("{query}")) {
       // No search text, no search param: sending an empty filter would be a
       // provider error or, worse, a silently different query.
       if (!query?.trim()) continue;
       // Escape the provider query language's quote (Drive's q): the value is
-      // data, never a filter edit.
-      resolved[key] = query.trim().replaceAll("'", "\\'");
+      // data, never a filter edit. The template may carry other constant
+      // clauses (a mimeType filter), so interpolate rather than substitute.
+      resolved[key] = template.replaceAll("{query}", query.trim().replaceAll("'", "\\'"));
       continue;
     }
     resolved[key] = template;

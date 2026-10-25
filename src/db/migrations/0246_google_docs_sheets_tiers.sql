@@ -4,15 +4,17 @@
 -- enforcement source; keep in step with PROVIDER_TIERS (provider-tiers.test.ts).
 --
 -- The inserts backfill the catalog rows themselves: a database seeded before
--- 0223 has no google-docs or google-sheets row at all (and this deployment's
--- dev database was also missing google-calendar), so the tier updates below
--- would silently match nothing against the missing rows. Re-applying is a
--- no-op where the row exists.
+-- 0223 has no google-calendar, google-docs or google-sheets row at all, so the
+-- tier updates below would silently match nothing against the missing rows.
+-- Re-applying is a no-op where the row exists.
 INSERT INTO integration_catalog (provider, display_name, capabilities, risk_by_capability, requires_approval)
 VALUES
   ('google-calendar', 'Google Calendar',
    '["read_events", "write_events"]'::jsonb,
    '{"read_events": "read", "write_events": "external_write"}'::jsonb, true),
+  ('google-drive', 'Google Drive',
+   '["read_files", "upload_files"]'::jsonb,
+   '{"read_files": "read", "upload_files": "external_write"}'::jsonb, true),
   ('google-docs', 'Google Docs',
    '["read_documents", "write_documents"]'::jsonb,
    '{"read_documents": "read", "write_documents": "external_write"}'::jsonb, true),

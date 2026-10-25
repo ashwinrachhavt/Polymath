@@ -59,6 +59,26 @@ describe("genericList", () => {
     expect(seen.request?.query).toMatchObject({ q: "ashwin" });
   });
 
+  it("interpolates and escapes {query} inside a larger Drive q template", async () => {
+    const transport = fakeTransport({ ok: true, status: 200, data: { files: [] } });
+    const seen: { request?: TransportRequest } = {};
+    const spy: Transport = {
+      async read(request: TransportRequest) {
+        seen.request = request;
+        return transport.read(request);
+      },
+    };
+
+    await genericList(spy, GENERIC_READS.googledocs_search_files!, { connectedAccountId: "ca_1", query: "it's q3" });
+    expect(seen.request?.query?.q).toBe("mimeType = 'application/vnd.google-apps.document' and name contains 'it\\'s q3'");
+
+    await genericList(spy, GENERIC_READS.googlesheets_list_spreadsheets!, { connectedAccountId: "ca_1", query: "budget '26" });
+    expect(seen.request?.query?.q).toBe("mimeType = 'application/vnd.google-apps.spreadsheet' and name contains 'budget \\'26'");
+
+    await genericList(spy, GENERIC_READS.googledrive_search_files!, { connectedAccountId: "ca_1", query: "a'b" });
+    expect(seen.request?.query?.q).toBe("name contains 'a\\'b'");
+  });
+
   it("a non-2xx becomes a provider_error with the status", async () => {
     const transport = fakeTransport({ ok: false, code: "provider_error", status: 403, message: "forbidden" });
 
