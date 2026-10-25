@@ -1,9 +1,10 @@
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
+import { outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
 
@@ -103,6 +104,8 @@ async function transition(
   fromStates: Array<"running" | "paused">,
   patch: (now: Date) => Record<string, unknown>,
   audit: { action: string; summary: string },
+  /** Extra writes in the same transaction (e.g. the follow-up outbox event). */
+  extra?: (tx: TxDrizzle, updated: typeof focusSessions.$inferSelect) => Promise<void>,
 ) {
   return withTransaction(async (tx) => {
     const now = new Date();
@@ -136,6 +139,7 @@ async function transition(
       { action: audit.action, subjectType: "focus_session", subjectId: updated.id, summary: audit.summary },
       tx,
     );
+    if (extra) await extra(tx, updated);
     return updated;
   });
 }
@@ -188,6 +192,23 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
       accumulatedSeconds: sql`${focusSessions.accumulatedSeconds} + case when ${focusSessions.state} = 'running' then floor(extract(epoch from (${now.toISOString()}::timestamptz - coalesce(${focusSessions.lastResumedAt}, ${focusSessions.startedAt}))))::int else 0 end`,
     }),
     { action: "focus_session.finished", summary: "Focus finished" },
+    async (tx, updated) => {
+      // ASH-288: a finished session that touched a task MAY earn the follow-up
+      // hand-off. The event is enqueued here, in the finish's own transaction,
+      // so a committed finish never loses its one shot; the handler decides
+      // (deterministically) whether a party resolution justifies the run.
+      // Deduped on the session id: a replayed finish cannot double-start.
+      if (!updated.taskId) return;
+      await tx
+        .insert(outboxEvents)
+        .values({
+          workspaceId: auth.workspaceId,
+          topic: "focus.follow_up_requested",
+          payload: { sessionId: updated.id },
+          dispatchKey: updated.id,
+        })
+        .onConflictDoNothing();
+    },
   );
 }
 

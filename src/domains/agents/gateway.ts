@@ -5,8 +5,11 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { createProposal, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
+import { contacts } from "@/domains/crm/schema";
+import { focusSessions } from "@/domains/focus/schema";
+import { tasks } from "@/domains/work/schema";
 import { decideAndRecordToolInvocation } from "./authorization";
-import { draftReply, WriterDraftError, type ResolvedSenderAccount } from "./writer-draft";
+import { draftFollowUp, draftReply, WriterDraftError, type ResolvedSenderAccount } from "./writer-draft";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
 import { parkRunForReview } from "./event-bridge";
 import { toolCalls } from "./schema";
@@ -124,6 +127,16 @@ type ParsedGeneric = {
   resourceRef?: string;
 };
 
+type ParsedWriterFollowUp = {
+  ok: true;
+  generic?: undefined;
+  tool: "writer_draft_follow_up";
+  args: { sessionId: string; contactId: string; threadId?: string };
+  accountAlias?: string;
+  destination?: undefined;
+  resourceRef?: string;
+};
+
 type ParsedOther = {
   ok: true;
   generic?: undefined;
@@ -134,7 +147,7 @@ type ParsedOther = {
   resourceRef?: string;
 };
 
-type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedWriterDraft | ParsedOther | ParsedGeneric | { ok: false; message: string };
+type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedWriterDraft | ParsedWriterFollowUp | ParsedOther | ParsedGeneric | { ok: false; message: string };
 
 function invalidArguments(message: string): GatewayOutcome {
   return { ok: false, status: 400, code: "invalid_arguments", message };
@@ -162,6 +175,18 @@ function parseCall(tool: string, input: unknown): ParsedCall {
     return parsed.success
       ? { ok: true, tool: "gmail_search", args: parsed.data, accountAlias: parsed.data.accountAlias }
       : { ok: false, message: firstIssue(parsed.error) };
+  }
+  if (tool === "writer_draft_follow_up") {
+    const parsed = TOOL_SCHEMAS.writer_draft_follow_up.safeParse(raw);
+    return parsed.success
+      ? {
+          ok: true as const,
+          tool: "writer_draft_follow_up" as const,
+          args: { sessionId: parsed.data.sessionId, contactId: parsed.data.contactId, threadId: parsed.data.threadId },
+          accountAlias: parsed.data.accountAlias,
+          resourceRef: `focus_session:${parsed.data.sessionId}`,
+        }
+      : { ok: false as const, message: firstIssue(parsed.error) };
   }
   if (tool === "writer_draft_reply") {
     const parsed = TOOL_SCHEMAS.writer_draft_reply.safeParse(raw);
@@ -374,6 +399,7 @@ function redactArguments(parsed: ParsedCall & { ok: true }): Record<string, unkn
   if (parsed.generic) return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_search") return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
   if (parsed.tool === "gmail_read_thread" || parsed.tool === "writer_draft_reply") return { threadId: parsed.args.threadId };
+  if (parsed.tool === "writer_draft_follow_up") return { sessionId: parsed.args.sessionId, contactId: parsed.args.contactId };
   if (parsed.tool !== "gmail_send") {
     // Reads of other providers: the arguments are queries and ids, never bodies.
     const { accountAlias: _alias, ...rest } = parsed.args as Record<string, unknown>;
@@ -553,7 +579,7 @@ export function createGateway({ transport }: { transport: Transport }) {
     // sends may be legitimate wording revisions. Same tool and same redacted
     // arguments is the identity; the redacted form is what the rows store, so
     // the comparison cannot miss what it already recorded.
-    if (parsed.tool !== "gmail_send" && parsed.tool !== "writer_draft_reply") {
+    if (parsed.tool !== "gmail_send" && parsed.tool !== "writer_draft_reply" && parsed.tool !== "writer_draft_follow_up") {
       const parked = await detectLoop(context, parsed);
       if (parked) {
         return {
@@ -574,6 +600,7 @@ export function createGateway({ transport }: { transport: Transport }) {
     }
     if (parsed.tool === "gmail_send") return proposeSend(context, capability, parsed, account, reservation);
     if (parsed.tool === "writer_draft_reply") return proposeWriterDraft(context, parsed, account, reservation);
+    if (parsed.tool === "writer_draft_follow_up") return proposeWriterFollowUp(context, parsed, account, reservation);
     return read(context, parsed, account.alias, account.connectedAccountId, reservation);
   }
 
@@ -995,6 +1022,101 @@ export function createGateway({ transport }: { transport: Transport }) {
         durationMs: Date.now() - reservation.startedAt,
       });
       const status = code === "writer_unconfigured" ? 503 : code === "thread_read_failed" ? 502 : 422;
+      return { ok: false, status, code, message };
+    }
+  }
+
+  /*
+   * The follow-up pair (ASH-288). The run names the session and the RESOLVED
+   * contact by id; every record is re-read here with workspace scoping, so a
+   * run cannot point the pair at another workspace's session, task or
+   * contact, and a session that is not finished earns nothing.
+   */
+  async function proposeWriterFollowUp(
+    context: GatewayContext,
+    parsed: ParsedWriterFollowUp,
+    account: ResolvedSenderAccount,
+    reservation: { reservationId: string; startedAt: number },
+  ): Promise<GatewayOutcome> {
+    try {
+      const [session] = await db
+        .select()
+        .from(focusSessions)
+        .where(and(eq(focusSessions.id, parsed.args.sessionId), eq(focusSessions.workspaceId, context.auth.workspaceId)))
+        .limit(1);
+      if (!session || session.state !== "finished" || !session.taskId) {
+        await settleCall(reservation.reservationId, {
+          ok: false,
+          errorCode: "session_not_finished",
+          durationMs: Date.now() - reservation.startedAt,
+        });
+        return { ok: false, status: 422, code: "session_not_finished", message: "Only a finished focus session with a linked task earns a follow-up pair." };
+      }
+      const [task] = await db
+        .select({ title: tasks.title })
+        .from(tasks)
+        .where(and(eq(tasks.id, session.taskId), eq(tasks.workspaceId, context.auth.workspaceId)))
+        .limit(1);
+      const [contact] = await db
+        .select({ fullName: contacts.fullName, primaryEmail: contacts.primaryEmail })
+        .from(contacts)
+        .where(and(eq(contacts.id, parsed.args.contactId), eq(contacts.workspaceId, context.auth.workspaceId)))
+        .limit(1);
+      if (!task || !contact) {
+        await settleCall(reservation.reservationId, {
+          ok: false,
+          errorCode: "party_not_found",
+          durationMs: Date.now() - reservation.startedAt,
+        });
+        return { ok: false, status: 404, code: "party_not_found", message: "The session's task or the named contact is not in this workspace." };
+      }
+
+      const outcome = await draftFollowUp(
+        context.auth,
+        {
+          runId: context.run.id,
+          sessionId: session.id,
+          contactId: parsed.args.contactId,
+          threadId: parsed.args.threadId,
+          taskId: session.taskId,
+          session: { outcome: session.outcome, whatChanged: session.whatChanged, nextStep: session.nextStep, endedAt: session.endedAt },
+          taskTitle: task.title,
+          contact,
+        },
+        { transport, account },
+      );
+      await settleCall(reservation.reservationId, {
+        ok: true,
+        result: { emailProposalId: outcome.emailProposalId, reminderProposalId: outcome.reminderProposalId },
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      return {
+        ok: true,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "awaiting_review",
+                emailProposalId: outcome.emailProposalId,
+                reminderProposalId: outcome.reminderProposalId,
+                reminderStartsAt: outcome.reminderStartsAt,
+                citations: outcome.citations.length,
+                flags: outcome.flags,
+              }),
+            },
+          ],
+        },
+      };
+    } catch (cause) {
+      const code = cause instanceof WriterDraftError ? cause.code : "writer_failed";
+      const message = cause instanceof Error ? cause.message : "The follow-up could not be drafted.";
+      await settleCall(reservation.reservationId, {
+        ok: false,
+        errorCode: code,
+        durationMs: Date.now() - reservation.startedAt,
+      });
+      const status = code === "writer_unconfigured" ? 503 : 422;
       return { ok: false, status, code, message };
     }
   }

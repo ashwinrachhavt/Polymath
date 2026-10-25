@@ -134,6 +134,9 @@ export const PROVIDER_TOOLS = {
   // Its capability IS gmail.send, so the snapshot ceiling, the tier gate and
   // the effect executor all treat a Writer draft exactly like a send intent.
   writer_draft_reply: "gmail.send",
+  // The follow-up pair's email half is a gmail.send proposal; the reminder
+  // half is a calendar proposal the run files through the same call.
+  writer_draft_follow_up: "gmail.send",
   github_search: "github.read",
   github_read_issue: "github.issue.read",
   slack_list_channels: "slack.channels.read",
