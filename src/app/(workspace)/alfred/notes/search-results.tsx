@@ -46,7 +46,9 @@ function Connections({ hit }: { hit: SearchHit }) {
   // Explicit reference edges read as bare titles; a typed edge names its type.
   const named = (e: { title: string; linkType: string }) => (e.linkType === "reference" ? e.title : `${e.linkType} ${e.title}`);
   const parts: string[] = [];
-  const source = c.out.find((e) => e.linkType === "source");
+  // A projection artifact's own source edge names the record it mirrors (a
+  // document, a thread) with the same title - that is noise, not a connection.
+  const source = c.out.find((e) => e.linkType === "source" && e.title !== hit.title);
   if (source) {
     const quote = source.context?.replace(/\s+/g, " ").trim();
     parts.push(`From ${source.title}${quote ? ` - \u201c${quote.length > 100 ? `${quote.slice(0, 100).trimEnd()}\u2026` : quote}\u201d` : ""}`);

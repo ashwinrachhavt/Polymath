@@ -109,6 +109,25 @@ suite("listHitConnections", () => {
     expect(c.outTotal).toBe(HIT_CONNECTION_CAP + 2);
   });
 
+
+  it("names a non-card target (document, thread) from the edge's recorded label", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `shc-${crypto.randomUUID()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const zettel = await card(workspaceId, "Claim from a PDF", "zettel");
+    const orphan = await card(workspaceId, "Edge to nowhere");
+    // Documents and threads live outside the artifact store; the edge's label
+    // is the title recorded at write time.
+    await link(workspaceId, zettel, crypto.randomUUID(), "source", "document", "A quoted passage.");
+    await holder.db!.update(artifactLinks).set({ label: "Quarterly report.pdf" })
+      .where(eq(artifactLinks.artifactId, zettel));
+    // A non-card target with no recorded label has no honest name: dropped.
+    await link(workspaceId, orphan, crypto.randomUUID(), "reference", "document");
+
+    const c = (await listHitConnections(auth, [zettel, orphan])).get(zettel)!;
+    expect(c.out).toEqual([expect.objectContaining({ title: "Quarterly report.pdf", kind: "document", linkType: "source", context: "A quoted passage." })]);
+    expect((await listHitConnections(auth, [orphan])).get(orphan)!.out).toHaveLength(0);
+  });
+
   it("batches one page of hits and leaves unconnected hits empty", async () => {
     const { userId, workspaceId } = await seedWorkspace(holder.db!, `shc-${crypto.randomUUID()}`);
     const auth = ownerAuth(userId, workspaceId);
