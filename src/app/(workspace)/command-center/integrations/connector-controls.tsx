@@ -10,6 +10,7 @@ import {
   revokeAccountAction,
   setAccountAccessTierAction,
   setAccountCapabilityAction,
+  setSenderAliasesAction,
   setWriteDefaultAction,
   startConnectionAction,
   syncGoogleCalendarAction,
@@ -319,6 +320,79 @@ export function AccessToggles({
           )
         : null}
       {error ? <p className="text-xs text-destructive" role="status">{error}</p> : null}
+    </div>
+  );
+}
+
+/*
+ * ASH-289: the sending grant editor. Each connected Gmail account is one
+ * checkbox; only checked aliases may send. An all-unchecked list means NO
+ * restriction (the pre-grant behavior), and the copy says so - an owner who
+ * wants "nothing sends" revokes the account instead.
+ */
+export function SenderGrantControls({
+  aliases,
+  authorized,
+}: {
+  aliases: string[];
+  authorized: string[];
+}) {
+  const [checked, setChecked] = useState<string[]>(authorized);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const dirty =
+    checked.length !== authorized.length || checked.some((alias) => !authorized.includes(alias));
+
+  const toggle = (alias: string) =>
+    setChecked((current) => (current.includes(alias) ? current.filter((a) => a !== alias) : [...current, alias]));
+
+  const save = () => {
+    setMessage(null);
+    setError(null);
+    startTransition(async () => {
+      const result = await setSenderAliasesAction({ aliases: checked });
+      if (result.ok) setMessage("Sending grants saved.");
+      else setError(result.error);
+    });
+  };
+
+  return (
+    <div className="border-t border-border pt-3" data-testid="sender-grants">
+      <p className="text-[13px] font-medium">Sending grants</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Only checked accounts may send email. With none checked, any connected account may send; a proposal that
+        names no account resolves only inside this list.
+      </p>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {aliases.map((alias) => (
+          <label key={alias} className="flex min-h-8 items-center gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              checked={checked.includes(alias)}
+              onChange={() => toggle(alias)}
+              disabled={pending}
+              className="size-4"
+            />
+            <span>{alias}</span>
+          </label>
+        ))}
+      </div>
+      {dirty ? (
+        <Button size="sm" className="mt-2" onClick={save} disabled={pending}>
+          Save sending grants
+        </Button>
+      ) : null}
+      {message ? (
+        <p role="status" className="mt-2 text-xs text-muted-foreground">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

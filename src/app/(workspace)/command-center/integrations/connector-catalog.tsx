@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccessToggles, AccountControls, ConnectButton } from "./connector-controls";
+import { AccessToggles, AccountControls, ConnectButton, SenderGrantControls } from "./connector-controls";
 
 /*
  * One card per provider, and the card says what the person can do next.
@@ -119,7 +119,14 @@ function accountLabel(status: string): string {
   return status;
 }
 
-export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[] }) {
+export function ConnectorCatalog({
+  connectors,
+  authorizedSenders,
+}: {
+  connectors: CatalogConnector[];
+  /** ASH-289: the gmail.send grant; absent means unrestricted. */
+  authorizedSenders: string[] | null;
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -235,6 +242,14 @@ export function ConnectorCatalog({ connectors }: { connectors: CatalogConnector[
                       <div className="pt-3">
                         <ConnectButton provider={connector.provider} label="Connect another" />
                       </div>
+                      {connector.provider === "gmail" ? (
+                        <SenderGrantControls
+                          aliases={connector.accounts
+                            .filter((account) => account.status === "active")
+                            .map((account) => account.alias)}
+                          authorized={authorizedSenders ?? []}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
 
