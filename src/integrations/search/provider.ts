@@ -65,17 +65,8 @@ import { tavilyProvider } from "./tavily";
  */
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
-  const gatewayMatch = choice?.match(/^ai-gateway-(\w+)$/);
-  if (gatewayMatch) {
-    const provider = gatewayMatch[1];
-    if (!(AI_GATEWAY_SEARCH_PROVIDERS as readonly string[]).includes(provider)) {
-      throw new WebSearchError(
-        `Unknown AI Gateway search provider "${provider}". Expected one of ${AI_GATEWAY_SEARCH_PROVIDERS.join(", ")}.`,
-        choice ?? "ai-gateway",
-      );
-    }
-    return aiGatewaySearchProvider(provider as (typeof AI_GATEWAY_SEARCH_PROVIDERS)[number], env);
-  }
+  const gatewayProvider = AI_GATEWAY_SEARCH_PROVIDERS.find((p) => `ai-gateway-${p}` === choice);
+  if (gatewayProvider) return aiGatewaySearchProvider(gatewayProvider, env);
   switch (choice) {
     case "parallel":
       return parallelProvider(env);

@@ -15,7 +15,7 @@ import { listRecentlyCompletedTasks } from "../../../../src/domains/work/queries
  */
 export default defineTool({
   description:
-    "List the workspace's tasks completed in the last N days (default 7), newest first. Use for progress and review questions ('how did my week go', 'what did I finish') — open tasks say nothing about what was done, so tasks_read is the wrong tool for those. It will not show open or upcoming work; pair it with tasks_read when the question covers both done and remaining. Read-only; the run's frozen policy must allow the tasks.read capability.",
+    "List the workspace's tasks completed in the last N days (default 7), newest first. Use for progress and review questions ('how did my week go', 'what did I finish'); it will not show open or upcoming work. Read-only; the run's frozen policy must allow the tasks.read capability.",
   inputSchema: z.object({
     days: z.number().int().min(1).max(90).optional(),
     limit: z.number().int().min(1).max(50).optional(),

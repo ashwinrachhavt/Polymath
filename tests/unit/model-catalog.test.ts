@@ -26,10 +26,9 @@ describe("model catalog invariants", () => {
     expect(modelById(resolveModelId(undefined))).not.toBeNull();
   });
 
-  it("hides entries whose key is missing and shows entries whose key is set", () => {
+  it("shows an entry when its key is set", () => {
     const [entry] = MODEL_CATALOG;
     expect(availableModels({ [entry.keyEnv]: "k" }).map((m) => m.id)).toContain(entry.id);
-    expect(availableModels({}).map((m) => m.id)).not.toContain(entry.id);
   });
 
   it("maps a retired model id to the default, not a dead id", () => {

@@ -139,6 +139,5 @@ article title or document title for each claim. wiki_lint reports the wiki's
 health as a list; report the findings, never fix them silently. The wiki's
 writes are versioned; source documents are never modified.
 
-Final instructions: ground every claim in a named source, propose external
-writes instead of taking them, and when the sources cannot answer, say so in
-one sentence instead of improvising.
+Final instruction: when the sources cannot answer, say so in one sentence
+instead of improvising.

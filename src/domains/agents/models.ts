@@ -24,7 +24,6 @@ export type ModelProviderId =
   | "nvidia"
   | "cohere"
   | "mistral"
-  | "kilo"
   | "ovh"
   | "zai"
   | "openrouter-free";
@@ -41,8 +40,6 @@ export type ModelOption = {
   baseUrl: string;
   /** Env var holding the key. A missing key hides the entry. */
   keyEnv: string;
-  /** Whether the model works with tool calls. */
-  tools: boolean;
   /** How this entry was verified, and when. */
   probe: string;
 };
@@ -59,7 +56,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Default. Free tier, fast, works with tools.",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
     keyEnv: "GEMINI_API_KEY",
-    tools: true,
     probe: "live 2026-10-21 (current default)",
   },
   {
@@ -69,7 +65,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Large open model on Groq's fast inference.",
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
-    tools: true,
     probe: "live 2026-10-21",
   },
   {
@@ -79,7 +74,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Smaller and quicker; good for short turns.",
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
-    tools: true,
     probe: "live 2026-10-21",
   },
   {
@@ -89,7 +83,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Routed through Vercel's gateway; one key for many vendors.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-21",
   },
   {
@@ -99,7 +92,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Open model via the gateway.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-21",
   },
   {
@@ -109,7 +101,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "The one $0 model on the gateway's free tier.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-24; pricing $0/$0",
   },
   {
@@ -119,7 +110,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Gateway alias routed to Groq; $0.10/M in, $0.50/M out of credit.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-24; billed from the gateway credit balance",
   },
   {
@@ -129,7 +119,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Strong long-context model; $0.57/M in, $2.30/M out of credit.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-24; billed from the gateway credit balance",
   },
   {
@@ -139,7 +128,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cohere's 111B flagship through the gateway; $2.50/M in, $10/M out.",
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     keyEnv: "AI_GATEWAY_API_KEY",
-    tools: true,
     probe: "live 2026-10-24; billed from the gateway credit balance",
   },
   {
@@ -149,7 +137,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "The one NVIDIA model that answered; most others are end-of-life.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
-    tools: false,
     probe: "live 2026-10-21; tool calling unverified",
   },
   {
@@ -159,7 +146,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Fast small reasoning model on NVIDIA's free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
-    tools: false,
     probe: "live 2026-10-24",
   },
   {
@@ -169,7 +155,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "NVIDIA's largest open reasoning model, free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
-    tools: false,
     probe: "live 2026-10-24",
   },
   {
@@ -179,7 +164,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Small open model on NVIDIA's free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
-    tools: false,
     probe: "live 2026-10-24",
   },
   {
@@ -189,7 +173,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Fast Cohere model on the free trial key (1,000 calls/month, non-commercial).",
     baseUrl: "https://api.cohere.com/compatibility/v1",
     keyEnv: "COHERE_API_KEY",
-    tools: true,
     probe: "listing 2026-10-24 (mnfst catalog); OpenAI-compat endpoint",
   },
   {
@@ -199,7 +182,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cohere's largest reasoning model, same trial key.",
     baseUrl: "https://api.cohere.com/compatibility/v1",
     keyEnv: "COHERE_API_KEY",
-    tools: true,
     probe: "listing 2026-10-24 (mnfst catalog); OpenAI-compat endpoint",
   },
   {
@@ -209,7 +191,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free mode, no card; prompts may train Mistral models unless opted out.",
     baseUrl: "https://api.mistral.ai/v1",
     keyEnv: "MISTRAL_API_KEY",
-    tools: true,
     probe: "live 2026-10-24 (codestral answered; small is rate-limit-gated ~1 RPS)",
   },
   {
@@ -219,7 +200,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Code-focused model on the same free mode.",
     baseUrl: "https://api.mistral.ai/v1",
     keyEnv: "MISTRAL_API_KEY",
-    tools: true,
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -229,7 +209,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "EU-hosted open model; 2 RPM on the free tier makes it for slow one-offs.",
     baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
     keyEnv: "OVH_API_KEY",
-    tools: false,
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -239,7 +218,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Same EU free tier; 2 RPM per model.",
     baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
     keyEnv: "OVH_API_KEY",
-    tools: false,
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -249,7 +227,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free reasoning model on Z AI's international endpoint.",
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyEnv: "ZAI_API_KEY",
-    tools: false,
     probe: "live 2026-10-24 (glm-4.5-flash answered; 4.7 intermittent 1305)",
   },
   {
@@ -259,7 +236,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Steadier free fallback on the same Z AI key.",
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyEnv: "ZAI_API_KEY",
-    tools: false,
     probe: "live 2026-10-24",
   },
   {
@@ -269,7 +245,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "One of OpenRouter's :free models; 50 RPD per model by default.",
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
-    tools: false,
     probe: "listing 2026-10-24 (mnfst catalog); free pool rotates",
   },
   {
@@ -279,7 +254,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free Gemma with vision; shares the :free pool's 50 RPD.",
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
-    tools: false,
     probe: "listing 2026-10-24 (mnfst catalog); free pool rotates",
   },
 ];
