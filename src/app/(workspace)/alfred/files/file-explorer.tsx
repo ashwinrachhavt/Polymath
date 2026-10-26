@@ -81,7 +81,10 @@ export function FileExplorer({
   initialCursor,
   total,
   folders,
+  taskId,
 }: {
+  /** Set from `?task=`: the whole explorer, including every later page, is that task's documents. */
+  taskId?: string;
   initialRows: BrowserRow[];
   initialCursor: string | null;
   total: number;
@@ -220,7 +223,7 @@ export function FileExplorer({
   async function fetchPage(next: { sort: ServerSort; cursor?: string; q?: string }, replace: boolean) {
     const token = ++pageToken.current;
     setLoading(true);
-    const result = await loadPageAction(next);
+    const result = await loadPageAction({ ...next, taskId });
     if (token !== pageToken.current) return;
     setLoading(false);
     if (!result.ok) return setNotice(result.error);
@@ -463,6 +466,14 @@ export function FileExplorer({
       </nav>
 
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Documents">
+        {taskId ? (
+          <div role="status" className="border-border bg-muted/40 text-muted-foreground flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs md:px-5">
+            <span>Showing only the documents that produced this task.</span>
+            <Link href="/alfred/files" className="text-foreground underline-offset-4 hover:underline">
+              Show all documents
+            </Link>
+          </div>
+        ) : null}
         <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2.5 md:px-5">
           <label className="border-input bg-background focus-within:ring-ring relative min-w-[12rem] flex-1 rounded-md border transition-shadow focus-within:ring-3">
             <span className="sr-only">Search documents</span>

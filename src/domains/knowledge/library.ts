@@ -68,6 +68,12 @@ export type LibraryFilters = {
   companyId?: string;
   /** Documents carrying this tag. */
   tag?: string;
+  /**
+   * Documents that produced this task: an accepted obligation (document_obligations.task_id)
+   * made it. Workspace-scoped through the obligation row, so another workspace's task id
+   * matches nothing. Superseded obligations no longer count.
+   */
+  taskId?: string;
   createdFrom?: Date;
   createdTo?: Date;
 };
@@ -224,6 +230,11 @@ function libraryWhere(auth: AuthContext, filters: LibraryFilters): SQL[] {
   }
   if (filters.tag) {
     parts.push(sql`exists (select 1 from document_tags dt where dt.document_id = ${documents.id} and dt.tag = ${filters.tag})`);
+  }
+  if (filters.taskId) {
+    parts.push(
+      sql`exists (select 1 from document_obligations dob where dob.document_id = ${documents.id} and dob.workspace_id = ${auth.workspaceId} and dob.task_id = ${filters.taskId} and dob.superseded_by is null)`,
+    );
   }
   if (filters.createdFrom) parts.push(gte(documents.createdAt, filters.createdFrom));
   if (filters.createdTo) parts.push(lte(documents.createdAt, filters.createdTo));

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { z } from "zod";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
@@ -16,14 +17,34 @@ export const metadata = { title: "Files · Polymath" };
  * Sharing is a surface with nothing behind it yet and says so.
  */
 
-async function FilesSurface() {
-  await io();
-  const auth = await getAuthContext();
-  const [page, folders] = await Promise.all([getExplorerPage(auth, { sort: "added", limit: 100 }), listFolders(auth)]);
-  return <FileExplorer initialRows={page.rows} initialCursor={page.nextCursor} total={page.total} folders={folders} />;
+type SearchParams = Promise<{ task?: string | string[] }>;
+
+/** `?task=<uuid>` narrows the explorer to the documents that produced that task. Anything else is no filter. */
+function taskFilterFrom(raw: string | string[] | undefined): string | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value && z.string().uuid().safeParse(value).success ? value : undefined;
 }
 
-export default function FilesPage() {
+async function FilesSurface({ searchParams }: { searchParams: SearchParams }) {
+  await io();
+  const taskId = taskFilterFrom((await searchParams).task);
+  const auth = await getAuthContext();
+  const [page, folders] = await Promise.all([
+    getExplorerPage(auth, { sort: "added", limit: 100, taskId }),
+    listFolders(auth),
+  ]);
+  return (
+    <FileExplorer
+      initialRows={page.rows}
+      initialCursor={page.nextCursor}
+      total={page.total}
+      folders={folders}
+      taskId={taskId}
+    />
+  );
+}
+
+export default function FilesPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <div className="flex flex-col">
       <PageHeader title="Files" />
@@ -37,7 +58,7 @@ export default function FilesPage() {
           </div>
         }
       >
-        <FilesSurface />
+        <FilesSurface searchParams={searchParams} />
       </Suspense>
     </div>
   );
