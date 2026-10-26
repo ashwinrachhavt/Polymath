@@ -36,6 +36,13 @@ describe("outcomeLine", () => {
     );
   });
 
+  it("notion wording is byte-preserved", () => {
+    expect(outcomeLine("notion.page.append", { status: "sent", providerId: "p-1", at: "2026-10-25T00:00:00Z" })).toBe("Sent.");
+    expect(outcomeLine("notion.page.create", { status: "failed", reason: "provider refused", retryable: false })).toBe(
+      "Not sent. provider refused",
+    );
+  });
+
   it("gmail wording is byte-preserved", () => {
     expect(outcomeLine("gmail.send", { status: "sent", providerId: "m-1", at: "2026-10-25T00:00:00Z" })).toBe("Sent.");
     expect(outcomeLine("gmail.send", { status: "unknown", reconciliationId: "a" })).toBe("Checking whether this was sent.");

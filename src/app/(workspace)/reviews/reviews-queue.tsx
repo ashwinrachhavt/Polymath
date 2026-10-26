@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
@@ -357,6 +357,20 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>(() =>
     Object.fromEntries(items.flatMap((item) => (item.outcome ? [[item.id, item.outcome]] : []))),
   );
+  // A soft refresh (filter change, router.refresh) re-renders this mounted
+  // component with new server data: a reconciled terminal outcome is newer
+  // truth than a decide response captured before the sweep settled, so the
+  // persisted row overwrites it. A proposal with no attempt row yet keeps
+  // its decide outcome.
+  useEffect(() => {
+    setOutcomes((prev) => {
+      const next = { ...prev };
+      for (const item of items) {
+        if (item.outcome) next[item.id] = item.outcome;
+      }
+      return next;
+    });
+  }, [items]);
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>

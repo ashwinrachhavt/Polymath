@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const SOURCE = fs.readFileSync(
-  path.resolve(__dirname, "../../src/app/(workspace)/reviews/reviews-queue.tsx"),
+  path.resolve(__dirname, "../../src/app/(workspace)/reviews/outcome-line.ts"),
   "utf8",
 );
 
@@ -19,13 +19,14 @@ describe("review outcome copy", () => {
   it("says Sent, Checking, and Not sent in the executor's vocabulary", () => {
     expect(SOURCE).toContain(': "Sent.";');
     expect(SOURCE).toContain('"Checking whether this was sent.";');
-    expect(SOURCE).toContain(": `Not sent. ${outcome.reason}`;");
+    expect(SOURCE).toContain("return `Not sent. ${outcome.reason}`;");
   });
 
   it("describes a Canva import as an import, never as a send", () => {
     expect(SOURCE).toContain('"Imported to Canva."');
     expect(SOURCE).toContain('"Outcome unconfirmed; Polymath checks with Canva before anything runs again."');
-    expect(SOURCE).toContain("`Not imported. ${outcome.reason}`");
+    expect(SOURCE).toContain('canva_import_failed: "Canva reported the import failed."');
+    expect(SOURCE).toContain("`Not imported. ${CANVA_FAILURE_COPY[outcome.reason] ?? outcome.reason}`");
   });
 
   it("never offers to retry an effect", () => {

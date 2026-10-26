@@ -110,6 +110,13 @@ export async function createCanvaImportJob(input: {
 }): Promise<{ jobId: string }> {
   if (canvaImportFixtureEnabled()) {
     // No network by construction: the fixture job id is the content hash.
+    // The seeded account id carries the journey's behavior marker
+    // (nonproduction data only): "-ambiguous-" loses the creation answer, so
+    // the attempt settles UNKNOWN with no job id and the sweep never
+    // invents one.
+    if (input.connectedAccountId.includes("-ambiguous-")) {
+      throw new CanvaImportAmbiguousError("fixture: the creation answer was lost");
+    }
     const { createHash } = await import("node:crypto");
     return { jobId: `fixture-import-${createHash("sha256").update(input.docx).digest("hex").slice(0, 12)}` };
   }
@@ -163,12 +170,18 @@ export async function getCanvaImportJob(
   input: { connectedAccountId: string; jobId: string },
 ): Promise<CanvaImportJobResult> {
   if (canvaImportFixtureEnabled()) {
-    // No transport by construction: a fixture job answers terminally, so a
-    // journey can prove the sweep's settle path end to end.
-    return {
-      ok: true,
-      job: { status: "success", designId: `fixture-design-${input.jobId.replace(/^fixture-import-/, "")}`, editUrl: null },
-    };
+    // No transport by construction. The account id's behavior marker picks
+    // the answer (nonproduction data only): "-fail-" settles terminally
+    // failed, "-pending-" never settles, anything else succeeds with a
+    // provider-shaped edit URL so the card's source-backed link is pinnable.
+    if (input.connectedAccountId.includes("-fail-")) {
+      return { ok: true, job: { status: "failed", errorCode: "fixture_failure" } };
+    }
+    if (input.connectedAccountId.includes("-pending-")) {
+      return { ok: true, job: { status: "in_progress" } };
+    }
+    const designId = `fixture-design-${input.jobId.replace(/^fixture-import-/, "")}`;
+    return { ok: true, job: { status: "success", designId, editUrl: `https://www.canva.com/design/${designId}/edit` } };
   }
   // Polling is provider traffic too: a non-answer here settles nothing, and
   // the sweep leaves the row UNKNOWN for a human at zero provider calls.
@@ -202,4 +215,24 @@ export async function getCanvaImportJob(
     return { ok: true, job: { status: "failed", errorCode: typeof code === "string" ? code : null } };
   }
   return { ok: false, code: "provider_error", message: "Canva returned an unknown import job status." };
+}
+
+/**
+ * The only design link a card may render: the URL the provider itself
+ * returned, preserved verbatim - never assembled, never "corrected". An
+ * https scheme alone is not provider identity: a lookalike host, embedded
+ * credentials, or another scheme (javascript:, data:) all drop the link.
+ */
+export function safeCanvaDesignUrl(editUrl: unknown): string | null {
+  if (typeof editUrl !== "string" || editUrl.length === 0 || editUrl.length > 2000) return null;
+  let url: URL;
+  try {
+    url = new URL(editUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  if (url.hostname !== "canva.com" && !url.hostname.endsWith(".canva.com")) return null;
+  return editUrl;
 }

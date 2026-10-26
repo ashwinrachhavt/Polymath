@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CanvaImportAmbiguousError,
   CanvaImportFixtureInProductionError,
   canvaImportFixtureEnabled,
   createCanvaImportJob,
@@ -53,9 +54,26 @@ describe("canva import fixture mode", () => {
     };
     const created = await createCanvaImportJob({ connectedAccountId: "ca_any", title: "T", docx: DOCX });
     const result = await getCanvaImportJob(transport, { connectedAccountId: "ca_any", jobId: created.jobId });
+    const designId = created.jobId.replace("fixture-import-", "fixture-design-");
     expect(result).toEqual({
       ok: true,
-      job: { status: "success", designId: created.jobId.replace("fixture-import-", "fixture-design-"), editUrl: null },
+      job: { status: "success", designId, editUrl: `https://www.canva.com/design/${designId}/edit` },
     });
+  });
+
+  it("the account id's behavior marker picks the fixture's terminal answer", async () => {
+    process.env.CANVA_IMPORT_PROVIDER = "fixture";
+    const transport: Transport = {
+      async read() {
+        throw new Error("transport must not be called in fixture mode");
+      },
+    };
+    const failed = await getCanvaImportJob(transport, { connectedAccountId: "ca_e2e_-fail-_1", jobId: "fixture-import-x" });
+    expect(failed).toEqual({ ok: true, job: { status: "failed", errorCode: "fixture_failure" } });
+    const pending = await getCanvaImportJob(transport, { connectedAccountId: "ca_e2e_-pending-_1", jobId: "fixture-import-x" });
+    expect(pending).toEqual({ ok: true, job: { status: "in_progress" } });
+    await expect(createCanvaImportJob({ connectedAccountId: "ca_e2e_-ambiguous-_1", title: "T", docx: DOCX })).rejects.toBeInstanceOf(
+      CanvaImportAmbiguousError,
+    );
   });
 });

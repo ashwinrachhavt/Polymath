@@ -1,6 +1,7 @@
 import { and, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
+import { safeCanvaDesignUrl } from "@/domains/integrations/canva/import";
 import { outcomeOf, type EffectOutcome } from "./executor";
 import { actionAttempts, actionProposals, actionRevisions, actionReviews, providerObservations } from "./schema";
 
@@ -42,9 +43,9 @@ export type PersistedAttemptOutcome = {
   /** The executor-vocabulary outcome of the newest attempt; null before any claim. */
   outcome: EffectOutcome | null;
   /*
-   * A link renders only from a URL the provider itself returned: the
-   * reconciliation observation's detail carries the edit_url Canva answered
-   * with, and nothing else is linkable. Absent (or fixture) means no link.
+   * A link renders only from a URL the provider itself returned (the
+   * reconciliation observation's edit_url), validated by safeCanvaDesignUrl:
+   * scheme alone is not provider identity. Absent or unsafe means no link.
    */
   designUrl: string | null;
 };
@@ -87,8 +88,8 @@ export async function latestAttemptOutcomes(
       );
     for (const observation of observations) {
       if (!observation.attemptId || urlByAttempt.has(observation.attemptId)) continue;
-      const editUrl = (observation.detail as { editUrl?: unknown } | null)?.editUrl;
-      if (typeof editUrl === "string" && editUrl.startsWith("https://")) urlByAttempt.set(observation.attemptId, editUrl);
+      const designUrl = safeCanvaDesignUrl((observation.detail as { editUrl?: unknown } | null)?.editUrl);
+      if (designUrl) urlByAttempt.set(observation.attemptId, designUrl);
     }
   }
   for (const [proposalId, attempt] of latestByProposal) {
