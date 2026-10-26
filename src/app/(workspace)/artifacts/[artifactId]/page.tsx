@@ -8,6 +8,8 @@ import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
 import { DebriefButton } from "../debrief-button";
+import { DesignBriefButton } from "../design-brief-button";
+import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
 import { DeckView, InfographicView } from "@/components/products/alfred/artifact-views";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 
@@ -59,6 +61,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
         </p>
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
           {artifact.kind === "transcript" ? <DebriefButton artifactId={artifactId} /> : null}
+          {(BRIEFABLE_KINDS as readonly string[]).includes(artifact.kind) ? <DesignBriefButton artifactId={artifactId} /> : null}
           <MoreHorizontal aria-hidden className="size-4" />
           <Copy aria-hidden className="size-4" />
           <Download aria-hidden className="size-4" />
