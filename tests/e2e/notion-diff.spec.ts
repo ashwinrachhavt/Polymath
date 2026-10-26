@@ -36,7 +36,9 @@ for (const vp of VIEWPORTS) {
     await page.goto("/reviews");
     // The proposal title, then the diff card: where it lands, the hash the
     // executor re-checks, the tail context, and the added lines.
-    await expect(page.getByText(`Append 4 lines to \u201cLaunch notes (${vp.name})\u201d in Notion`)).toBeVisible({ timeout: 30_000 });
+    // The card shows the title in both the heading and the effect line;
+    // the heading is the unambiguous handle.
+    await expect(page.getByRole("heading", { name: `Append 4 lines to \u201cLaunch notes (${vp.name})\u201d in Notion` })).toBeVisible({ timeout: 30_000 });
     // Shared strings match the sibling viewport's card too; .first() is the
     // honest scope, matching the pattern in proposal-batches.spec.ts.
     await expect(page.getByText("Added to the end of").first()).toBeVisible();
