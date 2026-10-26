@@ -16,7 +16,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), io: async () => undefined }));
-vi.mock("@/lib/clerk", () => ({ clerkConfigured: false, devAuthBypass: false }));
+// The mocked module stands in for the keyless PRODUCTION deployment these
+// tests pin, so accountlessDeployment is true even though vitest's NODE_ENV
+// would make the real predicate false here.
+vi.mock("@/lib/clerk", () => ({ clerkConfigured: false, devAuthBypass: false, accountlessDeployment: true }));
 vi.mock("@/lib/auth", () => ({
   getAuthContext: vi.fn(async () => {
     throw new Error("auth() threw: Clerk keys are not configured");
