@@ -74,6 +74,19 @@ function personProfileAnswer(): string {
   });
 }
 
+function linearIssueAnswer(): string {
+  return JSON.stringify({
+    title: "Send the Q3 roadmap to Priya by Friday",
+    problem: "Priya needs the Q3 roadmap before Friday's review and the launch date is still unconfirmed.",
+    proposal: "Send the current Q3 roadmap draft to Priya and confirm the launch date in the same thread.",
+    acceptanceCriteria: [
+      "Priya receives the Q3 roadmap draft before Friday",
+      "The launch date is confirmed in writing in the same thread",
+    ],
+    outOfScope: "Revising the roadmap contents or moving the launch date.",
+  });
+}
+
 export function fixtureProvider(): GenerationProvider {
   return {
     name: "fixture:e2e",
@@ -86,6 +99,7 @@ export function fixtureProvider(): GenerationProvider {
       if (system.includes("learning goal")) return { text: learningPathAnswer() };
       if (system.includes("company profile card set")) return { text: companyProfileAnswer() };
       if (system.includes("person profile card set")) return { text: personProfileAnswer() };
+      if (system.includes("Linear issue proposal")) return { text: linearIssueAnswer() };
       throw new GenerationUnconfiguredError();
     },
   };
