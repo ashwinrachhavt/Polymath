@@ -8,14 +8,6 @@ import postgres from "postgres";
  * spend. Screenshots upload as the feature-pixels CI artifact.
  */
 
-/*
- * One worker for the whole file: fullyParallel runs the two viewport tests in
- * separate workers against the shared database, and each pass seeds and
- * deletes the same constant-keyed calendar/event/contact fixtures - a
- * sibling's cleanup removes this journey's rows mid-run.
- */
-test.describe.configure({ mode: "serial" });
-
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
