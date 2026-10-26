@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
+import { waitSettled } from "./helpers/settled";
 
 /*
  * Pixels + journey for GitHub triage drafts (ASH-284): a seeded
@@ -93,6 +94,9 @@ for (const vp of VIEWPORTS) {
     const { title, expectedEffect } = seeded!;
 
     await page.goto("/reviews");
+    // Hydration before the first click: a pre-hydration Approve click is
+    // dropped silently and the card never decides.
+    await waitSettled(page);
     const card = page.locator("section.panel").filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 30_000 });
     // The capability-keyed decision-only copy, not the generic line.
@@ -122,6 +126,7 @@ for (const vp of VIEWPORTS) {
     // no outcome status line renders without an EffectOutcome, and the
     // attempt count below is zero.
     await page.reload();
+    await waitSettled(page);
     const decided = page.locator("section.panel").filter({ hasText: title });
     await expect(decided).toBeVisible({ timeout: 30_000 });
     await expect(decided).toContainText("Decided");
