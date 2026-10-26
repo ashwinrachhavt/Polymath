@@ -50,15 +50,18 @@ test("the activity rail never shows another workspace's events", async ({ page }
   const client = db();
   const tag = `foreign-activity-${Date.now().toString(36)}`;
   let seededId: string | null = null;
+  let seededWorkspaceId: string | null = null;
   try {
     if (!client) test.skip(true, "DATABASE_URL not configured");
     const [owner] = await client!<{ workspace_id: string }[]>`
       select m.workspace_id from memberships m join users u on u.id = m.user_id
       where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
     test.skip(!owner, "dev workspace not found");
+    // The CI database has exactly one workspace, so seed a throwaway foreign
+    // one instead of skipping: the isolation claim must actually execute.
     const [other] = await client!<{ id: string }[]>`
-      select id from workspaces where id <> ${owner!.workspace_id} limit 1`;
-    test.skip(!other, "no second workspace to seed foreign activity into");
+      insert into workspaces (name, slug) values (${`Foreign e2e ${tag}`}, ${`foreign-e2e-${tag}`}) returning id`;
+    seededWorkspaceId = other!.id;
     const [row] = await client!<{ id: string }[]>`
       insert into audit_events (workspace_id, actor_kind, action, subject_type, summary)
       values (${other!.id}, 'user', 'capture.created', 'capture', ${`Foreign event ${tag}`})
@@ -70,6 +73,7 @@ test("the activity rail never shows another workspace's events", async ({ page }
     await expect(page.getByText(`Foreign event ${tag}`)).toHaveCount(0);
   } finally {
     if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
+    if (client && seededWorkspaceId) await client`delete from workspaces where id = ${seededWorkspaceId}`;
     await client?.end();
   }
 });
@@ -97,6 +101,7 @@ test("private supervisor thread events never render on the activity rail", async
     await expect(page.getByText(tag)).toHaveCount(0);
   } finally {
     if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
+    if (client && seededWorkspaceId) await client`delete from workspaces where id = ${seededWorkspaceId}`;
     await client?.end();
   }
 });
