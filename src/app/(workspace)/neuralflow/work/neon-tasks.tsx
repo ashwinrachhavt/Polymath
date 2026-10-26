@@ -236,7 +236,7 @@ export async function NeonTasks({
       {scope === "today" && !selectedTask ? <TodaysFlow auth={auth} raw={raw} /> : null}
       {scope === "today" && !selectedTask ? (
         <nav aria-label="Related tools" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/brain-dump">Brain dump</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">Brain dump</Link>
           <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">Weekly review</Link>
           <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">Stone collection</Link>
         </nav>
