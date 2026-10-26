@@ -31,6 +31,11 @@ test("an audit event written by a real action lands on the activity rail", async
     await page.goto("/activity");
     await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
     await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
+    // Pixel evidence for review: the real feed on desktop and mobile widths.
+    await page.screenshot({ path: "test-results/activity-feed-desktop.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
+    await page.screenshot({ path: "test-results/activity-feed-mobile.png", fullPage: true });
   } finally {
     if (client) {
       await client`delete from events where title = ${tag}`;
@@ -63,6 +68,33 @@ test("the activity rail never shows another workspace's events", async ({ page }
     await page.goto("/activity");
     await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
     await expect(page.getByText(`Foreign event ${tag}`)).toHaveCount(0);
+  } finally {
+    if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
+    await client?.end();
+  }
+});
+
+test("private supervisor thread events never render on the activity rail", async ({ page }) => {
+  test.setTimeout(60_000);
+  const client = db();
+  const tag = `private-thread-${Date.now().toString(36)}`;
+  let seededId: string | null = null;
+  try {
+    if (!client) test.skip(true, "DATABASE_URL not configured");
+    const [owner] = await client!<{ workspace_id: string; user_id: string }[]>`
+      select m.workspace_id, m.user_id from memberships m join users u on u.id = m.user_id
+      where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
+    test.skip(!owner, "dev workspace not found");
+    // The same shape supervisor/respond.ts writes for a private exchange.
+    const [row] = await client!<{ id: string }[]>`
+      insert into audit_events (workspace_id, actor_id, actor_kind, action, subject_type, summary)
+      values (${owner!.workspace_id}, ${owner!.user_id}, 'user', 'conversation.navigation_answered', 'thread', ${`Navigation answered in-thread: note search "${tag}"`})
+      returning id`;
+    seededId = row!.id;
+
+    await page.goto("/activity");
+    await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+    await expect(page.getByText(tag)).toHaveCount(0);
   } finally {
     if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
     await client?.end();
