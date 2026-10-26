@@ -147,16 +147,20 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
         total={found.total}
         noun="proposals"
       />
-      {cards.length > 0 ? (
-        <ReviewsQueue items={cards} />
-      ) : (
-        <NoResults
-          filtered={filtered}
-          clearHref={BASE}
-          emptyTitle="Nothing needs your judgment"
-          emptyDescription="When an agent wants to change something outside Polymath - send, schedule, post - it proposes the exact payload here first. The queue is empty."
-        />
-      )}
+      {/* Always mounted: the decide action's revalidate refetches this list,
+          and an empty payload must not unmount the queue - its client state
+          holds the just-decided card's refusal or outcome until navigation. */}
+      <ReviewsQueue
+        items={cards}
+        emptyState={
+          <NoResults
+            filtered={filtered}
+            clearHref={BASE}
+            emptyTitle="Nothing needs your judgment"
+            emptyDescription="When an agent wants to change something outside Polymath - send, schedule, post - it proposes the exact payload here first. The queue is empty."
+          />
+        }
+      />
       <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
     </Screen>
   );

@@ -269,6 +269,8 @@ for (const vp of VIEWPORTS) {
     await expect(
       card.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
     ).toBeVisible({ timeout: 30_000 });
+    // The held decided card offers no way to fire again while its refusal shows.
+    await expect(card.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
     expect(await importAttemptCount()).toBe(0);
 
     // Reloaded, the refusal persists NO manufactured outcome: the approval

@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useOptimistic, useRef, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
 import { Field, Panel, Status } from "@/components/workspace/ui";
 import type { EffectOutcome } from "@/domains/actions/executor";
 import { decideProposalAction, reviseProposalAction } from "./actions";
+import { holdDecidedCard, mergeHeldDecidedCards, type HeldCards } from "./held-cards";
 import { outcomeLine } from "./outcome-line";
 
 /*
@@ -348,10 +349,17 @@ function ProposalCard({
   );
 }
 
-export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
+export function ReviewsQueue({ items, emptyState }: { items: QueueCardData[]; emptyState: ReactNode }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /*
+   * Snapshots of decided cards held past the revalidate that drops them
+   * from the filtered server list - the refusal alert or import outcome
+   * must not unmount in the same beat it arrives. State, not a ref: the
+   * merge below reads it during render. See held-cards.ts.
+   */
+  const [heldCards, setHeldCards] = useState<HeldCards>({});
   // A decide response fills the gap until the next server render: the
   // attempt commits before the response returns, so any rendered persisted
   // outcome is the same truth or newer (e.g. reconciled by the sweep after
@@ -411,7 +419,13 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
         setErrors((prev) => ({ ...prev, [input.proposalId]: result.error }));
         if (result.decided) {
           // The approval/rejection committed; only the effect refused. Keep
-          // the decided card and its refusal visible - the approval stands.
+          // the decided card and its refusal visible - the approval stands -
+          // and hold it past the revalidate that drops it from this filter.
+          setHeldCards((prev) => {
+            const next = { ...prev };
+            holdDecidedCard(next, item, input.decision);
+            return next;
+          });
           setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
         } else {
           // The decision itself never landed; resync to the server truth.
@@ -421,6 +435,14 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       }
       setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
       if (result.outcome) {
+        // An effect outcome is post-decision feedback: hold the card past
+        // the revalidate. A decision-only success carries nothing to show
+        // and drains from the pending queue, by design.
+        setHeldCards((prev) => {
+          const next = { ...prev };
+          holdDecidedCard(next, item, input.decision);
+          return next;
+        });
         setDecideOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
       }
     });
@@ -436,9 +458,14 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   type Row = { kind: "single"; item: QueueCardData } | { kind: "group"; key: string; items: QueueCardData[] };
   const rows: Row[] = [];
   const groups = new Map<string, Extract<Row, { kind: "group" }>>();
-  for (const raw of optimisticItems) {
-    const decided = decidedCards[`${raw.id}:${raw.version}`];
-    const item: QueueCardData = decided ? { ...raw, status: decided, decidedAt: raw.decidedAt ?? new Date().toISOString() } : raw;
+  const merged = mergeHeldDecidedCards(
+    optimisticItems.map((raw) => {
+      const decided = decidedCards[`${raw.id}:${raw.version}`];
+      return decided ? { ...raw, status: decided, decidedAt: raw.decidedAt ?? new Date().toISOString() } : raw;
+    }),
+    heldCards,
+  );
+  for (const item of merged) {
     const match = item.dedupeKey ? followUpGroup.exec(item.dedupeKey) : null;
     if (!match) {
       rows.push({ kind: "single", item });
@@ -463,6 +490,8 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       decide={decide}
     />
   );
+
+  if (rows.length === 0) return <>{emptyState}</>;
 
   return (
     <div className="flex flex-col gap-4">
