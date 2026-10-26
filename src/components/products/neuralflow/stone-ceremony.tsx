@@ -101,7 +101,7 @@ export function StoneCeremony({ sentence, onDismiss }: { sentence?: string; onDi
 
   return (
     <div className="stone-ceremony" role="status" aria-live="polite">
-      <div className="stone-ceremony-card" data-motion="full">
+      <div className="stone-ceremony-card">
         <span className="stone-ceremony-art">
           <StoneArt stone={quartz} size={56} sheen />
         </span>

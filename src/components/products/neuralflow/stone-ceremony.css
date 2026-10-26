@@ -26,7 +26,7 @@
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
 }
 
-.stone-ceremony-card[data-motion="full"] {
+.stone-ceremony-card {
   animation: stone-ceremony-in 480ms ease-out both;
 }
 
@@ -41,7 +41,7 @@
   }
 }
 
-.stone-ceremony-card[data-motion="full"] .stone-ceremony-art {
+.stone-ceremony-card .stone-ceremony-art {
   animation: stone-ceremony-turn 640ms ease-out both;
 }
 
