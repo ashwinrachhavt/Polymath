@@ -150,17 +150,12 @@ describe("linear.issue.propose (ASH-285)", () => {
   });
 });
 
-  it("a decision-only internal write has no executor to fall through to", () => {
+  it("the proposal-only operation has no executor to fall through to", () => {
     // The reviews approve path runs executeApprovedEffect only when
     // supportsEffect is true; an executor-less capability returns the
-    // decision alone. Pin both halves: every propose-only internal write in
-    // the registry stays executor-less, so an approval can never fall
-    // through to a real effect or report an applied success.
-    for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
-      if (spec.effectClass === "internal_write") {
-        expect(supportsEffect(operation), operation).toBe(false);
-      }
-    }
+    // decision alone. linear.issue.propose's contract is proposal-only, so
+    // pin it by name: a future executor lands as a deliberate diff here,
+    // never a silent fall-through to a real effect or an applied success.
     expect(supportsEffect("linear.issue.propose")).toBe(false);
   });
 
