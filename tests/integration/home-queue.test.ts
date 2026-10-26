@@ -16,12 +16,14 @@ const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let queue: typeof import("@/domains/home/queue");
 let commands: typeof import("@/domains/capture/commands");
+let actions: typeof import("@/domains/actions/commands");
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   queue = await import("@/domains/home/queue");
   commands = await import("@/domains/capture/commands");
+  actions = await import("@/domains/actions/commands");
 });
 
 afterAll(async () => {
@@ -108,5 +110,71 @@ suite("home queue", () => {
     await db.update(actionProposals).set({ status: "rejected", updatedAt: new Date(), updatedBy: auth.userId }).where(eq(actionProposals.id, proposal.id));
     const cards = await queue.listHomeQueue(auth.workspaceId);
     expect(cards.map((c) => c.title)).not.toContain("Done thing");
+  });
+
+  it("a stale agent card cannot decide; the queue keeps the fresh revision", async () => {
+    const auth = await seed("home-queue-stale-agent");
+    const { proposal, revision } = await seedActionProposal(auth, { title: "Shifting thing", riskClass: "prepare" });
+
+    // The card rendered revision 1 at version 1; before the tap lands, the
+    // proposal is revised (new revision, version bump, still pending).
+    await db.insert(actionRevisions).values({
+      workspaceId: auth.workspaceId,
+      proposalId: proposal.id,
+      revisionNumber: 2,
+      payload: { to: "sam@example.com" },
+      createdBy: auth.userId,
+    });
+    await db
+      .update(actionProposals)
+      .set({ version: 2, updatedAt: new Date(), updatedBy: auth.userId })
+      .where(eq(actionProposals.id, proposal.id));
+
+    // The stale card's tap is refused on the revision boundary, never applied.
+    await expect(
+      actions.decideProposal(auth, {
+        idempotencyKey: randomUUID(),
+        proposalId: proposal.id,
+        expectedVersion: 1,
+        revisionId: revision.id,
+        decision: "approved",
+      }),
+    ).rejects.toThrow();
+
+    // The queue re-renders the same proposal bound to the fresh revision.
+    const cards = await queue.listHomeQueue(auth.workspaceId);
+    const card = cards.find((c) => c.id === proposal.id);
+    expect(card).toBeDefined();
+    expect(card?.decision.kind).toBe("agent");
+    if (card?.decision.kind === "agent") {
+      expect(card.decision.revisionId).not.toBe(revision.id);
+      expect(card.decision.version).toBe(2);
+    }
+  });
+
+  it("a stale capture card cannot double-apply; the conflict is named", async () => {
+    const auth = await seed("home-queue-stale-capture");
+    const capture = await commands.createCapture(auth, { text: "Stale suggestion" });
+    const [proposal] = await db
+      .insert(captureProposals)
+      .values({
+        workspaceId: auth.workspaceId,
+        captureId: capture.id,
+        kind: "task",
+        payload: {},
+        rationale: "task 0.9",
+        confidence: "0.9",
+      })
+      .returning();
+
+    const first = await commands.acceptCaptureProposal(auth, { proposalId: proposal.id });
+    expect(first.resultType).toBe("task");
+
+    // A second tap from a card rendered before the first landed is a named
+    // conflict, not a second task.
+    await expect(commands.acceptCaptureProposal(auth, { proposalId: proposal.id })).rejects.toThrow(/already decided/);
+
+    const cards = await queue.listHomeQueue(auth.workspaceId);
+    expect(cards.find((c) => c.id === proposal.id)).toBeUndefined();
   });
 });
