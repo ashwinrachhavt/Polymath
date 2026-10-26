@@ -203,7 +203,9 @@ test("a send within the tier files a proposal; a send above it is denied naming 
 
   // Lower the tier mid-journey; the same call is now refused, naming the control.
   await setTier("read_only");
-  const denied = await callGateway("gmail_send", { ...send, messageId: `e2e-denied-${Date.now()}` });
+  // Name the account like the allowed call: without it the gateway answers
+  // the account-ambiguity error before the tier check ever runs.
+  const denied = await callGateway("gmail_send", { ...send, accountAlias: seeded.alias, messageId: `e2e-denied-${Date.now()}` });
   expect(denied.status).toBe(403);
   expect(denied.text).toContain("Agent access");
   expect(denied.text).toContain("Connectors");
