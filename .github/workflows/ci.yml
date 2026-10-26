@@ -149,6 +149,13 @@ jobs:
           # Lets a spec drain the outbox on purpose (one dispatcher pass)
           # instead of sleeping for a background worker that does not exist here.
           OUTBOX_DISPATCH_SECRET: e2e-outbox
+          # The connectors tier journey's gateway leg (steps 3-4) mints a
+          # gateway token for its seeded run with this value; the dev server
+          # inherits the same step env, so both sides agree. Fixture value,
+          # same standing as OUTBOX_DISPATCH_SECRET: the seeded account is a
+          # fake gmail row and the within-tier call files a proposal for
+          # review - nothing reaches a provider.
+          EVE_GATEWAY_SECRET: e2e-gateway-secret-fixture-value-32chars
       # Structured record of the run above: names every test with its status,
       # including skips the list output never prints.
       - uses: actions/upload-artifact@v4
