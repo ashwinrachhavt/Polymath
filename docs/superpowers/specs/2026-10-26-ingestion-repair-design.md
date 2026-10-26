@@ -156,6 +156,31 @@ The misleading comments at `commands.ts:75-77`, `capture/queries.ts:19`,
 `extensions/chrome/api.js:160`, and `README.md:82` are corrected in the same
 change; the index predicate, not the comment, is now the truth.
 
+**A deduped re-capture must not discard what the second submission added.** The
+index compares `content_hash`, so a deduped capture's *text* is provably identical
+to the survivor's — nothing is lost there. But the second submission can carry
+information the first did not: a title, or the nullable `captures.intent` column
+another session is adding. Under a naive dedupe that information is dropped
+silently, which `product.md` rules out ("no invisible work").
+
+The reducer stays dumb about this. Dedupe is never the writer of late-arriving
+metadata; it only has to make the survivor reachable:
+
+- A duplicate returns the surviving capture's id — today as the additive
+  `existingId` member on the 409 the companion already parses, which keeps that
+  body byte-exact (`commands.ts:136-147`). The client treats duplicate-found as a
+  normal outcome and surfaces the existing item, per spec §6.1 ("Re-capturing
+  something already present surfaces the existing item and what you already
+  wrote about it").
+- Anything the person supplied on the second attempt — title, or a later `intent`
+  — is written as an ordinary update against that returned id, in a second
+  statement. It never merges inside the dedupe path, so the index keeps exactly
+  the job it has now and a future nullable column needs no change here.
+
+This is why the id must be returned even when the request is a conflict: without
+it there is no target for the second write, and the only way to keep the person's
+answer is to store a redundant capture.
+
 ### 4.4 Carry URL provenance into the document
 
 `convertCaptureToDocument` passes `sourceUrl: capture.url` to `intakeFile`,
@@ -266,6 +291,9 @@ extraction, no search text, no preview.
 1. Select two different paragraphs from one article, capture both → two captures,
    two distinct `content_hash` values.
 2. Capture the same paragraph twice → one capture, second returns the first's id.
+3. Re-capture that paragraph with a different title → still one capture, and the
+   survivor now carries the second title. (Once `intent` lands, the same check
+   applies to it: the second answer must survive the dedupe.)
 3. Capture a selection, let the fetch land → `text` still equals the selection,
    `fetched_text` holds the page.
 4. Convert a selection capture to a document → `documents.source_url` equals the
