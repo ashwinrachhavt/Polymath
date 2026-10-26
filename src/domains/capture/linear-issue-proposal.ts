@@ -131,9 +131,10 @@ export async function proposeLinearIssue(
 
 /* --- Notes surface (ASH-285: "from a note or capture") --- */
 
-import { and, eq } from "drizzle-orm";
-import { withTransaction } from "@/lib/db-transaction";
-import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
+import { createHash } from "crypto";
+import { and, desc, eq, ilike } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
 import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { draftBody } from "@/domains/capture/draft-templates";
 
@@ -147,44 +148,118 @@ export class LinearIssueNoteError extends Error {
   }
 }
 
+/*
+ * Provenance and repeat semantics. Every proposal draft carries an HTML
+ * comment recording its source artifact and the source's content hash:
+ *   <!-- linear-issue-source: <artifactId>@<sha16> -->
+ * A repeat invocation finds that draft: unchanged source replays the existing
+ * draft (no silent duplicates), a changed source refreshes the same draft as
+ * a new committed version (no silent staleness). The idempotency key is
+ * derived from (source, hash), so concurrent same-content invocations
+ * collapse on the receipt ledger instead of racing into two drafts.
+ */
+export const LINEAR_ISSUE_SOURCE_MARKER = "linear-issue-source";
+
+export function sourceMarkerOf(sourceId: string, sourceHash: string): string {
+  return `<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${sourceId}@${sourceHash} -->`;
+}
+
+export function sourceHashOf(markdown: string): string {
+  return createHash("sha256").update(markdown).digest("hex").slice(0, 16);
+}
+
+export function parseSourceMarker(plainText: string): { sourceId: string; sourceHash: string } | null {
+  const m = plainText.match(new RegExp(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ([0-9a-f-]{36})@([0-9a-f]{16}) -->`));
+  return m ? { sourceId: m[1], sourceHash: m[2] } : null;
+}
+
+/** Receipt keys must be UUID-shaped; derive one deterministically from the semantic identity of the write. */
+function derivedKey(...parts: string[]): string {
+  const hex = createHash("sha256").update(parts.join("|")).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+export type LinearIssueDraftOutcome = "created" | "replayed" | "refreshed";
+
+export type LinearIssueDraftResult = {
+  artifactId: string;
+  title: string;
+  /** True when a generation provider filled the proposal; false when the honest scaffold is the content. */
+  generated: boolean;
+  outcome: LinearIssueDraftOutcome;
+};
+
+async function renderForSource(auth: AuthContext, source: { id: string; title: string; markdown: string }): Promise<{ title: string; body: string; generated: boolean }> {
+  const hash = sourceHashOf(source.markdown);
+  let title: string;
+  let body: string;
+  let generated = false;
+  try {
+    const { proposal, proposer } = await proposeLinearIssue(auth, { title: source.title, text: source.markdown });
+    title = `Linear issue: ${proposal.title}`;
+    body = renderLinearIssueDraft(proposal, { sourceMaterial: source.markdown, proposer });
+    generated = true;
+  } catch {
+    const firstLine = source.markdown.split("\n").map((line) => line.trim()).find(Boolean) ?? source.title;
+    title = `Linear issue: ${firstLine}`;
+    body = draftBody("linear-issue", { firstLine, material: source.markdown });
+  }
+  // Provenance: a wiki-link the graph can follow, plus the machine marker.
+  return { title, body: `${body}\n\n${sourceMarkerOf(source.id, hash)}\n\nDrafted from [[${source.title}]].`, generated };
+}
+
 /**
- * Draft a Linear-issue proposal from an existing note. The proposal becomes
- * a new note that [[wiki-links]] back to its source, so the link graph keeps
- * provenance like every other notebook artifact. With no generation provider
- * configured the honest deterministic scaffold is the content; nothing is
- * ever sent to Linear from here.
+ * Draft a Linear-issue proposal from an existing note. Repeat calls are
+ * honest: an unchanged source replays the existing draft, a changed source
+ * refreshes that draft as a new version, and concurrent identical calls
+ * collapse on the receipt ledger. Never talks to Linear.
  */
 export async function draftLinearIssueFromNote(
   auth: AuthContext,
   input: { artifactId: string },
-): Promise<{ artifactId: string; title: string; generated: boolean }> {
-  return withTransaction(async (tx) => {
-    const [note] = await tx
-      .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
-      .from(artifacts)
-      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-      .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
-      .limit(1);
-    if (!note) throw new LinearIssueNoteError("note_not_found", "No such note.");
-    const markdown = note.content && typeof (note.content as { text?: unknown }).text === "string" ? ((note.content as { text: string }).text as string) : "";
+): Promise<LinearIssueDraftResult> {
+  const [source] = await db
+    .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
+    .from(artifacts)
+    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
+    .limit(1);
+  if (!source) throw new LinearIssueNoteError("note_not_found", "No such note.");
+  const markdown = source.content && typeof (source.content as { text?: unknown }).text === "string" ? ((source.content as { text: string }).text as string) : "";
+  const hash = sourceHashOf(markdown);
 
-    let title: string;
-    let body: string;
-    let generated = false;
-    try {
-      const { proposal, proposer } = await proposeLinearIssue(auth, { title: note.title, text: markdown });
-      title = `Linear issue: ${proposal.title}`;
-      body = renderLinearIssueDraft(proposal, { sourceMaterial: markdown, proposer });
-      generated = true;
-    } catch {
-      const firstLine = markdown.split("\n").map((line) => line.trim()).find(Boolean) ?? note.title;
-      title = `Linear issue: ${firstLine}`;
-      body = draftBody("linear-issue", { firstLine, material: markdown });
+  const [existing] = await db
+    .select({ id: artifacts.id, title: artifacts.title, version: artifacts.version, plainText: artifactVersions.plainText })
+    .from(artifacts)
+    .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), ilike(artifactVersions.plainText, `%${LINEAR_ISSUE_SOURCE_MARKER}: ${source.id}@%`)))
+    .orderBy(desc(artifacts.updatedAt))
+    .limit(1);
+
+  if (existing) {
+    const recorded = existing.plainText ? parseSourceMarker(existing.plainText) : null;
+    if (recorded?.sourceHash === hash) {
+      return { artifactId: existing.id, title: existing.title, generated: true, outcome: "replayed" };
     }
-    // Provenance rides the link graph: the draft links back to its source note.
-    body += `\n\nDrafted from [[${note.title}]].`;
-    const draft = await createNoteInTx(tx, auth, { title, content: { format: "markdown", text: body }, plainText: body, kind: "note" });
-    await syncNoteLinks(tx, auth, draft.id, body);
-    return { artifactId: draft.id, title, generated };
+    const rendered = await renderForSource(auth, { id: source.id, title: source.title, markdown });
+    await commitNoteSnapshot(auth, {
+      idempotencyKey: derivedKey("linear-issue-refresh", auth.workspaceId, source.id, hash),
+      artifactId: existing.id,
+      expectedVersion: existing.version,
+      content: { format: "markdown", text: rendered.body },
+      plainText: rendered.body,
+      note: "Source note changed; the issue proposal was regenerated.",
+    });
+    return { artifactId: existing.id, title: existing.title, generated: rendered.generated, outcome: "refreshed" };
+  }
+
+  const rendered = await renderForSource(auth, { id: source.id, title: source.title, markdown });
+  const draft = await createNote(auth, {
+    idempotencyKey: derivedKey("linear-issue-create", auth.workspaceId, source.id, hash),
+    title: rendered.title,
+    content: { format: "markdown", text: rendered.body },
+    plainText: rendered.body,
+    kind: "note",
   });
+  return { artifactId: draft.id, title: rendered.title, generated: rendered.generated, outcome: "created" };
 }

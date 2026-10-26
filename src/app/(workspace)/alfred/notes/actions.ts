@@ -20,7 +20,7 @@ import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
-import { LinearIssueNoteError, draftLinearIssueFromNote } from "@/domains/capture/linear-issue-proposal";
+import { LinearIssueNoteError, draftLinearIssueFromNote, type LinearIssueDraftResult } from "@/domains/capture/linear-issue-proposal";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
@@ -289,11 +289,12 @@ const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
 
 /**
  * ASH-285: draft a fully formed Linear issue proposal from this note. The
- * result is a new note linking back to its source; with no generation
- * provider configured it is the honest deterministic scaffold instead. It
- * never talks to Linear - review first, issue creation stays out of scope.
+ * result is a note linking back to its source; with no generation provider
+ * configured it is the honest deterministic scaffold instead. Repeats are
+ * honest too: unchanged source replays the existing draft, a changed source
+ * refreshes it as a new version. It never talks to Linear.
  */
-export async function proposeLinearIssueAction(input: z.input<typeof proposeIssueInput>): Promise<Result<{ artifactId: string; title: string; generated: boolean }>> {
+export async function proposeLinearIssueAction(input: z.input<typeof proposeIssueInput>): Promise<Result<LinearIssueDraftResult>> {
   const parsed = proposeIssueInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That issue request is not valid." };
   const auth = await authorize();

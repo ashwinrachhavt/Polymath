@@ -87,3 +87,26 @@ describe("fixture provider", () => {
     expect(LINEAR_ISSUE_SYSTEM_PROMPT).toContain(LINEAR_ISSUE_SYSTEM_MARKER);
   });
 });
+
+import { LINEAR_ISSUE_SOURCE_MARKER, parseSourceMarker, sourceHashOf, sourceMarkerOf } from "@/domains/capture/linear-issue-proposal";
+
+describe("source provenance marker", () => {
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+
+  it("round-trips source id and hash", () => {
+    const hash = sourceHashOf("the source text");
+    const marker = sourceMarkerOf(id, hash);
+    expect(marker).toBe(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${id}@${hash} -->`);
+    expect(parseSourceMarker(`body\n\n${marker}\n`)).toEqual({ sourceId: id, sourceHash: hash });
+  });
+
+  it("hash changes when the source changes, so refresh is detectable", () => {
+    expect(sourceHashOf("v1")).not.toBe(sourceHashOf("v2"));
+    expect(sourceHashOf("same")).toBe(sourceHashOf("same"));
+  });
+
+  it("ignores absent or malformed markers", () => {
+    expect(parseSourceMarker("no marker here")).toBeNull();
+    expect(parseSourceMarker(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: not-a-uuid@xyz -->`)).toBeNull();
+  });
+});
