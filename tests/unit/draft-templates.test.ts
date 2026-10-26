@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/domains/knowledge/templates";
+import { CAPTURE_TEMPLATES, DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/domains/knowledge/templates";
 
 /*
  * "Turn it into anything" scaffolds: every template produces an honest
@@ -7,7 +7,8 @@ import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/d
  * capture quoted verbatim as source material the draft must stay true to.
  * The system invents no prose, so the tests pin exactly that shape. `todo` is
  * the exception by design: it starts from a phrase the owner typed, not a
- * capture, so it carries no source-material section.
+ * capture, so it carries no source-material section and is never offered as a
+ * capture conversion.
  *
  * Value: protects=a draft always carries its capture's words and never
  * fabricates content; fails_when=a template drops the source material,
@@ -18,11 +19,23 @@ import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/d
 
 const material = "Launch review moved to Friday.\nBring the pricing doc.";
 
-const SOURCED_TEMPLATES = DRAFT_TEMPLATES.filter((template) => template !== "todo");
+describe("the registry", () => {
+  it("holds exactly these slugs, so no second name for one scaffold creeps back", () => {
+    expect(DRAFT_TEMPLATES).toEqual(["email", "product-spec", "tech-spec", "issue", "todo"]);
+  });
+
+  it("offers every sourced template as a capture conversion, and never todo", () => {
+    expect(CAPTURE_TEMPLATES).toEqual(["email", "product-spec", "tech-spec", "issue"]);
+    expect(CAPTURE_TEMPLATES).not.toContain("todo");
+    for (const template of DRAFT_TEMPLATES) {
+      if (template !== "todo") expect(CAPTURE_TEMPLATES).toContain(template);
+    }
+  });
+});
 
 describe("draftBody", () => {
-  it("quotes the capture verbatim in every sourced template", () => {
-    for (const template of SOURCED_TEMPLATES) {
+  it("quotes the capture verbatim in every template a capture can turn into", () => {
+    for (const template of CAPTURE_TEMPLATES) {
       const body = draftBody(template, { firstLine: "Launch review moved to Friday.", material });
       expect(body).toContain("## Source material");
       expect(body).toContain("> Launch review moved to Friday.");

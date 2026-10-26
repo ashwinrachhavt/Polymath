@@ -35,6 +35,14 @@ export const DRAFT_TEMPLATE_KIND: Record<DraftTemplate, "note"> = {
   todo: "note",
 };
 
+/**
+ * The templates a capture can turn into. A capture conversion quotes the
+ * capture verbatim as source material; `todo` has no source section by
+ * design, so offering it here would silently drop the text the person just
+ * captured. Tasks consume `todo` directly and are not created from a capture.
+ */
+export const CAPTURE_TEMPLATES = DRAFT_TEMPLATES.filter((template) => template !== "todo");
+
 const MAX_TITLE = 120;
 
 function truncate(text: string): string {
