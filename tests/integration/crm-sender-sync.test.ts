@@ -67,8 +67,11 @@ async function proposedEmails(): Promise<string[]> {
   const rows = await db.select().from(actionProposals).where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.capability, "crm.contact.create")));
   return rows.map((r) => r.dedupeKey.replace("crm-sender:", "")).sort();
 }
+// Mirrors the enable moment: the real switch writes this cursor when it is turned on.
+const ENABLE_WATERMARK = nowSec - 7 * 86400;
 async function resetCursor() {
   await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+  await db.insert(syncCursors).values({ workspaceId, externalAccountId: accountId, resource: "sender-proposals", cursor: JSON.stringify({ watermark: ENABLE_WATERMARK, pending: [] }), state: "idle" });
   await db.delete(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
 }
 
@@ -88,6 +91,14 @@ afterAll(async () => {
 });
 
 suite("crm sender sync", () => {
+  it("fails closed when an enabled account has no readable watermark instead of scanning earlier mail", async () => {
+    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    await db.insert(triggers).values({ workspaceId, externalAccountId: accountId, provider: "gmail", eventType: sync.SENDER_PROPOSALS_EVENT, status: "enabled" }).onConflictDoNothing();
+    const { transport, queries } = mailbox([{ id: "a", from: "Ada <ada@analytical.io>", internalSec: nowSec - 100 }]);
+    await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: NOW })).rejects.toMatchObject({ code: "cursor_lost" });
+    expect(queries).toHaveLength(0);
+  });
+
   it("refuses until the owner opts the account in", async () => {
     await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: fixtureTransport([]) })).rejects.toMatchObject({ code: "not_enabled" });
   });
@@ -158,7 +169,7 @@ suite("crm sender sync", () => {
     await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails, { failAfterCalls: 8 }).transport, now: NOW })).rejects.toThrow(/boom/);
     const [cursor] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
     expect(cursor.state).toBe("failed");
-    expect(JSON.parse(cursor.cursor ?? "{}")).toEqual({ watermark: null, pending: [] });
+    expect(JSON.parse(cursor.cursor ?? "{}")).toEqual({ watermark: ENABLE_WATERMARK, pending: [] });
     // Recovery: the same window is read again from scratch and completes.
     const ok = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails).transport, now: NOW });
     expect(ok.complete).toBe(true);

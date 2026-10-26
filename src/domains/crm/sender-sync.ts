@@ -32,13 +32,12 @@ import { proposeContactsFromSenders, type ProposeFromSendersResult, type SenderM
 
 export const SENDER_PROPOSALS_EVENT = "crm.sender_proposals";
 const RESOURCE = "sender-proposals";
-const FIRST_RUN_LOOKBACK_SECONDS = 7 * 86_400;
 const DEFAULT_PER_RUN = 25;
 const MAX_PER_RUN = 50;
 
 export class SenderSyncError extends Error {
   constructor(
-    readonly code: "account_not_found" | "not_enabled" | "read_not_allowed" | "no_connection",
+    readonly code: "account_not_found" | "not_enabled" | "read_not_allowed" | "no_connection" | "cursor_lost",
     message: string,
   ) {
     super(message);
@@ -114,6 +113,18 @@ export async function syncGmailSenders(
     .where(and(eq(syncCursors.externalAccountId, account.id), eq(syncCursors.resource, RESOURCE)))
     .limit(1);
   const saved = parseCursor(cursorRow?.cursor);
+  /*
+   * Fail closed on a missing or unreadable watermark. Enabling the switch writes
+   * the cursor at that moment, and that enable-time boundary is the whole grant:
+   * falling back to any lookback here would scan mail from before the owner
+   * turned this on. The owner re-toggles the switch to re-anchor from now.
+   */
+  if (saved.watermark === null) {
+    throw new SenderSyncError(
+      "cursor_lost",
+      "The sender-suggestions watermark is missing or unreadable, so there is no enable-time boundary to scan from. Turn the switch off and on again; the pass restarts from that moment.",
+    );
+  }
 
   const recordCursor = (cursor: SenderCursor | null, state: "idle" | "partial" | "failed", lastError: string | null) =>
     db
@@ -138,7 +149,7 @@ export async function syncGmailSenders(
    * one second) it fails closed instead of guessing.
    */
   const startedAt = nowSeconds;
-  const queue: Window[] = [...saved.pending, { after: saved.watermark ?? nowSeconds - FIRST_RUN_LOOKBACK_SECONDS, before: null }];
+  const queue: Window[] = [...saved.pending, { after: saved.watermark, before: null }];
   const seenIds = new Set<string>();
   const messages: SenderMessage[] = [];
   const pending: Window[] = [];
