@@ -6,6 +6,10 @@ ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "parked_at" timestamp with time 
 --> statement-breakpoint
 ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "parked_by" uuid;
 --> statement-breakpoint
+ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "enrichment_lease_token" uuid;
+--> statement-breakpoint
+ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "enrichment_lease_until" timestamp with time zone;
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "captures_parked_idx" ON "captures" USING btree ("workspace_id","parked_at") WHERE parked_at IS NOT NULL;
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "briefing_seeds" (

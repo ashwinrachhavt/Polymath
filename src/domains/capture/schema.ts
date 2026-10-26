@@ -90,6 +90,14 @@ export const captures = pgTable(
      */
     parkedAt: timestamp("parked_at", { withTimezone: true }),
     parkedBy: uuid("parked_by"),
+    /**
+     * ASH-305: the enrichment run's fenced, time-boxed claim. A run takes it
+     * before any provider call; every later write of that run must match the
+     * token, so an expired or superseded holder can never write or clear a
+     * newer holder's work. Null = nobody enriching.
+     */
+    enrichmentLeaseToken: uuid("enrichment_lease_token"),
+    enrichmentLeaseUntil: timestamp("enrichment_lease_until", { withTimezone: true }),
     ...mutable,
   },
   (t) => [
