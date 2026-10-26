@@ -213,21 +213,6 @@ suite("capture enrichment ladder", () => {
     expect(row.failureReason).toBeNull();
   });
 
-  it("keeps a recorded failure on an address-only capture: a bare URL is a pointer, not grounded text", async () => {
-    // createCapture normalizes a bare URL to a url-kind capture with text null.
-    const capture = await commands.createCapture(auth, { text: "https://example.com/only-a-pointer" });
-    await db
-      .update(captures)
-      .set({ failureReason: "The page could not be read: the site returned no readable text." })
-      .where(eq(captures.id, capture.id));
-    await enqueueAndRun(capture.id);
-
-    const row = await getCapture(capture.id);
-    expect(row.processingState).toBe("enriched");
-    expect(row.text).toBeNull();
-    expect(row.failureReason).toBe("The page could not be read: the site returned no readable text.");
-  });
-
   it("leaves a converted capture untouched", async () => {
     const capture = await commands.createCapture(auth, { text: "A short thought." });
     await db

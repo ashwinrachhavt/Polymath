@@ -159,7 +159,7 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
  * clearing the reason would leave the inbox claiming "Reading the page now"
  * forever. Once any text exists the reason is stale and clears.
  */
-function settledFailureReason(capture: { failureReason: string | null }, bodyText: string): string | null {
+export function settledFailureReason(capture: { failureReason: string | null }, bodyText: string): string | null {
   const body = bodyText.trim();
   // Whitespace is nothing, and a bare URL is a pointer, not grounded text.
   if (!body || /^https?:\/\/\S+$/.test(body)) return capture.failureReason;
