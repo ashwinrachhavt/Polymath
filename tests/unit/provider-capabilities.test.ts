@@ -171,6 +171,9 @@ const NATIVE_TOOLS = [
   // implementation lives in this repo rather than behind a provider toolkit.
   "meetings.debrief",
   "records.browse",
+  // ASH-285: drafts a Linear-issue proposal note in this repo; never a
+  // provider call, so no catalog row.
+  "linear.issue.propose",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 
