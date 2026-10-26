@@ -26,6 +26,11 @@ let workspaceId: string | null = null;
 let captureId: string | null = null;
 let sessionId: string | null = null;
 let logArtifactId: string | null = null;
+// briefing_seeds rows the ritual creates point at whatever tasks the suite
+// left behind; their ids are not returned to the page, so the exact owned
+// set is the diff against a pre-run snapshot - never a time- or workspace-wide
+// sweep.
+let preExistingSeedIds = new Set<string>();
 
 function connection(): string | null {
   if (!process.env.DATABASE_URL) {
@@ -57,8 +62,17 @@ test.afterAll(async () => {
       await client`delete from day_artifact_pins where artifact_id = ${logArtifactId}`;
       await client`delete from artifacts where id = ${logArtifactId}`;
     }
+    if (workspaceId) {
+      const seeds = await client<{ id: string }[]>`select id from briefing_seeds where workspace_id = ${workspaceId}`;
+      for (const row of seeds) {
+        if (!preExistingSeedIds.has(row.id)) await client`delete from briefing_seeds where id = ${row.id}`;
+      }
+    }
     if (captureId) await client`delete from captures where id = ${captureId}`;
     if (sessionId) await client`delete from focus_sessions where id = ${sessionId}`;
+    // The idempotency receipt and audit rows stay: they are the product's own
+    // record of this exact fixture action, keyed to it, read by no journey
+    // surface, and they die with the scratch container.
   } finally {
     await client.end();
   }
@@ -86,6 +100,9 @@ test("the shutdown ritual closes a real day end to end", async ({ page }, testIn
   `;
   test.skip(!owner, "dev owner not provisioned");
   workspaceId = owner.workspace_id;
+
+  const pre = await client<{ id: string }[]>`select id from briefing_seeds where workspace_id = ${workspaceId}`;
+  preExistingSeedIds = new Set(pre.map((r) => r.id));
 
   // A parkable inbox capture (open state, unparked).
   const [cap] = await client<{ id: string }[]>`
