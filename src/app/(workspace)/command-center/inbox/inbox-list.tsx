@@ -7,6 +7,7 @@ import {
   Forward,
   Link2,
   Mic,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +26,8 @@ import { setCaptureStateAction } from "./actions";
  */
 
 export type InboxRow = {
+  /** A pending classification proposal waits on this row (ASH-314). */
+  hasSuggestion?: boolean;
   id: string;
   processingState: string;
   kind: string;
@@ -238,6 +241,15 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
                         <>
                           <span aria-hidden>·</span>
                           <span className="truncate">{captureStateLabel(capture.processingState)}</span>
+                        </>
+                      ) : null}
+                      {capture.hasSuggestion ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="flex shrink-0 items-center gap-1 text-foreground/70">
+                            <Sparkles aria-hidden className="size-3" />
+                            Suggestion
+                          </span>
                         </>
                       ) : null}
                     </span>
