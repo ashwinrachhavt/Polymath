@@ -288,6 +288,58 @@ suite("canva.design.import executor", () => {
     expect(attempts).toHaveLength(0);
   });
 
+  it("no grant row means unrestricted (absent is not block-all)", async () => {
+    // Absent-key semantics, pinned: a workspace that never saved a grant for
+    // this capability keeps the unrestricted behavior.
+    const seeded = await seedImport({ slug: "canva-grant-absent" });
+    const { spy } = stubProvider(jobCreated("job_abs"));
+    const outcome = await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
+    expect(outcome).toMatchObject({ status: "unknown", note: "import_started" });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("an empty grant list is a deliberate block-all", async () => {
+    const seeded = await seedImport({ slug: "canva-grant-empty" });
+    const { spy } = stubProvider(jobCreated());
+    await db.insert(actionPolicies).values({
+      workspaceId: seeded.workspaceId,
+      capability: "canva.design.import",
+      riskClass: "external_write",
+      constraints: { allowedSenderAliases: [] },
+      createdBy: seeded.auth.userId,
+      updatedBy: seeded.auth.userId,
+    });
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /No sender is authorized/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a grant scoped to canva.design.import never touches gmail.send authority", async () => {
+    // Scope mapping, pinned: the policy row is keyed by CAPABILITY, not by
+    // provider or account. A canva block-all leaves gmail.send unrestricted
+    // in the same workspace, and the canva alias vocabulary is never read
+    // as a gmail sender permission.
+    const seeded = await seedImport({ slug: "canva-grant-scoped" });
+    await db.insert(actionPolicies).values({
+      workspaceId: seeded.workspaceId,
+      capability: "canva.design.import",
+      riskClass: "external_write",
+      constraints: { allowedSenderAliases: [] },
+      createdBy: seeded.auth.userId,
+      updatedBy: seeded.auth.userId,
+    });
+    const { senderAliasPolicy } = await import("@/domains/actions/policy");
+    expect(await senderAliasPolicy(seeded.workspaceId, "gmail.send")).toEqual({ configured: false });
+    expect(await senderAliasPolicy(seeded.workspaceId, "canva.design.import")).toEqual({ configured: true, aliases: [] });
+
+    const { spy } = stubProvider(jobCreated());
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /No sender is authorized/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("refuses a revision written before account binding", async () => {
     const seeded = await seedImport({ slug: "canva-unpinned", unpinned: true });
     const { spy } = stubProvider(jobCreated());
