@@ -168,19 +168,20 @@ export function SenderProposalsRow({
             </span>
           ) : null}
         </span>
-        <Switch
-          className="shrink-0"
-          checked={enabled}
+        <span className="shrink-0">
+          <Switch
+            checked={enabled}
           disabled={pending || (blocked !== null && !enabled)}
           aria-label="Suggest contacts from new senders"
-          onCheckedChange={(next) => {
-            setError(null);
-            startTransition(async () => {
-              const result = await setSenderProposalsAction({ accountId, expectedVersion: version, enabled: next });
-              if (!result.ok) setError(result.error);
-            });
-          }}
-        />
+            onCheckedChange={(next) => {
+              setError(null);
+              startTransition(async () => {
+                const result = await setSenderProposalsAction({ accountId, expectedVersion: version, enabled: next });
+                if (!result.ok) setError(result.error);
+              });
+            }}
+          />
+        </span>
       </div>
       {error ? <p className="mt-1 text-[13px] text-muted-foreground" role="status">{error}</p> : null}
     </div>
