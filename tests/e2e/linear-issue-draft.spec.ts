@@ -18,12 +18,10 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
   const dialog = page.getByRole("dialog");
   await dialog.getByPlaceholder("A thought, a task, a link, a pasted screenshot").fill(SOURCE_TEXT);
   await dialog.getByRole("button", { name: "Save capture", exact: true }).click();
-  await page.goto("/command-center/inbox");
-  await waitSettled(page);
-
-  // The inbox is shared with every parallel spec: open THIS capture, never
-  // whichever row happens to sort first.
-  await page.getByRole("article").filter({ hasText: "Priya needs the Q3 roadmap" }).first().click();
+  // The save navigates straight to THIS capture's detail - no inbox-list
+  // picking, which races every parallel spec sharing the workspace (and a
+  // passing enrichment drain can rename a row's title mid-journey).
+  await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}/);
   await waitSettled(page);
   const detail = page.getByRole("article");
   await expect(detail).toContainText("Turn into");
