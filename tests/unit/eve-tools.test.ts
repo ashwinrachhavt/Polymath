@@ -133,7 +133,7 @@ describe("linear_issue_propose binds run, policy and caller-owned draft identity
 
   it("a terminal run cannot draft even when its old snapshot allowed it", async () => {
     vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "completed", policySnapshot: { allowedTools: ["linear.issue.propose"] },
+      id: runId, state: "succeeded", policySnapshot: { allowedTools: ["linear.issue.propose"] },
     });
     expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: false });
     expect(draftLinearIssueFromText).not.toHaveBeenCalled();
