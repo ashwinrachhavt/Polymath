@@ -146,6 +146,12 @@ jobs:
           # Lets a spec drain the outbox on purpose (one dispatcher pass)
           # instead of sleeping for a background worker that does not exist here.
           OUTBOX_DISPATCH_SECRET: e2e-outbox
+      # The Canva handoff's async journey (approve -> import_started -> sweep
+      # -> terminal settle) runs in its own invocation against the explicit,
+      # nonproduction-only import fixture: a global CANVA_IMPORT_PROVIDER
+      # would mask the honest unconfigured-refusal journey above. Zero real
+      # transport by construction - no Composio key exists here either.
+      - run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox pnpm exec playwright test design-brief-canva-fixture
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4
