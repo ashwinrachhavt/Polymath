@@ -50,7 +50,7 @@ describe("Work list ceremony wiring", () => {
     renderList();
     fireEvent.click(screen.getByRole("button", { name: "Done: complete Write the release note" }));
     fireEvent.change(screen.getByLabelText("What did you actually do?"), { target: { value: "Shipped the ceremony wiring." } });
-    fireEvent.click(screen.getByRole("button", { name: "Complete", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Quartz earned"));
     expect(completeTaskAction).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", "Shipped the ceremony wiring.");
     expect(screen.getByRole("status").textContent).toContain("Shipped the ceremony wiring.");
