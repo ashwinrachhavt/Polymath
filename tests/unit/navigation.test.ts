@@ -42,6 +42,10 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
     expect(isBrowserPreviewPath("/apps/alfred/notebook")).toBe(true);
     expect(isBrowserPreviewPath("/reviews")).toBe(false);
+    // /activity reads the real workspace audit feed; only /settings among the
+    // shared screens still renders from the preview store.
+    expect(isBrowserPreviewPath("/activity")).toBe(false);
+    expect(isBrowserPreviewPath("/settings")).toBe(true);
     expect(isBrowserPreviewPath("/alfred/dossiers")).toBe(false);
   });
 

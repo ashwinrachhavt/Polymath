@@ -207,10 +207,10 @@ export function destinationForPath(pathname: string): Destination | undefined {
 export function isBrowserPreviewPath(pathname: string) {
   // The browser preview lives under /apps/ plus the shared screens still
   // rendered from the preview store. Everything under a historic prefix
-  // (/command-center, /neuralflow, /alfred) and /reviews read canonical
-  // records, so they never carry the preview banner (ASH-165).
+  // (/command-center, /neuralflow, /alfred), /reviews and /activity read
+  // canonical records, so they never carry the preview banner (ASH-165).
   return pathname.startsWith("/apps/")
-    || ["/activity", "/settings"].includes(pathname);
+    || pathname === "/settings";
 }
 
 /**

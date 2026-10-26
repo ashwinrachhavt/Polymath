@@ -1,0 +1,106 @@
+import { expect, test } from "@playwright/test";
+import postgres from "postgres";
+
+/*
+ * The Activity rail reads the workspace's real audit events - the read
+ * surface recordAudit never had while the rail rendered the browser-local
+ * preview log. One journey writes a real event through the calendar's
+ * add-block action (the same recordAudit path every domain uses) and reads
+ * it back on /activity; a second pins workspace isolation.
+ */
+function db() {
+  return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
+}
+
+test("an audit event written by a real action lands on the activity rail", async ({ page }) => {
+  test.setTimeout(120_000);
+  const client = db();
+  const tag = `activity-e2e-${Date.now().toString(36)}`;
+  try {
+    if (!client) test.skip(true, "DATABASE_URL not configured");
+
+    await page.goto("/neuralflow/work?view=calendar");
+    await page.getByRole("button", { name: "+ Add block" }).click();
+    await page.locator('input[name="title"]').fill(tag);
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator('input[name="day"]').fill(today);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    // The form closes only after the server action commits.
+    await expect(page.locator('input[name="title"]')).toBeHidden();
+
+    await page.goto("/activity");
+    await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+    await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
+    // Pixel evidence for review: the real feed on desktop and mobile widths.
+    await page.screenshot({ path: "test-results/feature-pixels/activity-feed-desktop.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
+    await page.screenshot({ path: "test-results/feature-pixels/activity-feed-mobile.png", fullPage: true });
+  } finally {
+    if (client) {
+      await client`delete from events where title = ${tag}`;
+      await client`delete from audit_events where summary like ${"%" + tag + "%"}`;
+      await client.end();
+    }
+  }
+});
+
+test("the activity rail never shows another workspace's events", async ({ page }) => {
+  test.setTimeout(60_000);
+  const client = db();
+  const tag = `foreign-activity-${Date.now().toString(36)}`;
+  let seededId: string | null = null;
+  let seededWorkspaceId: string | null = null;
+  try {
+    if (!client) test.skip(true, "DATABASE_URL not configured");
+    const [owner] = await client!<{ workspace_id: string }[]>`
+      select m.workspace_id from memberships m join users u on u.id = m.user_id
+      where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
+    test.skip(!owner, "dev workspace not found");
+    // The CI database has exactly one workspace, so seed a throwaway foreign
+    // one instead of skipping: the isolation claim must actually execute.
+    const [other] = await client!<{ id: string }[]>`
+      insert into workspaces (name, slug) values (${`Foreign e2e ${tag}`}, ${`foreign-e2e-${tag}`}) returning id`;
+    seededWorkspaceId = other!.id;
+    const [row] = await client!<{ id: string }[]>`
+      insert into audit_events (workspace_id, actor_kind, action, subject_type, summary)
+      values (${other!.id}, 'user', 'capture.created', 'capture', ${`Foreign event ${tag}`})
+      returning id`;
+    seededId = row!.id;
+
+    await page.goto("/activity");
+    await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+    await expect(page.getByText(`Foreign event ${tag}`)).toHaveCount(0);
+  } finally {
+    if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
+    if (client && seededWorkspaceId) await client`delete from workspaces where id = ${seededWorkspaceId}`;
+    await client?.end();
+  }
+});
+
+test("private supervisor thread events never render on the activity rail", async ({ page }) => {
+  test.setTimeout(60_000);
+  const client = db();
+  const tag = `private-thread-${Date.now().toString(36)}`;
+  let seededId: string | null = null;
+  try {
+    if (!client) test.skip(true, "DATABASE_URL not configured");
+    const [owner] = await client!<{ workspace_id: string; user_id: string }[]>`
+      select m.workspace_id, m.user_id from memberships m join users u on u.id = m.user_id
+      where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
+    test.skip(!owner, "dev workspace not found");
+    // The same shape supervisor/respond.ts writes for a private exchange.
+    const [row] = await client!<{ id: string }[]>`
+      insert into audit_events (workspace_id, actor_id, actor_kind, action, subject_type, summary)
+      values (${owner!.workspace_id}, ${owner!.user_id}, 'user', 'conversation.navigation_answered', 'thread', ${`Navigation answered in-thread: note search "${tag}"`})
+      returning id`;
+    seededId = row!.id;
+
+    await page.goto("/activity");
+    await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+    await expect(page.getByText(tag)).toHaveCount(0);
+  } finally {
+    if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
+    await client?.end();
+  }
+});

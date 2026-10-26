@@ -58,10 +58,11 @@ export async function NeonCalendar({ date }: { date?: string }) {
         <span className="readout text-xs text-muted-foreground">
           {startKey} to {endKey}
         </span>
-        {/* Planning tools belong to the calendar, not the tab row. */}
+        {/* Planning tools belong to the calendar, not the tab row. The week
+            grid and the toolbar below are the scheduler itself, so the strip
+            only links the meetings surface. */}
         <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/scheduler">Scheduler</Link>
-          <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/meetings">Meetings</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/work?view=today">Meetings</Link>
         </span>
       </div>
       <CalendarToolbar
