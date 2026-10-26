@@ -428,16 +428,28 @@ All four sessions confirmed no file-level overlap on Phase 1's file set.
 
 ## 10. Diffs to `agents/` that this branch owes
 
-`agents/architecture.md` known gaps 3 and 4 are partly stale. Gap 4 says "no path
-sets a capture to `enriched`"; `enrichment-handler.ts` sets it on five paths and
-`capture.enrichment_requested` is a registered outbox topic, so that sentence is
-wrong today. Gap 3 ("`classifying` is never set, `capture_proposals` has no
-producer") is half right: `classifying` is indeed never set, but
-`jev-classify.ts` does produce proposals for four kinds.
+`agents/architecture.md` known gaps 3 and 4 are wrong in every half:
 
-Per `coding.md`, a behaviour change updates the doc that owns that behaviour, so
-gaps 3–4 are corrected in the PR that touches them rather than left to drift
-further.
+| Claim in architecture.md | Reality | Evidence |
+|---|---|---|
+| "`classifying` … never set by anything in `src/`" | set twice | `enrichment-handler.ts:218`, `url-content-handler.ts:76` |
+| "no path sets a capture to `enriched`" | set on five paths | `enrichment-handler.ts:207, 237, 261, 278, 391` |
+| "`capture_proposals` has no producer" | producer exists | `enrichment-handler.ts:400`, kinds emitted by `jev-classify.ts:31` |
+
+The state machine has no hole. The gaps arose because the writes are object
+values (`processingState: "classifying"`), not literals a grep for the state name
+inside an assignment finds easily — a trap worth recording, since two sessions
+independently mis-read it the same way. The file opens with "when this file and
+the code disagree, the code is right and this file is the bug," so gaps 3–4 are
+deleted rather than softened, in the PR that touches them.
+
+The only real defects in this area are the Jev fallback (§4.6) and the two stale
+"ships disabled" comments at `enrichment-handler.ts:222-224` while
+`registry.ts:311` has `enabled: true`.
+
+A note for whoever writes the replacement text: the Jev defect is a live bug, not
+a known limitation. Record it with a date and the condition for deleting it, so a
+future session does not read a bug as a deliberate design decision.
 
 ## 11. Rollback
 
