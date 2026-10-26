@@ -1,6 +1,5 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { pageReviewQueue } from "@/domains/actions/queries";
-import { actionProposals } from "@/domains/actions/schema";
 import { captureProposals, captures } from "@/domains/capture/schema";
 import { db } from "@/lib/db";
 
@@ -147,17 +146,3 @@ function effectOfCaptureProposal(kind: string): string {
   }
 }
 
-/** The count the shell badge and the empty state share. */
-export async function countHomeQueue(workspaceId: string): Promise<number> {
-  const [[actions], [capturesRow]] = await Promise.all([
-    db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(actionProposals)
-      .where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.status, "pending"))),
-    db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(captureProposals)
-      .where(and(eq(captureProposals.workspaceId, workspaceId), eq(captureProposals.status, "pending"))),
-  ]);
-  return (actions?.n ?? 0) + (capturesRow?.n ?? 0);
-}
