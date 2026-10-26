@@ -65,6 +65,10 @@ test.afterAll(async () => {
 });
 
 test("the shutdown ritual closes a real day end to end", async ({ page }, testInfo) => {
+  // Runs ALONE in its own CI step: applying a real shutdown mutates shared
+  // workspace state (parks, finishes sessions, seeds tomorrow), which the
+  // parallel main suite must never observe mid-run. Locally: SHUTDOWN_RITUAL_E2E=1.
+  test.skip(!process.env.SHUTDOWN_RITUAL_E2E, "sequential-only journey; set SHUTDOWN_RITUAL_E2E=1 to run it alone");
   const url = connection();
   test.skip(!url, "no database configured");
   test.skip(!isIsolatedDatabase(url!), "refusing to write shutdown artifacts outside an isolated test database");

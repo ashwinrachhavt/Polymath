@@ -163,7 +163,7 @@ jobs:
         if: always()
         with:
           name: shutdown-real-route-pixels
-          path: test-results/**/shutdown-real-*.png
+          path: test-results-shutdown/**/shutdown-real-*.png
           if-no-files-found: warn
       # The Canva handoff's async journey (approve -> import_started -> sweep
       # -> terminal settle) runs in its own invocation against the explicit,
@@ -183,6 +183,16 @@ jobs:
       # overwriting the main run's e2e-report.json in cwd.
       - if: always()
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
+      # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
+      # applies a real shutdown - parking captures, finishing sessions,
+      # seeding tomorrow's list - in the one dev workspace every journey
+      # shares; inside the parallel pool those writes destabilize unrelated
+      # journeys (observed: meeting-prep, work-neon, calendar-conflicts on
+      # every run that carried it, green on every run before it). It also
+      # skips itself without SHUTDOWN_RITUAL_E2E, so the main run never
+      # picks it up. Own --output dir: Playwright wipes it per invocation.
+      - if: always()
+        run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
       # Failure forensics: Playwright's per-failure page snapshots and retry
       # traces. if: always(), not failure(): a journey that only passes on
       # retry is exactly the one whose first-attempt evidence must survive -
@@ -194,8 +204,10 @@ jobs:
           path: |
             test-results/**/error-context.md
             test-results-fixture/**/error-context.md
+            test-results-shutdown/**/error-context.md
             test-results/**/trace.zip
             test-results-fixture/**/trace.zip
+            test-results-shutdown/**/trace.zip
           if-no-files-found: ignore
       # The fixture invocation's own structured record: its journey results
       # (including skips) are evidence too, and the default report filename
