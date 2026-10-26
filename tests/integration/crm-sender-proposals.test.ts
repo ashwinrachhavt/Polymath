@@ -63,6 +63,17 @@ suite("crm sender proposals", () => {
     expect(again.proposed[0].deduplicated).toBe(true);
   });
 
+  it("a refused write rolls the approval back with it", async () => {
+    const made = await mod.proposeContactsFromSenders(auth, { ownAddresses: [], messages: [msg("8", "Grace <grace@compilers.dev>")] });
+    const id = made.proposed[0].proposalId;
+    const [p] = await db.select().from(actionProposals).where(eq(actionProposals.id, id));
+    // A broken owner revision is refused at apply time, after the decision ran in the same transaction.
+    const [rev] = await db.insert(actionRevisions).values({ workspaceId: auth.workspaceId, proposalId: id, revisionNumber: 2, payload: { fullName: "", email: "x" }, preview: {} }).returning();
+    await expect(mod.approveContactProposal(auth, { proposalId: id, expectedVersion: p.version, revisionId: rev.id })).rejects.toThrow(/not a valid contact/);
+    const [after] = await db.select().from(actionProposals).where(eq(actionProposals.id, id));
+    expect(after.status).toBe("pending");
+  });
+
   it("approval creates contact, company, link and thread; retry and same-domain sender add no duplicates", async () => {
     const [pending] = await db.select().from(actionProposals).where(and(eq(actionProposals.workspaceId, auth.workspaceId), eq(actionProposals.dedupeKey, "crm-sender:ada@analytical.io")));
     const first = await approve(pending.id);

@@ -190,100 +190,113 @@ async function latestRevisionId(tx: TxDrizzle, workspaceId: string, proposalId: 
   return latest ?? null;
 }
 
+export type DecideProposalInput = {
+  idempotencyKey?: string;
+  proposalId: string;
+  expectedVersion: number;
+  revisionId: string;
+  decision: "approved" | "rejected";
+  note?: string;
+};
+
 export async function decideProposal(
   auth: AuthContext,
-  input: {
-    idempotencyKey?: string;
-    proposalId: string;
-    expectedVersion: number;
-    revisionId: string;
-    decision: "approved" | "rejected";
-    note?: string;
-  },
+  input: DecideProposalInput,
 ): Promise<{ id: string; version: number; replayed: boolean }> {
-  return withTransaction(async (tx) => {
-    const { value, replayed } = await withReceipt(
-      tx,
-      auth,
-      input.idempotencyKey,
-      { op: "decideProposal", ...input },
-      async () => {
-        const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
-        if (!latest) throw new ProposalNotFoundError();
-        if (latest.id !== input.revisionId) throw new StaleRevisionError();
+  return withTransaction((tx) => decideProposalInTx(tx, auth, input));
+}
 
-        // ADR 0006 Q5 (owner-approved): the owner approves anything that
-        // leaves the workspace or touches sensitive data; an admin may
-        // approve internal preparation. Rejecting stays open to members.
-        if (input.decision === "approved") {
-          const [risk] = await tx
-            .select({ riskClass: actionProposals.riskClass })
-            .from(actionProposals)
-            .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
-            .limit(1);
-          if (!risk) throw new ProposalNotFoundError();
-          requireRole(auth, risk.riskClass === "prepare" ? "admin" : "owner");
-        }
+/**
+ * The same decision inside the caller's transaction, for an effect that is a
+ * local write and must commit or roll back together with its approval, so a
+ * failed write never leaves a proposal approved without its effect.
+ */
+export async function decideProposalInTx(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: DecideProposalInput,
+): Promise<{ id: string; version: number; replayed: boolean }> {
+  const { value, replayed } = await withReceipt(
+    tx,
+    auth,
+    input.idempotencyKey,
+    { op: "decideProposal", ...input },
+    async () => {
+      const latest = await latestRevisionId(tx, auth.workspaceId, input.proposalId);
+      if (!latest) throw new ProposalNotFoundError();
+      if (latest.id !== input.revisionId) throw new StaleRevisionError();
 
-        const [row] = await tx
-          .update(actionProposals)
-          .set({
-            status: input.decision,
-            decidedAt: new Date(),
-            decidedBy: auth.userId,
-            updatedAt: new Date(),
-            updatedBy: auth.userId,
-            version: sql`${actionProposals.version} + 1`,
-          })
-          .where(
-            and(
-              eq(actionProposals.id, input.proposalId),
-              eq(actionProposals.workspaceId, auth.workspaceId),
-              eq(actionProposals.version, input.expectedVersion),
-              eq(actionProposals.status, "pending"),
-            ),
-          )
-          .returning({ id: actionProposals.id, version: actionProposals.version, title: actionProposals.title });
-        if (!row) {
-          const [exists] = await tx
-            .select({ id: actionProposals.id })
-            .from(actionProposals)
-            .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
-            .limit(1);
-          if (!exists) throw new ProposalNotFoundError();
-          throw new ProposalConflictError();
-        }
+      // ADR 0006 Q5 (owner-approved): the owner approves anything that
+      // leaves the workspace or touches sensitive data; an admin may
+      // approve internal preparation. Rejecting stays open to members.
+      if (input.decision === "approved") {
+        const [risk] = await tx
+          .select({ riskClass: actionProposals.riskClass })
+          .from(actionProposals)
+          .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!risk) throw new ProposalNotFoundError();
+        requireRole(auth, risk.riskClass === "prepare" ? "admin" : "owner");
+      }
 
-        await tx.insert(actionReviews).values({
-          workspaceId: auth.workspaceId,
-          proposalId: input.proposalId,
-          revisionId: input.revisionId,
-          decision: input.decision,
-          note: input.note?.trim() || null,
-          reviewedBy: auth.userId,
-        });
+      const [row] = await tx
+        .update(actionProposals)
+        .set({
+          status: input.decision,
+          decidedAt: new Date(),
+          decidedBy: auth.userId,
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+          version: sql`${actionProposals.version} + 1`,
+        })
+        .where(
+          and(
+            eq(actionProposals.id, input.proposalId),
+            eq(actionProposals.workspaceId, auth.workspaceId),
+            eq(actionProposals.version, input.expectedVersion),
+            eq(actionProposals.status, "pending"),
+          ),
+        )
+        .returning({ id: actionProposals.id, version: actionProposals.version, title: actionProposals.title });
+      if (!row) {
+        const [exists] = await tx
+          .select({ id: actionProposals.id })
+          .from(actionProposals)
+          .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!exists) throw new ProposalNotFoundError();
+        throw new ProposalConflictError();
+      }
 
-        await recordAudit(
-          auth,
-          {
-            action: "actions.proposal_decided",
-            subjectType: "action_proposal",
-            subjectId: row.id,
-            summary: `${input.decision === "approved" ? "Approved" : "Rejected"} proposal: ${row.title}`,
-            metadata: { decision: input.decision, revisionId: input.revisionId },
-          },
-          tx,
-        );
-        await emit(tx, auth, "actions.proposal.decided", {
-          proposalId: row.id,
-          decision: input.decision,
-          revisionId: input.revisionId,
-        });
-        return { id: row.id, version: row.version };
-      },
-    );
-    return { ...value, replayed };
-  });
+      await tx.insert(actionReviews).values({
+        workspaceId: auth.workspaceId,
+        proposalId: input.proposalId,
+        revisionId: input.revisionId,
+        decision: input.decision,
+        note: input.note?.trim() || null,
+        reviewedBy: auth.userId,
+      });
+
+      await recordAudit(
+        auth,
+        {
+          action: "actions.proposal_decided",
+          subjectType: "action_proposal",
+          subjectId: row.id,
+          summary: `${input.decision === "approved" ? "Approved" : "Rejected"} proposal: ${row.title}`,
+          metadata: { decision: input.decision, revisionId: input.revisionId },
+        },
+        tx,
+      );
+      await emit(tx, auth, "actions.proposal.decided", {
+        proposalId: row.id,
+        decision: input.decision,
+        revisionId: input.revisionId,
+      });
+      return { id: row.id, version: row.version };
+    },
+  );
+  return { ...value, replayed };
 }
 
 /*

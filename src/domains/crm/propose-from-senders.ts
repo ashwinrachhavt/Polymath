@@ -1,10 +1,10 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { actionProposals, actionRevisions } from "@/domains/actions/schema";
-import { createProposal, decideProposal, ProposalConflictError } from "@/domains/actions/commands";
+import { actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
+import { createProposal, decideProposalInTx, ProposalConflictError } from "@/domains/actions/commands";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { listContactStatusesByEmail } from "./queries";
 import { companies, contactCompanies, contactObservations, contacts, correspondence } from "./schema";
 import { companyFromEmail, gmailThreadUrl, isAutomatedSender, nameFromEmail, parseSender } from "./sender-parsing";
@@ -171,157 +171,170 @@ export function parseSenderPayload(payload: unknown): SenderProposalPayload {
 export type SenderApproval = { contactId: string; companyId: string | null; created: boolean };
 
 /*
- * Approve and apply. The decision commits first (compare-and-set on the
- * version the owner saw); applying then runs in one local transaction. That is
- * the whole effect, so it needs no claim/settle attempt row: there is no
- * provider call that can leave an UNKNOWN outcome, and it is idempotent by
- * construction. A retried approval finds the contact by email, the company by
- * domain, and the correspondence by provider message id, and creates nothing.
+ * Approve and apply as ONE transaction: the decision (compare-and-set on the
+ * version the owner saw, role check, review row, audit) and the contact write
+ * commit together or not at all, so a failed write cannot leave a proposal
+ * approved without its contact, and concurrent approvals serialize on the
+ * proposal row. This is a local write with no provider call, so it needs no
+ * claim/settle attempt row; applying is idempotent by construction (contact by
+ * email, company by domain, correspondence by provider message id).
+ *
+ * A retry after a decision that already committed (ProposalConflictError with
+ * the proposal approved on this exact revision) applies in a fresh transaction.
  */
 export async function approveContactProposal(
   auth: AuthContext,
   input: { proposalId: string; expectedVersion: number; revisionId: string },
 ): Promise<SenderApproval> {
-  try {
-    await decideProposal(auth, {
-      proposalId: input.proposalId,
-      expectedVersion: input.expectedVersion,
-      revisionId: input.revisionId,
-      decision: "approved",
-      idempotencyKey: `crm-contact-decide:${input.proposalId}`,
+  const run = () =>
+    withTransaction(async (tx) => {
+      await decideProposalInTx(tx, auth, {
+        proposalId: input.proposalId,
+        expectedVersion: input.expectedVersion,
+        revisionId: input.revisionId,
+        decision: "approved",
+        idempotencyKey: `crm-contact-decide:${input.proposalId}`,
+      });
+      return applyContact(tx, auth, await loadApprovedPayload(tx, auth, input));
     });
+  try {
+    return await run();
   } catch (error) {
-    if (!(error instanceof ProposalConflictError)) throw error;
-    const [p] = await db
-      .select({ status: actionProposals.status })
-      .from(actionProposals)
-      .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
-      .limit(1);
-    if (p?.status !== "approved") throw error;
+    if (error instanceof ProposalConflictError) {
+      // Already decided: only an approval of this exact revision may be (re)applied.
+      return withTransaction(async (tx) => applyContact(tx, auth, await loadApprovedPayload(tx, auth, input, { requireApproved: true })));
+    }
+    // A concurrent writer took the unique email index; the whole unit rolled back, so replay it once.
+    if ((error as { cause?: { code?: string } })?.cause?.code === "23505") return run();
+    throw error;
   }
+}
 
-  const [proposal] = await db
-    .select({ capability: actionProposals.capability })
+async function loadApprovedPayload(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { proposalId: string; revisionId: string },
+  opts: { requireApproved?: boolean } = {},
+): Promise<SenderProposalPayload> {
+  const [proposal] = await tx
+    .select({ capability: actionProposals.capability, status: actionProposals.status })
     .from(actionProposals)
     .where(and(eq(actionProposals.id, input.proposalId), eq(actionProposals.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!proposal) throw new SenderApprovalNotAllowedError("That proposal does not exist in this workspace.");
   if (proposal.capability !== CRM_CONTACT_CAPABILITY) throw new SenderApprovalNotAllowedError("That proposal is not a contact proposal.");
-
-  const [revision] = await db
+  if (opts.requireApproved) {
+    const [review] = await tx
+      .select({ id: actionReviews.id })
+      .from(actionReviews)
+      .where(and(eq(actionReviews.workspaceId, auth.workspaceId), eq(actionReviews.proposalId, input.proposalId), eq(actionReviews.revisionId, input.revisionId), eq(actionReviews.decision, "approved")))
+      .limit(1);
+    if (proposal.status !== "approved" || !review) throw new ProposalConflictError();
+  }
+  const [revision] = await tx
     .select({ payload: actionRevisions.payload })
     .from(actionRevisions)
     .where(and(eq(actionRevisions.id, input.revisionId), eq(actionRevisions.workspaceId, auth.workspaceId), eq(actionRevisions.proposalId, input.proposalId)))
     .limit(1);
   if (!revision) throw new SenderApprovalNotAllowedError("The approved revision no longer exists.");
-  const payload = parseSenderPayload(revision.payload);
-
-  try {
-    return await applyContact(auth, payload);
-  } catch (error) {
-    // A concurrent identical approval won the unique index; the replay reads its result.
-    if ((error as { cause?: { code?: string } })?.cause?.code !== "23505") throw error;
-    return applyContact(auth, payload);
-  }
+  return parseSenderPayload(revision.payload);
 }
 
-async function applyContact(auth: AuthContext, payload: SenderProposalPayload): Promise<SenderApproval> {
+async function applyContact(tx: TxDrizzle, auth: AuthContext, payload: SenderProposalPayload): Promise<SenderApproval> {
   const email = payload.email.toLowerCase();
-  return withTransaction(async (tx) => {
-    let companyId: string | null = null;
-    if (payload.company) {
-      const domain = payload.company.domain.toLowerCase();
-      const [byId] = payload.company.existingId
-        ? await tx
-            .select({ id: companies.id })
-            .from(companies)
-            .where(and(eq(companies.id, payload.company.existingId), eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt)))
-            .limit(1)
-        : [];
-      const [byDomain] = byId
-        ? []
-        : await tx
-            .select({ id: companies.id })
-            .from(companies)
-            .where(and(eq(companies.workspaceId, auth.workspaceId), eq(companies.domain, domain)))
-            .limit(1);
-      companyId = byId?.id ?? byDomain?.id ?? null;
-      if (!companyId) {
-        const [company] = await tx
-          .insert(companies)
-          .values({ workspaceId: auth.workspaceId, name: payload.company.name.trim(), domain, createdBy: auth.userId, updatedBy: auth.userId })
-          .returning({ id: companies.id });
-        companyId = company.id;
-        await recordAudit(auth, { action: "company.created", subjectType: "company", subjectId: companyId, summary: `Company created: ${payload.company.name}` }, tx);
-      }
+  let companyId: string | null = null;
+  if (payload.company) {
+    const domain = payload.company.domain.toLowerCase();
+    const [byId] = payload.company.existingId
+      ? await tx
+          .select({ id: companies.id })
+          .from(companies)
+          .where(and(eq(companies.id, payload.company.existingId), eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt)))
+          .limit(1)
+      : [];
+    const [byDomain] = byId
+      ? []
+      : await tx
+          .select({ id: companies.id })
+          .from(companies)
+          .where(and(eq(companies.workspaceId, auth.workspaceId), eq(companies.domain, domain)))
+          .limit(1);
+    companyId = byId?.id ?? byDomain?.id ?? null;
+    if (!companyId) {
+      const [company] = await tx
+        .insert(companies)
+        .values({ workspaceId: auth.workspaceId, name: payload.company.name.trim(), domain, createdBy: auth.userId, updatedBy: auth.userId })
+        .returning({ id: companies.id });
+      companyId = company.id;
+      await recordAudit(auth, { action: "company.created", subjectType: "company", subjectId: companyId, summary: `Company created: ${payload.company.name}` }, tx);
     }
+  }
 
-    const [existing] = await tx
-      .select({ id: contacts.id })
-      .from(contacts)
-      .where(and(eq(contacts.workspaceId, auth.workspaceId), sql`lower(${contacts.primaryEmail}) = ${email}`))
-      .limit(1);
-    let contactId = existing?.id;
-    const created = !contactId;
-    if (!contactId) {
-      const [contact] = await tx
-        .insert(contacts)
-        .values({
-          workspaceId: auth.workspaceId,
-          fullName: payload.fullName.trim(),
-          primaryEmail: email,
-          lastInteractionAt: payload.source.receivedAt ? new Date(payload.source.receivedAt) : null,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning({ id: contacts.id });
-      contactId = contact.id;
-      await recordAudit(auth, { action: "contact.created", subjectType: "contact", subjectId: contactId, summary: `Contact created from email sender: ${payload.fullName}` }, tx);
-    }
-
-    if (companyId) {
-      const [link] = await tx
-        .select({ id: contactCompanies.id })
-        .from(contactCompanies)
-        .where(and(eq(contactCompanies.contactId, contactId), eq(contactCompanies.companyId, companyId)))
-        .limit(1);
-      if (!link) await tx.insert(contactCompanies).values({ workspaceId: auth.workspaceId, contactId, companyId, isCurrent: true });
-    }
-
-    const [seen] = await tx
-      .select({ id: correspondence.id })
-      .from(correspondence)
-      .where(and(eq(correspondence.workspaceId, auth.workspaceId), eq(correspondence.contactId, contactId), eq(correspondence.providerObjectId, payload.source.messageId)))
-      .limit(1);
-    if (!seen) {
-      const [thread] = await tx
-        .insert(correspondence)
-        .values({
-          workspaceId: auth.workspaceId,
-          contactId,
-          companyId,
-          direction: "inbound",
-          channel: "email",
-          subject: payload.source.subject,
-          state: "received",
-          providerObjectId: payload.source.messageId,
-          threadId: payload.source.threadId,
-          occurredAt: payload.source.receivedAt ? new Date(payload.source.receivedAt) : null,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning({ id: correspondence.id });
-      await tx.insert(contactObservations).values({
+  const [existing] = await tx
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(eq(contacts.workspaceId, auth.workspaceId), sql`lower(${contacts.primaryEmail}) = ${email}`))
+    .limit(1);
+  let contactId = existing?.id;
+  const created = !contactId;
+  if (!contactId) {
+    const [contact] = await tx
+      .insert(contacts)
+      .values({
         workspaceId: auth.workspaceId,
-        contactId,
-        body: `First seen as an email sender${payload.source.subject ? `: "${payload.source.subject}"` : ""}. Thread: ${payload.source.threadUrl}`,
-        source: "observed",
-        evidenceType: "correspondence",
-        evidenceId: thread.id,
+        fullName: payload.fullName.trim(),
+        primaryEmail: email,
+        lastInteractionAt: payload.source.receivedAt ? new Date(payload.source.receivedAt) : null,
         createdBy: auth.userId,
         updatedBy: auth.userId,
-      });
-    }
-    return { contactId, companyId, created };
-  });
+      })
+      .returning({ id: contacts.id });
+    contactId = contact.id;
+    await recordAudit(auth, { action: "contact.created", subjectType: "contact", subjectId: contactId, summary: `Contact created from email sender: ${payload.fullName}` }, tx);
+  }
+
+  if (companyId) {
+    const [link] = await tx
+      .select({ id: contactCompanies.id })
+      .from(contactCompanies)
+      .where(and(eq(contactCompanies.contactId, contactId), eq(contactCompanies.companyId, companyId)))
+      .limit(1);
+    if (!link) await tx.insert(contactCompanies).values({ workspaceId: auth.workspaceId, contactId, companyId, isCurrent: true });
+  }
+
+  const [seen] = await tx
+    .select({ id: correspondence.id })
+    .from(correspondence)
+    .where(and(eq(correspondence.workspaceId, auth.workspaceId), eq(correspondence.contactId, contactId), eq(correspondence.providerObjectId, payload.source.messageId)))
+    .limit(1);
+  if (!seen) {
+    const [thread] = await tx
+      .insert(correspondence)
+      .values({
+        workspaceId: auth.workspaceId,
+        contactId,
+        companyId,
+        direction: "inbound",
+        channel: "email",
+        subject: payload.source.subject,
+        state: "received",
+        providerObjectId: payload.source.messageId,
+        threadId: payload.source.threadId,
+        occurredAt: payload.source.receivedAt ? new Date(payload.source.receivedAt) : null,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: correspondence.id });
+    await tx.insert(contactObservations).values({
+      workspaceId: auth.workspaceId,
+      contactId,
+      body: `First seen as an email sender${payload.source.subject ? `: "${payload.source.subject}"` : ""}. Thread: ${payload.source.threadUrl}`,
+      source: "observed",
+      evidenceType: "correspondence",
+      evidenceId: thread.id,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    });
+  }
+  return { contactId, companyId, created };
 }
