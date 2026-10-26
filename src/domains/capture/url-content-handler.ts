@@ -22,8 +22,9 @@ import { captures } from "./schema";
  *
  * A fetch that fails is recorded as a failure reason on the capture and the
  * event completes — a dead address would fail the same way on every retry.
- * The person sees "Could not be read" and can paste the URL again, which
- * dedupes onto the same capture and re-enqueues this handler.
+ * The person sees "Could not be read". There is no retry command yet: pasting
+ * the URL again is refused as a duplicate and enqueues nothing (ASH-318 tracks
+ * an explicit retry), so a failed capture continues as an address-only capture.
  *
  * The URL was captured by a person, not supplied by a model, but it still
  * goes through assertPublicUrl: a pasted internal address must not become a
@@ -42,10 +43,14 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
 
   const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
-  // Only a capture still waiting for its page is fetched. "classifying" means
-  // the fetch stage is already done (see below), so a duplicate event is a no-op;
-  // a converted or enriched capture does not need its reading text.
-  if (capture.processingState !== "unprocessed") return;
+  // Only a capture still waiting for its page is fetched; a converted or
+  // enriched capture does not need its reading text.
+  // "classifying" with text is the post-fetch handoff, so any existing fetched
+  // text blocks a refetch; "classifying" without text (an address-only capture
+  // left mid-classification, or unparked) still needs its page.
+  const needsPage =
+    capture.processingState === "unprocessed" || (capture.processingState === "classifying" && !capture.text);
+  if (!needsPage) return;
   // Parked (ASH-305): no new fetch while set aside. Unpark re-queues this.
   if (capture.parkedAt) return;
 

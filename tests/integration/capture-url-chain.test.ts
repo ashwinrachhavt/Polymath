@@ -135,24 +135,104 @@ suite("url capture chain", () => {
     expect(row.text).toContain("example.com");
   });
 
-  it("a dead or stuck fetch event is not waited on forever", async () => {
+  it("a claimed fetch (still 'pending' with an outbox lease) and a retrying one (available_at in the future) both hold enrichment", async () => {
+    const claimed = await seed("claimed");
+    const [claimedUrl] = await eventsOf(claimed.workspaceId, "capture.url_content_requested");
+    const [claimedEnrich] = await eventsOf(claimed.workspaceId, "capture.enrichment_requested");
+    await db
+      .update(outboxEvents)
+      .set({ leaseOwner: "w1", leaseToken: crypto.randomUUID(), leaseExpiresAt: new Date(Date.now() + 20_000) })
+      .where(eq(outboxEvents.id, claimedUrl.id));
+    const j = judger();
+    await expect(enrichment.runCaptureEnrichment(claimedEnrich as never, { judger: j as never })).rejects.toMatchObject(
+      { name: "OutboxParkError", retryAfterMs: expect.any(Number) },
+    );
+
+    const retrying = await seed("retrying");
+    const [retryUrl] = await eventsOf(retrying.workspaceId, "capture.url_content_requested");
+    const [retryEnrich] = await eventsOf(retrying.workspaceId, "capture.enrichment_requested");
+    await db
+      .update(outboxEvents)
+      .set({ attempts: 2, availableAt: new Date(Date.now() + 120_000) })
+      .where(eq(outboxEvents.id, retryUrl.id));
+    const err = await enrichment
+      .runCaptureEnrichment(retryEnrich as never, { judger: j as never })
+      .catch((e: unknown) => e as OutboxParkError);
+    // The wait follows the fetch's own backoff (about 2 minutes), not a fixed poll.
+    expect(err).toBeInstanceOf(OutboxParkError);
+    expect((err as OutboxParkError).retryAfterMs).toBeGreaterThan(60_000);
+    expect(j.calls).toBe(0);
+  });
+
+  it("an old fetch event that is still pending keeps holding enrichment (age is not terminal)", async () => {
+    const old = await seed("old");
+    const [oldUrl] = await eventsOf(old.workspaceId, "capture.url_content_requested");
+    const [oldEnrich] = await eventsOf(old.workspaceId, "capture.enrichment_requested");
+    await db
+      .update(outboxEvents)
+      .set({ createdAt: new Date(Date.now() - 3 * 60 * 60_000) })
+      .where(eq(outboxEvents.id, oldUrl.id));
+    await expect(
+      enrichment.runCaptureEnrichment(oldEnrich as never, { judger: judger() as never }),
+    ).rejects.toBeInstanceOf(OutboxParkError);
+  });
+
+  it("a dead fetch event is terminal: enrichment proceeds on the address", async () => {
     const dead = await seed("dead");
     const [deadUrl] = await eventsOf(dead.workspaceId, "capture.url_content_requested");
     const [deadEnrich] = await eventsOf(dead.workspaceId, "capture.enrichment_requested");
     await db.update(outboxEvents).set({ status: "dead" }).where(eq(outboxEvents.id, deadUrl.id));
     await enrichment.runCaptureEnrichment(deadEnrich as never, { judger: judger() as never });
-    const [deadRow] = await db.select().from(captures).where(eq(captures.id, dead.capture.id));
-    expect(deadRow.processingState).toBe("enriched");
+    const [row] = await db.select().from(captures).where(eq(captures.id, dead.capture.id));
+    expect(row.processingState).toBe("enriched");
+  });
 
-    const stuck = await seed("stuck");
-    const [stuckUrl] = await eventsOf(stuck.workspaceId, "capture.url_content_requested");
-    const [stuckEnrich] = await eventsOf(stuck.workspaceId, "capture.enrichment_requested");
+  it("classifying with no text (crash or unpark) still fetches once; classifying with text does not refetch", async () => {
+    scrape.calls = 0;
+    scrape.markdown = PAGE;
+    const empty = await seed("cls-empty");
+    const [emptyUrl] = await eventsOf(empty.workspaceId, "capture.url_content_requested");
     await db
-      .update(outboxEvents)
-      .set({ createdAt: new Date(Date.now() - 31 * 60_000) })
-      .where(eq(outboxEvents.id, stuckUrl.id));
-    await enrichment.runCaptureEnrichment(stuckEnrich as never, { judger: judger() as never });
-    const [stuckRow] = await db.select().from(captures).where(eq(captures.id, stuck.capture.id));
-    expect(stuckRow.processingState).toBe("enriched");
+      .update(captures)
+      .set({ processingState: "classifying", text: null })
+      .where(eq(captures.id, empty.capture.id));
+    await urlHandler.urlContentRequestedHandler(emptyUrl as never);
+    await urlHandler.urlContentRequestedHandler(emptyUrl as never);
+    expect(scrape.calls).toBe(1);
+    const [emptyRow] = await db.select().from(captures).where(eq(captures.id, empty.capture.id));
+    expect(emptyRow).toMatchObject({
+      processingState: "classifying",
+      text: expect.stringContaining("fewer, larger bets"),
+    });
+
+    scrape.calls = 0;
+    const full = await seed("cls-full");
+    const [fullUrl] = await eventsOf(full.workspaceId, "capture.url_content_requested");
+    await db
+      .update(captures)
+      .set({ processingState: "classifying", text: "already fetched page text" })
+      .where(eq(captures.id, full.capture.id));
+    await urlHandler.urlContentRequestedHandler(fullUrl as never);
+    expect(scrape.calls).toBe(0);
+  });
+
+  it("there is no retry after a terminal failure: re-pasting the URL is refused and enqueues nothing", async () => {
+    scrape.markdown = "";
+    const { workspaceId, capture } = await seed("repaste");
+    const [urlEvent] = await eventsOf(workspaceId, "capture.url_content_requested");
+    await urlHandler.urlContentRequestedHandler(urlEvent as never);
+    await dispatch(urlEvent.id);
+    const [{ url }] = await db.select({ url: captures.url }).from(captures).where(eq(captures.id, capture.id));
+    const { userId } = await db
+      .select({ userId: captures.createdBy })
+      .from(captures)
+      .where(eq(captures.id, capture.id))
+      .then((r) => ({ userId: r[0].userId as string }));
+    await expect(commands.createCapture(ownerAuth(userId, workspaceId), { text: url as string })).rejects.toMatchObject(
+      {
+        existingId: capture.id,
+      },
+    );
+    expect(await eventsOf(workspaceId, "capture.url_content_requested")).toHaveLength(1);
   });
 });
