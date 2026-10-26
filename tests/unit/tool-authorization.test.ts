@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authorizeToolInvocation, TOOL_OPERATION_REGISTRY, type GrantForAuthorization } from "@/domains/agents/authorization";
+import { supportsEffect } from "@/domains/actions/executor";
 
 /*
  * ASH-122 GA03 confused-deputy coverage, DB-free. Every acceptance rule is
@@ -148,6 +149,20 @@ describe("linear.issue.propose (ASH-285)", () => {
     ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
   });
 });
+
+  it("a decision-only internal write has no executor to fall through to", () => {
+    // The reviews approve path runs executeApprovedEffect only when
+    // supportsEffect is true; an executor-less capability returns the
+    // decision alone. Pin both halves: every propose-only internal write in
+    // the registry stays executor-less, so an approval can never fall
+    // through to a real effect or report an applied success.
+    for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
+      if (spec.effectClass === "internal_write") {
+        expect(supportsEffect(operation), operation).toBe(false);
+      }
+    }
+    expect(supportsEffect("linear.issue.propose")).toBe(false);
+  });
 
   it("keeps the registry's approval gate on every external effect", () => {
     for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
