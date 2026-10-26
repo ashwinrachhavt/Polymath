@@ -21,9 +21,10 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), io: async () => undefine
 const clerk = vi.hoisted(() => ({ clerkConfigured: true, devAuthBypass: false }));
 vi.mock("@/lib/clerk", () => clerk);
 
-vi.mock("@/lib/auth", () => ({
-  getAuthContext: vi.fn(async () => ({ userId: "u", workspaceId: "w", role: "owner" })),
+const authContext = vi.hoisted(() => ({
+  getAuthContext: vi.fn(async (): Promise<unknown> => ({ userId: "u", workspaceId: "w", role: "owner" })),
 }));
+vi.mock("@/lib/auth", () => authContext);
 vi.mock("@/domains/identity/preferences", () => ({
   getPreferences: vi.fn(async () => ({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 1 })),
 }));
@@ -33,18 +34,29 @@ vi.mock("@/lib/capability-config", () => ({ capabilityStatus: vi.fn(() => []) })
 import { SettingsSurface } from "@/app/(workspace)/settings/page";
 
 describe("/settings route wiring", () => {
-  beforeEach(() => settingsProps.fn.mockClear());
-
-  it("passes browserPreview=false when Clerk is configured (authenticated mode)", async () => {
-    clerk.clerkConfigured = true;
-    renderToStaticMarkup(await SettingsSurface());
-    expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: false });
+  beforeEach(() => {
+    settingsProps.fn.mockClear();
+    authContext.getAuthContext.mockImplementation(async () => ({ userId: "u", workspaceId: "w", role: "owner" }));
   });
 
-  it("passes browserPreview=true when no Clerk keys exist (browser preview)", async () => {
-    clerk.clerkConfigured = false;
+  it("passes browserPreview=false and the account row when auth resolves", async () => {
+    renderToStaticMarkup(await SettingsSurface());
+    expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({
+      browserPreview: false,
+      serverPreferences: { timezone: "UTC", weekStart: 1, version: 1 },
+    });
+  });
+
+  /*
+   * The preview branch is the "no account exists" case, not the "no Clerk keys"
+   * case: the keyless dev harness has no keys yet getAuthContext still resolves
+   * the dev owner. Branching on the flags made the form post version 0 forever.
+   */
+  it("passes browserPreview=true only when auth has no account", async () => {
+    authContext.getAuthContext.mockRejectedValue(new Error("No signed-in session."));
     renderToStaticMarkup(await SettingsSurface());
     expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: true });
+    expect(settingsProps.fn.mock.calls[0][0].serverPreferences).toBeUndefined();
   });
 });
 

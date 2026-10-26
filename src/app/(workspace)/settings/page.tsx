@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
-import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { capabilityStatus } from "@/lib/capability-config";
 import Settings from "@/components/products/command-center/settings";
 
@@ -34,10 +33,17 @@ export const metadata = { title: "Settings · Polymath" };
 export async function SettingsSurface() {
   await io();
   const capabilities = capabilityStatus();
-  if (!clerkConfigured && !devAuthBypass) {
+  // Ask for the account first and fall back to the preview only when there is
+  // genuinely none. Testing the flags instead missed the keyless dev harness,
+  // where Clerk is unconfigured (so no keys) yet getAuthContext still resolves
+  // the dev owner: this page rendered the preview branch, the form posted
+  // version 0 forever, and every save after the first was a CAS conflict.
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch {
     return <Settings capabilities={capabilities} browserPreview />;
   }
-  const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
   // Owner scope, same contract as actions.ts: a non-owner must not receive
   // the raw brief in the initial RSC payload either.
