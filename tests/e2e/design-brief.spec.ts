@@ -279,6 +279,11 @@ for (const vp of VIEWPORTS) {
     await expect(page).toHaveURL(/status=approved/);
     const decided = page.locator("section").filter({ hasText: accountAlias! });
     await expect(decided.getByText("Decided")).toBeVisible({ timeout: 30_000 });
+    // The refusal survives the reload through the card's persisted review
+    // history - visibility of a committed refusal is durable, not a flash.
+    await expect(
+      decided.getByText(/Execution refused: Canva import is not enabled on this deployment/),
+    ).toBeVisible({ timeout: 30_000 });
     await expect(decided.getByText("Imported to Canva.")).toHaveCount(0);
     await expect(decided.getByText(/Not imported\./)).toHaveCount(0);
     await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);

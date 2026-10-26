@@ -7,7 +7,7 @@ import { executeApprovedEffect, supportsEffect, type EffectOutcome } from "@/dom
 import { approveTaskProposal, TaskExecuteNotAllowedError } from "@/domains/work/proposals";
 import { approveNoteProposal, NoteExecuteNotAllowedError } from "@/domains/knowledge/note-proposals";
 import { approveArtifactRevision, ArtifactReviseNotAllowedError } from "@/domains/knowledge/revision-proposals";
-import { actionProposals } from "@/domains/actions/schema";
+import { actionProposals, actionReviews } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -176,9 +176,31 @@ export async function decideProposalAction(input: {
     outcome = await executeApprovedEffect(auth, { proposalId: input.proposalId });
   } catch (error) {
     // The decision is committed; a refusal to execute is a state the card
-    // must show, not a rollback of the approval.
+    // must show, not a rollback of the approval. The card's client alert
+    // only lives until the next render, so the refusal also lands in the
+    // review history - the persisted record a reloaded card renders. No
+    // attempt row: the refusal happened before any claim, the approval
+    // stands, and a replayed decide re-derives this same row rather than
+    // stacking duplicates.
+    const message = error instanceof Error ? error.message : "The approved effect did not run.";
+    const note = `Execution refused: ${message}`.slice(0, 2000);
+    const existing = await db
+      .select({ id: actionReviews.id })
+      .from(actionReviews)
+      .where(and(eq(actionReviews.proposalId, input.proposalId), eq(actionReviews.note, note)))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(actionReviews).values({
+        workspaceId: auth.workspaceId,
+        proposalId: input.proposalId,
+        revisionId: input.revisionId,
+        decision: "approved",
+        note,
+        reviewedBy: null,
+      });
+    }
     revalidate();
-    return { ok: false, error: error instanceof Error ? error.message : "The approved effect did not run.", decided: true };
+    return { ok: false, error: message, decided: true };
   }
   revalidate();
   return { ok: true, outcome };

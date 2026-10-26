@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitSettled } from "./helpers/settled";
 import postgres from "postgres";
 
 /*
@@ -251,19 +252,14 @@ async function approveHandOff(
   // Scope every interaction to this journey's card: the e2e workspace is
   // shared, and other specs' leftover proposals render Approve buttons too.
   const card = page.locator("section").filter({ hasText: accountAlias });
-  // Hydration race shield: a click landing before React attaches handlers is
-  // a silent no-op. Re-click while the card still offers Approve with no
-  // outcome or refusal rendered; the executor's claim makes a repeated
-  // decide resolve the same attempt, never a duplicate import.
-  for (let click = 0; click < 3; click += 1) {
-    await card.getByRole("button", { name: "Approve", exact: true }).click();
-    const heard = await Promise.race([
-      card.getByRole("status").first().waitFor({ timeout: 8_000 }).then(() => true, () => false),
-      card.getByRole("alert").first().waitFor({ timeout: 8_000 }).then(() => true, () => false),
-    ]);
-    if (heard) break;
-    if (click === 2) throw new Error("Approve produced neither an outcome nor a refusal after 3 clicks");
-  }
+  // Hydration is the click-readiness gate, not a retry loop: waitSettled
+  // holds until the shell's client store has hydrated (the header search
+  // leaves its disabled SSR state), so this click lands on live handlers.
+  // The journey's own status/refusal assertion below proves receipt; the
+  // executor's claim discipline (integration-pinned: a replay resolves the
+  // same attempt, never a second dispatch) covers any repeated decide.
+  await waitSettled(page);
+  await card.getByRole("button", { name: "Approve", exact: true }).click();
   return { card, briefTitle };
 }
 
