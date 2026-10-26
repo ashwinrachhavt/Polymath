@@ -1,7 +1,7 @@
 # One note substrate — every text object is a note
 
 **Date:** 2026-10-26
-**Status:** Design, approved in shape; not implemented
+**Status:** Approved 2026-10-26; not implemented
 **Ticket:** ASH-174 (Notes), extended by operator decision 2026-10-26
 
 ## Intent
@@ -180,25 +180,41 @@ only. These never touch the artifact, so a board drag stays a single-row write.
 
 ## Migration
 
-Forward-only, one migration (`0257_one_note_substrate.sql`), rehearsed on a Neon
-branch before it runs anywhere shared. `agents/coding.md` forbids editing it after
-it runs.
+Forward-only, rehearsed on a Neon branch before it runs anywhere shared.
+`agents/coding.md` forbids editing a migration after it runs.
 
-1. Add `artifacts.template` and `tasks.note_id`.
-2. Backfill: for every existing task, create one artifact per task —
-   `kind = 'note'`, `template = 'issue'`, `title` copied from `tasks.title`, one
-   `artifact_versions` row holding `tasks.description` (or an empty body when
-   null), `workspace_id` and `created_by` copied from the task. Set
-   `tasks.note_id`. This runs in SQL and must be idempotent by construction
-   (`WHERE note_id IS NULL`), because a re-run after a partial failure is the
-   realistic failure mode.
-3. Verify inside the migration: abort if any task still has a null `note_id`.
-4. Set `tasks.note_id` NOT NULL.
-5. Drop `tasks.title` and `tasks.description`.
+**Amended 2026-10-26 during planning.** This section originally specified one
+migration file. That is not buildable: a single file that both adds the columns
+and drops `tasks.title`/`tasks.description` cannot be authored before the 11
+downstream files stop reading those columns, and it cannot be rehearsed while the
+code still needs them. Two migration files land in the same PR instead, and the
+half-migrated window between them exists only inside one deploy where the old
+code has already been replaced.
 
-Steps 4 and 5 are the irreversible ones. They land in the same migration as the
-backfill rather than a later one, because a half-migrated schema where a task has
-both a body column and a note is a state where two writers can disagree.
+**`0257_one_note_substrate_add.sql`** — additive and safe to run against old code:
+
+1. Add `artifacts.template text` and `tasks.note_id uuid REFERENCES artifacts(id)`.
+2. Backfill: for every task with a null `note_id`, create one artifact
+   (`kind = 'note'`, `template = 'issue'`, `title` copied from `tasks.title`, one
+   `artifact_versions` row holding `tasks.description` or an empty body,
+   `workspace_id`/`created_by` copied from the task) and set `tasks.note_id`.
+   Idempotent by construction (`WHERE note_id IS NULL`), because a re-run after a
+   partial failure is the realistic failure mode.
+
+Old code keeps working after this file runs: it still reads `tasks.title` and
+ignores `note_id`.
+
+**`0258_one_note_substrate_drop.sql`** — the irreversible one, run only once the
+new code is deployed and verified:
+
+1. Abort unless every task has a non-null `note_id`.
+2. Set `tasks.note_id` NOT NULL.
+3. Add the unique index `tasks_note_key` on `tasks.note_id`.
+4. Drop `tasks.title` and `tasks.description`.
+
+The deploy order that makes this safe is: run 0257 → deploy code that reads
+prose through the artifact join and writes both → verify → run 0258.
+
 
 **Volume.** Recurrence is the risk: a daily recurring task that already spawned
 200 instances produces 200 artifacts. This is accepted, because each instance's
