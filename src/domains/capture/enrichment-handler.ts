@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
@@ -14,6 +14,7 @@ import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/ques
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { blobObjects } from "../audit/schema";
 import { recordAudit } from "@/domains/audit/record";
 import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
@@ -273,27 +274,37 @@ async function tryJevTriage(
     domainSlug = path ? path[0].slug : null;
   }
 
-  for (const proposal of triage.proposals) {
-    await db.insert(captureProposals).values({
-      workspaceId,
-      captureId,
-      kind: proposal.kind,
-      payload: proposal.payload,
-      rationale: proposal.rationale,
-      model,
-      promptVersion: JEV_QUESTIONS_VERSION,
-      confidence: proposal.confidence,
-    });
-  }
-  await db
-    .update(captures)
-    .set({
-      ...base,
-      domain: domainSlug,
-      processingState: "enriched",
-      failureReason: unreadable ? "Jev returned an unreadable answer." : null,
-    })
-    .where(eq(captures.id, captureId));
+  // ASH-305: the write is a compare-and-set, so a duplicate run (a redelivered
+  // event after a crash, or the unpark re-queue racing the original) can never
+  // double the proposals: only the run that moves the capture out of
+  // unprocessed/classifying inserts them, in the same transaction. classifying
+  // stays eligible so crash recovery is unchanged. A capture parked mid-flight
+  // still finishes; its proposals stay hidden until unpark.
+  await withTransaction(async (tx) => {
+    const [claimed] = await tx
+      .update(captures)
+      .set({
+        ...base,
+        domain: domainSlug,
+        processingState: "enriched",
+        failureReason: unreadable ? "Jev returned an unreadable answer." : null,
+      })
+      .where(and(eq(captures.id, captureId), inArray(captures.processingState, ["unprocessed", "classifying"])))
+      .returning({ id: captures.id });
+    if (!claimed) return;
+    for (const proposal of triage.proposals) {
+      await tx.insert(captureProposals).values({
+        workspaceId,
+        captureId,
+        kind: proposal.kind,
+        payload: proposal.payload,
+        rationale: proposal.rationale,
+        model,
+        promptVersion: JEV_QUESTIONS_VERSION,
+        confidence: proposal.confidence,
+      });
+    }
+  });
   return "handled";
 }
 

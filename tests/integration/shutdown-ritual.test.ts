@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
 import { dayArtifactPins } from "@/domains/daybook/schema";
 import { focusSessions } from "@/domains/focus/schema";
 import { artifacts } from "@/domains/knowledge/schema";
-import { actionProposals } from "@/domains/actions/schema";
+import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
+import { externalAccounts } from "@/domains/integrations/schema";
 import { briefingSeeds, dailyOutcomes, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -33,6 +34,10 @@ beforeAll(async () => {
   focus = await import("@/domains/focus/commands");
   briefing = await import("@/domains/work/briefing");
   enrichment = await import("@/domains/capture/enrichment-handler");
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 afterAll(async () => {
@@ -295,6 +300,76 @@ suite("shutdown ritual", () => {
       await expect(
         shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "not an address", accountAlias: null } }),
       ).rejects.toMatchObject({ code: "shutdown_incomplete" });
+    });
+  });
+
+  describe("email with a connected account", () => {
+    async function connect(workspaceId: string, userId: string, alias: string, accessTier: string, disabledCapabilities: string[] = []) {
+      await db.insert(externalAccounts).values({
+        workspaceId,
+        provider: "gmail",
+        alias,
+        status: "active",
+        accessTier,
+        disabledCapabilities,
+        composioConnectedAccountId: `ca_${crypto.randomUUID()}`,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+    }
+    const providerSpy = () => {
+      const spy = vi.fn(async () => new Response("{}", { status: 200 }));
+      vi.stubGlobal("fetch", spy);
+      return spy;
+    };
+
+    it("files a pending proposal pinned to the account, sends nothing, and replays to the same proposal", async () => {
+      const { auth, workspaceId, userId } = await workspace("email-ok");
+      await connect(workspaceId, userId, "work", "read_send");
+      const spy = providerSpy();
+      const input = { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "me@example.com", accountAlias: "work" } };
+      const first = await shutdown.applyShutdown(auth, input);
+      expect(first.email.status).toBe("proposed");
+      const replay = await shutdown.applyShutdown(auth, input);
+      expect(replay.email).toEqual(first.email);
+
+      const proposals = await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0]).toMatchObject({ capability: "gmail.send", status: "pending", accountAlias: "work" });
+      const revisions = await db.select().from(actionRevisions).where(eq(actionRevisions.proposalId, proposals[0].id));
+      expect(revisions).toHaveLength(1);
+      expect(revisions[0].payload).toMatchObject({ to: "me@example.com", accountPin: { resolved: true, alias: "work" } });
+      expect(await db.select().from(actionAttempts).where(eq(actionAttempts.workspaceId, workspaceId))).toHaveLength(0);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("a revised recipient under a new key is a new proposal; under the same key it conflicts", async () => {
+      const { auth, workspaceId, userId } = await workspace("email-revise");
+      await connect(workspaceId, userId, "work", "read_send");
+      const spy = providerSpy();
+      const firstKey = key();
+      await shutdown.applyShutdown(auth, { idempotencyKey: firstKey, park: [], seedTaskIds: [], email: { to: "first@example.com", accountAlias: "work" } });
+      await expect(
+        shutdown.applyShutdown(auth, { idempotencyKey: firstKey, park: [], seedTaskIds: [], email: { to: "second@example.com", accountAlias: "work" } }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "second@example.com", accountAlias: "work" } });
+      const recipients = (
+        await db.select().from(actionRevisions).where(eq(actionRevisions.workspaceId, workspaceId))
+      ).map((r) => (r.payload as { to: string }).to);
+      expect(recipients.sort()).toEqual(["first@example.com", "second@example.com"]);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("files nothing when the connection's tier or Send switch does not allow sending", async () => {
+      const readOnly = await workspace("email-readonly");
+      await connect(readOnly.workspaceId, readOnly.userId, "work", "read_only");
+      const off = await workspace("email-switch-off");
+      await connect(off.workspaceId, off.userId, "work", "read_send", ["gmail.send"]);
+      for (const { auth, workspaceId } of [readOnly, off]) {
+        const result = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "me@example.com", accountAlias: "work" } });
+        expect(result.email).toMatchObject({ status: "skipped" });
+        expect(await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId))).toHaveLength(0);
+      }
     });
   });
 });

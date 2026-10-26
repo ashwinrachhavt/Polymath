@@ -199,6 +199,8 @@ export async function listPendingCaptureProposals(auth: AuthContext, captureId: 
         eq(captureProposals.workspaceId, auth.workspaceId),
         eq(captureProposals.captureId, captureId),
         eq(captureProposals.status, "pending"),
+        // A parked capture's suggestions stay hidden until it is unparked (ASH-305).
+        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
       ),
     )
     .orderBy(captureProposals.createdAt);
@@ -218,6 +220,7 @@ export async function listCapturesWithPendingProposals(auth: AuthContext, captur
         eq(captureProposals.workspaceId, auth.workspaceId),
         inArray(captureProposals.captureId, captureIds),
         eq(captureProposals.status, "pending"),
+        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
       ),
     );
   return new Set(rows.map((row) => row.captureId));

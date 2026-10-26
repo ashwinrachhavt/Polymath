@@ -11,6 +11,8 @@ import { getActiveFocusSession, type FocusSessionView } from "@/domains/focus/qu
 import { focusSessions } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { createNoteInTx } from "@/domains/knowledge/notes";
+import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { tierAllows } from "@/domains/integrations/capabilities";
 import { getBriefing } from "@/domains/work/briefing";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
@@ -209,6 +211,17 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
   // grant and the connected account); an unresolved one skips the email and
   // says why in the log, it never falls back to another account.
   const pin = email ? await senderAccountPin(auth, "gmail.send", email.accountAlias) : null;
+  // The same live gates the agent gateway applies to a send proposal: the
+  // connection's tier and its Send switch. A proposal the owner could not have
+  // gotten through Connectors is not filed.
+  let sendBlock: string | null = null;
+  if (pin?.resolved) {
+    const account = await resolveConnectedAccount(auth, "gmail", pin.alias);
+    if (!account.ok) sendBlock = account.message;
+    else if (!tierAllows("gmail", account.accessTier, "gmail.send") || account.disabledCapabilities.includes("gmail.send")) {
+      sendBlock = `Send access is off for ${pin.alias}. Turn it on in Connectors first.`;
+    }
+  }
 
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(
@@ -312,8 +325,8 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
         // 4. Email: a review-queue PROPOSAL only, from an explicit recipient and account.
         let emailResult: ShutdownResult["email"] = { status: "not_requested" };
         if (email) {
-          if (!pin || !pin.resolved) {
-            const reason = pin && !pin.resolved && pin.reason ? pin.reason : "No connected Gmail account matched.";
+          if (!pin || !pin.resolved || sendBlock) {
+            const reason = sendBlock ?? (pin && !pin.resolved && pin.reason ? pin.reason : "No connected Gmail account matched.");
             emailResult = { status: "skipped", reason };
             lines.push(`Email not proposed: ${reason}`);
           } else {
