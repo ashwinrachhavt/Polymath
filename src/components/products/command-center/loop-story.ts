@@ -7,7 +7,7 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
   const unprocessed = state.captures.filter((capture) => capture.status === "UNPROCESSED").length;
   const capturedToday = state.captures.filter((capture) => capture.createdAt.slice(0, 10) === today).length;
   const open = state.tasks.filter((task) => task.status !== "DONE");
-  const outcomes = open.filter((task) => task.tags.includes(`Outcome:${today}`)).length;
+  const committedToday = open.filter((task) => task.status === "READY" || task.status === "IN_PROGRESS").length;
   const ready = open.filter((task) => task.status === "READY" || task.status === "IN_PROGRESS").length;
   const pending = state.reviews.filter((review) => review.status === "Pending").length;
   const notes = state.artifacts.filter((artifact) => artifact.kind === "note" || artifact.kind === "zettel").length;
@@ -19,8 +19,8 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
       reason: "Anything that arrives lands in one inbox, original kept.", href: "/command-center/inbox", action: "Open inbox", needsYou: false },
     { key: "clarify", label: "Clarify", app: "command-center", count: unprocessed, unit: "to clarify",
       reason: unprocessed ? "Turn each into a task, a note, or let it go." : "Nothing is waiting. Your inbox is clear.", href: "/command-center/inbox", action: unprocessed ? "Clarify now" : "View inbox", needsYou: unprocessed > 0 },
-    { key: "commit", label: "Commit", app: "command-center", count: outcomes, unit: "of 3 outcomes",
-      reason: outcomes >= 3 ? "Today is decided. Protect it." : `${open.length} open commitments. Choose up to three that matter today.`, href: "/neuralflow/work?view=today", action: outcomes >= 3 ? "See outcomes" : "Choose outcomes", needsYou: outcomes < 3 && open.length > 0 },
+    { key: "commit", label: "Commit", app: "command-center", count: committedToday, unit: "committed today",
+      reason: committedToday ? "Work you have taken on for today." : `${open.length} open commitments. Move one to Ready when you take it on.`, href: "/neuralflow/work?view=today", action: committedToday ? "See today" : "Open work", needsYou: committedToday === 0 && open.length > 0 },
     { key: "focus", label: "Focus", app: "neuralflow", count: focus ? 1 : ready, unit: focus ? `session ${focus.status}` : "ready to work",
       reason: focus ? `Return to ${focusTask?.title ?? "your session"}.` : ready ? "Pick one, start an interval, earn a stone." : "Move a task to Ready when you choose to work on it.",
       href: "/neuralflow/work?view=today", action: focus ? "Return to session" : "Start focus", needsYou: !!focus || ready > 0 },

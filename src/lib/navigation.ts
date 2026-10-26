@@ -156,6 +156,7 @@ const featureRoutes: Record<string, string> = {
   // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
   // to the Notes destination for as long as that bridge exists.
   "/alfred/notebook": "/alfred/notes",
+  "/apps/command-center/briefing": "/neuralflow/work?view=today",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships/people",
   "/command-center/relationships": "/command-center/relationships/people",

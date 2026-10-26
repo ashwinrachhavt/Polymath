@@ -15,6 +15,24 @@ import { DAYBOOK_ACTIONS, DAYBOOK_ACTION_LIST } from "./action-registry";
  * job ever lands on audit, day history truncates with it — revisit then.
  */
 
+/**
+ * The workspace's current local calendar day, YYYY-MM-DD.
+ *
+ * This is the one place "today" is derived. It reads the owner's preference
+ * timezone and falls back to UTC, because a day that rolls over at UTC
+ * midnight is the wrong day for most of the world. Every surface that needs
+ * the day (the daybook, the shutdown ritual, /command-center/day) goes
+ * through this rather than reading the server's date.
+ */
+export async function todayIn(auth: Pick<AuthContext, "workspaceId" | "userId">): Promise<string> {
+  const rows = await db.execute(sql`
+    select (now() at time zone coalesce(
+      (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}), 'UTC'
+    ))::date::text as today
+  `);
+  return (rows as unknown as Array<{ today: string }>)[0].today;
+}
+
 export type DayItem = {
   id: string;
   kind: string;

@@ -582,6 +582,13 @@
       "when": 1793200005000,
       "tag": "0256_shutdown_ritual",
       "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1793200006000,
+      "tag": "0257_drop_daily_outcomes",
+      "breakpoints": true
     }
   ]
 }
