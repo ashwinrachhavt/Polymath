@@ -6,12 +6,15 @@ import { Pagination } from "@/components/list/pagination";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { CAPTURE_KINDS, type InboxFilter } from "@/domains/capture/queries";
+import { countZettelSourceCaptures } from "@/domains/capture/zettel-generation";
 import { countInboxTabsForPage, getCaptureForPage, listSuggestionMarksForPage, searchCapturesForPage } from "./data";
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
+import { capabilityStatus } from "@/lib/capability-config";
 import { CaptureForm } from "./inbox-client";
 import { InboxList } from "./inbox-list";
 import { InboxDetail } from "./inbox-detail";
+import { GenerateZettelsButton } from "./zettel-generate-button";
 
 export const metadata = { title: "Inbox · Polymath" };
 
@@ -68,6 +71,11 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
     effectiveSelectedId ? getCaptureForPage(auth, effectiveSelectedId) : Promise.resolve(null),
     listSuggestionMarksForPage(auth, rows.map((row) => row.id)),
   ]);
+  // The bulk "Generate zettels" control: how many open captures carry text, and
+  // whether a model is configured to read them. Both are cheap reads; neither
+  // starts work.
+  const zettelSources = await countZettelSourceCaptures(auth);
+  const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
   const page = list.page;
@@ -137,6 +145,14 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                   options: CAPTURE_KINDS.map((k) => ({ value: k, label: k[0]!.toUpperCase() + k.slice(1) })),
                 },
               ]}
+            />
+
+            {/* The queue's second bulk verb. It reads, it never decides: every
+                proposal it makes waits in the review queue. */}
+            <GenerateZettelsButton
+              sources={zettelSources}
+              providerReady={generation?.configured ?? false}
+              providerReason={generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."}
             />
           </div>
 

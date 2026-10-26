@@ -22,6 +22,7 @@ const VIEWER_READS: Record<string, string> = {
   loadKnowledgeDebtAction: "read-only knowledge-debt signals over the caller's own workspace rows",
   loadOutcomeNarrativeAction: "read-only weekly narrative composed server-side from the caller's own sessions and stones (ASH-280)",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
+  listNotionPagesAction: "read-only list of pages on the caller's connected Notion account, for the editor's page picker (ASH-283)",
 };
 
 function actionFiles(dir: string): string[] {

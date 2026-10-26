@@ -11,12 +11,10 @@ import {
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
-import { announceChatStarted } from "@/components/chat/chat-events";
-import { InPlaceChat } from "@/components/chat/in-place-chat";
+import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 import { SurfaceCardView } from "@/components/chat/surface-card";
 import { navigateInConversation } from "./navigation-actions";
 import type { NavigationReply } from "@/domains/supervisor/respond";
-import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
  * The one mutation on the home screen: a sentence becomes a run.
@@ -34,7 +32,14 @@ import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
  * A failed start keeps the draft. Losing typed text on a send that did not
  * happen is the worst failure this screen can produce.
  */
-export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
+export function NewConversation({
+  skills = [],
+  onStarted,
+}: {
+  skills?: PickableSkill[];
+  /** The run id and the words that started it; the home swaps to the transcript. */
+  onStarted: (started: { runId: string; message: string }) => void;
+}) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const [skillId, setSkillId] = useState("");
@@ -42,8 +47,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
-  // Set on send: the conversation then renders in place, replacing the composer.
-  const [started, setStarted] = useState<{ runId: string; message: string } | null>(null);
   // A navigation answer replaces the composer in place, exactly like a run.
   const [navigated, setNavigated] = useState<NavigationReply | null>(null);
 
@@ -148,12 +151,11 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         setError(result.message);
         return;
       }
-      // The conversation opens here, not on another route: the runId mounts
-      // ChatSurface in place below, and the typed message crosses as the
-      // optimistic message until the stream echoes it. No navigation, no
-      // reload, no lost focus.
-      setStarted({ runId: result.runId, message: objective });
-      announceChatStarted();
+      // The conversation opens in the home's started state, not on another
+      // route: the runId mounts the transcript in place, and the typed message
+      // crosses as the optimistic message until the stream echoes it. No
+      // navigation, no reload, no lost focus.
+      onStarted({ runId: result.runId, message: objective });
     } catch {
       setError("The conversation could not start. Check the connection and try again.");
     } finally {
@@ -179,20 +181,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
     );
   }
 
-  // A started conversation replaces the composer in place: the run streams
-  // here, on the home, with no navigation. The URL follows once the person
-  // wants to share or reload; the conversation itself never moved.
-  if (started) {
-    return (
-      <InPlaceChat
-        runId={started.runId}
-        subject={{ type: "project", id: "" }}
-        optimisticMessage={started.message}
-        className="mx-auto flex h-[min(72dvh,720px)] w-full max-w-3xl flex-col"
-      />
-    );
-  }
-
   return (
     <form
       className="mx-auto flex w-full max-w-3xl flex-col"
@@ -212,7 +200,7 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         <Textarea
           autoFocus
           aria-label="Start a conversation"
-          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] leading-6 focus-visible:ring-0"
+          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 focus-visible:ring-0"
           placeholder={
             skillId
               ? skills.find((skill) => skill.id === skillId)?.name

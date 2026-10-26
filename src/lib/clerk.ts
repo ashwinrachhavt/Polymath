@@ -21,3 +21,15 @@ export const clerkConfigured =
  */
 export const devAuthBypass =
   process.env.POLYMATH_DEV_AUTH === "1" && process.env.NODE_ENV !== "production";
+
+/*
+ * No account can stand behind a screen only in a keyless PRODUCTION
+ * deployment (the hosted browser preview): without Clerk keys auth() throws
+ * there. In development and CI the keyless fallback in lib/auth resolves the
+ * fixed dev owner, and POLYMATH_DEV_AUTH names the same account explicitly,
+ * so a surface that branches on clerkConfigured alone wrongly tells that
+ * owner "nothing here is an account" and breaks every account-scoped save
+ * with a version-0 CAS conflict (ASH-312).
+ */
+export const accountlessDeployment =
+  !clerkConfigured && !devAuthBypass && process.env.NODE_ENV === "production";

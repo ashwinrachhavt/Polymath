@@ -18,7 +18,7 @@ vi.mock("@/components/products/command-center/settings", () => ({
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), io: async () => undefined }));
 
-const clerk = vi.hoisted(() => ({ clerkConfigured: true }));
+const clerk = vi.hoisted(() => ({ clerkConfigured: true, accountlessDeployment: false }));
 vi.mock("@/lib/clerk", () => clerk);
 
 vi.mock("@/lib/auth", () => ({
@@ -41,10 +41,18 @@ describe("/settings route wiring", () => {
     expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: false });
   });
 
-  it("passes browserPreview=true when no Clerk keys exist (browser preview)", async () => {
+  it("passes browserPreview=true in a keyless production deployment (browser preview)", async () => {
     clerk.clerkConfigured = false;
+    clerk.accountlessDeployment = true;
     renderToStaticMarkup(await SettingsSurface());
     expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: true });
+  });
+
+  it("passes browserPreview=false for the keyless development fallback (dev owner is an account)", async () => {
+    clerk.clerkConfigured = false;
+    clerk.accountlessDeployment = false;
+    renderToStaticMarkup(await SettingsSurface());
+    expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: false });
   });
 });
 

@@ -32,11 +32,14 @@ export function splitCitations(answer: string, citations: DocumentCitation[]): C
     const raw = match[1] ?? match[2];
     const position = Number(raw) - 1;
     const citation = citations[position];
-    if (!citation) continue; // a number with no source is dropped
     const at = match.index ?? 0;
+    // Text before this marker belongs to the answer whether or not the marker
+    // resolves, so it is emitted first either way.
     if (at > cursor) segments.push({ type: "text", text: answer.slice(cursor, at) });
-    segments.push({ type: "citation", index: position, citation });
     cursor = at + match[0].length;
+    // A number with no source is dropped, not rendered: it would read as a
+    // citation that goes nowhere. Its surrounding text still survives.
+    if (citation) segments.push({ type: "citation", index: position, citation });
   }
   if (cursor < answer.length) segments.push({ type: "text", text: answer.slice(cursor) });
   return segments.length > 0 ? segments : [{ type: "text", text: answer }];

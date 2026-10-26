@@ -11,6 +11,14 @@ import postgres from "postgres";
  * feature-pixels CI artifact. The seeded rows are removed in afterAll.
  */
 
+/*
+ * One worker for the whole file: fullyParallel runs the two viewport tests in
+ * separate workers against the shared database, and each pass seeds and
+ * deletes the same constant-keyed fixtures - a sibling's afterAll removed
+ * this journey's artifact/proposals mid-run (notice never came; count read 0).
+ */
+test.describe.configure({ mode: "serial" });
+
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },

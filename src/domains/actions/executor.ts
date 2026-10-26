@@ -4,12 +4,9 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { agentRuns } from "@/domains/agents/schema";
 import { LIMITS } from "@/domains/integrations/capabilities";
-import {
-  GmailSendAmbiguousError,
-  GmailSendRejectedError,
-  sendGmailMessage,
-} from "@/domains/integrations/gmail/send";
+import { GmailSendRejectedError, sendGmailMessage } from "@/domains/integrations/gmail/send";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { applyNotionProposal } from "@/domains/knowledge/notion-proposals";
 import { withTransaction } from "@/lib/db-transaction";
 import {
   AttemptAlreadyClaimedError,
@@ -84,6 +81,29 @@ const EXECUTORS = {
       inReplyTo: z.string().nullish(),
     }),
   },
+  // ASH-283. The payload is the exact text the owner approved; the executor
+  // re-checks its hash against the approved revision before writing.
+  "notion.page.append": {
+    provider: "notion",
+    parse: z.object({
+      mode: z.literal("append"),
+      pageId: z.string().min(1),
+      title: z.string(),
+      markdown: z.string().min(1),
+      contentHash: z.string().min(1),
+    }),
+  },
+  "notion.page.create": {
+    provider: "notion",
+    parse: z.object({
+      mode: z.literal("create"),
+      parentId: z.string().min(1),
+      parentType: z.enum(["page", "database"]).optional(),
+      title: z.string().min(1),
+      markdown: z.string().min(1),
+      contentHash: z.string().min(1),
+    }),
+  },
 } as const;
 
 type Capability = keyof typeof EXECUTORS;
@@ -106,12 +126,22 @@ export function supportsEffect(capability: string): boolean {
 
 export const NON_TERMINAL_RUN_STATES = new Set(["queued", "running", "waiting_input", "waiting_approval"]);
 
+/**
+ * The payload of any capability that has an executor. Each member is the shape
+ * its own `parse` produced, so a branch below can narrow on `capability` alone
+ * and never has to cast an unknown payload into the wrong provider's contract.
+ */
+type ExecutorPayload =
+  | z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>
+  | z.infer<(typeof EXECUTORS)["notion.page.append"]["parse"]>
+  | z.infer<(typeof EXECUTORS)["notion.page.create"]["parse"]>;
+
 type Prepared = {
   capability: Capability;
   provider: string;
   proposalId: string;
   revisionId: string;
-  payload: z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>;
+  payload: ExecutorPayload;
   accountAlias: string | null;
   runId: string | null;
   connectedAccountId: string;
@@ -350,6 +380,74 @@ async function claim(auth: AuthContext, prepared: Prepared): Promise<{ attemptId
  * The one effect. Exported so the reviews action can call it after an approval
  * and the tests can call it directly; nothing else in the app may.
  */
+/**
+ * What one provider call produced, normalised across capabilities so the
+ * settle/audit path below is written once. `label` is what the audit line names
+ * as the effect's subject - the recipient for mail, the page for Notion.
+ */
+type Dispatched =
+  | { ok: true; providerObjectId: string; label: string; summary: Record<string, unknown> }
+  | { ok: false; label: string; rejected: { status: string; message: string } | null; ambiguous: string };
+
+/**
+ * The one place a capability's effect is actually caused. Each branch owns its
+ * own failure vocabulary, because "the provider refused" and "we do not know"
+ * arrive differently per provider and collapsing them early is how a duplicate
+ * gets sent.
+ */
+async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string): Promise<Dispatched> {
+  switch (prepared.capability) {
+    case "gmail.send": {
+      const payload = prepared.payload as z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>;
+      try {
+        const sent = await sendGmailMessage({
+          connectedAccountId: prepared.connectedAccountId,
+          to: payload.to,
+          subject: payload.subject,
+          body: payload.body,
+          inReplyTo: payload.inReplyTo ?? null,
+          attemptId,
+        });
+        return { ok: true, providerObjectId: sent.providerObjectId, label: payload.to, summary: { threadId: sent.threadId } };
+      } catch (error) {
+        if (error instanceof GmailSendRejectedError) {
+          return { ok: false, label: payload.to, rejected: { status: String(error.status), message: error.message }, ambiguous: "" };
+        }
+        // Anything else is a programming error, but it is also an unanswered
+        // send: treating it as ambiguous is the only classification that cannot
+        // duplicate.
+        return {
+          ok: false,
+          label: payload.to,
+          rejected: null,
+          ambiguous: error instanceof Error ? error.message : "Unknown send failure.",
+        };
+      }
+    }
+    case "notion.page.append":
+    case "notion.page.create": {
+      const payload = prepared.payload as
+        | z.infer<(typeof EXECUTORS)["notion.page.append"]["parse"]>
+        | z.infer<(typeof EXECUTORS)["notion.page.create"]["parse"]>;
+      const label = payload.mode === "append" ? payload.pageId : payload.title;
+      const applied = await applyNotionProposal(auth, {
+        proposalId: prepared.proposalId,
+        accountAlias: prepared.accountAlias ?? prepared.connectedAccountId,
+      });
+      if (applied.status === "sent" && applied.providerId) {
+        return { ok: true, providerObjectId: applied.providerId, label, summary: { url: applied.url ?? null } };
+      }
+      // Notion answers with a status, so a whole-page failure is a refusal to
+      // act rather than an unknown: no block was written that we did not see.
+      return { ok: false, label, rejected: { status: "notion", message: applied.error ?? "Notion refused the write." }, ambiguous: "" };
+    }
+  }
+}
+
+/*
+ * The one effect. Exported so the reviews action can call it after an approval
+ * and the tests can call it directly; nothing else in the app may.
+ */
 export async function executeApprovedEffect(
   auth: AuthContext,
   input: { proposalId: string },
@@ -360,35 +458,24 @@ export async function executeApprovedEffect(
   if ("prior" in claimed) return claimed.prior;
   const { attemptId } = claimed;
 
-  // Outside every transaction: the send is the slow, uncertain part, and a
+  // Outside every transaction: the call is the slow, uncertain part, and a
   // rollback after it landed would be a lie about what happened.
-  let outcome: { providerObjectId: string; threadId: string | null } | null = null;
-  let rejected: GmailSendRejectedError | null = null;
-  let ambiguous: GmailSendAmbiguousError | null = null;
+  let dispatched: Dispatched;
   try {
-    outcome = await sendGmailMessage({
-      connectedAccountId: prepared.connectedAccountId,
-      to: prepared.payload.to,
-      subject: prepared.payload.subject,
-      body: prepared.payload.body,
-      inReplyTo: prepared.payload.inReplyTo ?? null,
-      attemptId,
-    });
+    dispatched = await dispatch(auth, prepared, attemptId);
   } catch (error) {
-    if (error instanceof GmailSendRejectedError) rejected = error;
-    else if (error instanceof GmailSendAmbiguousError) ambiguous = error;
-    // Anything else is a programming error, but it is also an unanswered send:
-    // treating it as ambiguous is the only classification that cannot duplicate.
-    else ambiguous = new GmailSendAmbiguousError(error instanceof Error ? error.message : "Unknown send failure.");
+    // A throw out of the provider boundary is an unanswered effect, never a
+    // clean failure.
+    dispatched = { ok: false, label: prepared.proposalId, rejected: null, ambiguous: error instanceof Error ? error.message : "Unknown provider failure." };
   }
 
   return withTransaction(async (tx) => {
-    if (outcome) {
+    if (dispatched.ok) {
       await settleAttempt(tx, {
         attemptId,
         outcome: "succeeded",
-        providerObjectId: outcome.providerObjectId,
-        responseSummary: { threadId: outcome.threadId },
+        providerObjectId: dispatched.providerObjectId,
+        responseSummary: dispatched.summary,
       });
       await recordAudit(
         auth,
@@ -396,19 +483,20 @@ export async function executeApprovedEffect(
           action: "actions.effect_sent",
           subjectType: "action_proposal",
           subjectId: prepared.proposalId,
-          summary: `Sent ${prepared.capability} (${prepared.payload.to})`,
-          metadata: { attemptId, providerObjectId: outcome.providerObjectId, revisionId: prepared.revisionId, runId: prepared.runId },
+          summary: `Sent ${prepared.capability} (${dispatched.label})`,
+          metadata: { attemptId, providerObjectId: dispatched.providerObjectId, revisionId: prepared.revisionId, runId: prepared.runId },
         },
         tx,
       );
       return {
         status: "sent" as const,
-        providerId: outcome.providerObjectId,
+        providerId: dispatched.providerObjectId,
         at: new Date().toISOString(),
       };
     }
 
-    if (rejected) {
+    if (dispatched.rejected) {
+      const rejected = dispatched.rejected;
       await settleAttempt(tx, {
         attemptId,
         outcome: "failed",
@@ -433,7 +521,7 @@ export async function executeApprovedEffect(
       attemptId,
       outcome: "unknown",
       errorCode: "send_outcome_unknown",
-      responseSummary: { message: ambiguous?.message ?? "The provider did not answer." },
+      responseSummary: { message: dispatched.ambiguous || "The provider did not answer." },
     });
     await recordAudit(
       auth,
