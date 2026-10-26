@@ -108,7 +108,11 @@ test("the shutdown ritual closes a real day end to end", async ({ page }, testIn
   await expect(page.getByRole("heading", { name: "Shut down" })).toBeVisible();
 
   // The seeded live session is offered with an explicit choice.
-  await expect(page.getByText(`Live session ${marker}`)).toBeVisible();
+  // The shell keeps the previous page (Today, with its own session block for the
+  // same live session) mounted through the transition; anchor on the form's
+  // radiogroup and assert within its panel.
+  const sessionPanel = page.getByRole("radiogroup", { name: "What happens to the open session" }).locator("..");
+  await expect(sessionPanel.getByText(`Live session ${marker}`)).toBeVisible();
   await page.getByRole("radio", { name: "Finish it" }).click();
   await page.getByLabel("Outcome").fill(`Outcome ${marker}`);
 
