@@ -58,16 +58,32 @@ export type SenderAliasVerdict = { allowed: true } | { allowed: false; reason: s
  * resolver can pick inside the list - restricted resolution is what keeps
  * the one connected account from being substituted for an unauthorized
  * sender, and it fails honestly when no authorized account is connected.
+ *
+ * The noun is capability vocabulary, not decoration: gmail sends AS a
+ * sender, canva acts THROUGH a connected account. Semantics are identical;
+ * only the word a person reads changes.
  */
-export function checkSenderAlias(policy: SenderAliasPolicy, alias: string | null): SenderAliasVerdict {
+export function checkSenderAlias(
+  policy: SenderAliasPolicy,
+  alias: string | null,
+  noun: "sender" | "connected account" = "sender",
+): SenderAliasVerdict {
   if (!policy.configured) return { allowed: true };
   if (alias === null || policy.aliases.includes(alias)) return { allowed: true };
+  if (policy.aliases.length > 0) {
+    return {
+      allowed: false,
+      reason: `"${alias}" is not an authorized ${noun} for this capability. Authorized: ${policy.aliases.join(", ")}.`,
+    };
+  }
+  // Gmail's wording is pinned by its own suite; only the canva noun gets a
+  // new sentence.
   return {
     allowed: false,
     reason:
-      policy.aliases.length > 0
-        ? `"${alias}" is not an authorized sender for this capability. Authorized: ${policy.aliases.join(", ")}.`
-        : "No sender is authorized for this capability; sending stays blocked until a sending grant names one.",
+      noun === "sender"
+        ? "No sender is authorized for this capability; sending stays blocked until a sending grant names one."
+        : "No connected account is authorized for this capability; it stays blocked until a grant names one.",
   };
 }
 

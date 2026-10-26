@@ -281,7 +281,7 @@ suite("canva.design.import executor", () => {
     });
 
     await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
-      /not an authorized sender/,
+      /not an authorized connected account/,
     );
     expect(spy).not.toHaveBeenCalled();
     const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
@@ -310,7 +310,7 @@ suite("canva.design.import executor", () => {
       updatedBy: seeded.auth.userId,
     });
     await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
-      /No sender is authorized/,
+      /No connected account is authorized/,
     );
     expect(spy).not.toHaveBeenCalled();
   });
@@ -335,7 +335,7 @@ suite("canva.design.import executor", () => {
 
     const { spy } = stubProvider(jobCreated());
     await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
-      /No sender is authorized/,
+      /No connected account is authorized/,
     );
     expect(spy).not.toHaveBeenCalled();
   });

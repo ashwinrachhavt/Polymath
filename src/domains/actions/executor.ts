@@ -11,6 +11,7 @@ import {
 } from "@/domains/integrations/gmail/send";
 import {
   CanvaImportAmbiguousError,
+  canvaImportFixtureEnabled,
   CanvaImportRejectedError,
   createCanvaImportJob,
 } from "@/domains/integrations/canva/import";
@@ -316,7 +317,10 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // to every capability whose revisions bind an account pin.
   if (checked.capability in ACCOUNT_PIN_PROVIDERS) {
     const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
-    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
+    // Canva acts through a connected account; Gmail sends as a sender. The
+    // semantics are the shared grant; the word a person reads is not.
+    const noun = checked.provider === "canva" ? ("connected account" as const) : ("sender" as const);
+    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias, noun);
     if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
   }
 
@@ -408,7 +412,7 @@ export async function executeApprovedEffect(
     // Dispatchability before any claim: an unconfigured deployment provably
     // cannot reach the provider, so the honest outcome is a refusal - not an
     // UNKNOWN attempt that would block the proposal against a config fix.
-    if (!composioWriteConfigured()) {
+    if (!composioWriteConfigured() && !canvaImportFixtureEnabled()) {
       throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
     }
   }

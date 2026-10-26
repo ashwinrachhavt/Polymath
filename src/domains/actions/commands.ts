@@ -39,7 +39,7 @@ export async function senderAccountPin(
   // configured an unnamed sender resolves only inside it - the one connected
   // account is never substituted silently.
   const policy = await senderAliasPolicy(auth.workspaceId, capability);
-  const verdict = checkSenderAlias(policy, accountAlias);
+  const verdict = checkSenderAlias(policy, accountAlias, provider === "canva" ? "connected account" : "sender");
   if (!verdict.allowed) return { resolved: false, alias: accountAlias, provider, reason: verdict.reason };
   const resolved = await resolveConnectedAccount(
     auth,

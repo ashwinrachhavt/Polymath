@@ -31,6 +31,30 @@ import type { Transport } from "../transport";
 const IMPORTS_ENDPOINT = "https://api.canva.com/rest/v1/imports";
 const DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+/*
+ * The fixture mode for journeys that must prove the full handoff with ZERO
+ * possible real transport (e2e/dev only). Opt-in is explicit
+ * (CANVA_IMPORT_PROVIDER=fixture), REFUSED in production, and there is no
+ * fallthrough: a fixture call returns before any network code runs. Fixture
+ * ids derive from the content hash, so they are deterministic per approved
+ * payload and can never collide with a real Canva id.
+ */
+const FIXTURE_ENV = "CANVA_IMPORT_PROVIDER";
+
+export class CanvaImportFixtureInProductionError extends Error {
+  readonly code = "canva_import_fixture_in_production";
+  constructor() {
+    super("The Canva import fixture is not allowed in production.");
+    this.name = "CanvaImportFixtureInProductionError";
+  }
+}
+
+export function canvaImportFixtureEnabled(): boolean {
+  if (process.env[FIXTURE_ENV] !== "fixture") return false;
+  if (process.env.NODE_ENV === "production") throw new CanvaImportFixtureInProductionError();
+  return true;
+}
+
 export class CanvaImportRejectedError extends Error {
   readonly code = "canva_import_rejected";
   constructor(readonly status: number) {
@@ -61,6 +85,11 @@ export async function createCanvaImportJob(input: {
   title: string;
   docx: Uint8Array;
 }): Promise<{ jobId: string }> {
+  if (canvaImportFixtureEnabled()) {
+    // No network by construction: the fixture job id is the content hash.
+    const { createHash } = await import("node:crypto");
+    return { jobId: `fixture-import-${createHash("sha256").update(input.docx).digest("hex").slice(0, 12)}` };
+  }
   const result = await executeComposioWrite({
     connectedAccountId: input.connectedAccountId,
     endpoint: IMPORTS_ENDPOINT,
@@ -109,6 +138,14 @@ export async function getCanvaImportJob(
   transport: Transport,
   input: { connectedAccountId: string; jobId: string },
 ): Promise<CanvaImportJobResult> {
+  if (canvaImportFixtureEnabled()) {
+    // No transport by construction: a fixture job answers terminally, so a
+    // journey can prove the sweep's settle path end to end.
+    return {
+      ok: true,
+      job: { status: "success", designId: `fixture-design-${input.jobId.replace(/^fixture-import-/, "")}`, editUrl: null },
+    };
+  }
   const res = await transport.read({
     connectedAccountId: input.connectedAccountId,
     endpoint: `${IMPORTS_ENDPOINT}/${encodeURIComponent(input.jobId)}`,
