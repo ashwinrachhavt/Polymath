@@ -91,14 +91,6 @@ afterAll(async () => {
 });
 
 suite("crm sender sync", () => {
-  it("fails closed when an enabled account has no readable watermark instead of scanning earlier mail", async () => {
-    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
-    await db.insert(triggers).values({ workspaceId, externalAccountId: accountId, provider: "gmail", eventType: sync.SENDER_PROPOSALS_EVENT, status: "enabled" }).onConflictDoNothing();
-    const { transport, queries } = mailbox([{ id: "a", from: "Ada <ada@analytical.io>", internalSec: nowSec - 100 }]);
-    await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: NOW })).rejects.toMatchObject({ code: "cursor_lost" });
-    expect(queries).toHaveLength(0);
-  });
-
   it("refuses until the owner opts the account in", async () => {
     await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: fixtureTransport([]) })).rejects.toMatchObject({ code: "not_enabled" });
   });
@@ -108,6 +100,14 @@ suite("crm sender sync", () => {
     await db.update(externalAccounts).set({ allowRead: false }).where(eq(externalAccounts.id, accountId));
     await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: fixtureTransport([]) })).rejects.toMatchObject({ code: "read_not_allowed" });
     await db.update(externalAccounts).set({ allowRead: true }).where(eq(externalAccounts.id, accountId));
+  });
+
+  it("fails closed when an enabled account has no readable watermark instead of scanning earlier mail", async () => {
+    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    await db.insert(triggers).values({ workspaceId, externalAccountId: accountId, provider: "gmail", eventType: sync.SENDER_PROPOSALS_EVENT, status: "enabled" }).onConflictDoNothing();
+    const { transport, queries } = mailbox([{ id: "a", from: "Ada <ada@analytical.io>", internalSec: nowSec - 100 }]);
+    await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: NOW })).rejects.toMatchObject({ code: "cursor_lost" });
+    expect(queries).toHaveLength(0);
   });
 
   it("skips the mailbox owner and automated senders, and queries Gmail with the exclusions", async () => {

@@ -135,6 +135,11 @@ suite("sender suggestion switch", () => {
   });
 
   it("a pass whose switch goes off mid-read proposes nothing and keeps the cursor", async () => {
+    // A running pass implies the enable-moment cursor exists (the switch writes
+    // it); seed it so the pass reaches the read the flip interrupts.
+    const keptWatermark = Math.floor(Date.now() / 1000);
+    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    await db.insert(syncCursors).values({ workspaceId, externalAccountId: accountId, resource: "sender-proposals", cursor: JSON.stringify({ watermark: keptWatermark, pending: [] }), state: "idle" });
     const transport: Transport = {
       async read(request) {
         if (request.endpoint.endsWith("/messages")) {
@@ -147,7 +152,9 @@ suite("sender suggestion switch", () => {
     };
     await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport })).rejects.toMatchObject({ code: "not_enabled" });
     expect(await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId))).toHaveLength(0);
-    expect(await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId))).toHaveLength(0);
+    // The aborted pass leaves the cursor it started from untouched.
+    const [kept] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    expect((JSON.parse(kept.cursor!) as { watermark: number }).watermark).toBe(keptWatermark);
   });
 
   it("the scheduler pass skips a paused account", async () => {
