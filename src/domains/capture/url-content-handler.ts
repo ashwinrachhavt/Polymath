@@ -18,7 +18,7 @@ import { captures } from "./schema";
  * (markdown, main content only); YouTube addresses go through the transcript
  * API, which is what the knowledge ingest uses. The capture row keeps its
  * original rawPayload; `text` gains the fetched reading text and the state
- * moves to `enriched`.
+ * moves to `classifying`, where the enrichment ladder picks it up.
  *
  * A fetch that fails is recorded as a failure reason on the capture and the
  * event completes — a dead address would fail the same way on every retry.
@@ -42,8 +42,10 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
 
   const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
-  // A capture the person already converted does not need its reading text.
-  if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
+  // Only a capture still waiting for its page is fetched. "classifying" means
+  // the fetch stage is already done (see below), so a duplicate event is a no-op;
+  // a converted or enriched capture does not need its reading text.
+  if (capture.processingState !== "unprocessed") return;
   // Parked (ASH-305): no new fetch while set aside. Unpark re-queues this.
   if (capture.parkedAt) return;
 
@@ -60,9 +62,13 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
       await ownedUpdate(token, captureId, { failureReason: content.error, updatedAt: new Date(), ...RELEASE });
       return;
     }
+    // ASH-318: the fetch fills the text and hands the capture to enrichment
+    // (state "classifying" = fetched, awaiting classification), it does not
+    // finish it: enrichment classifies the fetched page, and its own waiting
+    // for this event means neither stage can drop the other's work.
     await ownedUpdate(token, captureId, {
       text: content.text,
-      processingState: "enriched",
+      processingState: "classifying",
       failureReason: null,
       updatedAt: new Date(),
       ...RELEASE,

@@ -1,7 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
-import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
+import { OutboxParkError, type ClaimedOutboxEvent, type OutboxHandler } from "@/domains/audit/outbox";
+import { outboxEvents } from "@/domains/audit/schema";
 import {
   EnrichmentLeaseLostError,
   RELEASE,
@@ -78,6 +79,27 @@ export type CaptureEnrichmentDeps = {
 
 export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
 
+const URL_WAIT_RECHECK_MS = 5_000;
+/** A fetch event older than this is stuck, not in flight; enrichment stops waiting for it. */
+const URL_WAIT_MAX_AGE_MS = 30 * 60_000;
+
+async function urlFetchOutstanding(workspaceId: string, captureId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: outboxEvents.id })
+    .from(outboxEvents)
+    .where(
+      and(
+        eq(outboxEvents.workspaceId, workspaceId),
+        eq(outboxEvents.topic, "capture.url_content_requested"),
+        inArray(outboxEvents.status, ["pending", "failed"]),
+        sql`${outboxEvents.payload}->>'captureId' = ${captureId}`,
+        gt(outboxEvents.createdAt, new Date(Date.now() - URL_WAIT_MAX_AGE_MS)),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: CaptureEnrichmentDeps = {}) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -92,6 +114,16 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
   // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
   if (capture.parkedAt) return;
+
+  // ASH-318: a URL capture is classified on its fetched page, not its address.
+  // While the fetch is still outstanding (pending or retrying, so not yet
+  // dispatched or dead-lettered), wait for it instead of finalizing an empty
+  // capture that the fetch would then refuse to fill. The wait ends when the
+  // fetch event completes, dies after its retries, or is old enough to be
+  // stuck; a failed fetch therefore falls through to address-only enrichment.
+  if (capture.url && (await urlFetchOutstanding(event.workspaceId, captureId))) {
+    throw new OutboxParkError(URL_WAIT_RECHECK_MS, "waiting for the page to be fetched");
+  }
 
   const token = await acquireEnrichmentLease(event, capture);
   if (!token) return;
