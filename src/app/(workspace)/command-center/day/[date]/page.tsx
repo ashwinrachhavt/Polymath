@@ -73,7 +73,7 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
   return (
     <Screen
       title={label}
-      actions={<Button asChild variant="outline" size="sm"><Link href="/command-center/briefing">Back to Today</Link></Button>}
+      actions={<Button asChild variant="outline" size="sm"><Link href="/command-center/inbox">Back to Inbox</Link></Button>}
     >
       {day.created.length ? (
         <Panel title="Created" description="What came into being this day.">

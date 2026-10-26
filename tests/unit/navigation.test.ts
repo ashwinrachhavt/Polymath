@@ -82,7 +82,7 @@ describe("navigation", () => {
     expect(destinations[0].href).toBe("/");
     expect(destinations[0].label).toBe("Decisions");
     expect(destinations[1].href).toBe("/alfred");
-    expect(destinations[2].href).toBe("/command-center/briefing");
+    expect(destinations[2].href).toBe("/command-center/inbox");
   });
 
   /*
@@ -93,12 +93,13 @@ describe("navigation", () => {
    * keep their donor labels, only the rail governs.
    */
 
-  it("rails exactly the sixteen destinations in order", () => {
+  it("rails exactly the fifteen destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
-    // destination.
+    // destination. Today left when Briefing was removed: its outcomes and day
+    // context moved to Work's Today view.
     expect(destinations.map((destination) => destination.label)).toEqual([
-      "Decisions", "Polymath", "Today", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
+      "Decisions", "Polymath", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
       "Artifacts", "Skills", "People", "Companies", "Connectors",
       "Reviews", "Activity", "Settings",
     ]);

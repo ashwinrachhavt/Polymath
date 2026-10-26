@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * getLiveFocusDock (integration tests own those) and visuals need a browser.
  */
 
-let pathname = "/command-center/briefing";
+let pathname = "/command-center/inbox";
 const preview = {
   focus: null as null | { taskId: string; status: string },
   tasks: [{ id: "t1", title: "Preview task" }],
@@ -34,7 +34,7 @@ const respond = (body: unknown, ok = true) => vi.fn(async () => ({ ok, json: asy
 
 beforeEach(() => {
   preview.focus = null;
-  pathname = "/command-center/briefing";
+  pathname = "/command-center/inbox";
 });
 afterEach(() => {
   cleanup();

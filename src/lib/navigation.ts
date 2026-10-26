@@ -15,7 +15,6 @@ import {
   Scale,
   Sparkles,
   SquareCheckBig,
-  Target,
   Unplug,
   Users,
 } from "lucide-react";
@@ -58,13 +57,6 @@ export const destinations: Destination[] = [
     purpose: "Start or continue a conversation.",
     icon: Sparkles,
     group: "alfred",
-  },
-  {
-    href: "/command-center/briefing",
-    label: "Today",
-    purpose: "Decide what to do today.",
-    icon: Target,
-    group: "command-center",
   },
   {
     href: "/command-center/inbox",
@@ -164,7 +156,6 @@ const featureRoutes: Record<string, string> = {
   // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
   // to the Notes destination for as long as that bridge exists.
   "/alfred/notebook": "/alfred/notes",
-  "/apps/command-center/briefing": "/command-center/briefing",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships/people",
   "/command-center/relationships": "/command-center/relationships/people",

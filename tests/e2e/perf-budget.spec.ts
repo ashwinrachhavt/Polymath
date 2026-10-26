@@ -21,7 +21,7 @@ test.skip(!process.env.DATABASE_URL, "Canonical routes read Postgres; skipping w
 test.describe.configure({ retries: 0 });
 
 const HERO_ROUTES = [
-  { path: "/command-center/briefing", name: "Briefing" },
+
   { path: "/reviews", name: "Reviews" },
   { path: "/neuralflow/work", name: "Work" },
   { path: "/command-center/inbox", name: "Inbox" },
@@ -72,7 +72,7 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
         ? "/neuralflow/work"
         : route.path.startsWith("/alfred")
           ? "/alfred"
-          : "/command-center/briefing";
+          : "/command-center/inbox";
       await page.getByRole("button", { name: "Open apps" }).click();
       await page.locator(`[data-radix-popper-content-wrapper] a[href="${appRoot}"]`).first().click();
       await page.waitForURL(`**${appRoot}**`);

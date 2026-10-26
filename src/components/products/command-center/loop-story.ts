@@ -20,7 +20,7 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
     { key: "clarify", label: "Clarify", app: "command-center", count: unprocessed, unit: "to clarify",
       reason: unprocessed ? "Turn each into a task, a note, or let it go." : "Nothing is waiting. Your inbox is clear.", href: "/command-center/inbox", action: unprocessed ? "Clarify now" : "View inbox", needsYou: unprocessed > 0 },
     { key: "commit", label: "Commit", app: "command-center", count: outcomes, unit: "of 3 outcomes",
-      reason: outcomes >= 3 ? "Today is decided. Protect it." : `${open.length} open commitments. Choose up to three that matter today.`, href: "/command-center/briefing#outcomes", action: outcomes >= 3 ? "See outcomes" : "Choose outcomes", needsYou: outcomes < 3 && open.length > 0 },
+      reason: outcomes >= 3 ? "Today is decided. Protect it." : `${open.length} open commitments. Choose up to three that matter today.`, href: "/neuralflow/work?view=today", action: outcomes >= 3 ? "See outcomes" : "Choose outcomes", needsYou: outcomes < 3 && open.length > 0 },
     { key: "focus", label: "Focus", app: "neuralflow", count: focus ? 1 : ready, unit: focus ? `session ${focus.status}` : "ready to work",
       reason: focus ? `Return to ${focusTask?.title ?? "your session"}.` : ready ? "Pick one, start an interval, earn a stone." : "Move a task to Ready when you choose to work on it.",
       href: "/neuralflow/work?view=today", action: focus ? "Return to session" : "Start focus", needsYou: !!focus || ready > 0 },

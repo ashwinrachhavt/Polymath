@@ -20,7 +20,7 @@ const PAGE_SHELLS = [
   "src/app/(workspace)/projects/page.tsx",
   "src/app/(workspace)/artifacts/page.tsx",
   "src/app/(workspace)/alfred/knowledge/page.tsx",
-  "src/app/(workspace)/command-center/briefing/page.tsx",
+  "src/app/(workspace)/command-center/spending/page.tsx",
   "src/app/(workspace)/command-center/inbox/page.tsx",
   "src/app/(workspace)/command-center/opportunities/page.tsx",
   "src/app/(workspace)/command-center/relationships/page.tsx",

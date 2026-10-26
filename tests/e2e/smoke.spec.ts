@@ -108,7 +108,7 @@ test("rail destinations are real screens", async ({ page }) => {
 });
 
 test("the launcher lists destinations and shared routes are reachable", async ({ page }) => {
-  await page.goto("/command-center/briefing");
+  await page.goto("/command-center/inbox");
   await page.getByRole("button", { name: "Open destinations" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
@@ -242,12 +242,19 @@ test("removed IA destinations redirect to their new homes, or 404 when the route
     ["/alfred/sources", "/projects"],
     ["/alfred/dossiers", "/projects"],
     ["/alfred/wiki", "/alfred/knowledge"],
-    ["/command-center/spending", "/command-center/briefing?tab=spending"],
+    ["/command-center/briefing", "/neuralflow/work?view=today"],
     ["/command-center/opportunities", "/command-center/relationships/people"],
     ["/neuralflow/focus", "/neuralflow/work"],
   ] as const) {
     await page.goto(`${from}?stale=param`);
-    await expect(page, from).toHaveURL(to);
+    // Briefing's bridge drops the query on purpose: the stale param is from a
+    // surface that no longer reads it, and forwarding it would land Work on an
+    // unknown view. Everything else keeps its params.
+    if (to.includes("?")) {
+      await expect(page, from).toHaveURL(new RegExp(to.replace("?", "\\?") + "$"));
+    } else {
+      await expect(page, from).toHaveURL(to);
+    }
   }
   // The old notebook address keeps the note deep link it once owned.
   await page.goto("/alfred/notebook?id=00000000-0000-4000-8000-000000000001");
@@ -285,7 +292,7 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
           })})`;
       }
     }
-    for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
+    for (const path of ["/command-center/inbox", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
       await page.goto(path);
       // Axe must evaluate the settled page: the topbar buttons sit at
       // disabled:opacity-50 until hydration and transition to full opacity,

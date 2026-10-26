@@ -24,7 +24,7 @@ function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId:
       <div className="mt-4 flex gap-2">
         <Button size="sm" variant="outline" asChild><Link href={`/alfred/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link></Button>
         {onReopen ? <Button size="sm" variant="ghost" onClick={onReopen}>Close the day again</Button> : null}
-        <Button size="sm" variant="ghost" asChild><Link href="/command-center/briefing">Back to Today</Link></Button>
+        <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
       </div>
     </Panel>
   );
@@ -97,7 +97,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
         </ul>
         <div className="mt-4 flex gap-2">
           <Button size="sm" variant="outline" asChild><Link href={`/alfred/notes?id=${encodeURIComponent(done.logNoteId)}`}>Open the log</Link></Button>
-          <Button size="sm" variant="ghost" asChild><Link href="/command-center/briefing">Back to Today</Link></Button>
+          <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
         </div>
       </Panel>
     );
