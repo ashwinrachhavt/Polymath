@@ -18,7 +18,7 @@ vi.mock("@/components/products/command-center/settings", () => ({
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), io: async () => undefined }));
 
-const clerk = vi.hoisted(() => ({ clerkConfigured: true }));
+const clerk = vi.hoisted(() => ({ clerkConfigured: true, devAuthBypass: false }));
 vi.mock("@/lib/clerk", () => clerk);
 
 vi.mock("@/lib/auth", () => ({
