@@ -116,23 +116,10 @@ for (const vp of VIEWPORTS) {
     await expect(payloadPre).toContainText('"rationale"');
     await card.screenshot({ path: `test-results/feature-pixels/triage-payload-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
-    // Approve: the card decides in place and shows the decided view.
+    // Approve: the decision commits and the card drains from the pending
+    // queue (a decision-only card has no outcome to display in place).
     await card.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(card).toContainText("Decided", { timeout: 30_000 });
-
-    // Reload: the decision is server truth, and nothing executed. The card
-    // keeps its honest expected-effect line (which itself says "Nothing is
-    // applied automatically"), so execution-absence is pinned structurally:
-    // no outcome status line renders without an EffectOutcome, and the
-    // attempt count below is zero.
-    await page.reload();
-    await waitSettled(page);
-    const decided = page.locator("section.panel").filter({ hasText: title });
-    await expect(decided).toBeVisible({ timeout: 30_000 });
-    await expect(decided).toContainText("Decided");
-    await expect(decided).toContainText("approved");
-    await expect(decided.getByRole("status")).toHaveCount(0);
-    await page.screenshot({ path: `test-results/feature-pixels/triage-decided-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+    await expect(card).toHaveCount(0, { timeout: 30_000 });
 
     // Zero GitHub effect, provable in the database: the proposal is decided
     // and no executor attempt row exists for it.
@@ -144,5 +131,19 @@ for (const vp of VIEWPORTS) {
     await reader!.end();
     expect(row.status).toBe("approved");
     expect(Number(row.attempts)).toBe(0);
+
+    // The Approved view shows the decision as server truth: the decided card
+    // keeps its honest expected-effect line (which itself says "Nothing is
+    // applied automatically"), and no outcome status line renders without an
+    // EffectOutcome - execution-absence is pinned structurally, not by text.
+    await page.goto("/reviews?status=approved");
+    await waitSettled(page);
+    const decided = page.locator("section.panel").filter({ hasText: title });
+    await expect(decided).toBeVisible({ timeout: 30_000 });
+    await expect(decided).toContainText("Decided");
+    await expect(decided).toContainText("approved");
+    await expect(decided).toContainText("Nothing is applied automatically.");
+    await expect(decided.getByRole("status")).toHaveCount(0);
+    await page.screenshot({ path: `test-results/feature-pixels/triage-decided-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
   });
 }
