@@ -1,8 +1,8 @@
-import { and, count, desc, eq, gte, ilike, lt, or, sql, type SQL, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { captures } from "./schema";
+import { captureProposals, captures } from "./schema";
 
 /*
  * Inbox reads over the canonical captures table (ASH-137 A02). The original
@@ -176,4 +176,44 @@ export async function listCapturesArrivedBetween(auth: AuthContext, input: { fro
     )
     .orderBy(desc(captures.createdAt))
     .limit(limit);
+}
+
+/* --- Classification proposals (ASH-314) --- */
+
+/*
+ * The system's read of a capture, written by enrichment and decided by the
+ * owner. Pending only: decided proposals are history, surfaced through the
+ * capture's lineage edge instead.
+ */
+export async function listPendingCaptureProposals(auth: AuthContext, captureId: string) {
+  return db
+    .select()
+    .from(captureProposals)
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        eq(captureProposals.captureId, captureId),
+        eq(captureProposals.status, "pending"),
+      ),
+    )
+    .orderBy(captureProposals.createdAt);
+}
+
+/**
+ * Pending-proposal presence for a page of inbox rows, so the list can mark
+ * which captures carry a suggestion without a join per row.
+ */
+export async function listCapturesWithPendingProposals(auth: AuthContext, captureIds: string[]): Promise<Set<string>> {
+  if (!captureIds.length) return new Set();
+  const rows = await db
+    .selectDistinct({ captureId: captureProposals.captureId })
+    .from(captureProposals)
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        inArray(captureProposals.captureId, captureIds),
+        eq(captureProposals.status, "pending"),
+      ),
+    );
+  return new Set(rows.map((row) => row.captureId));
 }
