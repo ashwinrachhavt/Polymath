@@ -17,7 +17,8 @@ import postgres from "postgres";
  * would mask the honest unconfigured-refusal journey in
  * design-brief.spec.ts. The spec skips itself without the opt-in so the
  * default suite stays truthful. Screenshots land in
- * test-results/feature-pixels/.
+ * test-results/feature-pixels/, one import-started and one terminal shot per
+ * viewport.
  */
 
 const HIDE_DEV_CHROME = "nextjs-portal { display: none !important; }";
@@ -100,7 +101,7 @@ async function latestImportAttempt(): Promise<AttemptRow | null> {
       from action_attempts a
       join action_proposals p on p.id = a.proposal_id
       where p.capability = 'canva.design.import'
-      order by a.attempt_number desc
+      order by a.created_at desc
       limit 1`;
     return row ?? null;
   } finally {
@@ -135,10 +136,21 @@ test.afterAll(async () => {
   }
 });
 
-test("approve, wait, sweep: the fixture import reconciles to a terminal success", async ({ page }) => {
+const VIEWPORTS = [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+] as const;
+
+// One worker, in order: both viewport journeys share the seeded database and
+// the newest-attempt probe, so parallel runs could race each other's rows.
+test.describe.configure({ mode: "serial" });
+
+for (const vp of VIEWPORTS) {
+  test(`approve, wait, sweep: the fixture import reconciles to a terminal success [${vp.name}]`, async ({ page }) => {
   test.setTimeout(180_000);
   test.skip(process.env.CANVA_IMPORT_PROVIDER !== "fixture", "fixture import journey needs CANVA_IMPORT_PROVIDER=fixture");
-  const artifact = await seedArtifact(SOURCE_TITLE, SOURCE_TEXT);
+  await page.setViewportSize({ width: vp.width, height: vp.height });
+  const artifact = await seedArtifact(`${SOURCE_TITLE} [${vp.name}]`, SOURCE_TEXT);
   test.skip(!artifact, "DATABASE_URL not configured");
   const accountSeeded = await seedCanvaAccount();
   test.skip(!accountSeeded, "DATABASE_URL not configured");
@@ -150,6 +162,11 @@ test("approve, wait, sweep: the fixture import reconciles to a terminal success"
   await page.getByRole("button", { name: "Design brief" }).click();
   await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
   await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
+  // The generated title names the review card later; capture it rather than
+  // assume the fixture generator's wording.
+  const briefTitle =
+    (await page.getByRole("heading", { level: 1 }).textContent())?.replace(/^Design brief:\s*/, "").trim() ?? "";
+  expect(briefTitle).not.toBe("");
   await page.getByRole("button", { name: "Send to Canva" }).click();
   await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
 
@@ -160,7 +177,7 @@ test("approve, wait, sweep: the fixture import reconciles to a terminal success"
   await expect(
     page.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
   ).toBeVisible({ timeout: 30_000 });
-  await page.screenshot({ path: "test-results/feature-pixels/design-brief-handoff-import-started.png", style: HIDE_DEV_CHROME, fullPage: true });
+  await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-import-started-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
   // The attempt row is the async contract: UNKNOWN, job id pinned, in progress.
   const started = await latestImportAttempt();
@@ -181,4 +198,13 @@ test("approve, wait, sweep: the fixture import reconciles to a terminal success"
   const settled = await latestImportAttempt();
   expect(settled?.status).toBe("succeeded");
   expect(settled?.provider_object_id).toMatch(/^fixture-design-/);
+
+  // Terminal pixel: the queue filtered to decided cards. The outcome line
+  // itself is decide-response state (gone on reload), so the attempt row
+  // above carries the terminal truth; this shot is the honest UI surface a
+  // person sees afterwards - the approved proposal standing, post-settle.
+  await page.goto("/reviews?status=approved&q=fixture%20handoff");
+  await expect(page.getByText(`Import design brief "${briefTitle}"`)).toBeVisible({ timeout: 30_000 });
+  await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-terminal-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 });
+}
