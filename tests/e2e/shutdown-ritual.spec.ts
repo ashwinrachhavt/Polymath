@@ -104,7 +104,8 @@ test("the shutdown ritual closes a real day end to end", async ({ page }, testIn
   await page.goto("/command-center/briefing");
   await page.getByRole("link", { name: "Shut down" }).click();
   await expect(page).toHaveURL(/\/command-center\/briefing\/shutdown$/);
-  await expect(page.locator("#content h1")).toHaveText("Shut down");
+  // The shell keeps the previous page's h1 mounted through the transition; target the heading itself.
+  await expect(page.getByRole("heading", { name: "Shut down" })).toBeVisible();
 
   // The seeded live session is offered with an explicit choice.
   await expect(page.getByText(`Live session ${marker}`)).toBeVisible();
