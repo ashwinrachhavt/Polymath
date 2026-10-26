@@ -29,9 +29,11 @@ let reconciliation: typeof import("@/domains/actions/reconciliation");
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  process.env.CANVA_IMPORT_ENABLED = "true";
   reconciliation = await import("@/domains/actions/reconciliation");
 });
 afterAll(async () => {
+  delete process.env.CANVA_IMPORT_ENABLED;
   await handle?.client.end();
 });
 
@@ -211,6 +213,25 @@ suite("canva.design.import reconciliation", () => {
     expect(attempt.status).toBe("unknown");
     expect(attempt.reconciliation).toBe("pending");
     expect(transport.calls).toHaveLength(0);
+  });
+
+  it("a disabled live import leaves the row UNKNOWN at zero provider calls", async () => {
+    // The enablement boundary covers polling too: even with a job id on the
+    // row and a transport that would answer success, the sweep asks nothing.
+    const seeded = await seedUnknown({ slug: "canva-recon-disabled", responseSummary: { jobId: "job_d", phase: "import_in_progress" } });
+    const transport = transportWith({ job_d: { status: "success" } });
+    delete process.env.CANVA_IMPORT_ENABLED;
+    let result;
+    try {
+      result = await reconciliation.reconcileUnknownAttempts({ transport });
+    } finally {
+      process.env.CANVA_IMPORT_ENABLED = "true";
+    }
+    expect(result!.reconciled).toBe(0);
+    expect(transport.calls).toHaveLength(0);
+    const { attempt } = await attemptState(seeded.attemptId);
+    expect(attempt.status).toBe("unknown");
+    expect(attempt.reconciliation).toBe("pending");
   });
 
   it("a transport error settles nothing", async () => {

@@ -34,6 +34,7 @@ beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   process.env.COMPOSIO_API_KEY = API_KEY;
+  process.env.CANVA_IMPORT_ENABLED = "true";
   executor = await import("@/domains/actions/executor");
 });
 afterEach(() => {
@@ -41,6 +42,7 @@ afterEach(() => {
 });
 afterAll(async () => {
   delete process.env.COMPOSIO_API_KEY;
+  delete process.env.CANVA_IMPORT_ENABLED;
   await handle?.client.end();
 });
 
@@ -237,6 +239,24 @@ suite("canva.design.import executor", () => {
     const replay = await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
     expect(replay).toMatchObject({ status: "unknown", note: "import_started" });
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a configured Composio key alone never enables Canva: refusal, zero attempts, zero provider calls", async () => {
+    const seeded = await seedImport({ slug: "canva-keyed-but-disabled" });
+    const { spy } = stubProvider(jobCreated());
+    // The generic key stays present - exactly the state of a deployment that
+    // already sends Gmail - while the separate Canva opt-in is absent.
+    delete process.env.CANVA_IMPORT_ENABLED;
+    try {
+      await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+        /Canva import is not enabled on this deployment/,
+      );
+    } finally {
+      process.env.CANVA_IMPORT_ENABLED = "true";
+    }
+    expect(spy).not.toHaveBeenCalled();
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
+    expect(attempts).toHaveLength(0);
   });
 
   it("an unconfigured deployment refuses BEFORE any claim or provider call", async () => {

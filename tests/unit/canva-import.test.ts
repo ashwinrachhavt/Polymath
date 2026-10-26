@@ -20,9 +20,11 @@ import type { Transport } from "@/domains/integrations/transport";
 const API_KEY = "test-composio-key";
 beforeAll(() => {
   process.env.COMPOSIO_API_KEY = API_KEY;
+  process.env.CANVA_IMPORT_ENABLED = "true";
 });
 afterAll(() => {
   delete process.env.COMPOSIO_API_KEY;
+  delete process.env.CANVA_IMPORT_ENABLED;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -167,5 +169,36 @@ describe("getCanvaImportJob", () => {
     };
     const result = await getCanvaImportJob(transport, { connectedAccountId: "ca_test", jobId: "job_9" });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("the live-enablement boundary", () => {
+  it("a configured Composio key alone does not enable a create: refusal, zero provider calls", async () => {
+    delete process.env.CANVA_IMPORT_ENABLED;
+    const calls = stubFetch(() => new Response(JSON.stringify({ data: { job: { id: "job_1" } } }), { status: 200 }));
+    try {
+      await expect(createCanvaImportJob(input)).rejects.toThrow(/Canva import is not enabled/);
+    } finally {
+      process.env.CANVA_IMPORT_ENABLED = "true";
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a configured Composio key alone does not enable a poll: non-answer, zero provider calls", async () => {
+    delete process.env.CANVA_IMPORT_ENABLED;
+    let reads = 0;
+    const transport: Transport = {
+      async read() {
+        reads += 1;
+        return { ok: true, status: 200, data: { job: { status: "success" } } };
+      },
+    };
+    try {
+      const result = await getCanvaImportJob(transport, { connectedAccountId: "ca_test", jobId: "job_1" });
+      expect(result).toMatchObject({ ok: false, code: "canva_import_disabled" });
+    } finally {
+      process.env.CANVA_IMPORT_ENABLED = "true";
+    }
+    expect(reads).toBe(0);
   });
 });

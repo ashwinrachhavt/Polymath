@@ -41,6 +41,29 @@ const DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordpro
  */
 const FIXTURE_ENV = "CANVA_IMPORT_PROVIDER";
 
+/*
+ * The live-execution boundary, default OFF. A generic COMPOSIO_API_KEY is
+ * present in any deployment that already sends Gmail; it must never stand in
+ * for a Canva write. Live import traffic - creating a job OR polling one -
+ * requires this separate, explicit opt-in, set only after cost/entitlement
+ * and spend authority are established. No content approval can bypass it:
+ * the executor refuses before claiming, and this module refuses a caller
+ * that skips the executor.
+ */
+const ENABLED_ENV = "CANVA_IMPORT_ENABLED";
+
+export function canvaImportLiveEnabled(): boolean {
+  return process.env[ENABLED_ENV] === "true";
+}
+
+export class CanvaImportDisabledError extends Error {
+  readonly code = "canva_import_disabled";
+  constructor() {
+    super("Canva import is not enabled on this deployment.");
+    this.name = "CanvaImportDisabledError";
+  }
+}
+
 export class CanvaImportFixtureInProductionError extends Error {
   readonly code = "canva_import_fixture_in_production";
   constructor() {
@@ -90,6 +113,7 @@ export async function createCanvaImportJob(input: {
     const { createHash } = await import("node:crypto");
     return { jobId: `fixture-import-${createHash("sha256").update(input.docx).digest("hex").slice(0, 12)}` };
   }
+  if (!canvaImportLiveEnabled()) throw new CanvaImportDisabledError();
   const result = await executeComposioWrite({
     connectedAccountId: input.connectedAccountId,
     endpoint: IMPORTS_ENDPOINT,
@@ -145,6 +169,11 @@ export async function getCanvaImportJob(
       ok: true,
       job: { status: "success", designId: `fixture-design-${input.jobId.replace(/^fixture-import-/, "")}`, editUrl: null },
     };
+  }
+  // Polling is provider traffic too: a non-answer here settles nothing, and
+  // the sweep leaves the row UNKNOWN for a human at zero provider calls.
+  if (!canvaImportLiveEnabled()) {
+    return { ok: false, code: "canva_import_disabled", message: "Canva import is not enabled on this deployment." };
   }
   const res = await transport.read({
     connectedAccountId: input.connectedAccountId,

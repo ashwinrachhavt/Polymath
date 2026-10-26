@@ -6,6 +6,7 @@ import { agentRuns } from "@/domains/agents/schema";
 import { LIMITS } from "@/domains/integrations/capabilities";
 import {
   canvaImportFixtureEnabled,
+  canvaImportLiveEnabled,
   CanvaImportRejectedError,
   createCanvaImportJob,
 } from "@/domains/integrations/canva/import";
@@ -534,11 +535,18 @@ export async function executeApprovedEffect(
         "The approved brief no longer renders to the approved document. Review and approve a fresh revision.",
       );
     }
-    // Dispatchability before any claim: an unconfigured deployment provably
-    // cannot reach the provider, so the honest outcome is a refusal - not an
-    // UNKNOWN attempt that would block the proposal against a config fix.
-    if (!composioWriteConfigured() && !canvaImportFixtureEnabled()) {
-      throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
+    // Dispatchability before any claim, enablement first: a generic Composio
+    // key (present for Gmail in any real deployment) must never stand in for
+    // the explicit Canva opt-in, and an unconfigured deployment provably
+    // cannot reach the provider. Either way the honest outcome is a refusal -
+    // not an UNKNOWN attempt that would block the proposal against a fix.
+    if (!canvaImportFixtureEnabled()) {
+      if (!canvaImportLiveEnabled()) {
+        throw new SendNotAllowedError("Canva import is not enabled on this deployment; the import cannot be dispatched.");
+      }
+      if (!composioWriteConfigured()) {
+        throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
+      }
     }
   }
 

@@ -68,6 +68,14 @@ revision-approved actions executor - never a direct skill call - mirroring
 exactly what happens: which brief, which Canva account, what file is uploaded. Capability,
 tier, tool-manifest, and migration changes stay held until this design is accepted.
 
+Live execution has its own fail-closed boundary, separate from both approval and the
+generic key: `CANVA_IMPORT_ENABLED=true` on the deployment, default off. A
+`COMPOSIO_API_KEY` present for Gmail must never stand in for it, so the executor refuses
+before claiming when the flag is absent (zero attempts, zero provider calls), and the
+import module refuses create and poll calls that skip the executor. The flag flips only
+after per-call cost/entitlement is verified and spend authority exists (Composio
+"Proxy execute" pricing: the exact seam this uses).
+
 ### Async reconciliation (existing pattern)
 
 Job creation returns an import job id; the attempt row stays open. A reconciliation sweep

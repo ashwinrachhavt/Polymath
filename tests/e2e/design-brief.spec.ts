@@ -256,13 +256,15 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText("canva.design.import")).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-review-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
 
-    // Approving runs the executor's gates. This environment has no
-    // COMPOSIO_API_KEY, so dispatch is provably impossible: the honest
-    // outcome is a refusal BEFORE any claim, the approval stands, and no
-    // UNKNOWN attempt blocks the proposal against a configuration fix.
+    // Approving runs the executor's gates. This environment has neither
+    // CANVA_IMPORT_ENABLED nor a COMPOSIO_API_KEY, so dispatch is provably
+    // impossible: the honest outcome is a refusal BEFORE any claim, the
+    // approval stands, and no UNKNOWN attempt blocks the proposal against a
+    // configuration fix. Enablement is the first gate: a generic Composio
+    // key (present for Gmail) must never stand in for the Canva opt-in.
     await page.getByRole("button", { name: "Approve" }).first().click();
     await expect(
-      page.getByRole("alert").filter({ hasText: "Composio is not configured on this deployment yet; the import cannot be dispatched." }),
+      page.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
     ).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await importAttemptCount()).toBe(0);
