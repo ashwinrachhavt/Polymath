@@ -32,6 +32,12 @@ export type QueueCardData = {
   riskClass: string;
   status: string;
   expectedEffect: string;
+  /*
+   * True when no executor exists for the capability (ASH-284): approving
+   * records the decision and nothing runs, and the card must say so in both
+   * the pending and decided views - never imply an external change happened.
+   */
+  decisionOnly: boolean;
   accountAlias: string | null;
   /** The proposing path's intent key; the follow-up pair groups on it (ASH-288). */
   dedupeKey?: string | null;
@@ -237,6 +243,12 @@ function ProposalCard({
         {item.expiresAt ? ` · expires ${formatTs(item.expiresAt)}` : ""}
       </p>
 
+      {item.decisionOnly ? (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Approving records the decision only. This proposal has no executor, so nothing changes on GitHub -
+          labels, assignees, and close state stay exactly as they are until you apply them there.
+        </p>
+      ) : null}
       <SendSummary capability={item.capability} revision={item.latestRevision} />
       <DraftGrounding flags={item.flags} revision={item.latestRevision} />
 

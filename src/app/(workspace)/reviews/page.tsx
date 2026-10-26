@@ -19,6 +19,7 @@ import {
 import { listRunAttributions } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
 import { offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
+import { supportsEffect } from "@/domains/actions/executor";
 import { ReviewsQueue, type QueueCardData } from "./reviews-queue";
 
 export const metadata = { title: "Reviews · Polymath" };
@@ -106,6 +107,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     version: item.version,
     title: item.title,
     capability: item.capability,
+    decisionOnly: !supportsEffect(item.capability),
     riskClass: item.riskClass,
     status: item.status,
     expectedEffect: item.expectedEffect,

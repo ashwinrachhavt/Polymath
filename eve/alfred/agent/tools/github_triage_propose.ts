@@ -29,7 +29,7 @@ import {
  */
 export default defineTool({
   description:
-    "Propose labels, assignees, or a close reason for one GitHub issue, for the owner to approve in the review queue. Use after reading open issues with the GitHub tools when the owner asks for triage suggestions. Nothing is applied to GitHub - the proposal records the suggested triage and the owner applies or dismisses it. Pass the issue's coordinates and a stable dedupeId so a retry proposes once; proposing different changes for the same issue creates a fresh proposal instead of altering the old one.",
+    "Propose labels, assignees, or a close reason for one GitHub issue, for the owner to approve in the review queue. Use after reading open issues with the GitHub tools when the owner asks for triage suggestions. Nothing is applied to GitHub - the proposal records the suggested triage and the owner applies or dismisses it. Label and assignee validity against the repository is not checked here: the proposal records the suggestion exactly as made, so say when you have not verified that a label or login exists. Pass the issue's coordinates and a stable dedupeId so a retry proposes once; proposing different changes for the same issue creates a fresh proposal instead of altering the old one.",
   inputSchema: z.object({
     owner: z.string().min(1).max(100).describe("The repository owner, e.g. ashwinrachhavt."),
     repo: z.string().min(1).max(100).describe("The repository name, e.g. Polymath."),

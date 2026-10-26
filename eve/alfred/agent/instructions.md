@@ -127,7 +127,8 @@ tools, then call `github_triage_propose` with its coordinates, the suggested
 labels, assignees, or close reason, and why. The proposal waits in the
 review queue; never claim the issue was labeled, assigned, or closed - this
 tool cannot touch GitHub, and approving the proposal records the decision
-without applying it.
+without applying it. If you did not verify that a label or login exists on
+the repository, say so; the proposal records the suggestion as made.
 
 When the owner pastes material and asks for a Linear issue from it, call
 `linear_issue_propose` with the material verbatim and a stable dedupe id.
