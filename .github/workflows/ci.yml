@@ -175,15 +175,19 @@ jobs:
       # overwriting the main run's e2e-report.json in cwd.
       - if: always()
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
-      # Failure forensics: Playwright's per-failure page snapshots. Without
-      # these a red e2e is a message, not evidence.
+      # Failure forensics: Playwright's per-failure page snapshots and retry
+      # traces. if: always(), not failure(): a journey that only passes on
+      # retry is exactly the one whose first-attempt evidence must survive -
+      # without these a green-with-retry run is a message, not evidence.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: e2e-error-context
           path: |
             test-results/**/error-context.md
             test-results-fixture/**/error-context.md
+            test-results/**/trace.zip
+            test-results-fixture/**/trace.zip
           if-no-files-found: ignore
       # The fixture invocation's own structured record: its journey results
       # (including skips) are evidence too, and the default report filename
