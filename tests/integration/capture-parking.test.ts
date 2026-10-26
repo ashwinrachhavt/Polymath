@@ -223,10 +223,9 @@ suite("capture parking and enrichment idempotency", () => {
 
   it("a run parked mid-flight finishes, and its proposals stay hidden from every consumer until unpark", async () => {
     const { auth, workspaceId, capture } = await seed("midflight");
-    let parked = capture;
     await enrichment.runCaptureEnrichment(event(workspaceId, capture.id), {
       judger: judger(async () => {
-        parked = await parking.parkCapture(auth, {
+        await parking.parkCapture(auth, {
           captureId: capture.id,
           expectedVersion: capture.version,
         });
