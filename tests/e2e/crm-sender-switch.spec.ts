@@ -138,11 +138,13 @@ test("the sender-contact switch in every state, and the review card", async ({ p
     await expect(toggle).toBeVisible({ timeout: 30_000 });
     await expect(toggle).not.toBeChecked();
     await expect(row.getByText("Starts from the moment you turn it on.")).toBeVisible();
+    await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-off-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     // On: the owner opted the account in.
     await toggle.click();
     await expect(toggle).toBeChecked({ timeout: 30_000 });
+    await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-on-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     // Read access revoked while on: the pass pauses, the card says why, and
@@ -150,6 +152,7 @@ test("the sender-contact switch in every state, and the review card", async ({ p
     await setAllowRead(accountId, false);
     await page.reload();
     await expect(row.getByText(/On, but not running: read access is off/)).toBeVisible({ timeout: 30_000 });
+    await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-paused-${vp.name}.png`, style: HIDE_DEV_CHROME });
     await row.getByRole("switch", { name: "Suggest contacts from new senders" }).click();
     await expect(row.getByRole("switch", { name: "Suggest contacts from new senders" })).not.toBeChecked({ timeout: 30_000 });
@@ -157,6 +160,7 @@ test("the sender-contact switch in every state, and the review card", async ({ p
     // Blocked while off: enabling is disabled with the reason named.
     await expect(row.getByText(new RegExp(`Turn on read access for ${ALIAS.replace(/\./g, "\\.")} to turn this on.`))).toBeVisible();
     await expect(row.getByRole("switch", { name: "Suggest contacts from new senders" })).toBeDisabled();
+    await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-blocked-${vp.name}.png`, style: HIDE_DEV_CHROME });
     await setAllowRead(accountId, true);
 

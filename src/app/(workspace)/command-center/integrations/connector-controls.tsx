@@ -149,9 +149,9 @@ export function SenderProposalsRow({
         : null;
 
   return (
-    <div className="w-full">
-      <div className="flex w-full items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
-        <span className="text-[13px]">
+    <div className="w-full min-w-0">
+      <div className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+        <span className="min-w-0 flex-1 text-[13px] break-words">
           <span className="font-medium">Suggest contacts from new senders</span>
           <span className="block text-xs text-muted-foreground">
             Once a day, Polymath reads new inbound senders on {alias} and turns them into contact proposals in Reviews. Read-only: no mail is
@@ -169,6 +169,7 @@ export function SenderProposalsRow({
           ) : null}
         </span>
         <Switch
+          className="shrink-0"
           checked={enabled}
           disabled={pending || (blocked !== null && !enabled)}
           aria-label="Suggest contacts from new senders"

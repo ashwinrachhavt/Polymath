@@ -215,7 +215,7 @@ export function ConnectorCatalog({
                         .map((account) => (
                           <div key={account.id} className="py-3">
                             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                              <p className="text-[13px] font-medium">{account.alias}</p>
+                              <p className="min-w-0 break-words text-[13px] font-medium">{account.alias}</p>
                               {account.isDefaultForWrites ? <Status>write default</Status> : null}
                             </div>
                             <p className="mb-2 text-xs text-muted-foreground">
