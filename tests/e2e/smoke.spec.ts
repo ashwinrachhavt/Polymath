@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import postgres from "postgres";
 import { destinations } from "../../src/lib/navigation";
 import { removeSeededRuns, seedRun } from "./helpers/runs";
 import { waitSettled } from "./helpers/settled";
@@ -258,17 +259,47 @@ test("removed IA destinations redirect to their new homes, or 404 when the route
 
 test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
   test.setTimeout(120_000);
-  for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
-    await page.goto(path);
-    // Axe must evaluate the settled page: the topbar buttons sit at
-    // disabled:opacity-50 until hydration and transition to full opacity,
-    // and axe composites whatever it samples through in-flight opacity.
-    await waitSettled(page);
-    // The notebook leg scans the canonical surface (B04); its rich-editor
-    // toolbar only mounts with a note open, so no editor landmark here. The
-    // artifacts leg scans the rail's kept-outputs list (IA simplification).
-    const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
-    expect(violations, path).toEqual([]);
+  // /reviews must be scanned POPULATED: an empty queue once hid a serious
+  // definition-list violation on the pinned-sender proposal card. Seed one
+  // pending proposal with a pinned sender so the card's real markup renders.
+  const client = process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
+  const tag = `wcag-${Date.now().toString(36)}`;
+  let seededProposalId: string | null = null;
+  try {
+    if (client) {
+      const [owner] = await client<{ workspace_id: string }[]>`
+        select m.workspace_id from memberships m join users u on u.id = m.user_id
+        where u.clerk_user_id = 'dev-user' and m.status = 'active' limit 1`;
+      if (owner) {
+        const [proposal] = await client<{ id: string }[]>`
+          insert into action_proposals (workspace_id, capability, risk_class, status, title, expected_effect, dedupe_key, account_alias)
+          values (${owner.workspace_id}, 'send_mail', 'external_write', 'pending', ${`WCAG seed ${tag}`}, 'Sends one prepared message.', ${tag}, 'e2e')
+          returning id`;
+        seededProposalId = proposal!.id;
+        await client`
+          insert into action_revisions (workspace_id, proposal_id, revision_number, payload)
+          values (${owner.workspace_id}, ${seededProposalId}, 1, ${JSON.stringify({
+            accountPin: { resolved: true, sender: "e2e-sender@example.com" },
+            to: "recipient@example.invalid",
+            subject: `WCAG seed ${tag}`,
+          })})`;
+      }
+    }
+    for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
+      await page.goto(path);
+      // Axe must evaluate the settled page: the topbar buttons sit at
+      // disabled:opacity-50 until hydration and transition to full opacity,
+      // and axe composites whatever it samples through in-flight opacity.
+      await waitSettled(page);
+      // The notebook leg scans the canonical surface (B04); its rich-editor
+      // toolbar only mounts with a note open, so no editor landmark here. The
+      // artifacts leg scans the rail's kept-outputs list (IA simplification).
+      const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+      expect(violations, path).toEqual([]);
+    }
+  } finally {
+    if (client && seededProposalId) await client`delete from action_proposals where id = ${seededProposalId}`;
+    await client?.end();
   }
 });
 

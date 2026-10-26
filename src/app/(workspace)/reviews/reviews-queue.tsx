@@ -93,33 +93,35 @@ function SendSummary({ capability, revision }: { capability: string; revision: Q
   const to = typeof payload.to === "string" ? payload.to : null;
   const subject = typeof payload.subject === "string" ? payload.subject : null;
   return (
-    <dl className="mb-3 grid gap-1 text-[13px]">
-      <div className="flex gap-2">
-        <dt className="w-14 shrink-0 text-muted-foreground">From</dt>
-        <dd>
-          {pinnedSender ?? "No sending account is bound to this revision - approving cannot send it. Revise it after connecting the account."}
-        </dd>
-      </div>
-      {to ? (
+    <>
+      <dl className="mb-3 grid gap-1 text-[13px]">
         <div className="flex gap-2">
-          <dt className="w-14 shrink-0 text-muted-foreground">To</dt>
-          <dd>{to}</dd>
+          <dt className="w-14 shrink-0 text-muted-foreground">From</dt>
+          <dd>
+            {pinnedSender ?? "No sending account is bound to this revision - approving cannot send it. Revise it after connecting the account."}
+          </dd>
         </div>
-      ) : null}
-      {subject ? (
-        <div className="flex gap-2">
-          <dt className="w-14 shrink-0 text-muted-foreground">Subject</dt>
-          <dd>{subject}</dd>
-        </div>
-      ) : null}
+        {to ? (
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-muted-foreground">To</dt>
+            <dd>{to}</dd>
+          </div>
+        ) : null}
+        {subject ? (
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-muted-foreground">Subject</dt>
+            <dd>{subject}</dd>
+          </div>
+        ) : null}
+      </dl>
       {pinnedSender ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-muted-foreground">
           {capability === "send_mail"
             ? "Approving does not send. The approved draft waits for Send now on the contact page."
             : "Approving sends this exact message once."}
         </p>
       ) : null}
-    </dl>
+    </>
   );
 }
 
