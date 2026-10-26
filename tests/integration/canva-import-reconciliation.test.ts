@@ -117,6 +117,11 @@ function transportWith(jobs: Record<string, unknown>): Transport & { calls: Tran
   };
 }
 
+/** Reads for THIS test's account only: the sweep is global, so the shared database's other pending rows legitimately appear in the raw list. */
+function callsFor(transport: Transport & { calls: TransportRequest[] }, connectedAccountId: string) {
+  return transport.calls.filter((call) => call.connectedAccountId === connectedAccountId);
+}
+
 async function attemptState(attemptId: string) {
   const [attempt] = await db.select().from(actionAttempts).where(eq(actionAttempts.id, attemptId));
   const observations = await db.select().from(providerObservations).where(eq(providerObservations.attemptId, attemptId));
@@ -134,7 +139,7 @@ suite("canva.design.import reconciliation", () => {
     expect(attempt.status).toBe("unknown");
     expect(attempt.reconciliation).toBe("pending");
     expect(observations).toHaveLength(0);
-    expect(transport.calls).toHaveLength(1);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(1);
   });
 
   it("the poll interval gates re-asks: an immediate second pass reads nothing, a later pass re-asks", async () => {
@@ -142,11 +147,11 @@ suite("canva.design.import reconciliation", () => {
     const transport = transportWith({ job_i: { status: "in_progress" } });
 
     await reconciliation.reconcileUnknownAttempts({ transport });
-    expect(transport.calls).toHaveLength(1);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(1);
 
     // Inside the interval the claimed slot stands: no second provider read.
     await reconciliation.reconcileUnknownAttempts({ transport });
-    expect(transport.calls).toHaveLength(1);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(1);
 
     // Once the interval has passed (polledAt backdated), the next pass re-asks.
     await db
@@ -160,7 +165,7 @@ suite("canva.design.import reconciliation", () => {
       })
       .where(eq(actionAttempts.id, seeded.attemptId));
     await reconciliation.reconcileUnknownAttempts({ transport });
-    expect(transport.calls).toHaveLength(2);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(2);
 
     const { attempt } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("unknown");
@@ -180,7 +185,7 @@ suite("canva.design.import reconciliation", () => {
       reconciliation.reconcileUnknownAttempts({ transport }),
     ]);
     expect(a.reconciled + b.reconciled).toBe(1);
-    expect(transport.calls).toHaveLength(1);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(1);
 
     const { attempt, observations } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("succeeded");
@@ -202,7 +207,7 @@ suite("canva.design.import reconciliation", () => {
     expect(attempt.providerObjectId).toBe("DAF9");
     expect(observations).toHaveLength(1);
     expect(observations[0]).toMatchObject({ provider: "canva", observedState: "imported", providerObjectId: "DAF9" });
-    expect(transport.calls[0]).toMatchObject({
+    expect(callsFor(transport, seeded.connectedAccountId)[0]).toMatchObject({
       connectedAccountId: seeded.connectedAccountId,
       endpoint: "https://api.canva.com/rest/v1/imports/job_s",
       method: "GET",
@@ -232,7 +237,7 @@ suite("canva.design.import reconciliation", () => {
     expect(attempt.reconciliation).toBe("pending");
     // No list-imports endpoint exists, so no read was even attempted: there is
     // no honest question to ask, and asking none is what no-refire means.
-    expect(transport.calls).toHaveLength(0);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(0);
   });
 
   it("a revoked account leaves the row for a human", async () => {
@@ -247,7 +252,7 @@ suite("canva.design.import reconciliation", () => {
     expect(result.reconciled).toBe(0);
     const { attempt } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("unknown");
-    expect(transport.calls).toHaveLength(0);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(0);
   });
 
   it("polling is bounded: a job older than the budget is left for a human with no provider call", async () => {
@@ -263,7 +268,7 @@ suite("canva.design.import reconciliation", () => {
     const { attempt } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("unknown");
     expect(attempt.reconciliation).toBe("pending");
-    expect(transport.calls).toHaveLength(0);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(0);
   });
 
   it("a disabled live import leaves the row UNKNOWN at zero provider calls", async () => {
@@ -279,7 +284,7 @@ suite("canva.design.import reconciliation", () => {
       process.env.CANVA_IMPORT_ENABLED = "true";
     }
     expect(result!.reconciled).toBe(0);
-    expect(transport.calls).toHaveLength(0);
+    expect(callsFor(transport, seeded.connectedAccountId)).toHaveLength(0);
     const { attempt } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("unknown");
     expect(attempt.reconciliation).toBe("pending");
