@@ -1,14 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { decideProposal, ProposalConflictError, reviseProposal } from "@/domains/actions/commands";
 import { executeApprovedEffect, supportsEffect, type EffectOutcome } from "@/domains/actions/executor";
+import { refusalMessage } from "@/domains/actions/refusal-message";
 import { approveTaskProposal, TaskExecuteNotAllowedError } from "@/domains/work/proposals";
 import { approveNoteProposal, NoteExecuteNotAllowedError } from "@/domains/knowledge/note-proposals";
 import { approveArtifactRevision, ArtifactReviseNotAllowedError } from "@/domains/knowledge/revision-proposals";
 import { actionProposals, actionReviews } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -179,26 +181,38 @@ export async function decideProposalAction(input: {
     // must show, not a rollback of the approval. The card's client alert
     // only lives until the next render, so the refusal also lands in the
     // review history - the persisted record a reloaded card renders. No
-    // attempt row: the refusal happened before any claim, the approval
-    // stands, and a replayed decide re-derives this same row rather than
-    // stacking duplicates.
-    const message = error instanceof Error ? error.message : "The approved effect did not run.";
-    const note = `Execution refused: ${message}`.slice(0, 2000);
-    const existing = await db
-      .select({ id: actionReviews.id })
-      .from(actionReviews)
-      .where(and(eq(actionReviews.proposalId, input.proposalId), eq(actionReviews.note, note)))
-      .limit(1);
-    if (existing.length === 0) {
-      await db.insert(actionReviews).values({
-        workspaceId: auth.workspaceId,
-        proposalId: input.proposalId,
-        revisionId: input.revisionId,
-        decision: "approved",
-        note,
-        reviewedBy: null,
-      });
-    }
+    // attempt row: the refusal happened before any claim and the approval
+    // stands. The write is serialized per proposal (the advisory-lock
+    // pattern spending claims use) and deduped on the exact revision, so
+    // concurrent retries cannot stack duplicate rows while a re-approval of
+    // a NEW revision records its own refusal. The persisted message is the
+    // bounded, printable refusal line, never a raw provider body.
+    const message = refusalMessage(error);
+    const note = `Execution refused: ${message}`;
+    await withTransaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`refusal:${input.proposalId}`}, 0))`);
+      const existing = await tx
+        .select({ id: actionReviews.id })
+        .from(actionReviews)
+        .where(
+          and(
+            eq(actionReviews.proposalId, input.proposalId),
+            eq(actionReviews.revisionId, input.revisionId),
+            eq(actionReviews.note, note),
+          ),
+        )
+        .limit(1);
+      if (existing.length === 0) {
+        await tx.insert(actionReviews).values({
+          workspaceId: auth.workspaceId,
+          proposalId: input.proposalId,
+          revisionId: input.revisionId,
+          decision: "approved",
+          note,
+          reviewedBy: null,
+        });
+      }
+    });
     revalidate();
     return { ok: false, error: message, decided: true };
   }
