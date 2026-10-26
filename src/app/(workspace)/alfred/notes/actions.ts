@@ -28,7 +28,7 @@ import { searchTasksForLink } from "@/domains/work/queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { composioNotionClient } from "@/integrations/notion/client";
-import { proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
+import { noteNotionDedupeKey, proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
@@ -354,14 +354,20 @@ export async function proposeNotionAppendAction(
     return { ok: false, error: "That does not look like a Notion page id." };
   }
   try {
+    // Read the page so the review card shows what the addition lands under. A
+    // missing connection or a read failure leaves the diff without context
+    // rather than blocking the proposal.
+    const account = await resolveConnectedAccount(auth, "notion");
     const result = await proposeNotionPageUpdate(auth, {
+      ...(account.ok ? { readClient: composioNotionClient(account.connectedAccountId) } : {}),
       mode: "append",
       pageId: notionPageId,
       title: notionPageTitle,
       markdown,
-      // Keyed on the note and the page: re-queuing the same note against the
-      // same page resolves the open proposal instead of stacking a second.
-      dedupeKey: `note-notion:${noteId}:${notionPageId}`,
+      // Keyed on the note, the page and the exact text: re-queuing unchanged
+      // content resolves the open proposal, while an edited note proposes
+      // again instead of silently resolving to a diff of the old text.
+      dedupeKey: noteNotionDedupeKey(noteId, notionPageId, markdown),
     });
     revalidatePath("/reviews");
     return { ok: true, proposalId: result.proposalId, contentHash: result.contentHash };

@@ -117,6 +117,14 @@ material, and links back to the documents it came from. The proposal waits
 in the owner's review queue; never claim the task exists until they approve
 it. Do not propose a follow-up the open-task list already covers.
 
+To save something into Notion, call `notion_propose_update` with the exact
+markdown, a stable dedupe id, and either `append` with a page id or `create`
+with a parent. The owner approves the diff in the review queue and only then
+is anything written. It adds to the end of a page or makes a new one; it
+cannot rewrite or reorganise an existing page, so do not offer that. If the
+tool answers that the capability is not in this run's policy, say Notion
+writes are not enabled for this run rather than retrying.
+
 Changing a saved artifact works the same way: call
 `artifacts_propose_revision` with the full revised content and a note naming
 what changed. The proposal revises against the version you read; if approval
