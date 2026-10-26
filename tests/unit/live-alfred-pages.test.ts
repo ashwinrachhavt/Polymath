@@ -190,12 +190,13 @@ describe("live Alfred route functionality", () => {
 
   it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {
     vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
-    // Only terminal runs: with nothing in progress the home is the history.
     vi.mocked(listRecentRuns).mockResolvedValue([
+      { id: "run-waiting", state: "waiting_approval", objective: "Draft the renewal letter", model: "m", summary: null, error: null, createdAt: new Date() },
       { id: "run-done", state: "succeeded", objective: "Reconcile the invoices", model: "m", summary: "Done.", error: null, createdAt: new Date() },
     ] as never);
     const html = renderToStaticMarkup(await AlfredSurface());
-    expect(html).toContain('href="/alfred/run-done"');
+    expect(html).toContain('href="/alfred/run-waiting"');
+    expect(html).toContain("Draft the renewal letter");
     expect(html).toContain("Reconcile the invoices");
     // The waiting-on-you vocabulary moved to Reviews; the home list is not a
     // second decision surface.
@@ -210,18 +211,6 @@ describe("live Alfred route functionality", () => {
     expect(html).not.toContain("Done.");
   });
 
-  it("reopens the conversation still in progress instead of showing a list (ASH-306)", async () => {
-    vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
-    vi.mocked(listRecentRuns).mockResolvedValue([
-      { id: "run-waiting", state: "waiting_approval", objective: "Draft the renewal letter", model: "m", summary: null, error: null, createdAt: new Date() },
-      { id: "run-done", state: "succeeded", objective: "Reconcile the invoices", model: "m", summary: "Done.", error: null, createdAt: new Date() },
-    ] as never);
-    const html = renderToStaticMarkup(await AlfredSurface());
-    // The conversation is the product's primary surface, so an open run wins
-    // over the idle greeting and the history list.
-    expect(html).not.toContain("What would you like to work on?");
-    expect(html).not.toContain('href="/alfred/run-done"');
-  });
 });
 
 async function projects() {

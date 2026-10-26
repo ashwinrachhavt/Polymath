@@ -196,6 +196,13 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "wiki.ingest",
       "wiki.lint",
       "gmail.send",
+      // ASH-283 / ASH-279 / ASH-306: a Notion write and a meeting debrief are
+      // only ever proposals, and listing records is navigation. All four are
+      // denied on every call without a grant, so they widen this list.
+      "notion.page.append",
+      "notion.page.create",
+      "meetings.debrief",
+      "records.browse",
       "gmail.read",
       "gmail.thread.read",
       "github.read",
@@ -270,6 +277,10 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     expect(old.allowedTools).toEqual([
       "tasks.read",
       "documents.search",
+      "notion.page.append",
+      "notion.page.create",
+      "meetings.debrief",
+      "records.browse",
       "wiki.read",
       "wiki.ingest",
       "wiki.lint",
