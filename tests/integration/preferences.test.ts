@@ -27,7 +27,7 @@ suite("server-saved preferences (D23)", () => {
     const seeded = await seedWorkspace(db, `prefs-default-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const loaded = await preferences.getPreferences(auth);
-    expect(loaded).toEqual({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 0 });
+    expect(loaded).toEqual({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto", version: 0 });
   });
 
   it("first save inserts version 1 and round-trips", async () => {
@@ -65,6 +65,18 @@ suite("server-saved preferences (D23)", () => {
       preferences.updatePreferences(auth, { expectedVersion: v1.version, motion: "reduced" }),
     ).rejects.toThrow(/changed in another tab or device/);
     expect((await preferences.getPreferences(auth)).motion).toBe("full");
+  });
+
+  it("a patch that omits interface mode preserves the stored mode (old-client compatibility, ASH-312)", async () => {
+    const seeded = await seedWorkspace(db, `prefs-mode-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const v1 = await preferences.updatePreferences(auth, { expectedVersion: 0, interfaceMode: "library" });
+    expect(v1.interfaceMode).toBe("library");
+    // An older client saves what it knows - timezone, motion - without the
+    // mode key; the stored mode must survive that write unchanged.
+    const v2 = await preferences.updatePreferences(auth, { expectedVersion: v1.version, motion: "reduced" });
+    expect(v2.interfaceMode).toBe("library");
+    expect((await preferences.getPreferences(auth)).interfaceMode).toBe("library");
   });
 
   it("another tenant never sees the row", async () => {

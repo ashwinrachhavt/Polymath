@@ -42,6 +42,8 @@ export const membershipRole = pgEnum("membership_role", ["owner", "admin", "memb
 export const membershipStatus = pgEnum("membership_status", ["invited", "active", "suspended", "removed"]);
 export const appearance = pgEnum("appearance", ["light", "dark", "system"]);
 export const motionPreference = pgEnum("motion_preference", ["full", "reduced"]);
+/** ASH-312: calm reading surface vs dense decision surface, or time-of-day resolution. */
+export const interfaceMode = pgEnum("interface_mode", ["library", "action", "auto"]);
 export const apiClientKind = pgEnum("api_client_kind", ["companion", "machine"]);
 export const apiClientStatus = pgEnum("api_client_status", ["active", "revoked"]);
 
@@ -227,6 +229,7 @@ export const userPreferences = pgTable(
     weekStart: smallint("week_start").notNull().default(1),
     appearance: appearance("appearance").notNull().default("system"),
     motion: motionPreference("motion").notNull().default("full"),
+    interfaceMode: interfaceMode("interface_mode").notNull().default("auto"),
     /** Per-category notification policy: decision_needed, deadline, conflict, blocked, unknown_action, output_ready. */
     notificationPolicy: jsonb("notification_policy"),
     modelDefaults: jsonb("model_defaults"),

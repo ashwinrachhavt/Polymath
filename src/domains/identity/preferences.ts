@@ -19,6 +19,8 @@ import { userPreferences } from "./schema";
 
 export type AppearanceValue = "light" | "dark" | "system";
 export type MotionValue = "full" | "reduced";
+/** ASH-312: the two interface languages, or "auto" to resolve by time of day. */
+export type InterfaceModeValue = "library" | "action" | "auto";
 
 export type Preferences = {
   timezone: string;
@@ -26,6 +28,7 @@ export type Preferences = {
   weekStart: number;
   appearance: AppearanceValue;
   motion: MotionValue;
+  interfaceMode: InterfaceModeValue;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -33,7 +36,23 @@ export const DEFAULT_PREFERENCES: Preferences = {
   weekStart: 1,
   appearance: "system",
   motion: "full",
+  interfaceMode: "auto",
 };
+
+/*
+ * ASH-312, reversible interpretation (the ticket asks for deliberate or
+ * automatic switching "based on time of day or the current session" without
+ * pinning hours): auto resolves to the action surface during the owner's
+ * local working day (08:00-18:00) and the library surface outside it. The
+ * hour is read in the saved timezone; an unrecognised timezone falls back to
+ * UTC rather than guessing a zone.
+ */
+export function resolveInterfaceMode(mode: InterfaceModeValue, timezone: string, now: Date = new Date()): "library" | "action" {
+  if (mode !== "auto") return mode;
+  const zone = isValidTimezone(timezone) ? timezone : "UTC";
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", hour12: false }).format(now));
+  return hour >= 8 && hour < 18 ? "action" : "library";
+}
 
 /** Version 0 means no row is saved yet; the first save inserts version 1. */
 export type LoadedPreferences = Preferences & { version: number };
@@ -84,6 +103,9 @@ export function validatePreferencePatch(patch: Partial<Preferences>): Partial<Pr
   if (patch.motion !== undefined && !["full", "reduced"].includes(patch.motion)) {
     throw new InvalidPreferenceError("Motion must be full or reduced.");
   }
+  if (patch.interfaceMode !== undefined && !["library", "action", "auto"].includes(patch.interfaceMode)) {
+    throw new InvalidPreferenceError("Interface mode must be library, action or auto.");
+  }
   return patch;
 }
 
@@ -99,6 +121,7 @@ export async function getPreferences(auth: AuthContext): Promise<LoadedPreferenc
     weekStart: row.weekStart,
     appearance: row.appearance,
     motion: row.motion,
+    interfaceMode: row.interfaceMode,
     version: row.version,
   };
 }
@@ -112,6 +135,7 @@ export async function updatePreferences(
     ...(input.weekStart !== undefined ? { weekStart: input.weekStart } : {}),
     ...(input.appearance !== undefined ? { appearance: input.appearance } : {}),
     ...(input.motion !== undefined ? { motion: input.motion } : {}),
+    ...(input.interfaceMode !== undefined ? { interfaceMode: input.interfaceMode } : {}),
   });
   return withTransaction(async (tx) => {
     const [current] = await tx
@@ -134,6 +158,7 @@ export async function updatePreferences(
           weekStart: values.weekStart,
           appearance: values.appearance,
           motion: values.motion,
+          interfaceMode: values.interfaceMode,
           createdBy: auth.userId,
           updatedBy: auth.userId,
         })
@@ -149,15 +174,19 @@ export async function updatePreferences(
         weekStart: inserted.weekStart,
         appearance: inserted.appearance,
         motion: inserted.motion,
+        interfaceMode: inserted.interfaceMode,
         version: inserted.version,
       };
     }
 
+    // Patch semantics: a write that does not name interfaceMode leaves the
+    // stored mode alone, so older clients never clobber a newer one's choice.
     const merged = {
       timezone: patch.timezone ?? current.timezone,
       weekStart: patch.weekStart ?? current.weekStart,
       appearance: patch.appearance ?? current.appearance,
       motion: patch.motion ?? current.motion,
+      interfaceMode: patch.interfaceMode ?? current.interfaceMode,
     };
     const [updated] = await tx
       .update(userPreferences)
@@ -187,6 +216,7 @@ export async function updatePreferences(
       weekStart: updated.weekStart,
       appearance: updated.appearance,
       motion: updated.motion,
+      interfaceMode: updated.interfaceMode,
       version: updated.version,
     };
   });
