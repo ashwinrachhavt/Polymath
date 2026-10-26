@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
@@ -17,6 +18,21 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * ever become a proposal. Skipped without TEST_DATABASE_URL (CI provides it).
  */
 
+// The domain modules under test read the module-level db and withTransaction;
+// point both at the test database (same holder pattern as semantic-relations).
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
@@ -29,6 +45,7 @@ let enrichment: typeof import("@/domains/capture/enrichment-handler");
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  holder.db = handle.db;
   shutdown = await import("@/domains/daybook/shutdown");
   parking = await import("@/domains/capture/parking");
   focus = await import("@/domains/focus/commands");
