@@ -342,16 +342,16 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // ASH-289: the sending grant is re-read at execution, not borrowed from the
   // approval. Tightening the authorized senders revokes an already-approved
   // proposal rather than grandfathering it; the pin carries the alias it was
-  // approved with, and only an authorized alias may send. Canva's connected
-  // account is held to the same grant; Notion's own pin path is unchanged.
-  if (checked.provider === "gmail" || checked.provider === "canva") {
-    const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
-    // Canva acts through a connected account; Gmail sends as a sender. The
-    // semantics are the shared grant; the word a person reads is not.
-    const noun = checked.provider === "canva" ? ("connected account" as const) : ("sender" as const);
-    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias, noun);
-    if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
-  }
+  // approved with, and only an authorized alias may send.
+  // Every pinned capability, not only gmail: the pin path applies this policy
+  // when a revision is written (notion.page.* included), so skipping it here
+  // would let tightening a grant leave an already-approved Notion write live.
+  const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
+  // Canva acts through a connected account; Gmail sends as a sender. The
+  // semantics are the shared grant; the word a person reads is not.
+  const noun = checked.provider === "canva" ? ("connected account" as const) : ("sender" as const);
+  const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias, noun);
+  if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
 
   return { ...checked, connectedAccountId: account.connectedAccountId };
 }
