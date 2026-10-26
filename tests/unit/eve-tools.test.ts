@@ -214,7 +214,7 @@ describe("github_triage_propose binds run, policy and caller-owned dedupe identi
 
   it("a terminal run cannot propose even when its old snapshot allowed it", async () => {
     vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "completed", policySnapshot: { allowedTools: ["github.issue.triage"] },
+      id: runId, state: "succeeded", policySnapshot: { allowedTools: ["github.issue.triage"] },
     });
     expect(await triage.execute(input, memberCtx)).toMatchObject({ ok: false });
     expect(proposeGitHubTriage).not.toHaveBeenCalled();
