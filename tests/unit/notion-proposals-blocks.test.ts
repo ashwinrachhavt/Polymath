@@ -89,6 +89,20 @@ describe("record cards", () => {
     expect(collectRecords({ ok: true, text: "just prose" })).toEqual([]);
     expect(collectRecords(null)).toEqual([]);
   });
+
+  it("turns document-search results into one card per document", () => {
+    const records = collectRecords({
+      ok: true,
+      // Document search returns `documentId`, not `id`; a web hit has a url and
+      // no document, so it must not become a record card.
+      results: [
+        { documentId: "d1", title: "Lease", text: "a", span: { start: 0 } },
+        { documentId: "d1", title: "Lease", text: "b", span: { start: 40 } },
+        { title: "Some web page", url: "https://example.com", snippet: "x" },
+      ],
+    });
+    expect(records).toEqual([{ kind: "document", id: "d1", title: "Lease" }]);
+  });
 });
 
 describe("markdown link safety", () => {

@@ -134,6 +134,26 @@ export function asRecordReference(entry: unknown, fallbackKind?: RecordKind): Re
 export function collectRecords(output: unknown, limit = 6): RecordReference[] {
   if (output === null || typeof output !== "object") return [];
   const record = output as Record<string, unknown>;
+
+  // `results` is the shape document search returns, and its entries carry
+  // `documentId` rather than `id`, so the generic path below cannot read it.
+  // A result with a documentId is a library document; one without (a web hit,
+  // which has a url) is not a record and is left to the source list.
+  if (Array.isArray(record.results)) {
+    const seenDocuments = new Set<string>();
+    const out: RecordReference[] = [];
+    for (const entry of record.results) {
+      if (entry === null || typeof entry !== "object") continue;
+      const hit = entry as { documentId?: unknown; title?: unknown; text?: unknown };
+      if (typeof hit.documentId !== "string" || typeof hit.title !== "string") continue;
+      if (seenDocuments.has(hit.documentId)) continue;
+      seenDocuments.add(hit.documentId);
+      out.push({ kind: "document", id: hit.documentId, title: hit.title });
+      if (out.length === limit) break;
+    }
+    if (out.length > 0) return out;
+  }
+
   const holder = Object.entries(record).find(([key, value]) => KEY_KINDS[key] && Array.isArray(value));
   if (!holder) return [];
   const [key, list] = holder as [string, unknown[]];

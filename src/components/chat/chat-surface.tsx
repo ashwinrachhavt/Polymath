@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, ChevronDown, Copy, Check, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -395,7 +396,14 @@ export function ChatSurface({
             <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
               {chat.citations.map((citation, index) => (
                 <li key={`${citation.documentId}:${citation.span.start}`} id={`citation-${index}`} className="scroll-mt-4">
-                  <p className="font-medium">{citation.title}</p>
+                  {/* The title opens the document at its library route, so a
+                      citation is a way into the source rather than a label. */}
+                  <Link
+                    href={`/alfred/library/${citation.documentId}`}
+                    className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
+                  >
+                    {citation.title}
+                  </Link>
                   {/* The passage is evidence for the answer. Chunks arrive
                       mid-sentence, so the line is trimmed to a readable start
                       before clamping. */}
