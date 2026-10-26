@@ -307,7 +307,36 @@ extraction, no search text, no preview.
 7. Extension enqueue timeout → state `unconfirmed`, not `ok: true`.
 8. Jev enabled with zero allowance → capture reaches `enriched` via the
    deterministic fallback and records that the paid tier was skipped.
-9. `make check` passes.
+9. A failed voice capture renders its `failure_reason` in the detail pane — today
+   it shows only in the URL-only branch (`inbox-detail.tsx:265-268`) and a
+   "transcription not configured" failure says nothing at all.
+10. `make check` passes.
+
+**Existing tests that assert on inbox content** (must still pass; the first is the
+one nearest this change, since it pins the detail pane's heading per capture
+state):
+
+```text
+tests/unit/capture-detail-heading.test.ts
+tests/unit/capture-edit-action.test.ts
+tests/unit/refresh-inbox-action.test.ts
+tests/unit/zettel-generate-action.test.ts
+```
+
+**A new journey test is required, not optional.** Phase 1 adds one journey spec
+that captures a selection, lets the fetch land, and asserts the detail pane shows
+the selection as the working text and the fetch state as a distinct fact.
+`tests/unit/workspace-pages.test.ts` only checks that the page module exports
+something, so it cannot catch a broken pane.
+
+**`tests/e2e/voice-capture.spec.ts` must be updated, not just kept passing.** It is
+the closest thing to an inbox journey spec, and it asserts the exact copy this
+phase replaces: `"The transcript lands here once transcription runs; then it works
+like any text capture."` (`voice-capture.spec.ts:49`). Acceptance check 9 makes
+that sentence wrong — a failed transcription must say why it failed. Update the
+assertion in the same commit as the rendering change, and keep its other
+guarantees (the detail URL carries the capture id, and "Save as note" stays hidden
+for a voice capture without a transcript).
 
 ---
 
