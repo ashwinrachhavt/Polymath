@@ -144,15 +144,19 @@ suite("url capture chain", () => {
     const [urlEvent] = await eventsOf(workspaceId, "capture.url_content_requested");
     const [enrichEvent] = await eventsOf(workspaceId, "capture.enrichment_requested");
     await urlHandler.urlContentRequestedHandler(urlEvent as never);
+    // The terminal failure records its reason at fetch time.
+    const [failedRow] = await db.select().from(captures).where(eq(captures.id, capture.id));
+    expect(failedRow.failureReason).toBeTruthy();
     await dispatch(urlEvent.id);
     const j = judger();
     await enrichment.runCaptureEnrichment(enrichEvent as never, { judger: j as never });
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
     // Canonical url-only captures carry text:null until a fetch lands (the URL is
-    // provenance, not the capture), so a terminal failure leaves an address-only capture.
+    // provenance, not the capture), and enrichment proceeding on the address
+    // clears the recorded failure: no stale failure banner after recovery.
     expect(row.text).toBeNull();
-    expect(row.failureReason).toBeTruthy();
+    expect(row.failureReason).toBeNull();
   });
 
   it("a claimed fetch (still 'pending' with an outbox lease) and a retrying one (available_at in the future) both hold enrichment", async () => {
