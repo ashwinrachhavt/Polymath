@@ -1,6 +1,6 @@
 # 0009 - Canva design-brief handoff: design import through the Composio proxy's binary_body
 
-Status: proposed (design only; no capability, tier, executor, or migration changes ship with it)
+Status: implemented on the ASH-286 branch (executor + reconciliation + handoff UI, fixture-tested; no live import run yet)
 
 ## Context
 

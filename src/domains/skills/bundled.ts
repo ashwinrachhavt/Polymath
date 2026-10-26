@@ -88,9 +88,12 @@ action.
 5. Close by naming what the brief leaves open, so the reviewer knows what to
    check.
 
-The Canva handoff is not available: no supported route transfers brief
-content into Canva yet, so never claim a design was or will be created. The
-saved brief is the deliverable; the handoff is a separate, later step.`,
+The Canva handoff is approval-gated: the brief page's "Send to Canva" files a
+canva.design.import proposal, and only the owner's approval of that exact
+revision in Reviews starts Canva's asynchronous import job. Never claim a
+design was or will be created before the job's terminal status lands - a
+created job is not an imported design, and Canva's rendering of the generated
+document is not verified yet.`,
   ),
   bundled(
     "meeting-notes",

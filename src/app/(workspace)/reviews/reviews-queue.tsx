@@ -179,7 +179,7 @@ function outcomeLine(capability: string, outcome: EffectOutcome): string {
     case "unknown":
       // Covers both honest phases: a created job still running, and a
       // creation whose answer never arrived.
-      return canva ? "Outcome unconfirmed; Polymath checks with Canva before any retry." : "Checking whether this was sent.";
+      return canva ? "Outcome unconfirmed; Polymath checks with Canva before anything runs again." : "Checking whether this was sent.";
     case "failed":
       return canva ? `Not imported. ${outcome.reason}` : `Not sent. ${outcome.reason}`;
   }

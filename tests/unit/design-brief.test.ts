@@ -82,7 +82,7 @@ describe("renderBriefMarkdown", () => {
 
   it("states the handoff boundary in the artifact itself", () => {
     const md = renderBriefMarkdown(FULL, "S");
-    expect(md).toContain("Canva handoff is not available yet");
+    expect(md).toContain('"Send to Canva" above files a proposal; nothing imports until you approve it in Reviews.');
   });
 });
 

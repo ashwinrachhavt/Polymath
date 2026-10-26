@@ -17,9 +17,15 @@ const SOURCE = fs.readFileSync(
 
 describe("review outcome copy", () => {
   it("says Sent, Checking, and Not sent in the executor's vocabulary", () => {
-    expect(SOURCE).toContain('return "Sent.";');
-    expect(SOURCE).toContain('return "Checking whether this was sent.";');
-    expect(SOURCE).toContain("return `Not sent. ${outcome.reason}`;");
+    expect(SOURCE).toContain(': "Sent.";');
+    expect(SOURCE).toContain(': "Checking whether this was sent.";');
+    expect(SOURCE).toContain(": `Not sent. ${outcome.reason}`;");
+  });
+
+  it("describes a Canva import as an import, never as a send", () => {
+    expect(SOURCE).toContain('"Imported to Canva."');
+    expect(SOURCE).toContain('"Outcome unconfirmed; Polymath checks with Canva before anything runs again."');
+    expect(SOURCE).toContain("`Not imported. ${outcome.reason}`");
   });
 
   it("never offers to retry an effect", () => {

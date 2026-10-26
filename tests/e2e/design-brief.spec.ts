@@ -260,7 +260,7 @@ for (const vp of VIEWPORTS) {
     // so no live write can happen: the honest outcome is "unconfirmed", and
     // exactly one UNKNOWN attempt is the dispatch record.
     await page.getByRole("button", { name: "Approve" }).first().click();
-    await expect(page.getByText("Outcome unconfirmed; Polymath checks with Canva before any retry.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Outcome unconfirmed; Polymath checks with Canva before anything runs again.")).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await importAttemptCount()).toBe(1);
   });
