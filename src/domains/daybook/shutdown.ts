@@ -331,7 +331,11 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
                 accountAlias: pin.alias,
                 title: `Send shutdown summary to ${to}`,
                 expectedEffect: `Sends the ${days.today} shutdown summary from ${pin.alias} to ${to}. Nothing is sent until you approve.`,
-                dedupeKey: `shutdown-email:${auth.workspaceId}:${days.today}`,
+                // Per apply attempt, not per day: a second shutdown the same day with a revised
+                // recipient is a new explicit ask and must not resolve to the first proposal
+                // (which would carry the old address while the log names the new one). A
+                // replay of the same attempt is caught earlier by the receipt.
+                dedupeKey: `shutdown-email:${auth.workspaceId}:${input.idempotencyKey}`,
                 expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
               },
             );
