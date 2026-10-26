@@ -4,6 +4,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
 import { messageIdMarker } from "@/domains/integrations/gmail/send";
 import { searchGmailMessages } from "@/domains/integrations/gmail/reads";
+import { getCanvaImportJob } from "@/domains/integrations/canva/import";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import type { Transport } from "@/domains/integrations/transport";
 import { db } from "@/lib/db";
@@ -38,6 +39,7 @@ type PendingAttempt = {
   startedAt: Date;
   capability: string;
   accountAlias: string | null;
+  responseSummary: unknown;
 };
 
 export type ReconciliationResult = { reconciled: number };
@@ -66,6 +68,7 @@ export async function reconcileUnknownAttempts(input: {
       startedAt: actionAttempts.startedAt,
       capability: actionProposals.capability,
       accountAlias: actionProposals.accountAlias,
+      responseSummary: actionAttempts.responseSummary,
     })
     .from(actionAttempts)
     .innerJoin(actionProposals, eq(actionProposals.id, actionAttempts.proposalId))
@@ -112,8 +115,11 @@ async function reconcileOne(input: {
   // the sweep cannot tell "landed" from "never ran" without guessing. It stays
   // UNKNOWN for a person to inspect rather than being settled on a coin flip.
   //
-  // Reconciliation only knows how to ask Gmail. Another capability's UNKNOWN
-  // needs its own reader before this sweep can truthfully settle it.
+  // Reconciliation only knows how to ask Gmail and Canva. Another capability's
+  // UNKNOWN needs its own reader before this sweep can truthfully settle it.
+  if (attempt.capability === "canva.design.import") {
+    return reconcileCanvaImport({ attempt, auth, transport: input.transport });
+  }
   if (attempt.capability !== "gmail.send") return false;
 
   const account = await resolveConnectedAccount(auth, "gmail", attempt.accountAlias ?? undefined);
@@ -132,16 +138,14 @@ async function reconcileOne(input: {
 
   const hit = search.messages[0];
   if (hit) {
-    return settle(
-      auth,
-      attempt,
-      {
-        outcome: "succeeded",
-        providerObjectId: hit.id,
-        observedState: "sent",
-        detail: { marker, threadId: hit.threadId },
-      },
-    );
+    return settle(auth, attempt, {
+      outcome: "succeeded",
+      providerObjectId: hit.id,
+      provider: "gmail",
+      observedState: "sent",
+      detail: { marker, threadId: hit.threadId },
+      summary: `Reconciled as sent (${hit.id})`,
+    });
   }
 
   // Not found. Inside the index lag that is not evidence of absence, so the
@@ -151,8 +155,10 @@ async function reconcileOne(input: {
   return settle(auth, attempt, {
     outcome: "failed",
     errorCode: "reconciled_absent",
+    provider: "gmail",
     observedState: "absent",
     detail: { marker, lagMs: RECONCILIATION_LAG_MS },
+    summary: "Reconciled as failed: the provider shows no matching message",
   });
 }
 
@@ -170,8 +176,11 @@ async function settle(
     outcome: "succeeded" | "failed";
     errorCode?: string;
     providerObjectId?: string;
-    observedState: "sent" | "absent";
+    provider: string;
+    observedState: string;
     detail: Record<string, unknown>;
+    /** The audit line a person reads; the sweep never invents one. */
+    summary: string;
   },
 ): Promise<boolean> {
   return withTransaction(async (tx) => {
@@ -208,7 +217,7 @@ async function settle(
       workspaceId: attempt.workspaceId,
       attemptId: attempt.id,
       proposalId: attempt.proposalId,
-      provider: "gmail",
+      provider: outcome.provider,
       providerObjectId: outcome.providerObjectId ?? null,
       observedState: outcome.observedState,
       detail: outcome.detail,
@@ -219,10 +228,7 @@ async function settle(
         action: "actions.effect_reconciled",
         subjectType: "action_proposal",
         subjectId: attempt.proposalId,
-        summary:
-          outcome.observedState === "sent"
-            ? `Reconciled as sent (${outcome.providerObjectId})`
-            : "Reconciled as failed: the provider shows no matching message",
+        summary: outcome.summary,
         metadata: {
           attemptId: attempt.id,
           observedState: outcome.observedState,
@@ -233,5 +239,60 @@ async function settle(
       tx,
     );
     return true;
+  });
+}
+
+
+/*
+ * The Canva import reader. Two questions, both answered by one GET:
+ *  - no job id on the attempt means the creation response was lost. Canva
+ *    exposes NO list-imports endpoint (design-imports reference, fetched
+ *    2026-10-25: create, create-by-url, get, get-url-job only), so there is
+ *    no honest read that could find the job again - the attempt stays UNKNOWN
+ *    for a human, exactly like calendar, and never re-fires;
+ *  - with a job id, the terminal answer is the job's own status. `in_progress`
+ *    is an observed state, not absence: the row is left for the next pass, and
+ *    no lag window turns a still-running job into a failure. A job Canva never
+ *    finishes stays for a human rather than being settled on a guess.
+ */
+async function reconcileCanvaImport(input: {
+  attempt: PendingAttempt;
+  auth: AuthContext;
+  transport: Transport;
+}): Promise<boolean> {
+  const { attempt, auth, transport } = input;
+  const summary = (attempt.responseSummary ?? null) as { jobId?: unknown } | null;
+  const jobId = typeof summary?.jobId === "string" && summary.jobId.length > 0 ? summary.jobId : null;
+  if (!jobId) return false;
+
+  const account = await resolveConnectedAccount(auth, "canva", attempt.accountAlias ?? undefined);
+  // A revoked/expired account cannot be read through; that is not proof about
+  // the job. Leave the row for a human, not for a guess.
+  if (!account.ok) return false;
+
+  const read = await getCanvaImportJob(transport, { connectedAccountId: account.connectedAccountId, jobId });
+  // Transport error or an unreadable answer: the provider did not answer,
+  // which proves nothing.
+  if (!read.ok) return false;
+  if (read.job.status === "in_progress") return false;
+
+  if (read.job.status === "success") {
+    return settle(auth, attempt, {
+      outcome: "succeeded",
+      providerObjectId: read.job.designId ?? jobId,
+      provider: "canva",
+      observedState: "imported",
+      detail: { jobId, designId: read.job.designId, editUrl: read.job.editUrl },
+      summary: `Reconciled as imported: Canva design ${read.job.designId ?? "created"} (job ${jobId})`,
+    });
+  }
+
+  return settle(auth, attempt, {
+    outcome: "failed",
+    errorCode: "canva_import_failed",
+    provider: "canva",
+    observedState: "import_failed",
+    detail: { jobId, canvaErrorCode: read.job.errorCode },
+    summary: `Reconciled as failed: Canva reports the import job failed${read.job.errorCode ? ` (${read.job.errorCode})` : ""}`,
   });
 }

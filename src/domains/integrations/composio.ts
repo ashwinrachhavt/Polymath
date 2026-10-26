@@ -335,7 +335,19 @@ export async function executeComposioPostRead(call: {
 }
 
 /** A write call: the method is fixed at the type level, and guarded at runtime. */
-export type ComposioWriteCall = Omit<ComposioCall, "method"> & { method: "POST" };
+export type ComposioWriteCall = Omit<ComposioCall, "method"> & {
+  method: "POST";
+  /*
+   * Binary upload body, per the proxy's documented `binary_body` field
+   * ({base64, content_type} or {url, content_type}; docs.composio.dev
+   * /reference/v3/api-reference/tools/postToolsExecuteProxy, fetched
+   * 2026-10-25). The envelope stays JSON; Composio sets the provider-side
+   * Content-Type from `content_type`. Base64 bytes, never a URL the provider
+   * would fetch: a URL body would import whatever the URL serves at fetch
+   * time, not the bytes the owner approved.
+   */
+  binaryBody?: { base64: string; contentType: string };
+};
 
 export type ComposioWriteResult =
   | { ok: true; data: unknown; /** The provider's own HTTP status, from the proxy's 200 envelope, when present. */ providerStatus?: number }
@@ -379,6 +391,9 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
         endpoint: call.endpoint,
         method: call.method,
         ...(call.body === undefined ? {} : { body: call.body }),
+        ...(call.binaryBody
+          ? { binary_body: { base64: call.binaryBody.base64, content_type: call.binaryBody.contentType } }
+          : {}),
         parameters,
       }),
     });

@@ -9,6 +9,13 @@ import {
   GmailSendRejectedError,
   sendGmailMessage,
 } from "@/domains/integrations/gmail/send";
+import {
+  CanvaImportAmbiguousError,
+  CanvaImportRejectedError,
+  createCanvaImportJob,
+} from "@/domains/integrations/canva/import";
+import { designBriefSchema } from "@/domains/knowledge/design-brief";
+import { designBriefDocx, designBriefDocxSha256 } from "@/domains/knowledge/design-brief-docx";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { withTransaction } from "@/lib/db-transaction";
 import {
@@ -84,6 +91,24 @@ const EXECUTORS = {
       inReplyTo: z.string().nullish(),
     }),
   },
+  /*
+   * The design-brief handoff (ADR 0009). The payload embeds the approved
+   * brief plus the SHA-256 of its deterministic DOCX render: the bytes Canva
+   * receives are exactly the bytes the owner approved, and a renderer change
+   * refuses execution instead of substituting unapproved bytes. Execution is
+   * a Canva import JOB - asynchronous - so a created job settles the attempt
+   * as UNKNOWN-with-a-job-id and the reconciliation sweep polls the job to
+   * its terminal state. Canva exposes no list-imports endpoint, so a lost
+   * creation response stays UNKNOWN for a human and never re-fires.
+   */
+  "canva.design.import": {
+    provider: "canva",
+    parse: z.object({
+      title: z.string().trim().min(1).max(255),
+      brief: designBriefSchema,
+      docxSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }),
+  },
 } as const;
 
 type Capability = keyof typeof EXECUTORS;
@@ -111,7 +136,9 @@ type Prepared = {
   provider: string;
   proposalId: string;
   revisionId: string;
-  payload: z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>;
+  payload:
+    | z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>
+    | z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
   accountAlias: string | null;
   runId: string | null;
   connectedAccountId: string;
@@ -356,9 +383,27 @@ export async function executeApprovedEffect(
 ): Promise<EffectOutcome> {
   const prepared = await prepare(auth, input.proposalId);
 
+  if (prepared.capability === "canva.design.import") {
+    // Integrity before any claim: the bytes must be the bytes the owner
+    // approved. A renderer change since approval refuses the run and leaves
+    // no attempt behind; a fresh revision + approval re-pins the new render.
+    const payload = prepared.payload as z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
+    if (designBriefDocxSha256(payload.brief) !== payload.docxSha256) {
+      throw new SendNotAllowedError(
+        "The approved brief no longer renders to the approved document. Review and approve a fresh revision.",
+      );
+    }
+  }
+
   const claimed = await claim(auth, prepared);
   if ("prior" in claimed) return claimed.prior;
   const { attemptId } = claimed;
+
+  if (prepared.capability === "canva.design.import") {
+    return settleCanvaImport(auth, prepared, attemptId);
+  }
+
+  const gmailPayload = prepared.payload as z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>;
 
   // Outside every transaction: the send is the slow, uncertain part, and a
   // rollback after it landed would be a lie about what happened.
@@ -368,10 +413,10 @@ export async function executeApprovedEffect(
   try {
     outcome = await sendGmailMessage({
       connectedAccountId: prepared.connectedAccountId,
-      to: prepared.payload.to,
-      subject: prepared.payload.subject,
-      body: prepared.payload.body,
-      inReplyTo: prepared.payload.inReplyTo ?? null,
+      to: gmailPayload.to,
+      subject: gmailPayload.subject,
+      body: gmailPayload.body,
+      inReplyTo: gmailPayload.inReplyTo ?? null,
       attemptId,
     });
   } catch (error) {
@@ -396,7 +441,7 @@ export async function executeApprovedEffect(
           action: "actions.effect_sent",
           subjectType: "action_proposal",
           subjectId: prepared.proposalId,
-          summary: `Sent ${prepared.capability} (${prepared.payload.to})`,
+          summary: `Sent ${prepared.capability} (${gmailPayload.to})`,
           metadata: { attemptId, providerObjectId: outcome.providerObjectId, revisionId: prepared.revisionId, runId: prepared.runId },
         },
         tx,
@@ -433,6 +478,103 @@ export async function executeApprovedEffect(
       attemptId,
       outcome: "unknown",
       errorCode: "send_outcome_unknown",
+      responseSummary: { message: ambiguous?.message ?? "The provider did not answer." },
+    });
+    await recordAudit(
+      auth,
+      {
+        action: "actions.effect_unknown",
+        subjectType: "action_proposal",
+        subjectId: prepared.proposalId,
+        summary: `${prepared.capability} outcome unknown; reconcile before any repeat`,
+        metadata: { attemptId, revisionId: prepared.revisionId },
+      },
+      tx,
+    );
+    return { status: "unknown" as const, reconciliationId: attemptId };
+  });
+}
+
+
+/**
+ * The Canva import dispatch: one job creation per approved intent, settled
+ * against the same attempt contract as a send. A created job is NOT a
+ * finished import, so success here settles UNKNOWN with the job id as the
+ * reconciliation sweep's read-back pointer - the sweep, never a second
+ * create, owns the terminal answer.
+ */
+async function settleCanvaImport(
+  auth: AuthContext,
+  prepared: Prepared,
+  attemptId: string,
+): Promise<EffectOutcome> {
+  const payload = prepared.payload as z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
+
+  let jobId: string | null = null;
+  let rejected: CanvaImportRejectedError | null = null;
+  let ambiguous: CanvaImportAmbiguousError | null = null;
+  try {
+    ({ jobId } = await createCanvaImportJob({
+      connectedAccountId: prepared.connectedAccountId,
+      title: payload.title,
+      docx: designBriefDocx(payload.brief),
+    }));
+  } catch (error) {
+    if (error instanceof CanvaImportRejectedError) rejected = error;
+    else if (error instanceof CanvaImportAmbiguousError) ambiguous = error;
+    // An unclassified failure is an unanswered job creation: ambiguous is the
+    // only classification that cannot duplicate.
+    else ambiguous = new CanvaImportAmbiguousError(error instanceof Error ? error.message : "Unknown import failure.");
+  }
+
+  return withTransaction(async (tx) => {
+    if (jobId) {
+      await settleAttempt(tx, {
+        attemptId,
+        outcome: "unknown",
+        providerObjectId: jobId,
+        errorCode: "import_in_progress",
+        responseSummary: { jobId, phase: "import_in_progress", title: payload.title },
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "actions.effect_unknown",
+          subjectType: "action_proposal",
+          subjectId: prepared.proposalId,
+          summary: `Canva import job created (${jobId}); waiting for Canva's terminal status`,
+          metadata: { attemptId, jobId, revisionId: prepared.revisionId, runId: prepared.runId },
+        },
+        tx,
+      );
+      return { status: "unknown" as const, reconciliationId: attemptId };
+    }
+
+    if (rejected) {
+      await settleAttempt(tx, {
+        attemptId,
+        outcome: "failed",
+        errorCode: `provider_rejected_${rejected.status}`,
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "actions.effect_failed",
+          subjectType: "action_proposal",
+          subjectId: prepared.proposalId,
+          summary: `Canva refused the import (${rejected.status})`,
+          metadata: { attemptId, status: rejected.status, revisionId: prepared.revisionId },
+        },
+        tx,
+      );
+      // A 4xx is proof the provider refused before creating a job.
+      return { status: "failed" as const, reason: rejected.message, retryable: false };
+    }
+
+    await settleAttempt(tx, {
+      attemptId,
+      outcome: "unknown",
+      errorCode: "import_outcome_unknown",
       responseSummary: { message: ambiguous?.message ?? "The provider did not answer." },
     });
     await recordAudit(

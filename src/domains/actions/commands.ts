@@ -20,7 +20,7 @@ import { actionReviews, actionRevisions } from "./schema";
  * refuses the effect when the live resolution no longer matches the pin,
  * and refuses any revision that carries no pin at all.
  */
-const ACCOUNT_PIN_PROVIDERS: Record<string, string> = { "gmail.send": "gmail" };
+const ACCOUNT_PIN_PROVIDERS: Record<string, string> = { "gmail.send": "gmail", "canva.design.import": "canva" };
 
 export type SenderAccountPin =
   | { resolved: true; externalAccountId: string; connectedAccountId: string; alias: string; sender: string }
