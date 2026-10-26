@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionAttempts, actionProposals, actionRevisions, providerObservations } from "@/domains/actions/schema";
-import { latestAttemptOutcomes } from "@/domains/actions/queries";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -16,14 +15,20 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
  * Skipped unless TEST_DATABASE_URL points at a migrated scratch database.
  */
 
+// src/lib/db reads DATABASE_URL at module load; import the loader lazily and
+// only after makeTestDb() has pointed DATABASE_URL at the scratch database,
+// the same contract action-proposals.test.ts documents.
+let latestAttemptOutcomes: typeof import("@/domains/actions/queries").latestAttemptOutcomes;
+
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let counter = 0;
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  ({ latestAttemptOutcomes } = await import("@/domains/actions/queries"));
 });
 afterAll(async () => {
   await handle?.client.end();

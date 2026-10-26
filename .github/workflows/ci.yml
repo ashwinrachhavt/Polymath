@@ -171,8 +171,19 @@ jobs:
         if: failure()
         with:
           name: e2e-error-context
-          path: test-results/**/error-context.md
+          path: |
+            test-results/**/error-context.md
+            test-results-fixture/**/error-context.md
           if-no-files-found: ignore
+      # The fixture invocation's own structured record: its journey results
+      # (including skips) are evidence too, and the default report filename
+      # would overwrite the main run's uploaded above.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report-fixture
+          path: e2e-report-fixture.json
+          if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4

@@ -83,6 +83,14 @@ async function seedCanvaAccount(behavior?: "fail" | "pending" | "ambiguous"): Pr
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
     if (!owner) return false;
+    // One journey = one connected Canva account. The executor refuses to
+    // guess between two active accounts (ambiguity is surfaced, never
+    // guessed), and serial journeys share this workspace: revoke any account
+    // an earlier e2e journey seeded before connecting this journey's own.
+    await client`
+      update external_accounts set status = 'revoked'
+      where workspace_id = ${owner.workspace_id} and provider = 'canva'
+        and status = 'active' and alias like 'canva-e2e-%'`;
     const alias = `canva-e2e-fixture-${crypto.randomUUID().slice(0, 8)}`;
     const connectedId = `ca_e2e_${behavior ? `-${behavior}-` : ""}${crypto.randomUUID()}`;
     const [account] = await client<{ id: string }[]>`
