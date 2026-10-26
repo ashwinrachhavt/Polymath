@@ -8,6 +8,7 @@ import { Check } from "@/components/products/command-center/controls";
 import { Field, Panel, Status } from "@/components/workspace/ui";
 import type { EffectOutcome } from "@/domains/actions/executor";
 import { decideProposalAction, reviseProposalAction } from "./actions";
+import { outcomeLine } from "./outcome-line";
 
 /*
  * The queue's client island. Decisions are optimistic: the card flips to the
@@ -36,6 +37,13 @@ export type QueueCardData = {
   createdAt: string;
   expiresAt: string | null;
   decidedAt: string | null;
+  /*
+   * The persisted newest-attempt outcome (and the provider-returned design
+   * link, when one exists) so a reload tells the same truth the decide
+   * response did. Null outcome: no attempt was ever claimed.
+   */
+  outcome: EffectOutcome | null;
+  designUrl: string | null;
   expired: boolean;
   /** Display-only injection annotations from the proposing path (ASH-281). */
   flags: unknown;
@@ -162,33 +170,6 @@ const riskLabel: Record<string, string> = {
 };
 
 type DecideInput = { proposalId: string; decision: "approved" | "rejected"; note: string };
-
-/*
- * One line, from the executor's own outcome. The copy is fixed here rather
- * than assembled from provider text: "unknown" exists to say the system does
- * not know, and no wording may invite a second send. A failed effect is never
- * presented as something to repeat; that is a new approval, not a re-run.
- */
-function outcomeLine(capability: string, outcome: EffectOutcome): string {
-  // Import wording: an async Canva job is not a send, and "sent" would lie
-  // about what happened.
-  const canva = capability === "canva.design.import";
-  switch (outcome.status) {
-    case "sent":
-      return canva ? "Imported to Canva." : "Sent.";
-    case "unknown":
-      // The two honest UNKNOWN phases stay distinct for a person: a job
-      // Canva accepted (terminal answer pending) is not a lost creation.
-      if (canva) {
-        return outcome.note === "import_started"
-          ? "Import job created; Polymath is waiting for Canva's terminal result."
-          : "Outcome unconfirmed; Polymath checks with Canva before anything runs again.";
-      }
-      return "Checking whether this was sent.";
-    case "failed":
-      return canva ? `Not imported. ${outcome.reason}` : `Not sent. ${outcome.reason}`;
-  }
-}
 
 function ProposalCard({
   item,
@@ -353,6 +334,14 @@ function ProposalCard({
       {outcome ? (
         <p role="status" className="mt-3 text-xs text-muted-foreground">
           {outcomeLine(item.capability, outcome)}
+          {outcome.status === "sent" && item.capability === "canva.design.import" && item.designUrl ? (
+            <>
+              {" "}
+              <a href={item.designUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                Open the design in Canva
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
     </Panel>
@@ -363,7 +352,11 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>({});
+  // Persisted attempt outcomes hydrate the map; decide responses overwrite
+  // per proposal, so a fresh decision always wins over the reloaded row.
+  const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>(() =>
+    Object.fromEntries(items.flatMap((item) => (item.outcome ? [[item.id, item.outcome]] : []))),
+  );
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>

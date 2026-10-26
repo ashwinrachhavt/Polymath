@@ -1,7 +1,8 @@
 import { and, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { actionProposals, actionRevisions, actionReviews } from "./schema";
+import { outcomeOf, type EffectOutcome } from "./executor";
+import { actionAttempts, actionProposals, actionRevisions, actionReviews, providerObservations } from "./schema";
 
 /*
  * Reads for the Reviews queue and the Briefing's judgment panel. The queue is
@@ -36,6 +37,65 @@ export type LatestRevision = {
 export type ReviewQueueItem = typeof actionProposals.$inferSelect & {
   latestRevision: LatestRevision | null;
 };
+
+export type PersistedAttemptOutcome = {
+  /** The executor-vocabulary outcome of the newest attempt; null before any claim. */
+  outcome: EffectOutcome | null;
+  /*
+   * A link renders only from a URL the provider itself returned: the
+   * reconciliation observation's detail carries the edit_url Canva answered
+   * with, and nothing else is linkable. Absent (or fixture) means no link.
+   */
+  designUrl: string | null;
+};
+
+/*
+ * The card's persisted truth: the newest attempt per proposal, in executor
+ * vocabulary, so a reload says what the decide response said. Async effects
+ * (a Canva import sweeping to its terminal answer) must read the same after
+ * the reviewer leaves and returns.
+ */
+export async function latestAttemptOutcomes(
+  workspaceId: string,
+  proposalIds: string[],
+): Promise<Map<string, PersistedAttemptOutcome>> {
+  const outcomes = new Map<string, PersistedAttemptOutcome>();
+  if (proposalIds.length === 0) return outcomes;
+  const attempts = await db
+    .select()
+    .from(actionAttempts)
+    .where(and(eq(actionAttempts.workspaceId, workspaceId), inArray(actionAttempts.proposalId, proposalIds)))
+    .orderBy(desc(actionAttempts.attemptNumber), desc(actionAttempts.createdAt));
+  const latestByProposal = new Map<string, (typeof attempts)[number]>();
+  for (const attempt of attempts) {
+    if (!latestByProposal.has(attempt.proposalId)) latestByProposal.set(attempt.proposalId, attempt);
+  }
+  const importedAttemptIds = [...latestByProposal.values()]
+    .filter((attempt) => attempt.status === "succeeded")
+    .map((attempt) => attempt.id);
+  const urlByAttempt = new Map<string, string>();
+  if (importedAttemptIds.length > 0) {
+    const observations = await db
+      .select({ attemptId: providerObservations.attemptId, detail: providerObservations.detail })
+      .from(providerObservations)
+      .where(
+        and(
+          eq(providerObservations.workspaceId, workspaceId),
+          inArray(providerObservations.attemptId, importedAttemptIds),
+          eq(providerObservations.provider, "canva"),
+        ),
+      );
+    for (const observation of observations) {
+      if (!observation.attemptId || urlByAttempt.has(observation.attemptId)) continue;
+      const editUrl = (observation.detail as { editUrl?: unknown } | null)?.editUrl;
+      if (typeof editUrl === "string" && editUrl.startsWith("https://")) urlByAttempt.set(observation.attemptId, editUrl);
+    }
+  }
+  for (const [proposalId, attempt] of latestByProposal) {
+    outcomes.set(proposalId, { outcome: outcomeOf(attempt), designUrl: urlByAttempt.get(attempt.id) ?? null });
+  }
+  return outcomes;
+}
 
 function queueWhere(workspaceId: string, input: Pick<ReviewQueueInput, "query" | "status" | "riskClass">): SQL {
   const parts: SQL[] = [eq(actionProposals.workspaceId, workspaceId)];

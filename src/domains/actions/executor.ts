@@ -181,7 +181,7 @@ type Prepared = {
 };
 
 /** The outcome a prior attempt already settled on, in the executor's vocabulary. */
-function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome | null {
+export function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome | null {
   if (attempt.status === "succeeded" && attempt.providerObjectId) {
     return { status: "sent", providerId: attempt.providerObjectId, at: attempt.endedAt?.toISOString() ?? new Date().toISOString() };
   }

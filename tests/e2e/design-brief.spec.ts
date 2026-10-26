@@ -268,6 +268,15 @@ for (const vp of VIEWPORTS) {
     ).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await importAttemptCount()).toBe(0);
+
+    // Reloaded, the refusal persists NO manufactured outcome: the approval
+    // stands against a configuration fix, the card names no import and no
+    // failure, and a decided card offers no way to fire again.
+    await page.goto("/reviews?status=approved");
+    await expect(page.getByText('Import design brief "Q3 roadmap one-pager" to Canva')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Imported to Canva.")).toHaveCount(0);
+    await expect(page.getByText(/Not imported\./)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {

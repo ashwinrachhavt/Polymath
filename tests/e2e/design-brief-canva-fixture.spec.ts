@@ -177,6 +177,14 @@ for (const vp of VIEWPORTS) {
   await expect(
     page.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
   ).toBeVisible({ timeout: 30_000 });
+
+  // Reload from the decided filter: the PERSISTED attempt outcome must say
+  // what the decide response said. Async truth that vanishes on reload is no
+  // truth at all - the reviewer leaves and comes back.
+  await page.goto("/reviews?status=approved");
+  await expect(page.getByText("Import job created; Polymath is waiting for Canva's terminal result.")).toBeVisible({
+    timeout: 30_000,
+  });
   await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-import-started-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
   // The attempt row is the async contract: UNKNOWN, job id pinned, in progress.
@@ -199,12 +207,12 @@ for (const vp of VIEWPORTS) {
   expect(settled?.status).toBe("succeeded");
   expect(settled?.provider_object_id).toMatch(/^fixture-design-/);
 
-  // Terminal pixel: the queue filtered to decided cards. The outcome line
-  // itself is decide-response state (gone on reload), so the attempt row
-  // above carries the terminal truth; this shot is the honest UI surface a
-  // person sees afterwards - the approved proposal standing, post-settle.
-  await page.goto("/reviews?status=approved&q=fixture%20handoff");
+  // Terminal pixel, reloaded: the card reads the settled attempt row and
+  // says the import landed - the same line a fresh decide response would
+  // have shown, now server-rendered from persisted state.
+  await page.goto("/reviews?status=approved");
   await expect(page.getByText(`Import design brief "${briefTitle}"`)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Imported to Canva.")).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-terminal-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 });
 }

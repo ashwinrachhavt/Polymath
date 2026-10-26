@@ -8,6 +8,7 @@ import { Pagination } from "@/components/list/pagination";
 import { Screen } from "@/components/workspace/ui";
 import {
   countPendingProposals,
+  latestAttemptOutcomes,
   listProposalReviews,
   pageReviewQueue,
   REVIEW_QUEUE_STATUSES,
@@ -93,7 +94,14 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     ),
   ]);
 
+  const attemptOutcomes = await latestAttemptOutcomes(
+    auth.workspaceId,
+    found.items.map((item) => item.id),
+  );
+
   const cards: QueueCardData[] = found.items.map((item) => ({
+    outcome: attemptOutcomes.get(item.id)?.outcome ?? null,
+    designUrl: attemptOutcomes.get(item.id)?.designUrl ?? null,
     id: item.id,
     version: item.version,
     title: item.title,
