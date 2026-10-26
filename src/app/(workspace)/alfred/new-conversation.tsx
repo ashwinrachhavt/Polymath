@@ -165,7 +165,7 @@ export function NewConversation({
         <Textarea
           autoFocus
           aria-label="Start a conversation"
-          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[13px] leading-6 focus-visible:ring-0"
+          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 focus-visible:ring-0"
           placeholder={
             skillId
               ? skills.find((skill) => skill.id === skillId)?.name
