@@ -101,6 +101,72 @@ suite("designBriefFromArtifact", () => {
     expect(memos).toHaveLength(1);
   });
 
+  it("two concurrent first clicks produce exactly one brief", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `brief-race-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
+
+    const [a, b] = await Promise.all([
+      designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
+      designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
+    ]);
+
+    expect(a.briefArtifactId).toBe(b.briefArtifactId);
+    expect(a.existing).not.toBe(b.existing);
+    const memos = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.kind, "memo")));
+    expect(memos).toHaveLength(1);
+  });
+
+  it("an edited source drafts a fresh brief rather than reusing a stale one", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `brief-rev-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
+
+    const first = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+
+    const [v2] = await db
+      .insert(artifactVersions)
+      .values({ workspaceId, artifactId: sourceId, versionNumber: 2, content: { text: "Acme now sells monthly plans too." }, plainText: "Acme now sells monthly plans too.", reason: "edited", createdBy: userId })
+      .returning({ id: artifactVersions.id });
+    await db.update(artifacts).set({ currentVersionId: v2.id }).where(eq(artifacts.id, sourceId));
+
+    const second = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+
+    expect(second.existing).toBe(false);
+    expect(second.briefArtifactId).not.toBe(first.briefArtifactId);
+    const memos = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.kind, "memo")));
+    expect(memos).toHaveLength(2);
+  });
+
+  it("refuses plainly when no generation provider is configured, writing nothing", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `brief-unconf-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
+
+    const KEYS = ["GENERATION_PROVIDER", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"] as const;
+    const saved = KEYS.map((k) => [k, process.env[k]] as const);
+    for (const k of KEYS) delete process.env[k];
+    try {
+      await expect(designBriefFromArtifact(auth, sourceId)).rejects.toThrow(/No generation provider configured/);
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    const memos = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.kind, "memo")));
+    expect(memos).toHaveLength(0);
+  });
+
   it("refuses a transcript, pointing at the right tool", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-transcript-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);

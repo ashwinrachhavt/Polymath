@@ -1,7 +1,7 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { artifacts, artifactVersions } from "./schema";
-import { auditEvents } from "@/domains/audit/schema";
+import { withReceipt } from "@/domains/audit/receipt";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -152,7 +152,7 @@ export async function designBriefFromArtifact(
   deps?: { provider?: GenerationProvider },
 ): Promise<DesignBriefResult> {
   const [row] = await db
-    .select({ title: artifacts.title, kind: artifacts.kind, plainText: artifactVersions.plainText })
+    .select({ title: artifacts.title, kind: artifacts.kind, plainText: artifactVersions.plainText, versionId: artifacts.currentVersionId })
     .from(artifacts)
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
@@ -162,34 +162,7 @@ export async function designBriefFromArtifact(
     throw new DesignBriefNotAllowedError(`A ${row.kind} artifact cannot become a design brief; start from a research report, memo, document, note, or card.`);
   }
   const source = (row.plainText ?? "").trim();
-  if (!source) throw new DesignBriefNotAllowedError("This artifact has no text to brief from.");
-
-  /*
-   * One brief per source card: a repeat click returns the brief already
-   * drafted from this artifact instead of stacking duplicates in the
-   * Library. The audit row is the linkage (no schema change); the join
-   * proves the brief still exists and skips one the owner archived.
-   */
-  const [prior] = await db
-    .select({ briefId: auditEvents.subjectId, title: artifacts.title })
-    .from(auditEvents)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, auditEvents.subjectId), eq(artifacts.workspaceId, auth.workspaceId)),
-    )
-    .where(
-      and(
-        eq(auditEvents.workspaceId, auth.workspaceId),
-        eq(auditEvents.action, "knowledge.design_brief.generated"),
-        sql`${auditEvents.metadata} ->> 'sourceArtifactId' = ${artifactId}`,
-        sql`${artifacts.status} != 'archived'`,
-      ),
-    )
-    .orderBy(desc(auditEvents.createdAt))
-    .limit(1);
-  if (prior?.briefId) {
-    return { sourceArtifactId: artifactId, briefArtifactId: prior.briefId, title: prior.title, existing: true };
-  }
+  if (!source || !row.versionId) throw new DesignBriefNotAllowedError("This artifact has no text to brief from.");
 
   let provider: GenerationProvider;
   try {
@@ -201,44 +174,59 @@ export async function designBriefFromArtifact(
     throw error;
   }
 
-  const out = await provider.generate({
-    system: SYSTEM,
-    prompt: `Research card titled "${row.title}":\n\n${source.slice(0, BRIEF_MAX_INPUT_CHARS)}`,
-    json: true,
-  });
-  const brief = parseDesignBriefAnswer(out.text);
-  const markdown = renderBriefMarkdown(brief, row.title);
-  const title = `Design brief: ${brief.title}`.slice(0, 200);
-
+  /*
+   * One brief per (source card, source revision): the receipt key carries the
+   * source's current version, so a repeat click replays the stored result -
+   * atomically, the advisory lock serializes concurrent first attempts and
+   * the loser replays - while an edit to the source is a new key and drafts
+   * a fresh brief instead of reusing a stale one.
+   */
   return withTransaction(async (tx) => {
-    const [artifact] = await tx
-      .insert(artifacts)
-      .values({ workspaceId: auth.workspaceId, kind: "memo", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
-      .returning({ id: artifacts.id });
-    const [version] = await tx
-      .insert(artifactVersions)
-      .values({
-        workspaceId: auth.workspaceId,
-        artifactId: artifact.id,
-        versionNumber: 1,
-        content: { text: markdown },
-        plainText: markdown,
-        reason: "generated",
-        createdBy: auth.userId,
-      })
-      .returning({ id: artifactVersions.id });
-    await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-    await recordAudit(
-      auth,
-      {
-        action: "knowledge.design_brief.generated",
-        subjectType: "artifact",
-        subjectId: artifact.id,
-        summary: `Drafted design brief "${brief.title}" from "${row.title}".`,
-        metadata: { sourceArtifactId: artifactId, format: brief.format, proposer: provider.name },
-      },
+    const { value, replayed } = await withReceipt(
       tx,
+      auth,
+      `design-brief:${artifactId}:${row.versionId}`,
+      { op: "designBrief", sourceArtifactId: artifactId, sourceVersionId: row.versionId },
+      async () => {
+        const out = await provider.generate({
+          system: SYSTEM,
+          prompt: `Research card titled "${row.title}":\n\n${source.slice(0, BRIEF_MAX_INPUT_CHARS)}`,
+          json: true,
+        });
+        const brief = parseDesignBriefAnswer(out.text);
+        const markdown = renderBriefMarkdown(brief, row.title);
+        const title = `Design brief: ${brief.title}`.slice(0, 200);
+        const [artifact] = await tx
+          .insert(artifacts)
+          .values({ workspaceId: auth.workspaceId, kind: "memo", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
+          .returning({ id: artifacts.id });
+        const [version] = await tx
+          .insert(artifactVersions)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            versionNumber: 1,
+            content: { text: markdown },
+            plainText: markdown,
+            reason: "generated",
+            createdBy: auth.userId,
+          })
+          .returning({ id: artifactVersions.id });
+        await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+        await recordAudit(
+          auth,
+          {
+            action: "knowledge.design_brief.generated",
+            subjectType: "artifact",
+            subjectId: artifact.id,
+            summary: `Drafted design brief "${brief.title}" from "${row.title}".`,
+            metadata: { sourceArtifactId: artifactId, sourceVersionId: row.versionId, format: brief.format, proposer: provider.name },
+          },
+          tx,
+        );
+        return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title };
+      },
     );
-    return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title, existing: false };
+    return { ...value, existing: replayed };
   });
 }
