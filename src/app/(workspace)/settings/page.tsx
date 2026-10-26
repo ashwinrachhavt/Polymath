@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
-import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
+import { accountlessDeployment } from "@/lib/clerk";
 import { capabilityStatus } from "@/lib/capability-config";
 import Settings from "@/components/products/command-center/settings";
 
@@ -19,22 +19,24 @@ export const metadata = { title: "Settings · Polymath" };
  * missing variables instead of rendering a control that silently does nothing
  * (ASH-193). Only variable names cross to the client, never values.
  *
- * A deployment without Clerk keys AND without the dev-auth bypass has no
- * account behind this screen at all, so asking for auth throws and the whole
- * route fell into the error boundary - which hid the one panel (capabilities)
- * whose entire job is to describe a not-fully-configured deployment. In that
- * configuration the preferences stay browser-local and the capability panel
- * still renders. The dev bypass IS an account - every other surface and the
- * header mode toggle read and save its preferences row through the actions -
- * so branching on clerkConfigured alone made this page the one surface that
- * denied the account existed: the form saved against version 0 forever and
- * every save after the first conflicted.
+ * A keyless PRODUCTION deployment has no account behind this screen at all,
+ * so asking for auth throws and the whole route fell into the error
+ * boundary - which hid the one panel (capabilities) whose entire job is to
+ * describe a not-fully-configured deployment. In that configuration the
+ * preferences stay browser-local and the capability panel still renders.
+ * Every other configuration has an account: a Clerk session, the dev-auth
+ * bypass, or the keyless development fallback - all resolve an owner whose
+ * preferences row the form and the header mode toggle read and save through
+ * the actions. Branching on clerkConfigured alone made this page the one
+ * surface that denied the account existed: the form saved against version 0
+ * forever and every save after the first conflicted. The rule lives in
+ * lib/clerk as accountlessDeployment so it cannot drift from lib/auth.
  */
 
 export async function SettingsSurface() {
   await io();
   const capabilities = capabilityStatus();
-  if (!clerkConfigured && !devAuthBypass) {
+  if (accountlessDeployment) {
     return <Settings capabilities={capabilities} browserPreview />;
   }
   const auth = await getAuthContext();
