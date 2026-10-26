@@ -118,3 +118,105 @@ suite("linear issue proposal from a note", () => {
     expect(["created", "replayed"]).toContain(b.outcome);
   });
 });
+
+suite("ordering and ownership", () => {
+  it("an older generation finishing last never overwrites the newer draft", async () => {
+    const auth = await seed("issue-draft-race-order");
+    const source = await makeNote(auth, "Shifting note", "Version one of the plan.");
+
+    // Call A starts from version one with a slow provider; before it finishes,
+    // the source moves to version two and call B completes with a fast one.
+    let releaseSlow!: (text: string) => void;
+    const slow = new Promise<string>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const providerOf = (gate: Promise<string> | null, title: string) => ({
+      name: `test:${title}`,
+      registryId: "fixture",
+      async generate() {
+        const t = gate ? await gate : title;
+        return {
+          text: JSON.stringify({ title: t, problem: "P", proposal: "Q", acceptanceCriteria: ["A"], outOfScope: "O" }),
+        };
+      },
+    });
+
+    const callA = proposal.draftLinearIssueFromNote(auth, { artifactId: source.id }, { provider: providerOf(slow, "from version one") });
+    await new Promise((r) => setTimeout(r, 50)); // A is now parked on the slow provider
+
+    await notes.commitNoteSnapshot(auth, {
+      idempotencyKey: randomUUID(),
+      artifactId: source.id,
+      expectedVersion: (await notes.getNote(auth, source.id))!.version,
+      content: { format: "markdown", text: "Version two of the plan." },
+      plainText: "Version two of the plan.",
+    });
+    const callB = proposal.draftLinearIssueFromNote(auth, { artifactId: source.id }, { provider: providerOf(null, "from version two") });
+    const resultB = await callB;
+    expect(resultB.outcome).toBe("created");
+    expect(resultB.title).toBe("Linear issue: from version two");
+
+    // A's stale generation finishes last; it must lose to B's newer draft.
+    releaseSlow("from version one");
+    const resultA = await callA;
+    expect(resultA.artifactId).toBe(resultB.artifactId);
+    expect(resultA.outcome).toBe("replayed");
+    const draft = await notes.getNote(auth, resultB.artifactId);
+    expect(noteText(draft?.content)).toContain("from version two");
+    expect(noteText(draft?.content)).not.toContain("from version one");
+  });
+
+  it("owner edits block a silent refresh; the owner's text survives", async () => {
+    const auth = await seed("issue-draft-owner-edits");
+    const source = await makeNote(auth, "Owned", "First plan.");
+    const first = await proposal.draftLinearIssueFromNote(auth, { artifactId: source.id });
+    expect(first.outcome).toBe("created");
+
+    // The owner edits the proposal (criteria section) and commits their
+    // version; the provenance marker survives, as it does through the editor.
+    const original = noteText((await notes.getNote(auth, first.artifactId))?.content);
+    const ownerText = original.replace("## Acceptance criteria", "## Acceptance criteria\n\nMy hand-tuned notes, do not lose.");
+    await notes.commitNoteSnapshot(auth, {
+      idempotencyKey: randomUUID(),
+      artifactId: first.artifactId,
+      expectedVersion: (await notes.getNote(auth, first.artifactId))!.version,
+      content: { format: "markdown", text: ownerText },
+      plainText: ownerText,
+    });
+
+    // The source moves; refresh would destroy the owner's words, so it refuses.
+    await notes.commitNoteSnapshot(auth, {
+      idempotencyKey: randomUUID(),
+      artifactId: source.id,
+      expectedVersion: (await notes.getNote(auth, source.id))!.version,
+      content: { format: "markdown", text: "Second plan." },
+      plainText: "Second plan.",
+    });
+    await expect(proposal.draftLinearIssueFromNote(auth, { artifactId: source.id })).rejects.toThrow(/your edits/);
+    const draft = await notes.getNote(auth, first.artifactId);
+    expect(noteText(draft?.content)).toBe(ownerText);
+  });
+
+  it("an unsaved working draft on the proposal blocks the refresh", async () => {
+    const auth = await seed("issue-draft-unsaved");
+    const source = await makeNote(auth, "Unsaved", "First plan.");
+    const first = await proposal.draftLinearIssueFromNote(auth, { artifactId: source.id });
+
+    await notes.autosaveNoteDraft(auth, {
+      artifactId: first.artifactId,
+      expectedVersion: (await notes.getNote(auth, first.artifactId))!.version,
+      content: { format: "markdown", text: "half-typed edit" },
+    });
+
+    await notes.commitNoteSnapshot(auth, {
+      idempotencyKey: randomUUID(),
+      artifactId: source.id,
+      expectedVersion: (await notes.getNote(auth, source.id))!.version,
+      content: { format: "markdown", text: "Second plan." },
+      plainText: "Second plan.",
+    });
+    await expect(proposal.draftLinearIssueFromNote(auth, { artifactId: source.id })).rejects.toThrow(/unsaved changes/);
+    const draft = await notes.getNote(auth, first.artifactId);
+    expect(noteText(draft?.content)).not.toContain("Second plan");
+  });
+});

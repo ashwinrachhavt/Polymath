@@ -67,6 +67,28 @@ Never fill a gap with a plausible detail. An incomplete brief that says what is
 missing is the correct output.`,
   ),
   bundled(
+    "linear-issue-draft",
+    "Linear issue draft",
+    "Turn a note or capture into a fully formed Linear issue proposal with acceptance criteria, grounded in its source.",
+    `# Linear issue draft
+
+Write a Linear issue proposal from the source note or capture you are given.
+
+1. Restate the ask as one imperative title a stranger could act on.
+2. Problem: what is broken or missing, and for whom - one paragraph, only
+   what the source supports.
+3. Proposal: the smallest change that resolves it.
+4. Acceptance criteria: each one an observable behavior a reviewer could
+   check, phrased as a checkbox. Three is usually right; every criterion
+   must trace to a line in the source.
+5. Out of scope: what this issue deliberately does not do.
+6. Quote the source material below the proposal so every claim is checkable.
+
+Never invent scope the source does not contain; write open questions into the
+relevant section instead. The proposal is a draft for review - creating the
+issue in Linear is a separate, deliberate act.`,
+  ),
+  bundled(
     "meeting-notes",
     "Meeting notes",
     "Turn a transcript into decisions, owners, and dates without commentary.",

@@ -88,16 +88,24 @@ describe("fixture provider", () => {
   });
 });
 
-import { LINEAR_ISSUE_SOURCE_MARKER, parseSourceMarker, sourceHashOf, sourceMarkerOf } from "@/domains/capture/linear-issue-proposal";
+import { bodyWithoutMarker, LINEAR_ISSUE_SOURCE_MARKER, parseSourceMarker, sourceHashOf, sourceMarkerOf } from "@/domains/capture/linear-issue-proposal";
 
 describe("source provenance marker", () => {
   const id = "123e4567-e89b-42d3-a456-426614174000";
 
-  it("round-trips source id and hash", () => {
+  it("round-trips source id, source hash and body hash", () => {
     const hash = sourceHashOf("the source text");
-    const marker = sourceMarkerOf(id, hash);
-    expect(marker).toBe(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${id}@${hash} -->`);
-    expect(parseSourceMarker(`body\n\n${marker}\n`)).toEqual({ sourceId: id, sourceHash: hash });
+    const body = sourceHashOf("the draft body");
+    const marker = sourceMarkerOf(id, hash, body);
+    expect(marker).toBe(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${id}@${hash}:b${body} -->`);
+    expect(parseSourceMarker(`body\n\n${marker}\n`)).toEqual({ sourceId: id, sourceHash: hash, bodyHash: body });
+  });
+
+  it("strips the marker to recover the attested body", () => {
+    const body = "the draft body\n\nDrafted from [[Note]].";
+    const marker = sourceMarkerOf(id, sourceHashOf("s"), sourceHashOf(body));
+    expect(bodyWithoutMarker(`${body}\n\n${marker}`)).toBe(body);
+    expect(sourceHashOf(bodyWithoutMarker(`${body}\n\n${marker}`))).toBe(sourceHashOf(body));
   });
 
   it("hash changes when the source changes, so refresh is detectable", () => {
@@ -108,5 +116,6 @@ describe("source provenance marker", () => {
   it("ignores absent or malformed markers", () => {
     expect(parseSourceMarker("no marker here")).toBeNull();
     expect(parseSourceMarker(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: not-a-uuid@xyz -->`)).toBeNull();
+    expect(parseSourceMarker(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${id}@${sourceHashOf("s")} -->`)).toBeNull(); // older marker shape
   });
 });
