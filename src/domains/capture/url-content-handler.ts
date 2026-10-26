@@ -36,6 +36,8 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
   if (!capture || capture.workspaceId !== event.workspaceId) return;
   // A capture the person already converted does not need its reading text.
   if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
+  // Parked (ASH-305): no new fetch while set aside. Unpark re-queues this.
+  if (capture.parkedAt) return;
 
   const videoId = parseVideoIdLoose(url);
   const content = videoId ? await fetchTranscript(url) : await scrapePage(url);

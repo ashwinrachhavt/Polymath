@@ -59,7 +59,7 @@ export function zettelSourceText(capture: { cleanText: string | null; text: stri
 function zettelSourceWhere(auth: AuthContext, ids?: string[]) {
   // Same rule as zettelSourceText: the first of cleanText/text that is not blank.
   const hasText = sql`coalesce(nullif(trim(${captures.cleanText}), ''), nullif(trim(${captures.text}), '')) is not null`;
-  const parts: SQL[] = [eq(captures.workspaceId, auth.workspaceId), OPEN_STATES, isNull(captures.archivedAt), hasText];
+  const parts: SQL[] = [eq(captures.workspaceId, auth.workspaceId), OPEN_STATES, isNull(captures.archivedAt), isNull(captures.parkedAt), hasText];
   if (ids?.length) parts.push(inArray(captures.id, ids));
   return and(...parts);
 }
@@ -187,7 +187,7 @@ export async function runZettelGenerationRequested(
     .from(captures)
     .where(and(eq(captures.id, captureId), eq(captures.workspaceId, event.workspaceId)))
     .limit(1);
-  if (!capture || capture.archivedAt || capture.processingState === "discarded") return { proposed: 0 };
+  if (!capture || capture.archivedAt || capture.parkedAt || capture.processingState === "discarded") return { proposed: 0 };
 
   let documentId = capture.convertedType === "document" ? capture.convertedId : null;
   if (!documentId) {

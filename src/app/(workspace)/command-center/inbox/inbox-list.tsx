@@ -30,6 +30,8 @@ export type InboxRow = {
   hasSuggestion?: boolean;
   id: string;
   processingState: string;
+  /** ISO time the capture was parked at end of day (ASH-305); null when not parked. */
+  parkedAt?: string | null;
   kind: string;
   createdAt: string;
   title: string | null;
@@ -40,7 +42,7 @@ export type InboxRow = {
   convertedId: string | null;
 };
 
-export type InboxView = "unprocessed" | "converted" | "discarded" | "all";
+export type InboxView = "unprocessed" | "parked" | "converted" | "discarded" | "all";
 
 type Decision = { id: string; next: "converted" | "discarded" | "unprocessed" };
 

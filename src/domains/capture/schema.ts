@@ -81,6 +81,15 @@ export const captures = pgTable(
     convertedId: uuid("converted_id"),
     convertedAt: timestamp("converted_at", { withTimezone: true }),
     failureReason: text("failure_reason"),
+    /**
+     * ASH-305: set aside at end of day. A SEPARATE axis from processing_state on
+     * purpose: parking pauses the owner-facing queue and new background work
+     * but never rewrites what enrichment or conversion decided, so unparking
+     * restores the capture exactly as it was (no re-classification, no
+     * duplicate effect). Null = not parked.
+     */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    parkedBy: uuid("parked_by"),
     ...mutable,
   },
   (t) => [

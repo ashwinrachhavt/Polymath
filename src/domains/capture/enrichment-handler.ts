@@ -84,6 +84,8 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
   if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
+  // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
+  if (capture.parkedAt) return;
 
   // Tier 0 + 1 run on whatever text exists: the paste itself, or the fetched
   // page for a URL capture.

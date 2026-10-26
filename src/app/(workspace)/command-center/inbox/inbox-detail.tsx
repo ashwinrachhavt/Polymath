@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { acceptProposalAction, makeDraftAction, makeDocumentAction,
-  makeNoteAction, makeTaskAction, rejectProposalAction, setCaptureStateAction } from "./actions";
+  makeNoteAction, makeTaskAction, rejectProposalAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
@@ -378,6 +378,23 @@ export function InboxDetail({
               Archive
             </Button>
           </>
+        ) : null}
+        {capture.parkedAt && state !== "discarded" && state !== "converted" ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            title="Set aside at the end of the day; unparking puts it back exactly as it was"
+            onClick={() => {
+              setError(null);
+              startTransition(async () => {
+                const result = await unparkCaptureAction({ captureId: capture.id, expectedVersion: capture.version });
+                if (!result.ok) setError(result.error);
+              });
+            }}
+          >
+            Unpark
+          </Button>
         ) : null}
         {state === "discarded" ? (
           <Button size="sm" variant="outline" disabled={pending} onClick={() => act("unprocessed")}>
