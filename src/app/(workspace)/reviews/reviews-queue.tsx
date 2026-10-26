@@ -358,6 +358,16 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   // the reviewer decided). Persisted therefore wins whenever it exists, and
   // a stale decide response can never mask a reconciled terminal truth.
   const [decideOutcomes, setDecideOutcomes] = useState<Record<string, EffectOutcome>>({});
+  /*
+   * Post-action decided truth, keyed by proposal revision so a re-proposed
+   * card (new version) is never masked. useOptimistic reverts to the server
+   * items when the action settles; without this overlay a decided card would
+   * flicker back to actionable - and, on a committed refusal, the refresh
+   * would unmount the card and take the refusal alert with it. The overlay
+   * holds the decided view + the alert until the next real server render,
+   * where the persisted row says the same thing.
+   */
+  const [decidedCards, setDecidedCards] = useState<Record<string, "approved" | "rejected">>({});
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>
@@ -399,9 +409,17 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       });
       if (!result.ok) {
         setErrors((prev) => ({ ...prev, [input.proposalId]: result.error }));
-        router.refresh();
+        if (result.decided) {
+          // The approval/rejection committed; only the effect refused. Keep
+          // the decided card and its refusal visible - the approval stands.
+          setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
+        } else {
+          // The decision itself never landed; resync to the server truth.
+          router.refresh();
+        }
         return;
       }
+      setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
       if (result.outcome) {
         setDecideOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
       }
@@ -418,7 +436,9 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   type Row = { kind: "single"; item: QueueCardData } | { kind: "group"; key: string; items: QueueCardData[] };
   const rows: Row[] = [];
   const groups = new Map<string, Extract<Row, { kind: "group" }>>();
-  for (const item of optimisticItems) {
+  for (const raw of optimisticItems) {
+    const decided = decidedCards[`${raw.id}:${raw.version}`];
+    const item: QueueCardData = decided ? { ...raw, status: decided, decidedAt: raw.decidedAt ?? new Date().toISOString() } : raw;
     const match = item.dedupeKey ? followUpGroup.exec(item.dedupeKey) : null;
     if (!match) {
       rows.push({ kind: "single", item });

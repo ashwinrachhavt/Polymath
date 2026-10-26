@@ -73,16 +73,16 @@ async function seedArtifact(title: string, text: string): Promise<{ id: string }
  * terminally failed, "pending" never settles, "ambiguous" loses the
  * creation answer entirely. Nonproduction data only.
  */
-async function seedCanvaAccount(behavior?: "fail" | "pending" | "ambiguous"): Promise<boolean> {
+async function seedCanvaAccount(behavior?: "fail" | "pending" | "ambiguous"): Promise<string | null> {
   const client = db();
-  if (!client) return false;
+  if (!client) return null;
   try {
     const [owner] = await client<{ workspace_id: string; user_id: string }[]>`
       select m.workspace_id, m.user_id
       from memberships m join users u on u.id = m.user_id
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
-    if (!owner) return false;
+    if (!owner) return null;
     // One journey = one connected Canva account. The executor refuses to
     // guess between two active accounts (ambiguity is surfaced, never
     // guessed), and serial journeys share this workspace: revoke any account
@@ -98,7 +98,7 @@ async function seedCanvaAccount(behavior?: "fail" | "pending" | "ambiguous"): Pr
       values (${owner.workspace_id}, 'canva', ${alias}, 'active', ${connectedId}, ${owner.user_id}, ${owner.user_id})
       returning id`;
     seededCanvaAccountIds.push(account.id);
-    return true;
+    return alias;
   } finally {
     await client.end();
   }
@@ -167,39 +167,27 @@ for (const vp of VIEWPORTS) {
   await page.setViewportSize({ width: vp.width, height: vp.height });
   const artifact = await seedArtifact(`${SOURCE_TITLE} [${vp.name}]`, SOURCE_TEXT);
   test.skip(!artifact, "DATABASE_URL not configured");
-  const accountSeeded = await seedCanvaAccount();
-  test.skip(!accountSeeded, "DATABASE_URL not configured");
+  const accountAlias = await seedCanvaAccount();
+  test.skip(!accountAlias, "DATABASE_URL not configured");
   const dispatchSecret = process.env.OUTBOX_DISPATCH_SECRET;
   test.skip(!dispatchSecret, "OUTBOX_DISPATCH_SECRET not configured");
 
-  // Draft the brief and hand it off from the brief page.
-  await page.goto(`/artifacts/${artifact!.id}`);
-  await page.getByRole("button", { name: "Design brief" }).click();
-  await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
-  await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
-  // The generated title names the review card later; capture it rather than
-  // assume the fixture generator's wording.
-  const briefTitle =
-    (await page.getByRole("heading", { level: 1 }).textContent())?.replace(/^Design brief:\s*/, "").trim() ?? "";
-  expect(briefTitle).not.toBe("");
-  await page.getByRole("button", { name: "Send to Canva" }).click();
-  await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
-
   // Approve the exact revision. The fixture accepts the job: the honest
   // outcome is UNKNOWN with the import_started phase, named for a person.
-  await page.getByRole("link", { name: "Review in Reviews" }).click();
-  await page.getByRole("button", { name: "Approve" }).first().click();
+  const { card, briefTitle } = await approveHandOff(page, artifact!.id, accountAlias!);
   await expect(
-    page.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
+    card.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
   ).toBeVisible({ timeout: 30_000 });
 
   // Reload from the decided filter: the PERSISTED attempt outcome must say
   // what the decide response said. Async truth that vanishes on reload is no
   // truth at all - the reviewer leaves and comes back.
   await page.goto("/reviews?status=approved");
-  await expect(page.getByText("Import job created; Polymath is waiting for Canva's terminal result.").first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page).toHaveURL(/status=approved/);
+  const reloaded = page.locator("section").filter({ hasText: accountAlias! });
+  await expect(
+    reloaded.getByText("Import job created; Polymath is waiting for Canva's terminal result."),
+  ).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-import-started-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
   // The attempt row is the async contract: UNKNOWN, job id pinned, in progress.
@@ -226,10 +214,11 @@ for (const vp of VIEWPORTS) {
   // reload above. Switching the filter re-renders from the server, and the
   // reconciled terminal truth must replace the stale pre-settle state.
   await page.getByLabel("Filter by status").selectOption("all");
-  await expect(page.getByText(`Import design brief "${briefTitle}"`).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Imported to Canva.").first()).toBeVisible({ timeout: 30_000 });
+  const settledCard = page.locator("section").filter({ hasText: accountAlias! });
+  await expect(settledCard.getByText(`Import design brief "${briefTitle}"`)).toBeVisible({ timeout: 30_000 });
+  await expect(settledCard.getByText("Imported to Canva.")).toBeVisible({ timeout: 30_000 });
   // The design link is the URL the (fixture) provider returned, verbatim.
-  await expect(page.getByRole("link", { name: "Open the design in Canva" }).first()).toHaveAttribute(
+  await expect(settledCard.getByRole("link", { name: "Open the design in Canva" })).toHaveAttribute(
     "href",
     /^https:\/\/www\.canva\.com\/design\/fixture-design-/,
   );
@@ -242,15 +231,40 @@ for (const vp of VIEWPORTS) {
  * Returns after the import_started line is visible (or, for a lost creation,
  * after the unconfirmed line is visible).
  */
-async function approveHandOff(page: import("@playwright/test").Page, artifactId: string): Promise<void> {
+async function approveHandOff(
+  page: import("@playwright/test").Page,
+  artifactId: string,
+  accountAlias: string,
+): Promise<{ card: import("@playwright/test").Locator; briefTitle: string }> {
   await page.goto(`/artifacts/${artifactId}`);
   await page.getByRole("button", { name: "Design brief" }).click();
   await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
   await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
+  // The generated title names the review card later; capture it rather than
+  // assume the fixture generator's wording.
+  const briefTitle =
+    (await page.getByRole("heading", { level: 1 }).textContent())?.replace(/^Design brief:\s*/, "").trim() ?? "";
+  expect(briefTitle).not.toBe("");
   await page.getByRole("button", { name: "Send to Canva" }).click();
   await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
   await page.getByRole("link", { name: "Review in Reviews" }).click();
-  await page.getByRole("button", { name: "Approve" }).first().click();
+  // Scope every interaction to this journey's card: the e2e workspace is
+  // shared, and other specs' leftover proposals render Approve buttons too.
+  const card = page.locator("section").filter({ hasText: accountAlias });
+  // Hydration race shield: a click landing before React attaches handlers is
+  // a silent no-op. Re-click while the card still offers Approve with no
+  // outcome or refusal rendered; the executor's claim makes a repeated
+  // decide resolve the same attempt, never a duplicate import.
+  for (let click = 0; click < 3; click += 1) {
+    await card.getByRole("button", { name: "Approve", exact: true }).click();
+    const heard = await Promise.race([
+      card.getByRole("status").first().waitFor({ timeout: 8_000 }).then(() => true, () => false),
+      card.getByRole("alert").first().waitFor({ timeout: 8_000 }).then(() => true, () => false),
+    ]);
+    if (heard) break;
+    if (click === 2) throw new Error("Approve produced neither an outcome nor a refusal after 3 clicks");
+  }
+  return { card, briefTitle };
 }
 
 // Desktop-only: these pin persisted-outcome hydration, not layout - the
@@ -261,13 +275,14 @@ test("a terminal provider failure settles failed and the reloaded card says so [
   await page.setViewportSize({ width: 1440, height: 900 });
   const artifact = await seedArtifact(`${SOURCE_TITLE} [fail]`, SOURCE_TEXT);
   test.skip(!artifact, "DATABASE_URL not configured");
-  test.skip(!(await seedCanvaAccount("fail")), "DATABASE_URL not configured");
+  const accountAlias = await seedCanvaAccount("fail");
+  test.skip(!accountAlias, "DATABASE_URL not configured");
   const dispatchSecret = process.env.OUTBOX_DISPATCH_SECRET;
   test.skip(!dispatchSecret, "OUTBOX_DISPATCH_SECRET not configured");
 
-  await approveHandOff(page, artifact!.id);
+  const { card } = await approveHandOff(page, artifact!.id, accountAlias!);
   await expect(
-    page.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
+    card.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
   ).toBeVisible({ timeout: 30_000 });
 
   const response = await page.request.post("/api/internal/cron", {
@@ -285,8 +300,10 @@ test("a terminal provider failure settles failed and the reloaded card says so [
   // for a person - the stored machine code is translated - and a decided
   // card offers no way to fire again.
   await page.goto("/reviews?status=approved");
-  await expect(page.getByText("Not imported. Canva reported the import failed.").first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+  await expect(page).toHaveURL(/status=approved/);
+  const decided = page.locator("section").filter({ hasText: accountAlias! });
+  await expect(decided.getByText("Not imported. Canva reported the import failed.")).toBeVisible({ timeout: 30_000 });
+  await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);
   await page.screenshot({ path: "test-results/feature-pixels/design-brief-fixture-failed-desktop.png", style: HIDE_DEV_CHROME, fullPage: true });
 });
 
@@ -296,13 +313,14 @@ test("a job Canva never answers stays UNKNOWN and the reloaded card keeps waitin
   await page.setViewportSize({ width: 1440, height: 900 });
   const artifact = await seedArtifact(`${SOURCE_TITLE} [pending]`, SOURCE_TEXT);
   test.skip(!artifact, "DATABASE_URL not configured");
-  test.skip(!(await seedCanvaAccount("pending")), "DATABASE_URL not configured");
+  const accountAlias = await seedCanvaAccount("pending");
+  test.skip(!accountAlias, "DATABASE_URL not configured");
   const dispatchSecret = process.env.OUTBOX_DISPATCH_SECRET;
   test.skip(!dispatchSecret, "OUTBOX_DISPATCH_SECRET not configured");
 
-  await approveHandOff(page, artifact!.id);
+  const { card } = await approveHandOff(page, artifact!.id, accountAlias!);
   await expect(
-    page.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
+    card.getByRole("status").filter({ hasText: "Import job created; Polymath is waiting for Canva's terminal result." }),
   ).toBeVisible({ timeout: 30_000 });
 
   // The sweep asks, the job answers in_progress: nothing settles.
@@ -319,9 +337,10 @@ test("a job Canva never answers stays UNKNOWN and the reloaded card keeps waitin
 
   // Reloaded, the persisted waiting line stands - no fake terminal state.
   await page.goto("/reviews?status=approved");
-  await expect(page.getByText("Import job created; Polymath is waiting for Canva's terminal result.").first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page).toHaveURL(/status=approved/);
+  await expect(
+    page.locator("section").filter({ hasText: accountAlias! }).getByText("Import job created; Polymath is waiting for Canva's terminal result."),
+  ).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: "test-results/feature-pixels/design-brief-fixture-pending-desktop.png", style: HIDE_DEV_CHROME, fullPage: true });
 });
 
@@ -331,15 +350,16 @@ test("a lost creation answer stays UNKNOWN, makes no provider call, and the relo
   await page.setViewportSize({ width: 1440, height: 900 });
   const artifact = await seedArtifact(`${SOURCE_TITLE} [ambiguous]`, SOURCE_TEXT);
   test.skip(!artifact, "DATABASE_URL not configured");
-  test.skip(!(await seedCanvaAccount("ambiguous")), "DATABASE_URL not configured");
+  const accountAlias = await seedCanvaAccount("ambiguous");
+  test.skip(!accountAlias, "DATABASE_URL not configured");
   const dispatchSecret = process.env.OUTBOX_DISPATCH_SECRET;
   test.skip(!dispatchSecret, "OUTBOX_DISPATCH_SECRET not configured");
 
-  await approveHandOff(page, artifact!.id);
+  const { card } = await approveHandOff(page, artifact!.id, accountAlias!);
   // No import_started: the creation answer was lost, so the honest line is
   // the unproven one - and the job-less attempt never gets a provider read.
   await expect(
-    page.getByRole("status").filter({ hasText: "Outcome unconfirmed; Polymath checks with Canva before anything runs again." }),
+    card.getByRole("status").filter({ hasText: "Outcome unconfirmed; Polymath checks with Canva before anything runs again." }),
   ).toBeVisible({ timeout: 30_000 });
 
   const attempt = await latestImportAttempt();
@@ -358,8 +378,9 @@ test("a lost creation answer stays UNKNOWN, makes no provider call, and the relo
   expect(after?.provider_object_id).toBeNull();
 
   await page.goto("/reviews?status=approved");
-  await expect(page.getByText("Outcome unconfirmed; Polymath checks with Canva before anything runs again.").first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page).toHaveURL(/status=approved/);
+  await expect(
+    page.locator("section").filter({ hasText: accountAlias! }).getByText("Outcome unconfirmed; Polymath checks with Canva before anything runs again."),
+  ).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: "test-results/feature-pixels/design-brief-fixture-ambiguous-desktop.png", style: HIDE_DEV_CHROME, fullPage: true });
 });

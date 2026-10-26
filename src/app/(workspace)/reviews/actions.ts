@@ -45,6 +45,16 @@ function fail(error: unknown): { ok: false; error: string } {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/*
+ * decided: the decision row committed before the failure (an executor or
+ * post-approval step refused). The card's decided state is server truth, so
+ * the client keeps its decided card + alert and must NOT refresh them away;
+ * a refresh is only honest when the decision itself never landed.
+ */
+type DecideResult =
+  | { ok: true; outcome: EffectOutcome | null }
+  | { ok: false; error: string; decided?: boolean };
+
 export async function decideProposalAction(input: {
   idempotencyKey: string;
   proposalId: string;
@@ -52,7 +62,7 @@ export async function decideProposalAction(input: {
   revisionId: string;
   decision: "approved" | "rejected";
   note?: string;
-}): Promise<Result<{ outcome: EffectOutcome | null }>> {
+}): Promise<DecideResult> {
   const auth = await authorize();
   if (!UUID.test(input.proposalId) || !UUID.test(input.revisionId) || !UUID.test(input.idempotencyKey)) {
     return { ok: false, error: "Malformed review decision." };
@@ -105,7 +115,7 @@ export async function decideProposalAction(input: {
         error instanceof ArtifactReviseNotAllowedError || error instanceof Error
           ? error.message
           : "The approved revision was not applied.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -128,7 +138,7 @@ export async function decideProposalAction(input: {
         error instanceof TaskExecuteNotAllowedError || error instanceof Error
           ? error.message
           : "The approved task was not created.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -150,7 +160,7 @@ export async function decideProposalAction(input: {
         error instanceof NoteExecuteNotAllowedError || error instanceof Error
           ? error.message
           : "The approved note was not created.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -168,7 +178,7 @@ export async function decideProposalAction(input: {
     // The decision is committed; a refusal to execute is a state the card
     // must show, not a rollback of the approval.
     revalidate();
-    return { ok: false, error: error instanceof Error ? error.message : "The approved effect did not run." };
+    return { ok: false, error: error instanceof Error ? error.message : "The approved effect did not run.", decided: true };
   }
   revalidate();
   return { ok: true, outcome };
