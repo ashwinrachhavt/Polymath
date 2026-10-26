@@ -377,6 +377,21 @@ suite("shutdown ritual", () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
+    it("an email-only repeat after closing is a deliberate ask: a new proposal, not a silent replay", async () => {
+      const { auth, workspaceId, userId } = await workspace("email-repeat");
+      await connect(workspaceId, userId, "work", "read_send");
+      providerSpy();
+      const first = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "first@example.com", accountAlias: "work" } });
+      expect(first.email.status).toBe("proposed");
+      // Fresh key, a revised recipient and nothing else: the replay branch must
+      // not swallow the explicit ask - it files its own proposal and log line.
+      const second = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [], email: { to: "second@example.com", accountAlias: "work" } });
+      expect(second.replayed).toBe(false);
+      expect(second.email.status).toBe("proposed");
+      const proposals = await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+      expect(proposals).toHaveLength(2);
+    });
+
     it("files nothing when the connection's tier or Send switch does not allow sending", async () => {
       const readOnly = await workspace("email-readonly");
       await connect(readOnly.workspaceId, readOnly.userId, "work", "read_only");
@@ -417,6 +432,18 @@ suite("shutdown ritual", () => {
       expect(second.logNoteId).not.toBe(first.logNoteId);
       const [after] = await db.select().from(captures).where(eq(captures.id, cap.id));
       expect(after.parkedAt).not.toBeNull();
+    });
+
+    it("concurrent fresh-key empty applies cannot duplicate the day's log", async () => {
+      const { auth, workspaceId } = await workspace("replay-race");
+      const [a, b] = await Promise.all([
+        shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [] }),
+        shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [] }),
+      ]);
+      expect([a.replayed, b.replayed].sort()).toEqual([false, true]);
+      expect(a.logNoteId).toBe(b.logNoteId);
+      expect(await db.select().from(artifacts).where(eq(artifacts.workspaceId, workspaceId))).toHaveLength(1);
+      expect(await db.select().from(dayArtifactPins).where(eq(dayArtifactPins.workspaceId, workspaceId))).toHaveLength(1);
     });
 
     it("the preview reports the already-closed day so a remount shows the saved confirmation", async () => {

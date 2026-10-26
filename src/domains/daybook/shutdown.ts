@@ -259,6 +259,12 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
       { op: "applyShutdown", session: input.session ?? null, park: input.park, seedTaskIds: input.seedTaskIds, email },
       async (): Promise<ShutdownResult> => {
         const days = await localDays(tx, auth);
+        // Serialize same-day applies for this owner: two racing fresh-key
+        // applies would both observe "no log yet" and both write one. A
+        // transaction-scoped advisory lock on the day key makes the second
+        // wait, then see the first's committed log - an empty one replays,
+        // one with real effects proceeds as a deliberate second close.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`shutdown:${auth.workspaceId}:${auth.userId}:${days.today}`}, 0))`);
         const alreadyClosed = await findShutdownLog(tx, auth, days.today);
         const lines: LogLine[] = [];
 
