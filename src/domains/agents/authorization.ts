@@ -75,8 +75,27 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     requiresApproval: true,
     note: "Approval binds the exact markdown and its content hash before anything is written.",
   },
-  /* ASH-279: reads a transcript and only ever proposes; the approval is tasks.create. */
-  "meetings.debrief": { capability: "knowledge.read", effectClass: "read", note: "Proposes tasks; creates nothing." },
+  /*
+   * ASH-279, authority correction: debriefing a transcript persists review-
+   * queue proposal rows (proposeTask/proposeNote in domains/knowledge/
+   * meeting-debrief.ts), so "knowledge.read / read / creates nothing"
+   * understated the effect. This is an internal write under action.prepare:
+   * preparing a supervised action is its own catalog capability on purpose.
+   *
+   * BEHAVIOR CHANGE (rollout note for reviewers): delegation grants issued
+   * before this fix authorized meetings.debrief through knowledge.read; they
+   * now deny with operation_not_granted until re-granted action.prepare.
+   * Run policy snapshots are unaffected - they allowlist operation names
+   * (DEFAULT_ALLOWED_TOOLS), not catalog capabilities, so first-party runs
+   * keep working; only the GA03 grant path tightens, and it tightens toward
+   * deny-by-default. The external world is unchanged: the tool still never
+   * creates tasks, and approval of its proposals still sits with the owner.
+   */
+  "meetings.debrief": {
+    capability: "action.prepare",
+    effectClass: "internal_write",
+    note: "Persists task/note/follow-up proposals in the review queue; creates no tasks.",
+  },
   "web.search": { capability: "integration.use", effectClass: "read", note: "Egress: query terms leave the workspace." },
   "web.fetch": { capability: "integration.use", effectClass: "read", note: "Egress: the fetched URL leaves the workspace." },
   /*

@@ -150,6 +150,43 @@ describe("linear.issue.propose (ASH-285)", () => {
   });
 });
 
+describe("meetings.debrief authority correction", () => {
+  it("is an internal write under action.prepare - it persists proposal rows, so it is not a read", () => {
+    const spec = TOOL_OPERATION_REGISTRY["meetings.debrief"];
+    expect(spec.capability).toBe("action.prepare");
+    expect(spec.effectClass).toBe("internal_write");
+    // An internal write authorizes directly; the approval boundary stays on
+    // the proposals it queues, not on the drafting itself.
+    expect(spec.requiresApproval).toBeUndefined();
+  });
+
+  it("authorizes a grant carrying action.prepare", () => {
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "meetings.debrief" })),
+    ).toEqual({ allowed: true, requiresApproval: false });
+  });
+
+  it("behavior change, pinned: a pre-fix grant that carried only knowledge.read now denies", () => {
+    // Grants issued while the entry was misclassified authorized through
+    // knowledge.read. The correction is a deliberate tightening toward
+    // deny-by-default: such a grant must be re-issued with action.prepare.
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["knowledge.read"] }), req({ operation: "meetings.debrief" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+
+  it("denies a viewer-grade read set, which carries no prepare authority", () => {
+    // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
+    const viewerReads = [
+      "person.read", "document.read", "task.read", "knowledge.read",
+      "member.read", "role.read", "integration.use", "audit.read",
+    ];
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "meetings.debrief" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+});
+
   it("the proposal-only operation has no executor to fall through to", () => {
     // The reviews approve path runs executeApprovedEffect only when
     // supportsEffect is true; an executor-less capability returns the
