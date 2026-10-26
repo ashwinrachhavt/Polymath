@@ -31,6 +31,10 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // ASH-279: reads a meeting transcript and proposes tasks from it. The
   // proposals themselves still need tasks.create, which is separate.
   "meetings.debrief",
+  // ASH-285: drafts a Linear-issue proposal note from pasted material. An
+  // internal write at prepare risk - it never calls Linear - and without a
+  // row here the tool is a dead 403 on every call.
+  "linear.issue.propose",
   // ASH-306: listing records is navigation, the same authority as reading them.
   "records.browse",
   // Connected reads. A capability in the risk table but absent here can never
@@ -143,6 +147,9 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "notion.page.append",
       "notion.page.create",
       "meetings.debrief",
+      // ASH-285: an existing profile without this fails closed on every
+      // linear_issue_propose call; the draft is an internal write.
+      "linear.issue.propose",
       "records.browse",
       "wiki.read",
       "wiki.ingest",
