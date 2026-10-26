@@ -1,4 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { recordAudit } from "@/domains/audit/record";
+import type { AuthContext } from "@/domains/identity/resolve";
+import { StaleWriteError } from "@/domains/integrations/commands";
+import { requireRole } from "@/lib/auth/guards";
+import { withTransaction } from "@/lib/db-transaction";
 import { capabilityAllowed, lowestTierId } from "@/domains/integrations/capabilities";
 import { externalAccounts, syncCursors, triggers } from "@/domains/integrations/schema";
 import { searchGmailMessages } from "@/domains/integrations/gmail/reads";
@@ -183,6 +188,15 @@ export async function syncGmailSenders(
     }
   }
 
+  // The owner may have switched this off while the pass was reading. Re-check before any
+  // proposal is written or the cursor moves: an off switch must stop effects, not just future passes.
+  const [stillOn] = await db
+    .select({ id: triggers.id })
+    .from(triggers)
+    .where(and(eq(triggers.id, trigger.id), eq(triggers.status, "enabled")))
+    .limit(1);
+  if (!stillOn) throw new SenderSyncError("not_enabled", "Contact suggestions were turned off during the pass; nothing was proposed.");
+
   const result = await proposeContactsFromSenders(
     { workspaceId },
     {
@@ -223,4 +237,73 @@ export async function syncAllGmailSenders(transport: Transport, now?: Date) {
     }
   }
   return summary;
+}
+
+/*
+ * The owner's switch. Turning it ON is the grant: owner-only, and only while the
+ * live gates hold (account active and connected, read allowed, gmail.read inside
+ * the tier and not switched off). Turning it OFF must always work, with read
+ * revoked or the account disconnected, because stopping must never depend on
+ * access the owner may already have taken away.
+ *
+ * Both directions compare-and-set the account version, the same guard the other
+ * connector controls use, so two racing toggles cannot both win and a stale tab
+ * cannot flip a switch it never saw. Enabling clears the cursor: whatever the
+ * switch skipped while it was off is never scanned afterwards, the pass starts
+ * from the bounded lookback instead of the old watermark.
+ */
+export async function setSenderProposals(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; enabled: boolean },
+): Promise<{ enabled: boolean; version: number }> {
+  requireRole(auth, "owner");
+  return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select()
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.id, input.accountId), eq(externalAccounts.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!account || account.provider !== "gmail") throw new SenderSyncError("account_not_found", "No Gmail account with that id in this workspace.");
+
+    if (input.enabled) {
+      const tier = account.accessTier ?? lowestTierId("gmail");
+      if (account.status !== "active" || !account.composioConnectedAccountId) throw new SenderSyncError("no_connection", "This Gmail account is not connected.");
+      if (!account.allowRead || !tier || !capabilityAllowed("gmail", tier, account.disabledCapabilities as string[], "gmail.read")) {
+        throw new SenderSyncError("read_not_allowed", "Turn on read access for this Gmail account first.");
+      }
+    }
+
+    const [bumped] = await tx
+      .update(externalAccounts)
+      .set({ version: sql`${externalAccounts.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
+      .where(and(eq(externalAccounts.id, account.id), eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.version, input.expectedVersion)))
+      .returning({ version: externalAccounts.version });
+    if (!bumped) throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
+
+    const [existing] = await tx
+      .select({ id: triggers.id, status: triggers.status })
+      .from(triggers)
+      .where(and(eq(triggers.workspaceId, auth.workspaceId), eq(triggers.externalAccountId, account.id), eq(triggers.provider, "gmail"), eq(triggers.eventType, SENDER_PROPOSALS_EVENT)))
+      .limit(1);
+    const status = input.enabled ? "enabled" : "paused";
+    if (existing) {
+      await tx.update(triggers).set({ status, updatedAt: new Date(), updatedBy: auth.userId }).where(eq(triggers.id, existing.id));
+    } else if (input.enabled) {
+      await tx.insert(triggers).values({ workspaceId: auth.workspaceId, externalAccountId: account.id, provider: "gmail", eventType: SENDER_PROPOSALS_EVENT, status, budget: { perRun: DEFAULT_PER_RUN }, createdBy: auth.userId, updatedBy: auth.userId });
+    }
+    if (input.enabled && existing?.status !== "enabled") {
+      await tx.delete(syncCursors).where(and(eq(syncCursors.externalAccountId, account.id), eq(syncCursors.resource, RESOURCE)));
+    }
+    await recordAudit(
+      auth,
+      {
+        action: input.enabled ? "crm.sender_proposals_enabled" : "crm.sender_proposals_paused",
+        subjectType: "external_account",
+        subjectId: account.id,
+        summary: `Contact suggestions from new senders ${input.enabled ? "turned on" : "turned off"} for ${account.alias}`,
+      },
+      tx,
+    );
+    return { enabled: input.enabled, version: bumped.version };
+  });
 }
