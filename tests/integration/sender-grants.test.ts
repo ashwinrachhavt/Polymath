@@ -51,6 +51,7 @@ async function seed(slug: string, aliases: string[]) {
       .values({
         workspaceId,
         provider: "gmail",
+        accessTier: "read_send",
         alias,
         status: "active",
         composioConnectedAccountId: `ca_${crypto.randomUUID()}`,
