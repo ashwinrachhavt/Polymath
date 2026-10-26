@@ -169,14 +169,19 @@ type DecideInput = { proposalId: string; decision: "approved" | "rejected"; note
  * not know, and no wording may invite a second send. A failed effect is never
  * presented as something to repeat; that is a new approval, not a re-run.
  */
-function outcomeLine(outcome: EffectOutcome): string {
+function outcomeLine(capability: string, outcome: EffectOutcome): string {
+  // Import wording: an async Canva job is not a send, and "sent" would lie
+  // about what happened.
+  const canva = capability === "canva.design.import";
   switch (outcome.status) {
     case "sent":
-      return "Sent.";
+      return canva ? "Imported to Canva." : "Sent.";
     case "unknown":
-      return "Checking whether this was sent.";
+      // Covers both honest phases: a created job still running, and a
+      // creation whose answer never arrived.
+      return canva ? "Outcome unconfirmed; Polymath checks with Canva before any retry." : "Checking whether this was sent.";
     case "failed":
-      return `Not sent. ${outcome.reason}`;
+      return canva ? `Not imported. ${outcome.reason}` : `Not sent. ${outcome.reason}`;
   }
 }
 
@@ -342,7 +347,7 @@ function ProposalCard({
       ) : null}
       {outcome ? (
         <p role="status" className="mt-3 text-xs text-muted-foreground">
-          {outcomeLine(outcome)}
+          {outcomeLine(item.capability, outcome)}
         </p>
       ) : null}
     </Panel>

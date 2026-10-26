@@ -2,12 +2,15 @@ import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
 
 /*
- * Pixels for the design brief (ASH-286, partial): the research-card toolbar
- * control, the one-click journey into a generated brief memo, the source
- * linkage and honest handoff boundary on the brief page, repeat-click
- * idempotency, the kind gate (a transcript never offers the button), and the
- * empty-source error. Runs against the free fixture provider
- * (GENERATION_PROVIDER=fixture): no model key, no spend.
+ * Pixels for the design brief (ASH-286): the research-card toolbar control,
+ * the one-click journey into a generated brief memo, the source linkage and
+ * handoff note on the brief page, repeat-click idempotency, the kind gate (a
+ * transcript never offers the button), the empty-source error, and the Canva
+ * handoff: "Send to Canva" files a proposal, a repeat click resolves it, the
+ * owner approves the exact revision in Reviews, and the outcome line stays
+ * honest when no provider key exists in this environment (no live write).
+ * Runs against the free fixture provider (GENERATION_PROVIDER=fixture): no
+ * model key, no spend.
  *
  * Screenshots land in test-results/feature-pixels/ and upload as the
  * feature-pixels CI artifact. The seeded rows are removed in afterAll.
@@ -83,19 +86,71 @@ async function briefCountFor(sourceId: string): Promise<number> {
   }
 }
 
+const seededCanvaAccountIds: string[] = [];
+
 async function removeSeeded(): Promise<void> {
   const client = db();
-  if (!client || seededSourceIds.length === 0) return;
+  if (!client || (seededSourceIds.length === 0 && seededCanvaAccountIds.length === 0)) return;
   try {
-    // Briefs generated from the seeded sources go first; the audit rows stay
-    // (audit is append-only) and stop matching once their subject is gone.
-    await client`
-      delete from artifacts where id in (
-        select subject_id from audit_events
-        where action = 'knowledge.design_brief.generated'
-          and metadata ->> 'sourceArtifactId' = any(${seededSourceIds}::text[])
-      )`;
-    await client`delete from artifacts where id = any(${seededSourceIds}::uuid[])`;
+    if (seededSourceIds.length > 0) {
+      // Handoff proposals for briefs from the seeded sources go first
+      // (attempts, reviews, revisions and observations cascade), then the
+      // briefs, then the sources. Audit rows stay (append-only).
+      await client`
+        delete from action_proposals where capability = 'canva.design.import' and target_id in (
+          select subject_id from audit_events
+          where action = 'knowledge.design_brief.generated'
+            and metadata ->> 'sourceArtifactId' = any(${seededSourceIds}::text[])
+        )`;
+      await client`
+        delete from artifacts where id in (
+          select subject_id from audit_events
+          where action = 'knowledge.design_brief.generated'
+            and metadata ->> 'sourceArtifactId' = any(${seededSourceIds}::text[])
+        )`;
+      await client`delete from artifacts where id = any(${seededSourceIds}::uuid[])`;
+    }
+    if (seededCanvaAccountIds.length > 0) {
+      await client`delete from external_accounts where id = any(${seededCanvaAccountIds}::uuid[])`;
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+/** A connected Canva account for the handoff journey's executor resolution. */
+async function seedCanvaAccount(): Promise<boolean> {
+  const client = db();
+  if (!client) return false;
+  try {
+    const [owner] = await client<{ workspace_id: string; user_id: string }[]>`
+      select m.workspace_id, m.user_id
+      from memberships m join users u on u.id = m.user_id
+      where u.clerk_user_id = 'dev-user' and m.status = 'active'
+      limit 1`;
+    if (!owner) return false;
+    const alias = `canva-e2e-${crypto.randomUUID().slice(0, 8)}`;
+    const [account] = await client<{ id: string }[]>`
+      insert into external_accounts (workspace_id, provider, alias, status, composio_connected_account_id, created_by, updated_by)
+      values (${owner.workspace_id}, 'canva', ${alias}, 'active', ${`ca_e2e_${crypto.randomUUID()}`}, ${owner.user_id}, ${owner.user_id})
+      returning id`;
+    seededCanvaAccountIds.push(account.id);
+    return true;
+  } finally {
+    await client.end();
+  }
+}
+
+/** Attempt rows the handoff left behind, for the dispatch-wiring assertion. */
+async function importAttemptCount(): Promise<number> {
+  const client = db();
+  if (!client) return -1;
+  try {
+    const [{ count }] = await client<{ count: string }[]>`
+      select count(*)::text as count from action_attempts a
+      join action_proposals p on p.id = a.proposal_id
+      where p.capability = 'canva.design.import'`;
+    return Number(count);
   } finally {
     await client.end();
   }
@@ -154,7 +209,7 @@ for (const vp of VIEWPORTS) {
     // One h1 only: the body does not repeat the title as a second heading.
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.getByText(`Design brief from "${SOURCE_TITLE}"`)).toBeVisible();
-    await expect(page.getByText("The Canva handoff is not available yet")).toBeVisible();
+    await expect(page.getByText("nothing imports until you approve it in Reviews")).toBeVisible();
     await expect(page.getByText("Account executives preparing for renewal conversations.")).toBeVisible();
     // Full-page stitching paints the sticky mobile nav mid-content; only the
     // desktop page is captured full-length, mobile proves at the real viewport.
@@ -165,6 +220,49 @@ for (const vp of VIEWPORTS) {
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Copy artifact markdown" }).click();
     await expect(page.getByRole("status")).toContainText("Copied");
+  });
+
+  test(`hand off a brief to Canva through the approval queue [${vp.name}]`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const artifact = await seedArtifact("report", `${SOURCE_TITLE} (handoff)`, SOURCE_TEXT);
+    test.skip(!artifact, "DATABASE_URL not configured");
+    const accountSeeded = await seedCanvaAccount();
+    test.skip(!accountSeeded, "DATABASE_URL not configured");
+
+    // Generate the brief, then hand it off from the brief page.
+    await page.goto(`/artifacts/${artifact!.id}`);
+    await page.getByRole("button", { name: "Design brief" }).click();
+    await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
+    await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
+    await expect(page.getByRole("heading", { level: 1, name: "Design brief: Q3 roadmap one-pager" })).toBeVisible();
+
+    const sendButton = page.getByRole("button", { name: "Send to Canva" });
+    await expect(sendButton).toBeVisible();
+    await expectToolbarContained(page, vp.width);
+    await sendButton.click();
+    await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
+    await expectToolbarContained(page, vp.width);
+    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-proposed-${vp.name}.png`, style: HIDE_DEV_CHROME });
+
+    // Repeat click resolves the same proposal; no second one is filed.
+    await sendButton.click();
+    await expect(page.getByRole("status")).toContainText("Import already proposed", { timeout: 30_000 });
+
+    // The review card names the exact effect and the unverified fidelity.
+    await page.getByRole("link", { name: "Review in Reviews" }).click();
+    await expect(page.getByText('Import design brief "Q3 roadmap one-pager" to Canva')).toBeVisible();
+    await expect(page.getByText("Canva's rendering of the generated document is not verified yet")).toBeVisible();
+    await expect(page.getByText("canva.design.import")).toBeVisible();
+    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-review-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
+
+    // Approving runs the executor. This environment has no COMPOSIO_API_KEY,
+    // so no live write can happen: the honest outcome is "unconfirmed", and
+    // exactly one UNKNOWN attempt is the dispatch record.
+    await page.getByRole("button", { name: "Approve" }).first().click();
+    await expect(page.getByText("Outcome unconfirmed; Polymath checks with Canva before any retry.")).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    expect(await importAttemptCount()).toBe(1);
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
