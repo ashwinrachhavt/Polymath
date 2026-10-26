@@ -50,7 +50,7 @@ export const destinations: Destination[] = [
     label: "Decisions",
     purpose: "Decide what agents and captures propose.",
     icon: Scale,
-    group: "shared",
+    group: "command-center",
   },
   {
     href: "/alfred",

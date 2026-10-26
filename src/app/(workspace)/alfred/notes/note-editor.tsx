@@ -704,9 +704,6 @@ export function NoteEditor({
               <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
                 {pending ? "Saving…" : "Save checkpoint"}
               </Button>
-              <Button type="button" variant="ghost" size="sm" aria-expanded={detailsOpen} aria-controls="note-details" onClick={() => setDetailsOpen((open) => !open)}>
-                Note details
-              </Button>
               {issueError && <span role="alert" className="text-xs text-destructive">{issueError}</span>}
             </div>
             {indexNotice && (
