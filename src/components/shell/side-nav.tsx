@@ -145,7 +145,11 @@ export function SideNav() {
             className={cn(
               "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground flex shrink-0 items-center justify-center rounded-md transition-colors outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
-              "opacity-0 group-hover/nav:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
+              // Collapsed, this toggle is the only way back out, so it stays
+              // visible; expanded, it reveals on hover/focus like the design
+              // intends. (Auto-collapse on conversation surfaces made the
+              // hidden-when-collapsed state reachable on its own.)
+              collapsed ? "opacity-100" : "opacity-0 group-hover/nav:opacity-100 focus-visible:opacity-100",
               collapsed ? "size-6" : "size-8",
             )}
           >

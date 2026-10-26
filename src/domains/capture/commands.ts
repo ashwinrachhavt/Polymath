@@ -303,7 +303,11 @@ export async function convertCaptureToTask(
       // A file capture's only label is its filename; its bytes are not text.
       ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
       "Captured item";
-    const title = input.title?.trim() || (sourceText.length > 120 ? `${sourceText.slice(0, 117)}…` : sourceText);
+    // The title is the first line; a multi-line capture keeps its full text
+    // as the description, so nothing the owner wrote is lost or crammed into
+    // the title.
+    const firstLine = sourceText.split("\n").map((line) => line.trim()).find(Boolean) ?? sourceText;
+    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
     const task = await createTask(
       auth,
       {
