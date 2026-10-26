@@ -13,6 +13,9 @@ import {
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { announceChatStarted } from "@/components/chat/chat-events";
 import { InPlaceChat } from "@/components/chat/in-place-chat";
+import { SurfaceCardView } from "@/components/chat/surface-card";
+import { navigateInConversation } from "./navigation-actions";
+import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -41,6 +44,8 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
   // Set on send: the conversation then renders in place, replacing the composer.
   const [started, setStarted] = useState<{ runId: string; message: string } | null>(null);
+  // A navigation answer replaces the composer in place, exactly like a run.
+  const [navigated, setNavigated] = useState<NavigationReply | null>(null);
 
   /*
    * Record search for the plus menu. ComposerPlus reports open state and
@@ -126,6 +131,18 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
     setPending(true);
     setError(null);
     try {
+      /*
+       * ASH-306: navigation is answered by the product, not a model run. The
+       * check is deterministic and cheap (a null returns before any database
+       * read); a pinned skill always takes the model path untouched.
+       */
+      if (!skillId) {
+        const navigation = await navigateInConversation({ message: objective });
+        if (navigation) {
+          setNavigated(navigation);
+          return;
+        }
+      }
       const result = await startChatRun({ objective, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);
@@ -142,6 +159,24 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
     } finally {
       setPending(false);
     }
+  }
+
+  // A navigation answer is the same in-place exchange as a run: the owner's
+  // message, the Supervisor's reply, and the surface card, all persisted to
+  // the Supervisor thread by the action above. The thread link is a door,
+  // not a requirement - the answer is already here.
+  if (navigated) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+          {navigated.message}
+        </div>
+        <div className="max-w-[72ch] space-y-3">
+          <p className="text-[13px] leading-6">{navigated.reply}</p>
+          <SurfaceCardView card={navigated.card} />
+        </div>
+      </div>
+    );
   }
 
   // A started conversation replaces the composer in place: the run streams
