@@ -11,6 +11,9 @@ import {
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
+import { SurfaceCardView } from "@/components/chat/surface-card";
+import { navigateInConversation } from "./navigation-actions";
+import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -44,6 +47,8 @@ export function NewConversation({
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+  // A navigation answer replaces the composer in place, exactly like a run.
+  const [navigated, setNavigated] = useState<NavigationReply | null>(null);
 
   /*
    * Record search for the plus menu. ComposerPlus reports open state and
@@ -129,6 +134,18 @@ export function NewConversation({
     setPending(true);
     setError(null);
     try {
+      /*
+       * ASH-306: navigation is answered by the product, not a model run. The
+       * check is deterministic and cheap (a null returns before any database
+       * read); a pinned skill always takes the model path untouched.
+       */
+      if (!skillId) {
+        const navigation = await navigateInConversation({ message: objective });
+        if (navigation) {
+          setNavigated(navigation);
+          return;
+        }
+      }
       const result = await startChatRun({ objective, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);
@@ -144,6 +161,24 @@ export function NewConversation({
     } finally {
       setPending(false);
     }
+  }
+
+  // A navigation answer is the same in-place exchange as a run: the owner's
+  // message, the Supervisor's reply, and the surface card, all persisted to
+  // the Supervisor thread by the action above. The thread link is a door,
+  // not a requirement - the answer is already here.
+  if (navigated) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+          {navigated.message}
+        </div>
+        <div className="max-w-[72ch] space-y-3">
+          <p className="text-[13px] leading-6">{navigated.reply}</p>
+          <SurfaceCardView card={navigated.card} />
+        </div>
+      </div>
+    );
   }
 
   return (
