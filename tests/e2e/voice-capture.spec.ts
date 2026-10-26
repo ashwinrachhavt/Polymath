@@ -26,10 +26,11 @@ test("a voice note records, transcribes, and converts like any capture", async (
   await dialog.getByRole("button", { name: "Stop and save", exact: true }).click();
 
   // The upload navigates to the new capture: a voice note whose transcript
-  // has not landed yet behaves like a file - no words to convert.
+  // has not landed yet says so plainly - no words to convert yet.
   await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
   const detail = page.getByRole("article");
-  await expect(detail).toContainText("Voice note");
+  await expect(detail.getByText("Voice", { exact: true })).toBeVisible();
+  await expect(detail.getByText("The transcript lands here once transcription runs; then it works like any text capture.")).toBeVisible();
   await expect(detail.getByRole("button", { name: "Save as note", exact: true })).toHaveCount(0);
 
   // One deliberate dispatcher pass: transcription is async by design.

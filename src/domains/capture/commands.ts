@@ -585,7 +585,11 @@ export async function updateCaptureText(
         if (capture.processingState === "converted") {
           throw new ConflictError("This capture was already converted. Editing it here would desync the record it became.");
         }
-        if (!["unprocessed", "classifying"].includes(capture.processingState)) {
+        // An enriched capture is still the owner's working text: only the
+        // conversion boundary (above) closes editing. Editing an enriched
+        // capture re-opens it and re-queues the ladder below, so the
+        // classification the owner sees always read the words on screen.
+        if (!["unprocessed", "classifying", "enriched"].includes(capture.processingState)) {
           throw new ConflictError("This capture is no longer open for editing. Reload the inbox.");
         }
         if (capture.version !== input.expectedVersion) {
@@ -605,12 +609,29 @@ export async function updateCaptureText(
               eq(captures.workspaceId, auth.workspaceId),
               eq(captures.id, capture.id),
               eq(captures.version, input.expectedVersion),
-              inArray(captures.processingState, ["unprocessed", "classifying"]),
+              inArray(captures.processingState, ["unprocessed", "classifying", "enriched"]),
             ),
           )
           .returning();
         if (!updated) {
           throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+        // The words the classification read just changed: re-open the capture
+        // and re-queue the ladder. Voice is safe - the transcription tier
+        // only fills an empty text, so a corrected transcript is never
+        // re-transcribed over the owner's words.
+        if (capture.processingState === "enriched") {
+          await tx
+            .update(captures)
+            .set({ processingState: "unprocessed", updatedAt: new Date(), updatedBy: auth.userId })
+            .where(eq(captures.id, capture.id));
+          await enqueueOutbox(tx, auth, {
+            topic: CAPTURE_ENRICHMENT_TOPIC,
+            payload: { captureId: capture.id },
+            // A repeated dispatchKey enqueues nothing, so each edit re-queues
+            // under the version it created.
+            dispatchKey: `capture-enrichment:${capture.id}:edit-v${capture.version + 1}`,
+          });
         }
         await recordAudit(
           auth,

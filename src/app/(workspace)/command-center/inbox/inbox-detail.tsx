@@ -271,9 +271,10 @@ export function InboxDetail({
             version={capture.version}
             text={capture.text ?? ""}
             label={capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
-            // The domain lets only an unprocessed or classifying capture be
-            // edited: after conversion the derived task or note owns the text.
-            editable={state === "unprocessed" || state === "classifying"}
+            // Only conversion closes editing: an enriched capture's words are
+            // still the owner's working text (an edit re-runs classification);
+            // after conversion the derived task or note owns the text.
+            editable={state === "unprocessed" || state === "classifying" || state === "enriched"}
           />
         )}
       </div>
