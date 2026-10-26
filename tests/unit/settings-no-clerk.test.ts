@@ -40,10 +40,15 @@ import { SettingsSurface } from "@/app/(workspace)/settings/page";
 import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
 
 describe("settings page without Clerk configured", () => {
-  it("renders the capability panel without asking for auth", async () => {
+  it("renders the capability panel when auth has no account", async () => {
     const element = await SettingsSurface();
     renderToStaticMarkup(element);
-    expect(vi.mocked(getAuthContext)).not.toHaveBeenCalled();
+    // Auth IS attempted now: a keyless deployment can still have an account
+    // (the dev-auth owner), and the previous flag check rendered the preview
+    // branch for it, so the preferences form saved against version 0 forever.
+    // What matters is that the throw lands on the preview branch, not the
+    // error boundary, and the capability panel still renders.
+    expect(vi.mocked(getAuthContext)).toHaveBeenCalled();
     expect(getPreferences).not.toHaveBeenCalled();
     expect(settingsProps.fn).toHaveBeenCalledTimes(1);
     const props = settingsProps.fn.mock.calls[0][0] as {
