@@ -11,7 +11,7 @@ import { captureProposals, captures } from "./schema";
  * losing anything.
  */
 
-export type InboxFilter = "unprocessed" | "converted" | "discarded" | "all";
+export type InboxFilter = "unprocessed" | "parked" | "converted" | "discarded" | "all";
 
 export const CAPTURE_KINDS = ["text", "url", "file", "voice", "forwarded"] as const;
 export type CaptureKindFilter = (typeof CAPTURE_KINDS)[number];
@@ -37,7 +37,9 @@ function stateWhere(auth: AuthContext, filter: InboxFilter): SQL {
         ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'converted'`
         : filter === "discarded"
           ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'discarded'`
-          : sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
+          : filter === "parked"
+            ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is not null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
+            : sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
   );
 }
 
@@ -49,6 +51,7 @@ export async function listCaptures(auth: AuthContext, filter: InboxFilter = "unp
 const listColumns = {
   id: captures.id,
   processingState: captures.processingState,
+  parkedAt: captures.parkedAt,
   kind: captures.kind,
   createdAt: captures.createdAt,
   url: captures.url,
@@ -129,7 +132,8 @@ export async function getCapture(auth: AuthContext, id: string) {
 export async function countInboxTabs(auth: AuthContext): Promise<Record<InboxFilter, number>> {
   const rows = await db.execute(sql`
     select
-      count(*) filter (where processing_state in ('unprocessed', 'classifying', 'enriched', 'failed'))::int as to_clarify,
+      count(*) filter (where parked_at is null and processing_state in ('unprocessed', 'classifying', 'enriched', 'failed'))::int as to_clarify,
+      count(*) filter (where parked_at is not null and processing_state in ('unprocessed', 'classifying', 'enriched', 'failed'))::int as parked,
       count(*) filter (where processing_state = 'converted')::int as converted,
       count(*) filter (where processing_state = 'discarded')::int as discarded,
       count(*)::int as all
@@ -139,6 +143,7 @@ export async function countInboxTabs(auth: AuthContext): Promise<Record<InboxFil
   const row = (rows as unknown as Array<Record<string, number>>)[0];
   return {
     unprocessed: row?.to_clarify ?? 0,
+    parked: row?.parked ?? 0,
     converted: row?.converted ?? 0,
     discarded: row?.discarded ?? 0,
     all: row?.all ?? 0,
@@ -194,6 +199,8 @@ export async function listPendingCaptureProposals(auth: AuthContext, captureId: 
         eq(captureProposals.workspaceId, auth.workspaceId),
         eq(captureProposals.captureId, captureId),
         eq(captureProposals.status, "pending"),
+        // A parked capture's suggestions stay hidden until it is unparked (ASH-305).
+        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
       ),
     )
     .orderBy(captureProposals.createdAt);
@@ -213,6 +220,7 @@ export async function listCapturesWithPendingProposals(auth: AuthContext, captur
         eq(captureProposals.workspaceId, auth.workspaceId),
         inArray(captureProposals.captureId, captureIds),
         eq(captureProposals.status, "pending"),
+        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
       ),
     );
   return new Set(rows.map((row) => row.captureId));

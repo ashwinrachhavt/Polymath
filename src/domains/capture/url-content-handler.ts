@@ -4,6 +4,13 @@ import { scrapeToMarkdown } from "@/integrations/firecrawl/client";
 import { fetchTranscript } from "@/integrations/youtube/transcript";
 import { assertPublicUrl } from "@/domains/knowledge/web-fetch";
 import { db } from "@/lib/db";
+import {
+  EnrichmentLeaseLostError,
+  RELEASE,
+  acquireEnrichmentLease,
+  ownedUpdate,
+  releaseEnrichmentLease,
+} from "./enrichment-lease";
 import { captures } from "./schema";
 
 /*
@@ -28,7 +35,8 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`capture.url_content_requested has a malformed payload (${typeof raw}); redeploy the producer`);
   }
-  const captureId = typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
+  const captureId =
+    typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
   const url = typeof (raw as { url?: unknown }).url === "string" ? (raw as { url: string }).url : null;
   if (!captureId || !url) throw new Error("capture.url_content_requested is missing captureId or url");
 
@@ -36,27 +44,34 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
   if (!capture || capture.workspaceId !== event.workspaceId) return;
   // A capture the person already converted does not need its reading text.
   if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
+  // Parked (ASH-305): no new fetch while set aside. Unpark re-queues this.
+  if (capture.parkedAt) return;
 
-  const videoId = parseVideoIdLoose(url);
-  const content = videoId ? await fetchTranscript(url) : await scrapePage(url);
+  // One fetch per capture at a time (ASH-305): the same fenced lease as
+  // enrichment, so an unpark re-queue racing a claimed fetch waits instead of
+  // scraping twice, and enrichment waits for the fetched text.
+  const token = await acquireEnrichmentLease(event, capture);
+  if (!token) return;
+  try {
+    const videoId = parseVideoIdLoose(url);
+    const content = videoId ? await fetchTranscript(url) : await scrapePage(url);
 
-  if (!content.ok) {
-    await db
-      .update(captures)
-      .set({ failureReason: content.error, updatedAt: new Date() })
-      .where(eq(captures.id, captureId));
-    return;
-  }
-
-  await db
-    .update(captures)
-    .set({
+    if (!content.ok) {
+      await ownedUpdate(token, captureId, { failureReason: content.error, updatedAt: new Date(), ...RELEASE });
+      return;
+    }
+    await ownedUpdate(token, captureId, {
       text: content.text,
       processingState: "enriched",
       failureReason: null,
       updatedAt: new Date(),
-    })
-    .where(eq(captures.id, captureId));
+      ...RELEASE,
+    });
+  } catch (cause) {
+    if (cause instanceof EnrichmentLeaseLostError) return;
+    await releaseEnrichmentLease(token, captureId);
+    throw cause;
+  }
 };
 
 function parseVideoIdLoose(url: string): string | null {
@@ -65,9 +80,7 @@ function parseVideoIdLoose(url: string): string | null {
   return match ? match[1] : null;
 }
 
-async function scrapePage(
-  url: string,
-): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+async function scrapePage(url: string): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   const parsed = assertPublicUrl(url);
   if (!parsed) return { ok: false, error: "That address could not be read: it is not a public web address." };
   try {
@@ -81,6 +94,9 @@ async function scrapePage(
     const title = page.title ? `${page.title}\n\n` : "";
     return { ok: true, text: `${title}${page.markdown}`.slice(0, 200_000) };
   } catch (cause) {
-    return { ok: false, error: `The page could not be read: ${cause instanceof Error ? cause.message : "the fetch failed"}.` };
+    return {
+      ok: false,
+      error: `The page could not be read: ${cause instanceof Error ? cause.message : "the fetch failed"}.`,
+    };
   }
 }

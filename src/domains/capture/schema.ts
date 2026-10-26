@@ -81,6 +81,23 @@ export const captures = pgTable(
     convertedId: uuid("converted_id"),
     convertedAt: timestamp("converted_at", { withTimezone: true }),
     failureReason: text("failure_reason"),
+    /**
+     * ASH-305: set aside at end of day. A SEPARATE axis from processing_state on
+     * purpose: parking pauses the owner-facing queue and new background work
+     * but never rewrites what enrichment or conversion decided, so unparking
+     * restores the capture exactly as it was (no re-classification, no
+     * duplicate effect). Null = not parked.
+     */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    parkedBy: uuid("parked_by"),
+    /**
+     * ASH-305: the enrichment run's fenced, time-boxed claim. A run takes it
+     * before any provider call; every later write of that run must match the
+     * token, so an expired or superseded holder can never write or clear a
+     * newer holder's work. Null = nobody enriching.
+     */
+    enrichmentLeaseToken: uuid("enrichment_lease_token"),
+    enrichmentLeaseUntil: timestamp("enrichment_lease_until", { withTimezone: true }),
     ...mutable,
   },
   (t) => [

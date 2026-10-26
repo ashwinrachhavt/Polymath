@@ -106,8 +106,11 @@ async function transition(
   audit: { action: string; summary: string },
   /** Extra writes in the same transaction (e.g. the follow-up outbox event). */
   extra?: (tx: TxDrizzle, updated: typeof focusSessions.$inferSelect) => Promise<void>,
+  /** ASH-305: run inside the caller's transaction (the shutdown ritual's one atomic apply). */
+  outer?: TxDrizzle,
 ) {
-  return withTransaction(async (tx) => {
+  const run = outer ? <T>(fn: (tx: TxDrizzle) => Promise<T>) => fn(outer) : withTransaction;
+  return run(async (tx) => {
     const now = new Date();
     const [updated] = await tx
       .update(focusSessions)
@@ -177,7 +180,7 @@ export async function resumeFocusSession(auth: AuthContext, input: LiveTransitio
   );
 }
 
-export async function finishFocusSession(auth: AuthContext, input: LiveTransition) {
+export async function finishFocusSession(auth: AuthContext, input: LiveTransition, outer?: TxDrizzle) {
   return transition(
     auth,
     input,
@@ -209,10 +212,11 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
         })
         .onConflictDoNothing();
     },
+    outer,
   );
 }
 
-export async function abandonFocusSession(auth: AuthContext, input: LiveTransition) {
+export async function abandonFocusSession(auth: AuthContext, input: LiveTransition, outer?: TxDrizzle) {
   return transition(
     auth,
     input,
@@ -223,6 +227,8 @@ export async function abandonFocusSession(auth: AuthContext, input: LiveTransiti
       outcome: input.reason?.trim() || null,
     }),
     { action: "focus_session.abandoned", summary: "Focus abandoned" },
+    undefined,
+    outer,
   );
 }
 

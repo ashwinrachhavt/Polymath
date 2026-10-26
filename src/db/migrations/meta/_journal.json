@@ -575,6 +575,13 @@
       "when": 1793200004000,
       "tag": "0255_user_preferences_interface_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1793200005000,
+      "tag": "0256_shutdown_ritual",
+      "breakpoints": true
     }
   ]
 }

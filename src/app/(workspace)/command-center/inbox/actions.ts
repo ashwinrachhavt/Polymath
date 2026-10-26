@@ -16,6 +16,7 @@ import {
   setCaptureState,
   updateCaptureText,
 } from "@/domains/capture/commands";
+import { unparkCapture } from "@/domains/capture/parking";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
@@ -158,6 +159,17 @@ export async function setCaptureStateAction(input: {
   const auth = await authorize();
   try {
     await setCaptureState(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate(auth);
+  return { ok: true };
+}
+
+export async function unparkCaptureAction(input: { captureId: string; expectedVersion: number }): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await unparkCapture(auth, input);
   } catch (error) {
     return fail(error);
   }

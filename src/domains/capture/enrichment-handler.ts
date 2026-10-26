@@ -1,7 +1,14 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
+import {
+  EnrichmentLeaseLostError,
+  RELEASE,
+  acquireEnrichmentLease,
+  ownedUpdate,
+  releaseEnrichmentLease,
+} from "./enrichment-lease";
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
@@ -14,20 +21,20 @@ import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/ques
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { blobObjects } from "../audit/schema";
 import { recordAudit } from "@/domains/audit/record";
 import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
 import { drizzleQuotaStore, withQuota } from "@/integrations/providers/quota";
 import { readBlob } from "@/integrations/object-store/object-store";
-import { transcriptionProvider, TranscriptionUnconfiguredError, type TranscriptionProvider } from "@/integrations/transcription/provider";
+import {
+  transcriptionProvider,
+  TranscriptionUnconfiguredError,
+  type TranscriptionProvider,
+} from "@/integrations/transcription/provider";
 import { captureProposals, captures } from "./schema";
 import { triageCapture } from "./jev-classify";
-import {
-  LLM_MAX_INPUT_CHARS,
-  LLM_THRESHOLD_CHARS,
-  MAX_TAGS,
-  classifyCapture,
-} from "./classification";
+import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } from "./classification";
 /*
  * The capture enrichment ladder, as an outbox consumer. Ordered after the URL
  * handler so a URL capture has its fetched reading text before classifying.
@@ -76,14 +83,36 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
   }
-  const captureId = typeof (raw as { captureId?: unknown }).captureId === "string"
-    ? (raw as { captureId: string }).captureId
-    : null;
+  const captureId =
+    typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
   if (!captureId) throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} is missing captureId`);
 
   const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
   if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
+  // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
+  if (capture.parkedAt) return;
+
+  const token = await acquireEnrichmentLease(event, capture);
+  if (!token) return;
+
+  try {
+    await enrichLeased(event, deps, capture, token);
+  } catch (cause) {
+    if (cause instanceof EnrichmentLeaseLostError) return;
+    // A failed attempt frees the claim so the redelivery isn't parked behind its own corpse.
+    await releaseEnrichmentLease(token, captureId);
+    throw cause;
+  }
+};
+
+async function enrichLeased(
+  event: ClaimedOutboxEvent,
+  deps: CaptureEnrichmentDeps,
+  capture: typeof captures.$inferSelect,
+  token: string,
+) {
+  const captureId = capture.id;
 
   // Tier 0 + 1 run on whatever text exists: the paste itself, or the fetched
   // page for a URL capture.
@@ -94,7 +123,7 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   // provider ERROR stays redeliverable, like the other tiers.
   let textForLadder = capture.text ?? "";
   if (capture.kind === "voice" && !capture.text) {
-    const transcript = await transcribeVoiceCapture(capture, event, deps.transcriber);
+    const transcript = await transcribeVoiceCapture(token, capture, event, deps.transcriber);
     if (transcript === null) return;
     textForLadder = transcript;
   }
@@ -113,26 +142,28 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   };
 
   if (!wantsLlm) {
-    await db
-      .update(captures)
-      .set({ ...base, processingState: "enriched", failureReason: null })
-      .where(eq(captures.id, captureId));
+    await ownedUpdate(token, captureId, {
+      ...base,
+      processingState: "enriched",
+      failureReason: null,
+      ...RELEASE,
+    });
     return;
   }
 
   // classifying while the model call is in flight; the inbox query treats it
   // as in-queue, and a crash here leaves a re-deliverable outbox row.
-  await db
-    .update(captures)
-    .set({ ...base, processingState: "classifying" })
-    .where(eq(captures.id, captureId));
+  await ownedUpdate(token, captureId, {
+    ...base,
+    processingState: "classifying",
+  });
 
   // Tier 2 (ASH-272): the Jev classifier, when the registry enables it. The
   // registry entry ships disabled, so today this always falls through to the
   // generation prompt below with byte-identical behavior. A Jev request
   // error fails the event for redelivery; an unreadable answer degrades to a
   // low-confidence note proposal, never a crash and never a silent skip.
-  const jev = await tryJevTriage(captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
+  const jev = await tryJevTriage(token, captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
   if (jev === "handled") return;
 
   let provider: ReturnType<typeof generationProvider>;
@@ -141,10 +172,12 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   } catch (cause) {
     if (cause instanceof GenerationUnconfiguredError) {
       // No key, no model: keep the deterministic tiers' work, mark enriched.
-      await db
-        .update(captures)
-        .set({ ...base, processingState: "enriched", failureReason: null })
-        .where(eq(captures.id, captureId));
+      await ownedUpdate(token, captureId, {
+        ...base,
+        processingState: "enriched",
+        failureReason: null,
+        ...RELEASE,
+      });
       return;
     }
     throw cause;
@@ -164,29 +197,31 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
     }
     // A readable-but-wrong model answer is not a transient condition worth
     // retrying: the deterministic tiers already landed, note it and finish.
-    await db
-      .update(captures)
-      .set({ processingState: "enriched", failureReason: "Enrichment returned an unreadable answer.", updatedAt: new Date() })
-      .where(eq(captures.id, captureId));
+    await ownedUpdate(token, captureId, {
+      processingState: "enriched",
+      failureReason: "Enrichment returned an unreadable answer.",
+      updatedAt: new Date(),
+      ...RELEASE,
+    });
     return;
   }
 
-  const tags = parsed.tags?.map((t) => t.toLowerCase().trim()).filter(Boolean).slice(0, MAX_TAGS);
-  await db
-    .update(captures)
-    .set({
-      ...base,
-      title: parsed.title?.trim() || null,
-      domain: parsed.domain?.toLowerCase().trim() || null,
-      tags: tags && tags.length > 0 ? tags : null,
-      processingState: "enriched",
-      failureReason: null,
-    })
-    .where(eq(captures.id, captureId));
-};
+  const tags = parsed.tags
+    ?.map((t) => t.toLowerCase().trim())
+    .filter(Boolean)
+    .slice(0, MAX_TAGS);
+  await ownedUpdate(token, captureId, {
+    ...base,
+    title: parsed.title?.trim() || null,
+    domain: parsed.domain?.toLowerCase().trim() || null,
+    tags: tags && tags.length > 0 ? tags : null,
+    processingState: "enriched",
+    failureReason: null,
+    ...RELEASE,
+  });
+}
 
-const noul = (answer: JevAnswer | undefined): number =>
-  answer && answer.type === "noul" ? answer.noul : Number.NaN;
+const noul = (answer: JevAnswer | undefined): number => (answer && answer.type === "noul" ? answer.noul : Number.NaN);
 
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
@@ -195,6 +230,7 @@ const noul = (answer: JevAnswer | undefined): number =>
  * unconfigured - the pre-ASH-272 behavior, unchanged).
  */
 async function tryJevTriage(
+  token: string,
   captureId: string,
   workspaceId: string,
   capture: { title: string | null; kind: string },
@@ -212,7 +248,10 @@ async function tryJevTriage(
   // The domain Choice's options come from the workspace's seeded taxonomy; an
   // unseeded workspace simply asks no domain question (domain stays null).
   const domains = await db
-    .select({ slug: taxonomyNodes.slug, description: taxonomyNodes.description })
+    .select({
+      slug: taxonomyNodes.slug,
+      description: taxonomyNodes.description,
+    })
     .from(taxonomyNodes)
     .where(eq(taxonomyNodes.workspaceId, workspaceId));
 
@@ -226,7 +265,10 @@ async function tryJevTriage(
   let answers: Record<string, JevAnswer>;
   let model: string;
   try {
-    const result = await judger.judge({ state, questions: captureQuestions(domains) });
+    const result = await judger.judge({
+      state,
+      questions: captureQuestions(domains),
+    });
     answers = result.answers;
     model = result.model;
   } catch (cause) {
@@ -238,7 +280,10 @@ async function tryJevTriage(
   const domainAnswer = answers.domain;
   const domain =
     domainAnswer && domainAnswer.type === "choice"
-      ? { choice: domainAnswer.choice, topProbability: domainAnswer.probabilities[domainAnswer.choice] ?? 0 }
+      ? {
+          choice: domainAnswer.choice,
+          topProbability: domainAnswer.probabilities[domainAnswer.choice] ?? 0,
+        }
       : null;
   const numbers = {
     commitment: noul(answers.commitment),
@@ -271,27 +316,39 @@ async function tryJevTriage(
     domainSlug = path ? path[0].slug : null;
   }
 
-  for (const proposal of triage.proposals) {
-    await db.insert(captureProposals).values({
-      workspaceId,
-      captureId,
-      kind: proposal.kind,
-      payload: proposal.payload,
-      rationale: proposal.rationale,
-      model,
-      promptVersion: JEV_QUESTIONS_VERSION,
-      confidence: proposal.confidence,
-    });
-  }
-  await db
-    .update(captures)
-    .set({
-      ...base,
-      domain: domainSlug,
-      processingState: "enriched",
-      failureReason: unreadable ? "Jev returned an unreadable answer." : null,
-    })
-    .where(eq(captures.id, captureId));
+  // ASH-305: the write is a compare-and-set, so a duplicate run (a redelivered
+  // event after a crash, or the unpark re-queue racing the original) can never
+  // double the proposals: only the run that moves the capture out of
+  // unprocessed/classifying inserts them, in the same transaction. classifying
+  // stays eligible so crash recovery is unchanged. A capture parked mid-flight
+  // still finishes; its proposals stay hidden until unpark.
+  await withTransaction(async (tx) => {
+    const [claimed] = await tx
+      .update(captures)
+      .set({
+        ...base,
+        domain: domainSlug,
+        processingState: "enriched",
+        failureReason: unreadable ? "Jev returned an unreadable answer." : null,
+        ...RELEASE,
+      })
+      .where(and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)))
+      .returning({ id: captures.id });
+    // Lease lost: a newer holder owns this capture; this run files nothing.
+    if (!claimed) throw new EnrichmentLeaseLostError();
+    for (const proposal of triage.proposals) {
+      await tx.insert(captureProposals).values({
+        workspaceId,
+        captureId,
+        kind: proposal.kind,
+        payload: proposal.payload,
+        rationale: proposal.rationale,
+        model,
+        promptVersion: JEV_QUESTIONS_VERSION,
+        confidence: proposal.confidence,
+      });
+    }
+  });
   return "handled";
 }
 
@@ -305,6 +362,7 @@ async function tryJevTriage(
  * the generation seam: the registry's gemini entry carries the allowance.
  */
 async function transcribeVoiceCapture(
+  token: string,
   capture: { id: string; workspaceId: string; blobId: string | null },
   event: ClaimedOutboxEvent,
   injected?: TranscriptionProvider,
@@ -314,14 +372,13 @@ async function transcribeVoiceCapture(
     provider = injected ?? transcriptionProvider();
   } catch (cause) {
     if (cause instanceof TranscriptionUnconfiguredError) {
-      await db
-        .update(captures)
-        .set({
-          processingState: "failed",
-          failureReason: "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER.",
-          updatedAt: new Date(),
-        })
-        .where(eq(captures.id, capture.id));
+      await ownedUpdate(token, capture.id, {
+        processingState: "failed",
+        failureReason:
+          "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER.",
+        updatedAt: new Date(),
+        ...RELEASE,
+      });
       return null;
     }
     throw cause;
@@ -329,10 +386,12 @@ async function transcribeVoiceCapture(
 
   if (!capture.blobId) {
     // A voice capture without bytes is a broken write, not a retryable state.
-    await db
-      .update(captures)
-      .set({ processingState: "failed", failureReason: "The audio is missing from storage.", updatedAt: new Date() })
-      .where(eq(captures.id, capture.id));
+    await ownedUpdate(token, capture.id, {
+      processingState: "failed",
+      failureReason: "The audio is missing from storage.",
+      updatedAt: new Date(),
+      ...RELEASE,
+    });
     return null;
   }
   const [blob] = await db.select().from(blobObjects).where(eq(blobObjects.id, capture.blobId)).limit(1);
@@ -341,29 +400,29 @@ async function transcribeVoiceCapture(
 
   const entry = providerEntry(provider.registryId);
   const call = () => provider.transcribe({ bytes, mimeType: blob.mimeType });
-  const { text } = entry?.quota && entry.enabled
-    ? await withQuota(drizzleQuotaStore(), entry, event.workspaceId, 1, call)
-    : await call();
+  const { text } =
+    entry?.quota && entry.enabled
+      ? await withQuota(drizzleQuotaStore(), entry, event.workspaceId, 1, call)
+      : await call();
   const transcript = text.trim();
 
-  await db
-    .update(captures)
-    .set({
-      text: transcript || null,
-      processingState: "unprocessed",
-      updatedAt: new Date(),
-    })
-    .where(eq(captures.id, capture.id));
+  await ownedUpdate(token, capture.id, {
+    text: transcript || null,
+    processingState: "unprocessed",
+    updatedAt: new Date(),
+  });
   const ownerAuth = await workspaceOwnerAuth(event.workspaceId);
   if (ownerAuth) {
     await recordAudit(ownerAuth, {
-    action: "capture.transcribed",
-    subjectType: "capture",
-    subjectId: capture.id,
-    summary: transcript ? `Transcribed with ${provider.name} (${transcript.length} chars)` : `No speech found (${provider.name})`,
-    metadata: { actor: "transcription" },
-    actorKind: "system",
-  });
+      action: "capture.transcribed",
+      subjectType: "capture",
+      subjectId: capture.id,
+      summary: transcript
+        ? `Transcribed with ${provider.name} (${transcript.length} chars)`
+        : `No speech found (${provider.name})`,
+      metadata: { actor: "transcription" },
+      actorKind: "system",
+    });
   }
   return transcript;
 }

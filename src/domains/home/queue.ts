@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { pageReviewQueue } from "@/domains/actions/queries";
 import { captureProposals, captures } from "@/domains/capture/schema";
 import { db } from "@/lib/db";
@@ -88,7 +88,7 @@ export async function listHomeQueue(workspaceId: string): Promise<HomeQueueCard[
       })
       .from(captureProposals)
       .innerJoin(captures, eq(captures.id, captureProposals.captureId))
-      .where(and(eq(captureProposals.workspaceId, workspaceId), eq(captureProposals.status, "pending")))
+      .where(and(eq(captureProposals.workspaceId, workspaceId), eq(captureProposals.status, "pending"), isNull(captures.parkedAt)))
       .orderBy(desc(captureProposals.createdAt))
       .limit(HOME_QUEUE_LIMIT),
   ]);

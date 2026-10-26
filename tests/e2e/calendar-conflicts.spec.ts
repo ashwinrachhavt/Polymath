@@ -66,7 +66,10 @@ for (const vp of VIEWPORTS) {
       const timeZone = prefs?.timezone ?? "UTC";
 
       // Three days out, so the proposed slot is in the future and in view.
-      const day = new Date(Date.now() + 3 * DAY);
+      // The desktop and mobile variants run in parallel against one database:
+      // identical slots would merge both variants' events into one conflict
+      // group and each would see move options for the other's event.
+      const day = new Date(Date.now() + (vp.name === "mobile" ? 4 : 3) * DAY);
       const at = (h: number, m = 0) => new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, m));
       const dateKey = at(0).toISOString().slice(0, 10);
       const localTitle = `Planning ${tag}`;

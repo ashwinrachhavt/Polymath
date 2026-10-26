@@ -33,6 +33,7 @@ export const metadata = { title: "Inbox · Polymath" };
 
 const filters: Array<{ value: InboxFilter; label: string }> = [
   { value: "unprocessed", label: "To clarify" },
+  { value: "parked", label: "Parked" },
   { value: "converted", label: "Converted" },
   { value: "discarded", label: "Archived" },
   { value: "all", label: "All" },
@@ -164,6 +165,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               rows={rows.map((capture) => ({
                 id: capture.id,
                 processingState: capture.processingState,
+                parkedAt: capture.parkedAt?.toISOString() ?? null,
                 kind: capture.kind,
                 createdAt: capture.createdAt.toISOString(),
                 title: capture.title,
@@ -206,6 +208,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 ? {
                     id: selected.capture.id,
                     processingState: selected.capture.processingState,
+                    parkedAt: selected.capture.parkedAt?.toISOString() ?? null,
                     kind: selected.capture.kind,
                     createdAt: selected.capture.createdAt.toISOString(),
                     title: selected.capture.title,

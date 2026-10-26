@@ -26,7 +26,7 @@ const captureRequest = z
     message: "Send text, a url, or both.",
   });
 
-const filterSchema = z.enum(["unprocessed", "converted", "discarded", "all"]);
+const filterSchema = z.enum(["unprocessed", "parked", "converted", "discarded", "all"]);
 
 export const OPTIONS = async (request: Request) => preflight(request.headers.get("origin"));
 

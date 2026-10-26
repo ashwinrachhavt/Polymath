@@ -311,3 +311,32 @@ export const dailyOutcomes = pgTable(
       .where(sql`task_id is not null`),
   ],
 );
+
+/*
+ * ASH-305: tomorrow's briefing seed. The shutdown ritual's suggestion that a
+ * task lead the next day's "suggested" list. It is NOT a commitment:
+ * daily_outcomes stays the owner-accepted table and is never written from
+ * here. A seed lives only as long as its task (cascade, so no orphan rows to
+ * guard against), is idempotent per (day, task), and is dismissed by archiving
+ * the row, never by deleting it, so a replayed shutdown cannot resurrect a
+ * seed the owner dismissed (the unique key still holds).
+ */
+export const briefingSeeds = pgTable(
+  "briefing_seeds",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Workspace-local date the seed is for (the briefing's own day key). */
+    onDate: date("on_date").notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    /** Why it was suggested, in the owner's or the ritual's plain words. */
+    reason: text("reason"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("briefing_seeds_day_task_key").on(t.workspaceId, t.onDate, t.taskId),
+    index("briefing_seeds_day_idx").on(t.workspaceId, t.onDate),
+  ],
+);

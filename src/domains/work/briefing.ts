@@ -20,6 +20,8 @@ export type BriefingTask = {
   dueAt: Date | null;
   tags: string[];
   version: number;
+  /** Suggested for today by yesterday's shutdown ritual (ASH-305); a suggestion, never a commitment. */
+  seeded?: boolean;
 };
 
 export type BriefingData = {
@@ -44,7 +46,12 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
     )
     select t.id, t.title, t.status, t.priority, t.due_at, t.tags, t.version,
       (select today from day)::text as today,
-      (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome
+      (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome,
+      exists (
+        select 1 from briefing_seeds s
+        where s.workspace_id = t.workspace_id and s.task_id = t.id
+          and s.on_date = (select today from day) and s.archived_at is null
+      ) as is_seed
     from tasks t
     where t.workspace_id = ${auth.workspaceId}
       and t.archived_at is null
@@ -63,6 +70,7 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
     tags: (r.tags as string[]) ?? [],
     version: r.version as number,
     isOutcome: r.is_outcome as boolean,
+    isSeed: r.is_seed as boolean,
   }));
 
   // The workspace-local day rides along on every row: one round trip for the
@@ -79,8 +87,11 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
   }
 
   const outcomes = all.filter((t) => t.isOutcome);
+  // A shutdown seed leads the suggestions (stable: the rank order of everything
+  // else is untouched). It never joins `outcomes`: only the owner accepts those.
   const open = all.filter((t) => !t.isOutcome && t.status !== "waiting");
-  const suggested = open.slice(0, Math.max(0, 3 - outcomes.length)).map(strip);
+  const seedFirst = [...open].sort((a, b) => Number(b.isSeed) - Number(a.isSeed));
+  const suggested = seedFirst.slice(0, Math.max(0, 3 - outcomes.length)).map(strip);
   const dueTodayOrOverdue = open
     .filter((t) => t.dueAt && t.dueAt.toISOString().slice(0, 10) <= today)
     .map(strip);
@@ -89,6 +100,6 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
   return { today, outcomes: outcomes.map(strip), suggested, dueTodayOrOverdue, waiting };
 }
 
-function strip(task: BriefingTask & { isOutcome: boolean }): BriefingTask {
-  return { id: task.id, title: task.title, status: task.status, priority: task.priority, dueAt: task.dueAt, tags: task.tags, version: task.version };
+function strip(task: BriefingTask & { isOutcome: boolean; isSeed: boolean }): BriefingTask {
+  return { ...(task.isSeed ? { seeded: true } : {}), id: task.id, title: task.title, status: task.status, priority: task.priority, dueAt: task.dueAt, tags: task.tags, version: task.version };
 }
