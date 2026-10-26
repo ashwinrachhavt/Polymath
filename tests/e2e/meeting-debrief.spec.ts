@@ -28,6 +28,9 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
+/** Artifacts THIS worker seeded; cleanup stays scoped to them. */
+const seededArtifactIds: string[] = [];
+
 /** A transcript artifact the dev owner's workspace owns. Null when no database. */
 async function seedArtifact(kind: "transcript" | "note", title: string): Promise<{ id: string } | null> {
   const client = db();
@@ -52,6 +55,7 @@ async function seedArtifact(kind: "transcript" | "note", title: string): Promise
         'created', ${owner.user_id})
       returning id`;
     await client`update artifacts set current_version_id = ${version.id} where id = ${artifact.id}`;
+    seededArtifactIds.push(artifact.id);
     return artifact;
   } finally {
     await client.end();
@@ -63,9 +67,16 @@ async function removeSeeded(): Promise<void> {
   if (!client) return;
   try {
     // The batch's proposals reference the artifacts; removing them first
-    // keeps the developer's queue clean.
-    await client`delete from action_proposals where dedupe_key like 'tasks:meeting-debrief:%' or dedupe_key like 'notes:meeting-debrief:%'`;
-    await client`delete from artifacts where title like 'Weekly sync transcript%' or title like 'An ordinary generated note%'`;
+    // keeps the developer's queue clean. Scope every delete to the artifacts
+    // THIS worker seeded: each parallel worker runs its own copy of this
+    // module and its own afterAll, so an unscoped prefix/title delete wiped
+    // the other viewport variant's proposals (and artifacts) mid-test - the
+    // cardinality check then read 0 for an artifact whose debrief had just
+    // reported its proposals (ASH-324).
+    for (const id of seededArtifactIds) {
+      await client`delete from action_proposals where dedupe_key like ${`%meeting-debrief:${id}:%`}`;
+      await client`delete from artifacts where id = ${id}`;
+    }
   } finally {
     await client.end();
   }
@@ -79,9 +90,6 @@ for (const vp of VIEWPORTS) {
   test(`debrief a transcript into one batch of proposals [${vp.name}]`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    // Title carries the viewport: both variants run in parallel and afterAll
-    // deletes by title, so a shared title let one variant's cleanup delete the
-    // other's artifact mid-test ("This artifact does not exist").
     const artifact = await seedArtifact("transcript", `Weekly sync transcript (${vp.name})`);
     test.skip(!artifact, "DATABASE_URL not configured");
 

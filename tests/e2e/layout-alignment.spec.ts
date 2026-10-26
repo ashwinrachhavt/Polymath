@@ -10,14 +10,29 @@ for (const width of [390, 1440, 1920]) {
     // The bare /command-center/relationships index redirects to People by
     // design, so measure the canonical screen it lands on rather than a
     // route that never paints.
-    for (const path of ["/settings", "/reviews", "/command-center/relationships/people", "/alfred/knowledge", "/projects", "/more"]) {
+    // Each route pairs with its own heading: the shell keeps the previous
+    // route's DOM (including its h1 and header) mounted through the
+    // transition, so a bare h1 wait can pass on the stale screen and pair
+    // measurements across two routes (ASH-324).
+    for (const [path, heading] of [
+      ["/settings", "Settings"],
+      ["/reviews", "Reviews"],
+      ["/command-center/relationships/people", "People"],
+      ["/alfred/knowledge", "Knowledge"],
+      ["/projects", "Notebook"],
+      ["/more", "More"],
+    ] as const) {
       await page.goto(path);
       await waitSettled(page);
       // Scope to the shell's content main: route-level loading.tsx renders a
       // second skeleton main, and streamed pages swap it in late. Suspense
-      // boundaries deliver the real tree after that swap, so wait for the
-      // heading to land rather than sampling whichever shell is on screen.
-      await expect(page.locator("#content h1").first(), path).toBeVisible();
+      // boundaries deliver the real tree after that swap, so wait for THIS
+      // route's heading to land rather than sampling whichever shell is on
+      // screen.
+      await expect(page.getByRole("heading", { level: 1, name: heading }), path).toBeVisible();
+      // Then wait for the stale route's header to unmount so the
+      // header/content pairs measured below belong to one settled screen.
+      await expect(page.locator("#content .page-header, #content .suite-screen"), path).toHaveCount(1);
       const screen = page.locator("#content .suite-screen").first();
       const canonical = page.locator("#content .page-header").first();
       if (await screen.count()) {
