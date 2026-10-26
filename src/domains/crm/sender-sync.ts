@@ -209,7 +209,7 @@ export async function syncGmailSenders(
   const complete = failure === null && pending.length === 0;
   // Failed: the cursor is left exactly as it was (watermark and pending), state failed. Partial:
   // the watermark advances and the unread windows ride along, so pending + new always covers every second.
-  const next: SenderCursor = failure === null ? { watermark: startedAt - OVERLAP_SECONDS, pending } : saved;
+  const next: SenderCursor = failure === null ? { watermark: Math.max(startedAt - OVERLAP_SECONDS, saved.watermark ?? 0), pending } : saved;
   await recordCursor(next, complete ? "idle" : failure ? "failed" : "partial", failure);
   await db
     .update(triggers)
@@ -248,9 +248,9 @@ export async function syncAllGmailSenders(transport: Transport, now?: Date) {
  *
  * Both directions compare-and-set the account version, the same guard the other
  * connector controls use, so two racing toggles cannot both win and a stale tab
- * cannot flip a switch it never saw. Enabling clears the cursor: whatever the
- * switch skipped while it was off is never scanned afterwards, the pass starts
- * from the bounded lookback instead of the old watermark.
+ * cannot flip a switch it never saw. Enabling resets the watermark to the moment of
+ * enabling: nothing from before the owner turned it on (including mail that
+ * arrived while it was off) is ever read, and there is no backfill.
  */
 export async function setSenderProposals(
   auth: AuthContext,
@@ -292,7 +292,13 @@ export async function setSenderProposals(
       await tx.insert(triggers).values({ workspaceId: auth.workspaceId, externalAccountId: account.id, provider: "gmail", eventType: SENDER_PROPOSALS_EVENT, status, budget: { perRun: DEFAULT_PER_RUN }, createdBy: auth.userId, updatedBy: auth.userId });
     }
     if (input.enabled && existing?.status !== "enabled") {
-      await tx.delete(syncCursors).where(and(eq(syncCursors.externalAccountId, account.id), eq(syncCursors.resource, RESOURCE)));
+      // Start the watermark at the moment of enabling: mail from before the owner turned this
+      // on, including anything that arrived while it was off, is never read. No backfill.
+      const cursor = JSON.stringify({ watermark: Math.floor(Date.now() / 1000), pending: [] } satisfies SenderCursor);
+      await tx
+        .insert(syncCursors)
+        .values({ workspaceId: auth.workspaceId, externalAccountId: account.id, resource: RESOURCE, cursor, state: "idle" })
+        .onConflictDoUpdate({ target: [syncCursors.externalAccountId, syncCursors.resource], set: { cursor, state: "idle", lastError: null, updatedAt: new Date() } });
     }
     await recordAudit(
       auth,

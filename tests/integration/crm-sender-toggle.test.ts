@@ -91,15 +91,47 @@ suite("sender suggestion switch", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("enabling forgets the old watermark so the off period is never scanned", async () => {
+  it("enabling starts the watermark at that moment: mail from the off period is never read", async () => {
     let a = await account();
     if ((await trigger()).status === "enabled") {
       await sync.setSenderProposals(owner(), { accountId, expectedVersion: a.version, enabled: false });
       a = await account();
     }
+    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
     await db.insert(syncCursors).values({ workspaceId, externalAccountId: accountId, resource: "sender-proposals", cursor: JSON.stringify({ watermark: 1, pending: [] }), state: "idle" });
+    const before = Math.floor(Date.now() / 1000);
     await sync.setSenderProposals(owner(), { accountId, expectedVersion: a.version, enabled: true });
-    expect(await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId))).toHaveLength(0);
+    const [row] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    const cursor = JSON.parse(row.cursor!) as { watermark: number; pending: unknown[] };
+    expect(cursor.watermark).toBeGreaterThanOrEqual(before);
+    expect(cursor.pending).toEqual([]);
+
+    // One message from the off period (before enabling), one after: only the later one is read.
+    const oldSec = cursor.watermark - 3600;
+    const newSec = cursor.watermark + 5;
+    const queries: string[] = [];
+    const transport: Transport = {
+      async read(request) {
+        const base = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
+        const mails = [{ id: "old", sec: oldSec, from: "Old <old@offperiod.io>" }, { id: "new", sec: newSec, from: "New <new@afterenable.io>" }];
+        if (request.endpoint === base) {
+          const q = request.query?.q ?? "";
+          queries.push(q);
+          const after = Number(/after:(\d+)/.exec(q)?.[1] ?? 0);
+          return { ok: true, status: 200, data: { messages: mails.filter((m) => m.sec > after).map((m) => ({ id: m.id, threadId: `th-${m.id}` })) } };
+        }
+        const m = mails.find((x) => request.endpoint === `${base}/${x.id}`)!;
+        return { ok: true, status: 200, data: { id: m.id, threadId: `th-${m.id}`, internalDate: String(m.sec * 1000), payload: { headers: [{ name: "From", value: m.from }, { name: "Subject", value: "Hi" }] } } };
+      },
+    };
+    const result = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: new Date((newSec + 10) * 1000) });
+    expect(queries[0]).toContain(`after:${cursor.watermark}`);
+    expect(result.proposed.map((p) => p.email)).toEqual(["new@afterenable.io"]);
+    // The overlap never reaches back before the enable moment.
+    const [after] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    expect((JSON.parse(after.cursor!) as { watermark: number }).watermark).toBeGreaterThanOrEqual(cursor.watermark);
+    await db.delete(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+    await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
   });
 
   it("a pass whose switch goes off mid-read proposes nothing and keeps the cursor", async () => {
