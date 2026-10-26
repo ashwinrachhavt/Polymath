@@ -210,13 +210,18 @@ export type LinearIssueDraftResult = {
   outcome: LinearIssueDraftOutcome;
 };
 
-type SourceNote = { id: string; title: string; markdown: string };
+/*
+ * `id` is the dedupe/lock identity (a real note id, or a derived conversation
+ * key). `noteId` is set only when the source is an actual note the draft can
+ * link back to - conversation text has no page, so it must never get one.
+ */
+type SourceNote = { id: string; title: string; markdown: string; noteId?: string | null };
 
 function withMarker(body: string, source: SourceNote, sourceHash: string): { finalBody: string; bodyHash: string } {
   // A note source links back by title; conversation text has no note to link
   // to, so its provenance line names where the material came from instead of
   // dangling a [[link]] to a page that does not exist.
-  const provenance = source.id ? `Drafted from [[${source.title}]].` : `Drafted from the conversation (${source.title}).`;
+  const provenance = source.noteId ? `Drafted from [[${source.title}]].` : `Drafted from the conversation (${source.title}).`;
   const contentPart = `${body}\n\n${provenance}`;
   const bodyHash = sourceHashOf(contentPart);
   return { finalBody: `${contentPart}\n\n${sourceMarkerOf(source.id, sourceHash, bodyHash)}`, bodyHash };
@@ -253,7 +258,7 @@ async function loadSourceNote(auth: AuthContext, artifactId: string, tx?: TxDriz
   const [note] = await q;
   if (!note) return null;
   const markdown = note.content && typeof (note.content as { text?: unknown }).text === "string" ? ((note.content as { text: string }).text as string) : "";
-  return { id: note.id, title: note.title, markdown };
+  return { id: note.id, noteId: note.id, title: note.title, markdown };
 }
 
 async function findExistingDraft(auth: AuthContext, sourceId: string, tx?: TxDrizzle) {
