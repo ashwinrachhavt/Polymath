@@ -38,7 +38,42 @@ describe("cited answers", () => {
 
   it("renders plain text untouched when there are no citations", () => {
     const html = renderToStaticMarkup(createElement(CitedText, { text: "Nothing cited here.", citations: [] }));
-    expect(html).toBe("Nothing cited here.");
+    // The answer is a paragraph in the transcript's block markup, not a bare
+    // text node; what must not happen is any escaping or markup corruption.
+    expect(html).toBe("<p>Nothing cited here.</p>");
+  });
+
+  /*
+   * Regression: the live surface rendered inline spans only, so a fenced block,
+   * a rule, or a heading in a model answer reached the reader as its literal
+   * characters. The stored thread parsed them; the live one did not.
+   */
+  it("renders a fenced code block as code, not literal backticks", () => {
+    const html = renderToStaticMarkup(
+      createElement(CitedText, { text: "Try this:\n\n```ts\nconst x = 1;\n```\n", citations: [] }),
+    );
+    expect(html).toContain("<pre");
+    expect(html).toContain("<code");
+    expect(html).toContain("const x = 1;");
+    expect(html).not.toContain("```");
+  });
+
+  it("renders a thematic break and a quote as blocks", () => {
+    const html = renderToStaticMarkup(
+      createElement(CitedText, { text: "Above\n\n---\n\n> quoted line\n", citations: [] }),
+    );
+    expect(html).toContain("<hr");
+    expect(html).toContain("<blockquote");
+    expect(html).not.toContain("---");
+  });
+
+  it("keeps citations working inside a list item", () => {
+    const html = renderToStaticMarkup(
+      createElement(CitedText, { text: "- the lease runs two years [[1]]\n- it renews\n", citations: [citation("d1", "Lease", 0)] }),
+    );
+    expect(html).toContain("<li");
+    expect(html).toContain('href="#citation-0"');
+    expect(html).not.toContain("[[1]]");
   });
 });
 

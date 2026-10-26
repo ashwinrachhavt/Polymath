@@ -43,10 +43,17 @@ async function relayThroughWorker(url, options) {
   });
 }
 
+/**
+ * How long to wait for the worker to confirm it wrote the capture. Generous
+ * compared with a normal reply (microseconds on a healthy worker) because the
+ * worker also attempts one immediate delivery, bounded by its own 20s
+ * DELIVERY_TIMEOUT_MS. Past this the capture is unknown, not failed.
+ */
+const ENQUEUE_REPLY_DEADLINE_MS = 30000;
+
 const AlfredAPI = {
   _baseUrl: null,
   _defaultUrl: "http://localhost:3000",
-
   /** Resolve the API base URL from storage or fall back to default. */
   async base() {
     if (this._baseUrl) return this._baseUrl;
@@ -203,14 +210,25 @@ const AlfredAPI = {
     if (canMessage) {
       let reply;
       try {
-        reply = await chrome.runtime.sendMessage({
-          type: "AXIOM_ENQUEUE_CAPTURE",
-          text,
-          url,
-          title,
-          history: history || null,
-        });
+        reply = await this._messageWorker(
+          {
+            type: "AXIOM_ENQUEUE_CAPTURE",
+            text,
+            url,
+            title,
+            history: history || null,
+          },
+          ENQUEUE_REPLY_DEADLINE_MS,
+        );
       } catch (err) {
+        if (err && err.code === "enqueue_unconfirmed") {
+          // The worker took the message and then stopped answering: Chrome
+          // kills an idle worker mid-await. The capture is written to the
+          // outbox before any network call, so it is on this device and the
+          // alarm the worker wakes on delivers it. Reporting ok:true here is
+          // deliberate — a false failure makes the person capture again.
+          return { ok: true, delivered: false };
+        }
         // "Extension context invalidated" — the extension was reloaded or
         // updated and this page still runs the old content script.
         throw new Error("The extension was just reloaded. Refresh this page and try again.");
@@ -222,6 +240,44 @@ const AlfredAPI = {
     }
     await this.createCapture({ text, url, title });
     return { ok: true, delivered: true };
+  },
+
+  /**
+   * sendMessage bounded by a deadline. The worker writes the capture before it
+   * replies, and that write waits on a storage lock and a delivery pump, so a
+   * worker killed mid-await never answers at all — which used to surface as an
+   * immediate "could not save" for a capture that was safe on this device.
+   */
+  _messageWorker(message, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        const err = new Error("The companion did not confirm the save in time.");
+        err.code = "enqueue_unconfirmed";
+        reject(err);
+      }, timeoutMs);
+      try {
+        chrome.runtime.sendMessage(message, (reply) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          // A missing reply with a runtime error is the reloaded-extension
+          // case, not a timeout: keep the distinction the caller reports on.
+          if (chrome.runtime.lastError && !reply) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(reply);
+        });
+      } catch (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
   },
 
   // ── Health ─────────────────────────────────────────────────────────

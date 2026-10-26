@@ -19,6 +19,8 @@ export type ThreadEntry = {
   kind: "user" | "assistant" | "reasoning" | "cancelled" | "status";
   text: string;
   at: Date;
+  /** The model turn an assistant message belongs to; absent on user messages. */
+  turnId?: string | null;
   /** The owner's like/dislike on an assistant message; null when not given. */
   feedback?: "up" | "down" | null;
 };
@@ -27,13 +29,14 @@ const TERMINAL = ["succeeded", "failed", "cancelled"] as const;
 export const isFinished = (state: string) => (TERMINAL as readonly string[]).includes(state);
 
 function toEntry(row: { sequence: number; type: string; data: unknown; createdAt: Date; feedback?: string | null }): ThreadEntry | null {
-  const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown; text?: unknown };
+  const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown; text?: unknown; turnId?: unknown };
   if (row.type === "message" && typeof data.content === "string") {
     return {
       sequence: row.sequence,
       kind: data.role === "assistant" ? "assistant" : "user",
       text: data.content,
       at: row.createdAt,
+      turnId: typeof data.turnId === "string" ? data.turnId : null,
       feedback: data.role === "assistant" ? ((row.feedback as "up" | "down" | null) ?? null) : undefined,
     };
   }

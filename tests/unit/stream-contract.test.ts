@@ -5,6 +5,7 @@ import {
   encodeFrame,
   frameOf,
   splitLines,
+  threadBlocks,
   type ChatFrame,
 } from "@/domains/agents/stream-contract";
 
@@ -321,5 +322,82 @@ describe("wire framing", () => {
     const { lines, rest } = splitLines('{"a":1}\n{"b":2');
     expect(lines).toEqual(['{"a":1}']);
     expect(rest).toBe('{"b":2');
+  });
+});
+
+/*
+ * A live run streams Eve, and Eve replays only the turn it is currently on. So
+ * a conversation resumed after a reload rendered as "This conversation has no
+ * messages yet" while its stored events sat in run_events. These protect the
+ * two halves of the fix: the seed carries the stored transcript, and it uses
+ * the stream's own block ids so a replay replaces rather than duplicates.
+ */
+describe("threadBlocks", () => {
+  it("turns a stored thread into user and assistant blocks in order", () => {
+    const blocks = threadBlocks([
+      { sequence: 1, role: "user", text: "Help me prep", turnId: null },
+      { sequence: 2, role: "assistant", text: "Here is the loop", turnId: "turn_0" },
+      { sequence: 3, role: "user", text: "Go on", turnId: null },
+    ]);
+    expect(blocks.map((block) => [block.kind, block.text])).toEqual([
+      ["user", "Help me prep"],
+      ["assistant", "Here is the loop"],
+      ["user", "Go on"],
+    ]);
+  });
+
+  it("ids an assistant block the way the live stream would, so a replay replaces it", () => {
+    const [block] = threadBlocks([{ sequence: 7, role: "assistant", text: "Answer", turnId: "turn_0" }]);
+    // Exactly blockIdFor's shape: a `block` frame for turn_0 step 0 overwrites it.
+    expect(block).toMatchObject({ id: "assistant:turn_0:0", done: true });
+  });
+
+  it("keys a message with no turnId by sequence, since no replay can collide with it", () => {
+    const blocks = threadBlocks([
+      { sequence: 4, role: "user", text: "Question", turnId: null },
+      { sequence: 5, role: "assistant", text: "Answer", turnId: null },
+    ]);
+    expect(blocks.map((block) => block.id)).toEqual(["user:stored:4", "assistant:stored:5"]);
+  });
+
+  it("seeds nothing for an empty thread, so the surface keeps its empty prompt", () => {
+    expect(threadBlocks([])).toEqual([]);
+  });
+
+  it("complete seeded blocks carry no feedback toolbar until the stream speaks", () => {
+    // done:true is what the surface keys the toolbar off; a stored block is
+    // final, which is correct — the stored feedback lives on the static branch.
+    const [block] = threadBlocks([{ sequence: 1, role: "assistant", text: "x", turnId: "turn_1" }]);
+    expect(block?.done).toBe(true);
+  });
+});
+
+/*
+ * A seeded block and Eve's replay of the same turn share one block id. If a
+ * replayed delta were appended to a finished block, the answer would render
+ * with its second half duplicated.
+ */
+describe("ChatAccumulator with a seeded transcript", () => {
+  it("ignores replayed deltas for a block the seed already completed", () => {
+    const acc = new ChatAccumulator();
+    const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Sierra retired its coding rounds.", turnId: "turn_0" }]);
+    acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
+    acc.apply({ type: "delta", runId: RUN, blockId: "assistant:turn_0:0", text: "Sierra retired", cursor: 1 });
+    expect(acc.assistantText()).toBe("Sierra retired its coding rounds.");
+  });
+
+  it("still appends deltas to a block that is still streaming", () => {
+    const acc = new ChatAccumulator();
+    acc.apply({ type: "delta", runId: RUN, blockId: "assistant:turn_1:0", text: "Hel", cursor: 1 });
+    acc.apply({ type: "delta", runId: RUN, blockId: "assistant:turn_1:0", text: "lo", cursor: 2 });
+    expect(acc.assistantText()).toBe("Hello");
+  });
+
+  it("lets the authoritative block frame replace a seeded block", () => {
+    const acc = new ChatAccumulator();
+    const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Partial stored text", turnId: "turn_0" }]);
+    acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
+    acc.apply({ type: "block", runId: RUN, blockId: "assistant:turn_0:0", text: "The full answer.", finishReason: "stop", cursor: 9 });
+    expect(acc.assistantText()).toBe("The full answer.");
   });
 });
