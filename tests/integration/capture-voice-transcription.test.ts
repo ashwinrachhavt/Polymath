@@ -146,6 +146,22 @@ suite("voice capture transcription", () => {
     expect(row.blobId).not.toBeNull();
   });
 
+  it("a stale failure clears once a transcript lands on retry", async () => {
+    const { captureId } = await voiceCapture();
+    await db
+      .update(captures)
+      .set({ failureReason: "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER." })
+      .where(eq(captures.id, captureId));
+    await runEnrichment(captureId, {
+      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+    });
+
+    const row = await getCapture(captureId);
+    expect(row.processingState).toBe("enriched");
+    expect(row.text).toBe(TRANSCRIPT);
+    expect(row.failureReason).toBeNull();
+  });
+
   it("no speech in the audio enriches clean instead of inventing words", async () => {
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {

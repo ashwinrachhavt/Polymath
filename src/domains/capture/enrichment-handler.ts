@@ -160,7 +160,10 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
  * forever. Once any text exists the reason is stale and clears.
  */
 function settledFailureReason(capture: { failureReason: string | null }, bodyText: string): string | null {
-  return bodyText.trim() ? null : capture.failureReason;
+  const body = bodyText.trim();
+  // Whitespace is nothing, and a bare URL is a pointer, not grounded text.
+  if (!body || /^https?:\/\/\S+$/.test(body)) return capture.failureReason;
+  return null;
 }
 
 async function enrichLeased(
@@ -290,7 +293,7 @@ async function tryJevTriage(
   token: string,
   captureId: string,
   workspaceId: string,
-  capture: { title: string | null; kind: string },
+  capture: { title: string | null; kind: string; failureReason: string | null },
   base: { cleanText: string | null; structure: string; updatedAt: Date },
   cleanText: string,
   structure: string,

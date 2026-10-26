@@ -171,6 +171,63 @@ suite("capture enrichment ladder", () => {
     expect(row.cleanText).toBeTruthy();
   });
 
+  it("clears a stale failure once real text enriches on the deterministic path", async () => {
+    const capture = await commands.createCapture(auth, { text: "A short thought that needs no model." });
+    await db.update(captures).set({ failureReason: "An earlier attempt failed." }).where(eq(captures.id, capture.id));
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.failureReason).toBeNull();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale failure once long prose enriches through the model", async () => {
+    generate.mockResolvedValue({
+      text: JSON.stringify({ title: "Recovered essay", domain: "product", tags: ["recovery"] }),
+    });
+    const prose = Array.from({ length: 12 }, (_, i) => `Sentence ${i} of a recovered essay with enough prose for the model tier.`).join(" ");
+    const capture = await commands.createCapture(auth, { text: prose });
+    await db.update(captures).set({ failureReason: "An earlier attempt failed." }).where(eq(captures.id, capture.id));
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.title).toBe("Recovered essay");
+    expect(row.failureReason).toBeNull();
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a stale failure on the unconfigured-provider path when real text exists", async () => {
+    const { GenerationUnconfiguredError } = await import("@/integrations/generation/provider");
+    vi.mocked(generationProvider).mockImplementation(() => {
+      throw new GenerationUnconfiguredError();
+    });
+    const prose = Array.from({ length: 12 }, (_, i) => `Sentence ${i}: prose long enough to want the model tier today.`).join(" ");
+    const capture = await commands.createCapture(auth, { text: prose });
+    await db.update(captures).set({ failureReason: "An earlier attempt failed." }).where(eq(captures.id, capture.id));
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.failureReason).toBeNull();
+  });
+
+  it("keeps a recorded failure on an address-only capture: a bare URL is a pointer, not grounded text", async () => {
+    // createCapture normalizes a bare URL to a url-kind capture with text null.
+    const capture = await commands.createCapture(auth, { text: "https://example.com/only-a-pointer" });
+    await db
+      .update(captures)
+      .set({ failureReason: "The page could not be read: the site returned no readable text." })
+      .where(eq(captures.id, capture.id));
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.text).toBeNull();
+    expect(row.failureReason).toBe("The page could not be read: the site returned no readable text.");
+  });
+
   it("leaves a converted capture untouched", async () => {
     const capture = await commands.createCapture(auth, { text: "A short thought." });
     await db
