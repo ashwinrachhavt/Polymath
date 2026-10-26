@@ -3,7 +3,7 @@ import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { agentRuns } from "@/domains/agents/schema";
-import { LIMITS } from "@/domains/integrations/capabilities";
+import { capabilityAllowed, LIMITS, PROVIDER_TIERS } from "@/domains/integrations/capabilities";
 import {
   canvaImportFixtureEnabled,
   canvaImportLiveEnabled,
@@ -352,6 +352,33 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   const noun = checked.provider === "canva" ? ("connected account" as const) : ("sender" as const);
   const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias, noun);
   if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
+
+  /*
+   * ASH-317: a capability the owner can switch off is re-read at execution,
+   * exactly like the grant above. Approving while Send is on, then flipping
+   * Send off or narrowing the tier, refuses the send until access is
+   * restored - the refusal precedes the claim, so a retry after re-enabling
+   * sends against the same approval, mirroring grant-tightening semantics.
+   * Providers whose tier catalog does not model the capability (notion and
+   * canva writes today) expose no switch to violate; the check skips them
+   * rather than inventing a gate the owner cannot see.
+   */
+  const switchable = (PROVIDER_TIERS[checked.provider as keyof typeof PROVIDER_TIERS] ?? []).some((tier) =>
+    (tier.capabilities as readonly string[]).includes(checked.capability),
+  );
+  if (
+    switchable &&
+    !capabilityAllowed(
+      checked.provider as Parameters<typeof capabilityAllowed>[0],
+      account.accessTier,
+      account.disabledCapabilities,
+      checked.capability as Parameters<typeof capabilityAllowed>[3],
+    )
+  ) {
+    throw new SendNotAllowedError(
+      `Access for "${account.alias}" no longer includes ${checked.capability} - it was switched off after this approval. Nothing sent; re-enable it in Connectors and retry.`,
+    );
+  }
 
   return { ...checked, connectedAccountId: account.connectedAccountId };
 }

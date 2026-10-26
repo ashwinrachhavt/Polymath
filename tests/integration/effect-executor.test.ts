@@ -99,6 +99,10 @@ async function seedSend(options: {
       provider: "gmail",
       alias,
       status: options.accountStatus ?? "active",
+      // A gmail.send proposal can only exist when the account granted the
+      // capability at proposal time (the gateway's live tier check), so the
+      // seed mirrors that precondition; revocation tests override the tier.
+      accessTier: options.accountStatus === "revoked" ? null : "read_send",
       composioConnectedAccountId: options.accountStatus === "revoked" ? null : `ca_${crypto.randomUUID()}`,
       createdBy: userId,
       updatedBy: userId,
@@ -352,6 +356,48 @@ suite("executeApprovedEffect", () => {
       .from(actionAttempts)
       .where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempts).toHaveLength(0);
+  });
+
+  it("refuses when Send is switched off after approval, and sends once access is restored", async () => {
+    const seeded = await seedSend({ slug: "effect-send-off" });
+    const { spy } = stubProvider(sentOk());
+
+    // The owner flips Send off between approval and execution.
+    await db
+      .update(externalAccounts)
+      .set({ disabledCapabilities: ["gmail.send"] })
+      .where(eq(externalAccounts.id, seeded.accountId));
+
+    await expect(
+      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
+    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(0);
+
+    // The refusal is not a revocation: restore access and the same approval sends.
+    await db
+      .update(externalAccounts)
+      .set({ disabledCapabilities: [] })
+      .where(eq(externalAccounts.id, seeded.accountId));
+    const outcome = await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
+    expect(outcome).toMatchObject({ status: "sent", providerId: "msg_1" });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses when the account's tier is narrowed below the capability after approval", async () => {
+    const seeded = await seedSend({ slug: "effect-tier-down" });
+    const { spy } = stubProvider(sentOk());
+
+    await db
+      .update(externalAccounts)
+      .set({ accessTier: "read_only" })
+      .where(eq(externalAccounts.id, seeded.accountId));
+
+    await expect(
+      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
+    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(0);
   });
 
   it("a timeout settles unknown, never failed, and blocks a second send", async () => {

@@ -55,6 +55,7 @@ async function seedAccount(options: { status?: "active" | "connecting" }) {
     .values({
       workspaceId,
       provider: "gmail",
+        accessTier: "read_send",
       alias: `revoke-gmail-${counter}`,
       status: options.status ?? "active",
       composioConnectedAccountId: options.status === "connecting" ? null : `ca_${crypto.randomUUID()}`,
