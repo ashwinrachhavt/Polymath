@@ -67,7 +67,8 @@ describe("parseDesignBriefAnswer", () => {
 describe("renderBriefMarkdown", () => {
   it("renders every field and names the source", () => {
     const md = renderBriefMarkdown(FULL, "Acme case study");
-    expect(md).toContain("# Launch one-pager");
+    // No body title heading: the page h1 already reads "Design brief: <title>".
+    expect(md).not.toContain("# Launch one-pager");
     expect(md).toContain('from "Acme case study"');
     expect(md).toContain("**Key message.** Annual billing stays.");
     expect(md).toContain("- Ship before the renewal email");

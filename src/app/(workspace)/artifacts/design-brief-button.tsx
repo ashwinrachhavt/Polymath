@@ -19,7 +19,7 @@ export function DesignBriefButton({ artifactId }: { artifactId: string }) {
   const [briefId, setBriefId] = useState<string | null>(null);
 
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex flex-wrap items-center gap-2">
       {message ? (
         <span className={failed ? "text-destructive" : "text-muted-foreground"} role={failed ? "alert" : "status"}>
           {message}

@@ -1,13 +1,14 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
-import { ArrowLeft, Copy, Download, MoreHorizontal, Sparkles } from "lucide-react";
+import { ArrowLeft, Download, MoreHorizontal, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
 import { DebriefButton } from "../debrief-button";
+import { CopyArtifactButton } from "../copy-artifact-button";
 import { DesignBriefButton } from "../design-brief-button";
 import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
 import { DeckView, InfographicView } from "@/components/products/alfred/artifact-views";
@@ -50,7 +51,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-6 py-3">
         <p className="flex items-center gap-3 text-[13px]">
           <Link href="/artifacts" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
             <ArrowLeft aria-hidden className="size-3.5" /> Back to artifacts
@@ -59,11 +60,11 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
             <Sparkles aria-hidden className="size-3.5" /> Generated in Polymath
           </span>
         </p>
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <div role="toolbar" aria-label="Artifact actions" className="flex flex-wrap items-center justify-end gap-2 text-[13px] text-muted-foreground">
           {artifact.kind === "transcript" ? <DebriefButton artifactId={artifactId} /> : null}
           {(BRIEFABLE_KINDS as readonly string[]).includes(artifact.kind) ? <DesignBriefButton artifactId={artifactId} /> : null}
           <MoreHorizontal aria-hidden className="size-4" />
-          <Copy aria-hidden className="size-4" />
+          {artifact.markdown || artifact.plainText ? <CopyArtifactButton text={artifact.markdown ?? artifact.plainText ?? ""} /> : null}
           <Download aria-hidden className="size-4" />
           <Link
             href={`/projects`}

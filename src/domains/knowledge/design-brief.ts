@@ -107,11 +107,14 @@ function list(items: string[] | null): string[] {
   return items && items.length > 0 ? items.map((item) => `- ${item}`) : ["- None given."];
 }
 
-/** The brief as it reads in the Library: every field visible, nulls shown as absent, never smoothed over. */
+/*
+ * The brief as it reads in the Library: every field visible, nulls shown as
+ * absent, never smoothed over. No title heading: the artifact page already
+ * shows "Design brief: <title>" as its h1, so the body opens with the source
+ * line instead of repeating it.
+ */
 export function renderBriefMarkdown(brief: DesignBrief, sourceTitle: string): string {
   return [
-    `# ${brief.title}`,
-    "",
     `*Design brief from "${sourceTitle}". The Canva handoff is not available yet; this brief is the reviewable record.*`,
     "",
     `**Format:** ${brief.format}`,

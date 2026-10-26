@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
 
 /*
@@ -105,6 +105,18 @@ test.afterAll(async () => {
   await removeSeeded();
 });
 
+/** Every toolbar control stays inside the viewport: no control may clip past the right edge on any state. */
+async function expectToolbarContained(page: Page, viewportWidth: number) {
+  const toolbar = page.getByRole("toolbar", { name: "Artifact actions" });
+  await expect(toolbar).toBeVisible();
+  for (const child of await toolbar.locator(":scope > *").all()) {
+    const box = await child.boundingBox();
+    if (!box) continue;
+    expect(box.x, "toolbar control starts on screen").toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, "toolbar control ends inside the viewport").toBeLessThanOrEqual(viewportWidth + 1);
+  }
+}
+
 for (const vp of VIEWPORTS) {
   test(`draft a design brief from a research card, idempotent on repeat click [${vp.name}]`, async ({ page }) => {
     test.setTimeout(120_000);
@@ -114,10 +126,17 @@ for (const vp of VIEWPORTS) {
 
     await page.goto(`/artifacts/${artifact!.id}`);
     await expect(page.getByRole("button", { name: "Design brief" })).toBeVisible();
+    await expectToolbarContained(page, vp.width);
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-button-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     await page.getByRole("button", { name: "Design brief" }).click();
+    // Pending state: the toolbar must stay contained while the draft runs.
+    await expect(page.getByRole("button", { name: "Drafting…" })).toBeVisible();
+    await expectToolbarContained(page, vp.width);
     await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
+    // Settled state: capture only after the transition completes.
+    await expect(page.getByRole("button", { name: "Design brief" })).toBeEnabled();
+    await expectToolbarContained(page, vp.width);
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-drafted-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
     // Repeat click: the same brief comes back, no duplicate is written.
@@ -132,12 +151,18 @@ for (const vp of VIEWPORTS) {
     expect(href).toMatch(/^\/artifacts\//);
     await page.goto(href!);
     await expect(page.getByRole("heading", { level: 1, name: "Design brief: Q3 roadmap one-pager" })).toBeVisible();
+    // One h1 only: the body does not repeat the title as a second heading.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.getByText(`Design brief from "${SOURCE_TITLE}"`)).toBeVisible();
     await expect(page.getByText("The Canva handoff is not available yet")).toBeVisible();
     await expect(page.getByText("Account executives preparing for renewal conversations.")).toBeVisible();
     // Full-page stitching paints the sticky mobile nav mid-content; only the
     // desktop page is captured full-length, mobile proves at the real viewport.
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-page-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
+
+    // The interim handoff: the toolbar's copy control really copies.
+    await page.getByRole("button", { name: "Copy artifact markdown" }).click();
+    await expect(page.getByRole("status")).toContainText("Copied");
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
