@@ -23,6 +23,7 @@ function account(overrides: {
     isDefaultForWrites: false,
     allowRead: true,
     allowWrite: false,
+    senderProposalsEnabled: false,
     accessTier: null,
     disabledCapabilities: [],
     lastHealthyAt: null,

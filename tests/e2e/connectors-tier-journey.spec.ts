@@ -158,7 +158,7 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
   await expect(page.locator("article", { hasText: "Gmail" }).getByText("Connected", { exact: true })).toBeVisible();
   // The seeded gmail account is read_only: Read on, Send off.
   const readSwitch = row.getByRole("switch", { name: "Read" });
-  const sendSwitch = row.getByRole("switch", { name: "Send" });
+  const sendSwitch = row.getByRole("switch", { name: "Send", exact: true });
   await expect(readSwitch).toBeVisible();
   await expect(readSwitch).toHaveAttribute("aria-checked", "true");
   await expect(sendSwitch).toHaveAttribute("aria-checked", "false");
@@ -172,7 +172,7 @@ test("raising the tier persists across a reload, and lowering it back does too",
   await page.goto("/command-center/integrations");
 
   // Flipping Send on raises the account to the tier granting gmail.send.
-  const row = () => e2eAccountRow(page).getByRole("switch", { name: "Send" });
+  const row = () => e2eAccountRow(page).getByRole("switch", { name: "Send", exact: true });
   await row().click();
   await expect(row()).toHaveAttribute("aria-checked", "true");
 

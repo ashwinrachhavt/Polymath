@@ -45,7 +45,9 @@ export default defineTool({
     }
     const result = await proposeContactsFromSenders(
       { userId: current.principalId, workspaceId },
-      { messages: input.messages, ownAddresses: input.ownAddresses, runId: run.id },
+      // The tool contract allows the optional keys to be absent; the domain
+      // type declares them present-and-nullable. Normalize at the boundary.
+      { messages: input.messages.map((m) => ({ ...m, subject: m.subject ?? null })), ownAddresses: input.ownAddresses, runId: run.id },
     );
     return { ok: true as const, ...result, status: "awaiting review" };
   },
