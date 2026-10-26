@@ -14,13 +14,14 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
   await page.goto("/command-center/inbox");
   await waitSettled(page);
 
-  await page.getByRole("button", { name: "Capture", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByPlaceholder("A thought, a task, a link, a pasted screenshot").fill(SOURCE_TEXT);
-  await dialog.getByRole("button", { name: "Save capture", exact: true }).click();
-  // The save navigates straight to THIS capture's detail - no inbox-list
-  // picking, which races every parallel spec sharing the workspace (and a
-  // passing enrichment drain can rename a row's title mid-journey).
+  // The inbox's own composer navigates straight to THIS capture's detail on
+  // save (?id=). The global shell capture dialog saves without navigating,
+  // and picking from the shared inbox list races every parallel spec (a
+  // passing enrichment drain can rename rows mid-journey).
+  const composer = page.getByLabel("Capture a thought, excerpt, or URL");
+  await composer.click();
+  await composer.fill(SOURCE_TEXT);
+  await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
   await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}/);
   await waitSettled(page);
   const detail = page.getByRole("article");
