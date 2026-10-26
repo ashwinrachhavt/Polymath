@@ -14,20 +14,20 @@ import {
 } from "@/integrations/generation/provider";
 
 /*
- * Design brief (ASH-286, partial): one pass over a research artifact produces
- * a structured design brief, saved as a memo artifact the owner can review
- * and edit. The second half of the ticket - handing the brief to Canva via
- * Composio after human approval - is deliberately NOT in this slice: no
- * synchronous, non-preview, connected-account route that transfers brief
- * content exists in Composio's Canva toolkit (verified 2026-10-25), and the
- * async autofill route's prerequisite (user-owned brand templates) is absent
- * on the connected account. The handoff lands as its own change once its
- * route is decided; nothing here pretends a proposal can execute.
+ * Design brief (ASH-286): one pass over a research artifact produces a
+ * structured design brief, saved as a memo artifact the owner can review and
+ * edit. The handoff half is a design import through the approval-bound
+ * executor (ADR 0009): "Send to Canva" files a canva.design.import proposal
+ * pinning this brief and the SHA-256 of its deterministic DOCX render; only
+ * an owner's approval of that exact revision runs the import, and the async
+ * job settles through the reconciliation sweep. The brief JSON rides inside
+ * the artifact version's content so the proposal carries the structured
+ * brief, not a markdown re-parse.
  *
- * The brief contract below is the shared vocabulary that handoff will carry:
+ * The brief contract below is the shared vocabulary the handoff carries:
  * `format` spells Canva's preset design types verbatim ("doc", "whiteboard",
  * "presentation", per the Connect API create-design reference), so the
- * eventual executor maps it without a translation layer.
+ * executor maps it without a translation layer.
  */
 
 export class DesignBriefNotAllowedError extends Error {
@@ -52,7 +52,12 @@ export type DesignFormat = (typeof DESIGN_FORMATS)[number];
 export const BRIEF_MAX_INPUT_CHARS = 40_000;
 export const BRIEF_MAX_LIST_ITEMS = 6;
 
-const briefResponse = z.object({
+/*
+ * Exported for the canva.design.import executor payload: the approved
+ * revision embeds this exact shape, and the executor validates against the
+ * same contract before rendering.
+ */
+export const designBriefSchema = z.object({
   title: z.string().trim().min(1).max(200),
   objective: z.string().trim().min(1).max(1000),
   audience: z.string().trim().min(1).max(500),
@@ -65,7 +70,7 @@ const briefResponse = z.object({
   callToAction: z.string().trim().max(300).nullable(),
 });
 
-export type DesignBrief = z.infer<typeof briefResponse>;
+export type DesignBrief = z.infer<typeof designBriefSchema>;
 
 /*
  * The artifact kinds a brief can start from. "Research card" in the product
@@ -96,7 +101,7 @@ export function parseDesignBriefAnswer(text: string): DesignBrief {
   } catch {
     throw new DesignBriefUnusableAnswerError("The model's answer was not JSON.");
   }
-  const parsed = briefResponse.safeParse(raw);
+  const parsed = designBriefSchema.safeParse(raw);
   if (!parsed.success) {
     throw new DesignBriefUnusableAnswerError("The model's answer did not match the design-brief shape.");
   }
@@ -115,7 +120,7 @@ function list(items: string[] | null): string[] {
  */
 export function renderBriefMarkdown(brief: DesignBrief, sourceTitle: string): string {
   return [
-    `*Design brief from "${sourceTitle}". The Canva handoff is not available yet; this brief is the reviewable record.*`,
+    `*Design brief from "${sourceTitle}". "Send to Canva" above files a proposal; nothing imports until you approve it in Reviews.*`,
     "",
     `**Format:** ${brief.format}`,
     "",
@@ -209,7 +214,7 @@ export async function designBriefFromArtifact(
             workspaceId: auth.workspaceId,
             artifactId: artifact.id,
             versionNumber: 1,
-            content: { text: markdown },
+            content: { text: markdown, brief },
             plainText: markdown,
             reason: "generated",
             createdBy: auth.userId,

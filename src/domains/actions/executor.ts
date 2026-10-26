@@ -4,8 +4,16 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { agentRuns } from "@/domains/agents/schema";
 import { LIMITS } from "@/domains/integrations/capabilities";
+import {
+  canvaImportFixtureEnabled,
+  CanvaImportRejectedError,
+  createCanvaImportJob,
+} from "@/domains/integrations/canva/import";
+import { composioWriteConfigured } from "@/domains/integrations/composio";
 import { GmailSendRejectedError, sendGmailMessage } from "@/domains/integrations/gmail/send";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { designBriefSchema } from "@/domains/knowledge/design-brief";
+import { designBriefDocx, designBriefDocxSha256 } from "@/domains/knowledge/design-brief-docx";
 import { applyNotionProposal } from "@/domains/knowledge/notion-proposals";
 import { withTransaction } from "@/lib/db-transaction";
 import {
@@ -64,7 +72,12 @@ export class EffectNotSupportedError extends Error {
 export type EffectOutcome =
   | { status: "sent"; providerId: string; at: string }
   | { status: "failed"; reason: string; retryable: boolean }
-  | { status: "unknown"; reconciliationId: string };
+  /*
+   * `note` separates two honest UNKNOWN phases a person must tell apart:
+   * "import_started" (the provider accepted the job; its terminal answer is
+   * pending) from an outcome that never got an answer at all.
+   */
+  | { status: "unknown"; reconciliationId: string; note?: "import_started" };
 
 /*
  * One literal, keyed by capability. A default branch that guessed at an
@@ -104,6 +117,24 @@ const EXECUTORS = {
       contentHash: z.string().min(1),
     }),
   },
+  /*
+   * The design-brief handoff (ADR 0009). The payload embeds the approved
+   * brief plus the SHA-256 of its deterministic DOCX render: the bytes Canva
+   * receives are exactly the bytes the owner approved, and a renderer change
+   * refuses execution instead of substituting unapproved bytes. Execution is
+   * a Canva import JOB - asynchronous - so a created job settles the attempt
+   * as UNKNOWN-with-a-job-id and the reconciliation sweep polls the job to
+   * its terminal state. Canva exposes no list-imports endpoint, so a lost
+   * creation response stays UNKNOWN for a human and never re-fires.
+   */
+  "canva.design.import": {
+    provider: "canva",
+    parse: z.object({
+      title: z.string().trim().min(1).max(255),
+      brief: designBriefSchema,
+      docxSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }),
+  },
 } as const;
 
 type Capability = keyof typeof EXECUTORS;
@@ -134,7 +165,8 @@ export const NON_TERMINAL_RUN_STATES = new Set(["queued", "running", "waiting_in
 type ExecutorPayload =
   | z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>
   | z.infer<(typeof EXECUTORS)["notion.page.append"]["parse"]>
-  | z.infer<(typeof EXECUTORS)["notion.page.create"]["parse"]>;
+  | z.infer<(typeof EXECUTORS)["notion.page.create"]["parse"]>
+  | z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
 
 type Prepared = {
   capability: Capability;
@@ -153,7 +185,12 @@ function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome |
     return { status: "sent", providerId: attempt.providerObjectId, at: attempt.endedAt?.toISOString() ?? new Date().toISOString() };
   }
   if (attempt.status === "unknown") {
-    return { status: "unknown", reconciliationId: attempt.id };
+    const phase = (attempt.responseSummary as { phase?: unknown } | null)?.phase;
+    return {
+      status: "unknown",
+      reconciliationId: attempt.id,
+      ...(phase === "import_in_progress" ? { note: "import_started" as const } : {}),
+    };
   }
   if (attempt.status === "failed") {
     // A failed attempt was refused before dispatch; repeating it is a new
@@ -304,10 +341,14 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // ASH-289: the sending grant is re-read at execution, not borrowed from the
   // approval. Tightening the authorized senders revokes an already-approved
   // proposal rather than grandfathering it; the pin carries the alias it was
-  // approved with, and only an authorized alias may send.
-  if (checked.provider === "gmail") {
+  // approved with, and only an authorized alias may send. Canva's connected
+  // account is held to the same grant; Notion's own pin path is unchanged.
+  if (checked.provider === "gmail" || checked.provider === "canva") {
     const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
-    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
+    // Canva acts through a connected account; Gmail sends as a sender. The
+    // semantics are the shared grant; the word a person reads is not.
+    const noun = checked.provider === "canva" ? ("connected account" as const) : ("sender" as const);
+    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias, noun);
     if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
   }
 
@@ -387,6 +428,12 @@ async function claim(auth: AuthContext, prepared: Prepared): Promise<{ attemptId
  */
 type Dispatched =
   | { ok: true; providerObjectId: string; label: string; summary: Record<string, unknown> }
+  /*
+   * An accepted ASYNC job is not a finished effect: the settle path records
+   * it as UNKNOWN with the job id as the reconciliation sweep's read-back
+   * pointer - the sweep, never a second create, owns the terminal answer.
+   */
+  | { accepted: true; jobId: string; label: string }
   | { ok: false; label: string; rejected: { status: string; message: string } | null; ambiguous: string };
 
 /**
@@ -441,6 +488,29 @@ async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string
       // act rather than an unknown: no block was written that we did not see.
       return { ok: false, label, rejected: { status: "notion", message: applied.error ?? "Notion refused the write." }, ambiguous: "" };
     }
+    case "canva.design.import": {
+      const payload = prepared.payload as z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
+      try {
+        const { jobId } = await createCanvaImportJob({
+          connectedAccountId: prepared.connectedAccountId,
+          title: payload.title,
+          docx: designBriefDocx(payload.brief),
+        });
+        return { accepted: true, jobId, label: payload.title };
+      } catch (error) {
+        if (error instanceof CanvaImportRejectedError) {
+          return { ok: false, label: payload.title, rejected: { status: String(error.status), message: error.message }, ambiguous: "" };
+        }
+        // An unanswered job creation is ambiguous, never failed: the import
+        // may exist on Canva's side, and a blind retry is a duplicate import.
+        return {
+          ok: false,
+          label: payload.title,
+          rejected: null,
+          ambiguous: error instanceof Error ? error.message : "Unknown import failure.",
+        };
+      }
+    }
   }
 }
 
@@ -453,6 +523,24 @@ export async function executeApprovedEffect(
   input: { proposalId: string },
 ): Promise<EffectOutcome> {
   const prepared = await prepare(auth, input.proposalId);
+
+  if (prepared.capability === "canva.design.import") {
+    // Integrity before any claim: the bytes must be the bytes the owner
+    // approved. A renderer change since approval refuses the run and leaves
+    // no attempt behind; a fresh revision + approval re-pins the new render.
+    const payload = prepared.payload as z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
+    if (designBriefDocxSha256(payload.brief) !== payload.docxSha256) {
+      throw new SendNotAllowedError(
+        "The approved brief no longer renders to the approved document. Review and approve a fresh revision.",
+      );
+    }
+    // Dispatchability before any claim: an unconfigured deployment provably
+    // cannot reach the provider, so the honest outcome is a refusal - not an
+    // UNKNOWN attempt that would block the proposal against a config fix.
+    if (!composioWriteConfigured() && !canvaImportFixtureEnabled()) {
+      throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
+    }
+  }
 
   const claimed = await claim(auth, prepared);
   if ("prior" in claimed) return claimed.prior;
@@ -470,6 +558,28 @@ export async function executeApprovedEffect(
   }
 
   return withTransaction(async (tx) => {
+    if ("accepted" in dispatched) {
+      await settleAttempt(tx, {
+        attemptId,
+        outcome: "unknown",
+        providerObjectId: dispatched.jobId,
+        errorCode: "import_in_progress",
+        responseSummary: { jobId: dispatched.jobId, phase: "import_in_progress", title: dispatched.label },
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "actions.effect_unknown",
+          subjectType: "action_proposal",
+          subjectId: prepared.proposalId,
+          summary: `Canva import job created (${dispatched.jobId}); waiting for Canva's terminal status`,
+          metadata: { attemptId, jobId: dispatched.jobId, revisionId: prepared.revisionId, runId: prepared.runId },
+        },
+        tx,
+      );
+      return { status: "unknown" as const, reconciliationId: attemptId, note: "import_started" as const };
+    }
+
     if (dispatched.ok) {
       await settleAttempt(tx, {
         attemptId,
@@ -520,7 +630,7 @@ export async function executeApprovedEffect(
     await settleAttempt(tx, {
       attemptId,
       outcome: "unknown",
-      errorCode: "send_outcome_unknown",
+      errorCode: prepared.capability === "canva.design.import" ? "import_outcome_unknown" : "send_outcome_unknown",
       responseSummary: { message: dispatched.ambiguous || "The provider did not answer." },
     });
     await recordAudit(

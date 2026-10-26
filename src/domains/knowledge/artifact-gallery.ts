@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { markdownToPlainText } from "@/lib/display-text";
+import { briefFromContent } from "./design-brief-handoff";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts, documents } from "./schema";
@@ -95,6 +96,8 @@ export type ArtifactDetail = {
   markdown: string | null;
   structured: unknown | null;
   plainText: string | null;
+  /** True for a generated design brief that carries its structured form. */
+  isDesignBrief: boolean;
   sources: { documentId: string; title: string }[];
 };
 
@@ -135,7 +138,7 @@ export async function getArtifactDetail(auth: AuthContext, artifactId: string): 
         .where(and(inArray(documents.id, documentIds), eq(documents.workspaceId, auth.workspaceId)))
     : [];
 
-  const content = (version?.content ?? null) as { kind?: string; text?: string } | null;
+  const content = (version?.content ?? null) as { kind?: string; text?: string; brief?: unknown } | null;
   return {
     id: artifact.id,
     title: artifact.title,
@@ -146,6 +149,7 @@ export async function getArtifactDetail(auth: AuthContext, artifactId: string): 
     markdown: content?.kind === "markdown" && typeof content.text === "string" ? content.text : version?.plainText ?? null,
     structured: artifact.kind === "deck" || artifact.kind === "infographic" ? content : null,
     plainText: version?.plainText ?? null,
+    isDesignBrief: briefFromContent(content) !== null,
     sources: docs.map((d) => ({ documentId: d.id, title: d.title })),
   };
 }

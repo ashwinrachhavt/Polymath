@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { debriefMeetingArtifact, DebriefNotAllowedError, DebriefUnusableAnswerError } from "@/domains/knowledge/meeting-debrief";
 import { designBriefFromArtifact, DesignBriefNotAllowedError, DesignBriefUnusableAnswerError } from "@/domains/knowledge/design-brief";
+import { DesignBriefHandoffNotAllowedError, proposeCanvaImport } from "@/domains/knowledge/design-brief-handoff";
 import { draftFromLibrary, LibraryEmptyError, WritingUnusableAnswerError } from "@/domains/knowledge/library-writing";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -80,5 +81,28 @@ export async function designBriefArtifactAction(input: { artifactId: string }): 
       return { ok: false, error: error.message };
     }
     return { ok: false, error: error instanceof Error ? error.message : "The brief did not run." };
+  }
+}
+
+/*
+ * The Canva handoff (ASH-286). Files a canva.design.import proposal for a
+ * generated design brief; the import itself runs only after the owner
+ * approves the exact revision in Reviews. Safe to retry: the dedupe key is
+ * the brief's current version, so a repeat click resolves the same proposal.
+ */
+
+type CanvaImportResult = { ok: true; proposalId: string; deduplicated: boolean } | { ok: false; error: string };
+
+export async function proposeCanvaImportAction(input: { artifactId: string }): Promise<CanvaImportResult> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  if (!UUID.test(input.artifactId)) return { ok: false, error: "Malformed artifact id." };
+  try {
+    const result = await proposeCanvaImport(auth, input.artifactId);
+    revalidatePath("/reviews");
+    return { ok: true, proposalId: result.proposalId, deduplicated: result.deduplicated };
+  } catch (error) {
+    if (error instanceof DesignBriefHandoffNotAllowedError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "The import proposal was not created." };
   }
 }
