@@ -61,17 +61,25 @@ async function resetSwitch(accountId: string): Promise<void> {
   try {
     await client`delete from triggers where external_account_id = ${accountId} and event_type = 'crm.sender_proposals'`;
     await client`delete from sync_cursors where external_account_id = ${accountId}`;
-    await client`update external_accounts set status = 'active', allow_read = true where id = ${accountId}`;
+    await client`update external_accounts set status = 'active', allow_read = true, disabled_capabilities = '[]'::jsonb where id = ${accountId}`;
   } finally {
     await client.end();
   }
 }
 
-async function setAllowRead(accountId: string, allow: boolean): Promise<void> {
+/*
+ * Read access the way the card's Read switch changes it: the flip disables
+ * (or re-enables) every read capability the tier grants, per
+ * planToggleSteps. Seeding the same end state keeps the screenshot coherent -
+ * the Read switch renders from these capabilities, so it must show off when
+ * the sender-suggestions row says read access is off.
+ */
+async function setReadAccess(accountId: string, on: boolean): Promise<void> {
   const client = db();
   if (!client) return;
   try {
-    await client`update external_accounts set allow_read = ${allow} where id = ${accountId}`;
+    const disabled = on ? [] : ["gmail.read", "gmail.thread.read"];
+    await client`update external_accounts set disabled_capabilities = ${JSON.stringify(disabled)}::jsonb where id = ${accountId}`;
   } finally {
     await client.end();
   }
@@ -147,9 +155,9 @@ test("the sender-contact switch in every state, and the review card", async ({ p
     await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-on-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
-    // Read access revoked while on: the pass pauses, the card says why, and
-    // the switch still turns off - stopping never depends on the read.
-    await setAllowRead(accountId, false);
+    // Read access switched off while on: the pass pauses, the card says why,
+    // and the switch still turns off - stopping never depends on the read.
+    await setReadAccess(accountId, false);
     await page.reload();
     await expect(row.getByText(/On, but not running: read access is off/)).toBeVisible({ timeout: 30_000 });
     await row.scrollIntoViewIfNeeded();
@@ -162,7 +170,7 @@ test("the sender-contact switch in every state, and the review card", async ({ p
     await expect(row.getByRole("switch", { name: "Suggest contacts from new senders" })).toBeDisabled();
     await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/feature-pixels/sender-switch-blocked-${vp.name}.png`, style: HIDE_DEV_CHROME });
-    await setAllowRead(accountId, true);
+    await setReadAccess(accountId, true);
 
     // The proposal the pass writes, as the owner sees it in Reviews.
     const proposalId = await seedContactProposal(workspaceId, vp.name);
