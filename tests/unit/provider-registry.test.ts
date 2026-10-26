@@ -14,10 +14,25 @@ import {
  * with the next verification pass, the rules cannot.
  */
 
+/**
+ * Providers enabled on a deliberate owner decision even though no recurring
+ * free allowance was verified. The rule below still holds for everything else;
+ * naming an exception here is the review step that a silent `enabled: true`
+ * would skip, and the quota gate — not this flag — is what bounds spend.
+ */
+const OWNER_APPROVED_PAID = new Set(["jev"]);
+
 describe("providerRegistry", () => {
   it("never enables a provider whose entitlement is unverified", () => {
     for (const entry of providerRegistry()) {
-      if (entry.freeClass === "unverified") expect(entry.enabled, entry.id).toBe(false);
+      if (entry.freeClass === "unverified") {
+        if (OWNER_APPROVED_PAID.has(entry.id)) {
+          // An approved paid provider must still be explicit about it.
+          expect(entry.allowPaidUsage, entry.id).toBe(true);
+          continue;
+        }
+        expect(entry.enabled, entry.id).toBe(false);
+      }
     }
   });
 
@@ -43,9 +58,16 @@ describe("providerRegistry", () => {
     expect(gemini?.quota?.renewal).toBe("daily");
   });
 
-  it("keeps Jev registered but disabled: a real product with no free allowance", () => {
+  it("keeps Jev's paid usage explicit and its spend bounded by the ledger", () => {
     const jev = providerEntry("jev");
-    expect(jev?.enabled).toBe(false);
+    // Enabled 2026-10-25 on the owner's decision; that decision is recorded as
+    // paid usage rather than hidden behind a verified free tier that does not
+    // exist. JEV_MONTHLY_INPUT_TOKENS is the real cap, and an unset allowance
+    // is a zero cap in the quota gate.
+    expect(jev?.enabled).toBe(true);
+    expect(jev?.allowPaidUsage).toBe(true);
+    expect(jev?.allowPaidFallback).toBe(false);
+    expect(jev?.sensitiveDataAllowed).toBe(false);
     expect(jev?.verificationSource).toBe("https://docs.typesafe.ai/models");
   });
 });

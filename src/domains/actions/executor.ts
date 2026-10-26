@@ -4,11 +4,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { agentRuns } from "@/domains/agents/schema";
 import { LIMITS } from "@/domains/integrations/capabilities";
-import {
-  GmailSendAmbiguousError,
-  GmailSendRejectedError,
-  sendGmailMessage,
-} from "@/domains/integrations/gmail/send";
+import { GmailSendRejectedError, sendGmailMessage } from "@/domains/integrations/gmail/send";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { applyNotionProposal } from "@/domains/knowledge/notion-proposals";
 import { withTransaction } from "@/lib/db-transaction";

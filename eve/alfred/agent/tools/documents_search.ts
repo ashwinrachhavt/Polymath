@@ -19,7 +19,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the workspace's documents. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the owner's own library: their documents, notes and captured sources. This is the FIRST call for anything about their work — what they knew, wrote, decided, or saved about a topic, and anything about a project or a past meeting. Semantic when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which). Returns the best matching passages with document id, title and character span, so answers can cite them with [[n]] markers matching the result order. The owner's own words are stronger evidence than a web result: if the library can answer, do not search the web. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),

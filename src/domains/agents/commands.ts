@@ -31,6 +31,8 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // ASH-279: reads a meeting transcript and proposes tasks from it. The
   // proposals themselves still need tasks.create, which is separate.
   "meetings.debrief",
+  // ASH-306: listing records is navigation, the same authority as reading them.
+  "records.browse",
   // Connected reads. A capability in the risk table but absent here can never
   // be granted: the policy snapshot copies this list verbatim, so the tool is
   // advertised to the model and denied on every call.
@@ -141,6 +143,7 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "notion.page.append",
       "notion.page.create",
       "meetings.debrief",
+      "records.browse",
       "wiki.read",      "wiki.ingest",
       "wiki.lint",
       "gmail.read",

@@ -55,6 +55,28 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     effectClass: "read",
   },
   "documents.search": { capability: "document.read", effectClass: "read" },
+  /*
+   * ASH-306: conversational navigation lists records rather than reading a
+   * document's text, so it is authorized at the honest knowledge granularity
+   * the v2 catalog added. A task listing stays on task.read; notes are
+   * knowledge, not tasks.
+   */
+  "records.browse": { capability: "knowledge.read", effectClass: "read" },
+  /* ASH-283: a Notion write is an external effect, never a grant-only action. */
+  "notion.page.append": {
+    capability: "action.execute",
+    effectClass: "external_effect",
+    requiresApproval: true,
+    note: "Approval binds the exact markdown and its content hash before anything is written.",
+  },
+  "notion.page.create": {
+    capability: "action.execute",
+    effectClass: "external_effect",
+    requiresApproval: true,
+    note: "Approval binds the exact markdown and its content hash before anything is written.",
+  },
+  /* ASH-279: reads a transcript and only ever proposes; the approval is tasks.create. */
+  "meetings.debrief": { capability: "knowledge.read", effectClass: "read", note: "Proposes tasks; creates nothing." },
   "web.search": { capability: "integration.use", effectClass: "read", note: "Egress: query terms leave the workspace." },
   "web.fetch": { capability: "integration.use", effectClass: "read", note: "Egress: the fetched URL leaves the workspace." },
   /*
