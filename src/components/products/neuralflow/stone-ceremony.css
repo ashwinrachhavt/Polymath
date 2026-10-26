@@ -13,6 +13,16 @@
   pointer-events: none;
 }
 
+/* The phone shell keeps a sticky bottom bar (MobileNav: min-h-11 items +
+   py-1.5 + border + safe-area inset, ~57px + inset). A viewport-fixed card
+   must float above it, not over it. 4.75rem = 76px > bar height + margin;
+   the desktop offset is unaffected. */
+@media (max-width: 767px) {
+  .stone-ceremony {
+    inset-block-end: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+}
+
 .stone-ceremony-card {
   pointer-events: auto;
   display: flex;
