@@ -10,6 +10,7 @@ import type { EffectOutcome } from "@/domains/actions/executor";
 import { decideProposalAction, reviseProposalAction } from "./actions";
 import { holdDecidedCard, mergeHeldDecidedCards, type HeldCards } from "./held-cards";
 import { outcomeLine } from "./outcome-line";
+import { NotionDiff } from "./notion-diff";
 
 /*
  * The queue's client island. Decisions are optimistic: the card flips to the
@@ -254,6 +255,7 @@ function ProposalCard({
       ) : null}
       <SendSummary capability={item.capability} revision={item.latestRevision} />
       <DraftGrounding flags={item.flags} revision={item.latestRevision} />
+      <NotionDiff capability={item.capability} revision={item.latestRevision} />
 
       {item.latestRevision ? (
         <details className="mb-4 text-[13px]">

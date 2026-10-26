@@ -66,6 +66,15 @@ export function contentHash(markdown: string): string {
  * so a `+` prefix on the new lines is enough — a full diff algorithm would
  * suggest a merge that this path cannot perform (it only appends).
  */
+/**
+ * The editor's dedupe key: one open proposal per note, page and exact text.
+ * Unchanged content resolves the open proposal; an edited note proposes again
+ * instead of resolving to a diff of the old text.
+ */
+export function noteNotionDedupeKey(noteId: string, pageId: string, markdown: string): string {
+  return `note-notion:${noteId}:${pageId}:${contentHash(markdown).slice(0, 16)}`;
+}
+
 export function appendPreview(before: string, addition: string): string {
   const beforeLines = before.trimEnd().split("\n").filter((line) => line.trim());
   const additionLines = addition.trimEnd().split("\n");
