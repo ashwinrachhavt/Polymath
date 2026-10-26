@@ -135,6 +135,8 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     capability: "action.prepare",
     effectClass: "internal_write",
     note: "Persists a Linear-issue proposal note in the workspace; never calls Linear.",
+  },
+  /*
    * ASH-287: proposing a contact from an email sender persists a review card,
    * so this is an internal write under action.prepare - not a read. Approving
    * the card is the only path that creates the contact, and it is local-only:
