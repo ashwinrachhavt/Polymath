@@ -169,6 +169,15 @@ jobs:
           name: feature-pixels
           path: test-results/feature-pixels/
           if-no-files-found: ignore
+      # Playwright's failure page-snapshots. This step used to sit at the top
+      # of the sidecar job, where test-results/ never exists - failures had
+      # no downloadable evidence at all.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-error-context
+          path: test-results/**/error-context.md
+          if-no-files-found: ignore
 
   # Python capability sidecar (ADR 0008): lint + tests, with the pgvector
   # round-trip running against real Postgres so vector schema drift fails CI.
@@ -195,12 +204,6 @@ jobs:
         working-directory: services/sidecar
     steps:
 
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: e2e-error-context
-          path: test-results/**/error-context.md
-          if-no-files-found: ignore
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:

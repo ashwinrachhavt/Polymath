@@ -38,6 +38,22 @@ test("interface mode is an account preference with two visual languages", async 
     await modeSelect.selectOption("library");
     await page.getByRole("button", { name: "Save interface mode" }).click();
     await expect(page.getByText(/Interface mode saved/)).toBeVisible();
+    // Confirm at the source of truth: notifications live in an app-level
+    // stack, so a toast from the previous viewport pass can satisfy the text
+    // check while the save itself lost a CAS race on the shared account
+    // preference row. Re-render Settings and re-save until the row reads
+    // Library back from the server.
+    await expect(async () => {
+      await page.goto("/settings");
+      const select = page.locator('select[name="interfaceMode"]');
+      if ((await select.inputValue()) !== "library") {
+        await select.selectOption("library");
+        await page.getByRole("button", { name: "Save interface mode" }).click();
+        await expect(page.getByRole("button", { name: "Save interface mode" })).toBeEnabled({ timeout: 15_000 });
+        await page.goto("/settings");
+      }
+      await expect(page.locator('select[name="interfaceMode"]')).toHaveValue("library");
+    }).toPass({ timeout: 30_000 });
 
     await page.goto("/");
     await waitSettled(page);
