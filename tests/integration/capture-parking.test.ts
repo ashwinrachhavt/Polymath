@@ -241,9 +241,10 @@ suite("capture parking and enrichment idempotency", () => {
     expect((await queries.listCapturesWithPendingProposals(auth, [capture.id])).size).toBe(0);
     expect((await home.listHomeQueue(workspaceId)).filter((card) => card.origin === "capture")).toHaveLength(0);
 
+    const [settled] = await db.select().from(captures).where(eq(captures.id, capture.id));
     await parking.unparkCapture(auth, {
       captureId: capture.id,
-      expectedVersion: parked.version + 1,
+      expectedVersion: settled.version,
     });
     expect(await queries.listPendingCaptureProposals(auth, capture.id)).toHaveLength(1);
     expect((await queries.listCapturesWithPendingProposals(auth, [capture.id])).size).toBe(1);
