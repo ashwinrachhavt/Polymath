@@ -210,6 +210,7 @@ describe("live Alfred route functionality", () => {
     expect(html).not.toContain("Assistant:");
     expect(html).not.toContain("Done.");
   });
+
 });
 
 async function projects() {

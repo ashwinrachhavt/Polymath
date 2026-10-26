@@ -86,10 +86,18 @@ function isSet(value: string | undefined): boolean {
 export const STUBBED_TOOLS = {
   artifacts_propose_revision: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
   documents_search: { response: { ok: true, query: "", results: [] } },
+  // ASH-279 / ASH-283: both only ever propose, so the stub is the "queued"
+  // shape and an eval can never reach Notion or spend a generation call.
+  meeting_debrief: { response: { ok: true, status: "awaiting review", proposed: 0, taskProposalIds: [], noteProposalIds: [], followUpProposalIds: [], deduplicated: 0 } },
+  notion_propose_update: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, contentHash: "", status: "awaiting review" } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_search": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_send": { response: { ok: false, error: "not connected in this eval" } },
+  // ASH-306 / ASH-293: reads and one-hop expansion, both with an empty graph
+  // so an eval asserts the tool was called, not what the live library holds.
+  records_browse: { response: { ok: true, kind: "task", query: null, total: 0, records: [] } },
+  research_deepen: { response: { ok: true, seed: null, added: [], candidates: [], budget: { hopsUsed: 0, hopsRemaining: 8, hopsMax: 8, callsUsed: 0, callsMax: null } } },
   tasks_propose: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
   tasks_read: { response: { ok: true, tasks: [] } },
   tasks_recent: { response: { ok: true, tasks: [], days: 7 } },

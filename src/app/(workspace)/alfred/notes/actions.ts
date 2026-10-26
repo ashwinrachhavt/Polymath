@@ -26,6 +26,9 @@ import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
 import { searchTasksForLink } from "@/domains/work/queries";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { resolveConnectedAccount } from "@/domains/integrations/queries";
+import { composioNotionClient } from "@/integrations/notion/client";
+import { proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
@@ -322,4 +325,63 @@ export async function findLinkTargetsAction(input: z.input<typeof findInput>): P
     ...taskRows,
   ];
   return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8);
+}
+
+/*
+ * ASH-283: queue the current note as a Notion page append, for approval. The
+ * editor's action only proposes — the review queue shows the diff, and the
+ * executor is the only thing that writes to Notion. `notionPageId` is chosen
+ * by the owner in the editor, so the proposal names a page they picked rather
+ * than one a model inferred.
+ */
+const toNotionInput = z.object({
+  noteId: z.string().uuid(),
+  notionPageId: z.string().trim().min(1).max(200),
+  notionPageTitle: z.string().trim().min(1).max(300),
+  markdown: z.string().trim().min(1).max(20_000),
+});
+
+export async function proposeNotionAppendAction(
+  input: z.input<typeof toNotionInput>,
+): Promise<Result<{ proposalId: string; contentHash: string }>> {
+  const parsed = toNotionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Pick a Notion page and write the content first." };
+  const auth = await authorize();
+  const { noteId, notionPageId, notionPageTitle, markdown } = parsed.data;
+  // The page id is user input, so it is shape-checked before it reaches a URL.
+  // Notion ids are 32 hex characters, with or without dashes.
+  if (!/^[0-9a-f]{32}$/i.test(notionPageId.replace(/-/g, ""))) {
+    return { ok: false, error: "That does not look like a Notion page id." };
+  }
+  try {
+    const result = await proposeNotionPageUpdate(auth, {
+      mode: "append",
+      pageId: notionPageId,
+      title: notionPageTitle,
+      markdown,
+      // Keyed on the note and the page: re-queuing the same note against the
+      // same page resolves the open proposal instead of stacking a second.
+      dedupeKey: `note-notion:${noteId}:${notionPageId}`,
+    });
+    revalidatePath("/reviews");
+    return { ok: true, proposalId: result.proposalId, contentHash: result.contentHash };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The Notion proposal was not created." };
+  }
+}
+
+/** The pages the connected Notion account has shared, for the editor's picker. */
+export async function listNotionPagesAction(): Promise<{ id: string; title: string; url: string }[]> {
+  const auth = await getAuthContext();
+  const account = await resolveConnectedAccount(auth, "notion");
+  if (!account.ok) return [];
+  try {
+    const client = composioNotionClient(account.connectedAccountId);
+    const hits = await client.searchEditedSince(null);
+    return hits.filter((hit) => hit.object === "page").slice(0, 25).map((hit) => ({ id: hit.id, title: hit.title, url: hit.url }));
+  } catch {
+    // A Notion outage must not make the note editor unusable; the picker is
+    // simply empty and the action reports the real failure when used.
+    return [];
+  }
 }

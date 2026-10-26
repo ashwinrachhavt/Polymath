@@ -14,6 +14,7 @@ import { youtubeHandlers } from "@/domains/knowledge/youtube-handler";
 import { urlContentRequestedHandler } from "@/domains/capture/url-content-handler";
 import { CAPTURE_ENRICHMENT_TOPIC, CAPTURE_URL_CONTENT_TOPIC } from "@/domains/capture/commands";
 import { captureEnrichmentRequestedHandler } from "@/domains/capture/enrichment-handler";
+import { ZETTEL_GENERATION_TOPIC, runZettelGenerationRequested } from "@/domains/capture/zettel-generation";
 import { isTerminalCrawlStatus, pollCrawl, submitCrawl } from "@/integrations/firecrawl/client";
 import { memberships } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -297,6 +298,9 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     [FOCUS_FOLLOW_UP_TOPIC]: followUpRequestedHandler(workspaceOwnerAuth),
     [CAPTURE_URL_CONTENT_TOPIC]: urlContentRequestedHandler,
     [CAPTURE_ENRICHMENT_TOPIC]: captureEnrichmentRequestedHandler,
+    [ZETTEL_GENERATION_TOPIC]: async (event) => {
+      await runZettelGenerationRequested(event, { auth: workspaceOwnerAuth });
+    },
     [RUN_CRITIQUE_TOPIC]: runCritiqueRequestedHandler(workspaceOwnerAuth),
   };
   return handlers;

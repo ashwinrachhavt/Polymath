@@ -65,11 +65,17 @@ export async function SettingsSurface({ projectId }: { projectId: string }) {
   );
 }
 
-export default async function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
+/* Params are read inside the boundary: awaiting them in the page body put URL
+   data outside Suspense, which cost the route its instant navigation. */
+export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
-      <SettingsSurface projectId={projectId} />
+      <SettingsRoute params={params} />
     </Suspense>
   );
+}
+
+async function SettingsRoute({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  return <SettingsSurface projectId={projectId} />;
 }

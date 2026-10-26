@@ -31,7 +31,12 @@ describe("splitCitations", () => {
   it("drops a marker that names no citation", () => {
     const segments = splitCitations("Unsupported claim [[9]].", [citation(A)]);
     expect(segments.every((s) => s.type === "text")).toBe(true);
-    expect(segments.map((s) => (s.type === "text" ? s.text : "")).join("")).toContain("[[9]]");
+    // The marker is removed rather than left as literal brackets: a [[9]] with
+    // no source in the list reads as a citation that goes nowhere, which is
+    // worse than none. The claim's own text survives.
+    const text = segments.map((s) => (s.type === "text" ? s.text : "")).join("");
+    expect(text).not.toContain("[[9]]");
+    expect(text).toContain("Unsupported claim");
   });
 
   it("returns the whole answer as one segment when there are no citations", () => {
