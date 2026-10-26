@@ -107,6 +107,16 @@ describe("linear_issue_propose binds run, policy and caller-owned draft identity
     expect(keys[0]).not.toBe(keys[1]);
   });
 
+  it("draft identity comes from the authenticated session - model input cannot smuggle one", async () => {
+    // A dedupeId carrying a forged session/run-looking string stays inert
+    // data after the authenticated session prefix; the tool's input schema
+    // has no session or run field to impersonate through.
+    await linear.execute({ ...input, dedupeId: "wrun_other-session:bug-1" }, memberCtx);
+    const key = (vi.mocked(draftLinearIssueFromText).mock.calls[0][1] as { sourceKey: string }).sourceKey;
+    expect(key).toBe(`${sessionId}:wrun_other-session:bug-1`);
+    expect(key.startsWith(`${sessionId}:`)).toBe(true);
+  });
+
   it("an unbound or foreign session cannot draft", async () => {
     vi.mocked(getRunBySessionRef).mockResolvedValue(null);
     expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: false });
