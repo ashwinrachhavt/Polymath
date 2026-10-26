@@ -161,6 +161,8 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-page-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
 
     // The interim handoff: the toolbar's copy control really copies.
+    // Headless Chromium denies clipboard-write unless it is granted.
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Copy artifact markdown" }).click();
     await expect(page.getByRole("status")).toContainText("Copied");
   });
