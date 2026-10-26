@@ -178,6 +178,18 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("button", { name: "Design brief" })).toHaveCount(0);
   });
 
+  test(`copy without clipboard permission says so instead of pretending [${vp.name}]`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const artifact = await seedArtifact("report", "Copy-permission research", SOURCE_TEXT);
+    test.skip(!artifact, "DATABASE_URL not configured");
+
+    await page.goto(`/artifacts/${artifact!.id}`);
+    // No grantPermissions here: the denied path must be honest feedback, not silence.
+    await page.getByRole("button", { name: "Copy artifact markdown" }).click();
+    await expect(page.getByText("Copy failed")).toBeVisible({ timeout: 30_000 });
+  });
+
   test(`an empty source shows the honest error instead of writing a brief [${vp.name}]`, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
