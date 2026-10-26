@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
+import { inline } from "@/components/markdown-inline";
 import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
 import { ChainOfThought } from "@/components/chat/chain-of-thought";
 import { MessageFeedback } from "@/components/chat/message-feedback";
@@ -17,6 +18,7 @@ import { getOpenQuestion, getRunAgent, listRunPendingProposals } from "@/domains
 import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
 import { listThreads } from "@/domains/agents/thread";
+import { threadBlocks } from "@/domains/agents/stream-contract";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { RunControls } from "../run-controls";
@@ -180,6 +182,13 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <ChatSurface
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
+              initial={threadBlocks(
+                thread.flatMap((entry) =>
+                  entry.kind === "user" || entry.kind === "assistant"
+                    ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
+                    : [],
+                ),
+              )}
               placeholder="Reply to continue…"
               composerLabel="Follow-up message"
               emptyText="This conversation has no messages yet."
@@ -200,18 +209,17 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   : undefined
               }
             />
-          ) : thread.length === 0 ? (
-            <p className="text-muted-foreground text-[13px]">
-              This conversation has no messages yet.
-            </p>
           ) : (
             <div className="w-full space-y-3">
+              {thread.length === 0 ? (
+                <p className="text-muted-foreground text-[13px]">This conversation has no messages yet.</p>
+              ) : null}
               {thread.map((entry) =>
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
                   <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                    {entry.text}
+                    {inline(entry.text)}
                   </div>
                 ) : entry.kind === "assistant" ? (
                   <div key={entry.sequence} className="w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">

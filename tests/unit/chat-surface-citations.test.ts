@@ -26,8 +26,14 @@ vi.mock("next/navigation", () => ({
 const failedConnect = vi.fn().mockImplementation(() => {
   throw new Error("unit test must not open a stream");
 });
+// Captures the options the surface hands the hook: the seed is a pass-through,
+// so asserting it landed here is what proves the wiring, not the mock's state.
+const sentOptions: Array<{ initial?: { blocks?: Array<{ id: string }> } } | undefined> = [];
 vi.mock("@/components/chat/use-chat-stream", () => ({
-  useChatStream: () => mockChatState(),
+  useChatStream: (_runId: string, options?: { initial?: { blocks?: Array<{ id: string }> } }) => {
+    sentOptions.push(options);
+    return mockChatState();
+  },
 }));
 
 let mockChatState: () => ChatState;
@@ -43,6 +49,54 @@ function stateWith(citations: ChatState["citations"]): () => ChatState {
     lastFailedTurn: false,
   });
 }
+
+/*
+ * Regression: a resumed conversation rendered as empty. The surface streams
+ * Eve, which replays only the turn in progress, so history stored in
+ * run_events never reached it. The caller now passes it as `initial`, and the
+ * surface must hand it to the stream hook as the seed.
+ */
+describe("ChatSurface seeded transcript", () => {
+  it("forwards the stored transcript to the stream hook as its initial blocks", () => {
+    mockChatState = stateWith([]);
+    sentOptions.length = 0;
+    const initial = [{ id: "assistant:turn_0:0", kind: "assistant" as const, text: "Sierra retired its legacy rounds.", done: true }];
+    renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "artifact", id: "run-1" }, initial }),
+    );
+    expect(sentOptions.at(-1)?.initial?.blocks).toEqual(initial);
+  });
+
+  it("passes no seed when the run has no stored history", () => {
+    mockChatState = stateWith([]);
+    sentOptions.length = 0;
+    renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "artifact", id: "run-1" } }),
+    );
+    expect(sentOptions.at(-1)?.initial).toBeUndefined();
+  });
+
+  it("renders stored history instead of the empty prompt", () => {
+    mockChatState = () => ({
+      blocks: [{ id: "assistant:turn_0:0", kind: "assistant", text: "Sierra retired its legacy rounds.", done: true }],
+      tools: [],
+      citations: [],
+      connection: "connecting",
+      error: null,
+      retryable: true,
+      lastFailedTurn: false,
+    });
+    const html = renderToStaticMarkup(
+      createElement(ChatSurface, {
+        runId: "run-1",
+        subject: { type: "artifact", id: "run-1" },
+        emptyText: "This conversation has no messages yet.",
+      }),
+    );
+    expect(html).toContain("Sierra retired its legacy rounds.");
+    expect(html).not.toContain("This conversation has no messages yet.");
+  });
+});
 
 const passage = (documentId: string, title: string, start: number) => ({
   documentId,

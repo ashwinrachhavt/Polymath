@@ -163,6 +163,40 @@ function blockIdFor(data: Record<string, unknown>, kind: "assistant" | "reasonin
   return `${kind}:${turnId}:${stepIndex}`;
 }
 
+/** One stored message, reduced to what a block needs. */
+export type StoredMessage = { sequence: number; role: "user" | "assistant"; text: string; turnId?: string | null };
+
+/**
+ * The transcript Polymath has already stored, as chat blocks.
+ *
+ * A live run's surface streams Eve, and Eve replays only the turn it is
+ * currently on — so a conversation resumed after a reload, or one whose session
+ * died, rendered as empty while its events sat in run_events. This is that
+ * history, in the same block vocabulary the stream uses.
+ *
+ * Assistant blocks take the id the stream would give them (`assistant:<turnId>:0`),
+ * so a replay of the same turn replaces the stored block, exactly as a `block`
+ * frame replaces deltas, instead of appearing twice. A message stored without a
+ * turnId has no future replay to collide with and is keyed by its sequence.
+ */
+export function threadBlocks(messages: StoredMessage[]): ChatBlock[] {
+  const blocks: ChatBlock[] = [];
+  for (const message of messages) {
+    if (message.text.length === 0) continue;
+    if (message.role === "assistant") {
+      blocks.push({
+        id: message.turnId ? `assistant:${message.turnId}:0` : `assistant:stored:${message.sequence}`,
+        kind: "assistant",
+        text: message.text,
+        done: true,
+      });
+      continue;
+    }
+    blocks.push({ id: `user:stored:${message.sequence}`, kind: "user", text: message.text, done: true });
+  }
+  return blocks;
+}
+
 /**
  * Fold one Eve event into zero or more frames.
  *
@@ -310,8 +344,13 @@ export class ChatAccumulator {
       if (this.seen.has(key)) return;
       this.seen.add(key);
       const existing = this.blocks.get(frame.blockId);
-      if (existing) existing.text += frame.text;
-      else this.blocks.set(frame.blockId, { id: frame.blockId, kind: this.kindOf(frame.blockId), text: frame.text, done: false });
+      if (existing) {
+        // A finished block never takes more text. Eve replays a session from
+        // the start, so a block seeded from the stored transcript would
+        // otherwise have every replayed delta appended to its complete text.
+        if (existing.done) return;
+        existing.text += frame.text;
+      } else this.blocks.set(frame.blockId, { id: frame.blockId, kind: this.kindOf(frame.blockId), text: frame.text, done: false });
       return;
     }
     if (frame.type === "block") {

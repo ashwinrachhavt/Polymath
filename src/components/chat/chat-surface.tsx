@@ -7,6 +7,7 @@ import { ArrowUp, BookOpen, ChevronDown, Copy, Check, Square } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
+import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
@@ -17,6 +18,7 @@ import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "./tool-labels";
 import { collectRecords } from "./record-links";
 import { CitedText } from "./cited-text";
+import { inline } from "@/components/markdown-inline";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -60,6 +62,12 @@ export type ChatSurfaceProps = {
    * server action plus a stream open, which reads as a dropped keystroke.
    */
   optimisticMessage?: string;
+  /**
+   * The transcript already stored for this run. A live surface streams Eve, and
+   * Eve replays only the current turn, so without this a resumed conversation
+   * reads as empty until the next event arrives.
+   */
+  initial?: ChatBlock[];
   placeholder?: string;
   /** Accessible name for the composer; pages that frame it as a reply pass their own. */
   composerLabel?: string;
@@ -99,6 +107,7 @@ export function ChatSurface({
   runId,
   subject,
   optimisticMessage,
+  initial,
   placeholder = "Ask about this",
   composerLabel = "Message",
   emptyText,
@@ -166,7 +175,7 @@ export function ChatSurface({
   // Set by a send: the owner's own message always scrolls into view, even when
   // they had scrolled up to reread something.
   const forceScrollRef = useRef(false);
-  const chat = useChatStream(runId, { onCitation });
+  const chat = useChatStream(runId, { onCitation, ...(initial?.length ? { initial: { blocks: initial } } : {}) });
   const busy = chat.connection === "connecting" || chat.connection === "streaming";
   // The transcript renders the conversation: questions, answers, and the
   // model's rationale as its own collapsed pill. `transcript` (user/assistant
@@ -349,7 +358,7 @@ export function ChatSurface({
             {chat.blocks.map((block) =>
               block.kind === "user" ? (
                 <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                  {block.text}
+                  {inline(block.text)}
                 </div>
               ) : block.kind === "reasoning" ? null : (
                 <div key={block.id} className="group/message w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">
@@ -369,7 +378,7 @@ export function ChatSurface({
             ) : null}
             {waiting.map((entry) => (
               <div key={entry.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70">
-                {entry.text}
+                {inline(entry.text)}
               </div>
             ))}
             {/* The working, after the turn's answer: reasoning and tool calls
@@ -459,6 +468,17 @@ export function ChatSurface({
           void send();
         }}
       >
+        {/*
+         * The failure sits above the field, not on it. Absolutely positioned
+         * inside the composer it landed on the first line of what the person
+         * had just typed, which is the one line they need to reread after a
+         * send fails.
+         */}
+        {sendError && (
+          <p role="alert" className="border-b border-border px-3.5 pt-2.5 pb-2 text-[12px] text-destructive">
+            {sendError}
+          </p>
+        )}
         <Textarea
           aria-label={composerLabel}
           className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
@@ -481,11 +501,6 @@ export function ChatSurface({
             }
           }}
         />
-        {sendError && (
-          <p role="alert" className="absolute inset-x-3.5 bottom-11 pb-1 text-[12px] text-destructive">
-            {sendError}
-          </p>
-        )}
         {/*
          * The plus sits inside the input's frame, bottom-left, like the send
          * button sits inside it bottom-right: the composer is one surface,
