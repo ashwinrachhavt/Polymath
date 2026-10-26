@@ -1,10 +1,10 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
 import { messageIdMarker } from "@/domains/integrations/gmail/send";
 import { searchGmailMessages } from "@/domains/integrations/gmail/reads";
-import { getCanvaImportJob } from "@/domains/integrations/canva/import";
+import { canvaImportFixtureEnabled, canvaImportLiveEnabled, getCanvaImportJob } from "@/domains/integrations/canva/import";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import type { Transport } from "@/domains/integrations/transport";
 import { db } from "@/lib/db";
@@ -40,6 +40,17 @@ export const RECONCILIATION_LAG_MS = 10 * 60_000;
  * and the sweep stops asking - bounded, never settled on a guess.
  */
 export const CANVA_IMPORT_POLL_BUDGET_MS = 24 * 60 * 60_000;
+
+/*
+ * The minimum gap between two polls of the same import job. The 24h budget
+ * bounds TIME, not CALLS: without this interval, every sweep invocation
+ * (overlapping cron ticks, a worker plus a cron) would read the provider
+ * again, so the call count would float with how the sweep is triggered. The
+ * poll slot is claimed atomically on the attempt row (below), so concurrent
+ * sweeps cannot multiply reads, and the per-job maximum is fixed:
+ * 1 create + at most 24h / CANVA_IMPORT_MIN_POLL_INTERVAL_MS reads.
+ */
+export const CANVA_IMPORT_MIN_POLL_INTERVAL_MS = 5 * 60_000;
 
 type PendingAttempt = {
   id: string;
@@ -278,10 +289,41 @@ async function reconcileCanvaImport(input: {
   // attempt stays UNKNOWN for a human; it is never settled on a guess.
   if (Date.now() - attempt.startedAt.getTime() > CANVA_IMPORT_POLL_BUDGET_MS) return false;
 
+  // A disabled live import is skipped before claiming anything: the sweep
+  // stays write-free and read-free for Canva while the boundary is off. The
+  // fixture is exempt - it answers without a transport by construction.
+  if (!canvaImportFixtureEnabled() && !canvaImportLiveEnabled()) return false;
+
   const account = await resolveConnectedAccount(auth, "canva", attempt.accountAlias ?? undefined);
   // A revoked/expired account cannot be read through; that is not proof about
   // the job. Leave the row for a human, not for a guess.
   if (!account.ok) return false;
+
+  /*
+   * Claim this job's poll slot atomically. The conditional UPDATE is the
+   * fence: a concurrent sweep (two cron ticks, a worker and a cron) updates
+   * zero rows and skips, so one job gets at most one provider read per
+   * CANVA_IMPORT_MIN_POLL_INTERVAL_MS no matter how the sweep is triggered.
+   * The slot lives in responseSummary - no migration, and the terminal
+   * settle overwrites the whole summary anyway. A crash between claim and
+   * read costs one interval, then self-heals.
+   */
+  const nowMs = Date.now();
+  const [slot] = await db
+    .update(actionAttempts)
+    .set({
+      responseSummary: sql`jsonb_set(coalesce(response_summary, '{}'::jsonb), '{polledAt}', to_jsonb(${nowMs}::bigint))`,
+    })
+    .where(
+      and(
+        eq(actionAttempts.id, attempt.id),
+        eq(actionAttempts.status, "unknown"),
+        eq(actionAttempts.reconciliation, "pending"),
+        sql`coalesce((response_summary->>'polledAt')::bigint, 0) <= ${nowMs - CANVA_IMPORT_MIN_POLL_INTERVAL_MS}`,
+      ),
+    )
+    .returning({ id: actionAttempts.id });
+  if (!slot) return false;
 
   const read = await getCanvaImportJob(transport, { connectedAccountId: account.connectedAccountId, jobId });
   // Transport error or an unreadable answer: the provider did not answer,

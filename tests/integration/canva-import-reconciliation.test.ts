@@ -124,7 +124,7 @@ async function attemptState(attemptId: string) {
 }
 
 suite("canva.design.import reconciliation", () => {
-  it("an in-progress job settles nothing and is re-asked on the next pass", async () => {
+  it("an in-progress job settles nothing and is re-asked after the poll interval", async () => {
     const seeded = await seedUnknown({ slug: "canva-recon-progress", responseSummary: { jobId: "job_p", phase: "import_in_progress" } });
     const transport = transportWith({ job_p: { status: "in_progress" } });
 
@@ -135,6 +135,57 @@ suite("canva.design.import reconciliation", () => {
     expect(attempt.reconciliation).toBe("pending");
     expect(observations).toHaveLength(0);
     expect(transport.calls).toHaveLength(1);
+  });
+
+  it("the poll interval gates re-asks: an immediate second pass reads nothing, a later pass re-asks", async () => {
+    const seeded = await seedUnknown({ slug: "canva-recon-interval", responseSummary: { jobId: "job_i", phase: "import_in_progress" } });
+    const transport = transportWith({ job_i: { status: "in_progress" } });
+
+    await reconciliation.reconcileUnknownAttempts({ transport });
+    expect(transport.calls).toHaveLength(1);
+
+    // Inside the interval the claimed slot stands: no second provider read.
+    await reconciliation.reconcileUnknownAttempts({ transport });
+    expect(transport.calls).toHaveLength(1);
+
+    // Once the interval has passed (polledAt backdated), the next pass re-asks.
+    await db
+      .update(actionAttempts)
+      .set({
+        responseSummary: {
+          jobId: "job_i",
+          phase: "import_in_progress",
+          polledAt: Date.now() - (reconciliation.CANVA_IMPORT_MIN_POLL_INTERVAL_MS + 60_000),
+        },
+      })
+      .where(eq(actionAttempts.id, seeded.attemptId));
+    await reconciliation.reconcileUnknownAttempts({ transport });
+    expect(transport.calls).toHaveLength(2);
+
+    const { attempt } = await attemptState(seeded.attemptId);
+    expect(attempt.status).toBe("unknown");
+    expect(attempt.reconciliation).toBe("pending");
+  });
+
+  it("concurrent sweeps cannot multiply reads or double-settle: one read, one observation, one audit line", async () => {
+    const seeded = await seedUnknown({ slug: "canva-recon-race", responseSummary: { jobId: "job_race", phase: "import_in_progress" } });
+    const transport = transportWith({
+      job_race: { status: "success", result: { designs: [{ id: "RACE1", urls: { edit_url: "https://www.canva.com/design/RACE1/edit" } }] } },
+    });
+
+    // Two ticks fire at once: the atomic poll-slot claim admits exactly one
+    // reader, and the settle fence admits exactly one writer.
+    const [a, b] = await Promise.all([
+      reconciliation.reconcileUnknownAttempts({ transport }),
+      reconciliation.reconcileUnknownAttempts({ transport }),
+    ]);
+    expect(a.reconciled + b.reconciled).toBe(1);
+    expect(transport.calls).toHaveLength(1);
+
+    const { attempt, observations } = await attemptState(seeded.attemptId);
+    expect(attempt.status).toBe("succeeded");
+    expect(attempt.reconciliation).toBe("resolved");
+    expect(observations).toHaveLength(1);
   });
 
   it("a terminal success settles succeeded with the design id and an imported observation", async () => {
