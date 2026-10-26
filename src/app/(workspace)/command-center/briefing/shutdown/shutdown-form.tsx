@@ -66,7 +66,12 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
           {done.session ? <li>Focus session: {done.session.action}</li> : null}
           <li>{done.parked} capture{done.parked === 1 ? "" : "s"} parked</li>
           <li>{done.seeded} task{done.seeded === 1 ? "" : "s"} suggested for {done.tomorrow}</li>
-          {done.email.status === "proposed" ? <li>Summary email waiting for your approval in Decisions. Nothing was sent.</li> : null}
+          {done.email.status === "proposed" ? (
+            <li>
+              Summary email waiting for your approval in{" "}
+              <Link href="/reviews" className="underline underline-offset-2">Reviews</Link>. Nothing was sent.
+            </li>
+          ) : null}
           {done.email.status === "skipped" ? <li>Email not proposed: {done.email.reason}</li> : null}
         </ul>
         <div className="mt-4 flex gap-2">
@@ -105,7 +110,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
         ) : null}
       </Panel>
 
-      <Panel title="Park captures" description="Set aside until you want them. Unparking restores each one exactly as it was.">
+      <Panel title="Park captures" description="Set aside until you want them. Work already running may still finish while parked; unparking puts each one back in the queue.">
         {preview.captures.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing open in the inbox.</p>
         ) : (

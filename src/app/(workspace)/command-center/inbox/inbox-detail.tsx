@@ -231,6 +231,12 @@ export function InboxDetail({
         {/* One meta line, not a definition grid: state, kind, captured. The dot
             carries "state can change"; the words carry which state. */}
         <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 text-xs">
+          {capture.parkedAt ? (
+            <>
+              <span className="text-foreground">Parked</span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
           <span className="text-foreground">{captureStateLabel(state)}</span>
           <span aria-hidden>·</span>
           <span>{captureKindLabel(capture.kind)}</span>
@@ -384,7 +390,7 @@ export function InboxDetail({
             size="sm"
             variant="outline"
             disabled={pending}
-            title="Set aside at the end of the day; unparking puts it back exactly as it was"
+            title="Set aside at the end of the day; unparking puts it back in the queue"
             onClick={() => {
               setError(null);
               startTransition(async () => {
