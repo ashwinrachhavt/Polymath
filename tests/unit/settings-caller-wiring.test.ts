@@ -56,7 +56,7 @@ describe("/settings route wiring", () => {
     authContext.getAuthContext.mockRejectedValue(new Error("No signed-in session."));
     renderToStaticMarkup(await SettingsSurface());
     expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: true });
-    expect(settingsProps.fn.mock.calls[0][0].serverPreferences).toBeUndefined();
+    expect(settingsProps.fn.mock.calls[0][0]).not.toHaveProperty("serverPreferences");
   });
 });
 
