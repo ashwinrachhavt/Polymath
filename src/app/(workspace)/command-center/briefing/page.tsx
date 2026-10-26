@@ -182,12 +182,22 @@ async function Spending() {
   );
 }
 
+/*
+ * `searchParams` is read INSIDE the Suspense boundary, not before it. Reading
+ * it in the page body made the route block on URL data before the shell could
+ * stream, which under `cacheComponents` broke navigation: the fallback stuck
+ * and no heading ever rendered. Splitting the tab read into its own component
+ * keeps the read where it belongs — 56c33ea fixed the same shape elsewhere.
+ */
 export default async function BriefingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const raw = await searchParams;
-  const tab = typeof raw.tab === "string" ? raw.tab : undefined;
   return (
     <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Preparing the briefing…</p>}>
-      {tab === "spending" ? <Spending /> : <Briefing />}
+      <BriefingTab searchParams={searchParams} />
     </Suspense>
   );
+}
+
+async function BriefingTab({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const raw = await searchParams;
+  return typeof raw.tab === "string" && raw.tab === "spending" ? <Spending /> : <Briefing />;
 }
