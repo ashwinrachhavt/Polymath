@@ -14,6 +14,12 @@ import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/ques
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
+import { blobObjects } from "../audit/schema";
+import { recordAudit } from "@/domains/audit/record";
+import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
+import { drizzleQuotaStore, withQuota } from "@/integrations/providers/quota";
+import { readBlob } from "@/integrations/object-store/object-store";
+import { transcriptionProvider, TranscriptionUnconfiguredError, type TranscriptionProvider } from "@/integrations/transcription/provider";
 import { captureProposals, captures } from "./schema";
 import { triageCapture } from "./jev-classify";
 import {
@@ -27,6 +33,8 @@ import {
  * handler so a URL capture has its fetched reading text before classifying.
  *
  *   Tier 0  normalizeCapturedText ($0, pure)     -> clean_text
+ *   Voice   transcription (ASH-298, explicit TRANSCRIPTION_PROVIDER opt-in)
+ *           -> the capture's text, then the same ladder classifies the words
  *   Tier 1  classifyStructure      ($0, regex)   -> structure + signals
  *   Tier 2  Jev classifier (when the registry enables it): typed judgments
  *           -> pending capture_proposals rows + validated taxonomy domain
@@ -57,6 +65,8 @@ Return nulls rather than guessing - a null the owner can fix is better than a la
 export type CaptureEnrichmentDeps = {
   /** Test seam: a pre-built judger (fake client / enabled entry). Production uses the gated default. */
   judger?: ClassifyJudger;
+  /** Test seam: a pre-built transcription provider. Production resolves the explicit env selection. */
+  transcriber?: TranscriptionProvider;
 };
 
 export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
@@ -77,7 +87,19 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
 
   // Tier 0 + 1 run on whatever text exists: the paste itself, or the fetched
   // page for a URL capture.
-  const body = capture.text ?? "";
+  // Voice first (ASH-298): the transcript becomes the capture's text, then
+  // the SAME ladder reads it - no parallel audio pipeline. Unconfigured is
+  // honest: the capture keeps its audio, carries the reason, and this event
+  // completes instead of redelivering against a missing key forever. A
+  // provider ERROR stays redeliverable, like the other tiers.
+  let textForLadder = capture.text ?? "";
+  if (capture.kind === "voice" && !capture.text) {
+    const transcript = await transcribeVoiceCapture(capture, event, deps.transcriber);
+    if (transcript === null) return;
+    textForLadder = transcript;
+  }
+
+  const body = textForLadder;
   const { cleanText, structure } = classifyCapture(body);
 
   // The LLM tier reads prose only: a URL, code block, or contact block gains
@@ -271,4 +293,77 @@ async function tryJevTriage(
     })
     .where(eq(captures.id, captureId));
   return "handled";
+}
+
+/**
+ * Transcribe a voice capture's audio and persist the words as its text.
+ * Returns the transcript ("" for no speech), or null when transcription is
+ * not configured - the capture is then marked, never faked. The audio bytes
+ * are the immutable original in raw_payload/blob storage; the transcript is
+ * derived material and lands in `text`, where the ladder and the owner can
+ * read and correct it. Quota admission wraps the provider call exactly like
+ * the generation seam: the registry's gemini entry carries the allowance.
+ */
+async function transcribeVoiceCapture(
+  capture: { id: string; workspaceId: string; blobId: string | null },
+  event: ClaimedOutboxEvent,
+  injected?: TranscriptionProvider,
+): Promise<string | null> {
+  let provider: TranscriptionProvider;
+  try {
+    provider = injected ?? transcriptionProvider();
+  } catch (cause) {
+    if (cause instanceof TranscriptionUnconfiguredError) {
+      await db
+        .update(captures)
+        .set({
+          processingState: "failed",
+          failureReason: "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER.",
+          updatedAt: new Date(),
+        })
+        .where(eq(captures.id, capture.id));
+      return null;
+    }
+    throw cause;
+  }
+
+  if (!capture.blobId) {
+    // A voice capture without bytes is a broken write, not a retryable state.
+    await db
+      .update(captures)
+      .set({ processingState: "failed", failureReason: "The audio is missing from storage.", updatedAt: new Date() })
+      .where(eq(captures.id, capture.id));
+    return null;
+  }
+  const [blob] = await db.select().from(blobObjects).where(eq(blobObjects.id, capture.blobId)).limit(1);
+  if (!blob) throw new Error(`voice capture ${capture.id} points at missing blob ${capture.blobId}`);
+  const bytes = await readBlob(blob.storageKey);
+
+  const entry = providerEntry(provider.registryId);
+  const call = () => provider.transcribe({ bytes, mimeType: blob.mimeType });
+  const { text } = entry?.quota && entry.enabled
+    ? await withQuota(drizzleQuotaStore(), entry, event.workspaceId, 1, call)
+    : await call();
+  const transcript = text.trim();
+
+  await db
+    .update(captures)
+    .set({
+      text: transcript || null,
+      processingState: "unprocessed",
+      updatedAt: new Date(),
+    })
+    .where(eq(captures.id, capture.id));
+  const ownerAuth = await workspaceOwnerAuth(event.workspaceId);
+  if (ownerAuth) {
+    await recordAudit(ownerAuth, {
+    action: "capture.transcribed",
+    subjectType: "capture",
+    subjectId: capture.id,
+    summary: transcript ? `Transcribed with ${provider.name} (${transcript.length} chars)` : `No speech found (${provider.name})`,
+    metadata: { actor: "transcription" },
+    actorKind: "system",
+  });
+  }
+  return transcript;
 }
