@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
 
 /*
@@ -41,6 +42,37 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
     )
     .limit(1);
   return session ? withElapsed(session) : null;
+}
+
+/**
+ * What the app shell shows while a session is live: just enough to name it and
+ * link back, never the clock (the shell does not tick; Work owns the timer).
+ * Same scoping and liveness rule as getActiveFocusSession, so the dock can
+ * never disagree with the session the Work page controls.
+ */
+export async function getLiveFocusDock(
+  auth: AuthContext,
+): Promise<{ id: string; state: "running" | "paused"; title: string } | null> {
+  const [row] = await db
+    .select({
+      id: focusSessions.id,
+      state: focusSessions.state,
+      subject: focusSessions.subject,
+      taskTitle: tasks.title,
+    })
+    .from(focusSessions)
+    .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
+    .where(
+      and(
+        eq(focusSessions.workspaceId, auth.workspaceId),
+        inArray(focusSessions.state, ["running", "paused"]),
+        isNotNull(focusSessions.startedAt),
+        isNull(focusSessions.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!row || (row.state !== "running" && row.state !== "paused")) return null;
+  return { id: row.id, state: row.state, title: row.taskTitle ?? row.subject ?? "Focus session" };
 }
 
 /** Closed sessions, newest first. */
