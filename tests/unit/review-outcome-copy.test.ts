@@ -18,7 +18,7 @@ const SOURCE = fs.readFileSync(
 describe("review outcome copy", () => {
   it("says Sent, Checking, and Not sent in the executor's vocabulary", () => {
     expect(SOURCE).toContain(': "Sent.";');
-    expect(SOURCE).toContain(': "Checking whether this was sent.";');
+    expect(SOURCE).toContain('"Checking whether this was sent.";');
     expect(SOURCE).toContain(": `Not sent. ${outcome.reason}`;");
   });
 

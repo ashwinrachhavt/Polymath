@@ -177,9 +177,14 @@ function outcomeLine(capability: string, outcome: EffectOutcome): string {
     case "sent":
       return canva ? "Imported to Canva." : "Sent.";
     case "unknown":
-      // Covers both honest phases: a created job still running, and a
-      // creation whose answer never arrived.
-      return canva ? "Outcome unconfirmed; Polymath checks with Canva before anything runs again." : "Checking whether this was sent.";
+      // The two honest UNKNOWN phases stay distinct for a person: a job
+      // Canva accepted (terminal answer pending) is not a lost creation.
+      if (canva) {
+        return outcome.note === "import_started"
+          ? "Import job created; Polymath is waiting for Canva's terminal result."
+          : "Outcome unconfirmed; Polymath checks with Canva before anything runs again.";
+      }
+      return "Checking whether this was sent.";
     case "failed":
       return canva ? `Not imported. ${outcome.reason}` : `Not sent. ${outcome.reason}`;
   }

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { actionAttempts, actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
+import { actionAttempts, actionPolicies, actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { designBriefDocx, designBriefDocxSha256 } from "@/domains/knowledge/design-brief-docx";
 import type { DesignBrief } from "@/domains/knowledge/design-brief";
@@ -78,6 +78,7 @@ async function seedImport(options: {
   payload?: Record<string, unknown>;
   unpinned?: boolean;
   driftAccount?: boolean;
+  accountStatus?: "active" | "revoked";
 }): Promise<{ auth: ReturnType<typeof ownerAuth>; proposalId: string; workspaceId: string }> {
   counter += 1;
   const { userId, workspaceId } = await seedWorkspace(db, `${options.slug}-${Date.now()}-${counter}`);
@@ -89,8 +90,8 @@ async function seedImport(options: {
       workspaceId,
       provider: "canva",
       alias,
-      status: "active",
-      composioConnectedAccountId: `ca_${crypto.randomUUID()}`,
+      status: options.accountStatus ?? "active",
+      composioConnectedAccountId: options.accountStatus === "revoked" ? null : `ca_${crypto.randomUUID()}`,
       createdBy: userId,
       updatedBy: userId,
     })
@@ -226,6 +227,65 @@ suite("canva.design.import executor", () => {
       /no longer matches the approved revision/,
     );
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a replay of a job-created attempt reports the import_started phase, not a fresh dispatch", async () => {
+    const seeded = await seedImport({ slug: "canva-phase-note" });
+    const { spy } = stubProvider(jobCreated("job_77"));
+
+    await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
+    const replay = await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
+    expect(replay).toMatchObject({ status: "unknown", note: "import_started" });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unconfigured deployment refuses BEFORE any claim or provider call", async () => {
+    const seeded = await seedImport({ slug: "canva-unconfigured" });
+    const { spy } = stubProvider(jobCreated());
+    delete process.env.COMPOSIO_API_KEY;
+    try {
+      await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+        /Composio is not configured/,
+      );
+    } finally {
+      process.env.COMPOSIO_API_KEY = API_KEY;
+    }
+    expect(spy).not.toHaveBeenCalled();
+    // No UNKNOWN attempt blocks the proposal against a configuration fix.
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
+    expect(attempts).toHaveLength(0);
+  });
+
+  it("a revoked account is refused before the provider is touched", async () => {
+    const seeded = await seedImport({ slug: "canva-revoked", accountStatus: "revoked" });
+    const { spy } = stubProvider(jobCreated());
+
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
+    expect(attempts).toHaveLength(0);
+  });
+
+  it("tightening the sender grant after approval revokes the approved import", async () => {
+    const seeded = await seedImport({ slug: "canva-grant-tightened" });
+    const { spy } = stubProvider(jobCreated());
+    // The workspace's grant now names a DIFFERENT alias: the approved pin's
+    // alias is no longer authorized, so the approval must not grandfather.
+    await db.insert(actionPolicies).values({
+      workspaceId: seeded.workspaceId,
+      capability: "canva.design.import",
+      riskClass: "external_write",
+      constraints: { allowedSenderAliases: ["someone-else"] },
+      createdBy: seeded.auth.userId,
+      updatedBy: seeded.auth.userId,
+    });
+
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toThrow(
+      /not an authorized sender/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
+    expect(attempts).toHaveLength(0);
   });
 
   it("refuses a revision written before account binding", async () => {

@@ -370,6 +370,16 @@ export type ComposioWriteResult =
  */
 const WRITE_TIMEOUT_MS = 30_000;
 
+/*
+ * Whether a write can even be dispatched. The executor asks BEFORE claiming
+ * an intent: an unconfigured deployment provably cannot reach the provider,
+ * so the honest outcome is a refusal, not an UNKNOWN attempt that would
+ * block the proposal against a configuration fix.
+ */
+export function composioWriteConfigured(): boolean {
+  return Boolean(process.env.COMPOSIO_API_KEY);
+}
+
 export async function executeComposioWrite(call: ComposioWriteCall): Promise<ComposioWriteResult> {
   if (call.method !== WRITE_METHOD) throw new ComposioWriteMethodError(String(call.method));
   const apiKey = process.env.COMPOSIO_API_KEY;

@@ -49,6 +49,7 @@ async function seedUnknown(options: {
   /** responseSummary on the attempt: the job pointer, or null for a lost creation. */
   responseSummary: unknown;
   accountStatus?: "active" | "revoked";
+  startedAt?: Date;
 }): Promise<Seeded> {
   counter += 1;
   const { userId, workspaceId } = await seedWorkspace(db, `${options.slug}-${Date.now()}-${counter}`);
@@ -94,6 +95,7 @@ async function seedUnknown(options: {
       reconciliation: "pending",
       responseSummary: options.responseSummary as Record<string, unknown> | null,
       providerObjectId: (options.responseSummary as { jobId?: string } | null)?.jobId ?? null,
+      startedAt: options.startedAt ?? new Date(),
     })
     .returning();
   return { workspaceId, proposalId: proposal.id, attemptId: attempt.id, connectedAccountId };
@@ -192,6 +194,22 @@ suite("canva.design.import reconciliation", () => {
     expect(result.reconciled).toBe(0);
     const { attempt } = await attemptState(seeded.attemptId);
     expect(attempt.status).toBe("unknown");
+    expect(transport.calls).toHaveLength(0);
+  });
+
+  it("polling is bounded: a job older than the budget is left for a human with no provider call", async () => {
+    const seeded = await seedUnknown({
+      slug: "canva-recon-bounded",
+      responseSummary: { jobId: "job_old", phase: "import_in_progress" },
+      startedAt: new Date(Date.now() - 25 * 60 * 60_000),
+    });
+    const transport = transportWith({ job_old: { status: "success", result: { designs: [{ id: "DAF2" }] } } });
+
+    const result = await reconciliation.reconcileUnknownAttempts({ transport });
+    expect(result.reconciled).toBe(0);
+    const { attempt } = await attemptState(seeded.attemptId);
+    expect(attempt.status).toBe("unknown");
+    expect(attempt.reconciliation).toBe("pending");
     expect(transport.calls).toHaveLength(0);
   });
 

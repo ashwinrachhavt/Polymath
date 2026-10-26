@@ -222,7 +222,7 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("status")).toContainText("Copied");
   });
 
-  test(`hand off a brief to Canva through the approval queue [${vp.name}]`, async ({ page }) => {
+  test(`hand off a brief to Canva: proposal, then an honest unconfigured refusal [${vp.name}]`, async ({ page }) => {
     test.setTimeout(180_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
     const artifact = await seedArtifact("report", `${SOURCE_TITLE} (handoff)`, SOURCE_TEXT);
@@ -256,13 +256,16 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText("canva.design.import")).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-review-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
 
-    // Approving runs the executor. This environment has no COMPOSIO_API_KEY,
-    // so no live write can happen: the honest outcome is "unconfirmed", and
-    // exactly one UNKNOWN attempt is the dispatch record.
+    // Approving runs the executor's gates. This environment has no
+    // COMPOSIO_API_KEY, so dispatch is provably impossible: the honest
+    // outcome is a refusal BEFORE any claim, the approval stands, and no
+    // UNKNOWN attempt blocks the proposal against a configuration fix.
     await page.getByRole("button", { name: "Approve" }).first().click();
-    await expect(page.getByText("Outcome unconfirmed; Polymath checks with Canva before anything runs again.")).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Composio is not configured on this deployment yet; the import cannot be dispatched." }),
+    ).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
-    expect(await importAttemptCount()).toBe(1);
+    expect(await importAttemptCount()).toBe(0);
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {

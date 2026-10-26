@@ -16,6 +16,7 @@ import {
 } from "@/domains/integrations/canva/import";
 import { designBriefSchema } from "@/domains/knowledge/design-brief";
 import { designBriefDocx, designBriefDocxSha256 } from "@/domains/knowledge/design-brief-docx";
+import { composioWriteConfigured } from "@/domains/integrations/composio";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { withTransaction } from "@/lib/db-transaction";
 import {
@@ -24,7 +25,7 @@ import {
   findClaimedAttempt,
   settleAttempt,
 } from "./attempts";
-import { StaleRevisionError } from "./commands";
+import { ACCOUNT_PIN_PROVIDERS, StaleRevisionError } from "./commands";
 import { checkSenderAlias, senderAliasPolicy } from "./policy";
 import { actionAttempts, actionProposals, actionRevisions, actionReviews, executionSettings } from "./schema";
 
@@ -74,7 +75,12 @@ export class EffectNotSupportedError extends Error {
 export type EffectOutcome =
   | { status: "sent"; providerId: string; at: string }
   | { status: "failed"; reason: string; retryable: boolean }
-  | { status: "unknown"; reconciliationId: string };
+  /*
+   * `note` separates two honest UNKNOWN phases a person must tell apart:
+   * "import_started" (the provider accepted the job; its terminal answer is
+   * pending) from an outcome that never got an answer at all.
+   */
+  | { status: "unknown"; reconciliationId: string; note?: "import_started" };
 
 /*
  * One literal, keyed by capability. A default branch that guessed at an
@@ -150,7 +156,12 @@ function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome |
     return { status: "sent", providerId: attempt.providerObjectId, at: attempt.endedAt?.toISOString() ?? new Date().toISOString() };
   }
   if (attempt.status === "unknown") {
-    return { status: "unknown", reconciliationId: attempt.id };
+    const phase = (attempt.responseSummary as { phase?: unknown } | null)?.phase;
+    return {
+      status: "unknown",
+      reconciliationId: attempt.id,
+      ...(phase === "import_in_progress" ? { note: "import_started" as const } : {}),
+    };
   }
   if (attempt.status === "failed") {
     // A failed attempt was refused before dispatch; repeating it is a new
@@ -301,8 +312,9 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // ASH-289: the sending grant is re-read at execution, not borrowed from the
   // approval. Tightening the authorized senders revokes an already-approved
   // proposal rather than grandfathering it; the pin carries the alias it was
-  // approved with, and only an authorized alias may send.
-  if (checked.provider === "gmail") {
+  // approved with, and only an authorized alias may send. The check applies
+  // to every capability whose revisions bind an account pin.
+  if (checked.capability in ACCOUNT_PIN_PROVIDERS) {
     const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
     const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
     if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
@@ -392,6 +404,12 @@ export async function executeApprovedEffect(
       throw new SendNotAllowedError(
         "The approved brief no longer renders to the approved document. Review and approve a fresh revision.",
       );
+    }
+    // Dispatchability before any claim: an unconfigured deployment provably
+    // cannot reach the provider, so the honest outcome is a refusal - not an
+    // UNKNOWN attempt that would block the proposal against a config fix.
+    if (!composioWriteConfigured()) {
+      throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
     }
   }
 
@@ -547,7 +565,7 @@ async function settleCanvaImport(
         },
         tx,
       );
-      return { status: "unknown" as const, reconciliationId: attemptId };
+      return { status: "unknown" as const, reconciliationId: attemptId, note: "import_started" as const };
     }
 
     if (rejected) {

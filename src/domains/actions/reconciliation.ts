@@ -32,6 +32,15 @@ import { actionAttempts, actionProposals, providerObservations } from "./schema"
 /** How long Gmail's index may lag a delivered message. Absence before this is not evidence. */
 export const RECONCILIATION_LAG_MS = 10 * 60_000;
 
+/*
+ * How long the sweep keeps asking Canva about one import job. Canva jobs
+ * finish in minutes; a day of `in_progress` is a stuck job, and the bound is
+ * what keeps one stuck job from being polled forever (the get endpoint is
+ * rate-limited per user). Past the budget the row stays UNKNOWN for a human
+ * and the sweep stops asking - bounded, never settled on a guess.
+ */
+export const CANVA_IMPORT_POLL_BUDGET_MS = 24 * 60 * 60_000;
+
 type PendingAttempt = {
   id: string;
   workspaceId: string;
@@ -264,6 +273,10 @@ async function reconcileCanvaImport(input: {
   const summary = (attempt.responseSummary ?? null) as { jobId?: unknown } | null;
   const jobId = typeof summary?.jobId === "string" && summary.jobId.length > 0 ? summary.jobId : null;
   if (!jobId) return false;
+
+  // Bounded polling: past the budget the sweep stops asking entirely. The
+  // attempt stays UNKNOWN for a human; it is never settled on a guess.
+  if (Date.now() - attempt.startedAt.getTime() > CANVA_IMPORT_POLL_BUDGET_MS) return false;
 
   const account = await resolveConnectedAccount(auth, "canva", attempt.accountAlias ?? undefined);
   // A revoked/expired account cannot be read through; that is not proof about
