@@ -224,6 +224,28 @@ for (const vp of VIEWPORTS) {
     /^https:\/\/www\.canva\.com\/design\/fixture-design-/,
   );
   await page.screenshot({ path: `test-results/feature-pixels/design-brief-fixture-terminal-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+
+  // Real-viewport reachability on mobile, proven in geometry and pixels -
+  // the stylesheet model alone is not verification. The destinations nav is
+  // sticky and in flow, so at max scroll it settles AFTER the last card:
+  // nothing is permanently occluded, every control can be scrolled clear.
+  // (The fullPage stitch above repaints the nav mid-content; that is a
+  // capture artifact, not layout.)
+  if (vp.name === "mobile") {
+    await page.evaluate(() => {
+      const scroller = document.scrollingElement ?? document.documentElement;
+      scroller.scrollTop = scroller.scrollHeight;
+    });
+    const geometry = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Destinations"]');
+      const last = [...document.querySelectorAll("section")].at(-1);
+      if (!nav || !last) return null;
+      return { navTop: nav.getBoundingClientRect().top, lastCardBottom: last.getBoundingClientRect().bottom };
+    });
+    expect(geometry).not.toBeNull();
+    expect(geometry!.lastCardBottom).toBeLessThanOrEqual(geometry!.navTop + 1);
+    await page.screenshot({ path: "test-results/feature-pixels/design-brief-fixture-scrolled-mobile.png", style: HIDE_DEV_CHROME });
+  }
 });
 }
 
