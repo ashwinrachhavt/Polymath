@@ -129,6 +129,8 @@ export function InboxDetail({
     capture && ["open", "unprocessed", "classifying", "enriched", "failed"].includes(capture.processingState)
       ? proposals.filter((proposal) => !decidedSuggestions.has(proposal.id))
       : [];
+  // A voice note without its transcript yet has no words to convert (ASH-298).
+  const voiceWithoutTranscript = capture?.kind === "voice" && !(capture.cleanText ?? capture.text)?.trim();
 
   function decideSuggestion(suggestion: CaptureSuggestion, decision: "accept" | "reject") {
     setError(null);
@@ -268,7 +270,7 @@ export function InboxDetail({
             captureId={capture.id}
             version={capture.version}
             text={capture.text ?? ""}
-            label={`Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
+            label={capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
             // The domain lets only an unprocessed or classifying capture be
             // edited: after conversion the derived task or note owns the text.
             editable={state === "unprocessed" || state === "classifying"}
@@ -338,22 +340,28 @@ export function InboxDetail({
       <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
         {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
           <>
-            {capture.kind === "file" ? null : (
+            {capture.kind === "file" || voiceWithoutTranscript ? null : (
               <Button size="sm" disabled={pending} onClick={saveAsNote}>
                 Save as note
               </Button>
             )}
-            {capture.kind === "file" || !(capture.cleanText ?? capture.text)?.trim() ? null : (
+            {capture.kind === "file" || voiceWithoutTranscript || !(capture.cleanText ?? capture.text)?.trim() ? null : (
               <Button size="sm" variant="outline" disabled={pending} onClick={saveAsDocument} title="File the text as a library document; zettel proposals follow">
                 Save to library
               </Button>
             )}
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
-              Make task
-            </Button>
+            {voiceWithoutTranscript ? null : (
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
+                Make task
+              </Button>
+            )}
             {capture.kind === "file" ? (
               <span className="flex items-center text-xs text-muted-foreground">
                 A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself.
+              </span>
+            ) : voiceWithoutTranscript ? (
+              <span className="flex items-center text-xs text-muted-foreground">
+                The transcript lands here once transcription runs; then it works like any text capture.
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">

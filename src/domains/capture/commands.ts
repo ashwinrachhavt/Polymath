@@ -256,6 +256,17 @@ export async function createFileCapture(
         { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
         tx,
       );
+        // Audio is promised a transcript (ASH-298): the outbox carries the
+        // wait, and the handler's unconfigured path answers honestly instead
+        // of looping. Non-audio files have no text to classify - the capture
+        // IS the file - so nothing else enqueues.
+        if (capture.kind === "voice") {
+          await enqueueOutbox(tx, auth, {
+            topic: CAPTURE_ENRICHMENT_TOPIC,
+            payload: { captureId: capture.id },
+            dispatchKey: `capture-enrichment:${capture.id}`,
+          });
+        }
         return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
       });
       lostRace = replayed;

@@ -139,6 +139,13 @@ jobs:
           # the fixture does not know get the same unconfigured error as a
           # keyless run, treated as a skip.
           GENERATION_PROVIDER: fixture
+          # The voice-capture journey transcribes through the deterministic
+          # fixture adapter: no model key, no spend, no fake words in prod -
+          # the seam is explicit opt-in everywhere (ASH-298).
+          TRANSCRIPTION_PROVIDER: fixture
+          # Lets a spec drain the outbox on purpose (one dispatcher pass)
+          # instead of sleeping for a background worker that does not exist here.
+          OUTBOX_DISPATCH_SECRET: e2e-outbox
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4
