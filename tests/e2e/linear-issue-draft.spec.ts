@@ -21,7 +21,9 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
   await page.goto("/command-center/inbox");
   await waitSettled(page);
 
-  await page.getByRole("article").first().click();
+  // The inbox is shared with every parallel spec: open THIS capture, never
+  // whichever row happens to sort first.
+  await page.getByRole("article").filter({ hasText: "Priya needs the Q3 roadmap" }).first().click();
   await waitSettled(page);
   const detail = page.getByRole("article");
   await expect(detail).toContainText("Turn into");
