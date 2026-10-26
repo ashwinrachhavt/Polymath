@@ -165,6 +165,14 @@ jobs:
       # A sibling directory keeps both; the fixture's own screenshots are
       # cwd-relative and still land in test-results/feature-pixels/.
       - run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
+      # Failure forensics: Playwright's per-failure page snapshots. Without
+      # these a red e2e is a message, not evidence.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-error-context
+          path: test-results/**/error-context.md
+          if-no-files-found: ignore
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
@@ -352,25 +352,12 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  // Persisted attempt outcomes hydrate the map; decide responses overwrite
-  // per proposal, so a fresh decision always wins over the reloaded row.
-  const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>(() =>
-    Object.fromEntries(items.flatMap((item) => (item.outcome ? [[item.id, item.outcome]] : []))),
-  );
-  // A soft refresh (filter change, router.refresh) re-renders this mounted
-  // component with new server data: a reconciled terminal outcome is newer
-  // truth than a decide response captured before the sweep settled, so the
-  // persisted row overwrites it. A proposal with no attempt row yet keeps
-  // its decide outcome.
-  useEffect(() => {
-    setOutcomes((prev) => {
-      const next = { ...prev };
-      for (const item of items) {
-        if (item.outcome) next[item.id] = item.outcome;
-      }
-      return next;
-    });
-  }, [items]);
+  // A decide response fills the gap until the next server render: the
+  // attempt commits before the response returns, so any rendered persisted
+  // outcome is the same truth or newer (e.g. reconciled by the sweep after
+  // the reviewer decided). Persisted therefore wins whenever it exists, and
+  // a stale decide response can never mask a reconciled terminal truth.
+  const [decideOutcomes, setDecideOutcomes] = useState<Record<string, EffectOutcome>>({});
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>
@@ -416,7 +403,7 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
         return;
       }
       if (result.outcome) {
-        setOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
+        setDecideOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
       }
     });
   }
@@ -452,7 +439,7 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       key={`${item.id}-${item.version}`}
       item={item}
       error={errors[item.id] ?? null}
-      outcome={outcomes[item.id] ?? null}
+      outcome={item.outcome ?? decideOutcomes[item.id] ?? null}
       decide={decide}
     />
   );

@@ -119,23 +119,23 @@ async function removeSeeded(): Promise<void> {
 }
 
 /** A connected Canva account for the handoff journey's executor resolution. */
-async function seedCanvaAccount(): Promise<boolean> {
+async function seedCanvaAccount(): Promise<string | null> {
   const client = db();
-  if (!client) return false;
+  if (!client) return null;
   try {
     const [owner] = await client<{ workspace_id: string; user_id: string }[]>`
       select m.workspace_id, m.user_id
       from memberships m join users u on u.id = m.user_id
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
-    if (!owner) return false;
+    if (!owner) return null;
     const alias = `canva-e2e-${crypto.randomUUID().slice(0, 8)}`;
     const [account] = await client<{ id: string }[]>`
       insert into external_accounts (workspace_id, provider, alias, status, composio_connected_account_id, created_by, updated_by)
       values (${owner.workspace_id}, 'canva', ${alias}, 'active', ${`ca_e2e_${crypto.randomUUID()}`}, ${owner.user_id}, ${owner.user_id})
       returning id`;
     seededCanvaAccountIds.push(account.id);
-    return true;
+    return alias;
   } finally {
     await client.end();
   }
@@ -227,8 +227,8 @@ for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     const artifact = await seedArtifact("report", `${SOURCE_TITLE} (handoff)`, SOURCE_TEXT);
     test.skip(!artifact, "DATABASE_URL not configured");
-    const accountSeeded = await seedCanvaAccount();
-    test.skip(!accountSeeded, "DATABASE_URL not configured");
+    const accountAlias = await seedCanvaAccount();
+    test.skip(!accountAlias, "DATABASE_URL not configured");
 
     // Generate the brief, then hand it off from the brief page.
     await page.goto(`/artifacts/${artifact!.id}`);
@@ -262,21 +262,26 @@ for (const vp of VIEWPORTS) {
     // approval stands, and no UNKNOWN attempt blocks the proposal against a
     // configuration fix. Enablement is the first gate: a generic Composio
     // key (present for Gmail) must never stand in for the Canva opt-in.
-    await page.getByRole("button", { name: "Approve" }).first().click();
+    // Approve OUR proposal: the two viewport journeys run in parallel with
+    // identical card titles, so the alias seeds the card's identity.
+    const card = page.locator("section").filter({ hasText: accountAlias! });
+    await card.getByRole("button", { name: "Approve" }).click();
     await expect(
-      page.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
+      card.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
     ).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await importAttemptCount()).toBe(0);
 
     // Reloaded, the refusal persists NO manufactured outcome: the approval
-    // stands against a configuration fix, the card names no import and no
-    // failure, and a decided card offers no way to fire again.
+    // stands against a configuration fix, the decided card names no import
+    // and no failure, and it offers no way to fire again.
     await page.goto("/reviews?status=approved");
-    await expect(page.getByText('Import design brief "Q3 roadmap one-pager" to Canva')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Imported to Canva.")).toHaveCount(0);
-    await expect(page.getByText(/Not imported\./)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(page).toHaveURL(/status=approved/);
+    const decided = page.locator("section").filter({ hasText: accountAlias! });
+    await expect(decided.getByText("Decided")).toBeVisible({ timeout: 30_000 });
+    await expect(decided.getByText("Imported to Canva.")).toHaveCount(0);
+    await expect(decided.getByText(/Not imported\./)).toHaveCount(0);
+    await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
