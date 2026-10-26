@@ -174,6 +174,9 @@ const NATIVE_TOOLS = [
   // ASH-285: drafts a Linear-issue proposal note in this repo; never a
   // provider call, so no catalog row.
   "linear.issue.propose",
+  // ASH-284: triage proposals persist in this repo; GitHub is never called,
+  // so no catalog row.
+  "github.issue.triage",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 

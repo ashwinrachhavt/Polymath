@@ -92,6 +92,8 @@ export const STUBBED_TOOLS = {
   // ASH-285: only ever drafts a proposal note, so the stub is the "drafted"
   // shape and an eval can never reach Linear or spend a generation call.
   linear_issue_propose: { response: { ok: true, status: "drafted", artifactId: "00000000-0000-0000-0000-000000000000", title: "Linear issue: stub", generated: false, outcome: "created" } },
+  // ASH-284: decision-only triage proposal; the stub can never reach GitHub.
+  github_triage_propose: { response: { ok: true, status: "proposed", proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false } },
   notion_propose_update: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, contentHash: "", status: "awaiting review" } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },

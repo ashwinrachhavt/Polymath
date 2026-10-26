@@ -123,6 +123,28 @@ describe("authorizeToolInvocation", () => {
     }
   });
 
+describe("github.issue.triage (ASH-284)", () => {
+  it("is an internal write under action.prepare with no executor and no approval gate", () => {
+    const spec = TOOL_OPERATION_REGISTRY["github.issue.triage"];
+    expect(spec.capability).toBe("action.prepare");
+    expect(spec.effectClass).toBe("internal_write");
+    expect(spec.requiresApproval).toBeUndefined();
+  });
+
+  it("authorizes a member-grade grant and denies a viewer-grade read set", () => {
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "github.issue.triage" })),
+    ).toEqual({ allowed: true, requiresApproval: false });
+    const viewerReads = [
+      "person.read", "document.read", "task.read", "knowledge.read",
+      "member.read", "role.read", "integration.use", "audit.read",
+    ];
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "github.issue.triage" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+});
+
 describe("linear.issue.propose (ASH-285)", () => {
   it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
     const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];

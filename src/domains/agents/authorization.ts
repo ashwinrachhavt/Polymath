@@ -109,6 +109,17 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "gmail.thread.read": { capability: "integration.use", effectClass: "read" },
   "github.read": { capability: "integration.use", effectClass: "read" },
   "github.issue.read": { capability: "integration.use", effectClass: "read" },
+  /*
+   * ASH-284: proposing triage persists a review-queue proposal, so this is
+   * an internal write under action.prepare - not a GitHub call. There is no
+   * executor for the capability: approving records the decision only, which
+   * is the ticket's proposal-only clause.
+   */
+  "github.issue.triage": {
+    capability: "action.prepare",
+    effectClass: "internal_write",
+    note: "Persists a GitHub triage proposal; never calls GitHub.",
+  },
   "slack.channels.read": { capability: "integration.use", effectClass: "read" },
   "slack.read": { capability: "integration.use", effectClass: "read" },
   "linear.read": { capability: "integration.use", effectClass: "read" },
