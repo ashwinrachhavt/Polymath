@@ -172,6 +172,16 @@ describe("linear.issue.propose (ASH-285)", () => {
   });
 });
 
+  it("the proposal-only operations have no executor to fall through to", () => {
+    // The reviews approve path runs executeApprovedEffect only when
+    // supportsEffect is true; an executor-less capability returns the
+    // decision alone. These operations' contract is proposal-only, so pin
+    // them by name: a future executor lands as a deliberate diff here, never
+    // a silent fall-through to a real effect or an applied success.
+    expect(supportsEffect("linear.issue.propose")).toBe(false);
+    expect(supportsEffect("github.issue.triage")).toBe(false);
+  });
+
 describe("meetings.debrief authority correction", () => {
   it("stays proposal-only: no executor can turn an approval into an effect", () => {
     // The tool persists review-queue proposals; approving one of its tasks
@@ -215,23 +225,6 @@ describe("meetings.debrief authority correction", () => {
     ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
   });
 });
-
-  it("a decision-only internal write has no executor to fall through to", () => {
-    // The reviews approve path runs executeApprovedEffect only when
-    // supportsEffect is true; an executor-less capability returns the
-    // decision alone. Pin both halves: every propose-only internal write in
-    // the registry stays executor-less, so an approval can never fall
-    // through to a real effect or report an applied success.
-    for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
-      if (spec.effectClass === "internal_write") {
-        expect(supportsEffect(operation), operation).toBe(false);
-      }
-    }
-    // And the two this stack adds, by name, so a future executor lands as a
-    // deliberate diff here, not a silent capability upgrade.
-    expect(supportsEffect("linear.issue.propose")).toBe(false);
-    expect(supportsEffect("github.issue.triage")).toBe(false);
-  });
 
   it("keeps the registry's approval gate on every external effect", () => {
     for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {

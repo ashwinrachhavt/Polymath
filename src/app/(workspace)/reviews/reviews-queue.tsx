@@ -36,6 +36,8 @@ export type QueueCardData = {
    * True when no executor exists for the capability (ASH-284): approving
    * records the decision and nothing runs, and the card must say so in both
    * the pending and decided views - never imply an external change happened.
+   * The copy is keyed on the capability: generic wording by default, with
+   * GitHub's specifics only where they are true.
    */
   decisionOnly: boolean;
   accountAlias: string | null;
@@ -245,8 +247,9 @@ function ProposalCard({
 
       {item.decisionOnly ? (
         <p className="mb-3 text-xs text-muted-foreground">
-          Approving records the decision only. This proposal has no executor, so nothing changes on GitHub -
-          labels, assignees, and close state stay exactly as they are until you apply them there.
+          {item.capability === "github.issue.triage"
+            ? "Approving records the decision only. Nothing changes on GitHub - labels, assignees, and close state stay exactly as they are until you apply them there."
+            : "Approving records the decision only. This proposal has no executor, so nothing outside Polymath changes when you approve."}
         </p>
       ) : null}
       <SendSummary capability={item.capability} revision={item.latestRevision} />

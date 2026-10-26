@@ -59,6 +59,25 @@ describe("reviews queue decision-only proposals", () => {
     expect(screen.queryByText(/labeled|assigned|closed on GitHub/i)).toBeNull();
   });
 
+  it("a non-GitHub decision-only card gets the generic line, never GitHub specifics", () => {
+    const screen = render(
+      createElement(ReviewsQueue, {
+        items: [
+          card({
+            capability: "some.future.proposal",
+            decisionOnly: true,
+            title: "A neutral proposal",
+            expectedEffect: "Records a preference the owner asked about.",
+          }),
+        ],
+        onFilterChange: NO_OP,
+      } as never),
+    );
+    screen.getByText(/Approving records the decision only/);
+    screen.getByText(/nothing outside Polymath changes/i);
+    expect(screen.queryByText(/GitHub|labels|assignees/i)).toBeNull();
+  });
+
   it("does not show the decision-only line for a capability with an executor", () => {
     const screen = render(
       createElement(ReviewsQueue, {
