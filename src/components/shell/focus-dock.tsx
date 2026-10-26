@@ -65,7 +65,11 @@ function LiveDock({ pathname }: { pathname: string }) {
   return (
     <aside
       aria-label="Focus session"
-      className="sticky bottom-0 mt-auto border-t border-border bg-background/95 px-4 py-2 backdrop-blur"
+      /* On phones the Destinations bar (sticky bottom-0, z-20, min-h-11 +
+         py-1.5 + border + safe-area ~= 57px) covers a bottom-0 dock, so the
+         dock sticks above it; on md+ the bar is hidden and the dock owns the
+         bottom edge. Keep the offset in step with MobileNav's metrics. */
+      className="sticky bottom-[calc(57px+env(safe-area-inset-bottom))] z-10 mt-auto border-t border-border bg-background/95 px-4 py-2 backdrop-blur md:bottom-0"
     >
       <Link
         href="/neuralflow/work?view=today"

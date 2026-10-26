@@ -38,10 +38,19 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await expect(dock).toBeVisible();
     await expect(dock).toContainText("Focus running");
     await expect(dock).toContainText(tag);
-    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-desktop.png", fullPage: true });
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-desktop.png" });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(dock).toBeVisible();
-    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile.png", fullPage: true });
+    // In-viewport proof: the dock sits above the Destinations bar, fully
+    // inside the 390x844 viewport - a sticky footer the bar covers is no
+    // indicator at all.
+    const dockBox = await dock.boundingBox();
+    const navBox = await page.getByRole("navigation", { name: "Destinations", exact: true }).boundingBox();
+    expect(dockBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    expect(dockBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(navBox!.y + 1);
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile.png" });
 
     // A failed read keeps the last known session, marked stale - it never
     // claims the session ended, and never presents it as verified. The stale
@@ -52,7 +61,7 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dock).toContainText("last known");
     await expect(dock).toContainText("status may be out of date");
-    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile-stale.png", fullPage: true });
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile-stale.png" });
     await page.setViewportSize({ width: 1280, height: 800 });
 
     // A successful read clears the stale mark.
