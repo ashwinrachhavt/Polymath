@@ -151,6 +151,13 @@ describe("linear.issue.propose (ASH-285)", () => {
 });
 
 describe("meetings.debrief authority correction", () => {
+  it("stays proposal-only: no executor can turn an approval into an effect", () => {
+    // The tool persists review-queue proposals; approving one of its tasks
+    // runs through the work domain's own approval, not this capability.
+    expect(supportsEffect("meetings.debrief")).toBe(false);
+  });
+
+
   it("is an internal write under action.prepare - it persists proposal rows, so it is not a read", () => {
     const spec = TOOL_OPERATION_REGISTRY["meetings.debrief"];
     expect(spec.capability).toBe("action.prepare");
