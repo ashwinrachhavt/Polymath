@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Status } from "@/components/workspace/ui";
 import { parseQuickAdd } from "@/domains/work/quick-add";
+import { StoneCeremony } from "@/components/products/neuralflow/stone-ceremony";
 import { completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
 
@@ -81,7 +82,7 @@ export function WorkList({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
   const [addNotice, setAddNotice] = useState<string | null>(null);
-  const [reward, setReward] = useState<string | null>(null);
+  const [ceremony, setCeremony] = useState<{ sentence?: string } | null>(null);
   // Bulk edit (Product Spec: "bulk edit"). Selection only ever names rows on
   // screen: the effect below prunes it against the rendered items, so a
   // filter, page or refresh that drops a row drops it from the selection too
@@ -107,6 +108,7 @@ export function WorkList({
     fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean; sentenceRecorded?: boolean }>,
     applyChange: Change,
     onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
+    sentence?: string,
   ) {
     setError(null);
     startTransition(async () => {
@@ -119,7 +121,7 @@ export function WorkList({
           onError?.(result.kind ?? "retryable", result.sentenceRecorded);
         } else {
           intent.current = null;
-          if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
+          if (result.quartzEarned) setCeremony({ sentence });
         }
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
@@ -153,7 +155,7 @@ export function WorkList({
       // reopens; the draft map still holds the sentence, so nothing the
       // person typed is lost.
       setAsking(id);
-    });
+    }, sentence || undefined);
   }
 
   function bulkComplete() {
@@ -168,7 +170,7 @@ export function WorkList({
           setBulkResult({ kind: "error", message: result.error });
           return;
         }
-        if (result.quartzEarned) setReward("Quartz earned: first task of the day.");
+        if (result.quartzEarned) setCeremony({});
         if (result.unknown.length > 0) {
           // The batch stopped early: known completions stand, the unknown ids
           // stay selected for a manual, looked-at retry - never an automatic
@@ -268,8 +270,7 @@ export function WorkList({
               Add task
             </Button>
           </div>
-          {reward ? <p role="status" className="text-xs text-muted-foreground">{reward}</p> : null}
-          {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
+                    {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
           {addNotice ? <p role="status" className="text-xs text-muted-foreground">{addNotice}</p> : null}
         </form>
       ) : null}
@@ -398,6 +399,7 @@ export function WorkList({
           );
         })}
       </ul>
+      {ceremony ? <StoneCeremony sentence={ceremony.sentence} onDismiss={() => setCeremony(null)} /> : null}
     </>
   );
 }
