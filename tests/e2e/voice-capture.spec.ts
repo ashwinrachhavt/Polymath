@@ -15,6 +15,22 @@ async function drainOutbox(page: import("@playwright/test").Page) {
   expect(response.ok()).toBe(true);
 }
 
+/*
+ * The dispatcher claims the 10 oldest pending events per pass, and the shared
+ * e2e workspace's outbox holds every parallel spec's events - one pass is not
+ * guaranteed to reach this capture's row. Drain in passes until the
+ * transcript renders; each pass is a real dispatcher run, so the wait is the
+ * product's own async contract, not a sleep.
+ */
+async function drainUntilTranscript(page: import("@playwright/test").Page, detail: import("@playwright/test").Locator) {
+  for (let pass = 0; pass < 12; pass += 1) {
+    await drainOutbox(page);
+    await page.reload();
+    await waitSettled(page);
+    if (await detail.getByText("Fixture transcript:", { exact: false }).count()) return;
+  }
+}
+
 test("a voice note records, transcribes, and converts like any capture", async ({ page, context }) => {
   await context.grantPermissions(["microphone"]);
   await page.goto("/command-center/inbox");
@@ -33,10 +49,9 @@ test("a voice note records, transcribes, and converts like any capture", async (
   await expect(detail.getByText("The transcript lands here once transcription runs; then it works like any text capture.")).toBeVisible();
   await expect(detail.getByRole("button", { name: "Save as note", exact: true })).toHaveCount(0);
 
-  // One deliberate dispatcher pass: transcription is async by design.
-  await drainOutbox(page);
-  await page.reload();
-  await waitSettled(page);
+  // Deliberate dispatcher passes: transcription is async by design, and the
+  // shared outbox may need several claim batches to reach this capture.
+  await drainUntilTranscript(page, detail);
 
   // The fixture's words are the capture's text; conversion affordances return.
   await expect(detail).toContainText("Fixture transcript: send the Q3 roadmap to Priya by Friday");
