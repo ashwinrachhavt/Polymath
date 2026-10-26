@@ -170,6 +170,8 @@ const NATIVE_TOOLS = [
   // ASH-279 / ASH-306: first-party reads and propose-only operations whose
   // implementation lives in this repo rather than behind a provider toolkit.
   "meetings.debrief",
+  // ASH-282: proposal-only; approval records the decision, no calendar call.
+  "calendar.propose",
   "records.browse",
   // ASH-285: drafts a Linear-issue proposal note in this repo; never a
   // provider call, so no catalog row.

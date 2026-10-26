@@ -35,6 +35,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // internal write at prepare risk - it never calls Linear - and without a
   // row here the tool is a dead 403 on every call.
   "linear.issue.propose",
+  // ASH-282: proposes conflict-resolution moves the owner approves first;
+  // without a row here the tool is a dead 403 on every call.
+  "calendar.propose",
   // ASH-306: listing records is navigation, the same authority as reading them.
   "records.browse",
   // Connected reads. A capability in the risk table but absent here can never
@@ -150,6 +153,9 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       // ASH-285: an existing profile without this fails closed on every
       // linear_issue_propose call; the draft is an internal write.
       "linear.issue.propose",
+      // ASH-282: an existing profile without this fails closed on every
+      // calendar_conflict_propose call; the draft is an internal write.
+      "calendar.propose",
       "records.browse",
       "wiki.read",
       "wiki.ingest",

@@ -60,7 +60,9 @@ export type CalendarChange =
       contactId?: string | null;
       taskId?: string | null;
     }
-  | { kind: "move"; eventId: string; expectedVersion: number; startsAt: string; endsAt: string; title?: string }
+  // `note` is the owner-facing sentence for the review card; the payload times
+  // are UTC, which a card cannot show an owner in their own zone.
+  | { kind: "move"; eventId: string; expectedVersion: number; startsAt: string; endsAt: string; title?: string; note?: string }
   | { kind: "cancel"; eventId: string; expectedVersion: number; title?: string };
 
 /** The capability a profile must grant to propose a calendar change at all. */
@@ -91,7 +93,7 @@ function describe(change: CalendarChange): { title: string; effect: string } {
         effect: `Adds a 30-minute reminder on your calendar and records the follow-up with its reason${change.taskId ? ", superseding the task's open follow-ups" : ""}.`,
       };
     case "move":
-      return { title: `Move event${change.title ? `: ${change.title}` : ""}`, effect: "Moves the event to the proposed time." };
+      return { title: `Move event${change.title ? `: ${change.title}` : ""}`, effect: change.note ?? "Moves the event to the proposed time." };
     case "cancel":
       return { title: `Cancel event${change.title ? `: ${change.title}` : ""}`, effect: "Removes the event from your calendar." };
   }

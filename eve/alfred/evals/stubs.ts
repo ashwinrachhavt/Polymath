@@ -85,6 +85,9 @@ function isSet(value: string | undefined): boolean {
  */
 export const STUBBED_TOOLS = {
   artifacts_propose_revision: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
+  // ASH-282: the read returns an empty calendar, the write only ever proposes.
+  calendar_conflicts: { response: { ok: true, windowStart: "", windowEnd: "", timezone: "UTC", conflicts: [], notices: [] } },
+  calendar_conflict_propose: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting owner approval" } },
   documents_search: { response: { ok: true, query: "", results: [] } },
   // ASH-279 / ASH-283: both only ever propose, so the stub is the "queued"
   // shape and an eval can never reach Notion or spend a generation call.

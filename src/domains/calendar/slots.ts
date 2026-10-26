@@ -3,6 +3,8 @@
  * and the working window; no clock, no database.
  */
 
+import { addDays, localDate, wallToUtc } from "./zoned";
+
 export type Interval = { start: Date; end: Date };
 
 export type SlotRequest = {
@@ -14,8 +16,10 @@ export type SlotRequest = {
   earliestMinute?: number;
   latestMinute?: number;
   bufferMinutes?: number;
-  /** Local offset east of UTC, e.g. -420 for PDT. */
+  /** Local offset east of UTC, e.g. -420 for PDT. Fixed; ignored when `timeZone` is set. */
   utcOffsetMinutes?: number;
+  /** IANA zone. The working window is converted per date, so daylight saving is honoured. */
+  timeZone?: string;
   /** Give up after this many days. */
   horizonDays?: number;
 };
@@ -38,10 +42,19 @@ export function findFreeSlot(req: SlotRequest): Interval | null {
 
   const fromMs = req.from.getTime();
   const firstDay = Math.floor((fromMs + offset) / DAY);
+  const firstDate = req.timeZone ? localDate(req.from, req.timeZone) : null;
   for (let d = 0; d < (req.horizonDays ?? 14); d += 1) {
-    const dayStart = (firstDay + d) * DAY - offset;
-    const windowStart = dayStart + earliest * MIN;
-    const windowEnd = dayStart + latest * MIN;
+    let windowStart: number;
+    let windowEnd: number;
+    if (req.timeZone && firstDate) {
+      const date = addDays(firstDate, d);
+      windowStart = wallToUtc(req.timeZone, date, earliest).getTime();
+      windowEnd = wallToUtc(req.timeZone, date, latest).getTime();
+    } else {
+      const dayStart = (firstDay + d) * DAY - offset;
+      windowStart = dayStart + earliest * MIN;
+      windowEnd = dayStart + latest * MIN;
+    }
     let cursor = Math.max(windowStart, fromMs);
     for (const b of busy) {
       if (b.end <= cursor) continue;
