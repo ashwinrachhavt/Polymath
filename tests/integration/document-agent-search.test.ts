@@ -210,6 +210,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "gmail.thread.read",
       "github.read",
       "github.issue.read",
+      // ASH-284: triage drafting persists a review-queue proposal - an
+      // internal write, denied on every call without the grant.
+      "github.issue.triage",
       "slack.channels.read",
       "slack.read",
       "linear.read",
@@ -294,6 +297,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "gmail.thread.read",
       "github.read",
       "github.issue.read",
+      // ASH-284: triage drafting persists a review-queue proposal - an
+      // internal write, denied on every call without the grant.
+      "github.issue.triage",
       "slack.channels.read",
       "slack.read",
       "linear.read",
