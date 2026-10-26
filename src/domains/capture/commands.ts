@@ -15,7 +15,7 @@ import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integration
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
-import { captures, captureSource } from "./schema";
+import { captureProposals, captures, captureSource } from "./schema";
 
 /*
  * Inbox commands (ASH-137 A02). Clarify-before-commit: conversion is a
@@ -55,6 +55,11 @@ export class StorageWriteFailedError extends Error {
 
 export class StaleWriteError extends Error {
   readonly code = "stale_write";
+}
+
+/** The row is gone (or never belonged to this workspace). */
+export class NotFoundError extends Error {
+  readonly code = "not_found";
 }
 
 function isUniqueViolation(cause: unknown): boolean {
@@ -229,7 +234,9 @@ export async function createFileCapture(
         .insert(captures)
         .values({
           workspaceId: auth.workspaceId,
-          kind: "file",
+          // Content decides the kind, same as the verdict decides the type: a
+          // sniffed audio payload is a voice capture, everything else a file.
+          kind: mimeType.startsWith("audio/") ? "voice" : "file",
           source: input.source ?? "quick_capture",
           rawPayload: {
             filename,
@@ -249,6 +256,17 @@ export async function createFileCapture(
         { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
         tx,
       );
+        // Audio is promised a transcript (ASH-298): the outbox carries the
+        // wait, and the handler's unconfigured path answers honestly instead
+        // of looping. Non-audio files have no text to classify - the capture
+        // IS the file - so nothing else enqueues.
+        if (capture.kind === "voice") {
+          await enqueueOutbox(tx, auth, {
+            topic: CAPTURE_ENRICHMENT_TOPIC,
+            payload: { captureId: capture.id },
+            dispatchKey: `capture-enrichment:${capture.id}`,
+          });
+        }
         return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
       });
       lostRace = replayed;
@@ -296,7 +314,11 @@ export async function convertCaptureToTask(
       // A file capture's only label is its filename; its bytes are not text.
       ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
       "Captured item";
-    const title = input.title?.trim() || (sourceText.length > 120 ? `${sourceText.slice(0, 117)}…` : sourceText);
+    // The title is the first line; a multi-line capture keeps its full text
+    // as the description, so nothing the owner wrote is lost or crammed into
+    // the title.
+    const firstLine = sourceText.split("\n").map((line) => line.trim()).find(Boolean) ?? sourceText;
+    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
     const task = await createTask(
       auth,
       {
@@ -563,7 +585,11 @@ export async function updateCaptureText(
         if (capture.processingState === "converted") {
           throw new ConflictError("This capture was already converted. Editing it here would desync the record it became.");
         }
-        if (!["unprocessed", "classifying"].includes(capture.processingState)) {
+        // An enriched capture is still the owner's working text: only the
+        // conversion boundary (above) closes editing. Editing an enriched
+        // capture re-opens it and re-queues the ladder below, so the
+        // classification the owner sees always read the words on screen.
+        if (!["unprocessed", "classifying", "enriched"].includes(capture.processingState)) {
           throw new ConflictError("This capture is no longer open for editing. Reload the inbox.");
         }
         if (capture.version !== input.expectedVersion) {
@@ -583,12 +609,29 @@ export async function updateCaptureText(
               eq(captures.workspaceId, auth.workspaceId),
               eq(captures.id, capture.id),
               eq(captures.version, input.expectedVersion),
-              inArray(captures.processingState, ["unprocessed", "classifying"]),
+              inArray(captures.processingState, ["unprocessed", "classifying", "enriched"]),
             ),
           )
           .returning();
         if (!updated) {
           throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+        // The words the classification read just changed: re-open the capture
+        // and re-queue the ladder. Voice is safe - the transcription tier
+        // only fills an empty text, so a corrected transcript is never
+        // re-transcribed over the owner's words.
+        if (capture.processingState === "enriched") {
+          await tx
+            .update(captures)
+            .set({ processingState: "unprocessed", updatedAt: new Date(), updatedBy: auth.userId })
+            .where(eq(captures.id, capture.id));
+          await enqueueOutbox(tx, auth, {
+            topic: CAPTURE_ENRICHMENT_TOPIC,
+            payload: { captureId: capture.id },
+            // A repeated dispatchKey enqueues nothing, so each edit re-queues
+            // under the version it created.
+            dispatchKey: `capture-enrichment:${capture.id}:edit-v${capture.version + 1}`,
+          });
         }
         await recordAudit(
           auth,
@@ -643,5 +686,121 @@ export async function setCaptureState(
       tx,
     );
     return updated;
+  });
+}
+
+/* --- Classification proposal decisions (ASH-314) --- */
+
+export type AcceptedProposal = {
+  kind: (typeof captureProposals.$inferSelect)["kind"];
+  /** What the accept produced; the UI links to it. Null for a discard. */
+  resultType: "task" | "note" | "discard";
+  resultId: string | null;
+};
+
+async function loadPendingProposal(auth: AuthContext, proposalId: string) {
+  const [proposal] = await db
+    .select()
+    .from(captureProposals)
+    .where(and(eq(captureProposals.workspaceId, auth.workspaceId), eq(captureProposals.id, proposalId)))
+    .limit(1);
+  if (!proposal) throw new NotFoundError("That suggestion no longer exists. Reload the inbox.");
+  if (proposal.status !== "pending") throw new ConflictError("That suggestion was already decided.");
+  return proposal;
+}
+
+/*
+ * The owner confirms the system's read: the proposal's kind drives the same
+ * conversion the manual buttons run, then the proposal records what it made.
+ * The conversion is the guarded write (stale version, already-converted);
+ * the decision stamp follows it, claimed on still-pending so a raced second
+ * accept can never double-record.
+ *
+ * Contact proposals carry no fields to create a record from yet - the CRM
+ * workflow (ASH-287) owns them - so accepting one is refused here and never
+ * offered in the UI.
+ */
+export async function acceptCaptureProposal(auth: AuthContext, input: { proposalId: string }): Promise<AcceptedProposal> {
+  const proposal = await loadPendingProposal(auth, input.proposalId);
+  if (proposal.kind === "contact") {
+    throw new ConflictError("A contact starts from the CRM page - the suggestion only flags it.");
+  }
+
+  const [capture] = await db
+    .select({ id: captures.id, version: captures.version })
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, proposal.captureId)))
+    .limit(1);
+  if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+
+  let resultType: AcceptedProposal["resultType"];
+  let resultId: string | null;
+  if (proposal.kind === "task") {
+    const { task } = await convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    resultType = "task";
+    resultId = task.id;
+  } else if (proposal.kind === "note") {
+    const { note } = await convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: capture.version });
+    resultType = "note";
+    resultId = note.id;
+  } else if (proposal.kind === "discard") {
+    await setCaptureState(auth, { captureId: capture.id, expectedVersion: capture.version, state: "discarded" });
+    resultType = "discard";
+    resultId = null;
+  } else {
+    // project / company / opportunity / reference / event: kinds the enum
+    // admits but no conversion path exists for. Never fake one.
+    throw new ConflictError(`Turning a capture into a ${proposal.kind} is not built yet.`);
+  }
+
+  const [decided] = await db
+    .update(captureProposals)
+    .set({
+      status: "accepted",
+      decidedAt: new Date(),
+      decidedBy: auth.userId,
+      resultType,
+      resultId,
+      updatedBy: auth.userId,
+    })
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        eq(captureProposals.id, proposal.id),
+        eq(captureProposals.status, "pending"),
+      ),
+    )
+    .returning({ id: captureProposals.id });
+  if (!decided) throw new ConflictError("That suggestion was already decided.");
+
+  await recordAudit(auth, {
+    action: "capture.proposal_accepted",
+    subjectType: "capture",
+    subjectId: capture.id,
+    summary: `Accepted ${proposal.kind} suggestion${resultType === "discard" ? "" : `; became ${resultType}`}`,
+  });
+  return { kind: proposal.kind, resultType, resultId };
+}
+
+/** The owner overrules the system's read. The capture itself is untouched. */
+export async function rejectCaptureProposal(auth: AuthContext, input: { proposalId: string }): Promise<void> {
+  const proposal = await loadPendingProposal(auth, input.proposalId);
+  const [decided] = await db
+    .update(captureProposals)
+    .set({ status: "rejected", decidedAt: new Date(), decidedBy: auth.userId, updatedBy: auth.userId })
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        eq(captureProposals.id, proposal.id),
+        eq(captureProposals.status, "pending"),
+      ),
+    )
+    .returning({ id: captureProposals.id });
+  if (!decided) throw new ConflictError("That suggestion was already decided.");
+  await recordAudit(auth, {
+    action: "capture.proposal_rejected",
+    subjectType: "capture",
+    subjectId: proposal.captureId,
+    summary: `Rejected ${proposal.kind} suggestion`,
   });
 }

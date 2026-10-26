@@ -15,6 +15,12 @@ const SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
   { mimeType: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47] }, // \x89PNG
   { mimeType: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF…WEBP (4 bytes at offset 8)
+  { mimeType: "audio/webm", bytes: [0x1a, 0x45, 0xdf, 0xa3] }, // EBML - webm/matroska, what MediaRecorder emits
+  { mimeType: "audio/mpeg", bytes: [0x49, 0x44, 0x33] }, // ID3
+  { mimeType: "audio/mpeg", bytes: [0xff, 0xfb] }, // mp3 frame sync
+  { mimeType: "audio/mpeg", bytes: [0xff, 0xf3] },
+  { mimeType: "audio/mpeg", bytes: [0xff, 0xf2] },
+  { mimeType: "audio/ogg", bytes: [0x4f, 0x67, 0x67, 0x53] }, // OggS
   { mimeType: "text/plain", bytes: [] }, // UTF-8 BOM; bare text is caught by the printable scan below
   { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: [0x50, 0x4b, 0x03, 0x04] }, // PK\x03\x04 (docx/xlsx/pptx zip container)
 ];
@@ -25,7 +31,7 @@ const SIGNATURES: { mimeType: string; bytes: number[] }[] = [
  * mismatch, not a text upload: quarantine it rather than file it as a
  * document it cannot be.
  */
-const BINARY_EXTENSIONS = /\.(pdf|jpe?g|png|webp|docx?|xlsx?|pptx?)$/i;
+const BINARY_EXTENSIONS = /\.(pdf|jpe?g|png|webp|docx?|xlsx?|pptx?|webm|mp3|ogg|wav|m4a)$/i;
 
 /** A text file is mostly printable UTF-8; a binary is not. Sampled, not scanned whole. */
 function looksLikeText(bytes: Uint8Array): boolean {
@@ -62,15 +68,27 @@ export type FileValidationResult =
 // PDF page-count/EOF sanity is deliberately out of scope: the magic check only
 // routes the upload; a truncated PDF surfaces at extraction, not here.
 
+/** ISO-BMFF audio (m4a/mp4 from Safari's MediaRecorder) declares 'ftyp' at offset 4 and its brand at 8. Video brands overlap (isom/mp42); the verdict only routes the upload, and a mismatch still quarantines, so a video misread as audio/mp4 costs a label, never a silent accept of something else. */
+function sniffIsoBmffAudio(bytes: Uint8Array): string | null {
+  if (bytes.byteLength < 12) return null;
+  if (bytes[4] !== 0x66 || bytes[5] !== 0x74 || bytes[6] !== 0x79 || bytes[7] !== 0x70) return null;
+  const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+  return ["M4A ", "M4B ", "mp41", "mp42", "isom", "iso2"].includes(brand) ? "audio/mp4" : null;
+}
+
 export function validateFile(bytes: Uint8Array, filename = ""): FileValidationResult {
   if (bytes.byteLength === 0) return { ok: false, reason: "empty_file" };
   if (bytes.byteLength > MAX_UPLOAD_BYTES) return { ok: false, reason: "payload_too_large" };
+  const bmffAudio = sniffIsoBmffAudio(bytes);
+  if (bmffAudio) return { ok: true, mimeType: bmffAudio };
   const match = SIGNATURES.find((sig) => sig.bytes.length > 0 && sig.bytes.every((b, i) => bytes[i] === b));
   if (match) {
     if (match.mimeType === "image/webp") {
-      // RIFF alone is also WAV/AVI; confirm WEBP at offset 8 before accepting.
-      const isWebp = bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
-      if (!isWebp) return { ok: false, reason: "unidentified" };
+      // RIFF is a container: WAV and AVI share the magic. The fourcc at
+      // offset 8 decides - WEBP or WAVE are known, anything else is not.
+      const fourcc = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+      if (fourcc === "WAVE") return { ok: true, mimeType: "audio/wav" };
+      if (fourcc !== "WEBP") return { ok: false, reason: "unidentified" };
     }
     if (
       match.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&

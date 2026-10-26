@@ -58,7 +58,13 @@ export function HomeSurface({
          * A borderless row, not a top bar: on this screen the chip is the only
          * chrome, and a rule above the transcript would claim a section the
          * conversation has already filled.
+         *
+         * The h1 is visually hidden rather than absent: this surface still has
+         * to name itself for assistive tech and for the shell's one-heading-per
+         * -screen contract, and the transcript is what the person is reading, so
+         * a visible title would sit above the answer competing with it.
          */}
+        <h1 className="sr-only">Conversation</h1>
         <div className="flex h-12 shrink-0 items-center gap-1 px-4 md:px-6">
           <HistoryMenu groups={history} label="Chats" />
           <button
