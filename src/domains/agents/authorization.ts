@@ -94,6 +94,8 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "slack.read": { capability: "integration.use", effectClass: "read" },
   "linear.read": { capability: "integration.use", effectClass: "read" },
   "linear.issue.read": { capability: "integration.use", effectClass: "read" },
+  /* ASH-285: drafts a Linear-issue proposal note from conversation text; never calls Linear. */
+  "linear.issue.propose": { capability: "knowledge.read", effectClass: "read", note: "Drafts an issue proposal note; creates nothing in Linear." },
   /*
    * The generic registry's reads, same authority as the gateway reads above:
    * integration use, read-only, no approval. Keyed by the capability names the

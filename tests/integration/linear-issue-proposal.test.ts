@@ -220,3 +220,51 @@ suite("ordering and ownership", () => {
     expect(noteText(draft?.content)).not.toContain("Second plan");
   });
 });
+
+/*
+ * ASH-285 conversation (assistant tool) path: the source is pasted text, not
+ * a note, and the source id derives deterministically from the workspace and
+ * the caller's stable key. The same commit core applies: replay on an
+ * unchanged source, refresh on a changed one, and an owner-edited draft is
+ * never overwritten.
+ */
+suite("linear issue proposal from conversation text", () => {
+  it("creates a draft whose provenance marker names the derived conversation source", async () => {
+    const auth = await seed("linear-text");
+    const result = await proposal.draftLinearIssueFromText(auth, {
+      title: "Pasted bug report",
+      text: "The inbox badge keeps a count after the capture is filed.",
+      sourceKey: "run-1:report-1",
+    });
+    expect(result.outcome).toBe("created");
+    const sourceId = proposal.conversationSourceId(auth.workspaceId, "run-1:report-1");
+    const draft = await notes.getNote(auth, result.artifactId);
+    const text = noteText(draft?.content);
+    expect(text).toContain(`linear-issue-source: ${sourceId}@`);
+    // No dangling wiki-link: conversation provenance names the source in prose.
+    expect(text).toContain("Drafted from the conversation (Pasted bug report).");
+    expect(text).not.toContain("Drafted from [[");
+  });
+
+  it("replays the same draft when the same source is drafted twice", async () => {
+    const auth = await seed("linear-text-replay");
+    const input = { title: "Pasted idea", text: "A weekly review that writes itself.", sourceKey: "run-2:idea-1" };
+    const first = await proposal.draftLinearIssueFromText(auth, input);
+    const second = await proposal.draftLinearIssueFromText(auth, input);
+    expect(second.artifactId).toBe(first.artifactId);
+    expect(second.outcome).toBe("replayed");
+  });
+
+  it("refreshes the same draft as a new version when the source text changes", async () => {
+    const auth = await seed("linear-text-refresh");
+    const first = await proposal.draftLinearIssueFromText(auth, { title: "Pasted idea", text: "Version one of the idea.", sourceKey: "run-3:idea-1" });
+    const second = await proposal.draftLinearIssueFromText(auth, { title: "Pasted idea", text: "Version two of the idea, now with detail.", sourceKey: "run-3:idea-1" });
+    expect(second.artifactId).toBe(first.artifactId);
+    expect(second.outcome).toBe("refreshed");
+  });
+
+  it("refuses an empty source instead of inventing an issue", async () => {
+    const auth = await seed("linear-text-empty");
+    await expect(proposal.draftLinearIssueFromText(auth, { title: "Nothing", text: "   ", sourceKey: "run-4:empty" })).rejects.toMatchObject({ code: "empty_source" });
+  });
+});

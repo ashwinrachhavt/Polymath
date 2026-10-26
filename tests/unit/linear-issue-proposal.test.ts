@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLinearIssuePrompt,
+  conversationSourceId,
   LINEAR_ISSUE_SYSTEM_MARKER,
   LINEAR_ISSUE_SYSTEM_PROMPT,
   LinearIssueProposalError,
@@ -117,5 +118,21 @@ describe("source provenance marker", () => {
     expect(parseSourceMarker("no marker here")).toBeNull();
     expect(parseSourceMarker(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: not-a-uuid@xyz -->`)).toBeNull();
     expect(parseSourceMarker(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${id}@${sourceHashOf("s")} -->`)).toBeNull(); // older marker shape
+  });
+});
+
+describe("conversationSourceId", () => {
+  it("is deterministic per workspace and key, and fits the marker's UUID shape", () => {
+    const a = conversationSourceId("ws-1", "run:1");
+    const b = conversationSourceId("ws-1", "run:1");
+    const other = conversationSourceId("ws-1", "run:2");
+    const otherWs = conversationSourceId("ws-2", "run:1");
+    expect(a).toBe(b);
+    expect(a).not.toBe(other);
+    expect(a).not.toBe(otherWs);
+    // parseSourceMarker only matches UUID-shaped source ids; a derived id that
+    // misses the shape would make every conversation draft unfindable.
+    const marker = sourceMarkerOf(a, sourceHashOf("s"), sourceHashOf("b"));
+    expect(parseSourceMarker(marker)).toEqual({ sourceId: a, sourceHash: sourceHashOf("s"), bodyHash: sourceHashOf("b") });
   });
 });
