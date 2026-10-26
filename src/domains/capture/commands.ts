@@ -8,6 +8,7 @@ import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
+import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-proposal";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
 import { findCaptureIdByUrl } from "./queries";
@@ -513,8 +514,20 @@ export async function convertCaptureToDraft(
 
     const material = capture.text ?? (capture.url ? capture.url : "Captured item");
     const firstLine = material.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
-    const title = draftTitle(input.template, firstLine);
-    const body = draftBody(input.template, { firstLine, material });
+    let title = draftTitle(input.template, firstLine);
+    let body = draftBody(input.template, { firstLine, material });
+    if (input.template === "linear-issue") {
+      // ASH-285 part 2: with a generation provider configured, fill the
+      // scaffold into a fully formed proposal grounded in the capture. Any
+      // failure keeps the honest deterministic scaffold - never fake content.
+      try {
+        const { proposal, proposer } = await proposeLinearIssue(auth, { title: firstLine, text: material });
+        title = `Linear issue: ${proposal.title}`;
+        body = renderLinearIssueDraft(proposal, { sourceMaterial: material, proposer });
+      } catch {
+        /* scaffold stands */
+      }
+    }
     const draft = await createNoteInTx(tx, auth, {
       title,
       content: { format: "markdown", text: body },

@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
-import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
+import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, proposeLinearIssueAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 import { X, History, Info, Link2, Plus } from "lucide-react";
 import { NotebookListToggle } from "./notebook-workspace";
 import { NotionAppendAction } from "./notion-append";
@@ -461,6 +461,8 @@ export function NoteEditor({
   const [ai, setAi] = useState<AIProposal | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiBusy = !!ai && !AI_TERMINAL.has(ai.state);
+  const [issuePending, setIssuePending] = useState(false);
+  const [issueError, setIssueError] = useState("");
 
   const startAI = async (request: NoteAIRequest) => {
     if (aiBusy) return;
@@ -680,9 +682,32 @@ export function NoteEditor({
               <span>Updated {stamp(updatedAt)}</span>
               <span className="flex-1" />
               <NotionAppendAction noteId={noteId} title={title} markdown={markdown} disabled={pending || saveState === "saving"} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={issuePending}
+                onClick={async () => {
+                  setIssuePending(true);
+                  setIssueError("");
+                  const result = await proposeLinearIssueAction({ artifactId: noteId });
+                  setIssuePending(false);
+                  if (!result.ok) {
+                    setIssueError(result.error);
+                    return;
+                  }
+                  router.push(`/alfred/notes?id=${result.artifactId}`);
+                }}
+              >
+                {issuePending ? "Drafting issue…" : "Draft Linear issue"}
+              </Button>
               <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
                 {pending ? "Saving…" : "Save checkpoint"}
               </Button>
+              <Button type="button" variant="ghost" size="sm" aria-expanded={detailsOpen} aria-controls="note-details" onClick={() => setDetailsOpen((open) => !open)}>
+                Note details
+              </Button>
+              {issueError && <span role="alert" className="text-xs text-destructive">{issueError}</span>}
             </div>
             {indexNotice && (
               <div className="mt-1.5 text-xs text-muted-foreground">
