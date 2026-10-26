@@ -5,7 +5,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import { Button } from "@/components/ui/button";
 import { acceptProposalAction, makeDraftAction, makeDocumentAction,
   makeNoteAction, makeTaskAction, rejectProposalAction, retryCaptureUrlAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
-import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
+import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/knowledge/templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
 import { CaptureBody } from "./capture-body";

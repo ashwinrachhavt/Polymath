@@ -7,7 +7,7 @@ import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { intakeFile } from "@/domains/knowledge/intake";
-import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
+import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "@/domains/knowledge/templates";
 import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-proposal";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
@@ -570,7 +570,7 @@ export async function convertCaptureToDraft(
     const firstLine = material.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
     let title = draftTitle(input.template, firstLine);
     let body = draftBody(input.template, { firstLine, material });
-    if (input.template === "linear-issue") {
+    if (input.template === "issue") {
       // ASH-285 part 2: with a generation provider configured, fill the
       // scaffold into a fully formed proposal grounded in the capture. Any
       // failure keeps the honest deterministic scaffold - never fake content.

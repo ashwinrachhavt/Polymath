@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
-import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-templates";
+import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/knowledge/templates";
 import {
   ConflictError,
   NotFoundError,
