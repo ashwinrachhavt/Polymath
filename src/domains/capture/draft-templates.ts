@@ -7,13 +7,14 @@
  * was invented by the system. The owner fills the bracketed slots.
  */
 
-export const DRAFT_TEMPLATES = ["email", "product-spec", "tech-spec"] as const;
+export const DRAFT_TEMPLATES = ["email", "product-spec", "tech-spec", "linear-issue"] as const;
 export type DraftTemplate = (typeof DRAFT_TEMPLATES)[number];
 
 export const DRAFT_TEMPLATE_LABEL: Record<DraftTemplate, string> = {
   email: "Email draft",
   "product-spec": "Product spec",
   "tech-spec": "Tech spec",
+  "linear-issue": "Linear issue",
 };
 
 /*
@@ -26,6 +27,7 @@ export const DRAFT_TEMPLATE_KIND: Record<DraftTemplate, "note"> = {
   email: "note",
   "product-spec": "note",
   "tech-spec": "note",
+  "linear-issue": "note",
 };
 
 const MAX_TITLE = 120;
@@ -102,6 +104,33 @@ export function draftBody(template: DraftTemplate, input: { firstLine: string; m
         `## Risks`,
         ``,
         `- [ ] [What breaks if this is wrong?]`,
+      ].join("\n") + SCAFFOLD_NOTE;
+    case "linear-issue":
+      // ASH-285: a capture becomes a well-scoped issue draft. The acceptance
+      // criteria start as checkboxes the owner edits, and the source stays
+      // quoted below so every criterion traces back to what was captured.
+      return [
+        `# ${firstLine}`,
+        ``,
+        `## Problem`,
+        ``,
+        `[What is broken or missing, and for whom? One paragraph, from the source material.]`,
+        ``,
+        `## Proposal`,
+        ``,
+        `[The smallest change that resolves it.]`,
+        ``,
+        `## Acceptance criteria`,
+        ``,
+        `- [ ] [The observable behavior that proves this is done]`,
+        `- [ ] [The error or empty case that must be honest]`,
+        `- [ ] [The regression that must stay impossible]`,
+        ``,
+        `## Out of scope`,
+        ``,
+        `[What this issue deliberately does not do.]`,
+        ``,
+        sourceSection(material),
       ].join("\n") + SCAFFOLD_NOTE;
   }
 }

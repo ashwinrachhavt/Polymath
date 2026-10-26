@@ -6,6 +6,7 @@ import { Empty, Screen } from "@/components/workspace/ui";
 import { addConversationToKnowledgeAction } from "../actions";
 import { getConversation } from "@/domains/conversations/queries";
 import { Button } from "@/components/ui/button";
+import { SurfaceCardView, surfaceCardFromParts } from "@/components/chat/surface-card";
 import { getAuthContext } from "@/lib/auth";
 
 export const metadata = { title: "Conversation · Polymath" };
@@ -42,8 +43,14 @@ async function Timeline({ threadId }: { threadId: string }) {
               {entry.content ?? ""}
             </div>
           ) : (
-            <div key={entry.id} className="max-w-[72ch]">
+            <div key={entry.id} className="max-w-[72ch] space-y-3">
               <p className="whitespace-pre-wrap text-[13px] leading-6">{entry.content ?? ""}</p>
+              {(() => {
+                // ASH-306: a surface card is part of the message, so the
+                // timeline on any device shows what the owner was shown.
+                const card = surfaceCardFromParts(entry.parts);
+                return card ? <SurfaceCardView card={card} /> : null;
+              })()}
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {entry.role} · {entry.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z
               </p>

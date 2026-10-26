@@ -65,7 +65,7 @@ async function removeSeeded(): Promise<void> {
     // The batch's proposals reference the artifacts; removing them first
     // keeps the developer's queue clean.
     await client`delete from action_proposals where dedupe_key like 'tasks:meeting-debrief:%' or dedupe_key like 'notes:meeting-debrief:%'`;
-    await client`delete from artifacts where title in ('Weekly sync transcript', 'An ordinary generated note')`;
+    await client`delete from artifacts where title like 'Weekly sync transcript%' or title like 'An ordinary generated note%'`;
   } finally {
     await client.end();
   }
@@ -79,7 +79,10 @@ for (const vp of VIEWPORTS) {
   test(`debrief a transcript into one batch of proposals [${vp.name}]`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    const artifact = await seedArtifact("transcript", "Weekly sync transcript");
+    // Title carries the viewport: both variants run in parallel and afterAll
+    // deletes by title, so a shared title let one variant's cleanup delete the
+    // other's artifact mid-test ("This artifact does not exist").
+    const artifact = await seedArtifact("transcript", `Weekly sync transcript (${vp.name})`);
     test.skip(!artifact, "DATABASE_URL not configured");
 
     await page.goto(`/artifacts/${artifact!.id}`);
@@ -125,11 +128,11 @@ for (const vp of VIEWPORTS) {
   test(`a non-transcript artifact never offers the debrief [${vp.name}]`, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    const artifact = await seedArtifact("note", "An ordinary generated note");
+    const artifact = await seedArtifact("note", `An ordinary generated note (${vp.name})`);
     test.skip(!artifact, "DATABASE_URL not configured");
 
     await page.goto(`/artifacts/${artifact!.id}`);
-    await expect(page.getByRole("heading", { level: 1, name: "An ordinary generated note" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: `An ordinary generated note (${vp.name})` })).toBeVisible();
     await expect(page.getByRole("button", { name: "Debrief into proposals" })).toHaveCount(0);
   });
 }

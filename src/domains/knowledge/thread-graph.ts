@@ -44,11 +44,14 @@ export function transcriptMarkdown(rows: { role: string; content: string | null 
 
 export async function syncThreadToGraph(auth: AuthContext, threadId: string): Promise<{ artifactId: string; created: boolean }> {
   const [thread] = await db
-    .select({ id: threads.id, title: threads.title })
+    .select({ id: threads.id, title: threads.title, subjectType: threads.subjectType, subjectId: threads.subjectId })
     .from(threads)
     .where(and(eq(threads.id, threadId), eq(threads.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!thread) throw new ThreadNotFoundError();
+  // ASH-306: a Supervisor thread is its owner's private exchange; syncing it
+  // into the shared knowledge graph is the owner's call alone.
+  if (thread.subjectType === "supervisor" && thread.subjectId !== auth.userId) throw new ThreadNotFoundError();
   const rows = await db
     .select({ role: messages.role, content: messages.content })
     .from(messages)
@@ -114,6 +117,19 @@ export function threadChangedHandler(ownerAuth: (workspaceId: string) => Promise
     if (typeof threadId !== "string") return;
     const auth = await ownerAuth(event.workspaceId);
     if (!auth) throw new Error("workspace has no active owner to act for the conversation sync");
+    /*
+     * ASH-306: a Supervisor thread is its owner's private exchange. Auto-sync
+     * runs as the workspace owner, so without this check every owner message
+     * would be projected into workspace-shared knowledge and search. Only the
+     * explicit "Add to knowledge" action (owner-guarded in syncThreadToGraph)
+     * may share it.
+     */
+    const [target] = await db
+      .select({ subjectType: threads.subjectType })
+      .from(threads)
+      .where(and(eq(threads.id, threadId), eq(threads.workspaceId, event.workspaceId)))
+      .limit(1);
+    if (!target || target.subjectType === "supervisor") return;
     try {
       await syncThreadToGraph(auth, threadId);
     } catch (cause) {

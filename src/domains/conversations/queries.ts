@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -11,6 +11,20 @@ import { escapeLike } from "@/lib/list-params";
  * Counts and last-activity are derived in SQL, never stored: a stored
  * denormalization is a count that drifts.
  */
+
+/*
+ * ASH-306: a Supervisor thread is its owner's private assistant exchange
+ * (subjectType "supervisor", subjectId = the owner's user id). It is visible
+ * to its owner only - the shared conversations list must not surface one
+ * member's private thread to another.
+ */
+function supervisorThreadVisibleTo(auth: AuthContext) {
+  return or(
+    isNull(threads.subjectType),
+    ne(threads.subjectType, "supervisor"),
+    eq(threads.subjectId, auth.userId),
+  );
+}
 
 export type ConversationSummary = {
   id: string;
@@ -42,7 +56,7 @@ export async function pageConversations(
   auth: AuthContext,
   input: { query?: string; profile?: string; limit: number; offset: number },
 ): Promise<{ items: ConversationSummary[]; total: number }> {
-  const filters = [eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt)];
+  const filters = [eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt), supervisorThreadVisibleTo(auth)];
   if (input.profile) filters.push(eq(agentProfiles.name, input.profile));
   if (input.query?.trim()) filters.push(ilike(threads.title, `%${escapeLike(input.query.trim())}%`));
   const where = and(...filters);
@@ -98,11 +112,15 @@ export type ConversationTimeline = {
     profileName: string;
     createdAt: Date;
     updatedAt: Date;
+    subjectType: string | null;
+    subjectId: string | null;
   };
   entries: Array<{
     id: string;
     role: "user" | "assistant" | "system" | "tool";
     content: string | null;
+    /** Structured parts (ASH-306 surface cards; engine tool calls/citations). */
+    parts: unknown;
     createdAt: Date;
   }>;
 };
@@ -116,15 +134,20 @@ export async function getConversation(auth: AuthContext, threadId: string): Prom
       createdAt: threads.createdAt,
       updatedAt: threads.updatedAt,
       profileName: agentProfiles.name,
+      subjectType: threads.subjectType,
+      subjectId: threads.subjectId,
     })
     .from(threads)
     .innerJoin(agentProfiles, eq(agentProfiles.id, threads.agentProfileId))
     .where(and(eq(threads.id, threadId), eq(threads.workspaceId, auth.workspaceId), isNull(threads.archivedAt)))
     .limit(1);
   if (!thread) return null;
+  // A Supervisor thread answers to its owner alone: another member's id in
+  // the URL is the same "not here" as a foreign workspace's.
+  if (thread.subjectType === "supervisor" && thread.subjectId !== auth.userId) return null;
 
   const entries = await db
-    .select({ id: messages.id, role: messages.role, content: messages.content, createdAt: messages.createdAt })
+    .select({ id: messages.id, role: messages.role, content: messages.content, parts: messages.parts, createdAt: messages.createdAt })
     .from(messages)
     .where(and(eq(messages.threadId, thread.id), eq(messages.workspaceId, auth.workspaceId)))
     .orderBy(asc(messages.createdAt))

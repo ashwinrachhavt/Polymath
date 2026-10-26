@@ -25,7 +25,7 @@ const subscribeToHydration = () => () => {};
  * one destination with no page heading of its own, so it yields its row there.
  * The composer is the page.
  */
-export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean }) {
+export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false, interfaceMode = "action" }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean; interfaceMode?: "library" | "action" }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   // Browser-preview records live in localStorage; rendering the server's empty
@@ -36,10 +36,12 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
       <a href="#content" className="skip-link">Skip to content</a>
-      <div className="flex min-h-dvh flex-1">
+      {/* ASH-312: the interface language scopes from one attribute; every
+          density, typography and contrast token keys off it in globals.css. */}
+      <div className="flex min-h-dvh flex-1" data-interface-mode={interfaceMode}>
         <SideNav />
         <div className="flex min-w-0 flex-1 flex-col">
-          {!headerless ? <TopBar clerkConfigured={clerkConfigured} /> : null}
+          {!headerless ? <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} /> : null}
           <main
             id="content"
             tabIndex={-1}
