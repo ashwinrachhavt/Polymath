@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ select: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { select: mocks.select } }));
 
-import { listWorkspaceActivity, sanitizeSummary } from "@/domains/audit/queries";
+import { genericSummary, isSafeSummaryAction, listWorkspaceActivity, projectSummary, sanitizeSummary } from "@/domains/audit/queries";
 
 const auth = { workspaceId: "ws-1", userId: "u-1" } as never;
 
@@ -48,5 +48,34 @@ describe("sanitizeSummary", () => {
   it("leaves code-authored summaries of other actions untouched", () => {
     expect(sanitizeSummary("event.created", 'Created event "Roadmap sync"')).toBe('Created event "Roadmap sync"');
     expect(sanitizeSummary("capture.transcribed", "Transcribed with fixture (120 chars)")).toBe("Transcribed with fixture (120 chars)");
+  });
+});
+
+describe("fail-closed projection", () => {
+  it("delegation grants render as a generic label, never the stored summary with principal keys", () => {
+    expect(isSafeSummaryAction("delegation_grant.issued")).toBe(false);
+    expect(projectSummary("delegation_grant.issued", 'Delegated 5 capabilities to principal "svc-prod" until 2026-11-01')).toBe(
+      "Delegation grant issued recorded",
+    );
+  });
+
+  it("run feedback renders without its freeform reasons", () => {
+    expect(projectSummary("run.feedback.up", "Marked the run good (wrong-facts, leaked private thread text)")).toBe(
+      "Run feedback up recorded",
+    );
+  });
+
+  it("an unknown future action never leaks its raw summary", () => {
+    expect(projectSummary("diary.entry_written", "Dear diary, the launch codes are...")).toBe("Diary entry written recorded");
+    expect(isSafeSummaryAction("conversation.navigation_answered")).toBe(false);
+  });
+
+  it("dynamic integration account actions are allowlisted as settings-visible", () => {
+    expect(isSafeSummaryAction("integration.account_suspended")).toBe(true);
+    expect(isSafeSummaryAction("integration.account_activated")).toBe(true);
+  });
+
+  it("genericSummary never carries stored content", () => {
+    expect(genericSummary("spending_policy.created")).toBe("Spending policy created recorded");
   });
 });
