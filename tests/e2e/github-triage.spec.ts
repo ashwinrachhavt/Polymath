@@ -116,15 +116,17 @@ for (const vp of VIEWPORTS) {
     await card.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(card).toContainText("Decided", { timeout: 30_000 });
 
-    // Reload: the decision is server truth, and nothing executed - no
-    // outcome line, no "sent"/"applied" language anywhere on the card.
+    // Reload: the decision is server truth, and nothing executed. The card
+    // keeps its honest expected-effect line (which itself says "Nothing is
+    // applied automatically"), so execution-absence is pinned structurally:
+    // no outcome status line renders without an EffectOutcome, and the
+    // attempt count below is zero.
     await page.reload();
     const decided = page.locator("section.panel").filter({ hasText: title });
     await expect(decided).toBeVisible({ timeout: 30_000 });
     await expect(decided).toContainText("Decided");
     await expect(decided).toContainText("approved");
-    await expect(decided).not.toContainText("Sent");
-    await expect(decided).not.toContainText("applied");
+    await expect(decided.getByRole("status")).toHaveCount(0);
     await page.screenshot({ path: `test-results/feature-pixels/triage-decided-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
 
     // Zero GitHub effect, provable in the database: the proposal is decided
