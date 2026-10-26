@@ -16,6 +16,10 @@ export default async function ShutdownPage() {
   await io();
   const auth = await getAuthContext();
   const preview = await previewShutdown(auth);
+  // Key on the DAY only: the apply's own action response refreshes this route,
+  // and keying on the live session's version remounts the form the moment the
+  // apply finishes that session - discarding the confirmation it just showed
+  // (ASH-323). Stale choices stay guarded server-side by expectedVersion.
   return (
     <Screen
       title="Shut down"
@@ -26,7 +30,7 @@ export default async function ShutdownPage() {
         </Button>
       }
     >
-      <ShutdownForm preview={preview} key={`${preview.today}:${preview.liveSession?.version ?? "none"}`} />
+      <ShutdownForm preview={preview} key={preview.today} />
     </Screen>
   );
 }
