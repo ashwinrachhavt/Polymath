@@ -78,6 +78,10 @@ suite("crm sender proposals", () => {
     const [pending] = await db.select().from(actionProposals).where(and(eq(actionProposals.workspaceId, auth.workspaceId), eq(actionProposals.dedupeKey, "crm-sender:ada@analytical.io")));
     const first = await approve(pending.id);
     expect(first.created).toBe(true);
+    // A double-click replays the same stale version; a reload sends the fresh one. Both converge.
+    const [rev1] = await db.select().from(actionRevisions).where(eq(actionRevisions.proposalId, pending.id));
+    const stale = await mod.approveContactProposal(auth, { proposalId: pending.id, expectedVersion: pending.version, revisionId: rev1.id });
+    expect(stale).toMatchObject({ contactId: first.contactId, created: false });
     const retry = await approve(pending.id);
     expect(retry).toMatchObject({ contactId: first.contactId, companyId: first.companyId, created: false });
 
@@ -93,5 +97,17 @@ suite("crm sender proposals", () => {
     await approve(second.proposed[0].proposalId);
     const cos = await db.select().from(companies).where(and(eq(companies.workspaceId, auth.workspaceId), eq(companies.domain, "analytical.io")));
     expect(cos).toHaveLength(1);
+  });
+
+  it("two simultaneous approvals create exactly one contact", async () => {
+    const made = await mod.proposeContactsFromSenders(auth, { ownAddresses: [], messages: [msg("9", "Alan <alan@enigma.org>")] });
+    const id = made.proposed[0].proposalId;
+    const [p] = await db.select().from(actionProposals).where(eq(actionProposals.id, id));
+    const [r] = await db.select().from(actionRevisions).where(eq(actionRevisions.proposalId, id));
+    const call = () => mod.approveContactProposal(auth, { proposalId: id, expectedVersion: p.version, revisionId: r.id });
+    const [a, b] = await Promise.all([call(), call()]);
+    expect(a.contactId).toBe(b.contactId);
+    const rows = await db.select().from(contacts).where(and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.primaryEmail, "alan@enigma.org")));
+    expect(rows).toHaveLength(1);
   });
 });

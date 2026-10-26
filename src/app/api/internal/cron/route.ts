@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { reconcileUnknownAttempts } from "@/domains/actions/reconciliation";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
+import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
 import { problemResponse } from "@/lib/problems";
@@ -71,7 +72,15 @@ async function drain(): Promise<Response> {
         instantSync = { error: cause instanceof Error ? cause.message : "unknown error" };
       }
     }
-    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync });
+    // ASH-287: opted-in Gmail accounts get new-sender contact proposals. A provider
+    // outage here must not break the rest of the pass; each account reports its own failure.
+    let senderSync: Awaited<ReturnType<typeof syncAllGmailSenders>> | { error: string };
+    try {
+      senderSync = await syncAllGmailSenders(composioTransport);
+    } catch (cause) {
+      senderSync = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
+    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync, senderSync });
   } finally {
     await client.end({ timeout: 5 });
   }

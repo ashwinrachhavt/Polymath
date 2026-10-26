@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
 import { createProposal, decideProposalInTx, ProposalConflictError } from "@/domains/actions/commands";
 import { recordAudit } from "@/domains/audit/record";
+import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -200,8 +201,8 @@ export async function approveContactProposal(
   try {
     return await run();
   } catch (error) {
-    if (error instanceof ProposalConflictError) {
-      // Already decided: only an approval of this exact revision may be (re)applied.
+    if (error instanceof ProposalConflictError || error instanceof IdempotencyConflictError) {
+      // Already decided (a stale version or a changed request hash after the first approval): only an approval of this exact revision may be (re)applied.
       return withTransaction(async (tx) => applyContact(tx, auth, await loadApprovedPayload(tx, auth, input, { requireApproved: true })));
     }
     // A concurrent writer took the unique email index; the whole unit rolled back, so replay it once.
