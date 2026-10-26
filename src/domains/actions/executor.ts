@@ -305,11 +305,12 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
   // approval. Tightening the authorized senders revokes an already-approved
   // proposal rather than grandfathering it; the pin carries the alias it was
   // approved with, and only an authorized alias may send.
-  if (checked.provider === "gmail") {
-    const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
-    const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
-    if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
-  }
+  // Every pinned capability, not only gmail: the pin path applies this policy
+  // when a revision is written (notion.page.* included), so skipping it here
+  // would let tightening a grant leave an already-approved Notion write live.
+  const pinAlias = typeof (pin as { alias?: unknown }).alias === "string" ? (pin as { alias: string }).alias : null;
+  const verdict = checkSenderAlias(await senderAliasPolicy(auth.workspaceId, checked.capability), pinAlias);
+  if (!verdict.allowed) throw new SendNotAllowedError(verdict.reason);
 
   return { ...checked, connectedAccountId: account.connectedAccountId };
 }
