@@ -86,13 +86,12 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               contextPrefix={buildProjectContextPrefix(project, memories)}
             />
           </div>
-          <section aria-label="Sessions" className="mt-10">
-            <h2 className="screen-title text-[20px]">Sessions</h2>
-            {sessions.length === 0 ? (
-              <p className="mt-3 text-[13px] text-muted-foreground">
-                No sessions yet. Start one above and it will use this project&apos;s instructions and sources.
-              </p>
-            ) : (
+          {/* An empty "Sessions" heading told the reader nothing the starter
+              above had not already said. The list appears only once there are
+              sessions to list. */}
+          {sessions.length > 0 ? (
+            <section aria-label="Sessions" className="mt-10">
+              <h2 className="screen-title text-[20px]">Sessions</h2>
               <ul className="mt-3 flex flex-col">
                 {sessions.map((session) => (
                   <li key={session.id} className="flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
@@ -104,8 +103,8 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
+            </section>
+          ) : null}
         </div>
 
         <ProjectRightRail

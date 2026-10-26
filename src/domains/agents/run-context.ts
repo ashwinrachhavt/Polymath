@@ -17,7 +17,12 @@ export type RunAgent = {
   name: string;
   model: string | null;
   instructions: string | null;
-  tools: { name: string; description: string | null }[];
+  /**
+   * `id` is the raw capability name and is the list's identity. `name` is the
+   * product-words label, which is not unique — several distinct tools share one
+   * label ("Checked the wiki"), so keying a list by it rendered duplicate keys.
+   */
+  tools: { id: string; name: string; description: string | null }[];
 };
 
 export async function getRunAgent(workspaceId: string, runId: string): Promise<RunAgent | null> {
@@ -46,7 +51,15 @@ export async function getRunAgent(workspaceId: string, runId: string): Promise<R
     // One entry per capability, named in product words. The catalog never
     // decides what may run — the snapshot does — so an unknown name is listed
     // rather than dropped: hiding a capability would misrepresent the run.
-    tools: allowed.map((raw) => ({ name: toolLabel(raw), description: toolDescription(raw) })),
+    //
+    // Deduped on the raw name: a snapshot can allow the same capability twice
+    // (a profile edited to add a tool it already had), and two identical rows
+    // tell the reader nothing.
+    tools: [...new Set(allowed)].map((raw) => ({
+      id: raw,
+      name: toolLabel(raw),
+      description: toolDescription(raw),
+    })),
   };
 }
 

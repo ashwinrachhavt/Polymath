@@ -19,7 +19,8 @@ export type AgentPanelData = {
   name: string;
   model: string | null;
   instructions: string | null;
-  tools: { name: string; description: string | null }[];
+  /** `id` is the raw capability name and is the list's identity; `name` may repeat. */
+  tools: { id: string; name: string; description: string | null }[];
 };
 
 export function AgentPanel({ agent }: { agent: AgentPanelData }) {
@@ -58,19 +59,19 @@ export function AgentPanel({ agent }: { agent: AgentPanelData }) {
               </p>
               <ul className="flex flex-col">
                 {agent.tools.map((tool) => {
-                  const expanded = openTool === tool.name;
-                  const descId = `tool-desc-${tool.name.replace(/[^a-z0-9]+/gi, "-")}`;
+                  const expanded = openTool === tool.id;
+                  const descId = `tool-desc-${tool.id.replace(/[^a-z0-9]+/gi, "-")}`;
                   return (
-                    <li key={tool.name} className="border-border not-last:border-b">
+                    <li key={tool.id} className="border-border not-last:border-b">
                       <button
                         type="button"
                         aria-expanded={expanded}
                         aria-controls={descId}
                         disabled={!tool.description}
-                        onClick={() => setOpenTool(expanded ? null : tool.name)}
+                        onClick={() => setOpenTool(expanded ? null : tool.id)}
                         className="hover:bg-muted/60 focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded px-1 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:cursor-default"
                       >
-                        <span className="readout min-w-0 flex-1 truncate">{tool.name}</span>
+                        <span className="min-w-0 flex-1 truncate">{tool.name}</span>
                         {tool.description ? (
                           <ChevronDown
                             aria-hidden
