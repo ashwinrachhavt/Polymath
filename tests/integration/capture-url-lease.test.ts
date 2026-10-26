@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OutboxParkError } from "@/domains/audit/outbox";
 import { captures } from "@/domains/capture/schema";
@@ -24,6 +25,21 @@ vi.mock("@/integrations/firecrawl/client", () => ({
   },
 }));
 
+// The handlers under test read the module-level db and withTransaction; point
+// both at the test database (same holder pattern as semantic-relations.test.ts).
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
@@ -32,6 +48,7 @@ let urlHandler: typeof import("@/domains/capture/url-content-handler");
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  holder.db = handle.db;
   urlHandler = await import("@/domains/capture/url-content-handler");
 });
 
