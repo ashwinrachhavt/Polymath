@@ -50,6 +50,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // GitHub and Slack reads, advertised through the same gateway.
   "github.read",
   "github.issue.read",
+  // ASH-284: triage proposals are decision-only internal writes - no
+  // executor, nothing calls GitHub - granted so the tool is not a dead 403.
+  "github.issue.triage",
   "slack.channels.read",
   "slack.read",
   "linear.read",
@@ -164,6 +167,8 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       "gmail.thread.read",
       "github.read",
       "github.issue.read",
+      // ASH-284: existing profiles gain the decision-only triage proposal.
+      "github.issue.triage",
       "slack.channels.read",
       "slack.read",
       "linear.read",

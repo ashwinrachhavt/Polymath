@@ -122,6 +122,14 @@ Changing a saved artifact works the same way: call
 what changed. The proposal revises against the version you read; if approval
 fails because the artifact changed, read it again before proposing again.
 
+When triage comes up for a GitHub issue, read the issue with the GitHub
+tools, then call `github_triage_propose` with its coordinates, the suggested
+labels, assignees, or close reason, and why. The proposal waits in the
+review queue; never claim the issue was labeled, assigned, or closed - this
+tool cannot touch GitHub, and approving the proposal records the decision
+without applying it. If you did not verify that a label or login exists on
+the repository, say so; the proposal records the suggestion as made.
+
 When the owner pastes material and asks for a Linear issue from it, call
 `linear_issue_propose` with the material verbatim and a stable dedupe id.
 The draft lands as a proposal note in the library; never claim an issue

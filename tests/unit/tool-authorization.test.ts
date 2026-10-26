@@ -123,6 +123,28 @@ describe("authorizeToolInvocation", () => {
     }
   });
 
+describe("github.issue.triage (ASH-284)", () => {
+  it("is an internal write under action.prepare with no executor and no approval gate", () => {
+    const spec = TOOL_OPERATION_REGISTRY["github.issue.triage"];
+    expect(spec.capability).toBe("action.prepare");
+    expect(spec.effectClass).toBe("internal_write");
+    expect(spec.requiresApproval).toBeUndefined();
+  });
+
+  it("authorizes a member-grade grant and denies a viewer-grade read set", () => {
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "github.issue.triage" })),
+    ).toEqual({ allowed: true, requiresApproval: false });
+    const viewerReads = [
+      "person.read", "document.read", "task.read", "knowledge.read",
+      "member.read", "role.read", "integration.use", "audit.read",
+    ];
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "github.issue.triage" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+});
+
 describe("linear.issue.propose (ASH-285)", () => {
   it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
     const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
@@ -149,6 +171,16 @@ describe("linear.issue.propose (ASH-285)", () => {
     ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
   });
 });
+
+  it("the proposal-only operations have no executor to fall through to", () => {
+    // The reviews approve path runs executeApprovedEffect only when
+    // supportsEffect is true; an executor-less capability returns the
+    // decision alone. These operations' contract is proposal-only, so pin
+    // them by name: a future executor lands as a deliberate diff here, never
+    // a silent fall-through to a real effect or an applied success.
+    expect(supportsEffect("linear.issue.propose")).toBe(false);
+    expect(supportsEffect("github.issue.triage")).toBe(false);
+  });
 
 describe("meetings.debrief authority correction", () => {
   it("stays proposal-only: no executor can turn an approval into an effect", () => {
@@ -193,15 +225,6 @@ describe("meetings.debrief authority correction", () => {
     ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
   });
 });
-
-  it("the proposal-only operation has no executor to fall through to", () => {
-    // The reviews approve path runs executeApprovedEffect only when
-    // supportsEffect is true; an executor-less capability returns the
-    // decision alone. linear.issue.propose's contract is proposal-only, so
-    // pin it by name: a future executor lands as a deliberate diff here,
-    // never a silent fall-through to a real effect or an applied success.
-    expect(supportsEffect("linear.issue.propose")).toBe(false);
-  });
 
   it("keeps the registry's approval gate on every external effect", () => {
     for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
