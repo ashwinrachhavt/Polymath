@@ -167,7 +167,14 @@ jobs:
       # wipe the main run's pixel evidence before the upload steps below.
       # A sibling directory keeps both; the fixture's own screenshots are
       # cwd-relative and still land in test-results/feature-pixels/.
-      - run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
+      # if: always() - the fixture journeys verify the async outcome workflow
+      # and own no assertion outside their seeded rows; an unrelated main-suite
+      # failure must not block their evidence (uploads below are always()
+      # already). Their own failure still fails the job on its merits.
+      # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
+      # overwriting the main run's e2e-report.json in cwd.
+      - if: always()
+        run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
       # Failure forensics: Playwright's per-failure page snapshots. Without
       # these a red e2e is a message, not evidence.
       - uses: actions/upload-artifact@v4
