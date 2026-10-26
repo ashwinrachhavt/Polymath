@@ -23,9 +23,14 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "on-first-retry",
-    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
-      : undefined,
+    launchOptions: {
+      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+        : {}),
+      // The voice-capture journey records from a fake device: no prompt, a
+      // steady tone instead of a mic (ASH-298).
+      args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+    },
   },
   projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
   // Reuse a server already listening; otherwise start the keyless dev harness.
