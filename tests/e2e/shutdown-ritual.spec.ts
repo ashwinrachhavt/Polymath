@@ -10,7 +10,11 @@ import postgres from "postgres";
  *
  * Two serial journeys, each at its OWN viewport from the start: resizing
  * across the mobile breakpoint remounts the page and discards client state,
- * so a desktop journey resized to mobile proves nothing about mobile.
+ * so a desktop journey resized to mobile proves nothing about mobile. Each
+ * journey ends by RELOADING the route (the remount case, ASH-323): the page
+ * must show the saved confirmation for the already-closed day, not a fresh
+ * form whose empty apply would duplicate the log. A third test then drives a
+ * deliberate no-effect repeat and asserts the single-log invariant.
  *
  * ISOLATION: refuses to write against anything but an explicitly isolated
  * database (the CI scratch axiom_e2e, or a name containing e2e, test, or scratch).
@@ -79,6 +83,7 @@ async function journey(
   page: Page,
   testInfo: TestInfo,
   viewport: { name: string; width: number; height: number },
+  expectClosed: boolean,
 ): Promise<void> {
   const url = connection();
   test.skip(!url, "no database configured");
@@ -130,6 +135,14 @@ async function journey(
   // The shell keeps the previous page's h1 mounted through the transition; target the heading itself.
   await expect(page.getByRole("heading", { name: "Shut down" })).toBeVisible();
 
+  if (expectClosed) {
+    // An earlier journey already closed this day: the page must surface the
+    // saved confirmation (server truth), and a second close is a deliberate,
+    // explicit choice - not the default form.
+    await expect(page.getByText("This day is already closed.")).toBeVisible();
+    await page.getByRole("button", { name: "Close the day again" }).click();
+  }
+
   // The seeded live session is offered with an explicit choice. The previous
   // page's theatre shows the same session, so anchor on the form's radiogroup.
   const sessionPanel = page.getByRole("radiogroup", { name: "What happens to the open session" }).locator("..");
@@ -167,32 +180,50 @@ async function journey(
   expect(finished.state).toBe("finished");
   expect(finished.outcome).toBe(`Outcome ${marker}`);
 
+  // The remount case (ASH-323): reloading re-renders from the server preview,
+  // which reports the day as already closed - the saved confirmation with the
+  // SAME log, not a fresh form inviting a duplicate apply.
+  await page.reload();
+  await expect(page.getByText("This day is already closed.")).toBeVisible();
+  const closedHref = await page.getByRole("link", { name: "Open the log" }).getAttribute("href");
+  expect(closedHref).toContain(logId);
+
   await client.end();
 }
 
 test("the shutdown ritual closes a real day end to end [desktop]", async ({ page }, testInfo) => {
   test.skip(!process.env.SHUTDOWN_RITUAL_E2E, "sequential-only journey; set SHUTDOWN_RITUAL_E2E=1 to run it alone");
-  await journey(page, testInfo, { name: "desktop", width: 1280, height: 720 });
+  await journey(page, testInfo, { name: "desktop", width: 1280, height: 720 }, false);
 });
 
 test("the shutdown ritual closes a real day end to end [mobile]", async ({ page }, testInfo) => {
   test.skip(!process.env.SHUTDOWN_RITUAL_E2E, "sequential-only journey; set SHUTDOWN_RITUAL_E2E=1 to run it alone");
-  await journey(page, testInfo, { name: "mobile", width: 390, height: 844 });
+  await journey(page, testInfo, { name: "mobile", width: 390, height: 844 }, true);
 });
 
-test("a second apply of the same day writes a second log (current behavior, ASH follow-up)", async ({}, testInfo) => {
+test("a no-effect repeat apply replays the existing log instead of duplicating it", async ({ page }) => {
   test.skip(!process.env.SHUTDOWN_RITUAL_E2E, "sequential-only journey; set SHUTDOWN_RITUAL_E2E=1 to run it alone");
   const url = connection();
   test.skip(!url || !workspaceId, "needs the journeys' workspace");
-  // The two journeys above each applied a shutdown for the same day under
-  // different idempotency keys. Pinning the observed duplication so a future
-  // fix flips this deliberately: one log note per journey, both pinned.
+  // One log per journey above, each with real effects.
+  expect(logArtifactIds).toHaveLength(2);
+
+  // Reopen the closed day and apply with NOTHING new selected: the server
+  // must replay the existing log, not write a third one (ASH-323).
+  await page.goto("/command-center/briefing/shutdown");
+  await page.getByRole("button", { name: "Close the day again" }).click();
+  await page.getByRole("button", { name: "Close the day" }).click();
+  await expect(page.getByText("This day is already closed.")).toBeVisible();
+  const href = await page.getByRole("link", { name: "Open the log" }).getAttribute("href");
+  const replayedId = href ? new URL(href, "http://localhost").searchParams.get("id") : null;
+  expect(replayedId).toBeTruthy();
+  expect(logArtifactIds).toContain(replayedId);
+
   const client = postgres(url!, { max: 1 });
-  const logs = await client<{ id: string }[]>`
-    select id from artifacts
-    where workspace_id = ${workspaceId} and title like 'Shutdown log %' and id = any(${logArtifactIds})
+  const logs = await client<{ n: number }[]>`
+    select count(*)::int as n from artifacts
+    where workspace_id = ${workspaceId} and title like 'Shutdown log %'
   `;
-  expect(logs).toHaveLength(2);
+  expect(logs[0].n).toBe(2);
   await client.end();
-  testInfo.annotations.push({ type: "note", description: "repeat-apply currently duplicates the day log + pin" });
 });

@@ -11,6 +11,7 @@ import { getActiveFocusSession, type FocusSessionView } from "@/domains/focus/qu
 import { focusSessions } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { createNoteInTx } from "@/domains/knowledge/notes";
+import { artifacts } from "@/domains/knowledge/schema";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { tierAllows } from "@/domains/integrations/capabilities";
 import { getBriefing } from "@/domains/work/briefing";
@@ -56,6 +57,8 @@ export type ShutdownPreview = {
   plannedSessionCount: number;
   captures: Array<{ id: string; version: number; label: string; kind: string; state: string }>;
   seedCandidates: Array<{ taskId: string; title: string; reason: string }>;
+  /** The day's already-written shutdown log: a remount renders the saved confirmation, never a fresh form that would duplicate it. */
+  closedLog: { id: string; title: string } | null;
 };
 
 export type SessionChoice =
@@ -87,6 +90,8 @@ export type ShutdownResult = {
   parked: number;
   seeded: number;
   logNoteId: string;
+  /** true when this apply changed nothing because the day was already closed; the returned log is the earlier one. */
+  replayed: boolean;
   email:
     | { status: "not_requested" }
     | { status: "proposed"; proposalId: string; deduplicated: boolean }
@@ -104,6 +109,27 @@ async function localDays(tx: TxDrizzle | typeof db, auth: AuthContext): Promise<
     select today::text as today, (today + 1)::text as tomorrow from d
   `);
   return (rows as unknown as Array<{ today: string; tomorrow: string }>)[0];
+}
+
+const shutdownLogTitle = (today: string) => `Shutdown log ${today}`;
+
+/** The day's already-written shutdown log, if an earlier apply pinned one. */
+async function findShutdownLog(tx: TxDrizzle | typeof db, auth: AuthContext, today: string): Promise<{ id: string; title: string } | null> {
+  const rows = await tx
+    .select({ id: artifacts.id, title: artifacts.title })
+    .from(dayArtifactPins)
+    .innerJoin(artifacts, eq(artifacts.id, dayArtifactPins.artifactId))
+    .where(
+      and(
+        eq(dayArtifactPins.workspaceId, auth.workspaceId),
+        eq(dayArtifactPins.userId, auth.userId),
+        eq(dayArtifactPins.localDate, today),
+        eq(artifacts.title, shutdownLogTitle(today)),
+      ),
+    )
+    .orderBy(desc(artifacts.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function previewShutdown(auth: AuthContext): Promise<ShutdownPreview> {
@@ -157,9 +183,11 @@ export async function previewShutdown(auth: AuthContext): Promise<ShutdownPrevie
   add(briefing.outcomes, "Accepted for today and not finished");
   add(briefing.dueTodayOrOverdue, "Due today or overdue");
 
+  const closedLog = await findShutdownLog(db, auth, days.today);
   return {
     today: days.today,
     tomorrow: days.tomorrow,
+    closedLog,
     liveSession: live
       ? {
           id: live.id,
@@ -231,6 +259,7 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
       { op: "applyShutdown", session: input.session ?? null, park: input.park, seedTaskIds: input.seedTaskIds, email },
       async (): Promise<ShutdownResult> => {
         const days = await localDays(tx, auth);
+        const alreadyClosed = await findShutdownLog(tx, auth, days.today);
         const lines: LogLine[] = [];
 
         // 1. The live session needs an explicit choice; "leave" is a choice.
@@ -369,9 +398,26 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
         }
 
         // 5. The log: a note in the library, pinned to the day, same transaction.
+        //    A repeat apply with nothing new to record (a remount or a retry of
+        //    an already-closed day) replays the day's existing log instead of
+        //    piling up a second "Nothing needed closing." note. A repeat that
+        //    DOES change something is a deliberate second close and writes its
+        //    own log, as before.
+        if (alreadyClosed && lines.length === 0) {
+          return {
+            today: days.today,
+            tomorrow: days.tomorrow,
+            session: null,
+            parked: 0,
+            seeded: 0,
+            logNoteId: alreadyClosed.id,
+            replayed: true,
+            email: emailResult,
+          };
+        }
         const logLines = lines.length > 0 ? lines : ["Nothing needed closing."];
         const note = await createNoteInTx(tx, auth, {
-          title: `Shutdown log ${days.today}`,
+          title: shutdownLogTitle(days.today),
           content: logDoc(`Shutdown ${days.today}`, logLines),
           plainText: [`Shutdown ${days.today}`, ...logLines].join("\n"),
           kind: "note",
@@ -398,6 +444,7 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
           parked: input.park.length,
           seeded,
           logNoteId: note.id,
+          replayed: false,
           email: emailResult,
         };
       },

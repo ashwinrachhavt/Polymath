@@ -389,4 +389,42 @@ suite("shutdown ritual", () => {
       }
     });
   });
+
+  describe("repeat applies (ASH-323)", () => {
+    it("a remounted no-effect apply replays the day's log instead of duplicating it", async () => {
+      const { auth, workspaceId } = await workspace("replay-remount");
+      const cap = await capture(workspaceId);
+      const first = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [{ captureId: cap.id, expectedVersion: cap.version }], seedTaskIds: [] });
+      expect(first.replayed).toBe(false);
+      // A remount gets a fresh render: a new idempotency key, empty selections.
+      const again = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [] });
+      expect(again.replayed).toBe(true);
+      expect(again.logNoteId).toBe(first.logNoteId);
+      expect(again.session).toBeNull();
+      expect(again.parked).toBe(0);
+      expect(again.seeded).toBe(0);
+      expect(await db.select().from(artifacts).where(eq(artifacts.workspaceId, workspaceId))).toHaveLength(1);
+      expect(await db.select().from(dayArtifactPins).where(eq(dayArtifactPins.workspaceId, workspaceId))).toHaveLength(1);
+    });
+
+    it("a deliberate repeat with a new effect still applies it and writes its own log", async () => {
+      const { auth, workspaceId } = await workspace("repeat-deliberate");
+      const first = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [] });
+      const cap = await capture(workspaceId);
+      const second = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [{ captureId: cap.id, expectedVersion: cap.version }], seedTaskIds: [] });
+      expect(second.replayed).toBe(false);
+      expect(second.parked).toBe(1);
+      expect(second.logNoteId).not.toBe(first.logNoteId);
+      const [after] = await db.select().from(captures).where(eq(captures.id, cap.id));
+      expect(after.parkedAt).not.toBeNull();
+    });
+
+    it("the preview reports the already-closed day so a remount shows the saved confirmation", async () => {
+      const { auth } = await workspace("preview-closed");
+      expect((await shutdown.previewShutdown(auth)).closedLog).toBeNull();
+      const result = await shutdown.applyShutdown(auth, { idempotencyKey: key(), park: [], seedTaskIds: [] });
+      const preview = await shutdown.previewShutdown(auth);
+      expect(preview.closedLog).toEqual({ id: result.logNoteId, title: `Shutdown log ${result.today}` });
+    });
+  });
 });

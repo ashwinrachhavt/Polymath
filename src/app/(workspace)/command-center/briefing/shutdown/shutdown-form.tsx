@@ -11,6 +11,25 @@ import { applyShutdownAction } from "./actions";
 
 type Choice = "unset" | "leave" | "finish" | "abandon";
 
+/*
+ * The day is already closed (server truth, from the preview) or an apply just
+ * replayed it: show the saved confirmation with its log, never a fresh form
+ * whose empty apply would pile up a duplicate log. A deliberate second close
+ * stays possible behind an explicit "Close the day again".
+ */
+function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId: string; onReopen?: () => void }) {
+  return (
+    <Panel title="Day closed" description={`The shutdown log for ${today} is already saved.`}>
+      <p className="text-sm text-muted-foreground">This day is already closed. Reopen it only when something new needs closing.</p>
+      <div className="mt-4 flex gap-2">
+        <Button size="sm" variant="outline" asChild><Link href={`/alfred/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link></Button>
+        {onReopen ? <Button size="sm" variant="ghost" onClick={onReopen}>Close the day again</Button> : null}
+        <Button size="sm" variant="ghost" asChild><Link href="/command-center/briefing">Back to Today</Link></Button>
+      </div>
+    </Panel>
+  );
+}
+
 export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   const [pending, startTransition] = useTransition();
   // One key per ritual attempt: a retry after a dropped response replays, never repeats.
@@ -25,6 +44,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   const [alias, setAlias] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<ShutdownResult | null>(null);
+  const [reopened, setReopened] = useState(false);
 
   const live = preview.liveSession;
   const needsChoice = Boolean(live) && choice === "unset";
@@ -60,6 +80,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   }
 
   if (done) {
+    if (done.replayed) return <ClosedPanel today={done.today} logNoteId={done.logNoteId} />;
     return (
       <Panel title="Day closed" description={`Shutdown log saved for ${done.today}.`}>
         <ul className="list-disc space-y-1 pl-5 text-sm">
@@ -80,6 +101,10 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
         </div>
       </Panel>
     );
+  }
+
+  if (preview.closedLog && !reopened) {
+    return <ClosedPanel today={preview.today} logNoteId={preview.closedLog.id} onReopen={() => setReopened(true)} />;
   }
 
   return (
