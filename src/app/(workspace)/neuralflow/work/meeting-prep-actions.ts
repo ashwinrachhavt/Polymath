@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { generateMeetingPrep, MeetingPrepNotAllowedError, MeetingPrepUnusableAnswerError } from "@/domains/knowledge/meeting-prep";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -21,7 +20,11 @@ export async function generateMeetingPrepAction(input: { eventId: string }): Pro
   if (!UUID.test(input.eventId)) return { ok: false, error: "Malformed event id." };
   try {
     const result = await generateMeetingPrep(auth, input.eventId);
-    revalidatePath("/neuralflow/work");
+    // No revalidatePath: the Work route is dynamic (no cache to bust), no
+    // server component renders the prep link (the row updates from this
+    // result alone), and a revalidated action response carries a full route
+    // re-render - under load that stream stalls the client's transition and
+    // leaves the Refresh button disabled with no bound (ASH-322).
     return { ok: true, artifactId: result.artifactId };
   } catch (error) {
     if (error instanceof MeetingPrepNotAllowedError || error instanceof MeetingPrepUnusableAnswerError) {
