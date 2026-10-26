@@ -101,7 +101,6 @@ test("private supervisor thread events never render on the activity rail", async
     await expect(page.getByText(tag)).toHaveCount(0);
   } finally {
     if (client && seededId) await client`delete from audit_events where id = ${seededId}`;
-    if (client && seededWorkspaceId) await client`delete from workspaces where id = ${seededWorkspaceId}`;
     await client?.end();
   }
 });
