@@ -470,7 +470,8 @@ values (`processingState: "classifying"`), not literals a grep for the state nam
 inside an assignment finds easily — a trap worth recording, since two sessions
 independently mis-read it the same way. The file opens with "when this file and
 the code disagree, the code is right and this file is the bug," so gaps 3–4 are
-deleted rather than softened, in the PR that touches them.
+deleted rather than softened. The doc edit belongs to the session that already has
+the verified text in flight (`axiom-4d`); this table is the record either way.
 
 The only real defects in this area are the Jev fallback (§4.6) and the two stale
 "ships disabled" comments at `enrichment-handler.ts:222-224` while
