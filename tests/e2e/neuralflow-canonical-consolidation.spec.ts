@@ -26,20 +26,21 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Calendar", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Previous week", exact: true })).toBeVisible();
-  // The relocated tools live in their contextual homes: scheduling links on
-  // the Calendar toolbar, the capture/review/reward links beside Today's list.
-  // Every one must actually reach its tool, not just render a label.
-  await page.getByRole("link", { name: "Scheduler", exact: true }).click();
-  await expect(page).toHaveURL(/\/apps\/neuralflow\/scheduler$/);
-  await page.goBack();
+  // The relocated tools live in their contextual homes, wired to the real
+  // workflows: the week grid and toolbar ARE the scheduler (no preview hop),
+  // Meetings opens today's flow, and the capture/review/reward links beside
+  // Today's list reach real surfaces. Every one must actually reach its tool,
+  // not just render a label.
+  await expect(page.getByRole("button", { name: "+ Add block", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Scheduler", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Meetings", exact: true }).click();
-  await expect(page).toHaveURL(/\/apps\/neuralflow\/meetings$/);
-  await page.goBack();
-  await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Today", exact: true }).click();
+  await expect(page).toHaveURL(/\/neuralflow\/work\?view=today$/);
   const related = page.getByRole("navigation", { name: "Related tools", exact: true });
-  await expect(related.getByRole("link", { name: "Brain dump" })).toHaveAttribute("href", "/apps/neuralflow/brain-dump");
   await expect(related.getByRole("link", { name: "Weekly review" })).toHaveAttribute("href", "/apps/neuralflow/reports");
-  await related.getByRole("link", { name: "Stone collection" }).click();
+  await related.getByRole("link", { name: "Brain dump" }).click();
+  await expect(page).toHaveURL(/\/command-center\/inbox$/);
+  await page.goBack();
+  await page.getByRole("navigation", { name: "Related tools", exact: true }).getByRole("link", { name: "Stone collection" }).click();
   await expect(page).toHaveURL(/\/apps\/neuralflow\/rewards$/);
 });
 
