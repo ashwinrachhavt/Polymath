@@ -44,7 +44,7 @@ export function DesignBriefButton({ artifactId }: { artifactId: string }) {
               return;
             }
             setBriefId(result.briefArtifactId);
-            setMessage("Brief drafted");
+            setMessage(result.existing ? "Brief already drafted" : "Brief drafted");
             router.refresh();
           });
         }}

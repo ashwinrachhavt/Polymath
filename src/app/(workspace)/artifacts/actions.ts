@@ -65,7 +65,7 @@ export async function debriefArtifactAction(input: { artifactId: string }): Prom
  * sends anything.
  */
 
-type BriefResult = { ok: true; briefArtifactId: string; title: string } | { ok: false; error: string };
+type BriefResult = { ok: true; briefArtifactId: string; title: string; existing: boolean } | { ok: false; error: string };
 
 export async function designBriefArtifactAction(input: { artifactId: string }): Promise<BriefResult> {
   const auth = await getAuthContext();
@@ -74,7 +74,7 @@ export async function designBriefArtifactAction(input: { artifactId: string }): 
   try {
     const result = await designBriefFromArtifact(auth, input.artifactId);
     revalidatePath("/artifacts");
-    return { ok: true, briefArtifactId: result.briefArtifactId, title: result.title };
+    return { ok: true, briefArtifactId: result.briefArtifactId, title: result.title, existing: result.existing };
   } catch (error) {
     if (error instanceof DesignBriefNotAllowedError || error instanceof DesignBriefUnusableAnswerError) {
       return { ok: false, error: error.message };

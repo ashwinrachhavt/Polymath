@@ -80,6 +80,25 @@ suite("designBriefFromArtifact", () => {
     expect(version?.plainText).toContain("Annual billing stays.");
     expect(version?.plainText).toContain('from "Acme research"');
     expect(result.title).toBe("Design brief: Launch one-pager");
+    expect(result.existing).toBe(false);
+  });
+
+  it("a repeat click returns the existing brief instead of writing a duplicate", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `brief-idem-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
+
+    const first = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const second = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+
+    expect(first.existing).toBe(false);
+    expect(second.existing).toBe(true);
+    expect(second.briefArtifactId).toBe(first.briefArtifactId);
+    const memos = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.kind, "memo")));
+    expect(memos).toHaveLength(1);
   });
 
   it("refuses a transcript, pointing at the right tool", async () => {

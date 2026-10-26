@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { artifacts, artifactVersions } from "./schema";
+import { auditEvents } from "@/domains/audit/schema";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -141,6 +142,8 @@ export type DesignBriefResult = {
   sourceArtifactId: string;
   briefArtifactId: string;
   title: string;
+  /** True when an earlier click already drafted this card's brief; nothing new was written. */
+  existing: boolean;
 };
 
 export async function designBriefFromArtifact(
@@ -160,6 +163,33 @@ export async function designBriefFromArtifact(
   }
   const source = (row.plainText ?? "").trim();
   if (!source) throw new DesignBriefNotAllowedError("This artifact has no text to brief from.");
+
+  /*
+   * One brief per source card: a repeat click returns the brief already
+   * drafted from this artifact instead of stacking duplicates in the
+   * Library. The audit row is the linkage (no schema change); the join
+   * proves the brief still exists and skips one the owner archived.
+   */
+  const [prior] = await db
+    .select({ briefId: auditEvents.subjectId, title: artifacts.title })
+    .from(auditEvents)
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, auditEvents.subjectId), eq(artifacts.workspaceId, auth.workspaceId)),
+    )
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.action, "knowledge.design_brief.generated"),
+        sql`${auditEvents.metadata} ->> 'sourceArtifactId' = ${artifactId}`,
+        sql`${artifacts.status} != 'archived'`,
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  if (prior?.briefId) {
+    return { sourceArtifactId: artifactId, briefArtifactId: prior.briefId, title: prior.title, existing: true };
+  }
 
   let provider: GenerationProvider;
   try {
@@ -209,6 +239,6 @@ export async function designBriefFromArtifact(
       },
       tx,
     );
-    return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title };
+    return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title, existing: false };
   });
 }
