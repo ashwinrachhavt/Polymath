@@ -118,11 +118,17 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
   );
 }
 
-export default async function ArtifactDetailPage({ params }: { params: Promise<{ artifactId: string }> }) {
-  const { artifactId } = await params;
+/* Params are read inside the boundary: awaiting them in the page body put URL
+   data outside Suspense, which cost the route its instant navigation. */
+export default function ArtifactDetailPage({ params }: { params: Promise<{ artifactId: string }> }) {
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
-      <ArtifactSurface artifactId={artifactId} />
+      <ArtifactRoute params={params} />
     </Suspense>
   );
+}
+
+async function ArtifactRoute({ params }: { params: Promise<{ artifactId: string }> }) {
+  const { artifactId } = await params;
+  return <ArtifactSurface artifactId={artifactId} />;
 }

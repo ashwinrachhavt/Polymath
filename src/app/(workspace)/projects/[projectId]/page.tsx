@@ -128,11 +128,22 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
   );
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
+/*
+ * The params promise is read inside the boundary, not above it. Awaiting it in
+ * the page body put URL data outside Suspense, which opts the whole route out
+ * of instant navigation: the shell could not paint until the params resolved.
+ * Passing the promise down and awaiting it in the child keeps the fallback the
+ * first thing a navigation paints.
+ */
+export default function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
-      <ProjectSurface projectId={projectId} />
+      <ProjectRoute params={params} />
     </Suspense>
   );
+}
+
+async function ProjectRoute({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  return <ProjectSurface projectId={projectId} />;
 }
