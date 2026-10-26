@@ -10,6 +10,7 @@ import { ArtifactMarkdown } from "@/components/artifact-markdown";
 import { DebriefButton } from "../debrief-button";
 import { CopyArtifactButton } from "../copy-artifact-button";
 import { DesignBriefButton } from "../design-brief-button";
+import { CanvaImportButton } from "../canva-import-button";
 import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
 import { DeckView, InfographicView } from "@/components/products/alfred/artifact-views";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
@@ -63,6 +64,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
         <div role="toolbar" aria-label="Artifact actions" className="flex flex-wrap items-center justify-end gap-2 text-[13px] text-muted-foreground">
           {artifact.kind === "transcript" ? <DebriefButton artifactId={artifactId} /> : null}
           {(BRIEFABLE_KINDS as readonly string[]).includes(artifact.kind) ? <DesignBriefButton artifactId={artifactId} /> : null}
+          {artifact.isDesignBrief ? <CanvaImportButton artifactId={artifactId} /> : null}
           <MoreHorizontal aria-hidden className="size-4" />
           {artifact.markdown || artifact.plainText ? <CopyArtifactButton text={artifact.markdown ?? artifact.plainText ?? ""} /> : null}
           <Download aria-hidden className="size-4" />

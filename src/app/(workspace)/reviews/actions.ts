@@ -1,14 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { decideProposal, ProposalConflictError, reviseProposal } from "@/domains/actions/commands";
 import { executeApprovedEffect, supportsEffect, type EffectOutcome } from "@/domains/actions/executor";
+import { refusalMessage } from "@/domains/actions/refusal-message";
 import { approveTaskProposal, TaskExecuteNotAllowedError } from "@/domains/work/proposals";
 import { approveNoteProposal, NoteExecuteNotAllowedError } from "@/domains/knowledge/note-proposals";
 import { approveArtifactRevision, ArtifactReviseNotAllowedError } from "@/domains/knowledge/revision-proposals";
-import { actionProposals } from "@/domains/actions/schema";
+import { actionProposals, actionReviews } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
+import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -45,6 +47,16 @@ function fail(error: unknown): { ok: false; error: string } {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/*
+ * decided: the decision row committed before the failure (an executor or
+ * post-approval step refused). The card's decided state is server truth, so
+ * the client keeps its decided card + alert and must NOT refresh them away;
+ * a refresh is only honest when the decision itself never landed.
+ */
+type DecideResult =
+  | { ok: true; outcome: EffectOutcome | null }
+  | { ok: false; error: string; decided?: boolean };
+
 export async function decideProposalAction(input: {
   idempotencyKey: string;
   proposalId: string;
@@ -52,7 +64,7 @@ export async function decideProposalAction(input: {
   revisionId: string;
   decision: "approved" | "rejected";
   note?: string;
-}): Promise<Result<{ outcome: EffectOutcome | null }>> {
+}): Promise<DecideResult> {
   const auth = await authorize();
   if (!UUID.test(input.proposalId) || !UUID.test(input.revisionId) || !UUID.test(input.idempotencyKey)) {
     return { ok: false, error: "Malformed review decision." };
@@ -105,7 +117,7 @@ export async function decideProposalAction(input: {
         error instanceof ArtifactReviseNotAllowedError || error instanceof Error
           ? error.message
           : "The approved revision was not applied.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -128,7 +140,7 @@ export async function decideProposalAction(input: {
         error instanceof TaskExecuteNotAllowedError || error instanceof Error
           ? error.message
           : "The approved task was not created.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -150,7 +162,7 @@ export async function decideProposalAction(input: {
         error instanceof NoteExecuteNotAllowedError || error instanceof Error
           ? error.message
           : "The approved note was not created.";
-      return { ok: false, error: message };
+      return { ok: false, error: message, decided: true };
     }
     revalidate();
     return { ok: true, outcome: null };
@@ -166,9 +178,43 @@ export async function decideProposalAction(input: {
     outcome = await executeApprovedEffect(auth, { proposalId: input.proposalId });
   } catch (error) {
     // The decision is committed; a refusal to execute is a state the card
-    // must show, not a rollback of the approval.
+    // must show, not a rollback of the approval. The card's client alert
+    // only lives until the next render, so the refusal also lands in the
+    // review history - the persisted record a reloaded card renders. No
+    // attempt row: the refusal happened before any claim and the approval
+    // stands. The write is serialized per proposal (the advisory-lock
+    // pattern spending claims use) and deduped on the exact revision, so
+    // concurrent retries cannot stack duplicate rows while a re-approval of
+    // a NEW revision records its own refusal. The persisted message is the
+    // bounded, printable refusal line, never a raw provider body.
+    const message = refusalMessage(error);
+    const note = `Execution refused: ${message}`;
+    await withTransaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`refusal:${input.proposalId}`}, 0))`);
+      const existing = await tx
+        .select({ id: actionReviews.id })
+        .from(actionReviews)
+        .where(
+          and(
+            eq(actionReviews.proposalId, input.proposalId),
+            eq(actionReviews.revisionId, input.revisionId),
+            eq(actionReviews.note, note),
+          ),
+        )
+        .limit(1);
+      if (existing.length === 0) {
+        await tx.insert(actionReviews).values({
+          workspaceId: auth.workspaceId,
+          proposalId: input.proposalId,
+          revisionId: input.revisionId,
+          decision: "approved",
+          note,
+          reviewedBy: null,
+        });
+      }
+    });
     revalidate();
-    return { ok: false, error: error instanceof Error ? error.message : "The approved effect did not run." };
+    return { ok: false, error: message, decided: true };
   }
   revalidate();
   return { ok: true, outcome };

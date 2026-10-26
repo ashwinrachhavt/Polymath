@@ -19,7 +19,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  // CI also emits a JSON report: the log's list output never names skipped
+  // tests, and the report is the explicit record of which journeys ran.
+  reporter: process.env.CI ? [["github"], ["json", { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? "e2e-report.json" }]] : "list",
   use: {
     baseURL,
     trace: "on-first-retry",

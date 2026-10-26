@@ -149,6 +149,55 @@ jobs:
           # Lets a spec drain the outbox on purpose (one dispatcher pass)
           # instead of sleeping for a background worker that does not exist here.
           OUTBOX_DISPATCH_SECRET: e2e-outbox
+      # Structured record of the run above: names every test with its status,
+      # including skips the list output never prints.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: e2e-report.json
+          if-no-files-found: warn
+      # The Canva handoff's async journey (approve -> import_started -> sweep
+      # -> terminal settle) runs in its own invocation against the explicit,
+      # nonproduction-only import fixture: a global CANVA_IMPORT_PROVIDER
+      # would mask the honest unconfigured-refusal journey above. Zero real
+      # transport by construction - no Composio key exists here either.
+      # --output matters: Playwright deletes the output directory when a run
+      # starts, so a second invocation with the default test-results/ would
+      # wipe the main run's pixel evidence before the upload steps below.
+      # A sibling directory keeps both; the fixture's own screenshots are
+      # cwd-relative and still land in test-results/feature-pixels/.
+      # if: always() - the fixture journeys verify the async outcome workflow
+      # and own no assertion outside their seeded rows; an unrelated main-suite
+      # failure must not block their evidence (uploads below are always()
+      # already). Their own failure still fails the job on its merits.
+      # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
+      # overwriting the main run's e2e-report.json in cwd.
+      - if: always()
+        run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
+      # Failure forensics: Playwright's per-failure page snapshots and retry
+      # traces. if: always(), not failure(): a journey that only passes on
+      # retry is exactly the one whose first-attempt evidence must survive -
+      # without these a green-with-retry run is a message, not evidence.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-error-context
+          path: |
+            test-results/**/error-context.md
+            test-results-fixture/**/error-context.md
+            test-results/**/trace.zip
+            test-results-fixture/**/trace.zip
+          if-no-files-found: ignore
+      # The fixture invocation's own structured record: its journey results
+      # (including skips) are evidence too, and the default report filename
+      # would overwrite the main run's uploaded above.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report-fixture
+          path: e2e-report-fixture.json
+          if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
       - uses: actions/upload-artifact@v4

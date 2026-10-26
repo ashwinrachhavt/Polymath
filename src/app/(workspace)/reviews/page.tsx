@@ -8,6 +8,7 @@ import { Pagination } from "@/components/list/pagination";
 import { Screen } from "@/components/workspace/ui";
 import {
   countPendingProposals,
+  latestAttemptOutcomes,
   listProposalReviews,
   pageReviewQueue,
   REVIEW_QUEUE_STATUSES,
@@ -93,7 +94,14 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     ),
   ]);
 
+  const attemptOutcomes = await latestAttemptOutcomes(
+    auth.workspaceId,
+    found.items.map((item) => item.id),
+  );
+
   const cards: QueueCardData[] = found.items.map((item) => ({
+    outcome: attemptOutcomes.get(item.id)?.outcome ?? null,
+    designUrl: attemptOutcomes.get(item.id)?.designUrl ?? null,
     id: item.id,
     version: item.version,
     title: item.title,
@@ -139,16 +147,20 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
         total={found.total}
         noun="proposals"
       />
-      {cards.length > 0 ? (
-        <ReviewsQueue items={cards} />
-      ) : (
-        <NoResults
-          filtered={filtered}
-          clearHref={BASE}
-          emptyTitle="Nothing needs your judgment"
-          emptyDescription="When an agent wants to change something outside Polymath - send, schedule, post - it proposes the exact payload here first. The queue is empty."
-        />
-      )}
+      {/* Always mounted: the decide action's revalidate refetches this list,
+          and an empty payload must not unmount the queue - its client state
+          holds the just-decided card's refusal or outcome until navigation. */}
+      <ReviewsQueue
+        items={cards}
+        emptyState={
+          <NoResults
+            filtered={filtered}
+            clearHref={BASE}
+            emptyTitle="Nothing needs your judgment"
+            emptyDescription="When an agent wants to change something outside Polymath - send, schedule, post - it proposes the exact payload here first. The queue is empty."
+          />
+        }
+      />
       <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
     </Screen>
   );

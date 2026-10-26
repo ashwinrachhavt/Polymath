@@ -1,6 +1,6 @@
 # 0009 - Canva design-brief handoff: design import through the Composio proxy's binary_body
 
-Status: proposed (design only; no capability, tier, executor, or migration changes ship with it)
+Status: implemented on the ASH-286 branch (executor + reconciliation + handoff UI, fixture-tested; no live import run yet)
 
 ## Context
 
@@ -67,6 +67,14 @@ revision-approved actions executor - never a direct skill call - mirroring
 `src/domains/integrations/gmail/send.ts`. The proposal's expectedEffect copy states
 exactly what happens: which brief, which Canva account, what file is uploaded. Capability,
 tier, tool-manifest, and migration changes stay held until this design is accepted.
+
+Live execution has its own fail-closed boundary, separate from both approval and the
+generic key: `CANVA_IMPORT_ENABLED=true` on the deployment, default off. A
+`COMPOSIO_API_KEY` present for Gmail must never stand in for it, so the executor refuses
+before claiming when the flag is absent (zero attempts, zero provider calls), and the
+import module refuses create and poll calls that skip the executor. The flag flips only
+after per-call cost/entitlement is verified and spend authority exists (Composio
+"Proxy execute" pricing: the exact seam this uses).
 
 ### Async reconciliation (existing pattern)
 

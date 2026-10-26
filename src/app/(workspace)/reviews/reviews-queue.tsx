@@ -1,13 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useOptimistic, useRef, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
 import { Field, Panel, Status } from "@/components/workspace/ui";
 import type { EffectOutcome } from "@/domains/actions/executor";
 import { decideProposalAction, reviseProposalAction } from "./actions";
+import { holdDecidedCard, mergeHeldDecidedCards, type HeldCards } from "./held-cards";
+import { outcomeLine } from "./outcome-line";
 
 /*
  * The queue's client island. Decisions are optimistic: the card flips to the
@@ -36,6 +38,13 @@ export type QueueCardData = {
   createdAt: string;
   expiresAt: string | null;
   decidedAt: string | null;
+  /*
+   * The persisted newest-attempt outcome (and the provider-returned design
+   * link, when one exists) so a reload tells the same truth the decide
+   * response did. Null outcome: no attempt was ever claimed.
+   */
+  outcome: EffectOutcome | null;
+  designUrl: string | null;
   expired: boolean;
   /** Display-only injection annotations from the proposing path (ASH-281). */
   flags: unknown;
@@ -162,23 +171,6 @@ const riskLabel: Record<string, string> = {
 };
 
 type DecideInput = { proposalId: string; decision: "approved" | "rejected"; note: string };
-
-/*
- * One line, from the executor's own outcome. The copy is fixed here rather
- * than assembled from provider text: "unknown" exists to say the system does
- * not know, and no wording may invite a second send. A failed effect is never
- * presented as something to repeat; that is a new approval, not a re-run.
- */
-function outcomeLine(outcome: EffectOutcome): string {
-  switch (outcome.status) {
-    case "sent":
-      return "Sent.";
-    case "unknown":
-      return "Checking whether this was sent.";
-    case "failed":
-      return `Not sent. ${outcome.reason}`;
-  }
-}
 
 function ProposalCard({
   item,
@@ -342,18 +334,48 @@ function ProposalCard({
       ) : null}
       {outcome ? (
         <p role="status" className="mt-3 text-xs text-muted-foreground">
-          {outcomeLine(outcome)}
+          {outcomeLine(item.capability, outcome)}
+          {outcome.status === "sent" && item.capability === "canva.design.import" && item.designUrl ? (
+            <>
+              {" "}
+              <a href={item.designUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                Open the design in Canva
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
     </Panel>
   );
 }
 
-export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
+export function ReviewsQueue({ items, emptyState }: { items: QueueCardData[]; emptyState: ReactNode }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [outcomes, setOutcomes] = useState<Record<string, EffectOutcome>>({});
+  /*
+   * Snapshots of decided cards held past the revalidate that drops them
+   * from the filtered server list - the refusal alert or import outcome
+   * must not unmount in the same beat it arrives. State, not a ref: the
+   * merge below reads it during render. See held-cards.ts.
+   */
+  const [heldCards, setHeldCards] = useState<HeldCards>({});
+  // A decide response fills the gap until the next server render: the
+  // attempt commits before the response returns, so any rendered persisted
+  // outcome is the same truth or newer (e.g. reconciled by the sweep after
+  // the reviewer decided). Persisted therefore wins whenever it exists, and
+  // a stale decide response can never mask a reconciled terminal truth.
+  const [decideOutcomes, setDecideOutcomes] = useState<Record<string, EffectOutcome>>({});
+  /*
+   * Post-action decided truth, keyed by proposal revision so a re-proposed
+   * card (new version) is never masked. useOptimistic reverts to the server
+   * items when the action settles; without this overlay a decided card would
+   * flicker back to actionable - and, on a committed refusal, the refresh
+   * would unmount the card and take the refusal alert with it. The overlay
+   * holds the decided view + the alert until the next real server render,
+   * where the persisted row says the same thing.
+   */
+  const [decidedCards, setDecidedCards] = useState<Record<string, "approved" | "rejected">>({});
   const decisionKeys = useRef<Record<string, { key: string; version: number }>>({});
   const [optimisticItems, applyDecision] = useOptimistic(items, (current: QueueCardData[], event: DecideInput) =>
     current.map((item) =>
@@ -395,11 +417,33 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       });
       if (!result.ok) {
         setErrors((prev) => ({ ...prev, [input.proposalId]: result.error }));
-        router.refresh();
+        if (result.decided) {
+          // The approval/rejection committed; only the effect refused. Keep
+          // the decided card and its refusal visible - the approval stands -
+          // and hold it past the revalidate that drops it from this filter.
+          setHeldCards((prev) => {
+            const next = { ...prev };
+            holdDecidedCard(next, item, input.decision);
+            return next;
+          });
+          setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
+        } else {
+          // The decision itself never landed; resync to the server truth.
+          router.refresh();
+        }
         return;
       }
+      setDecidedCards((prev) => ({ ...prev, [`${input.proposalId}:${version}`]: input.decision }));
       if (result.outcome) {
-        setOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
+        // An effect outcome is post-decision feedback: hold the card past
+        // the revalidate. A decision-only success carries nothing to show
+        // and drains from the pending queue, by design.
+        setHeldCards((prev) => {
+          const next = { ...prev };
+          holdDecidedCard(next, item, input.decision);
+          return next;
+        });
+        setDecideOutcomes((prev) => ({ ...prev, [input.proposalId]: result.outcome! }));
       }
     });
   }
@@ -414,7 +458,14 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
   type Row = { kind: "single"; item: QueueCardData } | { kind: "group"; key: string; items: QueueCardData[] };
   const rows: Row[] = [];
   const groups = new Map<string, Extract<Row, { kind: "group" }>>();
-  for (const item of optimisticItems) {
+  const merged = mergeHeldDecidedCards(
+    optimisticItems.map((raw) => {
+      const decided = decidedCards[`${raw.id}:${raw.version}`];
+      return decided ? { ...raw, status: decided, decidedAt: raw.decidedAt ?? new Date().toISOString() } : raw;
+    }),
+    heldCards,
+  );
+  for (const item of merged) {
     const match = item.dedupeKey ? followUpGroup.exec(item.dedupeKey) : null;
     if (!match) {
       rows.push({ kind: "single", item });
@@ -435,10 +486,12 @@ export function ReviewsQueue({ items }: { items: QueueCardData[] }) {
       key={`${item.id}-${item.version}`}
       item={item}
       error={errors[item.id] ?? null}
-      outcome={outcomes[item.id] ?? null}
+      outcome={item.outcome ?? decideOutcomes[item.id] ?? null}
       decide={decide}
     />
   );
+
+  if (rows.length === 0) return <>{emptyState}</>;
 
   return (
     <div className="flex flex-col gap-4">

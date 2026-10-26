@@ -29,6 +29,7 @@ const ACCOUNT_PIN_PROVIDERS: Record<string, string> = {
   "gmail.send": "gmail",
   "notion.page.append": "notion",
   "notion.page.create": "notion",
+  "canva.design.import": "canva",
 };
 
 export type SenderAccountPin =
@@ -48,7 +49,7 @@ export async function senderAccountPin(
   // configured an unnamed sender resolves only inside it - the one connected
   // account is never substituted silently.
   const policy = await senderAliasPolicy(auth.workspaceId, capability);
-  const verdict = checkSenderAlias(policy, accountAlias);
+  const verdict = checkSenderAlias(policy, accountAlias, provider === "canva" ? "connected account" : "sender");
   if (!verdict.allowed) return { resolved: false, alias: accountAlias, provider, reason: verdict.reason };
   const resolved = await resolveConnectedAccount(
     auth,
