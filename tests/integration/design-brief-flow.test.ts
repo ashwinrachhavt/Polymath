@@ -2,11 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
-import {
-  BRIEFABLE_KINDS,
-  designBriefFromArtifact,
-  DesignBriefNotAllowedError,
-} from "@/domains/knowledge/design-brief";
 import type { GenerationProvider } from "@/integrations/generation/provider";
 
 /*
@@ -20,10 +15,14 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 
 let db: NonNullable<typeof handle>["db"];
+// The domain module binds DATABASE_URL at import time via @/lib/db, so it is
+// imported only after makeTestDb has pointed the scratch database up.
+let brief: typeof import("@/domains/knowledge/design-brief");
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
+  brief = await import("@/domains/knowledge/design-brief");
 });
 
 afterAll(async () => {
@@ -70,13 +69,13 @@ suite("designBriefFromArtifact", () => {
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
 
-    const result = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const result = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
 
-    const [brief] = await db.select().from(artifacts).where(eq(artifacts.id, result.briefArtifactId)).limit(1);
-    expect(brief?.kind).toBe("memo");
-    expect(brief?.status).toBe("generated");
-    expect(brief?.title).toBe("Design brief: Launch one-pager");
-    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, brief!.currentVersionId!)).limit(1);
+    const [memo] = await db.select().from(artifacts).where(eq(artifacts.id, result.briefArtifactId)).limit(1);
+    expect(memo?.kind).toBe("memo");
+    expect(memo?.status).toBe("generated");
+    expect(memo?.title).toBe("Design brief: Launch one-pager");
+    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, memo!.currentVersionId!)).limit(1);
     expect(version?.plainText).toContain("Annual billing stays.");
     expect(version?.plainText).toContain('from "Acme research"');
     expect(result.title).toBe("Design brief: Launch one-pager");
@@ -88,8 +87,8 @@ suite("designBriefFromArtifact", () => {
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
 
-    const first = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
-    const second = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const first = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const second = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
 
     expect(first.existing).toBe(false);
     expect(second.existing).toBe(true);
@@ -107,8 +106,8 @@ suite("designBriefFromArtifact", () => {
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
 
     const [a, b] = await Promise.all([
-      designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
-      designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
+      brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
+      brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
     ]);
 
     expect(a.briefArtifactId).toBe(b.briefArtifactId);
@@ -125,7 +124,7 @@ suite("designBriefFromArtifact", () => {
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
 
-    const first = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const first = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
 
     const [v2] = await db
       .insert(artifactVersions)
@@ -133,7 +132,7 @@ suite("designBriefFromArtifact", () => {
       .returning({ id: artifactVersions.id });
     await db.update(artifacts).set({ currentVersionId: v2.id }).where(eq(artifacts.id, sourceId));
 
-    const second = await designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
+    const second = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
 
     expect(second.existing).toBe(false);
     expect(second.briefArtifactId).not.toBe(first.briefArtifactId);
@@ -153,7 +152,7 @@ suite("designBriefFromArtifact", () => {
     const saved = KEYS.map((k) => [k, process.env[k]] as const);
     for (const k of KEYS) delete process.env[k];
     try {
-      await expect(designBriefFromArtifact(auth, sourceId)).rejects.toThrow(/No generation provider configured/);
+      await expect(brief.designBriefFromArtifact(auth, sourceId)).rejects.toThrow(/No generation provider configured/);
     } finally {
       for (const [k, v] of saved) {
         if (v === undefined) delete process.env[k];
@@ -171,15 +170,15 @@ suite("designBriefFromArtifact", () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-transcript-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "transcript", "speaker: hello");
-    await expect(designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(DesignBriefNotAllowedError);
-    expect(BRIEFABLE_KINDS).not.toContain("transcript");
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(brief.DesignBriefNotAllowedError);
+    expect(brief.BRIEFABLE_KINDS).not.toContain("transcript");
   });
 
   it("refuses an artifact with no text", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-empty-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "note", null);
-    await expect(designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(/no text/);
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(/no text/);
   });
 
   it("refuses an artifact from another workspace", async () => {
@@ -187,7 +186,7 @@ suite("designBriefFromArtifact", () => {
     const other = await seedWorkspace(db, `brief-scope-b-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(other.userId, other.workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Secret research.");
-    await expect(designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(/does not exist/);
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(/does not exist/);
   });
 
   it("propagates an unusable model answer without writing anything", async () => {
@@ -195,7 +194,7 @@ suite("designBriefFromArtifact", () => {
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
     const bad: GenerationProvider = { name: "fixture:bad", registryId: "fixture", generate: async () => ({ text: "not json" }) };
-    await expect(designBriefFromArtifact(auth, sourceId, { provider: bad })).rejects.toThrow(/not JSON/);
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: bad })).rejects.toThrow(/not JSON/);
     const rows = await db
       .select()
       .from(artifacts)

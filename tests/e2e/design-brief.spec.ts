@@ -93,7 +93,7 @@ async function removeSeeded(): Promise<void> {
       delete from artifacts where id in (
         select subject_id from audit_events
         where action = 'knowledge.design_brief.generated'
-          and metadata ->> 'sourceArtifactId' = any(${seededSourceIds}::uuid[])
+          and metadata ->> 'sourceArtifactId' = any(${seededSourceIds}::text[])
       )`;
     await client`delete from artifacts where id = any(${seededSourceIds}::uuid[])`;
   } finally {
@@ -157,7 +157,8 @@ for (const vp of VIEWPORTS) {
 
     await page.goto(`/artifacts/${artifact!.id}`);
     await page.getByRole("button", { name: "Design brief" }).click();
-    await expect(page.getByRole("alert")).toContainText("This artifact has no text to brief from.", { timeout: 30_000 });
+    // Next's route announcer also carries role=alert; match the message text itself.
+    await expect(page.getByText("This artifact has no text to brief from.")).toBeVisible({ timeout: 30_000 });
     expect(await briefCountFor(artifact!.id)).toBe(0);
   });
 }
