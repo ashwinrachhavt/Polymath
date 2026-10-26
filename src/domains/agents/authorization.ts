@@ -124,6 +124,14 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     capability: "action.prepare",
     effectClass: "internal_write",
     note: "Persists a Linear-issue proposal note in the workspace; never calls Linear.",
+   * ASH-282: proposing a calendar move persists a review card, so this is an
+   * internal write under action.prepare. Approval moves the local event only;
+   * Google-sourced events are advice-only and never written back.
+   */
+  "calendar.propose": {
+    capability: "action.prepare",
+    effectClass: "internal_write",
+    note: "Persists a calendar-change proposal in the review queue; approval moves local events only, never the provider.",
   },
   /*
    * The generic registry's reads, same authority as the gateway reads above:

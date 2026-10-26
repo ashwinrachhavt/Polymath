@@ -128,6 +128,30 @@ saved brief is the deliverable; the handoff is a separate, later step.`,
 
 Attribute statements only where the transcript names the speaker.`,
   ),
+  bundled(
+    "calendar-conflicts",
+    "Calendar conflicts",
+    "Find overlapping events and propose how to resolve each, with the trade-off of every option. Changes wait for approval.",
+    `# Calendar conflicts
+
+1. Call calendar_conflicts and read its notices first. They say whether Google
+   Calendar is connected and when it last synced; repeat them to the owner as
+   they are.
+2. For each conflict, name the events and how many minutes overlap.
+3. Lay out the options the tool returned, with each trade-off in plain words:
+   how far the event moves, who it affects, whether it clears the overlap.
+   Never invent a time the tool did not offer.
+4. Recommend one option per conflict and say why in one sentence.
+5. Events that come from Google cannot be changed from here. Say so, and tell
+   the owner to decline or reschedule them in Google Calendar.
+6. Only propose a move the owner asked for, or one you recommended and they
+   accepted. Use calendar_conflict_propose with the option unchanged. The move
+   waits in the review queue; say it is awaiting approval, never that it
+   happened.
+7. If a refusal comes back, read the conflicts again instead of retrying.
+
+Nothing is written to any calendar without approval.`,
+  ),
 ];
 
 export function bundledSkill(slug: string): InspectedSkill | null {
