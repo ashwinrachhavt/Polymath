@@ -32,10 +32,10 @@ test("an audit event written by a real action lands on the activity rail", async
     await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
     await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
     // Pixel evidence for review: the real feed on desktop and mobile widths.
-    await page.screenshot({ path: "test-results/activity-feed-desktop.png", fullPage: true });
+    await page.screenshot({ path: "test-results/feature-pixels/activity-feed-desktop.png", fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByText(`Created event "${tag}"`)).toBeVisible();
-    await page.screenshot({ path: "test-results/activity-feed-mobile.png", fullPage: true });
+    await page.screenshot({ path: "test-results/feature-pixels/activity-feed-mobile.png", fullPage: true });
   } finally {
     if (client) {
       await client`delete from events where title = ${tag}`;
