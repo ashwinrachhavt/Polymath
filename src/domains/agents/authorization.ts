@@ -94,8 +94,18 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "slack.read": { capability: "integration.use", effectClass: "read" },
   "linear.read": { capability: "integration.use", effectClass: "read" },
   "linear.issue.read": { capability: "integration.use", effectClass: "read" },
-  /* ASH-285: drafts a Linear-issue proposal note from conversation text; never calls Linear. */
-  "linear.issue.propose": { capability: "knowledge.read", effectClass: "read", note: "Drafts an issue proposal note; creates nothing in Linear." },
+  /*
+   * ASH-285: drafting persists a proposal note, so this is an internal write
+   * under action.prepare - not a read. The "creates nothing" phrasing on
+   * meetings.debrief describes its external world only; both tools write
+   * rows, and this entry says so. The external Linear write stays a separate
+   * approved action, so nothing here requires approval.
+   */
+  "linear.issue.propose": {
+    capability: "action.prepare",
+    effectClass: "internal_write",
+    note: "Persists a Linear-issue proposal note in the workspace; never calls Linear.",
+  },
   /*
    * The generic registry's reads, same authority as the gateway reads above:
    * integration use, read-only, no approval. Keyed by the capability names the
