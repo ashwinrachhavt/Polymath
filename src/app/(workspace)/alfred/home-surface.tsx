@@ -10,6 +10,7 @@ import { HistoryMenu } from "./history-menu";
 import type { HistoryGroup } from "./history";
 import { ModelPicker } from "./model-picker";
 import { NewConversation } from "./new-conversation";
+import { continueConversation } from "./continue-actions";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -33,6 +34,7 @@ export function HomeSurface({
   models,
   currentModel,
   notice,
+  activeRunId,
 }: {
   history: HistoryGroup[];
   skills: PickableSkill[];
@@ -40,8 +42,12 @@ export function HomeSurface({
   currentModel: string;
   /** A bridge problem, stated once under the composer. */
   notice: string | null;
+  /** The run still in progress, when there is one: the home reopens it. */
+  activeRunId: string | null;
 }) {
-  const [started, setStarted] = useState<{ runId: string; message: string } | null>(null);
+  const [started, setStarted] = useState<{ runId: string; message?: string } | null>(
+    activeRunId ? { runId: activeRunId } : null,
+  );
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -78,7 +84,8 @@ export function HomeSurface({
           <InPlaceChat
             runId={started.runId}
             subject={{ type: "project", id: "" }}
-            optimisticMessage={started.message}
+            {...(started.message ? { optimisticMessage: started.message } : {})}
+            onContinue={(runId, text) => continueConversation({ runId, text })}
             className="flex min-h-0 flex-1 flex-col"
           />
         </div>

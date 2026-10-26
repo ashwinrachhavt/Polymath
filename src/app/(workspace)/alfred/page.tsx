@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
 import { isWorkspaceOnboarded } from "@/domains/agents/onboarding";
 import { getProfileModelPolicy, listRecentRuns } from "@/domains/agents/queries";
+import { isFinished } from "@/domains/agents/thread";
 import { availableModels, resolveModelId } from "@/domains/agents/models";
 import { listSkills } from "@/domains/skills/queries";
 import { displayTitle } from "@/lib/display-text";
@@ -62,6 +63,10 @@ export async function AlfredSurface() {
     listSkills(auth, { enabled: true }),
     getProfileModelPolicy(auth.workspaceId, "alfred"),
   ]);
+  // The conversation is the product's primary surface, so the home reopens the
+  // one still in progress rather than showing a composer above a list. A run in
+  // a non-terminal state is exactly "this conversation is still open".
+  const activeRun = runs.find((run) => !isFinished(run.state));
   const skills: PickableSkill[] = skillRows.map((skill) => ({
     id: skill.id,
     name: skill.name,
@@ -88,6 +93,7 @@ export async function AlfredSurface() {
       models={models}
       currentModel={currentModel}
       notice={unavailable}
+      activeRunId={activeRun?.id ?? null}
     />
   );
 }

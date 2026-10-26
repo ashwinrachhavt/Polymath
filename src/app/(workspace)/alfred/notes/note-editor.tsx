@@ -14,6 +14,7 @@ import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } fro
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
 import { X, History, Info, Link2, Plus } from "lucide-react";
 import { NotebookListToggle } from "./notebook-workspace";
+import { NotionAppendAction } from "./notion-append";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -671,6 +672,7 @@ export function NoteEditor({
               {saveState === "error" && <span role="status" className="text-destructive">Not saved</span>}
               <span>Updated {stamp(updatedAt)}</span>
               <span className="flex-1" />
+              <NotionAppendAction noteId={noteId} title={title} markdown={markdown} disabled={pending || saveState === "saving"} />
               <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
                 {pending ? "Saving…" : "Save checkpoint"}
               </Button>

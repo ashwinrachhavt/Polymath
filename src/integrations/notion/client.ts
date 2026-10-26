@@ -25,6 +25,23 @@ export interface NotionClient {
   queryDatabaseRows(databaseId: string): Promise<NotionSearchHit[]>;
 }
 
+/**
+ * The write surface, kept separate from the read client on purpose: nothing
+ * that only imports has any reason to hold a type that can append to a page.
+ * Only `executeNotionPageProposal` takes one.
+ */
+export interface NotionWriteClient {
+  /** Appends markdown as paragraph/bullet blocks to the end of an existing page. Returns the page id. */
+  appendMarkdown(pageId: string, markdown: string): Promise<{ pageId: string; blocksAdded: number }>;
+  /** Creates a page with markdown as its body. Resolves the parent by id and kind. */
+  createPage(input: {
+    parentId: string;
+    parentType: "page" | "database";
+    title: string;
+    markdown: string;
+  }): Promise<{ pageId: string; url: string; blocksAdded: number }>;
+}
+
 const COMPOSIO_PROXY_URL = "https://backend.composio.dev/api/v3/tools/execute/proxy";
 
 type ProxyFetch = typeof fetch;
@@ -54,7 +71,7 @@ async function notionViaProxy(
       parameters,
     }),
   });
-  if (!res.ok) throw new Error(`Notion read failed (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(`Notion ${init.method} ${path} failed (HTTP ${res.status}).`);
   return res.json();
 }
 
@@ -121,6 +138,63 @@ function toHit(raw: Record<string, unknown>): NotionSearchHit {
 }
 
 const NOTION_VERSION = "2022-06-28";
+
+/**
+ * The write half of the Notion client, over the same Composio proxy as the
+ * reader. A page is appended to in chunks of 100 blocks (Notion's per-request
+ * cap); each chunk that lands is reported so a failure mid-page leaves a
+ * partial effect the caller can see rather than a silent success.
+ */
+export function composioNotionWriteClient(
+  connectedAccountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+  fetchImpl: ProxyFetch = fetch,
+): NotionWriteClient {
+  const apiKey = env.COMPOSIO_API_KEY;
+  if (!apiKey) throw new Error("COMPOSIO_API_KEY is not set.");
+  const call = (path: string, init: { method: string; body?: unknown; query?: Record<string, string> }) =>
+    notionViaProxy(fetchImpl, apiKey, connectedAccountId, path, init);
+
+  return {
+    async appendMarkdown(pageId, markdown) {
+      const { markdownToBlocks, chunkBlocks } = await import("./blocks");
+      const chunks = chunkBlocks(markdownToBlocks(markdown));
+      if (chunks.length === 0) return { pageId, blocksAdded: 0 };
+      let added = 0;
+      for (const children of chunks) {
+        await call(`/v1/blocks/${pageId}/children`, { method: "PATCH", body: { children } });
+        added += children.length;
+      }
+      return { pageId, blocksAdded: added };
+    },
+    async createPage(input) {
+      const { markdownToBlocks, chunkBlocks } = await import("./blocks");
+      const chunks = chunkBlocks(markdownToBlocks(input.markdown));
+      // Only the first chunk can be sent with the create call; the rest are
+      // appended afterwards, which is why the body is chunked up front.
+      const [first = [], ...rest] = chunks;
+      const created = (await call("/v1/pages", {
+        method: "POST",
+        body: {
+          parent: input.parentType === "database" ? { database_id: input.parentId } : { page_id: input.parentId },
+          properties:
+            input.parentType === "database"
+              ? { title: { title: [{ type: "text", text: { content: input.title } }] } }
+              : { title: { title: [{ type: "text", text: { content: input.title } }] } },
+          children: first,
+        },
+      })) as { id?: string; url?: string };
+      const pageId = String(created.id ?? "");
+      if (!pageId) throw new Error("Notion did not return a page id.");
+      let added = first.length;
+      for (const children of rest) {
+        await call(`/v1/blocks/${pageId}/children`, { method: "PATCH", body: { children } });
+        added += children.length;
+      }
+      return { pageId, url: String(created.url ?? ""), blocksAdded: added };
+    },
+  };
+}
 
 export function composioNotionClient(
   connectedAccountId: string,

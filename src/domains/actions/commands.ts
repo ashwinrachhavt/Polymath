@@ -20,7 +20,16 @@ import { actionReviews, actionRevisions } from "./schema";
  * refuses the effect when the live resolution no longer matches the pin,
  * and refuses any revision that carries no pin at all.
  */
-const ACCOUNT_PIN_PROVIDERS: Record<string, string> = { "gmail.send": "gmail" };
+/*
+ * Capabilities whose revision pins the account it will act through. A pin is
+ * what makes an approval bind to an identity: a reconnect or a default change
+ * would otherwise let a reviewed write land in a different account.
+ */
+const ACCOUNT_PIN_PROVIDERS: Record<string, string> = {
+  "gmail.send": "gmail",
+  "notion.page.append": "notion",
+  "notion.page.create": "notion",
+};
 
 export type SenderAccountPin =
   | { resolved: true; externalAccountId: string; connectedAccountId: string; alias: string; sender: string }

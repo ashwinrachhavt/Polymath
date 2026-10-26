@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, ChevronDown, Copy, Check, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Markdown } from "@/components/markdown";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
@@ -14,6 +14,8 @@ import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
 import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "./tool-labels";
+import { collectRecords } from "./record-links";
+import { CitedText } from "./cited-text";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -84,6 +86,12 @@ export type ChatSurfaceProps = {
   interrupt?: InterruptCard | null;
   onInterruptAnswer?: (answer: string) => Promise<{ ok: boolean; message?: string }>;
   onInterruptResolve?: (decision: "approved" | "rejected") => Promise<{ ok: boolean; message?: string }>;
+  /**
+   * Sends into the conversation rather than into this run. The shell passes
+   * this when it owns continuity: a finished run has no session, and only the
+   * caller knows how to carry the message into a new segment.
+   */
+  onContinue?: (runId: string, text: string) => Promise<{ ok: true; runId: string } | { ok: false; message: string }>;
 };
 
 export function ChatSurface({
@@ -101,6 +109,7 @@ export function ChatSurface({
   interrupt,
   onInterruptAnswer,
   onInterruptResolve,
+  onContinue,
 }: ChatSurfaceProps) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
@@ -124,6 +133,7 @@ export function ChatSurface({
   });
   const carried = optimisticMessage ?? crossedMessage;
   const [sending, setSending] = useState(false);
+  const router = useRouter();
   const [sendError, setSendError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
@@ -205,6 +215,7 @@ export function ChatSurface({
         ...(tool.detail ? { detail: tool.detail } : {}),
         status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
         tool: tool.label,
+        ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
       }),
     ),
   ];
@@ -237,6 +248,23 @@ export function ChatSurface({
       setSendError(error);
     };
     try {
+      // `onContinue` is the shell's way of keeping one conversation alive
+      // across the runs that implement it: a finished run has no session, so
+      // the surface would otherwise dead-end mid-thought. Without the handler
+      // this is the plain follow-up the run endpoint serves.
+      if (onContinue) {
+        const result = await onContinue(runId, message);
+        if (!result.ok) {
+          restore(result.message);
+          return;
+        }
+        if (result.runId !== runId) {
+          // A new segment answered, so this transcript is no longer the head of
+          // the conversation; the shell re-renders on the new run.
+          router.refresh();
+        }
+        return;
+      }
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -324,7 +352,9 @@ export function ChatSurface({
                 </div>
               ) : block.kind === "reasoning" ? null : (
                 <div key={block.id} className="group/message w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">
-                  <Markdown text={block.text} />
+                  {/* A run's citations apply to its answer, so the markers in
+                      the prose and the list below resolve in one numbering. */}
+                  <CitedText text={block.text} citations={chat.citations} />
                   {block.kind === "assistant" && block.done ? (
                     <MessageToolbar runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
                   ) : null}
@@ -363,8 +393,8 @@ export function ChatSurface({
               <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
             <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
-              {chat.citations.map((citation) => (
-                <li key={`${citation.documentId}:${citation.span.start}`}>
+              {chat.citations.map((citation, index) => (
+                <li key={`${citation.documentId}:${citation.span.start}`} id={`citation-${index}`} className="scroll-mt-4">
                   <p className="font-medium">{citation.title}</p>
                   {/* The passage is evidence for the answer. Chunks arrive
                       mid-sentence, so the line is trimmed to a readable start

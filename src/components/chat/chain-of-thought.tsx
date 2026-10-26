@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Brain, Check, ChevronRight, Loader2, Search, Globe, FileText } from "lucide-react";
 import { cn } from "cn";
+import type { RecordReference } from "./record-links";
+import { RecordCards } from "./record-card";
 
 /*
  * Chain of thought, as AI Elements draws it: one collapsible block that holds
@@ -24,6 +26,12 @@ export type ThoughtStep = {
   status: "running" | "complete" | "error";
   /** The tool's own name, used to pick a mark. */
   tool?: string;
+  /**
+   * Records the step read or wrote. Rendered as cards inside the step, so
+   * "show me my open tasks" can answer in place — the record is the answer,
+   * not a footnote to it.
+   */
+  records?: RecordReference[];
 };
 
 export function ChainOfThought({
@@ -80,6 +88,7 @@ export function ChainOfThought({
                   {step.text}
                 </p>
               ) : null}
+              {step.records && step.records.length > 0 ? <RecordCards records={step.records} /> : null}
             </li>
           ))}
         </ol>
