@@ -153,6 +153,16 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   }
 };
 
+/*
+ * An address-only URL capture keeps its recorded fetch failure: enrichment
+ * proceeding on the bare address is not the page being read after all, and
+ * clearing the reason would leave the inbox claiming "Reading the page now"
+ * forever. Once any text exists the reason is stale and clears.
+ */
+function settledFailureReason(capture: { failureReason: string | null }, bodyText: string): string | null {
+  return bodyText.trim() ? null : capture.failureReason;
+}
+
 async function enrichLeased(
   event: ClaimedOutboxEvent,
   deps: CaptureEnrichmentDeps,
@@ -192,7 +202,7 @@ async function enrichLeased(
     await ownedUpdate(token, captureId, {
       ...base,
       processingState: "enriched",
-      failureReason: null,
+      failureReason: settledFailureReason(capture, body),
       ...RELEASE,
     });
     return;
@@ -222,7 +232,7 @@ async function enrichLeased(
       await ownedUpdate(token, captureId, {
         ...base,
         processingState: "enriched",
-        failureReason: null,
+        failureReason: settledFailureReason(capture, body),
         ...RELEASE,
       });
       return;
@@ -263,7 +273,7 @@ async function enrichLeased(
     domain: parsed.domain?.toLowerCase().trim() || null,
     tags: tags && tags.length > 0 ? tags : null,
     processingState: "enriched",
-    failureReason: null,
+    failureReason: settledFailureReason(capture, body),
     ...RELEASE,
   });
 }
@@ -376,7 +386,7 @@ async function tryJevTriage(
         ...base,
         domain: domainSlug,
         processingState: "enriched",
-        failureReason: unreadable ? "Jev returned an unreadable answer." : null,
+        failureReason: unreadable ? "Jev returned an unreadable answer." : settledFailureReason(capture, cleanText),
         ...RELEASE,
       })
       .where(and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)))

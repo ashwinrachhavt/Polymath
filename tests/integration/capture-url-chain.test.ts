@@ -153,10 +153,11 @@ suite("url capture chain", () => {
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
     // Canonical url-only captures carry text:null until a fetch lands (the URL is
-    // provenance, not the capture), and enrichment proceeding on the address
-    // clears the recorded failure: no stale failure banner after recovery.
+    // provenance, not the capture), and enrichment proceeding on the bare address
+    // KEEPS the recorded failure: the page was never read, so the inbox must not
+    // revert to "Reading the page now" as if a fetch were still in flight.
     expect(row.text).toBeNull();
-    expect(row.failureReason).toBeNull();
+    expect(row.failureReason).toBeTruthy();
   });
 
   it("a claimed fetch (still 'pending' with an outbox lease) and a retrying one (available_at in the future) both hold enrichment", async () => {
