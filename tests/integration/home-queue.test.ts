@@ -80,6 +80,9 @@ suite("home queue", () => {
       payload: {},
       rationale: "task 0.9",
       confidence: "0.9",
+      // Same-risk ties rank newest first; pin the capture older than the
+      // timeless agent card so the merged order is deterministic.
+      createdAt: new Date(Date.now() - 60_000),
       createdBy: auth.userId,
       updatedBy: auth.userId,
     });
