@@ -36,6 +36,8 @@ function card(over: Partial<QueueCardData>): QueueCardData {
     expectedEffect: "On ashwinrachhavt/Polymath#42: add label bug. Nothing is applied automatically.",
     accountAlias: null,
     decisionOnly: true,
+    outcome: null,
+    designUrl: null,
     createdAt: new Date().toISOString(),
     expiresAt: null,
     decidedAt: null,
