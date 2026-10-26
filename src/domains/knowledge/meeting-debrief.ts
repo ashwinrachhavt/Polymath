@@ -48,26 +48,48 @@ export const DEBRIEF_MAX_FOLLOW_UPS = 10;
 
 const response = z.object({
   tasks: z
-    .array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().max(2000).optional() }))
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(200),
+        description: z.string().max(2000).optional(),
+        // ASH-279: an owner and a due date are what make a meeting task
+        // actionable. Both are optional because a transcript often names
+        // neither, and inventing either is worse than leaving it blank.
+        owner: z.string().trim().max(120).optional(),
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        /** The line in the transcript this came from, so the reviewer can check it. */
+        quote: z.string().trim().max(400).optional(),
+      }),
+    )
     .max(DEBRIEF_MAX_TASKS)
     .nullable(),
   notes: z.array(z.object({ title: z.string().trim().min(1).max(200), markdown: z.string().trim().min(1).max(10_000) })).max(DEBRIEF_MAX_NOTES).nullable(),
   followUps: z
-    .array(z.object({ summary: z.string().trim().min(1).max(300), person: z.string().max(120).optional() }))
+    .array(
+      z.object({
+        summary: z.string().trim().min(1).max(300),
+        person: z.string().max(120).optional(),
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }),
+    )
     .max(DEBRIEF_MAX_FOLLOW_UPS)
     .nullable(),
 });
 
 export type DebriefDraft = z.infer<typeof response>;
 
-const SYSTEM = `You debrief a meeting transcript into follow-through for its owner. Return JSON with exactly these keys: {"tasks": [{"title": string, "description"?: string}]|null, "notes": [{"title": string, "markdown": string}]|null, "followUps": [{"summary": string, "person"?: string}]|null}.
-"tasks": concrete to-dos the meeting assigned or implied for the owner; a title is an imperative verb phrase.
+const SYSTEM = `You debrief a meeting transcript into follow-through for its owner. Return JSON with exactly these keys: {"tasks": [{"title": string, "description"?: string, "owner"?: string, "dueDate"?: string, "quote"?: string}]|null, "notes": [{"title": string, "markdown": string}]|null, "followUps": [{"summary": string, "person"?: string, "dueDate"?: string}]|null}.
+"tasks": concrete to-dos the meeting assigned or implied; a title is an imperative verb phrase.
+  "owner": the person the to-do belongs to, exactly as the transcript names them. Omit when the transcript does not say — never guess it is the workspace owner.
+  "dueDate": YYYY-MM-DD, only when the transcript states or unambiguously implies one ("by Friday" from a dated meeting). Omit when it is vague; a wrong date is worse than no date.
+  "quote": the sentence that assigned the task, verbatim, so the owner can check it. Keep it under 400 characters.
 "notes": durable facts, decisions, or context worth keeping after the meeting; markdown bodies, decisions first.
 "followUps": people the owner owes a reply or a nudge, with the person named when the transcript names them.
 Skip anything already settled in the transcript. Return nulls rather than padding - an empty list the owner can add to beats proposals they must reject. ${untrustedDataClauseJsonSafe("transcript")} Debrief only what the transcript says.`;
 
 export type DebriefResult = {
-  artifactId: string;
+  /** The transcript's artifact, or null for a pasted transcript that was never saved. */
+  artifactId: string | null;
   batchKey: string;
   taskProposalIds: string[];
   noteProposalIds: string[];
@@ -116,6 +138,40 @@ export async function debriefMeetingArtifact(
   if (row.kind !== "transcript") throw new DebriefNotAllowedError("Only a meeting transcript can be debriefed.");
   const transcript = (row.plainText ?? "").trim();
   if (!transcript) throw new DebriefNotAllowedError("This artifact has no text to debrief.");
+  return debrief(auth, { transcript, title: row.title, batchRoot: `meeting-debrief:${artifactId}`, artifactId }, deps);
+}
+
+/**
+ * ASH-279: debrief a transcript the owner pasted into the conversation, before
+ * it is saved anywhere. Same batch semantics, keyed on a caller-supplied stable
+ * key instead of an artifact id, so a retried debrief of the same paste
+ * resolves the same proposals.
+ */
+export async function debriefPastedTranscript(
+  auth: AuthContext,
+  input: { transcript: string; title?: string; batchKey: string },
+  deps?: { provider?: GenerationProvider },
+): Promise<DebriefResult> {
+  const transcript = input.transcript.trim();
+  if (!transcript) throw new DebriefNotAllowedError("There is no transcript to read.");
+  return debrief(
+    auth,
+    {
+      transcript,
+      title: input.title?.trim() || "Pasted transcript",
+      batchRoot: `meeting-paste:${input.batchKey}`,
+      artifactId: null,
+    },
+    deps,
+  );
+}
+
+async function debrief(
+  auth: AuthContext,
+  source: { transcript: string; title: string; batchRoot: string; artifactId: string | null },
+  deps?: { provider?: GenerationProvider },
+): Promise<DebriefResult> {
+  const { transcript, title, batchRoot, artifactId } = source;
 
   let provider: GenerationProvider;
   try {
@@ -134,16 +190,23 @@ export async function debriefMeetingArtifact(
   });
   const draft = parseDebriefAnswer(out.text);
 
-  const batchKey = `meeting-debrief:${artifactId}`;
+  const batchKey = batchRoot;
   const taskProposalIds: string[] = [];
   const noteProposalIds: string[] = [];
   const followUpProposalIds: string[] = [];
   let deduplicated = 0;
 
   for (const [i, task] of (draft.tasks ?? []).entries()) {
+    // The owner and the quote are review context, not task fields: they go in
+    // the description so the approver sees who was named and what was actually
+    // said before creating the task. A due date IS a task field.
+    const description = [task.description, task.owner ? `Owner: ${task.owner}` : null, task.quote ? `From the transcript: “${task.quote}”` : null]
+      .filter((part): part is string => Boolean(part))
+      .join("\n\n");
     const r = await proposeTask(auth, {
       title: task.title,
-      description: task.description,
+      ...(description ? { description } : {}),
+      ...(task.dueDate ? { dueAt: `${task.dueDate}T17:00:00.000Z` } : {}),
       dedupeKey: `${batchKey}:task:${i}:${slug(task.title)}`,
     });
     if (r.deduplicated) deduplicated += 1;
@@ -163,6 +226,7 @@ export async function debriefMeetingArtifact(
     const r = await proposeTask(auth, {
       title: title.slice(0, 200),
       description: "Proposed by the meeting debrief; schedule it when you approve.",
+      ...(followUp.dueDate ? { dueAt: `${followUp.dueDate}T17:00:00.000Z` } : {}),
       dedupeKey: `${batchKey}:followup:${i}:${slug(followUp.summary)}`,
     });
     if (r.deduplicated) deduplicated += 1;
@@ -175,9 +239,11 @@ export async function debriefMeetingArtifact(
       auth,
       {
         action: "meeting.debriefed",
-        subjectType: "artifact",
-        subjectId: artifactId,
-        summary: `Debriefed "${row.title}" into ${created} proposal${created === 1 ? "" : "s"}.`,
+        // A pasted transcript has no artifact to hang the audit on, so it is
+        // recorded against the batch itself rather than a null subject.
+        subjectType: artifactId ? "artifact" : "meeting_paste",
+        subjectId: artifactId ?? batchKey,
+        summary: `Debriefed "${title}" into ${created} proposal${created === 1 ? "" : "s"}.`,
         metadata: {
           batchKey,
           taskProposalIds,

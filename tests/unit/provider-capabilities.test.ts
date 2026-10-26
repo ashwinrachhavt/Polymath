@@ -163,6 +163,14 @@ const NATIVE_TOOLS = [
   "web.search",
   "web.fetch",
   "artifacts.revise",
+  // ASH-283: Notion writes are proposal-only capabilities with a local
+  // executor in the actions domain, not gateway-toolkit capabilities.
+  "notion.page.append",
+  "notion.page.create",
+  // ASH-279 / ASH-306: first-party reads and propose-only operations whose
+  // implementation lives in this repo rather than behind a provider toolkit.
+  "meetings.debrief",
+  "records.browse",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 

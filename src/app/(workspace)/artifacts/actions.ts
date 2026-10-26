@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { debriefMeetingArtifact, DebriefNotAllowedError, DebriefUnusableAnswerError } from "@/domains/knowledge/meeting-debrief";
+import { designBriefFromArtifact, DesignBriefNotAllowedError, DesignBriefUnusableAnswerError } from "@/domains/knowledge/design-brief";
 import { draftFromLibrary, LibraryEmptyError, WritingUnusableAnswerError } from "@/domains/knowledge/library-writing";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -54,5 +55,30 @@ export async function debriefArtifactAction(input: { artifactId: string }): Prom
       return { ok: false, error: error.message };
     }
     return { ok: false, error: error instanceof Error ? error.message : "The debrief did not run." };
+  }
+}
+
+/*
+ * Design brief (ASH-286, partial). One click turns a research artifact into a
+ * structured design brief saved as a memo artifact; the Canva handoff is a
+ * later change with its own approval gate, so this action never proposes or
+ * sends anything.
+ */
+
+type BriefResult = { ok: true; briefArtifactId: string; title: string; existing: boolean } | { ok: false; error: string };
+
+export async function designBriefArtifactAction(input: { artifactId: string }): Promise<BriefResult> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  if (!UUID.test(input.artifactId)) return { ok: false, error: "Malformed artifact id." };
+  try {
+    const result = await designBriefFromArtifact(auth, input.artifactId);
+    revalidatePath("/artifacts");
+    return { ok: true, briefArtifactId: result.briefArtifactId, title: result.title, existing: result.existing };
+  } catch (error) {
+    if (error instanceof DesignBriefNotAllowedError || error instanceof DesignBriefUnusableAnswerError) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: false, error: error instanceof Error ? error.message : "The brief did not run." };
   }
 }

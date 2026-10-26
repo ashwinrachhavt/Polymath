@@ -309,8 +309,8 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "jev",
     capability: "classify",
     freeClass: "unverified",
-    enabled: false,
-    allowPaidUsage: false,
+    enabled: true,
+    allowPaidUsage: true,
     allowPaidFallback: false,
     sensitiveDataAllowed: false,
     quota: null,
@@ -318,8 +318,11 @@ const REGISTRY: readonly ProviderEntry[] = [
     verificationSource: "https://docs.typesafe.ai/models",
     notes:
       "The product is real and the docs match (jev-1.14.0/jev-1.13.0, $0.042/M input tokens, free " +
-      "output tokens, 64k request / 32k question context) — but no recurring free allowance exists. " +
-      "Cheap is not free: stays disabled until an explicit paid-usage decision.",
+      "output tokens, 64k request / 32k question context). Enabled 2026-10-25 on the owner's explicit " +
+      "decision now that TYPESAFE_API_KEY is in place. No recurring free allowance exists, so spend is " +
+      "bounded by JEV_MONTHLY_INPUT_TOKENS in the quota ledger, not by this entry: an unset or zero " +
+      "allowance still hard-stops before any call. Only the uncertain cases pay — the rules classifier " +
+      "decides first, and Jev runs on documents and captures the rules could not settle.",
   },
 ];
 

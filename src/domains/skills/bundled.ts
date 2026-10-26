@@ -89,6 +89,32 @@ relevant section instead. The proposal is a draft for review - creating the
 issue in Linear is a separate, deliberate act.`,
   ),
   bundled(
+    "design-brief",
+    "Design brief",
+    "Turn a research card into a structured design brief, ready for review.",
+    `# Design brief
+
+Turn one research card (a report, memo, document, note, or zettel card) into a
+design brief with exactly these fields: title, objective, audience, key
+message, tone, format, visual direction, deliverables, constraints, call to
+action.
+
+1. Read the card in full before writing anything. In the app, the card's own
+   "Design brief" action runs this procedure and saves the brief as a memo
+   artifact; in chat, work from the card the owner pasted or found for you.
+2. "format" is one of Canva's presets: doc, whiteboard, or presentation.
+3. Ground every field in the card. A field the card does not support is null,
+   never invented - no brand facts, audiences, or constraints from nowhere.
+4. Keep the key message to one sentence; a brief with three key messages has
+   none.
+5. Close by naming what the brief leaves open, so the reviewer knows what to
+   check.
+
+The Canva handoff is not available: no supported route transfers brief
+content into Canva yet, so never claim a design was or will be created. The
+saved brief is the deliverable; the handoff is a separate, later step.`,
+  ),
+  bundled(
     "meeting-notes",
     "Meeting notes",
     "Turn a transcript into decisions, owners, and dates without commentary.",

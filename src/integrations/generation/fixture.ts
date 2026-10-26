@@ -6,7 +6,8 @@ import { GenerationUnconfiguredError } from "./provider";
  * free, and local. It answers only the owner-invoked generation
  * surfaces by the marker phrase in their system prompts, so journeys can
  * click through the whole pipeline - debrief, prep, library draft, learning
- * path, profile research - without a model key or a cent of spend. Anything
+ * path, profile research, design brief - without a model key or a cent of
+ * spend. Anything
  * else gets the honest unconfigured error, which callers already treat as a
  * skip.
  *
@@ -87,6 +88,22 @@ function linearIssueAnswer(): string {
   });
 }
 
+function designBriefAnswer(): string {
+  return JSON.stringify({
+    title: "Q3 roadmap one-pager",
+    objective: "Give the sales team a single page that explains what ships in Q3 and why it matters.",
+    audience: "Account executives preparing for renewal conversations.",
+    keyMessage: "Q3 delivers the reporting and billing controls customers asked for.",
+    tone: ["confident", "plainspoken"],
+    format: "doc",
+    visualDirection:
+      "A single-column document with a bold summary header, one section per theme, and a small table for the ship dates.",
+    deliverables: ["One-page doc", "Five-slide overview deck"],
+    constraints: ["Must read well printed in black and white"],
+    callToAction: "Book a roadmap walkthrough with the team.",
+  });
+}
+
 export function fixtureProvider(): GenerationProvider {
   return {
     name: "fixture:e2e",
@@ -100,6 +117,7 @@ export function fixtureProvider(): GenerationProvider {
       if (system.includes("company profile card set")) return { text: companyProfileAnswer() };
       if (system.includes("person profile card set")) return { text: personProfileAnswer() };
       if (system.includes("Linear issue proposal")) return { text: linearIssueAnswer() };
+      if (system.includes("research card into a design brief")) return { text: designBriefAnswer() };
       throw new GenerationUnconfiguredError();
     },
   };

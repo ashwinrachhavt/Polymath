@@ -5,6 +5,8 @@ import { Check, ChevronRight, CircleDashed, ExternalLink, Loader2 } from "lucide
 import { cn } from "cn";
 import type { ChatState } from "./use-chat-stream";
 import { INTERNAL_TOOLS, toolLabel } from "./tool-labels";
+import { collectRecords } from "./record-links";
+import { RecordCards } from "./record-card";
 
 /*
  * Tool activity as the conversation shows it, in the style of a good agent
@@ -71,6 +73,10 @@ function ToolPill({ tool }: { tool: ToolEntry }) {
           />
         ) : null}
       </button>
+      {/* Records a read returned render as cards under the pill, without an
+          expand: "show me my open tasks" should show the tasks, not a chip
+          that hides them behind a click. */}
+      <ToolRecords output={tool.output} />
       {open && hasPayload ? (
         <div className="mt-1 max-h-72 overflow-auto rounded-lg border border-border bg-card p-3">
           <ToolInput input={tool.input} />
@@ -79,6 +85,13 @@ function ToolPill({ tool }: { tool: ToolEntry }) {
       ) : null}
     </div>
   );
+}
+
+/** The records a read returned, as cards. Null when the output carries none. */
+function ToolRecords({ output }: { output: unknown }) {
+  const records = collectRecords(output);
+  if (records.length === 0) return null;
+  return <RecordCards records={records} />;
 }
 
 /*
