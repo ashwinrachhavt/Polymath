@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { AppLauncher } from "@/components/shell/app-launcher";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayer } from "@/components/shell/command-layer";
 
@@ -12,7 +13,7 @@ import { CommandLayer } from "@/components/shell/command-layer";
  * launcher, and the account menu. The launcher sits next to the avatar,
  * Google-apps-style, so all "leave this app" affordances live in one corner.
  */
-export function TopBar({ clerkConfigured }: { clerkConfigured: boolean }) {
+export function TopBar({ clerkConfigured, interfaceMode = "action" }: { clerkConfigured: boolean; interfaceMode?: "library" | "action" }) {
   return (
     <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur max-[420px]:px-4">
       <PathBreadcrumb />
@@ -27,6 +28,7 @@ export function TopBar({ clerkConfigured }: { clerkConfigured: boolean }) {
         >
           <ShieldCheck aria-hidden className="size-4" />
         </Link>
+        <ModeToggle resolved={interfaceMode} />
         <ThemeToggle />
         <AppLauncher />
         <UserMenu configured={clerkConfigured} />
