@@ -6,13 +6,18 @@ import postgres from "postgres";
  * reached by real navigation from Today, driving the real server action
  * against the same Postgres the server reads. The seeded-fixture screenshots
  * only proved layout; this spec proves route + nav + scroll + data actions
- * end to end. The CI e2e database is scratch (migrations applied per run),
- * so no production apply or new authority is involved.
+ * end to end, and returns real-route desktop/mobile pixels as artifacts.
  *
- * Seeds the two states the product cannot produce on demand in a keyless
- * run - a parkable inbox capture and a live focus session - the way the
- * other data-dependent journeys do (helpers/runs.ts pattern), then cleans
- * up everything it wrote, including the shutdown log artifacts.
+ * ISOLATION: this spec writes log artifacts and day pins, so unlike the
+ * lighter seeding journeys it refuses to run against anything but an
+ * explicitly isolated database: the CI scratch instance (axiom_e2e) or a
+ * database whose name marks it as test/scratch. A shared local or user
+ * database makes the spec skip, never write.
+ *
+ * CLEANUP: every row this run writes is deleted by its exact fixture-owned
+ * id - the seeded capture and session, plus the shutdown log artifact, its
+ * versions, and its day pin, whose id the confirmation's "Open the log"
+ * link hands back directly. No time-bounded sweeps.
  */
 
 const marker = `e2e-shutdown-${Date.now()}`;
@@ -20,6 +25,7 @@ const marker = `e2e-shutdown-${Date.now()}`;
 let workspaceId: string | null = null;
 let captureId: string | null = null;
 let sessionId: string | null = null;
+let logArtifactId: string | null = null;
 
 function connection(): string | null {
   if (!process.env.DATABASE_URL) {
@@ -32,44 +38,36 @@ function connection(): string | null {
   return process.env.DATABASE_URL ?? null;
 }
 
+function isIsolatedDatabase(url: string): boolean {
+  try {
+    const name = new URL(url).pathname.replace(/^\//, "");
+    return /e2e|test|scratch/i.test(name);
+  } catch {
+    return false;
+  }
+}
+
 test.afterAll(async () => {
   const url = connection();
-  if (!url) return;
+  if (!url || !isIsolatedDatabase(url)) return;
   const client = postgres(url, { max: 1 });
   try {
+    if (logArtifactId) {
+      // artifact_versions cascades from artifacts; pins must go first.
+      await client`delete from day_artifact_pins where artifact_id = ${logArtifactId}`;
+      await client`delete from artifacts where id = ${logArtifactId}`;
+    }
     if (captureId) await client`delete from captures where id = ${captureId}`;
     if (sessionId) await client`delete from focus_sessions where id = ${sessionId}`;
-    if (workspaceId) {
-      // Only rows this run could have written: time-bounded, marker-day shutdown logs.
-      await client`
-        delete from day_artifact_pins
-        where workspace_id = ${workspaceId}
-          and created_at > now() - interval '15 minutes'
-      `;
-      await client`
-        delete from artifact_versions
-        where artifact_id in (
-          select id from artifacts
-          where workspace_id = ${workspaceId}
-            and title like 'Shutdown log %'
-            and created_at > now() - interval '15 minutes'
-        )
-      `;
-      await client`
-        delete from artifacts
-        where workspace_id = ${workspaceId}
-          and title like 'Shutdown log %'
-          and created_at > now() - interval '15 minutes'
-      `;
-    }
   } finally {
     await client.end();
   }
 });
 
-test("the shutdown ritual closes a real day end to end", async ({ page }) => {
+test("the shutdown ritual closes a real day end to end", async ({ page }, testInfo) => {
   const url = connection();
   test.skip(!url, "no database configured");
+  test.skip(!isIsolatedDatabase(url!), "refusing to write shutdown artifacts outside an isolated test database");
 
   // Provision the dev owner the way the other journeys rely on.
   await page.goto("/command-center/briefing");
@@ -94,8 +92,7 @@ test("the shutdown ritual closes a real day end to end", async ({ page }) => {
   captureId = cap.id;
 
   // A live focus session the ritual must ask about, never close silently.
-  // (The CI scratch database holds no other session; on a shared local
-  // database an already-live session would surface instead of this one.)
+  // (The isolated database holds no other session.)
   const [sess] = await client<{ id: string }[]>`
     insert into focus_sessions (workspace_id, subject, state, started_at)
     values (${workspaceId}, ${`Live session ${marker}`}, 'running', now())
@@ -117,12 +114,24 @@ test("the shutdown ritual closes a real day end to end", async ({ page }) => {
   // Park the seeded capture; Playwright scrolls the long form for real.
   await page.getByRole("checkbox", { name: `Park me ${marker}` }).check();
 
+  // Real-route pixels, desktop form first: the filled ritual before apply.
+  await page.screenshot({ path: testInfo.outputPath("shutdown-real-desktop-form.png"), fullPage: true });
+
   await page.getByRole("button", { name: "Close the day" }).click();
 
-  // The confirmation reports exactly what happened.
+  // The confirmation reports exactly what happened and hands back the log id.
   await expect(page.getByText("Day closed")).toBeVisible();
   await expect(page.getByText("Focus session: finish")).toBeVisible();
   await expect(page.getByText("1 capture parked")).toBeVisible();
+  const logHref = await page.getByRole("link", { name: "Open the log" }).getAttribute("href");
+  logArtifactId = logHref ? new URL(logHref, "http://localhost").searchParams.get("id") : null;
+  expect(logArtifactId).toBeTruthy();
+
+  // Real-route pixels: desktop confirmation, then the same state at a phone
+  // viewport (client state survives the resize, so this is the done panel).
+  await page.screenshot({ path: testInfo.outputPath("shutdown-real-desktop-done.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath("shutdown-real-mobile-done.png"), fullPage: true });
 
   // Database truth: the capture is parked and the session finished with the
   // stated outcome - the actions ran, not just the form.

@@ -157,6 +157,14 @@ jobs:
           name: e2e-report
           path: e2e-report.json
           if-no-files-found: warn
+      # ASH-305 integration gate: real-route shutdown pixels (desktop form,
+      # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shutdown-real-route-pixels
+          path: test-results/**/shutdown-real-*.png
+          if-no-files-found: warn
       # The Canva handoff's async journey (approve -> import_started -> sweep
       # -> terminal settle) runs in its own invocation against the explicit,
       # nonproduction-only import fixture: a global CANVA_IMPORT_PROVIDER
