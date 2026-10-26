@@ -112,7 +112,7 @@ export function renderBriefMarkdown(brief: DesignBrief, sourceTitle: string): st
   return [
     `# ${brief.title}`,
     "",
-    `_Design brief from "${sourceTitle}". The Canva handoff is not available yet; this brief is the reviewable record._`,
+    `*Design brief from "${sourceTitle}". The Canva handoff is not available yet; this brief is the reviewable record.*`,
     "",
     `**Format:** ${brief.format}`,
     "",

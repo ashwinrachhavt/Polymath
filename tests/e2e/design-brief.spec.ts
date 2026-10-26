@@ -135,7 +135,9 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText(`Design brief from "${SOURCE_TITLE}"`)).toBeVisible();
     await expect(page.getByText("The Canva handoff is not available yet")).toBeVisible();
     await expect(page.getByText("Account executives preparing for renewal conversations.")).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/design-brief-page-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+    // Full-page stitching paints the sticky mobile nav mid-content; only the
+    // desktop page is captured full-length, mobile proves at the real viewport.
+    await page.screenshot({ path: `test-results/feature-pixels/design-brief-page-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
