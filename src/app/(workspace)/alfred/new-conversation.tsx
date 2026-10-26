@@ -11,8 +11,6 @@ import {
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
-import { announceChatStarted } from "@/components/chat/chat-events";
-import { InPlaceChat } from "@/components/chat/in-place-chat";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
 
 /*
@@ -31,7 +29,14 @@ import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
  * A failed start keeps the draft. Losing typed text on a send that did not
  * happen is the worst failure this screen can produce.
  */
-export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
+export function NewConversation({
+  skills = [],
+  onStarted,
+}: {
+  skills?: PickableSkill[];
+  /** The run id and the words that started it; the home swaps to the transcript. */
+  onStarted: (started: { runId: string; message: string }) => void;
+}) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const [skillId, setSkillId] = useState("");
@@ -39,8 +44,6 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
-  // Set on send: the conversation then renders in place, replacing the composer.
-  const [started, setStarted] = useState<{ runId: string; message: string } | null>(null);
 
   /*
    * Record search for the plus menu. ComposerPlus reports open state and
@@ -131,31 +134,16 @@ export function NewConversation({ skills = [] }: { skills?: PickableSkill[] }) {
         setError(result.message);
         return;
       }
-      // The conversation opens here, not on another route: the runId mounts
-      // ChatSurface in place below, and the typed message crosses as the
-      // optimistic message until the stream echoes it. No navigation, no
-      // reload, no lost focus.
-      setStarted({ runId: result.runId, message: objective });
-      announceChatStarted();
+      // The conversation opens in the home's started state, not on another
+      // route: the runId mounts the transcript in place, and the typed message
+      // crosses as the optimistic message until the stream echoes it. No
+      // navigation, no reload, no lost focus.
+      onStarted({ runId: result.runId, message: objective });
     } catch {
       setError("The conversation could not start. Check the connection and try again.");
     } finally {
       setPending(false);
     }
-  }
-
-  // A started conversation replaces the composer in place: the run streams
-  // here, on the home, with no navigation. The URL follows once the person
-  // wants to share or reload; the conversation itself never moved.
-  if (started) {
-    return (
-      <InPlaceChat
-        runId={started.runId}
-        subject={{ type: "project", id: "" }}
-        optimisticMessage={started.message}
-        className="mx-auto flex h-[min(72dvh,720px)] w-full max-w-3xl flex-col"
-      />
-    );
   }
 
   return (

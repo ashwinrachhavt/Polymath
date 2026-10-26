@@ -54,10 +54,8 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 
   // Checkpoint mints the next immutable version, listed in History.
-  await openDetails(page);
   await page.getByRole("button", { name: "Save checkpoint" }).click();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
-  await openDetails(page);
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByText("Version 2", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -110,11 +108,10 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   await page.getByLabel("Markdown source").fill(`see [[${targetTitle}]]`);
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-  // The target reads the reverse edge; following it lands on the source,
-  // whose own panel shows the forward edge.
+  // The target reads the reverse edge inline under the body; the source's own
+  // inspector still carries the forward reference.
   await page.goto(targetUrl);
-  await openDetails(page);
-  await expect(page.getByText("Links to this note", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Backlinks/ })).toBeVisible();
   await page.getByRole("link", { name: sourceTitle, exact: true }).click();
   await expect(page.getByLabel("Note title")).toHaveValue(sourceTitle);
   await openDetails(page);

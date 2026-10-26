@@ -12,7 +12,8 @@ import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
-import { X } from "lucide-react";
+import { X, History, Info, Link2, Plus } from "lucide-react";
+import { NotebookListToggle } from "./notebook-workspace";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -37,7 +38,7 @@ import { X } from "lucide-react";
 const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), {
   ssr: false,
   loading: () => (
-    <div role="status" aria-label="Loading the editor" className="min-h-48 animate-pulse rounded-md border border-border bg-muted/30 p-4 text-[13px] text-muted-foreground">
+    <div role="status" aria-label="Loading the editor" className="min-h-48 animate-pulse text-[16px] text-muted-foreground">
       Loading the editor…
     </div>
   ),
@@ -76,27 +77,31 @@ const AI_HEADINGS: Record<NoteAIRequest["action"], string> = {
 
 const AI_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
-export function NewNoteButton() {
+/** Rendered as a labelled button in the empty states, as an icon in the note's top row. */
+export function NewNoteButton({ icon = false }: { icon?: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const create = async () => {
+    setPending(true);
+    setError("");
+    const result = await createNoteAction({ title: "Untitled note", idempotencyKey: crypto.randomUUID() });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    router.push(`/alfred/notes?id=${result.artifactId}`);
+    router.refresh();
+  };
   return (
     <span className="inline-flex items-center gap-2">
-      <Button
-        type="button"
-        disabled={pending}
-        onClick={async () => {
-          setPending(true);
-          setError("");
-          const result = await createNoteAction({ title: "Untitled note", idempotencyKey: crypto.randomUUID() });
-          setPending(false);
-          if (!result.ok) return setError(result.error);
-          router.push(`/alfred/notes?id=${result.artifactId}`);
-          router.refresh();
-        }}
-      >
-        {pending ? "Creating…" : "New note"}
-      </Button>
+      {icon ? (
+        <Button type="button" variant="ghost" size="icon-sm" disabled={pending} aria-label="New note" onClick={create}>
+          <Plus aria-hidden className="text-muted-foreground" />
+        </Button>
+      ) : (
+        <Button type="button" disabled={pending} onClick={create}>
+          {pending ? "Creating…" : "New note"}
+        </Button>
+      )}
       {error && <span role="alert" className="text-[13px] text-destructive">{error}</span>}
     </span>
   );
@@ -113,7 +118,7 @@ const RELATION_OPTIONS: [string, string][] = RELATION_TYPES.map((t) => [t, RELAT
 const RELATION_NAME: Record<string, string> = { ...Object.fromEntries(RELATION_OPTIONS), reference: "Linked" };
 
 /* Name what a link means and why, or remove it. Similarity is not a relationship. */
-function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: string; linkType: string; context: string | null }; outgoing: boolean }) {
+function LinkEditor({ noteId, link, outgoing, quiet }: { noteId: string; link: { id: string; linkType: string; context: string | null }; outgoing: boolean; quiet?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState(link.linkType === "reference" ? "related" : link.linkType);
@@ -131,7 +136,7 @@ function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: st
     router.refresh();
   };
   if (!open) {
-    return <button type="button" onClick={() => setOpen(true)} className="ml-2 text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">Edit</button>;
+    return <button type="button" onClick={() => setOpen(true)} className={`${quiet ? "" : "ml-2 "}text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}>Edit</button>;
   }
   return (
     <div className="mt-1.5 flex flex-col gap-1.5 rounded-md border border-border bg-background p-2">
@@ -151,6 +156,40 @@ function LinkEditor({ noteId, link, outgoing }: { noteId: string; link: { id: st
       </div>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
+  );
+}
+
+/*
+ * A backlink is a reading artifact, not a form row: the note that points here,
+ * one line of the context it points with, and nothing that looks like a box.
+ * It sits under the body so a zettel's incoming edges are visible while
+ * reading, not hidden behind the details inspector.
+ */
+function BacklinkRow({ noteId, link }: { noteId: string; link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null } }) {
+  const context = link.context?.replace(/\s+/g, " ").trim();
+  return (
+    <li className="group">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span aria-hidden className="text-muted-foreground/60 transition-colors group-hover:text-muted-foreground group-focus-within:text-muted-foreground">↖</span>
+        <Link
+          href={`/alfred/notes?id=${link.id}`}
+          className="rounded-sm text-[14px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {link.title}
+        </Link>
+        {link.kind === "zettel" && <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">zettel</span>}
+        {/* Editing a link is an action on the row, not part of reading it:
+            quiet until the row is hovered or focused, still reachable by tab. */}
+        <span className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <LinkEditor noteId={noteId} link={link} outgoing={false} quiet />
+        </span>
+      </div>
+      {(context || link.excerpt) && (
+        <p className="mt-0.5 pl-5 text-[12px] leading-5 text-muted-foreground/80">
+          {context ? `…${context.length > 200 ? `${context.slice(0, 200).trimEnd()}…` : context}…` : link.excerpt}
+        </p>
+      )}
+    </li>
   );
 }
 
@@ -524,18 +563,62 @@ export function NoteEditor({
   }, []);
 
   /*
-   * The page is the note: one centered column with the title and the writing
-   * surface, and everything else behind the Note details inspector on the
-   * right (properties, checkpoints, history, links, related, the editing
-   * mode). Chrome appears on demand - the formatting toolbar floats up on a
+   * The page is the note: one centered reading column, title as display type,
+   * a hairline-thin row of quiet actions, the writing surface, and the
+   * backlinks at the foot. Everything else - properties, checkpoints, history,
+   * references, related, the editing mode - lives behind the details
+   * inspector. Chrome appears on demand: the formatting toolbar floats up on a
    * selection, "/" opens blocks, "[[" links a note.
    */
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex max-w-[720px] flex-col gap-4 pb-24">
+        <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-24 sm:px-6">
+          <div className="mb-8 flex h-8 items-center justify-between">
+            <NotebookListToggle />
+            <div className="flex items-center gap-1">
+              <NewNoteButton icon />
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="History" disabled={!historyReady}>
+                    <History aria-hidden className="text-muted-foreground" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogTitle>Version history</DialogTitle>
+                  <DialogDescription>Every checkpoint is immutable - this is what the note said, when.</DialogDescription>
+                  {history.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground">No checkpoints yet.</p>
+                  ) : (
+                    <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                      {history.map((v) => (
+                        <li key={v.id} className="rounded-md border border-border px-3 py-2 text-[13px]">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="font-medium">Version {v.versionNumber}</span>
+                            <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` · ${v.note}` : ""}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </DialogContent>
+              </Dialog>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Note details"
+                aria-expanded={detailsOpen}
+                aria-controls="note-details"
+                onClick={() => setDetailsOpen((open) => !open)}
+              >
+                <Info aria-hidden className="text-muted-foreground" />
+              </Button>
+            </div>
+          </div>
           {localOffer && (
-            <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
+            <div role="status" className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40">
               <span>Unsent changes from {stamp(localOffer.savedAt)} were found in this browser.</span>
               <Button type="button" size="sm" variant="outline" onClick={() => { updateMarkdown(localOffer.markdown); setLocalOffer(null); }}>
                 Restore
@@ -558,25 +641,38 @@ export function NoteEditor({
             </div>
           )}
           <div>
-            <input
-              ref={titleRef}
-              aria-label="Note title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={rename}
-              placeholder="Untitled note"
-              style={{ fontFamily: "var(--font-display)" }}
-              className="w-full bg-transparent text-[32px] font-medium leading-tight outline-none placeholder:text-muted-foreground/50"
-            />
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2">
+              <input
+                ref={titleRef}
+                aria-label="Note title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={rename}
+                placeholder="Untitled note"
+                style={{ fontFamily: "var(--font-display)" }}
+                className="w-full min-w-0 bg-transparent text-[32px] font-medium leading-tight tracking-tight outline-none placeholder:text-muted-foreground/50"
+              />
+              {outlinks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  aria-label={`${outlinks.length} ${outlinks.length === 1 ? "reference" : "references"} in this note`}
+                  className="mt-2 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+                >
+                  <Link2 aria-hidden className="size-3" />
+                  {outlinks.length} {outlinks.length === 1 ? "reference" : "references"}
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex min-h-5 flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
-              {saveState === "error" && <span role="status">Not saved</span>}
+              {saveState === "error" && <span role="status" className="text-destructive">Not saved</span>}
               <span>Updated {stamp(updatedAt)}</span>
               <span className="flex-1" />
-              <Button type="button" variant="ghost" size="sm" aria-expanded={detailsOpen} aria-controls="note-details" onClick={() => setDetailsOpen((open) => !open)}>
-                Note details
+              <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
+                {pending ? "Saving…" : "Save checkpoint"}
               </Button>
             </div>
             {indexNotice && (
@@ -585,9 +681,11 @@ export function NoteEditor({
               </div>
             )}
           </div>
-          <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
+          <div className="mt-6">
+            <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
+          </div>
           {ai && (
-            <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="mt-6 flex flex-col gap-2 rounded-lg border border-border p-3">
               <div className="flex items-center gap-2">
                 <Status>AI · {ai.heading}</Status>
                 <span className="text-xs text-muted-foreground">
@@ -625,46 +723,32 @@ export function NoteEditor({
               )}
             </div>
           )}
-          {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+          {error && <p role="alert" className="mt-4 text-[13px] text-destructive">{error}</p>}
+          {/* Backlinks are part of reading the note, not a property of it:
+              they sit at the foot of the document, always visible, so the
+              reader sees what this note is part of. */}
+          <section aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
+            <h2 className="text-xs font-medium text-muted-foreground">
+              Backlinks <span className="tabular-nums">{backlinks.length}</span>
+            </h2>
+            {backlinks.length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted-foreground/80">
+                No notes link here yet. Another note links to this one when it writes [[{title.trim() || "this title"}]].
+              </p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-2.5">
+                {backlinks.map((link) => (
+                  <BacklinkRow key={link.id} noteId={noteId} link={link} />
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent id="note-details" className="overflow-y-auto p-5 pt-12">
           <SheetTitle>Note details</SheetTitle>
-          <SheetDescription className="sr-only">Properties, history and connections for this note.</SheetDescription>
-            <section aria-label="Note actions" className="flex flex-col gap-2">
-              <h2 className="text-xs font-medium text-muted-foreground">Note</h2>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={checkpoint} disabled={pending || saveState === "saving"}>
-                  {pending ? "Saving…" : "Save checkpoint"}
-                </Button>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button type="button" size="sm" variant="outline" disabled={!historyReady}>History</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogTitle>Version history</DialogTitle>
-                    <DialogDescription>Every checkpoint is immutable - this is what the note said, when.</DialogDescription>
-                    {history.length === 0 ? (
-                      <p className="text-[13px] text-muted-foreground">No checkpoints yet.</p>
-                    ) : (
-                      <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-                        {history.map((v) => (
-                          <li key={v.id} className="rounded-md border border-border px-3 py-2 text-[13px]">
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="font-medium">Version {v.versionNumber}</span>
-                              <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
-                            </span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">{v.reason}{v.note ? ` · ${v.note}` : ""}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </DialogContent>
-                </Dialog>
-              </div>
-              <Link className="w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={`/alfred/graph?focus=${noteId}`}>Show in graph</Link>
-            </section>
+          <SheetDescription className="sr-only">Properties, checkpoints, history and connections for this note.</SheetDescription>
             <section aria-label="Properties" className="flex flex-col gap-2">
               <h2 className="text-xs font-medium text-muted-foreground">Properties</h2>
               <dl aria-label="Note properties" className="flex flex-col gap-2 text-[13px]">
@@ -714,6 +798,7 @@ export function NoteEditor({
                   <dd className="text-xs">v{initialVersion}</dd>
                 </div>
               </dl>
+              <Link className="w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={`/alfred/graph?focus=${noteId}`}>Show in graph</Link>
             </section>
             <section aria-label="Editing mode" className="flex flex-col gap-2">
               <h2 className="text-xs font-medium text-muted-foreground">Editing mode</h2>
@@ -724,7 +809,6 @@ export function NoteEditor({
             </section>
             {(outlinks.length > 0 || backlinks.length > 0) && (
               <section aria-label="Links" className="flex flex-col gap-3">
-                <h2 className="text-xs font-medium text-muted-foreground">Links</h2>
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">References</p>
                   <ul className="mt-1 flex flex-col gap-0.5">
@@ -732,15 +816,6 @@ export function NoteEditor({
                       <LinkRow key={link.id} noteId={noteId} outgoing link={link} label="Reference" />
                     ))}
                     {outlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Links to this note</p>
-                  <ul className="mt-1 flex flex-col gap-0.5">
-                    {backlinks.map((link) => (
-                      <LinkRow key={link.id} noteId={noteId} outgoing={false} link={link} label="Linked from" />
-                    ))}
-                    {backlinks.length === 0 && <li className="text-[13px] text-muted-foreground">No notes link here yet.</li>}
                   </ul>
                 </div>
               </section>

@@ -14,7 +14,7 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { markdownToPlainText } from "@/lib/display-text";
 import { NewNoteButton, NoteEditor } from "./note-editor";
-import { NotebookWorkspace } from "./notebook-workspace";
+import { NotebookListToggle, NotebookWorkspace } from "./notebook-workspace";
 import { SearchResults, type SearchScope } from "./search-results";
 import { SEARCH_KINDS } from "@/domains/knowledge/retrieval";
 
@@ -27,9 +27,9 @@ export const metadata = { title: "Notes · Polymath" };
  * /apps/alfred notebook screen redirect here — one surface, one source of
  * truth.
  *
- * The page is the note: a slim collapsible list on the left, the note in one
- * centered column, and its properties, links and history behind the Note
- * details inspector (DESIGN.md § Minimalism).
+ * The page is the note: a slim collapsible list on the left, and the note in
+ * one centered reading column - title, body, and its backlinks. Properties,
+ * checkpoints, references and history stay behind the Note details inspector.
  */
 
 export function noteMarkdown(content: NoteContent | null): string {
@@ -248,10 +248,9 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
 
   return (
     <div className="suite-screen">
-      <header className="mb-5 flex items-center justify-between gap-3">
-        <h1 className="text-[13px] font-medium text-muted-foreground">Notes</h1>
-        {selected && <NewNoteButton />}
-      </header>
+      {/* No page header: the note's own top row carries the list toggle and
+          its actions, and the empty states carry the one action they offer.
+          A "Notes" title above the column would only repeat the list's. */}
       <NotebookWorkspace list={noteList}>
         {selected ? (
           <NoteEditor
@@ -278,20 +277,23 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             related={related}
           />
         ) : list.q && !kanban ? (
-          // Same 720px reading column as the editor and empty states: ranked
+          // Same reading column as the editor and empty states: ranked
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
-          <div className="mx-auto max-w-[720px] px-3 py-12">
+          <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
+            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             {areaUnavailable ?? <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />}
           </div>
         ) : found.total === 0 ? (
-          <div className="mx-auto max-w-[720px] px-3 py-12">
+          <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
+            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h2>
             <p className="mt-2 text-[13px] text-muted-foreground">It autosaves as you type, and every checkpoint becomes an immutable version.</p>
             <div className="mt-5"><NewNoteButton /></div>
           </div>
         ) : (
-          <div className="mx-auto max-w-[720px] px-3 py-12">
+          <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
+            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h2>
             <div className="mt-5"><NewNoteButton /></div>
           </div>

@@ -10,7 +10,10 @@ import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageFeedback } from "./message-feedback";
 import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
-import { ToolPills } from "./tool-pills";
+import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
+import { AgentPanel, type AgentPanelData } from "./agent-panel";
+import { Confirmation, type InterruptCard } from "./confirmation";
+import { toolLabel } from "./tool-labels";
 
 /**
  * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
@@ -72,6 +75,15 @@ export type ChatSurfaceProps = {
    */
   showHeader?: boolean;
   className?: string;
+  /** Who is working, shown above the transcript. Server-resolved from the run's frozen snapshot. */
+  agent?: AgentPanelData;
+  /**
+   * What the run is waiting on, when it has stopped for a person. Rendered
+   * above the composer so the answer goes where the question already is.
+   */
+  interrupt?: InterruptCard | null;
+  onInterruptAnswer?: (answer: string) => Promise<{ ok: boolean; message?: string }>;
+  onInterruptResolve?: (decision: "approved" | "rejected") => Promise<{ ok: boolean; message?: string }>;
 };
 
 export function ChatSurface({
@@ -85,6 +97,10 @@ export function ChatSurface({
   title,
   showHeader = true,
   className,
+  agent,
+  interrupt,
+  onInterruptAnswer,
+  onInterruptResolve,
 }: ChatSurfaceProps) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
@@ -159,6 +175,39 @@ export function ChatSurface({
   const lastAssistantIndex = transcript.map((b) => b.kind).lastIndexOf("assistant");
 
   const lastText = transcript[lastAssistantIndex]?.text;
+
+  /*
+   * The chain of thought for the current turn: every reasoning block and tool
+   * call in arrival order, as one collapsible. The answer stays the thing being
+   * read; the working is one press away.
+   *
+   * Tools are keyed by callId and reasoning blocks by their own id, so the list
+   * is stable across a reconnect (a replayed frame updates a step in place
+   * rather than appending a second copy).
+   */
+  const steps: ThoughtStep[] = [
+    ...chat.blocks
+      .filter((block) => block.kind === "reasoning" && block.text.trim() !== "")
+      .map(
+        (block): ThoughtStep => ({
+          id: block.id,
+          kind: "reasoning",
+          label: block.done ? "Reasoned through the question" : "Reasoning",
+          text: block.text,
+          status: block.done ? "complete" : "running",
+        }),
+      ),
+    ...chat.tools.map(
+      (tool): ThoughtStep => ({
+        id: `tool:${tool.callId}`,
+        kind: "tool",
+        label: toolLabel(tool.label),
+        ...(tool.detail ? { detail: tool.detail } : {}),
+        status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
+        tool: tool.label,
+      }),
+    ),
+  ];
 
   // Keep the newest text in view as it streams, without fighting a reader who
   // has scrolled up: only follow when already near the bottom.
@@ -260,24 +309,21 @@ export function ChatSurface({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
         <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
+        {agent ? <AgentPanel agent={agent} /> : null}
         {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
-          <p className="max-w-xl text-[13px] leading-relaxed text-muted-foreground">
+          <p className="text-muted-foreground max-w-xl text-[13px] leading-relaxed">
             {emptyText ??
               `Ask a question. Answers cite the ${subject.type === "project" ? "pinned sources" : "sources"} they use.`}
           </p>
         ) : (
-          <div className="mx-auto w-full max-w-[var(--page-width)] space-y-4">
+          <div className="w-full space-y-4">
             {chat.blocks.map((block) =>
               block.kind === "user" ? (
                 <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
                   {block.text}
                 </div>
-              ) : block.kind === "reasoning" ? (
-                // The model's visible rationale, collapsed: evidence for the
-                // answer above it, not the thing being read.
-                <ThinkingPill key={block.id} text={block.text} done={block.done} />
-              ) : (
-                <div key={block.id} className="group/message mx-auto w-full max-w-[var(--page-width)] font-[family-name:var(--font-reading)] text-[16px] leading-7">
+              ) : block.kind === "reasoning" ? null : (
+                <div key={block.id} className="group/message w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">
                   <Markdown text={block.text} />
                   {block.kind === "assistant" && block.done ? (
                     <MessageToolbar runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
@@ -295,10 +341,11 @@ export function ChatSurface({
                 {entry.text}
               </div>
             ))}
+            {/* The working, after the turn's answer: reasoning and tool calls
+                as one block rather than a pill per step. */}
+            <ChainOfThought steps={steps} streaming={busy} />
           </div>
         )}
-
-        <ToolPills tools={chat.tools} />
 
         {chat.citations.length > 0 && (
           <details className="group mt-3 rounded-xl border border-border text-[12px]">
@@ -341,6 +388,21 @@ export function ChatSurface({
         )}
         </div>
       </div>
+
+      {/*
+       * The interrupt sits directly above the composer, not at the top of the
+       * page: it is the next thing to do, and the reply that resolves it goes
+       * into the box below.
+       */}
+      {interrupt ? (
+        <div className="pb-2">
+          <Confirmation
+            card={interrupt}
+            {...(onInterruptAnswer ? { onAnswer: onInterruptAnswer } : {})}
+            {...(onInterruptResolve ? { onResolve: onInterruptResolve } : {})}
+          />
+        </div>
+      ) : null}
 
       {chat.connection === "done" && !chat.lastFailedTurn ? (
         // A finished run refuses follow-ups (409 run_finished): no dead input,
