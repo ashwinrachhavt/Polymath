@@ -24,6 +24,15 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "wiki.ingest",
   "wiki.lint",
   "gmail.send",
+  // ASH-283: a Notion write is a proposal, and the proposal is refused before
+  // it is created unless the run was granted the capability.
+  "notion.page.append",
+  "notion.page.create",
+  // ASH-279: reads a meeting transcript and proposes tasks from it. The
+  // proposals themselves still need tasks.create, which is separate.
+  "meetings.debrief",
+  // ASH-306: listing records is navigation, the same authority as reading them.
+  "records.browse",
   // Connected reads. A capability in the risk table but absent here can never
   // be granted: the policy snapshot copies this list verbatim, so the tool is
   // advertised to the model and denied on every call.
@@ -131,6 +140,10 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
     // gateway tool, so a profile without it makes the tool a dead 403.
     const gained = [
       "documents.search",
+      "notion.page.append",
+      "notion.page.create",
+      "meetings.debrief",
+      "records.browse",
       "wiki.read",
       "wiki.ingest",
       "wiki.lint",

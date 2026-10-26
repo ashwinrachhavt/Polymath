@@ -1,36 +1,30 @@
-import { Suspense, type ReactNode } from "react";
-import Link from "next/link";
+import { Suspense } from "react";
 import { io } from "next/cache";
 import { redirect } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
 import { isWorkspaceOnboarded } from "@/domains/agents/onboarding";
-import { listRecentRuns } from "@/domains/agents/queries";
+import { getProfileModelPolicy, listRecentRuns } from "@/domains/agents/queries";
+import { availableModels, resolveModelId } from "@/domains/agents/models";
 import { listSkills } from "@/domains/skills/queries";
-import { timeAgo, timeAgoShort } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import { NewConversation } from "./new-conversation";
-import { HomeGreeting } from "./home-greeting";
-import { listConversations } from "@/domains/conversations/queries";
-import { HistoryMenu } from "./history-menu";
-import { ModelPicker } from "./model-picker";
 import type { PickableSkill } from "./skills/slash-skill-menu";
-import { getProfileModelPolicy } from "@/domains/agents/queries";
-import { availableModels, resolveModelId } from "@/domains/agents/models";
+import { groupHistory, type HistoryRow } from "./history";
+import { HomeSurface } from "./home-surface";
 
 export const metadata = { title: "Polymath" };
 
 /*
  * Polymath is home: one composer, then the conversations that already exist.
- * The rail names the destination, so the page opens with the question
- * rather than a title restating it (agents/design.md: no oversized H1s, the
- * greeting is the whole of the header here).
+ * The rail names the destination, so the page opens with the question rather
+ * than a title restating it (agents/design.md: no oversized H1s, the greeting
+ * is the whole of the header here).
  *
  * A fresh workspace shows the greeting and the composer and nothing else. An
- * empty "Recent" block would be chrome promising history the person has not
- * written yet; the composer is already the invitation.
+ * empty history block would be chrome promising conversations the person has
+ * not had yet; the composer is already the invitation.
  */
 
 export async function AlfredSurface() {
@@ -38,14 +32,14 @@ export async function AlfredSurface() {
   await io();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
-      <Home>
+      <div className="page-content flex flex-1 flex-col gap-10 pt-16">
         <div className="mx-auto w-full max-w-3xl">
           <EmptyState
             title="Agent storage is not configured"
             description="Set DATABASE_URL and apply the database migrations to view runs. Agent execution also needs an Eve runtime and model credentials (EVE_BASE_URL and OPENAI_API_KEY). Set EVE_BRIDGE_SECRET (32+ characters, shared with the Eve agent) to sign runs to Eve."
           />
         </div>
-      </Home>
+      </div>
     );
   }
 
@@ -56,25 +50,18 @@ export async function AlfredSurface() {
   if (!(await isWorkspaceOnboarded(auth.workspaceId))) {
     redirect("/onboarding");
   }
-  // The history reads and the model policy are independent: issue them together
+  // The history read and the model policy are independent: issue them together
   // so the page costs one round trip per query rather than one per query in
   // sequence.
-  const [runs, conversationThreads, skillRows, modelPolicy] = await Promise.all([
-    // One query feeds both views: the menu is the history, so it needs more than
-    // the five rows shown under the composer. Fifty is a bounded read, not the
-    // whole table, so the page stays cheap as history grows.
+  const [runs, skillRows, modelPolicy] = await Promise.all([
+    // Every conversation on this surface is a run, so runs are the history.
+    // Fifty is a bounded read, not the whole table, and it is deep enough that
+    // the grouped list still reaches "Older" for a regular user.
     listRecentRuns(auth.workspaceId, 50),
-    // Conversation threads (the retired Conversations surface) stay discoverable
-    // inside the chat history control: same query bound as the run history, and
-    // the thread pages themselves are untouched so every old link keeps working.
-    listConversations(auth),
     // Only enabled skills can be pinned; the engine refuses anything else.
     listSkills(auth, { enabled: true }),
     getProfileModelPolicy(auth.workspaceId, "alfred"),
   ]);
-  // The dropdown is the complete history; the list under the composer is the
-  // five most recent. One array, two views.
-  const recent = runs.slice(0, 5);
   const skills: PickableSkill[] = skillRows.map((skill) => ({
     id: skill.id,
     name: skill.name,
@@ -87,69 +74,30 @@ export async function AlfredSurface() {
   const stored = (modelPolicy as { primary?: unknown } | null)?.primary;
   const currentModel = resolveModelId(stored);
 
-  return (
-    <Home>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-        {conversationThreads.length > 0 ? (
-          <div className="flex">
-            <HistoryMenu
-              groups={[
-                {
-                  key: "threads",
-                  label: "Threads",
-                  rows: conversationThreads.map((thread) => ({
-                    id: thread.id,
-                    objective: thread.title || "Untitled conversation",
-                    time: timeAgoShort(thread.lastMessageAt ?? thread.updatedAt),
-                    href: `/command-center/conversations/${thread.id}`,
-                  })),
-                },
-              ]}
-            />
-          </div>
-        ) : null}
-        <NewConversation skills={skills} />
-        <ModelPicker models={models} current={currentModel} />
-        {unavailable ? (
-          <p role="status" className="text-muted-foreground text-[12px]">
-            {unavailable}
-          </p>
-        ) : null}
-      </div>
+  const rows: HistoryRow[] = runs.map((run) => ({
+    id: run.id,
+    title: displayTitle(run.objective) || "Untitled conversation",
+    href: `/alfred/${run.id}`,
+    at: run.createdAt,
+  }));
 
-      {recent.length > 0 ? (
-        <section className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-          <ul className="divide-border flex flex-col divide-y border-t">
-            {recent.map((run) => (
-              <li key={run.id}>
-                <Link
-                  href={`/alfred/${run.id}`}
-                  className="hover:bg-muted/50 flex items-center gap-3 py-2.5 text-[13px]"
-                >
-                  <span className="min-w-0 flex-1 truncate">{displayTitle(run.objective)}</span>
-                  <span className="text-muted-foreground shrink-0 text-[11px]">
-                    {timeAgo(run.createdAt)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </Home>
+  return (
+    <HomeSurface
+      history={groupHistory(rows)}
+      skills={skills}
+      models={models}
+      currentModel={currentModel}
+      notice={unavailable}
+    />
   );
 }
 
-/** The one frame both the configured and unconfigured states share. */
-function Home({ children }: { children: ReactNode }) {
-  return (
-    <div className="page-content flex flex-1 flex-col gap-10 pt-16">
-      <HomeGreeting />
-      {children}
-    </div>
-  );
-}
-
+/*
+ * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
+ * prerender a route that awaits `io()` outside one, and the workspace group's
+ * loading.tsx shell does not count. The fallback matches the shell so a
+ * navigation does not flash a second skeleton.
+ */
 export default function AlfredPage() {
   return (
     <Suspense fallback={<AlfredSkeleton />}>
