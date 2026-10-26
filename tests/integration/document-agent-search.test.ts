@@ -208,6 +208,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       // ASH-282: proposing a calendar move persists a review card - an
       // internal write that still fails closed without the grant.
       "calendar.propose",
+      // ASH-287: proposing a CRM contact persists a review card - an internal
+      // write that still fails closed without the grant.
+      "crm.contact.create",
       "records.browse",
       "gmail.read",
       "gmail.thread.read",
@@ -295,6 +298,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       // ASH-282: proposing a calendar move persists a review card - an
       // internal write that still fails closed without the grant.
       "calendar.propose",
+      // ASH-287: proposing a CRM contact persists a review card - an internal
+      // write that still fails closed without the grant.
+      "crm.contact.create",
       "records.browse",
       "wiki.read",
       "wiki.ingest",
