@@ -12,6 +12,7 @@ import {
   Puzzle,
   Settings,
   ShieldCheck,
+  Scale,
   Sparkles,
   SquareCheckBig,
   Target,
@@ -42,8 +43,15 @@ export type Destination = {
   group: AppSlug | "shared";
 };
 
-/** Array order is rail order. The Polymath conversation leads because a conversation is the first move. */
+/** Array order is rail order. Decisions lead: the product is a decision engine (ASH-309). */
 export const destinations: Destination[] = [
+  {
+    href: "/",
+    label: "Decisions",
+    purpose: "Decide what agents and captures propose.",
+    icon: Scale,
+    group: "shared",
+  },
   {
     href: "/alfred",
     label: "Polymath",
@@ -221,4 +229,4 @@ export const moreDestination = {
 };
 
 /** Where the wordmark sends you. */
-export const homeHref = "/alfred";
+export const homeHref = "/";
