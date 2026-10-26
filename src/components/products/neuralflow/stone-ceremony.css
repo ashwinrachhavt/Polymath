@@ -1,0 +1,115 @@
+/* ASH-311: the stone ceremony. A short, quiet reveal when the canonical
+   completion path awards the daily Quartz - never a modal, never blocking:
+   the card floats above the list, work continues underneath, and it leaves
+   on its own. Motion is CSS-driven so the OS reduced-motion setting stills
+   it (the in-app Reduce-motion preference is not wired to the DOM anywhere
+   yet - MotionProvider makes the same OS-only choice for JS animation). */
+
+.stone-ceremony {
+  position: fixed;
+  inset-inline-end: 16px;
+  inset-block-end: 16px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.stone-ceremony-card {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 340px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+
+.stone-ceremony-card[data-motion="full"] {
+  animation: stone-ceremony-in 480ms ease-out both;
+}
+
+@keyframes stone-ceremony-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.stone-ceremony-card[data-motion="full"] .stone-ceremony-art {
+  animation: stone-ceremony-turn 640ms ease-out both;
+}
+
+@keyframes stone-ceremony-turn {
+  from {
+    opacity: 0;
+    transform: rotateY(70deg) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.stone-ceremony-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stone-ceremony-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.stone-ceremony-line {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+.stone-ceremony-sentence {
+  font-style: italic;
+}
+
+.stone-ceremony-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.stone-ceremony-sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.stone-ceremony-sound input {
+  size: 14px;
+}
+
+.stone-ceremony-dismiss {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stone-ceremony-card,
+  .stone-ceremony-card .stone-ceremony-art {
+    animation: none;
+  }
+}
