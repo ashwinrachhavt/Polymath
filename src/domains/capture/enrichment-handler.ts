@@ -1,31 +1,23 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
+import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
 import {
-  OutboxParkError,
-  type ClaimedOutboxEvent,
-  type OutboxHandler,
-} from "@/domains/audit/outbox";
+  EnrichmentLeaseLostError,
+  RELEASE,
+  acquireEnrichmentLease,
+  ownedUpdate,
+  releaseEnrichmentLease,
+} from "./enrichment-lease";
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
   generationProvider,
 } from "@/integrations/generation/provider";
-import {
-  JevRequestError,
-  JevUnconfiguredError,
-  type JevAnswer,
-} from "@/integrations/jev/client";
-import {
-  JevDisabledError,
-  jevClassifier,
-  type ClassifyJudger,
-} from "@/integrations/jev/provider";
+import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
+import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
 import { providerEntry } from "@/integrations/providers/registry";
-import {
-  JEV_QUESTIONS_VERSION,
-  captureQuestions,
-} from "@/integrations/jev/questions";
+import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/questions";
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
@@ -42,12 +34,7 @@ import {
 } from "@/integrations/transcription/provider";
 import { captureProposals, captures } from "./schema";
 import { triageCapture } from "./jev-classify";
-import {
-  LLM_MAX_INPUT_CHARS,
-  LLM_THRESHOLD_CHARS,
-  MAX_TAGS,
-  classifyCapture,
-} from "./classification";
+import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } from "./classification";
 /*
  * The capture enrichment ladder, as an outbox consumer. Ordered after the URL
  * handler so a URL capture has its fetched reading text before classifying.
@@ -89,132 +76,32 @@ export type CaptureEnrichmentDeps = {
   transcriber?: TranscriptionProvider;
 };
 
-export const captureEnrichmentRequestedHandler: OutboxHandler = (event) =>
-  runCaptureEnrichment(event);
+export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
 
-/*
- * ASH-305 enrichment lease. Longest honest run: transcription (60s) + Jev
- * (30s) + generation fallback (30s) = 120s of provider time, so 5 minutes
- * clears it with margin for quota admission and storage reads. A crashed run
- * blocks its redelivery for at most this long. If a run ever outlives the
- * lease it is fenced out, not trusted: its writes match no row and it stops.
- * That bounds duplicate paid calls to the expiry case; it is not exactly-once
- * across expiry.
- */
-export const ENRICHMENT_LEASE_MS = 5 * 60_000;
-const RELEASE = {
-  enrichmentLeaseToken: null,
-  enrichmentLeaseUntil: null,
-} as const;
-
-class EnrichmentLeaseLostError extends Error {
-  constructor() {
-    super("enrichment lease lost");
-    this.name = "EnrichmentLeaseLostError";
-  }
-}
-
-/** A write by the lease holder only; zero rows means someone else holds or finished the capture. */
-async function ownedUpdate(
-  token: string,
-  captureId: string,
-  set: Partial<typeof captures.$inferInsert>,
-) {
-  const rows = await db
-    .update(captures)
-    .set(set)
-    .where(
-      and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)),
-    )
-    .returning({ id: captures.id });
-  if (rows.length === 0) throw new EnrichmentLeaseLostError();
-}
-
-export const runCaptureEnrichment = async (
-  event: ClaimedOutboxEvent,
-  deps: CaptureEnrichmentDeps = {},
-) => {
+export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: CaptureEnrichmentDeps = {}) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(
-      `${CAPTURE_ENRICHMENT_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`,
-    );
+    throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
   }
   const captureId =
-    typeof (raw as { captureId?: unknown }).captureId === "string"
-      ? (raw as { captureId: string }).captureId
-      : null;
-  if (!captureId)
-    throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} is missing captureId`);
+    typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
+  if (!captureId) throw new Error(`${CAPTURE_ENRICHMENT_TOPIC} is missing captureId`);
 
-  const [capture] = await db
-    .select()
-    .from(captures)
-    .where(eq(captures.id, captureId))
-    .limit(1);
+  const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
-  if (
-    capture.processingState !== "unprocessed" &&
-    capture.processingState !== "classifying"
-  )
-    return;
+  if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
   // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
   if (capture.parkedAt) return;
 
-  const token = crypto.randomUUID();
-  const acquired = await db
-    .update(captures)
-    .set({
-      enrichmentLeaseToken: token,
-      enrichmentLeaseUntil: new Date(Date.now() + ENRICHMENT_LEASE_MS),
-    })
-    .where(
-      and(
-        eq(captures.id, captureId),
-        eq(captures.workspaceId, event.workspaceId),
-        inArray(captures.processingState, ["unprocessed", "classifying"]),
-        sql`${captures.parkedAt} is null`,
-        sql`(${captures.enrichmentLeaseUntil} is null or ${captures.enrichmentLeaseUntil} <= now())`,
-      ),
-    )
-    .returning({ id: captures.id });
-  if (acquired.length === 0) {
-    const [now] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, captureId))
-      .limit(1);
-    if (
-      !now ||
-      (now.processingState !== "unprocessed" &&
-        now.processingState !== "classifying") ||
-      now.parkedAt
-    )
-      return;
-    // Another run holds the lease: look again when it should be done. A park
-    // counts no attempt, so a busy capture never dead-letters this event.
-    const remaining =
-      (now.enrichmentLeaseUntil?.getTime() ?? Date.now()) - Date.now();
-    throw new OutboxParkError(
-      Math.min(Math.max(remaining + 1000, 5000), ENRICHMENT_LEASE_MS),
-      "capture is being enriched",
-    );
-  }
+  const token = await acquireEnrichmentLease(event, capture);
+  if (!token) return;
 
   try {
     await enrichLeased(event, deps, capture, token);
   } catch (cause) {
     if (cause instanceof EnrichmentLeaseLostError) return;
     // A failed attempt frees the claim so the redelivery isn't parked behind its own corpse.
-    await db
-      .update(captures)
-      .set(RELEASE)
-      .where(
-        and(
-          eq(captures.id, captureId),
-          eq(captures.enrichmentLeaseToken, token),
-        ),
-      );
+    await releaseEnrichmentLease(token, captureId);
     throw cause;
   }
 };
@@ -236,12 +123,7 @@ async function enrichLeased(
   // provider ERROR stays redeliverable, like the other tiers.
   let textForLadder = capture.text ?? "";
   if (capture.kind === "voice" && !capture.text) {
-    const transcript = await transcribeVoiceCapture(
-      token,
-      capture,
-      event,
-      deps.transcriber,
-    );
+    const transcript = await transcribeVoiceCapture(token, capture, event, deps.transcriber);
     if (transcript === null) return;
     textForLadder = transcript;
   }
@@ -251,8 +133,7 @@ async function enrichLeased(
 
   // The LLM tier reads prose only: a URL, code block, or contact block gains
   // nothing from a model naming it, and every skipped call is free.
-  const wantsLlm =
-    structure === "prose" && cleanText.length >= LLM_THRESHOLD_CHARS;
+  const wantsLlm = structure === "prose" && cleanText.length >= LLM_THRESHOLD_CHARS;
 
   const base = {
     cleanText: cleanText || null,
@@ -282,16 +163,7 @@ async function enrichLeased(
   // generation prompt below with byte-identical behavior. A Jev request
   // error fails the event for redelivery; an unreadable answer degrades to a
   // low-confidence note proposal, never a crash and never a silent skip.
-  const jev = await tryJevTriage(
-    token,
-    captureId,
-    event.workspaceId,
-    capture,
-    base,
-    cleanText,
-    structure,
-    deps.judger,
-  );
+  const jev = await tryJevTriage(token, captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
   if (jev === "handled") return;
 
   let provider: ReturnType<typeof generationProvider>;
@@ -320,10 +192,7 @@ async function enrichLeased(
     });
     parsed = response.parse(JSON.parse(out.text));
   } catch (cause) {
-    if (
-      cause instanceof GenerationRequestError ||
-      cause instanceof GenerationUnconfiguredError
-    ) {
+    if (cause instanceof GenerationRequestError || cause instanceof GenerationUnconfiguredError) {
       throw cause; // redeliverable: quota exhaustion, provider down, malformed reply
     }
     // A readable-but-wrong model answer is not a transient condition worth
@@ -352,8 +221,7 @@ async function enrichLeased(
   });
 }
 
-const noul = (answer: JevAnswer | undefined): number =>
-  answer && answer.type === "noul" ? answer.noul : Number.NaN;
+const noul = (answer: JevAnswer | undefined): number => (answer && answer.type === "noul" ? answer.noul : Number.NaN);
 
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
@@ -404,11 +272,7 @@ async function tryJevTriage(
     answers = result.answers;
     model = result.model;
   } catch (cause) {
-    if (
-      cause instanceof JevDisabledError ||
-      cause instanceof JevUnconfiguredError
-    )
-      return "fallback";
+    if (cause instanceof JevDisabledError || cause instanceof JevUnconfiguredError) return "fallback";
     if (cause instanceof JevRequestError) throw cause; // redeliverable, like generation errors
     throw cause;
   }
@@ -448,10 +312,7 @@ async function tryJevTriage(
   // taxonomy - a hallucinated slug is a rejected write, never stored.
   let domainSlug: string | null = null;
   if (triage.domainSlug) {
-    const path = await resolveTaxonomyPath(
-      { workspaceId },
-      { slugs: [triage.domainSlug] },
-    );
+    const path = await resolveTaxonomyPath({ workspaceId }, { slugs: [triage.domainSlug] });
     domainSlug = path ? path[0].slug : null;
   }
 
@@ -471,12 +332,7 @@ async function tryJevTriage(
         failureReason: unreadable ? "Jev returned an unreadable answer." : null,
         ...RELEASE,
       })
-      .where(
-        and(
-          eq(captures.id, captureId),
-          eq(captures.enrichmentLeaseToken, token),
-        ),
-      )
+      .where(and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)))
       .returning({ id: captures.id });
     // Lease lost: a newer holder owns this capture; this run files nothing.
     if (!claimed) throw new EnrichmentLeaseLostError();
@@ -538,15 +394,8 @@ async function transcribeVoiceCapture(
     });
     return null;
   }
-  const [blob] = await db
-    .select()
-    .from(blobObjects)
-    .where(eq(blobObjects.id, capture.blobId))
-    .limit(1);
-  if (!blob)
-    throw new Error(
-      `voice capture ${capture.id} points at missing blob ${capture.blobId}`,
-    );
+  const [blob] = await db.select().from(blobObjects).where(eq(blobObjects.id, capture.blobId)).limit(1);
+  if (!blob) throw new Error(`voice capture ${capture.id} points at missing blob ${capture.blobId}`);
   const bytes = await readBlob(blob.storageKey);
 
   const entry = providerEntry(provider.registryId);

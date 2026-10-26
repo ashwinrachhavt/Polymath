@@ -3,11 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OutboxParkError } from "@/domains/audit/outbox";
 import { outboxEvents } from "@/domains/audit/schema";
 import { captureProposals, captures } from "@/domains/capture/schema";
-import {
-  makeTestDb,
-  ownerAuth,
-  seedWorkspace,
-} from "../helpers/test-workspace";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * Parking against the real enrichment handler (ASH-305): the proposals a run
@@ -38,16 +34,10 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const PROSE =
-  "A thought about how the quarterly planning should be restructured around fewer, larger bets. ".repeat(
-    5,
-  );
+const PROSE = "A thought about how the quarterly planning should be restructured around fewer, larger bets. ".repeat(5);
 
 async function seed(tag: string) {
-  const { userId, workspaceId } = await seedWorkspace(
-    db,
-    `parking-${tag}-${Date.now()}`,
-  );
+  const { userId, workspaceId } = await seedWorkspace(db, `parking-${tag}-${Date.now()}`);
   const [capture] = await db
     .insert(captures)
     .values({
@@ -79,10 +69,7 @@ const event = (workspaceId: string, captureId: string) =>
   }) as never;
 
 const proposalsOf = (captureId: string) =>
-  db
-    .select()
-    .from(captureProposals)
-    .where(eq(captureProposals.captureId, captureId));
+  db.select().from(captureProposals).where(eq(captureProposals.captureId, captureId));
 
 suite("capture parking and enrichment idempotency", () => {
   it("forced overlap: the second run is parked behind the lease, the model is called exactly once, one set of proposals", async () => {
@@ -96,10 +83,7 @@ suite("capture parking and enrichment idempotency", () => {
       await gate;
     });
     const b = judger();
-    const runA = enrichment.runCaptureEnrichment(
-      event(workspaceId, capture.id),
-      { judger: a as never },
-    );
+    const runA = enrichment.runCaptureEnrichment(event(workspaceId, capture.id), { judger: a as never });
     await inModelCall;
     await expect(
       enrichment.runCaptureEnrichment(event(workspaceId, capture.id), {
@@ -115,10 +99,7 @@ suite("capture parking and enrichment idempotency", () => {
     expect(a.calls).toBe(1);
     expect(b.calls).toBe(0);
     expect(await proposalsOf(capture.id)).toHaveLength(1);
-    const [row] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row).toMatchObject({
       processingState: "enriched",
       enrichmentLeaseToken: null,
@@ -137,10 +118,7 @@ suite("capture parking and enrichment idempotency", () => {
       await gate;
     });
     const fresh = judger();
-    const runStale = enrichment.runCaptureEnrichment(
-      event(workspaceId, capture.id),
-      { judger: stale as never },
-    );
+    const runStale = enrichment.runCaptureEnrichment(event(workspaceId, capture.id), { judger: stale as never });
     await inModelCall;
     // The lease expires (the holder stalled past it).
     await db
@@ -152,19 +130,13 @@ suite("capture parking and enrichment idempotency", () => {
     });
     expect(fresh.calls).toBe(1);
     expect(await proposalsOf(capture.id)).toHaveLength(1);
-    const [done] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [done] = await db.select().from(captures).where(eq(captures.id, capture.id));
     // The stale holder finally returns: its CAS matches no row, files nothing, changes nothing.
     release();
     await runStale;
     expect(stale.calls).toBe(1);
     expect(await proposalsOf(capture.id)).toHaveLength(1);
-    const [after] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [after] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(after.processingState).toBe("enriched");
     expect(after.updatedAt).toEqual(done.updatedAt);
   });
@@ -183,10 +155,7 @@ suite("capture parking and enrichment idempotency", () => {
         judger: failing as never,
       }),
     ).rejects.toThrow("provider down");
-    const [row] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.enrichmentLeaseToken).toBeNull();
     const ok = judger();
     await enrichment.runCaptureEnrichment(event(workspaceId, capture.id), {
@@ -226,17 +195,11 @@ suite("capture parking and enrichment idempotency", () => {
 
   it("crash recovery still works: a capture left classifying is finished by the redelivered event", async () => {
     const { workspaceId, capture } = await seed("crash");
-    await db
-      .update(captures)
-      .set({ processingState: "classifying" })
-      .where(eq(captures.id, capture.id));
+    await db.update(captures).set({ processingState: "classifying" }).where(eq(captures.id, capture.id));
     await enrichment.runCaptureEnrichment(event(workspaceId, capture.id), {
       judger: judger() as never,
     });
-    const [row] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
     expect(await proposalsOf(capture.id)).toHaveLength(1);
   });
@@ -252,41 +215,22 @@ suite("capture parking and enrichment idempotency", () => {
         });
       }) as never,
     });
-    const [row] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
     expect(row.parkedAt).not.toBeNull();
     expect(await proposalsOf(capture.id)).toHaveLength(1);
 
-    expect(
-      await queries.listPendingCaptureProposals(auth, capture.id),
-    ).toHaveLength(0);
-    expect(
-      (await queries.listCapturesWithPendingProposals(auth, [capture.id])).size,
-    ).toBe(0);
-    expect(
-      (await home.listHomeQueue(workspaceId)).filter(
-        (card) => card.origin === "capture",
-      ),
-    ).toHaveLength(0);
+    expect(await queries.listPendingCaptureProposals(auth, capture.id)).toHaveLength(0);
+    expect((await queries.listCapturesWithPendingProposals(auth, [capture.id])).size).toBe(0);
+    expect((await home.listHomeQueue(workspaceId)).filter((card) => card.origin === "capture")).toHaveLength(0);
 
     await parking.unparkCapture(auth, {
       captureId: capture.id,
       expectedVersion: parked.version + 1,
     });
-    expect(
-      await queries.listPendingCaptureProposals(auth, capture.id),
-    ).toHaveLength(1);
-    expect(
-      (await queries.listCapturesWithPendingProposals(auth, [capture.id])).size,
-    ).toBe(1);
-    expect(
-      (await home.listHomeQueue(workspaceId)).filter(
-        (card) => card.origin === "capture",
-      ),
-    ).toHaveLength(1);
+    expect(await queries.listPendingCaptureProposals(auth, capture.id)).toHaveLength(1);
+    expect((await queries.listCapturesWithPendingProposals(auth, [capture.id])).size).toBe(1);
+    expect((await home.listHomeQueue(workspaceId)).filter((card) => card.origin === "capture")).toHaveLength(1);
   });
 
   it("park, then the claimed event returns early, then unpark: the paused work runs once and proposals are not doubled", async () => {
@@ -321,17 +265,11 @@ suite("capture parking and enrichment idempotency", () => {
     const queued = await db
       .select()
       .from(outboxEvents)
-      .where(
-        and(
-          eq(outboxEvents.workspaceId, workspaceId),
-          eq(outboxEvents.topic, "capture.enrichment_requested"),
-        ),
-      );
+      .where(and(eq(outboxEvents.workspaceId, workspaceId), eq(outboxEvents.topic, "capture.enrichment_requested")));
     expect(queued).toHaveLength(2);
     // Both now deliver, in either order: the CAS leaves one set of proposals.
     const j = judger();
-    for (const e of queued)
-      await enrichment.runCaptureEnrichment(e as never, { judger: j as never });
+    for (const e of queued) await enrichment.runCaptureEnrichment(e as never, { judger: j as never });
     expect(j.calls).toBe(1);
     expect(await proposalsOf(capture.id)).toHaveLength(1);
   });
@@ -341,10 +279,7 @@ suite("capture parking and enrichment idempotency", () => {
     await enrichment.runCaptureEnrichment(event(workspaceId, capture.id), {
       judger: judger() as never,
     });
-    const [enriched] = await db
-      .select()
-      .from(captures)
-      .where(eq(captures.id, capture.id));
+    const [enriched] = await db.select().from(captures).where(eq(captures.id, capture.id));
     const parked = await parking.parkCapture(auth, {
       captureId: capture.id,
       expectedVersion: enriched.version,
@@ -353,12 +288,7 @@ suite("capture parking and enrichment idempotency", () => {
       captureId: capture.id,
       expectedVersion: parked.version,
     });
-    expect(
-      await db
-        .select()
-        .from(outboxEvents)
-        .where(eq(outboxEvents.workspaceId, workspaceId)),
-    ).toHaveLength(0);
+    expect(await db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, workspaceId))).toHaveLength(0);
     expect(await proposalsOf(capture.id)).toHaveLength(1);
   });
 });

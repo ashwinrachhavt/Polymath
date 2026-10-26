@@ -127,6 +127,8 @@ export async function unparkCaptureInTx(tx: TxDrizzle, auth: AuthContext, input:
         topic: CAPTURE_ENRICHMENT_TOPIC,
         payload: { captureId: updated.id },
         dispatchKey: `capture-enrichment:${updated.id}:unpark-v${updated.version}`,
+        // Same ordering as creation: a URL capture's page text lands first.
+        ...(updated.url && !updated.text ? { availableAt: new Date(Date.now() + 30_000) } : {}),
       });
     }
   }
