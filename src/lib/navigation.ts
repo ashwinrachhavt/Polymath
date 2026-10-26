@@ -40,7 +40,7 @@ export type Destination = {
   /** What the owner does here, in the owner's words — used as the page subtitle. */
   purpose: string;
   icon: LucideIcon;
-  group: AppSlug | "shared";
+  group: AppSlug | "shared" | "home";
 };
 
 /** Array order is rail order. Decisions lead: the product is a decision engine (ASH-309). */
@@ -50,7 +50,10 @@ export const destinations: Destination[] = [
     label: "Decisions",
     purpose: "Decide what agents and captures propose.",
     icon: Scale,
-    group: "shared",
+    // A product destination, not a shared workspace service: "shared" pins a
+    // destination to the rail's foot, which is where Reviews and Settings
+    // live - the decision queue leads the rail instead (ASH-309).
+    group: "home",
   },
   {
     href: "/alfred",
