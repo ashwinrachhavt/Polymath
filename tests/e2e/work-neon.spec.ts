@@ -50,9 +50,12 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   await page.getByRole("button", { name: `Move ${a} down` }).click();
   // The poll only passes once BOTH cards render and b sits above a: a missing
   // card yields a null box and keeps waiting instead of misreading leftovers.
+  // The budget is 30s, not the 5s default: the reorder commits through a
+  // server action and the board re-renders with its refreshed RSC stream,
+  // which under parallel-suite load has exceeded 5s in CI (run 40391648464).
   const cardA = page.getByText(a, { exact: true });
   const cardB = page.getByText(b, { exact: true });
-  await expect.poll(() => isAbove(cardB, cardA)).toBe(true);
+  await expect.poll(() => isAbove(cardB, cardA), { timeout: 30_000 }).toBe(true);
   await page.goto("/neuralflow/work?view=saved");
   await expect(page.getByRole("button", { name: `Done: complete ${b}` })).toBeEnabled();
   await page.reload();
