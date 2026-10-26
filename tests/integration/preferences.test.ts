@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { users, memberships } from "@/domains/identity/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -65,6 +66,22 @@ suite("server-saved preferences (D23)", () => {
       preferences.updatePreferences(auth, { expectedVersion: v1.version, motion: "reduced" }),
     ).rejects.toThrow(/changed in another tab or device/);
     expect((await preferences.getPreferences(auth)).motion).toBe("full");
+  });
+
+  it("the mode scopes per (workspace, user): a teammate keeps their own (ASH-312)", async () => {
+    const seeded = await seedWorkspace(db, `prefs-scope-${Date.now()}`);
+    const owner = ownerAuth(seeded.userId, seeded.workspaceId);
+    const [teammate] = await db.insert(users).values({ clerkUserId: `tw_teammate_${Date.now()}` }).returning();
+    await db.insert(memberships).values({ workspaceId: seeded.workspaceId, userId: teammate.id, role: "member", status: "active" });
+    const member = { userId: teammate.id, workspaceId: seeded.workspaceId, role: "member" as const };
+
+    await preferences.updatePreferences(owner, { expectedVersion: 0, interfaceMode: "library" });
+    // The teammate's row is untouched: default, version 0, and their own save
+    // does not read or move the owner's mode.
+    expect(await preferences.getPreferences(member)).toMatchObject({ interfaceMode: "auto", version: 0 });
+    const teammateSaved = await preferences.updatePreferences(member, { expectedVersion: 0, interfaceMode: "action" });
+    expect(teammateSaved.interfaceMode).toBe("action");
+    expect((await preferences.getPreferences(owner)).interfaceMode).toBe("library");
   });
 
   it("a patch that omits interface mode preserves the stored mode (old-client compatibility, ASH-312)", async () => {
