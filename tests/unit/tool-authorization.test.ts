@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authorizeToolInvocation, TOOL_OPERATION_REGISTRY, type GrantForAuthorization } from "@/domains/agents/authorization";
+import { supportsEffect } from "@/domains/actions/executor";
 
 /*
  * ASH-122 GA03 confused-deputy coverage, DB-free. Every acceptance rule is
@@ -120,6 +121,42 @@ describe("authorizeToolInvocation", () => {
     if (!decision.allowed) {
       expect(decision.reasons).toEqual(expect.arrayContaining(["unknown_operation", "grant_revoked", "account_not_granted"]));
     }
+  });
+
+describe("linear.issue.propose (ASH-285)", () => {
+  it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
+    const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
+    expect(spec.capability).toBe("action.prepare");
+    expect(spec.effectClass).toBe("internal_write");
+    // Internal writes authorize directly; only external effects and paid ops gate on approval.
+    expect(spec.requiresApproval).toBeUndefined();
+  });
+
+  it("authorizes directly for a member-grade grant carrying action.prepare", () => {
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "linear.issue.propose" })),
+    ).toEqual({ allowed: true, requiresApproval: false });
+  });
+
+  it("denies a viewer-grade grant: the fixed-role read set carries no prepare authority", () => {
+    // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
+    const viewerReads = [
+      "person.read", "document.read", "task.read", "knowledge.read",
+      "member.read", "role.read", "integration.use", "audit.read",
+    ];
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "linear.issue.propose" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+});
+
+  it("the proposal-only operation has no executor to fall through to", () => {
+    // The reviews approve path runs executeApprovedEffect only when
+    // supportsEffect is true; an executor-less capability returns the
+    // decision alone. linear.issue.propose's contract is proposal-only, so
+    // pin it by name: a future executor lands as a deliberate diff here,
+    // never a silent fall-through to a real effect or an applied success.
+    expect(supportsEffect("linear.issue.propose")).toBe(false);
   });
 
   it("keeps the registry's approval gate on every external effect", () => {
