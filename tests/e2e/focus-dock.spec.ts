@@ -44,10 +44,12 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await page.screenshot({ path: "test-results/focus-dock-mobile.png" });
 
     // A failed read keeps the last known session, marked stale - it never
-    // claims the session ended, and never presents it as verified.
+    // claims the session ended, and never presents it as verified. The stale
+    // state lives in the mounted component, so the failed read must happen
+    // through the dock's own refetch (window focus), not a page reload that
+    // remounts it with nothing.
     await page.route("**/api/v1/focus/live", (route) => route.abort());
-    await page.goto("/activity");
-    await expect(dock).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dock).toContainText("last known");
     await expect(dock).toContainText("status may be out of date");
     await page.screenshot({ path: "test-results/focus-dock-mobile-stale.png" });
@@ -55,8 +57,8 @@ test("the dock follows a real session across pages, marks a failed read stale, a
 
     // A successful read clears the stale mark.
     await page.unroute("**/api/v1/focus/live");
-    await page.goto("/reviews");
-    await expect(dock).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(dock).toContainText("Focus running");
     await expect(dock).not.toContainText("last known");
 
     // Return to the session, finish it, and the dock is gone everywhere.
