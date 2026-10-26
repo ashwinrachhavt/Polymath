@@ -149,7 +149,10 @@ suite("url capture chain", () => {
     await enrichment.runCaptureEnrichment(enrichEvent as never, { judger: j as never });
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
-    expect(row.text).toContain("example.com");
+    // Canonical url-only captures carry text:null until a fetch lands (the URL is
+    // provenance, not the capture), so a terminal failure leaves an address-only capture.
+    expect(row.text).toBeNull();
+    expect(row.failureReason).toBeTruthy();
   });
 
   it("a claimed fetch (still 'pending' with an outbox lease) and a retrying one (available_at in the future) both hold enrichment", async () => {
