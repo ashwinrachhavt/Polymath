@@ -21,6 +21,7 @@ vi.mock("@/app/(workspace)/command-center/integrations/actions", () => ({
   setAccountCapabilityAction: vi.fn(),
   setWriteDefaultAction: vi.fn(),
   startConnectionAction: vi.fn(),
+  setSenderProposalsAction: vi.fn(),
   syncGoogleCalendarAction: vi.fn(),
   syncNotionAction: vi.fn(),
 }));
@@ -38,6 +39,7 @@ const account = (over: Partial<CatalogConnector["accounts"][number]> = {}) => ({
   lastHealthyAt: null,
   lastError: null,
   version: 3,
+  senderProposalsEnabled: false,
   ...over,
 });
 

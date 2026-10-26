@@ -14,6 +14,7 @@ import { attachProviderLink, beginConnection, failConnectionAttempt } from "@/do
 import { resolveRequestOrigin } from "@/domains/integrations/origin";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
+import { setSenderProposals } from "@/domains/crm/sender-sync";
 import { syncNotionAccount } from "@/domains/integrations/notion";
 import { setSenderAliasGrant } from "@/domains/actions/policy";
 import { getAuthContext } from "@/lib/auth";
@@ -194,6 +195,25 @@ export async function renameAccountAction(input: {
 }
 
 /* Read-only pull of the owner's Google Calendar into the week view. Nothing is written to Google. */
+/*
+ * The owner-only sender-suggestions switch (ASH-287). Turning it ON is the
+ * grant for the daily read-only sender pass: the domain refuses unless the
+ * account is active, connected, and read-allowed, and it re-anchors the
+ * watermark at that moment - nothing from before is ever scanned. Turning it
+ * OFF always works, because stopping must never depend on access the owner
+ * may already have taken away.
+ */
+export async function setSenderProposalsAction(input: { accountId: string; expectedVersion: number; enabled: boolean }): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await setSenderProposals(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
 export async function syncGoogleCalendarAction(input: { accountId: string }): Promise<
   { ok: true; summary: string } | { ok: false; error: string }
 > {

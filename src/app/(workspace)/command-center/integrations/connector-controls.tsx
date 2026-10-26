@@ -12,6 +12,7 @@ import {
   setAccountAccessTierAction,
   setAccountCapabilityAction,
   setSenderAliasesAction,
+  setSenderProposalsAction,
   setWriteDefaultAction,
   startConnectionAction,
   syncGoogleCalendarAction,
@@ -34,6 +35,7 @@ export function AccountControls({
   isDefault,
   provider,
   alias,
+  senderProposalsEnabled,
 }: {
   provider?: string;
   accountId: string;
@@ -41,6 +43,7 @@ export function AccountControls({
   status: string;
   isDefault: boolean;
   alias: string;
+  senderProposalsEnabled?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -96,6 +99,23 @@ export function AccountControls({
         >
           Sync now
         </Button>
+      ) : null}
+      {provider === "gmail" && status === "active" ? (
+        <div className="flex w-full items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+          <span className="text-[13px]">
+            <span className="font-medium">Suggest contacts from new senders</span>
+            <span className="block text-xs text-muted-foreground">
+              Once a day, Polymath reads new inbound senders on {alias} and turns them into contact proposals in Reviews. Read-only: no mail is
+              written, labeled, or sent, and nothing becomes a contact without your approval. Starts from the moment you turn it on.
+            </span>
+          </span>
+          <Switch
+            checked={senderProposalsEnabled ?? false}
+            disabled={pending}
+            aria-label="Suggest contacts from new senders"
+            onCheckedChange={(enabled) => act(setSenderProposalsAction, { accountId, expectedVersion: version, enabled })}
+          />
+        </div>
       ) : null}
       {error ? <p className="text-[13px] text-muted-foreground" role="status">{error}</p> : null}
     </div>

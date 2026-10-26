@@ -17,6 +17,7 @@ export type CatalogAccount = {
   id: string;
   alias: string;
   status: string;
+  senderProposalsEnabled: boolean;
   displayName: string | null;
   isDefaultForWrites: boolean;
   allowRead: boolean;
@@ -236,6 +237,7 @@ export function ConnectorCatalog({
                                 status={account.status}
                                 isDefault={account.isDefaultForWrites}
                                 alias={account.alias}
+                                senderProposalsEnabled={account.senderProposalsEnabled}
                               />
                             </div>
                           </div>

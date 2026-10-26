@@ -230,6 +230,15 @@ export async function syncGmailSenders(
   return { ...result, scanned: messages.length, complete };
 }
 
+/** Which of the workspace's Gmail accounts the owner turned sender proposals on for; the Connectors page renders the switch from this. */
+export async function listSenderProposalsEnabledAccountIds(workspaceId: string): Promise<string[]> {
+  const rows = await db
+    .select({ externalAccountId: triggers.externalAccountId })
+    .from(triggers)
+    .where(and(eq(triggers.workspaceId, workspaceId), eq(triggers.provider, "gmail"), eq(triggers.eventType, SENDER_PROPOSALS_EVENT), eq(triggers.status, "enabled")));
+  return rows.map((r) => r.externalAccountId).filter((v): v is string => typeof v === "string");
+}
+
 /** Every opted-in account across workspaces, one failure never stopping the rest. For the scheduler. */
 export async function syncAllGmailSenders(transport: Transport, now?: Date) {
   const enabled = await db
