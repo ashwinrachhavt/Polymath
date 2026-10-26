@@ -1,7 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
-import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
+import { OutboxParkError, type ClaimedOutboxEvent, type OutboxHandler } from "@/domains/audit/outbox";
+import { outboxEvents } from "@/domains/audit/schema";
 import {
   EnrichmentLeaseLostError,
   RELEASE,
@@ -78,6 +79,43 @@ export type CaptureEnrichmentDeps = {
 
 export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
 
+const URL_WAIT_MIN_MS = 5_000;
+const URL_WAIT_STEP_MS = 15_000;
+const URL_WAIT_MAX_MS = 5 * 60_000;
+
+/**
+ * The capture's fetch event while it is unfinished, or null once it is done.
+ * Unfinished = outbox status 'pending', which also covers a retrying event (back
+ * to 'pending' with a later available_at) and a claimed one (the claim only adds
+ * an outbox lease to a still-'pending' row). 'dispatched' and 'dead' are the
+ * only terminal states; no age or other policy of our own decides terminality.
+ */
+async function outstandingUrlFetch(workspaceId: string, captureId: string) {
+  const [row] = await db
+    .select({ availableAt: outboxEvents.availableAt, leaseExpiresAt: outboxEvents.leaseExpiresAt })
+    .from(outboxEvents)
+    .where(
+      and(
+        eq(outboxEvents.workspaceId, workspaceId),
+        eq(outboxEvents.topic, "capture.url_content_requested"),
+        eq(outboxEvents.status, "pending"),
+        sql`${outboxEvents.payload}->>'captureId' = ${captureId}`,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Wait for the fetch's own schedule: its backoff when retrying, short steps while it runs. */
+function urlWaitMs(fetchEvent: { availableAt: Date; leaseExpiresAt: Date | null }): number {
+  const now = Date.now();
+  const until =
+    fetchEvent.leaseExpiresAt && fetchEvent.leaseExpiresAt.getTime() > now
+      ? Math.min(fetchEvent.leaseExpiresAt.getTime() + 1000, now + URL_WAIT_STEP_MS)
+      : fetchEvent.availableAt.getTime() + 1000;
+  return Math.min(Math.max(until - now, URL_WAIT_MIN_MS), URL_WAIT_MAX_MS);
+}
+
 export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: CaptureEnrichmentDeps = {}) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -93,6 +131,15 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
   // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
   if (capture.parkedAt) return;
 
+  // ASH-318: a URL capture is classified on its fetched page, not its address.
+  // While the fetch is still outstanding (pending or retrying, so not yet
+  // dispatched or dead-lettered), wait for it instead of finalizing an empty
+  // capture that the fetch would then refuse to fill. The wait ends only when
+  // the outbox says the fetch event is done (dispatched, or dead after its
+  // retries); a failed fetch therefore falls through to address-only enrichment.
+  const pendingFetch = capture.url ? await outstandingUrlFetch(event.workspaceId, captureId) : null;
+  if (pendingFetch) throw new OutboxParkError(urlWaitMs(pendingFetch), "waiting for the page to be fetched");
+
   const token = await acquireEnrichmentLease(event, capture);
   if (!token) return;
 
@@ -105,6 +152,19 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
     throw cause;
   }
 };
+
+/*
+ * An address-only URL capture keeps its recorded fetch failure: enrichment
+ * proceeding on the bare address is not the page being read after all, and
+ * clearing the reason would leave the inbox claiming "Reading the page now"
+ * forever. Once any text exists the reason is stale and clears.
+ */
+export function settledFailureReason(capture: { failureReason: string | null }, bodyText: string): string | null {
+  const body = bodyText.trim();
+  // Whitespace is nothing, and a bare URL is a pointer, not grounded text.
+  if (!body || /^https?:\/\/\S+$/.test(body)) return capture.failureReason;
+  return null;
+}
 
 async function enrichLeased(
   event: ClaimedOutboxEvent,
@@ -145,7 +205,7 @@ async function enrichLeased(
     await ownedUpdate(token, captureId, {
       ...base,
       processingState: "enriched",
-      failureReason: null,
+      failureReason: settledFailureReason(capture, body),
       ...RELEASE,
     });
     return;
@@ -175,7 +235,7 @@ async function enrichLeased(
       await ownedUpdate(token, captureId, {
         ...base,
         processingState: "enriched",
-        failureReason: null,
+        failureReason: settledFailureReason(capture, body),
         ...RELEASE,
       });
       return;
@@ -216,7 +276,7 @@ async function enrichLeased(
     domain: parsed.domain?.toLowerCase().trim() || null,
     tags: tags && tags.length > 0 ? tags : null,
     processingState: "enriched",
-    failureReason: null,
+    failureReason: settledFailureReason(capture, body),
     ...RELEASE,
   });
 }
@@ -233,7 +293,7 @@ async function tryJevTriage(
   token: string,
   captureId: string,
   workspaceId: string,
-  capture: { title: string | null; kind: string },
+  capture: { title: string | null; kind: string; failureReason: string | null },
   base: { cleanText: string | null; structure: string; updatedAt: Date },
   cleanText: string,
   structure: string,
@@ -329,7 +389,7 @@ async function tryJevTriage(
         ...base,
         domain: domainSlug,
         processingState: "enriched",
-        failureReason: unreadable ? "Jev returned an unreadable answer." : null,
+        failureReason: unreadable ? "Jev returned an unreadable answer." : settledFailureReason(capture, cleanText),
         ...RELEASE,
       })
       .where(and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)))

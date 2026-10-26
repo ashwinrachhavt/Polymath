@@ -117,7 +117,8 @@ suite("capture url content", () => {
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.failureReason).toBeNull();
     expect(row.text).toContain("The spec");
-    expect(row.processingState).toBe("enriched");
+    // Fetched, handed to enrichment: classification still has to read the page.
+    expect(row.processingState).toBe("classifying");
   });
 
   it("the handler stores a YouTube transcript as the capture's text", async () => {
@@ -136,7 +137,7 @@ suite("capture url content", () => {
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.failureReason).toBeNull();
     expect(row.text).toContain("Welcome to the talk.");
-    expect(row.processingState).toBe("enriched");
+    expect(row.processingState).toBe("classifying");
   });
 
   it("a failed scrape records the reason and leaves the capture readable", async () => {

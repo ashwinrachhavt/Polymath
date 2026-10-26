@@ -92,8 +92,10 @@ suite("url content lease", () => {
     await urlHandler.urlContentRequestedHandler(event(workspaceId, capture.id));
     expect(scrape.calls).toBe(1);
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
+    // ASH-318 handoff: a successful fetch lands the page and hands the capture
+    // to enrichment (classifying); it no longer finishes the capture itself.
     expect(row).toMatchObject({
-      processingState: "enriched",
+      processingState: "classifying",
       text: expect.stringContaining("Fetched page body"),
       enrichmentLeaseToken: null,
     });
