@@ -8,7 +8,7 @@ import { waitSettled } from "./helpers/settled";
  * read keeps the last known session with an explicit stale cue rather than
  * claiming the session ended or showing it as verified. Pixels at desktop
  * and mobile widths, including the stale cue's mobile fit, are captured for
- * review (test-results/focus-dock-*.png).
+ * review (test-results/feature-pixels/focus-dock-*.png).
  */
 function db() {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
@@ -38,10 +38,10 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await expect(dock).toBeVisible();
     await expect(dock).toContainText("Focus running");
     await expect(dock).toContainText(tag);
-    await page.screenshot({ path: "test-results/focus-dock-desktop.png" });
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-desktop.png" });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(dock).toBeVisible();
-    await page.screenshot({ path: "test-results/focus-dock-mobile.png" });
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile.png" });
 
     // A failed read keeps the last known session, marked stale - it never
     // claims the session ended, and never presents it as verified. The stale
@@ -52,7 +52,7 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dock).toContainText("last known");
     await expect(dock).toContainText("status may be out of date");
-    await page.screenshot({ path: "test-results/focus-dock-mobile-stale.png" });
+    await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile-stale.png" });
     await page.setViewportSize({ width: 1280, height: 800 });
 
     // A successful read clears the stale mark.
