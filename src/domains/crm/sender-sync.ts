@@ -4,7 +4,7 @@ import { externalAccounts, syncCursors, triggers } from "@/domains/integrations/
 import { searchGmailMessages } from "@/domains/integrations/gmail/reads";
 import type { Transport } from "@/domains/integrations/transport";
 import { db } from "@/lib/db";
-import { proposeContactsFromSenders, type ProposeFromSendersResult } from "./propose-from-senders";
+import { proposeContactsFromSenders, type ProposeFromSendersResult, type SenderMessage } from "./propose-from-senders";
 
 /*
  * ASH-287, the arrival half: a polling pass over one connected Gmail account
@@ -41,11 +41,32 @@ export class SenderSyncError extends Error {
   }
 }
 
-export type SenderSyncResult = ProposeFromSendersResult & { scanned: number; truncated: boolean };
+export type SenderSyncResult = ProposeFromSendersResult & { scanned: number; complete: boolean };
+
+const MAX_MESSAGES_PER_PASS = 200;
+/** Re-read this much before the pass start next time; Gmail's index can lag a few seconds. */
+const OVERLAP_SECONDS = 120;
+
+/** `before` null = open-ended (now). Both bounds are Gmail receipt time in epoch seconds. */
+export type Window = { after: number; before: number | null };
+export type SenderCursor = { watermark: number | null; pending: Window[] };
+
+export function parseCursor(raw: string | null | undefined): SenderCursor {
+  try {
+    const value = raw ? (JSON.parse(raw) as Partial<SenderCursor>) : {};
+    const pending = Array.isArray(value.pending)
+      ? value.pending.filter((w): w is Window => typeof w?.after === "number" && (w.before === null || typeof w.before === "number"))
+      : [];
+    return { watermark: typeof value.watermark === "number" ? value.watermark : null, pending };
+  } catch {
+    // An unreadable cursor falls back to the bounded first-run lookback, never to "everything".
+    return { watermark: null, pending: [] };
+  }
+}
 
 /** Promotional and bulk categories are never people; Gmail's own classifier keeps them out of the scan. */
-export function buildSenderQuery(afterEpochSeconds: number): string {
-  return `in:inbox -from:me -category:promotions -category:social -category:updates -category:forums after:${afterEpochSeconds}`;
+export function buildSenderQuery(window: Window): string {
+  return `in:inbox -from:me -category:promotions -category:social -category:updates -category:forums after:${window.after}${window.before === null ? "" : ` before:${window.before}`}`;
 }
 
 export async function syncGmailSenders(
@@ -79,57 +100,109 @@ export async function syncGmailSenders(
     )
     .limit(1);
   if (!trigger) throw new SenderSyncError("not_enabled", "Contact suggestions from new senders are not turned on for this account.");
-  const budget = trigger.budget as { perRun?: number };
-  const limit = Math.max(1, Math.min(budget.perRun ?? DEFAULT_PER_RUN, MAX_PER_RUN));
+  const triggerBudget = trigger.budget as { perRun?: number };
+  const limit = Math.max(1, Math.min(triggerBudget.perRun ?? DEFAULT_PER_RUN, MAX_PER_RUN));
 
-  const [cursor] = await db
+  const [cursorRow] = await db
     .select()
     .from(syncCursors)
     .where(and(eq(syncCursors.externalAccountId, account.id), eq(syncCursors.resource, RESOURCE)))
     .limit(1);
-  const after = cursor?.cursor ? Number(cursor.cursor) : nowSeconds - FIRST_RUN_LOOKBACK_SECONDS;
+  const saved = parseCursor(cursorRow?.cursor);
 
-  const recordCursor = (values: { cursor?: string; state: "idle" | "failed"; lastError: string | null }) =>
+  const recordCursor = (cursor: SenderCursor | null, state: "idle" | "partial" | "failed", lastError: string | null) =>
     db
       .insert(syncCursors)
-      .values({ workspaceId, externalAccountId: account.id, resource: RESOURCE, lastSyncedAt: new Date(), ...values })
+      .values({ workspaceId, externalAccountId: account.id, resource: RESOURCE, cursor: cursor ? JSON.stringify(cursor) : null, state, lastError, lastSyncedAt: new Date() })
       .onConflictDoUpdate({
         target: [syncCursors.externalAccountId, syncCursors.resource],
-        set: { ...values, lastSyncedAt: new Date(), updatedAt: new Date() },
+        set: { ...(cursor ? { cursor: JSON.stringify(cursor) } : {}), state, lastError, lastSyncedAt: new Date(), updatedAt: new Date() },
       });
 
-  const found = await searchGmailMessages(input.transport, {
-    connectedAccountId: account.composioConnectedAccountId,
-    query: buildSenderQuery(after),
-    limit,
-    accountAlias: account.alias,
-  });
-  if (!found.ok) {
-    // The watermark stays put, so the next pass re-reads the same window.
-    await recordCursor({ state: "failed", lastError: found.message });
-    throw new Error(found.message);
+  /*
+   * Work is a list of time windows over Gmail's own receipt time: any windows a
+   * previous pass could not finish, then everything since the watermark. Each
+   * window is read newest-first in pages, and a full page shrinks the window to
+   * end just inside its oldest message, so nothing between pages is skipped.
+   * `after:`/`before:` are evaluated by Gmail on internal date, never the
+   * sender-controlled Date header. The new watermark is the time this pass
+   * STARTED (minus an overlap), so mail arriving mid-pass is read next time.
+   * Re-reads are harmless: proposals dedupe per sender. If the message budget
+   * runs out, the unread remainder is saved as a pending window and the pass
+   * reports partial; if a window cannot be narrowed (a page of messages all in
+   * one second) it fails closed instead of guessing.
+   */
+  const startedAt = nowSeconds;
+  const queue: Window[] = [...saved.pending, { after: saved.watermark ?? nowSeconds - FIRST_RUN_LOOKBACK_SECONDS, before: null }];
+  const seenIds = new Set<string>();
+  const messages: SenderMessage[] = [];
+  const pending: Window[] = [];
+  let budget = MAX_MESSAGES_PER_PASS;
+  let failure: string | null = null;
+
+  let exhausted = false;
+  for (let i = 0; i < queue.length && failure === null && !exhausted; i += 1) {
+    let window = queue[i];
+    while (true) {
+      if (budget <= 0) {
+        pending.push(window, ...queue.slice(i + 1));
+        exhausted = true;
+        break;
+      }
+      const requested = Math.min(limit, budget);
+      const found = await searchGmailMessages(input.transport, {
+        connectedAccountId: account.composioConnectedAccountId,
+        query: buildSenderQuery(window),
+        limit: requested,
+        includeInternalDate: true,
+        accountAlias: account.alias,
+      });
+      if (!found.ok) {
+        failure = found.message;
+        break;
+      }
+      budget -= found.messages.length;
+      for (const m of found.messages) {
+        if (seenIds.has(m.id)) continue;
+        seenIds.add(m.id);
+        messages.push({ messageId: m.id, threadId: m.threadId, from: m.from, subject: m.subject, date: m.date });
+      }
+      if (found.messages.length < requested) break; // short page: window complete
+      const oldest = Math.min(...found.messages.map((m) => (m.internalDateMs ?? Number.POSITIVE_INFINITY) / 1000));
+      if (!Number.isFinite(oldest)) {
+        failure = "Gmail did not return receipt times, so the window cannot be narrowed safely.";
+        break;
+      }
+      // Include the oldest second again (before is exclusive): same-second neighbours are not lost.
+      const before = Math.floor(oldest) + 1;
+      if (window.before !== null && before >= window.before) {
+        failure = "A single second holds more mail than one page; stopping instead of skipping any.";
+        break;
+      }
+      window = { after: window.after, before };
+    }
   }
 
   const result = await proposeContactsFromSenders(
     { workspaceId },
     {
-      messages: found.messages.map((m) => ({ messageId: m.id, threadId: m.threadId, from: m.from, subject: m.subject, date: m.date })),
+      messages,
       // The connected mailbox's own address, so mail from the owner is never proposed.
       ownAddresses: [account.providerAccountId, account.displayName].filter((v): v is string => typeof v === "string" && v.includes("@")),
     },
   );
 
-  // The watermark moves to now even on a full page: searchGmailMessages has no paging, so
-  // hits beyond the limit cannot be fetched next time without re-reading the newest ones
-  // forever. `truncated` reports that honestly instead of hiding it.
-  const truncated = found.messages.length >= limit;
-  const next = nowSeconds;
-  await recordCursor({ cursor: String(next), state: "idle", lastError: null });
+  const complete = failure === null && pending.length === 0;
+  // Failed: the cursor is left exactly as it was (watermark and pending), state failed. Partial:
+  // the watermark advances and the unread windows ride along, so pending + new always covers every second.
+  const next: SenderCursor = failure === null ? { watermark: startedAt - OVERLAP_SECONDS, pending } : saved;
+  await recordCursor(next, complete ? "idle" : failure ? "failed" : "partial", failure);
   await db
     .update(triggers)
     .set({ lastFiredAt: new Date(), fireCount: trigger.fireCount + 1, updatedAt: new Date() })
     .where(eq(triggers.id, trigger.id));
-  return { ...result, scanned: found.messages.length, truncated };
+  if (failure) throw new Error(failure);
+  return { ...result, scanned: messages.length, complete };
 }
 
 /** Every opted-in account across workspaces, one failure never stopping the rest. For the scheduler. */

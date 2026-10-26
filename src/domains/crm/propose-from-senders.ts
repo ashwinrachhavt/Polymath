@@ -60,7 +60,6 @@ export type ProposeFromSendersResult = {
 };
 
 const MAX_SUBJECT = 300;
-const MAX_MESSAGES = 50;
 
 function receivedAtIso(date: string | null | undefined): string | null {
   const parsed = date ? Date.parse(date) : Number.NaN;
@@ -75,7 +74,7 @@ export async function proposeContactsFromSenders(
   const skipped: ProposeFromSendersResult["skipped"] = [];
   // Newest-first input keeps the latest thread per sender; the first sighting wins either way.
   const candidates = new Map<string, { message: SenderMessage; displayName: string | null }>();
-  for (const message of input.messages.slice(0, MAX_MESSAGES)) {
+  for (const message of input.messages) {
     const sender = parseSender(message.from);
     if (!sender) skipped.push({ email: null, reason: "unparseable" });
     else if (own.has(sender.email)) skipped.push({ email: sender.email, reason: "own_address" });

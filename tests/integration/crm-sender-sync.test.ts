@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionProposals } from "@/domains/actions/schema";
 import { externalAccounts, syncCursors, triggers } from "@/domains/integrations/schema";
+import type { Transport } from "@/domains/integrations/transport";
 import { fixtureTransport } from "../helpers/fixture-transport";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -23,15 +24,53 @@ let sync: typeof import("@/domains/crm/sender-sync");
 let workspaceId: string;
 let accountId: string;
 
-const header = (name: string, value: string) => ({ name, value });
-const detail = (id: string, from: string) => ({ id, threadId: `th-${id}`, snippet: "hi", payload: { headers: [header("From", from), header("Subject", "Hello"), header("Date", "Mon, 26 Oct 2026 09:00:00 -0700")] } });
+/*
+ * A tiny mailbox behind the Transport: evaluates Gmail's after:/before: on
+ * internal date, returns newest-first and honours maxResults, like the real
+ * search the sync relies on. The Date header is deliberately wrong (sender
+ * controlled) so a pass that windows on it would skip mail.
+ */
+type Mail = { id: string; from: string; internalSec: number };
+function mailbox(mails: Mail[], opts: { failAfterCalls?: number } = {}): { transport: Transport; queries: string[] } {
+  const queries: string[] = [];
+  let calls = 0;
+  const transport: Transport = {
+    async read(request) {
+      calls += 1;
+      if (opts.failAfterCalls !== undefined && calls > opts.failAfterCalls) return { ok: false, code: "provider_error", status: 500, message: "boom" };
+      const base = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
+      if (request.endpoint === base) {
+        const q = request.query?.q ?? "";
+        queries.push(q);
+        const after = Number(/after:(\d+)/.exec(q)?.[1] ?? 0);
+        const before = Number(/before:(\d+)/.exec(q)?.[1] ?? Number.MAX_SAFE_INTEGER);
+        const hits = mails.filter((m) => m.internalSec > after && m.internalSec < before).sort((x, y) => y.internalSec - x.internalSec).slice(0, Number(request.query?.maxResults));
+        return { ok: true, status: 200, data: { messages: hits.map((m) => ({ id: m.id, threadId: `th-${m.id}` })) } };
+      }
+      const mail = mails.find((m) => request.endpoint === `${base}/${m.id}`);
+      if (!mail) throw new Error(`no mail for ${request.endpoint}`);
+      return {
+        ok: true,
+        status: 200,
+        data: { id: mail.id, threadId: `th-${mail.id}`, internalDate: String(mail.internalSec * 1000), payload: { headers: [{ name: "From", value: mail.from }, { name: "Subject", value: "Hi" }, { name: "Date", value: "Mon, 01 Jan 2001 00:00:00 +0000" }] } },
+      };
+    },
+  };
+  return { transport, queries };
+}
 
-const routes = [
-  { method: "GET" as const, endpointPrefix: "https://gmail.googleapis.com/gmail/v1/users/me/messages/a", status: 200, body: detail("a", "Ada Lovelace <ada@analytical.io>") },
-  { method: "GET" as const, endpointPrefix: "https://gmail.googleapis.com/gmail/v1/users/me/messages/b", status: 200, body: detail("b", "Owner <owner@mine.com>") },
-  { method: "GET" as const, endpointPrefix: "https://gmail.googleapis.com/gmail/v1/users/me/messages/c", status: 200, body: detail("c", "noreply@analytical.io") },
-  { method: "GET" as const, endpointPrefix: "https://gmail.googleapis.com/gmail/v1/users/me/messages", status: 200, body: { messages: [{ id: "a", threadId: "th-a" }, { id: "b", threadId: "th-b" }, { id: "c", threadId: "th-c" }] } },
-];
+const NOW = new Date("2026-10-26T17:00:00Z");
+const nowSec = Math.floor(NOW.getTime() / 1000);
+const human = (n: number, sec: number): Mail => ({ id: `m${n}`, from: `Person ${n} <p${n}@co${n}.io>`, internalSec: sec });
+
+async function proposedEmails(): Promise<string[]> {
+  const rows = await db.select().from(actionProposals).where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.capability, "crm.contact.create")));
+  return rows.map((r) => r.dedupeKey.replace("crm-sender:", "")).sort();
+}
+async function resetCursor() {
+  await db.delete(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+  await db.delete(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
+}
 
 beforeAll(async () => {
   if (!handle) return;
@@ -60,27 +99,69 @@ suite("crm sender sync", () => {
     await db.update(externalAccounts).set({ allowRead: true }).where(eq(externalAccounts.id, accountId));
   });
 
-  it("proposes only new human senders and advances the watermark", async () => {
-    const seen: Array<{ endpoint: string; query?: Record<string, string> }> = [];
-    const now = new Date("2026-10-26T17:00:00Z");
-    const result = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: fixtureTransport(routes, seen as never), now });
+  it("skips the mailbox owner and automated senders, and queries Gmail with the exclusions", async () => {
+    await resetCursor();
+    const { transport, queries } = mailbox([
+      { id: "a", from: "Ada <ada@analytical.io>", internalSec: nowSec - 100 },
+      { id: "b", from: "Owner <owner@mine.com>", internalSec: nowSec - 200 },
+      { id: "c", from: "noreply@analytical.io", internalSec: nowSec - 300 },
+    ]);
+    const result = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: NOW });
     expect(result.proposed.map((p) => p.email)).toEqual(["ada@analytical.io"]);
     expect(result.skipped.map((s) => s.reason).sort()).toEqual(["automated", "own_address"]);
-    expect(seen[0].query?.q).toContain("-category:promotions");
-    expect(seen[0].query?.q).toContain(`after:${Math.floor(now.getTime() / 1000) - 7 * 86400}`);
+    expect(queries[0]).toContain("-category:promotions");
+    expect(queries[0]).toContain(`after:${nowSec - 7 * 86400}`);
     const [cursor] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
-    expect(cursor).toMatchObject({ cursor: String(Math.floor(now.getTime() / 1000)), state: "idle" });
-    const [row] = await db.select().from(actionProposals).where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.capability, "crm.contact.create")));
-    expect(row.status).toBe("pending");
+    expect(cursor.state).toBe("idle");
+    expect(JSON.parse(cursor.cursor!)).toEqual({ watermark: nowSec - 120, pending: [] });
   });
 
-  it("keeps the watermark when the provider fails", async () => {
-    const before = (await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId)))[0].cursor;
-    await expect(
-      sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: fixtureTransport([{ method: "GET", endpointPrefix: "https://gmail.googleapis.com/", status: 500, body: {} }]) }),
-    ).rejects.toThrow();
+  it("a burst larger than one page is read in full, with no skipped mail", async () => {
+    await resetCursor();
+    await db.update(triggers).set({ budget: { perRun: 10 } }).where(eq(triggers.externalAccountId, accountId));
+    const mails = Array.from({ length: 95 }, (_, n) => human(n, nowSec - 1000 + n * 5));
+    const { transport } = mailbox(mails);
+    const result = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport, now: NOW });
+    expect(result.complete).toBe(true);
+    expect(await proposedEmails()).toHaveLength(95);
+  });
+
+  it("over the per-pass budget the rest is carried, and the next pass finishes it", async () => {
+    await resetCursor();
+    await db.update(triggers).set({ budget: { perRun: 50 } }).where(eq(triggers.externalAccountId, accountId));
+    const mails = Array.from({ length: 260 }, (_, n) => human(n, nowSec - 5000 + n * 10));
+    const first = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails).transport, now: NOW });
+    expect(first.complete).toBe(false);
+    const [mid] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    expect(mid.state).toBe("partial");
+    expect(JSON.parse(mid.cursor!).pending.length).toBeGreaterThan(0);
+    expect((await proposedEmails()).length).toBeLessThan(260);
+    const later = new Date(NOW.getTime() + 3600_000);
+    const second = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails).transport, now: later });
+    expect(second.complete).toBe(true);
+    expect(await proposedEmails()).toHaveLength(260);
+  });
+
+  it("fails closed when one second holds more mail than a page", async () => {
+    await resetCursor();
+    await db.update(triggers).set({ budget: { perRun: 5 } }).where(eq(triggers.externalAccountId, accountId));
+    const mails = Array.from({ length: 12 }, (_, n) => human(n, nowSec - 500));
+    await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails).transport, now: NOW })).rejects.toThrow(/single second/);
     const [cursor] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
-    expect(cursor.cursor).toBe(before);
     expect(cursor.state).toBe("failed");
+  });
+
+  it("a provider failure mid-pass keeps the watermark and pending windows unchanged", async () => {
+    await resetCursor();
+    await db.update(triggers).set({ budget: { perRun: 5 } }).where(eq(triggers.externalAccountId, accountId));
+    const mails = Array.from({ length: 30 }, (_, n) => human(n, nowSec - 900 + n * 10));
+    await expect(sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails, { failAfterCalls: 8 }).transport, now: NOW })).rejects.toThrow(/boom/);
+    const [cursor] = await db.select().from(syncCursors).where(eq(syncCursors.externalAccountId, accountId));
+    expect(cursor.state).toBe("failed");
+    expect(JSON.parse(cursor.cursor ?? "{}")).toEqual({ watermark: null, pending: [] });
+    // Recovery: the same window is read again from scratch and completes.
+    const ok = await sync.syncGmailSenders(workspaceId, { externalAccountId: accountId, transport: mailbox(mails).transport, now: NOW });
+    expect(ok.complete).toBe(true);
+    expect(await proposedEmails()).toHaveLength(30);
   });
 });
