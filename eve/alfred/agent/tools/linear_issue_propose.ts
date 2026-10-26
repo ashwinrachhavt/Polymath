@@ -33,7 +33,7 @@ export default defineTool({
       .min(1)
       .max(40_000)
       .describe("The source material, verbatim. Pass what the owner gave you; do not summarise it first, because the summary loses the details the acceptance criteria need."),
-    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this source material, so drafting from it twice resolves the same proposal note instead of doubling it."),
+    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this source material within this conversation, so drafting from it twice resolves the same proposal note instead of doubling it."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -54,7 +54,17 @@ export default defineTool({
         {
           title: input.title,
           text: input.text,
-          sourceKey: `${run.id}:${input.dedupeId}`,
+          /*
+           * Draft identity is scoped to the caller-owned conversation: the
+           * session id comes from the authenticated session, never from model
+           * input, so a model-chosen dedupeId can only collide inside its own
+           * thread - two members' conversations, and two conversations of one
+           * member, can never resolve each other's drafts. Run binding above
+           * stays the authorization check; keeping run.id out of the key lets
+           * a re-ask in the same conversation replay or refresh the one draft
+           * instead of stacking a duplicate per turn.
+           */
+          sourceKey: `${ctx.session.id}:${input.dedupeId}`,
         },
       );
       return {

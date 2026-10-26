@@ -263,6 +263,18 @@ suite("linear issue proposal from conversation text", () => {
     expect(second.outcome).toBe("refreshed");
   });
 
+  it("keeps the same material in two conversations as two separate drafts", async () => {
+    const auth = await seed("linear-text-sessions");
+    const text = "The capture inbox badge never clears.";
+    const first = await proposal.draftLinearIssueFromText(auth, { title: "Pasted report", text, sourceKey: "wrun_session-a:bug-1" });
+    const second = await proposal.draftLinearIssueFromText(auth, { title: "Pasted report", text, sourceKey: "wrun_session-b:bug-1" });
+    expect(first.artifactId).not.toBe(second.artifactId);
+    // Each conversation then replays its own draft.
+    const replay = await proposal.draftLinearIssueFromText(auth, { title: "Pasted report", text, sourceKey: "wrun_session-a:bug-1" });
+    expect(replay.artifactId).toBe(first.artifactId);
+    expect(replay.outcome).toBe("replayed");
+  });
+
   it("refuses an empty source instead of inventing an issue", async () => {
     const auth = await seed("linear-text-empty");
     await expect(proposal.draftLinearIssueFromText(auth, { title: "Nothing", text: "   ", sourceKey: "run-4:empty" })).rejects.toMatchObject({ code: "empty_source" });

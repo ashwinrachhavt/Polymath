@@ -135,4 +135,14 @@ describe("conversationSourceId", () => {
     const marker = sourceMarkerOf(a, sourceHashOf("s"), sourceHashOf("b"));
     expect(parseSourceMarker(marker)).toEqual({ sourceId: a, sourceHash: sourceHashOf("s"), bodyHash: sourceHashOf("b") });
   });
+
+  it("keeps conversations apart: the same model-chosen key under two sessions resolves different drafts", () => {
+    // The tool prefixes the caller-owned session id, so a dedupeId can only
+    // collide inside its own conversation - never across members or threads.
+    const alice = conversationSourceId("ws-1", "wrun_session-a:idea-1");
+    const bob = conversationSourceId("ws-1", "wrun_session-b:idea-1");
+    expect(alice).not.toBe(bob);
+    // And replay inside one conversation is stable.
+    expect(conversationSourceId("ws-1", "wrun_session-a:idea-1")).toBe(alice);
+  });
 });

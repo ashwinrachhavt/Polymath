@@ -122,6 +122,33 @@ describe("authorizeToolInvocation", () => {
     }
   });
 
+describe("linear.issue.propose (ASH-285)", () => {
+  it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
+    const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
+    expect(spec.capability).toBe("action.prepare");
+    expect(spec.effectClass).toBe("internal_write");
+    // Internal writes authorize directly; only external effects and paid ops gate on approval.
+    expect(spec.requiresApproval).toBeUndefined();
+  });
+
+  it("authorizes directly for a member-grade grant carrying action.prepare", () => {
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "linear.issue.propose" })),
+    ).toEqual({ allowed: true, requiresApproval: false });
+  });
+
+  it("denies a viewer-grade grant: the fixed-role read set carries no prepare authority", () => {
+    // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
+    const viewerReads = [
+      "person.read", "document.read", "task.read", "knowledge.read",
+      "member.read", "role.read", "integration.use", "audit.read",
+    ];
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "linear.issue.propose" })),
+    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+  });
+});
+
   it("keeps the registry's approval gate on every external effect", () => {
     for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {
       if (spec.effectClass === "external_effect" || spec.effectClass === "paid") {
