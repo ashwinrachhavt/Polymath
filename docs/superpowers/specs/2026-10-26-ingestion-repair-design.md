@@ -173,9 +173,12 @@ metadata; it only has to make the survivor reachable:
   something already present surfaces the existing item and what you already
   wrote about it").
 - Anything the person supplied on the second attempt — title, or a later `intent`
-  — is written as an ordinary update against that returned id, in a second
-  statement. It never merges inside the dedupe path, so the index keeps exactly
-  the job it has now and a future nullable column needs no change here.
+  — is written as an ordinary update against that returned id, in the **same
+  transaction** as the rejected insert, server-side. It never merges inside the
+  dedupe path, and it never waits on a second client request: a round-trip
+  would leave a window where the person closes the tab and loses the answer
+  they just gave. The index keeps exactly the job it has now, and a future
+  nullable column needs no change here.
 
 This is why the id must be returned even when the request is a conflict: without
 it there is no target for the second write, and the only way to keep the person's
