@@ -38,6 +38,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // ASH-282: proposes conflict-resolution moves the owner approves first;
   // without a row here the tool is a dead 403 on every call.
   "calendar.propose",
+  // ASH-287: proposes CRM contacts from email senders the run already read.
+  // The proposal is the whole effect until the owner approves it.
+  "crm.contact.create",
   // ASH-306: listing records is navigation, the same authority as reading them.
   "records.browse",
   // Connected reads. A capability in the risk table but absent here can never
@@ -159,6 +162,9 @@ export async function ensureProfile(workspaceId: string, name = "alfred") {
       // ASH-282: an existing profile without this fails closed on every
       // calendar_conflict_propose call; the draft is an internal write.
       "calendar.propose",
+      // ASH-287: an existing profile without this fails closed on every
+      // crm_propose_contacts call; the draft is an internal write.
+      "crm.contact.create",
       "records.browse",
       "wiki.read",
       "wiki.ingest",

@@ -98,6 +98,8 @@ export const STUBBED_TOOLS = {
   // ASH-284: decision-only triage proposal; the stub can never reach GitHub.
   github_triage_propose: { response: { ok: true, status: "proposed", proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false } },
   notion_propose_update: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, contentHash: "", status: "awaiting review" } },
+  // ASH-287: proposes only, so the stub is the queued outcome.
+  crm_propose_contacts: { response: { ok: true, status: "awaiting review", proposed: [], skipped: [] } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },
   "polymath-gateway__gmail_search": { response: { ok: false, error: "not connected in this eval" } },
