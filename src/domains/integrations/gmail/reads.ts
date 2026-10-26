@@ -22,6 +22,8 @@ export type GmailMessageSummary = {
   subject: string | null;
   date: string | null;
   snippet: string | null;
+  /** Gmail's own receipt time (ms). Present only when the caller asked for it; the Date header is sender-controlled. */
+  internalDateMs?: number;
 };
 
 export type GmailThreadMessage = GmailMessageSummary & { bodyText: string | null };
@@ -64,6 +66,7 @@ const messageSchema = z.object({
   id: z.string(),
   threadId: z.string().optional(),
   snippet: z.string().optional(),
+  internalDate: z.string().optional(),
   payload: payloadSchema.optional(),
 });
 
@@ -150,9 +153,12 @@ function bodyText(payload: z.infer<typeof payloadSchema> | undefined): string | 
 function summarise(
   message: z.infer<typeof messageSchema>,
   fallback: { threadId?: string; snippet?: string },
+  withInternalDate = false,
 ): GmailMessageSummary {
   const headers = message.payload?.headers;
+  const internalDateMs = withInternalDate && message.internalDate ? Number(message.internalDate) : Number.NaN;
   return {
+    ...(Number.isFinite(internalDateMs) ? { internalDateMs } : {}),
     id: message.id,
     threadId: message.threadId ?? fallback.threadId ?? "",
     from: header(headers, "from"),
@@ -194,6 +200,8 @@ export async function searchGmailMessages(
     connectedAccountId: string;
     query: string;
     limit: number;
+    /** Also return Gmail's receipt time on each summary (needed to bound a window; the gateway does not ask). */
+    includeInternalDate?: boolean;
     /** Carried for the gateway's dedupe and audit; this module never routes on it. */
     accountAlias?: string;
   },
@@ -245,7 +253,7 @@ export async function searchGmailMessages(
         failure ??= malformed("message");
         return;
       }
-      summaries[index] = summarise(message.data, { threadId: hit.threadId, snippet: hit.snippet });
+      summaries[index] = summarise(message.data, { threadId: hit.threadId, snippet: hit.snippet }, input.includeInternalDate);
     }
   }
 

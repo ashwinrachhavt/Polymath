@@ -21,6 +21,7 @@ vi.mock("@/app/(workspace)/command-center/integrations/actions", () => ({
   setAccountCapabilityAction: vi.fn(),
   setWriteDefaultAction: vi.fn(),
   startConnectionAction: vi.fn(),
+  setSenderProposalsAction: vi.fn(),
   syncGoogleCalendarAction: vi.fn(),
   syncNotionAction: vi.fn(),
 }));
@@ -38,6 +39,7 @@ const account = (over: Partial<CatalogConnector["accounts"][number]> = {}) => ({
   lastHealthyAt: null,
   lastError: null,
   version: 3,
+  senderProposalsEnabled: false,
   ...over,
 });
 
@@ -54,7 +56,16 @@ const base = (over: Partial<CatalogConnector>): CatalogConnector => ({
 });
 
 const fixtures: CatalogConnector[] = [
-  base({ accounts: [account()] }),
+  // Connected gmail with the sender-suggestions pass ON, plus a second,
+  // disconnected account where the pass is still on: the row must stay
+  // visible there, read paused, and offer the stop.
+  base({
+    accounts: [
+      account({ senderProposalsEnabled: true }),
+      account({ id: "acc-2", alias: "old-gmail", status: "revoked", version: 1, senderProposalsEnabled: true }),
+      account({ id: "acc-3", alias: "read-off-gmail", allowRead: false, senderProposalsEnabled: false }),
+    ],
+  }),
   base({ provider: "slack", displayName: "Slack", accessTiers: PROVIDER_TIERS.slack }),
   base({
     provider: "notion",
@@ -106,6 +117,12 @@ describe("connector catalog pixel harness", () => {
     expect(html).not.toContain("Narrowed by the switches below");
     expect(html).not.toContain("Agent access");
     expect(html).toContain("Setup needed");
+    // Sender-suggestions states: on for the active account, paused-but-stoppable
+    // on the disconnected one, and gated with the reason on the read-off one.
+    expect(html).toContain("Suggest contacts from new senders");
+    expect(html).toContain("On, but not running");
+    expect(html).toContain("old-gmail is disconnected");
+    expect(html).toContain("Turn on read access for read-off-gmail to turn this on.");
     expect(html).toContain("Coming soon");
     expect(html).toContain("Invalid API key (401)");
     // instagram's active, non-default account must NOT offer a write default:

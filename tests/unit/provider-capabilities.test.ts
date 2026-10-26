@@ -179,6 +179,8 @@ const NATIVE_TOOLS = [
   // ASH-284: triage proposals persist in this repo; GitHub is never called,
   // so no catalog row.
   "github.issue.triage",
+  // ASH-287: proposal-only; approval creates the contact locally.
+  "crm.contact.create",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 

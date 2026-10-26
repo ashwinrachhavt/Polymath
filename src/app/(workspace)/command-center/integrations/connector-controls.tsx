@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { CAPABILITIES, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
+import type { SenderProposalsBlock } from "@/domains/crm/sender-proposals-gate";
 import { accessToggleState, planToggleSteps, type ToggleStep } from "@/domains/integrations/access-toggles";
 import {
   renameAccountAction,
@@ -12,6 +13,7 @@ import {
   setAccountAccessTierAction,
   setAccountCapabilityAction,
   setSenderAliasesAction,
+  setSenderProposalsAction,
   setWriteDefaultAction,
   startConnectionAction,
   syncGoogleCalendarAction,
@@ -34,6 +36,8 @@ export function AccountControls({
   isDefault,
   provider,
   alias,
+  senderProposalsEnabled,
+  senderProposalsBlocked,
 }: {
   provider?: string;
   accountId: string;
@@ -41,6 +45,8 @@ export function AccountControls({
   status: string;
   isDefault: boolean;
   alias: string;
+  senderProposalsEnabled?: boolean;
+  senderProposalsBlocked?: SenderProposalsBlock;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -97,7 +103,87 @@ export function AccountControls({
           Sync now
         </Button>
       ) : null}
+      {provider === "gmail" ? (
+        <SenderProposalsRow
+          accountId={accountId}
+          version={version}
+          alias={alias}
+          enabled={senderProposalsEnabled ?? false}
+          blocked={senderProposalsBlocked ?? null}
+        />
+      ) : null}
       {error ? <p className="text-[13px] text-muted-foreground" role="status">{error}</p> : null}
+    </div>
+  );
+}
+
+/*
+ * The sender-suggestions switch, rendered for a Gmail account in every state -
+ * not only while active. Stopping must always be available: an owner who
+ * turned the pass on and then disconnected the account or switched off read
+ * access can still see that it is on (paused) and turn it off here. Enabling
+ * while the account cannot be read is disabled with the reason named, matching
+ * the gates the domain enforces in setSenderProposals.
+ */
+export function SenderProposalsRow({
+  accountId,
+  version,
+  alias,
+  enabled,
+  blocked,
+}: {
+  accountId: string;
+  version: number;
+  alias: string;
+  enabled: boolean;
+  blocked: SenderProposalsBlock;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const reason =
+    blocked === "disconnected"
+      ? `${alias} is disconnected`
+      : blocked === "read_off"
+        ? `read access is off for ${alias}`
+        : null;
+
+  return (
+    <div className="w-full min-w-0">
+      <div className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+        <span className="min-w-0 flex-1 text-[13px] break-words">
+          <span className="font-medium">Suggest contacts from new senders</span>
+          <span className="block text-xs text-muted-foreground">
+            Once a day, Polymath reads new inbound senders on {alias} and turns them into contact proposals in Reviews. Read-only: no mail is
+            written, labeled, or sent, and nothing becomes a contact without your approval. Starts from the moment you turn it on.
+          </span>
+          {reason && enabled ? (
+            <span className="block text-xs text-muted-foreground">
+              On, but not running: {reason}. The daily pass is paused; turn it off here, or it resumes when the account is back.
+            </span>
+          ) : null}
+          {reason && !enabled ? (
+            <span className="block text-xs text-muted-foreground">
+              {blocked === "disconnected" ? `Reconnect ${alias} to turn this on.` : `Turn on read access for ${alias} to turn this on.`}
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0">
+          <Switch
+            checked={enabled}
+          disabled={pending || (blocked !== null && !enabled)}
+          aria-label="Suggest contacts from new senders"
+            onCheckedChange={(next) => {
+              setError(null);
+              startTransition(async () => {
+                const result = await setSenderProposalsAction({ accountId, expectedVersion: version, enabled: next });
+                if (!result.ok) setError(result.error);
+              });
+            }}
+          />
+        </span>
+      </div>
+      {error ? <p className="mt-1 text-[13px] text-muted-foreground" role="status">{error}</p> : null}
     </div>
   );
 }

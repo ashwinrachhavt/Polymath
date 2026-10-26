@@ -2,6 +2,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { approveArtifactRevision } from "@/domains/knowledge/revision-proposals";
 import { approveNoteProposal } from "@/domains/knowledge/note-proposals";
 import { approveTaskProposal } from "@/domains/work/proposals";
+import { approveContactProposal } from "@/domains/crm/propose-from-senders";
 
 /*
  * The single classification of an approval's local effect. A capability whose
@@ -18,4 +19,7 @@ export const LOCAL_WRITERS: Record<string, { apply: (auth: AuthContext, input: L
   "artifacts.revise": { apply: approveArtifactRevision, failure: "The approved revision was not applied." },
   "tasks.create": { apply: approveTaskProposal, failure: "The approved task was not created." },
   "notes.create": { apply: approveNoteProposal, failure: "The approved note was not created." },
+  // A sender-to-contact proposal: approval creates the contact, company and
+  // thread record in one idempotent transaction (ASH-287).
+  "crm.contact.create": { apply: approveContactProposal, failure: "The approved contact was not created." },
 };

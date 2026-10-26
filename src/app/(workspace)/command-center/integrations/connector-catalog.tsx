@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccessToggles, AccountControls, ConnectButton, SenderGrantControls } from "./connector-controls";
+import { AccessToggles, AccountControls, ConnectButton, SenderGrantControls, SenderProposalsRow } from "./connector-controls";
+import { senderProposalsBlockedReason } from "@/domains/crm/sender-proposals-gate";
 
 /*
  * One card per provider, and the card says what the person can do next.
@@ -17,6 +18,7 @@ export type CatalogAccount = {
   id: string;
   alias: string;
   status: string;
+  senderProposalsEnabled: boolean;
   displayName: string | null;
   isDefaultForWrites: boolean;
   allowRead: boolean;
@@ -213,7 +215,7 @@ export function ConnectorCatalog({
                         .map((account) => (
                           <div key={account.id} className="py-3">
                             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                              <p className="text-[13px] font-medium">{account.alias}</p>
+                              <p className="min-w-0 break-words text-[13px] font-medium">{account.alias}</p>
                               {account.isDefaultForWrites ? <Status>write default</Status> : null}
                             </div>
                             <p className="mb-2 text-xs text-muted-foreground">
@@ -236,6 +238,8 @@ export function ConnectorCatalog({
                                 status={account.status}
                                 isDefault={account.isDefaultForWrites}
                                 alias={account.alias}
+                                senderProposalsEnabled={account.senderProposalsEnabled}
+                                senderProposalsBlocked={senderProposalsBlockedReason(account)}
                               />
                             </div>
                           </div>
@@ -246,6 +250,17 @@ export function ConnectorCatalog({
                           <div key={account.id} className="py-3">
                             <p className="text-[13px] font-medium">{account.alias}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{accountLabel(account.status)}.</p>
+                            {connector.provider === "gmail" ? (
+                              <div className="mt-2">
+                                <SenderProposalsRow
+                                  accountId={account.id}
+                                  version={account.version}
+                                  alias={account.alias}
+                                  enabled={account.senderProposalsEnabled}
+                                  blocked={senderProposalsBlockedReason(account)}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       <div className="pt-3">
@@ -293,6 +308,17 @@ export function ConnectorCatalog({
                             alias={account.status === "revoked" ? undefined : account.alias}
                             label="Reconnect"
                           />
+                          {connector.provider === "gmail" ? (
+                            <div className="mt-2">
+                              <SenderProposalsRow
+                                accountId={account.id}
+                                version={account.version}
+                                alias={account.alias}
+                                enabled={account.senderProposalsEnabled}
+                                blocked={senderProposalsBlockedReason(account)}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
