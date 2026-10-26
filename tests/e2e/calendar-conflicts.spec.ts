@@ -142,6 +142,9 @@ for (const vp of VIEWPORTS) {
       await expect(card).toContainText(`Move event: ${localTitle}`);
       await expect(card).toContainText(`from ${fmt(at(15), timeZone)} to ${fmt(new Date(option.startsAt), timeZone)} (${timeZone})`);
       await expect(card).toContainText(`clearing its overlap with "${googleTitle}"`);
+      // The approval surface says what approval cannot do: local copy only,
+      // the provider unchanged, nobody notified.
+      await expect(card).toContainText("Only the Polymath copy moves - Google Calendar stays unchanged and nobody is notified.");
       // Nothing for the Google event was proposed.
       await expect(page.getByRole("list", { name: "Agent proposals" }).getByText(`Move event: ${googleTitle}`)).toHaveCount(0);
       await page.screenshot({ path: `test-results/feature-pixels/calendar-conflict-card-${vp.name}.png`, style: HIDE_DEV_CHROME });

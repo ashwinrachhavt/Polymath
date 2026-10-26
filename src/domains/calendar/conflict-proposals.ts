@@ -140,9 +140,14 @@ export async function proposeConflictMove(
   const clashing = window.events
     .filter((e) => e.id !== event.id && e.startsAt < event.endsAt && event.startsAt < e.endsAt)
     .map((e) => `"${e.title}"`);
+  // The approval surface must say what the approval cannot do: only local
+  // events ever reach this note (external ones are refused above), and the
+  // move writes one local row - the provider copy and its attendees are
+  // untouched.
   const note =
     `Moves "${event.title}" from ${at(event.startsAt)} to ${at(input.startsAt)} (${window.timezone})` +
-    (clashing.length ? `, clearing its overlap with ${clashing.join(", ")}.` : ".");
+    (clashing.length ? `, clearing its overlap with ${clashing.join(", ")}.` : ".") +
+    " Only the Polymath copy moves - Google Calendar stays unchanged and nobody is notified.";
 
   const result = await proposeCalendarChange(auth, {
     change: {

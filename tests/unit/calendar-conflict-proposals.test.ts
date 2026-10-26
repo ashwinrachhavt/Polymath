@@ -105,7 +105,9 @@ describe("proposeConflictMove", () => {
       startsAt: at(7, 12).toISOString(),
       endsAt: at(7, 13).toISOString(),
     });
-    expect(input.change.note).toBe('Moves "Planning" from Mon, Jan 7, 10:00 AM to Mon, Jan 7, 12:00 PM (UTC), clearing its overlap with "Dentist".');
+    expect(input.change.note).toBe(
+      'Moves "Planning" from Mon, Jan 7, 10:00 AM to Mon, Jan 7, 12:00 PM (UTC), clearing its overlap with "Dentist". Only the Polymath copy moves - Google Calendar stays unchanged and nobody is notified.',
+    );
   });
 
   it("derives a stable dedupe key so a retry resolves the same proposal", async () => {
