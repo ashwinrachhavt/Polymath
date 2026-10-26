@@ -128,3 +128,63 @@ export async function proposeLinearIssue(
   const out = await provider.generate({ system: LINEAR_ISSUE_SYSTEM_PROMPT, prompt, json: true });
   return { proposal: parseLinearIssueProposal(out.text), proposer: provider.name };
 }
+
+/* --- Notes surface (ASH-285: "from a note or capture") --- */
+
+import { and, eq } from "drizzle-orm";
+import { withTransaction } from "@/lib/db-transaction";
+import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
+import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
+import { draftBody } from "@/domains/capture/draft-templates";
+
+export class LinearIssueNoteError extends Error {
+  constructor(
+    public readonly code: "note_not_found",
+    message: string,
+  ) {
+    super(message);
+    this.name = "LinearIssueNoteError";
+  }
+}
+
+/**
+ * Draft a Linear-issue proposal from an existing note. The proposal becomes
+ * a new note that [[wiki-links]] back to its source, so the link graph keeps
+ * provenance like every other notebook artifact. With no generation provider
+ * configured the honest deterministic scaffold is the content; nothing is
+ * ever sent to Linear from here.
+ */
+export async function draftLinearIssueFromNote(
+  auth: AuthContext,
+  input: { artifactId: string },
+): Promise<{ artifactId: string; title: string; generated: boolean }> {
+  return withTransaction(async (tx) => {
+    const [note] = await tx
+      .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
+      .limit(1);
+    if (!note) throw new LinearIssueNoteError("note_not_found", "No such note.");
+    const markdown = note.content && typeof (note.content as { text?: unknown }).text === "string" ? ((note.content as { text: string }).text as string) : "";
+
+    let title: string;
+    let body: string;
+    let generated = false;
+    try {
+      const { proposal, proposer } = await proposeLinearIssue(auth, { title: note.title, text: markdown });
+      title = `Linear issue: ${proposal.title}`;
+      body = renderLinearIssueDraft(proposal, { sourceMaterial: markdown, proposer });
+      generated = true;
+    } catch {
+      const firstLine = markdown.split("\n").map((line) => line.trim()).find(Boolean) ?? note.title;
+      title = `Linear issue: ${firstLine}`;
+      body = draftBody("linear-issue", { firstLine, material: markdown });
+    }
+    // Provenance rides the link graph: the draft links back to its source note.
+    body += `\n\nDrafted from [[${note.title}]].`;
+    const draft = await createNoteInTx(tx, auth, { title, content: { format: "markdown", text: body }, plainText: body, kind: "note" });
+    await syncNoteLinks(tx, auth, draft.id, body);
+    return { artifactId: draft.id, title, generated };
+  });
+}

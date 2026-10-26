@@ -20,6 +20,7 @@ import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
+import { LinearIssueNoteError, draftLinearIssueFromNote } from "@/domains/capture/linear-issue-proposal";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
@@ -47,7 +48,7 @@ async function authorize(): Promise<AuthContext> {
 }
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError];
+const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError, LinearIssueNoteError];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -284,6 +285,21 @@ const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword"
  * An empty query lists recent cards so the menu is useful the moment it opens.
  * A read: membership is enough, and nothing is revalidated.
  */
+const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
+
+/**
+ * ASH-285: draft a fully formed Linear issue proposal from this note. The
+ * result is a new note linking back to its source; with no generation
+ * provider configured it is the honest deterministic scaffold instead. It
+ * never talks to Linear - review first, issue creation stays out of scope.
+ */
+export async function proposeLinearIssueAction(input: z.input<typeof proposeIssueInput>): Promise<Result<{ artifactId: string; title: string; generated: boolean }>> {
+  const parsed = proposeIssueInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That issue request is not valid." };
+  const auth = await authorize();
+  return guarded(async () => draftLinearIssueFromNote(auth, parsed.data));
+}
+
 export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string; href?: string }[]> {
   const parsed = findInput.safeParse(input);
   if (!parsed.success) return [];
