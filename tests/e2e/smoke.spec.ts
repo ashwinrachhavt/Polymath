@@ -291,6 +291,15 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
       // disabled:opacity-50 until hydration and transition to full opacity,
       // and axe composites whatever it samples through in-flight opacity.
       await waitSettled(page);
+      // The populated proposal card's real pixels: axe proves semantics, not
+      // spacing or readability, so the seeded /reviews card is captured too.
+      if (path === "/reviews" && seededProposalId) {
+        await expect(page.getByText(`WCAG seed ${tag}`, { exact: true }).first()).toBeVisible();
+        await page.screenshot({ path: "test-results/feature-pixels/reviews-populated-desktop.png" });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({ path: "test-results/feature-pixels/reviews-populated-mobile.png" });
+        await page.setViewportSize({ width: 1280, height: 720 });
+      }
       // The notebook leg scans the canonical surface (B04); its rich-editor
       // toolbar only mounts with a note open, so no editor landmark here. The
       // artifacts leg scans the rail's kept-outputs list (IA simplification).
