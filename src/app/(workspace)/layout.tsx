@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { io } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
@@ -37,10 +38,16 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   let storageScope = "anonymous";
   // ASH-312: the interface language is an account preference resolved on the
   // server, so every destination renders in the owner's mode on first paint -
-  // no client flash, and "auto" settles in the owner's timezone. Without an
-  // authenticated workspace (the local shell) the default resolves in UTC.
-  let interfaceMode: "library" | "action" = resolveInterfaceMode("auto", "UTC");
+  // no client flash, and "auto" settles in the owner's timezone. The public
+  // shell (no authenticated workspace) renders the library default: there is
+  // no owner timezone to settle "auto" in, and the clock is never read where
+  // a route may prerender.
+  let interfaceMode: "library" | "action" = "library";
   try {
+    // Resolving the preference is per-request I/O (the row, and the clock for
+    // "auto"): opt the shell out of prerendering before either is read, so a
+    // statically evaluated route never samples `new Date()` at build time.
+    await io();
     const authContext = await getAuthContext();
     if (authContext) {
       const preferences = await getPreferences(authContext);

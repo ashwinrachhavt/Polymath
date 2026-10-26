@@ -27,7 +27,8 @@ test("interface mode is an account preference with two visual languages", async 
   ] as const) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto("/settings");
-    await waitSettled(page, { heading: "Settings" });
+    await waitSettled(page, { capture: false });
+    await expect(page.getByRole("heading", { name: "Settings", exact: true }).first()).toBeVisible();
 
     // Skip cleanly where settings is only a browser preview (no sign-in).
     const modeSelect = page.locator('select[name="interfaceMode"]');
