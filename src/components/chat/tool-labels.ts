@@ -27,3 +27,23 @@ const TOOL_LABELS: Array<[RegExp, string]> = [
 ];
 
 export const toolLabel = (raw: string) => TOOL_LABELS.find(([re]) => re.test(raw))?.[1] ?? raw.replace(/_/g, " ");
+
+/*
+ * One line on what each capability does, for the agent panel's tool list. A
+ * capability the run's snapshot allows but this table has never seen falls back
+ * to its label: the panel names what it can and never guesses at the rest.
+ */
+const TOOL_DESCRIPTIONS: Array<[RegExp, string]> = [
+  [/tasks_recent|tasks_read|tasks\./i, "Reads the owner's task list."],
+  [/documents_search|documents\./i, "Searches the document library and returns cited passages."],
+  [/wiki_read|wiki\./i, "Reads pages in the workspace wiki."],
+  [/wiki_ingest/i, "Adds or updates a wiki page."],
+  [/wiki_lint/i, "Checks the wiki for broken links and gaps."],
+  [/gmail/i, "Reads mail the owner has connected."],
+  [/calendar/i, "Reads the owner's calendar."],
+  [/web_search/i, "Searches the public web."],
+  [/web_fetch/i, "Fetches and reads one web page."],
+  [/drive|files_list|list_files/i, "Lists files in the owner's connected drive."],
+];
+
+export const toolDescription = (raw: string) => TOOL_DESCRIPTIONS.find(([re]) => re.test(raw))?.[1] ?? null;

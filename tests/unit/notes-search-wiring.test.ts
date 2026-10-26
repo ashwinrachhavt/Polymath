@@ -49,6 +49,7 @@ vi.mock("@/components/list/list-toolbar", () => ({
 vi.mock("@/components/list/clamp", () => ({ redirectPastEnd: vi.fn() }));
 vi.mock("@/app/(workspace)/alfred/notes/note-editor", () => ({ NewNoteButton: () => null, NoteEditor: () => null }));
 vi.mock("@/app/(workspace)/alfred/notes/notebook-workspace", () => ({
+  NotebookListToggle: () => null,
   NotebookWorkspace: (props: { list: unknown; children: unknown }) =>
     h("div", null,
       h("div", { "data-testid": "list-column" }, props.list as ReactNode),

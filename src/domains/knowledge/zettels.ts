@@ -2,7 +2,7 @@ import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { defaultZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
@@ -47,9 +47,20 @@ function locate(text: string, quote: string): { start: number; end: number } | n
 
 export async function proposeZettels(
   auth: AuthContext,
-  input: { documentId: string; extractor?: ZettelExtractor },
+  input: {
+    documentId: string;
+    extractor?: ZettelExtractor;
+    /**
+     * Run the reads and inserts in the caller's transaction, so a caller that
+     * writes its own audit row can commit that row with the proposals it
+     * describes. Defaults to the shared client, which is what the per-document
+     * pass has always used.
+     */
+    tx?: TxDrizzle;
+  },
 ) {
-  const [document] = await db
+  const conn = input.tx ?? db;
+  const [document] = await conn
     .select({ id: documents.id })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
@@ -57,7 +68,7 @@ export async function proposeZettels(
   if (!document) throw new Error("document not found in workspace");
 
   // Restores change what the document reads as, so proposals follow the pin.
-  const [extraction] = await db
+  const [extraction] = await conn
     .select({ id: documentExtractions.id, text: documentExtractions.text })
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
@@ -86,7 +97,7 @@ export async function proposeZettels(
 
   const created = [];
   for (const z of accepted) {
-    const [row] = await db
+    const [row] = await conn
       .insert(zettelProposals)
       .values({
         workspaceId: auth.workspaceId,
