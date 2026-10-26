@@ -15,7 +15,7 @@ import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integration
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
-import { captures, captureSource } from "./schema";
+import { captureProposals, captures, captureSource } from "./schema";
 
 /*
  * Inbox commands (ASH-137 A02). Clarify-before-commit: conversion is a
@@ -55,6 +55,11 @@ export class StorageWriteFailedError extends Error {
 
 export class StaleWriteError extends Error {
   readonly code = "stale_write";
+}
+
+/** The row is gone (or never belonged to this workspace). */
+export class NotFoundError extends Error {
+  readonly code = "not_found";
 }
 
 function isUniqueViolation(cause: unknown): boolean {
@@ -229,7 +234,9 @@ export async function createFileCapture(
         .insert(captures)
         .values({
           workspaceId: auth.workspaceId,
-          kind: "file",
+          // Content decides the kind, same as the verdict decides the type: a
+          // sniffed audio payload is a voice capture, everything else a file.
+          kind: mimeType.startsWith("audio/") ? "voice" : "file",
           source: input.source ?? "quick_capture",
           rawPayload: {
             filename,
@@ -643,5 +650,121 @@ export async function setCaptureState(
       tx,
     );
     return updated;
+  });
+}
+
+/* --- Classification proposal decisions (ASH-314) --- */
+
+export type AcceptedProposal = {
+  kind: (typeof captureProposals.$inferSelect)["kind"];
+  /** What the accept produced; the UI links to it. Null for a discard. */
+  resultType: "task" | "note" | "discard";
+  resultId: string | null;
+};
+
+async function loadPendingProposal(auth: AuthContext, proposalId: string) {
+  const [proposal] = await db
+    .select()
+    .from(captureProposals)
+    .where(and(eq(captureProposals.workspaceId, auth.workspaceId), eq(captureProposals.id, proposalId)))
+    .limit(1);
+  if (!proposal) throw new NotFoundError("That suggestion no longer exists. Reload the inbox.");
+  if (proposal.status !== "pending") throw new ConflictError("That suggestion was already decided.");
+  return proposal;
+}
+
+/*
+ * The owner confirms the system's read: the proposal's kind drives the same
+ * conversion the manual buttons run, then the proposal records what it made.
+ * The conversion is the guarded write (stale version, already-converted);
+ * the decision stamp follows it, claimed on still-pending so a raced second
+ * accept can never double-record.
+ *
+ * Contact proposals carry no fields to create a record from yet - the CRM
+ * workflow (ASH-287) owns them - so accepting one is refused here and never
+ * offered in the UI.
+ */
+export async function acceptCaptureProposal(auth: AuthContext, input: { proposalId: string }): Promise<AcceptedProposal> {
+  const proposal = await loadPendingProposal(auth, input.proposalId);
+  if (proposal.kind === "contact") {
+    throw new ConflictError("A contact starts from the CRM page - the suggestion only flags it.");
+  }
+
+  const [capture] = await db
+    .select({ id: captures.id, version: captures.version })
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, proposal.captureId)))
+    .limit(1);
+  if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+
+  let resultType: AcceptedProposal["resultType"];
+  let resultId: string | null;
+  if (proposal.kind === "task") {
+    const { task } = await convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    resultType = "task";
+    resultId = task.id;
+  } else if (proposal.kind === "note") {
+    const { note } = await convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: capture.version });
+    resultType = "note";
+    resultId = note.id;
+  } else if (proposal.kind === "discard") {
+    await setCaptureState(auth, { captureId: capture.id, expectedVersion: capture.version, state: "discarded" });
+    resultType = "discard";
+    resultId = null;
+  } else {
+    // project / company / opportunity / reference / event: kinds the enum
+    // admits but no conversion path exists for. Never fake one.
+    throw new ConflictError(`Turning a capture into a ${proposal.kind} is not built yet.`);
+  }
+
+  const [decided] = await db
+    .update(captureProposals)
+    .set({
+      status: "accepted",
+      decidedAt: new Date(),
+      decidedBy: auth.userId,
+      resultType,
+      resultId,
+      updatedBy: auth.userId,
+    })
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        eq(captureProposals.id, proposal.id),
+        eq(captureProposals.status, "pending"),
+      ),
+    )
+    .returning({ id: captureProposals.id });
+  if (!decided) throw new ConflictError("That suggestion was already decided.");
+
+  await recordAudit(auth, {
+    action: "capture.proposal_accepted",
+    subjectType: "capture",
+    subjectId: capture.id,
+    summary: `Accepted ${proposal.kind} suggestion${resultType === "discard" ? "" : `; became ${resultType}`}`,
+  });
+  return { kind: proposal.kind, resultType, resultId };
+}
+
+/** The owner overrules the system's read. The capture itself is untouched. */
+export async function rejectCaptureProposal(auth: AuthContext, input: { proposalId: string }): Promise<void> {
+  const proposal = await loadPendingProposal(auth, input.proposalId);
+  const [decided] = await db
+    .update(captureProposals)
+    .set({ status: "rejected", decidedAt: new Date(), decidedBy: auth.userId, updatedBy: auth.userId })
+    .where(
+      and(
+        eq(captureProposals.workspaceId, auth.workspaceId),
+        eq(captureProposals.id, proposal.id),
+        eq(captureProposals.status, "pending"),
+      ),
+    )
+    .returning({ id: captureProposals.id });
+  if (!decided) throw new ConflictError("That suggestion was already decided.");
+  await recordAudit(auth, {
+    action: "capture.proposal_rejected",
+    subjectType: "capture",
+    subjectId: proposal.captureId,
+    summary: `Rejected ${proposal.kind} suggestion`,
   });
 }

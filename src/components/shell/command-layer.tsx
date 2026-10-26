@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Paperclip, Plus, Search, Users } from "lucide-react";
+import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Mic, Paperclip, Plus, Search, Square, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navi
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
 import { ShortcutsDialog } from "./shortcuts-dialog";
-import { quickCreate, refreshInbox, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
+import { quickCapture, refreshInbox, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
 
 const subscribeToHydration = () => () => {};
 
@@ -22,7 +22,6 @@ export function CommandLayer() {
   const [mode, setMode] = useState<"search" | "capture" | null>(null);
   const [query, setQuery] = useState("");
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<"capture" | "task" | "note">("capture");
   const [saveError, setSaveError] = useState("");
   const [saveErrorId, setSaveErrorId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -33,6 +32,11 @@ export function CommandLayer() {
   const captureTrigger = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [filePending, setFilePending] = useState(false);
+  // Voice notes record straight into the same dialog (ASH-314): one entry
+  // point, whatever the material. The recorder lives in a ref so the dialog
+  // closing always stops the mic; `recording` only re-renders the controls.
+  const recorder = useRef<MediaRecorder | null>(null);
+  const [recording, setRecording] = useState(false);
   const returnTo = useRef<"search" | "capture">("search");
 
   function open(next: "search" | "capture") {
@@ -124,7 +128,7 @@ export function CommandLayer() {
     setSaveError("");
     setSaveErrorId(null);
     setPending(true);
-    void quickCreate(kind, text, crypto.randomUUID())
+    void quickCapture(text, crypto.randomUUID())
       .then((result) => {
         if (!result.ok) { setSaveError(result.error); setSaveErrorId(result.existingId ?? null); return; }
         notify(result.message);
@@ -134,6 +138,53 @@ export function CommandLayer() {
       .finally(() => setPending(false));
   }
 
+  // A pasted screenshot or dropped-in image is a capture too: the paste never
+  // becomes text first, it uploads through the same sniffed file route.
+  function pasteCapture(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = Array.from(event.clipboardData?.files ?? [])[0];
+    if (!file) return;
+    event.preventDefault();
+    attachFile(file);
+  }
+
+  // One mic button: tap to start, tap to stop and capture. The recording
+  // uploads like any other file; content sniffing marks it a voice capture.
+  function toggleRecording() {
+    if (recording) {
+      recorder.current?.stop();
+      return;
+    }
+    setSaveError("");
+    setSaveErrorId(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setSaveError("This browser cannot record audio. Type or attach a file instead.");
+      return;
+    }
+    void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      const session = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: Blob[] = [];
+      session.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
+      session.addEventListener("stop", () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorder.current = null;
+        setRecording(false);
+        if (!chunks.length) return;
+        const type = session.mimeType || "audio/webm";
+        const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        attachFile(new File(chunks, `voice-note.${extension}`, { type }));
+      });
+      recorder.current = session;
+      session.start();
+      setRecording(true);
+    }).catch(() => setSaveError("Microphone access was refused. Type or attach a file instead."));
+  }
+
+  // The mic never outlives the dialog: closing or switching modes stops it.
+  useEffect(() => {
+    if (mode === null && recorder.current) recorder.current.stop();
+  }, [mode]);
+
   return <>
     <span className="contents md:hidden"><button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" data-search-trigger className="global-search disabled:opacity-50">
       <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd aria-hidden className="readout ml-auto hidden text-[11px] lg:block">⌘ K</kbd>
@@ -141,8 +192,8 @@ export function CommandLayer() {
     <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); if (returnTo.current === "capture") { captureTrigger.current?.focus(); return; } const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")); (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus(); }}>
-        <DialogTitle>{mode === "search" ? "Search and commands" : "Capture without switching context"}</DialogTitle>
-        <DialogDescription>{mode === "search" ? "Navigate anywhere, or find saved tasks, notes, people and inbox items. Documents use the search in Alfred Knowledge." : "Saved to your workspace: the durable inbox, the canonical task list, or your notebook."}</DialogDescription>
+        <DialogTitle>{mode === "search" ? "Search and commands" : "Capture"}</DialogTitle>
+        <DialogDescription>{mode === "search" ? "Navigate anywhere, or find saved tasks, notes, people and inbox items. Documents use the search in Alfred Knowledge." : "Everything lands in the inbox first. Polymath reads it and suggests what it becomes - you only ever capture."}</DialogDescription>
         {mode === "search" ? <>
           <Input key="search" autoFocus className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setSelected(Math.min(active + 1, results.length - 1)); }
@@ -164,17 +215,15 @@ export function CommandLayer() {
           <p role="status" className="text-xs text-muted-foreground">{matches.length === 0 ? (search && !searched ? "Searching…" : "No results. Capture a new item or try a different search.") : matches.length > results.length ? `Showing ${results.length} of ${matches.length} matches. Refine your search for more.` : `${matches.length} ${matches.length === 1 ? "result" : "results"}`}</p>
         </> : <>
           <form id="quick-capture-form" onSubmit={saveCapture} className="flex flex-col gap-4">
-            <div className="flex gap-2" aria-label="Capture destination">
-              {([{ value: "capture", label: "Inbox", icon: Inbox }, { value: "task", label: "Task", icon: ListTodo }, { value: "note", label: "Note", icon: FileText }] as const).map((item) => <Button key={item.value} type="button" variant={kind === item.value ? "secondary" : "ghost"} aria-pressed={kind === item.value} onClick={() => setKind(item.value)}><item.icon aria-hidden />{item.label}</Button>)}
+            <label className="flex flex-col gap-2 text-[13px] font-medium">Anything worth keeping<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} onPaste={pasteCapture} placeholder="A thought, a task, a link, a pasted screenshot" /></label>
+            <div className="flex items-center gap-2">
+              <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
+              <Button type="button" variant="outline" size="sm" disabled={filePending || pending || recording} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
+              <Button type="button" variant={recording ? "secondary" : "outline"} size="sm" disabled={filePending || pending} aria-pressed={recording} onClick={toggleRecording}>
+                {recording ? <Square aria-hidden /> : <Mic aria-hidden />}{recording ? "Stop and save" : "Voice note"}
+              </Button>
+              <span className="text-[11px] text-muted-foreground">Up to 4 MB. Files are stored as-is; audio transcribes when that ships.</span>
             </div>
-            <label className="flex flex-col gap-2 text-[13px] font-medium">Capture content<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} placeholder="A thought, a task, a link, or something to clarify" /></label>
-            {kind === "capture" ? (
-              <div className="flex items-center gap-2">
-                <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
-                <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
-                <span className="text-[11px] text-muted-foreground">File or screenshot, up to 4 MB. Stored as-is; contents aren&apos;t searchable.</span>
-              </div>
-            ) : null}
           </form>
           <ImportDrop hint="Add pasted text or a URL. Files upload through Alfred Knowledge, where they are extracted." onImport={(result) => {
             if (result.kind === "file") { setSaveError("Use Attach file to keep it as-is in the inbox, or Alfred Knowledge to extract it."); setSaveErrorId(null); return; }

@@ -2,63 +2,44 @@
 
 import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { revalidatePath, updateTag } from "next/cache";
-import { createCapture, convertCaptureToTask } from "@/domains/capture/commands";
+import { createCapture } from "@/domains/capture/commands";
 import { captures } from "@/domains/capture/schema";
 import { contacts } from "@/domains/crm/schema";
-import { createNote } from "@/domains/knowledge/notes";
 import { artifacts, documents } from "@/domains/knowledge/schema";
 import { opportunities } from "@/domains/opportunities/schema";
 import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { capturesTag, tasksTag } from "@/lib/cache-tags";
+import { capturesTag } from "@/lib/cache-tags";
 import { db } from "@/lib/db";
 
 /*
  * The shared header writes and reads the same canonical Neon records every
- * other surface uses (assessment item A): quick capture lands in the durable
- * inbox, a quick task is the canonical task (with the original kept on the
- * capture it converted), a quick note is a notebook artifact, and search
- * finds those rows - not the browser preview store.
+ * other surface uses (assessment item A): capture is the single entry point
+ * for new content (ASH-314) and lands in the durable inbox, and search finds
+ * those rows - not the browser preview store.
  */
 
 export type QuickCreateResult = { ok: true; message: string } | { ok: false; error: string; existingId?: string };
 
-export async function quickCreate(
-  kind: "capture" | "task" | "note",
+/**
+ * The one global entry point for new content (ASH-314): everything starts as
+ * a capture - text, a link, a paste. The system reads it and proposes what it
+ * becomes; the owner never picks an object type up front. A bare URL dedupes
+ * on (workspace, source, url) and answers with the capture already in the
+ * inbox, so a re-paste links instead of stacking a second row.
+ */
+export async function quickCapture(
   text: string,
   idempotencyKey: string,
 ): Promise<QuickCreateResult> {
-  // Writes the canonical capture/task/note rows, so member or above (ASH-121 AC05).
+  // Writes the canonical capture row, so member or above (ASH-121 AC05).
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const value = text.trim();
   if (!value) return { ok: false, error: "Nothing to save." };
   try {
-    if (kind === "task") {
-      const capture = await createCapture(auth, { text: value });
-      await convertCaptureToTask(auth, {
-        captureId: capture.id,
-        expectedVersion: capture.version,
-        title: value.split("\n", 1)[0],
-      });
-      updateTag(tasksTag(auth));
-      updateTag(capturesTag(auth));
-      revalidatePath("/neuralflow/work");
-      updateTag(capturesTag(auth));
-    revalidatePath("/command-center/inbox");
-      return { ok: true, message: "Task saved to your workspace. The original stays in your inbox." };
-    }
-    if (kind === "note") {
-      await createNote(auth, {
-        idempotencyKey,
-        title: value.split("\n", 1)[0].slice(0, 200) || "Note",
-        plainText: value,
-      });
-      revalidatePath("/alfred/notes");
-      return { ok: true, message: "Note saved to Notes." };
-    }
-    await createCapture(auth, { text: value });
+    await createCapture(auth, { text: value, idempotencyKey });
     updateTag(capturesTag(auth));
     revalidatePath("/command-center/inbox");
     return { ok: true, message: "Saved to your inbox." };

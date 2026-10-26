@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { waitSettled } from "./helpers/settled";
 
-test("global capture and search open the exact shared task without losing the original", async ({ page }) => {
+test("global capture feeds the inbox, and search opens the exact task it became", async ({ page }) => {
   const tag = Date.now().toString(36);
   const shared = `Cross-app capture regression ${tag}`;
   await page.goto("/command-center/briefing");
@@ -10,11 +10,19 @@ test("global capture and search open the exact shared task without losing the or
   const capture = page.getByRole("button", { name: "Capture", exact: true });
   await capture.click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Task", exact: true }).click();
-  await dialog.getByRole("textbox", { name: "Capture content" }).fill(`${shared}\nKeep this original context`);
+  // ASH-314: one permanent entry point - no up-front object type to pick.
+  await expect(dialog.getByRole("button", { name: "Task", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Note", exact: true })).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: "Anything worth keeping" }).fill(`${shared}\nKeep this original context`);
   await dialog.getByRole("button", { name: "Save capture", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(capture).toBeFocused();
+
+  // The capture is the inbox's newest row; the owner converts it there.
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await page.getByRole("list").getByRole("link", { name: new RegExp(shared) }).first().click();
+  await page.getByRole("article").getByRole("button", { name: "Make task", exact: true }).click();
 
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Search workspace" }).fill(shared);
@@ -56,7 +64,7 @@ test("the header capture dialog validates pasted URLs and a captured item surviv
 
   // Header capture writes the durable inbox directly: the item survives reload.
   await page.getByRole("button", { name: "Capture", exact: true }).click();
-  await page.getByRole("dialog").getByRole("textbox", { name: "Capture content" }).fill("Preserve these bytes");
+  await page.getByRole("dialog").getByRole("textbox", { name: "Anything worth keeping" }).fill("Preserve these bytes");
   await page.getByRole("dialog").getByRole("button", { name: "Save capture", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
   await page.goto("/command-center/inbox");
