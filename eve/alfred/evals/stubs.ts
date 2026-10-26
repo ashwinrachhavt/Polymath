@@ -89,6 +89,9 @@ export const STUBBED_TOOLS = {
   // ASH-279 / ASH-283: both only ever propose, so the stub is the "queued"
   // shape and an eval can never reach Notion or spend a generation call.
   meeting_debrief: { response: { ok: true, status: "awaiting review", proposed: 0, taskProposalIds: [], noteProposalIds: [], followUpProposalIds: [], deduplicated: 0 } },
+  // ASH-285: only ever drafts a proposal note, so the stub is the "drafted"
+  // shape and an eval can never reach Linear or spend a generation call.
+  linear_issue_propose: { response: { ok: true, status: "drafted", artifactId: "00000000-0000-0000-0000-000000000000", title: "Linear issue: stub", generated: false, outcome: "created" } },
   notion_propose_update: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, contentHash: "", status: "awaiting review" } },
   notebook_open: { response: { ok: true, notebook: null } },
   "polymath-gateway__gmail_read_thread": { response: { ok: false, error: "not connected in this eval" } },

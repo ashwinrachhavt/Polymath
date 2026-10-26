@@ -56,9 +56,13 @@ describe("navigation", () => {
     expect(destinationForPath("/alfred/dossiers")?.label).toBe("Notebook");
   });
 
-  it("attributes every destination to a historic prefix or shared", () => {
+  it("attributes every destination to home, a historic prefix, or shared", () => {
+    // ASH-309 added "home" for the leading product destination (Decisions):
+    // the rail renders every non-"shared" group in its main column and
+    // foot-pins only "shared", so the union is home, the historic app
+    // prefixes, or shared - nothing else may appear.
     for (const destination of destinations) {
-      expect(destination.group === "shared" || ["command-center", "neuralflow", "alfred"].includes(destination.group)).toBe(true);
+      expect(destination.group === "home" || destination.group === "shared" || ["command-center", "neuralflow", "alfred"].includes(destination.group)).toBe(true);
     }
   });
 
