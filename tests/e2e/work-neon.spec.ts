@@ -1,9 +1,27 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 /*
  * The Work list on Neon: what the owner does in one sitting, and that it is
  * still there after a reload (nothing here lives in browser storage).
+ *
+ * Ordering assertions compare the two tagged cards' positions directly
+ * (bounding boxes), never text indices over the whole board: the workspace is
+ * shared with the parallel suite, so a whole-board innerText can miss a card
+ * entirely (-1 comparisons silently pass or fail on suite leftovers, ASH-321).
  */
+
+/** Vertical order of two visible cards: is `upper` rendered above `lower`? */
+async function isAbove(upper: Locator, lower: Locator): Promise<boolean> {
+  const [up, low] = await Promise.all([upper.boundingBox(), lower.boundingBox()]);
+  if (!up || !low) return false;
+  return up.y + up.height / 2 < low.y + low.height / 2;
+}
+
+/** The saved-list scope holding both tagged rows, with both rendered. */
+function savedRows(page: Page, a: string, b: string): { linkA: Locator; linkB: Locator } {
+  const list = page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first();
+  return { linkA: list.getByRole("link", { name: a, exact: true }), linkB: list.getByRole("link", { name: b, exact: true }) };
+}
 
 test("capture, commit, split, block, reorder and finish a task, saved in the workspace", async ({ page }) => {
   const tag = Date.now().toString(36);
@@ -20,25 +38,28 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   // Persisted: a reload reads Neon, not the browser.
   await page.reload();
   await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();
-  const order = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
-  expect(order.indexOf(a)).toBeLessThan(order.indexOf(b));
+  const created = savedRows(page, a, b);
+  await expect(created.linkA).toBeVisible();
+  await expect(created.linkB).toBeVisible();
+  expect(await isAbove(created.linkA, created.linkB)).toBe(true);
 
   // Reorder: the board's lane cards own reordering since the Work redesign.
   // The lane text flipping means the server action committed; navigating away
   // sooner can abort it and read the pre-move rows back.
   await page.goto("/neuralflow/work?view=board");
   await page.getByRole("button", { name: `Move ${a} down` }).click();
-  await expect
-    .poll(async () => {
-      const text = await page.locator("#content").innerText();
-      return text.indexOf(b) < text.indexOf(a);
-    })
-    .toBe(true);
+  // The poll only passes once BOTH cards render and b sits above a: a missing
+  // card yields a null box and keeps waiting instead of misreading leftovers.
+  const cardA = page.getByText(a, { exact: true });
+  const cardB = page.getByText(b, { exact: true });
+  await expect.poll(() => isAbove(cardB, cardA)).toBe(true);
   await page.goto("/neuralflow/work?view=saved");
   await expect(page.getByRole("button", { name: `Done: complete ${b}` })).toBeEnabled();
   await page.reload();
-  const after = await page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first().innerText();
-  expect(after.indexOf(b)).toBeLessThan(after.indexOf(a));
+  const moved = savedRows(page, a, b);
+  await expect(moved.linkA).toBeVisible();
+  await expect(moved.linkB).toBeVisible();
+  expect(await isAbove(moved.linkB, moved.linkA)).toBe(true);
 
   // Commit it: Ready shows up under Today.
   await page.getByRole("link", { name: a, exact: true }).click();
