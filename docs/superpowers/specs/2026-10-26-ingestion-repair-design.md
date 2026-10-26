@@ -472,9 +472,21 @@ independently mis-read it the same way. The mechanical rule that would have
 prevented all three of this branch's wrong claims: **never pipe a discovery search
 into `head` — truncation reads as absence. Count first, then narrow.** The file
 opens with "when this file and the code disagree, the code is right and this file
-is the bug," so gaps 3–4 are deleted rather than softened. The doc edit belongs to
-the session that already has the verified text in flight (`axiom-4d`); this table
-is the record either way.
+is the bug," so gaps 3–4 are deleted rather than softened.
+
+Landed: `15b8e4a` on `fix/ash-chat-transcript-and-capture-reply` —
+`agents/architecture.md` only, 24 insertions, 3 deletions. Gap 4 now leads with
+"Enrichment runs and fails at the Jev step", names the result as a redelivery loop
+with the deterministic tiers' work discarded, and says it is not a missing feature.
+The corrected gap 3 cites `enrichment-handler.ts:400` for where rows are written
+and `jev-classify.ts:31` for the kinds the producer may emit — two distinct facts.
+
+**A second rule, learned the hard way by the session that landed that commit:**
+staging by path is not enough, because work already in the index rides along
+silently. Its first attempt committed a doc change with 24 files and 1,504
+deletions attached. **Before committing, run `git show --stat HEAD` and read the
+file list, not the message.** All seven commits on this branch have been checked
+this way and each touches exactly one file.
 
 The only real defects in this area are the Jev fallback (§4.6) and the two stale
 "ships disabled" comments at `enrichment-handler.ts:222-224` while
