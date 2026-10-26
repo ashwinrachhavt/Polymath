@@ -282,19 +282,20 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           // the sidebar's truncation next to an empty editor.
           <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
+            <h1 className="sr-only">Search results</h1>
             {areaUnavailable ?? <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />}
           </div>
         ) : found.total === 0 ? (
           <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
-            <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h2>
+            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h1>
             <p className="mt-2 text-[13px] text-muted-foreground">It autosaves as you type, and every checkpoint becomes an immutable version.</p>
             <div className="mt-5"><NewNoteButton /></div>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
-            <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h2>
+            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h1>
             <div className="mt-5"><NewNoteButton /></div>
           </div>
         )}

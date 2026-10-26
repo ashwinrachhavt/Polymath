@@ -642,6 +642,13 @@ export function NoteEditor({
             </div>
           )}
           <div>
+            {/*
+             * The title is an input, and an input is not a heading: the screen
+             * still owes assistive tech an h1 naming the page. It sits beside
+             * the input rather than replacing it, so editing keeps working and
+             * the shell's one-heading-per-screen contract holds.
+             */}
+            <h1 className="sr-only">{title.trim() || "Untitled note"}</h1>
             <div className="flex items-start gap-2">
               <input
                 ref={titleRef}
