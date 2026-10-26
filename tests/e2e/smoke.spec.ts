@@ -8,10 +8,12 @@ test.afterAll(async () => {
   await removeSeededRuns();
 });
 
-test("home opens Assistant", async ({ page }) => {
+test("home is the decision queue", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveURL("/alfred");
-  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
+  // ASH-309: the root surface is the ranked decision queue; the Assistant
+  // conversation stays one click away at /alfred.
+  await expect(page).toHaveURL("/");
+  await expect(page.locator("#content h1")).toHaveText("Decisions");
   // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
 });
@@ -41,7 +43,7 @@ test("the Assistant home carries only the new conversation copy", async ({ page 
   }
 });
 
-test("the rail leads with Polymath, then Today", async ({ page }) => {
+test("the rail leads with Decisions, then Polymath", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/alfred");
   // The home streams: the shell hydrates and the Suspense boundary swaps its
@@ -56,7 +58,7 @@ test("the rail leads with Polymath, then Today", async ({ page }) => {
     .getByRole("navigation", { name: "Workspace", exact: true })
     .locator("a[aria-label]")
     .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")));
-  expect(labels.slice(0, 2)).toEqual(["Polymath", "Today"]);
+  expect(labels.slice(0, 3)).toEqual(["Decisions", "Polymath", "Today"]);
 });
 
 /*
@@ -70,8 +72,7 @@ test("canonical routes render", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page).toHaveURL("/alfred");
-  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
+  await expect(page.locator("#content h1")).toHaveText("Decisions");
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],

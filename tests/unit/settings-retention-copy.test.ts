@@ -39,7 +39,7 @@ describe("Data and retention copy", () => {
     const html = renderToStaticMarkup(
       h(Settings, {
         browserPreview: false,
-        serverPreferences: { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 3 },
+        serverPreferences: { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto", version: 3 },
         capabilities: [],
       }),
     );
@@ -61,7 +61,7 @@ describe("Data and retention copy", () => {
     const account = renderToStaticMarkup(
       h(Settings, {
         browserPreview: false,
-        serverPreferences: { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 3 },
+        serverPreferences: { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto", version: 3 },
         capabilities: [],
       }),
     );

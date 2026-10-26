@@ -38,6 +38,7 @@ const SECTION_GROUPS = [
       { id: "scheduling", label: "Scheduling" },
       { id: "accessibility", label: "Accessibility" },
       { id: "appearance", label: "Appearance" },
+      { id: "interface", label: "Interface mode" },
     ],
   },
   {
@@ -229,7 +230,7 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
   // submits against the version it rendered (compare-and-set on the server).
   // The /settings route passes the row in; the legacy /apps dispatch is
   // client-rendered, so it loads the same row on mount instead.
-  const [saved, setSaved] = useState(serverPreferences ?? { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 0 });
+  const [saved, setSaved] = useState(serverPreferences ?? { timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto" as const, version: 0 });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (serverPreferences) return;
@@ -277,6 +278,31 @@ export default function Settings({ serverPreferences, capabilities, serverAssist
 
         <Section id="scheduling">
           <SchedulerPanel />
+        </Section>
+
+        <Section id="interface">
+          <Panel title="Interface mode" description="Two interface languages: Library is the calm reading surface (serif titles, generous whitespace), Action is the dense decision surface (tighter rhythm, loud focus). Auto follows your working day (08:00-18:00 in your timezone) and resolves to Action during it. The header toggle pins a side in one tap.">
+            <form key={saved.interfaceMode} className="flex flex-col items-start gap-3" onSubmit={(e) => {
+              e.preventDefault();
+              const interfaceMode = String(new FormData(e.currentTarget).get("interfaceMode")) as "library" | "action" | "auto";
+              setSaving(true);
+              void savePreferencesAction({ expectedVersion: saved.version, interfaceMode }).then((result) => {
+                setSaving(false);
+                if (!result.ok) { notify(result.error); return; }
+                setSaved(result.preferences);
+                notify("Interface mode saved to your account. It applies on every device and product surface.");
+              });
+            }}>
+              <Field label="Mode">
+                <Select name="interfaceMode" defaultValue={saved.interfaceMode}>
+                  <option value="auto">Auto (follows the working day)</option>
+                  <option value="library">Library</option>
+                  <option value="action">Action</option>
+                </Select>
+              </Field>
+              <Button type="submit" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save interface mode"}</Button>
+            </form>
+          </Panel>
         </Section>
 
         <Section id="accessibility">

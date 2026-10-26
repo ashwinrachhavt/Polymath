@@ -87,6 +87,16 @@ async function narrativeNoteCount(): Promise<number> {
   }
 }
 
+/*
+ * The viewport journeys and the discard test share one account and constant
+ * fixture keys (TASK_TITLE, STONE_KEY, OUTCOME): seedWeek deletes and
+ * re-seeds those exact rows. Under fullyParallel the file's tests run in
+ * separate workers against the shared database and each seed pass deletes
+ * the other's fixture mid-journey - serial inside the file is the honest
+ * shape for one shared account row set.
+ */
+test.describe.configure({ mode: "serial" });
+
 test.afterAll(async () => {
   await removeSeeded();
 });

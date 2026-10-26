@@ -568,6 +568,13 @@
       "when": 1793200003000,
       "tag": "0254_instant_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1793200004000,
+      "tag": "0255_user_preferences_interface_mode",
+      "breakpoints": true
     }
   ]
 }

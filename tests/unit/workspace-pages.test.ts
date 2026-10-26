@@ -40,9 +40,12 @@ describe("workspace page shells", () => {
     }
   });
 
-  it("the root redirects to the Assistant", () => {
-    const source = fs.readFileSync(path.join(ROOT, "src/app/page.tsx"), "utf8");
-    expect(source).toContain('redirect("/alfred")');
+  it("the root is the decision queue (ASH-309)", () => {
+    // The old root redirected to the Assistant; the decision engine is the
+    // front door now, rendered inside the workspace shell.
+    expect(fs.existsSync(path.join(ROOT, "src/app/page.tsx"))).toBe(false);
+    const source = fs.readFileSync(path.join(ROOT, "src/app/(workspace)/page.tsx"), "utf8");
+    expect(source).toContain("listHomeQueue");
   });
 
   it("page shells do not hardcode legacy /apps routes", () => {

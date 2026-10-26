@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { io } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
+import { getAuthContext } from "@/lib/auth";
+import { getPreferences, resolveInterfaceMode } from "@/domains/identity/preferences";
 
 /*
  * Every destination shares the shell. A route group rather than a path
@@ -33,6 +36,26 @@ import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
  */
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let storageScope = "anonymous";
+  // ASH-312: the interface language is an account preference resolved on the
+  // server, so every destination renders in the owner's mode on first paint -
+  // no client flash, and "auto" settles in the owner's timezone. The public
+  // shell (no authenticated workspace) renders the library default: there is
+  // no owner timezone to settle "auto" in, and the clock is never read where
+  // a route may prerender.
+  let interfaceMode: "library" | "action" = "library";
+  try {
+    // Resolving the preference is per-request I/O (the row, and the clock for
+    // "auto"): opt the shell out of prerendering before either is read, so a
+    // statically evaluated route never samples `new Date()` at build time.
+    await io();
+    const authContext = await getAuthContext();
+    if (authContext) {
+      const preferences = await getPreferences(authContext);
+      interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);
+    }
+  } catch {
+    // A preference read failure never blocks the workspace; default mode.
+  }
   if (clerkConfigured && !devAuthBypass) {
     const { userId } = await auth();
     if (!userId) redirect("/sign-in");
@@ -48,11 +71,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // ~220 KB first-load. Sign-in and sign-up wrap themselves because their
   // Clerk components need the same context.
   if (!clerkConfigured) {
-    return <AppShell storageScope={storageScope} clerkConfigured={false}>{children}</AppShell>;
+    return <AppShell storageScope={storageScope} clerkConfigured={false} interfaceMode={interfaceMode}>{children}</AppShell>;
   }
   return (
     <ClerkAuthProvider>
-      <AppShell storageScope={storageScope} clerkConfigured>{children}</AppShell>
+      <AppShell storageScope={storageScope} clerkConfigured interfaceMode={interfaceMode}>{children}</AppShell>
     </ClerkAuthProvider>
   );
 }

@@ -5,6 +5,7 @@ import {
   getPreferences,
   updatePreferences,
   type AppearanceValue,
+  type InterfaceModeValue,
   type LoadedPreferences,
   type MotionValue,
   type Preferences,
@@ -46,6 +47,7 @@ export async function savePreferencesAction(input: {
   weekStart?: number;
   appearance?: AppearanceValue;
   motion?: MotionValue;
+  interfaceMode?: InterfaceModeValue;
 }): Promise<Result<{ preferences: LoadedPreferences }>> {
   let auth;
   try {
@@ -59,6 +61,7 @@ export async function savePreferencesAction(input: {
   if (input.weekStart !== undefined) patch.weekStart = Number(input.weekStart);
   if (input.appearance !== undefined) patch.appearance = input.appearance;
   if (input.motion !== undefined) patch.motion = input.motion;
+  if (input.interfaceMode !== undefined) patch.interfaceMode = input.interfaceMode;
   try {
     const preferences = await updatePreferences(auth, {
       expectedVersion: Number(input.expectedVersion),

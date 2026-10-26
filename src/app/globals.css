@@ -495,3 +495,52 @@ transition-duration: 0.01ms !important;
     animation: none;
   }
 }
+
+/* ASH-312: the two interface languages, scoped from the shell's
+   data-interface-mode attribute. Both stay inside the one accent and the
+   warm bone/charcoal register - what changes is tempo: how much air the
+   page gets, which voice the headings speak, and how loudly focus shows.
+
+   Library: the calm reading surface. Serif titles, a narrower measure,
+   generous whitespace, panels that breathe.
+   Action: the decision surface. Sans titles at a tighter track, denser
+   rhythm, and focus rings a keyboard-first operator can track at speed. */
+[data-interface-mode="library"] .screen-title {
+font-family: var(--font-reading);
+font-weight: 450;
+letter-spacing: 0;
+}
+[data-interface-mode="library"] .suite-screen {
+--page-width: 52rem;
+padding-block: 40px 56px;
+}
+[data-interface-mode="library"] .suite-screen > header {
+padding-bottom: 32px;
+}
+[data-interface-mode="library"] .screen-description {
+font-size: 14px;
+line-height: 1.7;
+}
+[data-interface-mode="library"] .panel {
+padding: 20px;
+}
+[data-interface-mode="library"] main ::selection {
+background: var(--muted);
+}
+
+[data-interface-mode="action"] .screen-title {
+font-family: var(--font-sans);
+font-size: 22px;
+font-weight: 600;
+letter-spacing: var(--tracking-tight);
+}
+[data-interface-mode="action"] .suite-screen {
+padding-block: 16px 28px;
+}
+[data-interface-mode="action"] .suite-screen > header {
+padding-bottom: 16px;
+}
+[data-interface-mode="action"] main :is(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+outline: 2px solid var(--foreground);
+outline-offset: 2px;
+}

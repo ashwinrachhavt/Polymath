@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
 import { getAuthContext } from "@/lib/auth";
-import { clerkConfigured } from "@/lib/clerk";
 import { capabilityStatus } from "@/lib/capability-config";
 import Settings from "@/components/products/command-center/settings";
 
@@ -19,20 +18,32 @@ export const metadata = { title: "Settings · Polymath" };
  * missing variables instead of rendering a control that silently does nothing
  * (ASH-193). Only variable names cross to the client, never values.
  *
- * A deployment without Clerk keys has no account behind this screen at all,
- * so asking for auth throws and the whole route fell into the error boundary
- * - which hid the one panel (capabilities) whose entire job is to describe a
- * not-fully-configured deployment. In that configuration the preferences stay
- * browser-local and the capability panel still renders.
+ * A deployment without Clerk keys AND without the dev-auth bypass has no
+ * account behind this screen at all, so asking for auth throws and the whole
+ * route fell into the error boundary - which hid the one panel (capabilities)
+ * whose entire job is to describe a not-fully-configured deployment. In that
+ * configuration the preferences stay browser-local and the capability panel
+ * still renders. The dev bypass IS an account - every other surface and the
+ * header mode toggle read and save its preferences row through the actions -
+ * so branching on clerkConfigured alone made this page the one surface that
+ * denied the account existed: the form saved against version 0 forever and
+ * every save after the first conflicted.
  */
 
 export async function SettingsSurface() {
   await io();
   const capabilities = capabilityStatus();
-  if (!clerkConfigured) {
+  // Ask for the account first and fall back to the preview only when there is
+  // genuinely none. Testing the flags instead missed the keyless dev harness,
+  // where Clerk is unconfigured (so no keys) yet getAuthContext still resolves
+  // the dev owner: this page rendered the preview branch, the form posted
+  // version 0 forever, and every save after the first was a CAS conflict.
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch {
     return <Settings capabilities={capabilities} browserPreview />;
   }
-  const auth = await getAuthContext();
   const serverPreferences = await getPreferences(auth);
   // Owner scope, same contract as actions.ts: a non-owner must not receive
   // the raw brief in the initial RSC payload either.
