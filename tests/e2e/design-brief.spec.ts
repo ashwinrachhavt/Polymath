@@ -269,7 +269,6 @@ for (const vp of VIEWPORTS) {
     await expect(
       card.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
     ).toBeVisible({ timeout: 30_000 });
-    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await importAttemptCount()).toBe(0);
 
     // Reloaded, the refusal persists NO manufactured outcome: the approval
@@ -287,6 +286,11 @@ for (const vp of VIEWPORTS) {
     await expect(decided.getByText("Imported to Canva.")).toHaveCount(0);
     await expect(decided.getByText(/Not imported\./)).toHaveCount(0);
     await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    // The outcome pixel is the RELOADED decided card: the immediate alert is
+    // a flash the decided overlay replaces within a frame, while this view -
+    // persisted refusal history, approval standing, no re-fire control - is
+    // the durable evidence.
+    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
   });
 
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
