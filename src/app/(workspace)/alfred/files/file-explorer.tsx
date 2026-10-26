@@ -82,9 +82,12 @@ export function FileExplorer({
   total,
   folders,
   taskId,
+  taskFilterInvalid,
 }: {
   /** Set from `?task=`: the whole explorer, including every later page, is that task's documents. */
   taskId?: string;
+  /** `?task=` was present but not a uuid: show an empty, labelled result, never the unfiltered library. */
+  taskFilterInvalid?: boolean;
   initialRows: BrowserRow[];
   initialCursor: string | null;
   total: number;
@@ -223,6 +226,11 @@ export function FileExplorer({
   async function fetchPage(next: { sort: ServerSort; cursor?: string; q?: string }, replace: boolean) {
     const token = ++pageToken.current;
     setLoading(true);
+    if (taskFilterInvalid) {
+      setLoading(false);
+      if (replace) setRows([]);
+      return;
+    }
     const result = await loadPageAction({ ...next, taskId });
     if (token !== pageToken.current) return;
     setLoading(false);
@@ -466,9 +474,9 @@ export function FileExplorer({
       </nav>
 
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Documents">
-        {taskId ? (
+        {taskId || taskFilterInvalid ? (
           <div role="status" className="border-border bg-muted/40 text-muted-foreground flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs md:px-5">
-            <span>Showing only the documents that produced this task.</span>
+            <span>{taskFilterInvalid ? "That task link didn't include a valid task, so no documents are shown." : "Showing only the documents linked to this task."}</span>
             <Link href="/alfred/files" className="text-foreground underline-offset-4 hover:underline">
               Show all documents
             </Link>

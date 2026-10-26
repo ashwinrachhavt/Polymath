@@ -19,27 +19,36 @@ export const metadata = { title: "Files · Polymath" };
 
 type SearchParams = Promise<{ task?: string | string[] }>;
 
-/** `?task=<uuid>` narrows the explorer to the documents that produced that task. Anything else is no filter. */
-function taskFilterFrom(raw: string | string[] | undefined): string | undefined {
+/**
+ * `?task=<uuid>` narrows the explorer to the documents linked to that task.
+ * Three states, never a silent broadening: absent is no filter, a valid uuid
+ * filters (even when it matches nothing), an invalid value is an empty,
+ * clearly-labelled result - not the whole library.
+ */
+function taskFilterFrom(raw: string | string[] | undefined): { taskId?: string; invalid: boolean } {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return value && z.string().uuid().safeParse(value).success ? value : undefined;
+  if (!value) return { invalid: false };
+  return z.string().uuid().safeParse(value).success ? { taskId: value, invalid: false } : { invalid: true };
 }
 
 async function FilesSurface({ searchParams }: { searchParams: SearchParams }) {
   await io();
-  const taskId = taskFilterFrom((await searchParams).task);
+  const filter = taskFilterFrom((await searchParams).task);
   const auth = await getAuthContext();
-  const [page, folders] = await Promise.all([
-    getExplorerPage(auth, { sort: "added", limit: 100, taskId }),
-    listFolders(auth),
-  ]);
+  const [page, folders] = filter.invalid
+    ? [{ rows: [], nextCursor: null, total: 0 }, await listFolders(auth)]
+    : await Promise.all([
+        getExplorerPage(auth, { sort: "added", limit: 100, taskId: filter.taskId }),
+        listFolders(auth),
+      ]);
   return (
     <FileExplorer
       initialRows={page.rows}
       initialCursor={page.nextCursor}
       total={page.total}
       folders={folders}
-      taskId={taskId}
+      taskId={filter.taskId}
+      taskFilterInvalid={filter.invalid}
     />
   );
 }

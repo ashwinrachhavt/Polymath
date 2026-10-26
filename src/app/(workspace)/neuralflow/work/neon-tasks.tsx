@@ -227,7 +227,7 @@ export async function NeonTasks({
               )}
             </div>
           ) : null}
-          {detail ? <TaskEvidence items={provenance} /> : null}
+          {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
         </Panel>
       </div>
 

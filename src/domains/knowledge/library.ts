@@ -69,9 +69,11 @@ export type LibraryFilters = {
   /** Documents carrying this tag. */
   tag?: string;
   /**
-   * Documents that produced this task: an accepted obligation (document_obligations.task_id)
-   * made it. Workspace-scoped through the obligation row, so another workspace's task id
-   * matches nothing. Superseded obligations no longer count.
+   * Documents linked to this task: a non-superseded obligation
+   * (document_obligations.task_id) connects them. task_id is set only when an
+   * obligation is accepted into a task, so a match means accepted. Workspace-
+   * scoped through the obligation row, so another workspace's task id matches
+   * nothing. Superseded obligations no longer count.
    */
   taskId?: string;
   createdFrom?: Date;
