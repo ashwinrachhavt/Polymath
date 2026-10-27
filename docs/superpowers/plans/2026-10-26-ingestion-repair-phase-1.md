@@ -215,6 +215,19 @@ Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/02
 
 **The generated SQL is NOT your migration.** `src/db/migrations/meta/` holds snapshots only through `0253`; `0254`, `0255` and `0256` each added a journal entry with no snapshot, so drizzle cannot see them and believes the schema has drift. Verified on a scratch database: `generate` emits 11 statements of which 7 re-create things that already exist — `CREATE TYPE interface_mode`, `CREATE TABLE briefing_seeds`, four `ALTER TABLE captures ADD COLUMN` (parked_at, parked_by, enrichment_lease_token, enrichment_lease_until), and `ALTER TABLE user_preferences ADD COLUMN interface_mode`. Shipping that would fail on every real database. **Delete every generated statement, keeping only what belongs to this change** (the two enum types, the four `captures` columns, the index drop, the two new partial indexes, and the backfill below). Keep the snapshot file the generator wrote — that is the part you want.
 
+**Guard the two `CREATE TYPE` statements.** CI applies migrations with `for f in src/db/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$f"; done` (`.github/workflows/ci.yml`) — one `psql -f` per file, with no `-1` flag, so a file is **not** wrapped in a transaction there. `pnpm db:migrate` locally does wrap it, but CI is what counts. If a statement midway through 0258 fails, the earlier ones commit, and a re-run then hard-fails on `CREATE TYPE` because Postgres has no `IF NOT EXISTS` for it. Use the repo's existing pattern from `0253_run_reviews.sql`:
+
+```sql
+DO $$ BEGIN
+  CREATE TYPE "public"."capture_mode" AS ENUM('authored', 'selection', 'page', 'url-reference', 'blob');
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."capture_fetch_outcome" AS ENUM('pending', 'acquired', 'error-page', 'access-denied', 'empty', 'provider-unavailable');
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+```
+
+That makes a re-run inert rather than fatal. `0253` already does this; `0254` is the outlier.
+
 **Then set the journal `when` by hand.** `drizzle-kit` stamps it with the current millisecond, today about `1793060385000`. Every recent entry is already future-dated (`0252` = `1793200001000` through `0256` = `1793200005000`), so a generated value is BELOW all of them and `tests/unit/migration-journal.test.ts` fails: the rule is *strictly increasing*, not *honest dates*. Do not "fix" the older entries — re-dating any of them below its predecessor breaks the same suite. Edit the new entry in `src/db/migrations/meta/_journal.json` to `"when": 1793250000001`, the smallest value above `0257_drop_daily_outcomes`'s `1793250000000`, and confirm with `pnpm exec vitest run tests/unit/migration-journal.test.ts`. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
 
 ```sql
