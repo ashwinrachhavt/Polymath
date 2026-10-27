@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captures } from "@/domains/capture/schema";
-import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -35,36 +34,14 @@ async function seed(slug: string) {
   return { auth: ownerAuth(userId, workspaceId), workspaceId };
 }
 
-/**
- * A task is a note plus its extension row, and the link picker searches the
- * note's title. Written by hand so the read is exercised against plain
- * Postgres rows rather than the production writer.
- */
-async function insertTask(workspaceId: string, title: string): Promise<{ id: string }> {
-  const [note] = await db
-    .insert(artifacts)
-    .values({ workspaceId, kind: "note", title, template: "issue" })
-    .returning({ id: artifacts.id });
-  const [version] = await db
-    .insert(artifactVersions)
-    .values({ workspaceId, artifactId: note.id, versionNumber: 1, content: { type: "doc", content: [] }, reason: "created" })
-    .returning({ id: artifactVersions.id });
-  await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
-  const [task] = await db
-    .insert(tasks)
-    .values({ workspaceId, noteId: note.id })
-    .returning({ id: tasks.id });
-  return task;
-}
-
 suite("link-target search", () => {
   it("matches captures and tasks in the workspace with canonical hrefs, never the neighbor's", async () => {
     const { auth, workspaceId } = await seed("lt-main");
     const other = await seed("lt-other");
     await db.insert(captures).values({ workspaceId, kind: "text", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
     await db.insert(captures).values({ workspaceId: other.workspaceId, kind: "text", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
-    await insertTask(workspaceId, "Accountant follow-up");
-    await insertTask(other.workspaceId, "Accountant follow-up");
+    await db.insert(tasks).values({ workspaceId, title: "Accountant follow-up" });
+    await db.insert(tasks).values({ workspaceId: other.workspaceId, title: "Accountant follow-up" });
 
     const caps = await captureQueries.searchCapturesForLink(auth, "accountant");
     expect(caps).toHaveLength(1);
@@ -82,7 +59,7 @@ suite("link-target search", () => {
   it("excludes archived captures and archived tasks", async () => {
     const { auth, workspaceId } = await seed("lt-arch");
     const [cap] = await db.insert(captures).values({ workspaceId, kind: "text", rawPayload: { text: "archived accountant note" }, text: "archived accountant note" }).returning();
-    const task = await insertTask(workspaceId, "archived accountant task");
+    const [task] = await db.insert(tasks).values({ workspaceId, title: "archived accountant task" }).returning();
     await db.update(captures).set({ archivedAt: new Date() }).where(eq(captures.id, cap.id));
     await db.update(tasks).set({ archivedAt: new Date() }).where(eq(tasks.id, task.id));
 

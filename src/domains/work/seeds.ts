@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordAudit } from "@/domains/audit/record";
 import { briefingSeeds, tasks } from "./schema";
-import { artifacts } from "@/domains/knowledge/schema";
 
 /*
  * Tomorrow's suggestions, as written by the end-of-day shutdown.
@@ -44,15 +43,12 @@ export async function listSeedsForDay(
       seedId: briefingSeeds.id,
       seedVersion: briefingSeeds.version,
       taskId: tasks.id,
-      // The title is the note's (0260 drops `tasks.title`), joined on id and
-      // workspace so a foreign note id can never leak a title.
-      title: artifacts.title,
+      title: tasks.title,
       reason: briefingSeeds.reason,
       taskVersion: tasks.version,
     })
     .from(briefingSeeds)
     .innerJoin(tasks, eq(tasks.id, briefingSeeds.taskId))
-    .innerJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
     .where(
       and(
         eq(briefingSeeds.workspaceId, auth.workspaceId),

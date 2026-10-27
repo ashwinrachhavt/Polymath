@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
-import { insertTaskNote } from "./helpers/task-note";
 
 /*
  * Pixels for meeting prep (ASH-302): the Prep control on Today's Flow and
@@ -64,10 +63,8 @@ async function seedPrepContext(tag: string): Promise<boolean> {
     await client`delete from events where title = ${n.event}`;
     await client`delete from calendars where name = ${n.calendar}`;
     await client`delete from contacts where primary_email = ${n.email}`;
-    // The task's note has no cascade from tasks.note_id, so the row goes first
-    // and the note (same title) is cleared with the other artifacts below.
+    await client`delete from artifacts where title in (${n.note}, ${`Prep: ${n.event}`})`;
     await client`delete from tasks where title = ${n.task}`;
-    await client`delete from artifacts where title in (${n.note}, ${`Prep: ${n.event}`}, ${n.task})`;
 
     const [calendar] = await client<{ id: string }[]>`
       insert into calendars (workspace_id, kind, name, created_by, updated_by)
@@ -96,12 +93,9 @@ async function seedPrepContext(tag: string): Promise<boolean> {
         ${"Decided with Priya Nair: annual billing stays for the platform tier."}, 'created', ${uid})
       returning id`;
     await client`update artifacts set current_version_id = ${version.id} where id = ${note.id}`;
-    // The task's own note: every work read inner-joins it, so the open loop is
-    // seeded as the note + extension row the production writer produces.
-    const taskNote = await insertTaskNote(client, { workspaceId: ws, title: n.task, userId: uid });
     await client`
-      insert into tasks (workspace_id, note_id, title, status, created_by, updated_by)
-      values (${ws}, ${taskNote}, ${n.task}, 'ready', ${uid}, ${uid})`;
+      insert into tasks (workspace_id, title, status, created_by, updated_by)
+      values (${ws}, ${n.task}, 'ready', ${uid}, ${uid})`;
     return true;
   } finally {
     await client.end();

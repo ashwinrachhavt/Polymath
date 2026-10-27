@@ -7,7 +7,7 @@ import { captures } from "@/domains/capture/schema";
 import { contacts } from "@/domains/crm/schema";
 import { artifacts, documents } from "@/domains/knowledge/schema";
 import { opportunities } from "@/domains/opportunities/schema";
-import { searchTasksByProse } from "@/domains/work/queries";
+import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { capturesTag } from "@/lib/cache-tags";
@@ -67,7 +67,12 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
   const pattern = `%${q}%`;
 
   const [taskRows, captureRows, noteRows, contactRows, opportunityRows, documentRows] = await Promise.all([
-    searchTasksByProse(auth, [q], { limit: 6 }),
+    db
+      .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(tasks.title, pattern)))
+      .orderBy(desc(tasks.updatedAt))
+      .limit(6),
     db
       .select({ id: captures.id, text: captures.text, url: captures.url, state: captures.processingState })
       .from(captures)

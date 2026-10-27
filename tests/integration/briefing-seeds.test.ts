@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
-import { seedTaskWithNote } from "../helpers/task-note";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -48,10 +47,9 @@ async function workspace(tag: string) {
   return { auth: ownerAuth(userId, workspaceId), workspaceId };
 }
 
-// A task carries its prose on its note (one note substrate, 0260): hand the
-// fixture the same shape production writes instead of inserting a bare row.
 async function task(workspaceId: string, title: string, over: Partial<typeof tasks.$inferInsert> = {}) {
-  return seedTaskWithNote(db, { workspaceId, title, rank: "m", status: "ready", ...over });
+  const [row] = await db.insert(tasks).values({ workspaceId, title, rank: "m", status: "ready", ...over }).returning();
+  return row;
 }
 
 async function seed(workspaceId: string, taskId: string, onDate = "2026-10-27") {

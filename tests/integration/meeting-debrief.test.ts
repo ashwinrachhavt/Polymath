@@ -167,13 +167,7 @@ suite("meeting debrief", () => {
     const outcome = await taskProposals.approveTaskProposal(auth, { proposalId, expectedVersion: 1, revisionId: revision!.id });
     expect(outcome.status).toBe("executed");
 
-    // The title lives on the task's note, so it is joined in rather than read
-    // from the dropped task column.
-    const rows = await db
-      .select({ title: artifacts.title })
-      .from(tasks)
-      .innerJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
-      .where(eq(tasks.workspaceId, workspaceId));
+    const rows = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, workspaceId));
     expect(rows).toHaveLength(1);
     expect(rows[0]!.title).toBe("Send the Q3 roadmap");
   });

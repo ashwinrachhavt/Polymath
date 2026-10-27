@@ -1,46 +1,19 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
-import type { TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { tasks } from "./schema";
-
-/** Reads may run inside a caller's transaction (a command that reads before it writes). */
-type Db = typeof db | TxDrizzle;
-
-/**
- * The note join every read uses. `tasks.note_id` is a single-column FK, so it
- * cannot enforce that the artifact shares the task's workspace; matching
- * `workspace_id` as well is what keeps a foreign note id from leaking a title.
- */
-function noteOf() {
-  return and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId));
-}
-
-/*
- * A task's prose lives on its note, not on the task row. Every read here joins
- * `artifacts` on `tasks.note_id` instead of selecting `tasks.title` /
- * `tasks.description`, which 0260 drops. The inner join is the point: a task
- * with no note has no prose to show, and after 0260 it cannot exist. The join
- * is legal in this file and nowhere else - the rest of the app reads tasks
- * through these queries.
- *
- * `description` is the current version's `plain_text`, so a writer that mints a
- * new version changes what every reader sees without touching the task row.
- */
 
 /** A bounded projection of canonical tasks, shared with the agent read tool. */
 export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limit = 25) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid task limit");
   return db.select({
     id: tasks.id,
-    title: artifacts.title,
+    title: tasks.title,
     status: tasks.status,
     priority: tasks.priority,
     dueAt: tasks.dueAt,
   }).from(tasks)
-    .innerJoin(artifacts, noteOf())
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -64,11 +37,10 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
 export async function searchTasksForLink(auth: AuthContext, query: string, limit = 3) {
   const like = `%${escapeLike(query.trim())}%`;
   const rows = await db
-    .select({ id: tasks.id, title: artifacts.title })
+    .select({ id: tasks.id, title: tasks.title })
     .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(artifacts.title, like)))
-    .orderBy(asc(artifacts.title), asc(tasks.id))
+    .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(tasks.title, like)))
+    .orderBy(asc(tasks.title), asc(tasks.id))
     .limit(limit);
   return rows.map((row) => ({ id: row.id, title: row.title, kind: "task" as const, href: `/neuralflow/work?task=${row.id}` }));
 }
@@ -89,12 +61,11 @@ export async function listRecentlyCompletedTasks(
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return db.select({
     id: tasks.id,
-    title: artifacts.title,
+    title: tasks.title,
     status: tasks.status,
     priority: tasks.priority,
     completedAt: tasks.completedAt,
   }).from(tasks)
-    .innerJoin(artifacts, noteOf())
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -105,37 +76,8 @@ export async function listRecentlyCompletedTasks(
     .limit(limit);
 }
 
-/**
- * A task as the rest of the app reads it: its own state plus its note's prose.
- * The shape is declared, not inferred, because the columns it projects span two
- * tables; consumers written against the old `$inferSelect` row keep compiling
- * as long as the fields they touch survive here.
- */
-export type Task = {
-  id: string;
-  title: string;
-  description: string | null;
-  status: (typeof tasks.$inferSelect)["status"];
-  priority: (typeof tasks.$inferSelect)["priority"];
-  rank: string;
-  version: number;
-  dueAt: Date | null;
-  plannedStartAt: Date | null;
-  plannedEndAt: Date | null;
-  estimateMinutes: number | null;
-  tags: unknown;
-  projectId: string | null;
-  spaceId: string | null;
-  parentTaskId: string | null;
-  completedAt: Date | null;
-  cancelledAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  archivedAt: Date | null;
-};
-
 export type TaskDetail = {
-  task: Task;
+  task: typeof tasks.$inferSelect;
   subtasks: { id: string; title: string; status: (typeof tasks.$inferSelect)["status"]; rank: string; version: number }[];
   /** Unresolved blockers, whichever way the edge was written. */
   blockedBy: { dependencyId: string; taskId: string; title: string }[];
@@ -148,54 +90,25 @@ export async function getTaskDetail(
   auth: Pick<AuthContext, "workspaceId">,
   taskId: string,
 ): Promise<TaskDetail | null> {
-  // Three round trips, not one per row: the card needs the task, its children
-  // and its edges, and each is a single statement bounded by what it shows.
   const [task] = await db
-    .select({
-      id: tasks.id,
-      title: artifacts.title,
-      description: artifactVersions.plainText,
-      status: tasks.status,
-      priority: tasks.priority,
-      rank: tasks.rank,
-      version: tasks.version,
-      dueAt: tasks.dueAt,
-      plannedStartAt: tasks.plannedStartAt,
-      plannedEndAt: tasks.plannedEndAt,
-      estimateMinutes: tasks.estimateMinutes,
-      tags: tasks.tags,
-      projectId: tasks.projectId,
-      spaceId: tasks.spaceId,
-      parentTaskId: tasks.parentTaskId,
-      completedAt: tasks.completedAt,
-      cancelledAt: tasks.cancelledAt,
-      createdAt: tasks.createdAt,
-      updatedAt: tasks.updatedAt,
-      archivedAt: tasks.archivedAt,
-    })
+    .select()
     .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    // Left, not inner: a note whose current version pointer has not been set
-    // yet reads as a task with no body rather than vanishing from the card.
-    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
     .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .limit(1);
   if (!task) return null;
 
   const subtasks = await db
-    .select({ id: tasks.id, title: artifacts.title, status: tasks.status, rank: tasks.rank, version: tasks.version })
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, rank: tasks.rank, version: tasks.version })
     .from(tasks)
-    .innerJoin(artifacts, noteOf())
     .where(and(eq(tasks.parentTaskId, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id));
 
   const edges = await db.execute(sql`
     select d.id as dependency_id, d.kind, d.task_id, d.depends_on_task_id,
            d.waiting_on_type, d.waiting_on_id, d.note, d.resolved_at,
-           a.title as other_title
+           t.title as other_title
       from task_dependencies d
       left join tasks t on t.id = case when d.task_id = ${taskId} then d.depends_on_task_id else d.task_id end
-      left join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id
      where d.workspace_id = ${auth.workspaceId}
        and (d.task_id = ${taskId} or d.depends_on_task_id = ${taskId})
        and d.resolved_at is null`);
@@ -284,10 +197,7 @@ function viewWhere(auth: Pick<AuthContext, "workspaceId">, view: "today" | "open
         : sql`t.status in ('done', 'cancelled')`;
   const priority = filter.priority ? sql`and t.priority = ${filter.priority}` : sql``;
   const status = filter.status ? sql`and t.status = ${filter.status}` : sql``;
-  // The search filter reads the note's title, so every caller of viewWhere must
-  // join artifacts as `a`. countWorkRows and selectWorkRows both do: a total
-  // that ignores the filter the rows honour is worse than no total.
-  const query = filter.query?.trim() ? sql`and a.title ilike ${`%${escapeLike(filter.query.trim())}%`}` : sql``;
+  const query = filter.query?.trim() ? sql`and t.title ilike ${`%${escapeLike(filter.query.trim())}%`}` : sql``;
   return sql`t.workspace_id = ${auth.workspaceId} and t.archived_at is null and t.parent_task_id is null and ${statusFilter} ${priority} ${status} ${query}`;
 }
 
@@ -316,7 +226,7 @@ async function countWorkRows(
   view: "today" | "open" | "done",
   filter: WorkFilter,
 ): Promise<number> {
-  const rows = await db.execute(sql`select count(*)::int as n from tasks t join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id where ${viewWhere(auth, view, filter)}`);
+  const rows = await db.execute(sql`select count(*)::int as n from tasks t where ${viewWhere(auth, view, filter)}`);
   return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
 }
 
@@ -328,14 +238,13 @@ async function selectWorkRows(
   const order =
     view === "done" ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id` : sql`t.rank collate "C", t.id`;
   const rows = await db.execute(sql`
-    select t.id, a.title, t.status, t.priority, t.due_at, t.version, t.rank,
+    select t.id, t.title, t.status, t.priority, t.due_at, t.version, t.rank,
       (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null)::int as subtask_count,
       (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null and s.status = 'done')::int as subtasks_done,
       (select count(*) from task_dependencies d
          where d.workspace_id = t.workspace_id and d.resolved_at is null
            and ((d.kind = 'blocked_by' and d.task_id = t.id) or (d.kind = 'blocks' and d.depends_on_task_id = t.id)))::int as blocked_by
     from tasks t
-    join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id
     where ${viewWhere(auth, view, input)}
     order by ${order}
     limit ${input.limit} offset ${input.offset}`);
@@ -375,9 +284,8 @@ export async function listTasksDueBetween(
   endDay: string,
 ): Promise<DatedTask[]> {
   const rows = await db
-    .select({ id: tasks.id, title: artifacts.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
     .from(tasks)
-    .innerJoin(artifacts, noteOf())
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),
@@ -421,183 +329,4 @@ export async function getCompletionConflictState(
   `);
   const note = (rows as unknown as Array<{ note: string | null }>)[0]?.note ?? null;
   return { status: task.status, completionNote: note };
-}
-
-/** One task's title, or null when it does not exist here. For callers that need only a label. */
-export async function getTaskTitle(
-  auth: Pick<AuthContext, "workspaceId">,
-  taskId: string,
-  tx: Db = db,
-): Promise<string | null> {
-  const [row] = await tx
-    .select({ title: artifacts.title })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId)))
-    .limit(1);
-  return row?.title ?? null;
-}
-
-/**
- * The columns a caller outside this domain needs to label or schedule one task:
- * its note's title and its own estimate. One round trip; null when the task is
- * not in this workspace or is archived.
- */export async function getTaskHeader(
-  auth: Pick<AuthContext, "workspaceId">,
-  taskId: string,
-  tx: Db = db,
-): Promise<{ id: string; title: string; estimateMinutes: number | null } | null> {
-  const [row] = await tx
-    .select({ id: tasks.id, title: artifacts.title, estimateMinutes: tasks.estimateMinutes })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
-    .limit(1);
-  return row ?? null;
-}
-
-/** Titles for a set of tasks, keyed by id. Missing ids are absent, not blank. */
-export async function getTaskTitles(
-  auth: Pick<AuthContext, "workspaceId">,
-  taskIds: string[],
-): Promise<Map<string, string>> {
-  if (taskIds.length === 0) return new Map();
-  const rows = await db
-    .select({ id: tasks.id, title: artifacts.title })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(eq(tasks.workspaceId, auth.workspaceId), inArray(tasks.id, taskIds)));
-  return new Map(rows.map((row) => [row.id, row.title]));
-}
-
-/**
- * Task labels by id, newest first: a picker's list, or the set of titles the
- * Linear import dedupes against. `limit` is optional because the importer needs
- * every title in the workspace; that read is one column and was already
- * unbounded before the prose moved, so it is a ceiling, not a regression.
- */
-export async function listTaskTitles(
-  auth: Pick<AuthContext, "workspaceId">,
-  options: { limit?: number; includeArchived?: boolean } = {},
-  tx: Db = db,
-) {
-  const { limit } = options;
-  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 1000)) {
-    throw new Error("Invalid task limit");
-  }
-  return tx
-    .select({ id: tasks.id, title: artifacts.title })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      options.includeArchived ? undefined : isNull(tasks.archivedAt),
-    ))
-    .orderBy(desc(tasks.updatedAt))
-    .limit(limit ?? 1000);
-}
-
-/**
- * Tasks matching one of `needles`, newest first. The predicate runs in SQL
- * rather than in JS: fetching the table to filter it here would be an unbounded
- * read. With `inBody` the note's current plain text is searched as well as its
- * title, which only this file knows how to reach.
- */
-export async function searchTasksByProse(
-  auth: Pick<AuthContext, "workspaceId">,
-  needles: string[],
-  options: {
-    inBody?: boolean;
-    statuses?: readonly (typeof tasks.$inferSelect)["status"][];
-    limit: number;
-  },
-) {
-  if (needles.length === 0) return [];
-  const patterns = needles.map((needle) => `%${escapeLike(needle)}%`);
-  const match = options.inBody
-    ? or(...patterns.flatMap((pattern) => [
-        ilike(artifacts.title, pattern),
-        sql`${artifactVersions.plainText} ilike ${pattern}`,
-      ]))
-    : or(...patterns.map((pattern) => ilike(artifacts.title, pattern)));
-  return db
-    .select({
-      id: tasks.id,
-      title: artifacts.title,
-      status: tasks.status,
-      dueAt: tasks.dueAt,
-    })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    // Left, like every other body read: a note with no current version has no
-    // plain text, and a body predicate on null is simply false.
-    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      isNull(tasks.archivedAt),
-      options.statuses ? inArray(tasks.status, [...options.statuses]) : undefined,
-      match,
-    ))
-    .orderBy(desc(tasks.updatedAt))
-    .limit(options.limit);
-}
-
-/**
- * The artifacts that back a task in this workspace. A task's note is prose the
- * owner already sees on the Work screen, so a library report must not count it
- * as a note in its own right. Which notes belong to a task is this domain's
- * fact, so the set is answered here rather than by a foreign anti-join.
- */
-export async function listTaskNoteIds(auth: Pick<AuthContext, "workspaceId">): Promise<string[]> {
-  const rows = await db
-    .select({ noteId: tasks.noteId })
-    .from(tasks)
-    .where(eq(tasks.workspaceId, auth.workspaceId));
-  return rows.flatMap((row) => (row.noteId ? [row.noteId] : []));
-}
-
-/**
- * Open tasks whose note body is empty: the knowledge-debt signal. "No body"
- * means the note's plain text is absent or only whitespace - the same nothing
- * the backfill recorded for a descriptionless task, now read from the note.
- * The left join keeps a note with no current version in scope, where a null
- * plain text is exactly the empty body this asks for.
- */
-export async function listTasksWithoutBody(auth: Pick<AuthContext, "workspaceId">, limit: number) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("Invalid task limit");
-  return db
-    .select({ id: tasks.id, title: artifacts.title, status: tasks.status })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      notInArray(tasks.status, ["done", "cancelled"]),
-      or(isNull(artifactVersions.plainText), sql`btrim(${artifactVersions.plainText}) = ''`),
-    ))
-    .orderBy(desc(tasks.updatedAt))
-    .limit(limit);
-}
-
-/**
- * The tasks behind a set of ids that are still open in this workspace, with the
- * note's title. The shutdown ritual uses this to reject a stale seed choice in
- * the same transaction that would write the seeds.
- */
-export async function listOpenTasksByIds(
-  auth: Pick<AuthContext, "workspaceId">,
-  taskIds: string[],
-  tx: Db = db,
-) {
-  if (taskIds.length === 0) return [];
-  return tx
-    .select({ id: tasks.id, title: artifacts.title })
-    .from(tasks)
-    .innerJoin(artifacts, noteOf())
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      inArray(tasks.id, taskIds),
-      isNull(tasks.archivedAt),
-      notInArray(tasks.status, ["done", "cancelled"]),
-    ));
 }

@@ -6,7 +6,6 @@ import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { auditEvents } from "@/domains/audit/schema";
 import { focusSessions } from "@/domains/focus/schema";
 import { captures } from "@/domains/capture/schema";
-import { tasks } from "@/domains/work/schema";
 
 /*
  * The daybook invariants (eng review T1/T2): the day page is a view whose
@@ -27,14 +26,12 @@ vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 
 let queries: typeof import("@/domains/daybook/queries");
 let commands: typeof import("@/domains/daybook/commands");
-let work: typeof import("@/domains/work/commands");
 
 beforeAll(async () => {
   if (!handle) return;
   holder.db = handle.db;
   queries = await import("@/domains/daybook/queries");
   commands = await import("@/domains/daybook/commands");
-  work = await import("@/domains/work/commands");
 });
 
 async function noteWithVersion(
@@ -208,46 +205,6 @@ suite("daybook (Neon)", () => {
     });
     const day = await queries.getDayPage(auth, "2026-10-22");
     expect(day.captured.map((c) => c.title)).toContain("a captured thought");
-  });
-
-  it("lists one task creation exactly once across created and worked-on", async () => {
-    if (!handle) return;
-    // A task is a note plus an extension row, and createOwnerTask writes both a
-    // note.created and a task.created audit row. The day page must still show
-    // one entry: the task's own creation. Its note is not a separately created
-    // note, and the Created panel already lists artifacts, so a note.created
-    // audit row alongside it would make one act look like two.
-    const created = await work.createOwnerTask(auth, { title: "One act, one entry" });
-    const [row] = await holder.db!
-      .select({ id: tasks.id, noteId: tasks.noteId })
-      .from(tasks)
-      .where(eq(tasks.id, created.id));
-    const [artifact] = await holder.db!
-      .select({ createdAt: artifacts.createdAt })
-      .from(artifacts)
-      .where(eq(artifacts.id, row.noteId!));
-
-    // The day the seed actually landed on, with a margin wide enough for the
-    // test's timezone offset so the assertion never depends on what time it is.
-    const dayOf = (at: Date) => {
-      const shifted = new Date(at.getTime() - 12 * 3_600_000);
-      return shifted.toISOString().slice(0, 10);
-    };
-    // The task and the note it stands on are the only ids this act could have
-    // produced, so counting their appearances across both panels is the whole
-    // question.
-    const counted: string[] = [];
-    // Both brackets usually resolve to the same local date; query it once.
-    for (const localDate of new Set([dayOf(artifact.createdAt), dayOf(new Date())])) {
-      const day = await queries.getDayPage(auth, localDate);
-      for (const item of [...day.created, ...day.workedOn]) {
-        if (item.id === created.id || item.id === row.noteId) counted.push(item.id);
-      }
-    }
-
-    // The exact count, not "the panel renders": one task creation is one entry,
-    // and it is the task's own - its note is not a separately created note.
-    expect(counted).toEqual([created.id]);
   });
 
   it("rejects a malformed local date", async () => {

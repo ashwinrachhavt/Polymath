@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { createProposal, senderAccountPin, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { recordAudit } from "@/domains/audit/record";
@@ -14,7 +14,6 @@ import { createNoteInTx } from "@/domains/knowledge/notes";
 import { artifacts } from "@/domains/knowledge/schema";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { tierAllows } from "@/domains/integrations/capabilities";
-import { listOpenTasksByIds } from "@/domains/work/queries";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -128,12 +127,9 @@ async function seedCandidatesQuery(
   auth: AuthContext,
   today: string,
 ): Promise<Array<{ id: string; title: string }>> {
-  // The title is the note's (0260 drops `tasks.title`), joined on id and
-  // workspace so a foreign note id can never leak a title.
   return tx
-    .select({ id: tasks.id, title: artifacts.title })
+    .select({ id: tasks.id, title: tasks.title })
     .from(tasks)
-    .innerJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),
@@ -363,7 +359,17 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
         const seedIds = [...new Set(input.seedTaskIds)];
         let seeded = 0;
         if (seedIds.length > 0) {
-          const valid = await listOpenTasksByIds(auth, seedIds, tx);
+          const valid = await tx
+            .select({ id: tasks.id, title: tasks.title })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.workspaceId, auth.workspaceId),
+                inArray(tasks.id, seedIds),
+                isNull(tasks.archivedAt),
+                notInArray(tasks.status, ["done", "cancelled"]),
+              ),
+            );
           if (valid.length !== seedIds.length) {
             throw new ShutdownStaleError("A task you chose is no longer open. Reload and try again.");
           }

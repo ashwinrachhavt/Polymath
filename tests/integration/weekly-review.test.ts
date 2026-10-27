@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { seedTaskWithNote } from "../helpers/task-note";
+import { tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 const handle = makeTestDb();
@@ -13,14 +13,12 @@ suite("weekly review (D15)", () => {
   it("buckets completions by real timestamp in the user's timezone", async () => {
     const s = await seedWorkspace(db, `weekly-${Date.now()}`);
     const auth = ownerAuth(s.userId, s.workspaceId);
-    for (const row of [
-      { title: "a", status: "done" as const, completedAt: new Date("2026-10-13T03:00:00Z") }, // Oct 12 evening in LA
-      { title: "b", status: "done" as const, completedAt: new Date("2026-10-14T18:00:00Z") },
-      { title: "old", status: "done" as const, completedAt: new Date("2026-09-01T18:00:00Z") },
-      { title: "open", status: "ready" as const },
-    ]) {
-      await seedTaskWithNote(db, { workspaceId: s.workspaceId, ...row });
-    }
+    await db.insert(tasks).values([
+      { workspaceId: s.workspaceId, title: "a", status: "done", completedAt: new Date("2026-10-13T03:00:00Z") }, // Oct 12 evening in LA
+      { workspaceId: s.workspaceId, title: "b", status: "done", completedAt: new Date("2026-10-14T18:00:00Z") },
+      { workspaceId: s.workspaceId, title: "old", status: "done", completedAt: new Date("2026-09-01T18:00:00Z") },
+      { workspaceId: s.workspaceId, title: "open", status: "ready" },
+    ]);
     const r = await reports.getWeeklyReview(auth, { start: "2026-10-12", timezone: "America/Los_Angeles" });
     expect(r.totals.completedTasks).toBe(2);
     expect(r.days[0].completedTasks).toBe(1);

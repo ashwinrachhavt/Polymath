@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
-import { documents, documentObligations, artifacts } from "@/domains/knowledge/schema";
+import { documents, documentObligations } from "@/domains/knowledge/schema";
 import { users, workspaces } from "@/domains/identity/schema";
 import { makeTestDb } from "../helpers/test-workspace";
 import { taskLinks, tasks } from "@/domains/work/schema";
@@ -61,15 +61,10 @@ suite("document obligations", () => {
       dueAt: new Date("2026-11-01"),
     });
 
-    // The title lives on the task's note (one note substrate), so it is joined
-    // in; the rest of the row still reads from `tasks`.
-    const [taskRow] = await db
-      .select({ dueAt: tasks.dueAt, title: artifacts.title })
-      .from(tasks)
-      .innerJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
-      .where(eq(tasks.id, taskId));
-    expect(taskRow?.title).toBe("Confirm whether the Acme invoice was paid");
-    expect(taskRow?.dueAt).toEqual(new Date("2026-11-01"));
+    const taskRows = await db.select().from(tasks).where(eq(tasks.id, taskId));
+    expect(taskRows).toHaveLength(1);
+    expect(taskRows[0].title).toBe("Confirm whether the Acme invoice was paid");
+    expect(taskRows[0].dueAt).toEqual(new Date("2026-11-01"));
 
     const links = await db.select().from(taskLinks).where(eq(taskLinks.taskId, taskId));
     expect(links).toHaveLength(1);

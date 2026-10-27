@@ -6,7 +6,6 @@ import { auditEvents, requestReceipts } from "@/domains/audit/schema";
 import { focusSessions } from "@/domains/focus/schema";
 import { users, workspaces } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
-import { seedTaskWithNote } from "../helpers/task-note";
 
 /*
  * The invariants agents/engineering.md says run against real Postgres, because
@@ -95,7 +94,7 @@ suite("reliability primitives", () => {
 
   it("archiving a workspace takes its rows with it", async () => {
     const { workspace } = await seedWorkspace("cascade");
-    await seedTaskWithNote(db, { workspaceId: workspace.id, title: "Goes with the tenant" });
+    await db.insert(tasks).values({ workspaceId: workspace.id, title: "Goes with the tenant" });
     await db.insert(auditEvents).values({
       workspaceId: workspace.id,
       action: "task.created",
@@ -113,15 +112,16 @@ suite("reliability primitives", () => {
 
   it("a stale write is rejected, and a fresh one wins", async () => {
     const { workspace } = await seedWorkspace("versions");
-    const task = await seedTaskWithNote(db, { workspaceId: workspace.id, title: "Versioned" });
+    const [task] = await db
+      .insert(tasks)
+      .values({ workspaceId: workspace.id, title: "Versioned" })
+      .returning();
     expect(task.version).toBe(1);
 
     // A caller that read version 1 and is writing again, guarded on that read.
-    // The edited column is `priority` because the prose moved to the note in
-    // 0260; the invariant under test is the version guard, not the column.
     const stale = await db
       .update(tasks)
-      .set({ priority: "high", version: 2, updatedAt: new Date() })
+      .set({ title: "Stale edit", version: 2, updatedAt: new Date() })
       .where(and(eq(tasks.id, task.id), eq(tasks.version, 1)))
       .returning();
     expect(stale).toHaveLength(1);
@@ -129,13 +129,13 @@ suite("reliability primitives", () => {
     // The same guard, run again from the same stale read, matches nothing.
     const second = await db
       .update(tasks)
-      .set({ priority: "low", version: 2, updatedAt: new Date() })
+      .set({ title: "Second stale edit", version: 2, updatedAt: new Date() })
       .where(and(eq(tasks.id, task.id), eq(tasks.version, 1)))
       .returning();
     expect(second).toHaveLength(0);
 
     const [current] = await db.select().from(tasks).where(eq(tasks.id, task.id));
-    expect(current.priority).toBe("high");
+    expect(current.title).toBe("Stale edit");
   });
 
   /*
@@ -164,7 +164,10 @@ suite("reliability primitives", () => {
    */
   it("a link row rejects a target kind that is not on the shared list", async () => {
     const { workspace } = await seedWorkspace("link-kinds");
-    const task = await seedTaskWithNote(db, { workspaceId: workspace.id, title: "Linking" });
+    const [task] = await db
+      .insert(tasks)
+      .values({ workspaceId: workspace.id, title: "Linking" })
+      .returning();
 
     await expect(
       db.insert(taskLinks).values({

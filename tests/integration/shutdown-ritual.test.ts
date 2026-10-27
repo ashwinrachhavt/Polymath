@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
@@ -9,7 +9,6 @@ import { artifacts } from "@/domains/knowledge/schema";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
-import { seedTaskWithNote } from "../helpers/task-note";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -74,8 +73,8 @@ async function capture(workspaceId: string, over: Partial<typeof captures.$infer
 }
 
 async function task(workspaceId: string, title: string, over: Partial<typeof tasks.$inferInsert> = {}) {
-  const { title: _dropped, ...rest } = over as { title?: string };
-  return seedTaskWithNote(db, { workspaceId, title, rank: "m", status: "ready", ...rest });
+  const [row] = await db.insert(tasks).values({ workspaceId, title, rank: "m", status: "ready", ...over }).returning();
+  return row;
 }
 
 const key = () => crypto.randomUUID();
@@ -181,16 +180,7 @@ suite("shutdown ritual", () => {
     const first = await shutdown.applyShutdown(auth, input);
     const second = await shutdown.applyShutdown(auth, input);
     expect(second).toEqual(first);
-    // The workspace's artifacts are the task's own note (a task is a note plus an
-    // extension row) and the shutdown log. A replay must not write a second log.
-    const logs = await db
-      .select()
-      .from(artifacts)
-      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.id, first.logNoteId)));
-    expect(logs).toHaveLength(1);
-    expect(
-      await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, workspaceId), ne(artifacts.id, t.noteId!))),
-    ).toHaveLength(1);
+    expect(await db.select().from(artifacts).where(eq(artifacts.workspaceId, workspaceId))).toHaveLength(1);
     expect(await db.select().from(briefingSeeds).where(eq(briefingSeeds.workspaceId, workspaceId))).toHaveLength(1);
     await expect(shutdown.applyShutdown(auth, { ...input, seedTaskIds: [] })).rejects.toMatchObject({ code: "idempotency_conflict" });
   });

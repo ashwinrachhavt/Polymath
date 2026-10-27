@@ -1,9 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { memberships, users, workspaces } from "@/domains/identity/schema";
-import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
-import { tasks } from "@/domains/work/schema";
 
 /*
  * The scaffolding every integration suite repeats: point DATABASE_URL at the
@@ -61,52 +58,4 @@ export async function seedWorkspace(
 /** The owner AuthContext every integration suite builds from seedWorkspace. */
 export function ownerAuth(userId: string, workspaceId: string) {
   return { userId, workspaceId, role: "owner" as const };
-}
-
-/**
- * A task written straight to Postgres, standing on the note a task is now half
- * of: the artifact, its version 1, and the extension row pointing at it. Suites
- * that used to `insert(tasks)` alone get a row that the joined reads can see.
- *
- * The body is markdown, the shape `createTaskNote` writes, so the note renders
- * the same way a production task's does. A null body keeps the empty doc.
- */
-export async function seedTask(
-  db: ReturnType<typeof drizzle>,
-  workspaceId: string,
-  row: Omit<typeof tasks.$inferInsert, "workspaceId" | "noteId"> & { title: string; body?: string | null },
-): Promise<typeof tasks.$inferSelect> {
-  // Post-0260 the prose lives on the note, so title/body are consumed here and
-  // never reach the task row.
-  const { title, body, ...taskRow } = row;
-  const text = body?.trim() ? body : null;
-  const [note] = await db
-    .insert(artifacts)
-    .values({
-      workspaceId,
-      kind: "note",
-      title,
-      template: "issue",
-      ...(row.createdBy ? { createdBy: row.createdBy } : {}),
-      ...(row.updatedBy ? { updatedBy: row.updatedBy } : {}),
-    })
-    .returning({ id: artifacts.id });
-  const [version] = await db
-    .insert(artifactVersions)
-    .values({
-      workspaceId,
-      artifactId: note.id,
-      versionNumber: 1,
-      content: text ? { format: "markdown", text } : { type: "doc", content: [] },
-      plainText: text,
-      reason: "created",
-      ...(row.createdBy ? { createdBy: row.createdBy } : {}),
-    })
-    .returning({ id: artifactVersions.id });
-  await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
-  const [task] = await db
-    .insert(tasks)
-    .values({ ...taskRow, workspaceId, noteId: note.id } as typeof tasks.$inferInsert)
-    .returning();
-  return task;
 }

@@ -3,7 +3,6 @@ import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { writeFollowUp } from "@/domains/crm/followups";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { getTaskHeader } from "@/domains/work/queries";
 import { tasks } from "@/domains/work/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { calendars, eventLinks, events, schedulerPreferences } from "./schema";
@@ -303,7 +302,11 @@ export async function blockTimeForTask(
 ): Promise<{ id: string; version: number; startsAt: string; endsAt: string }> {
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "blockTimeForTask", ...input }, async () => {
-      const task = await getTaskHeader(auth, input.taskId, tx);
+      const [task] = await tx
+        .select({ id: tasks.id, title: tasks.title, estimateMinutes: tasks.estimateMinutes })
+        .from(tasks)
+        .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+        .limit(1);
       if (!task) throw new Error("task not found in workspace");
       const minutes = input.minutes ?? task.estimateMinutes ?? 30;
       const from = input.from ?? new Date();

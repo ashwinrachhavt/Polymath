@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents, outboxEvents, requestReceipts } from "@/domains/audit/schema";
 import { people } from "@/domains/identity/schema";
-import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { taskDependencies, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -39,29 +38,6 @@ async function setup(label: string) {
 const key = () => crypto.randomUUID();
 const version = async (id: string) => (await db.select({ v: tasks.version }).from(tasks).where(eq(tasks.id, id)))[0].v;
 
-/**
- * A task inserted by hand, with the note every read joins on. Used where the
- * fixture needs a state the create command will not produce - a shared legacy
- * rank, for instance - so it writes the note itself rather than calling the
- * production writer under test.
- */
-async function seedTask(workspaceId: string, title: string, rank: string) {
-  const [note] = await db
-    .insert(artifacts)
-    .values({ workspaceId, kind: "note", title, template: "issue" })
-    .returning({ id: artifacts.id });
-  const [v] = await db
-    .insert(artifactVersions)
-    .values({ workspaceId, artifactId: note.id, versionNumber: 1, content: { type: "doc", content: [] }, reason: "created" })
-    .returning({ id: artifactVersions.id });
-  await db.update(artifacts).set({ currentVersionId: v.id }).where(eq(artifacts.id, note.id));
-  const [row] = await db
-    .insert(tasks)
-    .values({ workspaceId, noteId: note.id, rank })
-    .returning({ id: tasks.id });
-  return row.id;
-}
-
 suite("task update: compare-and-set, receipts, audit, outbox", () => {
   it("applies a patch, bumps the version, writes one audit and one outbox row", async () => {
     const { a, workspaceId } = await setup("patch");
@@ -71,10 +47,8 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
       patch: { title: "Draft the board memo", priority: "high", status: "in_progress", tags: ["board"] },
     });
     expect(out).toEqual({ id, version: 2 });
-    // Prose lives on the note: the title comes back through the detail read,
-    // the columns through the row.
-    const detail = await queries.getTaskDetail(a, id);
-    expect(detail?.task).toMatchObject({ title: "Draft the board memo", priority: "high", status: "in_progress", version: 2 });
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
+    expect(row).toMatchObject({ title: "Draft the board memo", priority: "high", status: "in_progress", version: 2 });
     const audits = await db.select().from(auditEvents).where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.updated")));
     expect(audits).toHaveLength(1);
     const outbox = await db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, workspaceId));
@@ -91,10 +65,7 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
     const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
     expect(row.priority).toBe("low");
     const outbox = await db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, workspaceId));
-    // The create also emits note.created, and the first update emitted
-    // task.updated; the refused second update must add nothing.
-    expect(outbox.filter((o) => o.topic === "task.updated")).toHaveLength(1);
-    expect(outbox.filter((o) => o.topic === "note.created")).toHaveLength(1);
+    expect(outbox).toHaveLength(1);
   });
 
   it("replays the same key without a second change, and rejects the key reused for a different request", async () => {
@@ -140,11 +111,8 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
     await expect(
       cmd.updateTask(two.a, { taskId: id, expectedVersion: 1, idempotencyKey: key(), patch: { title: "Hijacked" } }),
     ).rejects.toBeInstanceOf(cmd.TaskNotFoundError);
-    // Refused, so the note's title (where prose lives) is unchanged and the
-    // row never moved past its first version.
-    expect((await queries.getTaskDetail(one.a, id))?.task.title).toBe("Private");
-    const [row] = await db.select({ version: tasks.version }).from(tasks).where(eq(tasks.id, id));
-    expect(row.version).toBe(1);
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
+    expect(row.title).toBe("Private");
   });
 
   it("a failed command leaves no receipt, so the same key can be retried after fixing the input", async () => {
@@ -349,7 +317,10 @@ suite("work list reads and rank assignment", () => {
   it("a move between tasks that share a legacy rank spreads them first instead of failing", async () => {
     const { a, workspaceId } = await setup("tie");
     const made: string[] = [];
-    for (const t of ["x", "y", "z"]) made.push(await seedTask(workspaceId, t, "m"));
+    for (const t of ["x", "y", "z"]) {
+      const [row] = await db.insert(tasks).values({ workspaceId, title: t, rank: "m", createdBy: a.userId, updatedBy: a.userId }).returning({ id: tasks.id });
+      made.push(row.id);
+    }
     const order = (await queries.listWorkRows(a, "open")).map((r) => r.id);
     const [first, second, third] = order;
     // move `third` between first and second, which tie at "m"

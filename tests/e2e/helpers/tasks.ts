@@ -1,19 +1,12 @@
 import postgres from "postgres";
-import { insertTaskNote } from "./task-note";
 
 /*
  * Seed a task the composer journey can find. Same contract as the other
  * e2e seeders: the real schema, the shared dev workspace, every row
  * registered for cleanup, null (skip) when no database is configured.
- *
- * A task stands on a note (one note substrate), and every work read inner-joins
- * that note, so the seed writes the note, its first markdown version and the
- * task's note_id in the same pass. A task row alone is invisible to the app.
  */
 
 const seeded: string[] = [];
-/** The notes the seeded tasks stand on; deleted after their tasks release the FK. */
-const seededNotes: string[] = [];
 
 function connection(): string | null {
   if (!process.env.DATABASE_URL) {
@@ -39,14 +32,12 @@ export async function seedTask(input: { title: string; status?: string }): Promi
       limit 1
     `;
     if (!owner) return null;
-    const noteId = await insertTaskNote(client, { workspaceId: owner.workspace_id, title: input.title });
     const [task] = await client<{ id: string }[]>`
-      insert into tasks (workspace_id, note_id, title, status)
-      values (${owner.workspace_id}, ${noteId}, ${input.title}, ${input.status ?? "ready"})
+      insert into tasks (workspace_id, title, status)
+      values (${owner.workspace_id}, ${input.title}, ${input.status ?? "ready"})
       returning id
     `;
     seeded.push(task.id);
-    seededNotes.push(noteId);
     return { id: task.id };
   } finally {
     await client.end();
@@ -55,15 +46,11 @@ export async function seedTask(input: { title: string; status?: string }): Promi
 
 export async function cleanupSeededTasks(): Promise<void> {
   const url = connection();
-  if (!url || (!seeded.length && !seededNotes.length)) return;
+  if (!url || !seeded.length) return;
   const client = postgres(url, { max: 1 });
   try {
-    // Tasks first: their note_id reference has no cascade, so the note cannot
-    // go until the row pointing at it is gone.
     await client`delete from tasks where id = any(${seeded}::uuid[])`;
-    await client`delete from artifacts where id = any(${seededNotes}::uuid[])`;
     seeded.length = 0;
-    seededNotes.length = 0;
   } finally {
     await client.end();
   }
