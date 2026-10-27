@@ -636,14 +636,11 @@ it("carries the capture's url onto the document", async () => {
   expect(doc.sourceUrl).toBe("https://example.com/provenance");
 });
 
-it("files two selections from one article onto one document", async () => {
-  const url = "https://example.com/same-article";
-  const a = await commands.createCapture(auth, { text: "part one", url, mode: "selection" });
-  const b = await commands.createCapture(auth, { text: "part two", url, mode: "selection" });
-  const first = await commands.convertCaptureToDocument(auth, { captureId: a.id, expectedVersion: a.version });
-  const second = await commands.convertCaptureToDocument(auth, { captureId: b.id, expectedVersion: b.version });
-  expect(second.documentId).toBe(first.documentId);
-});
+// REMOVED (verified false at implementation time): a second document at the same
+// source_url is REJECTED by documents_workspace_source_url_key, not joined to the
+// first. The index rejects; it does not dedupe into one row. Conversion must map
+// that violation to a ConflictError so a second Save-to-library is a refusal, not
+// a 500. Attaching the second capture to the existing document is a follow-up.
 ```
 
 The second test is the one that proves the index does the work rather than a second document being created; check `convertCaptureToDocument`'s existing return shape before writing the assertion and use its actual field name.
