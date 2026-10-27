@@ -26,7 +26,7 @@ export default async function ShutdownPage() {
       description="Close the day on purpose. Nothing changes until you confirm. Parking is reversible and the summary email is only a proposal - finishing or abandoning a session is final."
       actions={
         <Button variant="outline" size="sm" asChild>
-          <Link href="/command-center/briefing">Back to Today</Link>
+          <Link href="/command-center/inbox">Back to Inbox</Link>
         </Button>
       }
     >

@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  Check,
   ChevronRight,
+  Copy as CopyIcon,
+  Download,
   FileImage,
   FileText,
   FolderOpen,
@@ -34,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Readout } from "@/components/readout";
+import { Markdown } from "@/components/markdown";
 import { vaultReview, type VaultReview, type VaultStateKey, type VaultTone } from "@/domains/knowledge/vault-review";
 import { phaseForReadiness } from "@/domains/knowledge/readiness-batch";
 import type { SourceReadiness } from "@/domains/knowledge/source-readiness";
@@ -41,7 +45,7 @@ import { createVaultFolder } from "./actions";
 import { StatementStrip } from "./statement-section";
 
 /*
- * The document vault, on the Drive pattern: breadcrumb, review filter, sort
+ * The document vault, on the Drive pattern: breadcrumb, one search field, sort
  * and a list/grid switch over the same rows. The whole surface is a dropzone —
  * dropped folders keep their structure, and reading starts on its own. A
  * selected row opens the split viewer: the document on the left, the extracted
@@ -168,17 +172,10 @@ function docMeta(doc: Pick<VaultDocument, "kind" | "mimeType" | "docType" | "upd
 }
 
 type ViewMode = "list" | "grid";
-type VaultFilter = "all" | "review" | "unread";
 type VaultSort = "modified" | "name" | "size";
 
 const VIEW_KEY = "axiom.knowledge.view";
 const VIEW_EVENT = "axiom:knowledge-view";
-
-const FILTERS: Array<{ id: VaultFilter; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "review", label: "Needs review" },
-  { id: "unread", label: "Not read" },
-];
 
 const SORTS: Array<{ id: VaultSort; label: string }> = [
   { id: "modified", label: "Last modified" },
@@ -199,9 +196,7 @@ function readView(): ViewMode {
   return window.localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 }
 
-function matchesFilter(doc: VaultDocument, filter: VaultFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "unread") return doc.reviewKey === "added";
+function needsReview(doc: VaultDocument): boolean {
   return vaultReview(doc.reviewKey, doc.undecidedProposals)?.needsReview === true;
 }
 
@@ -453,7 +448,6 @@ export function DocumentVault({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<VaultFilter>("all");
   const [sort, setSort] = useState<VaultSort>("modified");
   const view = useSyncExternalStore(subscribeView, readView, () => "list" as ViewMode);
   const [dragging, setDragging] = useState(false);
@@ -474,31 +468,28 @@ export function DocumentVault({
   const counts = useMemo(
     () => ({
       all: documents.length,
-      review: documents.filter((doc) => matchesFilter(doc, "review")).length,
-      unread: documents.filter((doc) => matchesFilter(doc, "unread")).length,
+      review: documents.filter(needsReview).length,
+      unread: documents.filter((doc) => doc.reviewKey === "added").length,
     }),
     [documents],
   );
 
   const visibleFolders = useMemo(() => {
-    if (filter !== "all") return [];
     const q = query.trim().toLowerCase();
     return folders.filter((f) => f.parentId === currentFolderId && (!q || f.name.toLowerCase().includes(q)));
-  }, [folders, currentFolderId, query, filter]);
+  }, [folders, currentFolderId, query]);
 
   const visibleDocuments = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matching = documents.filter(
-      (doc) =>
-        matchesFilter(doc, filter) &&
-        (!q || doc.title.toLowerCase().includes(q) || (doc.filename ?? "").toLowerCase().includes(q)),
+      (doc) => !q || doc.title.toLowerCase().includes(q) || (doc.filename ?? "").toLowerCase().includes(q),
     );
     return sortDocuments(matching, sort);
-  }, [documents, query, filter, sort]);
+  }, [documents, query, sort]);
 
   const selected = visibleDocuments.find((d) => d.id === selectedId) ?? null;
   const currentName = currentFolderId ? (breadcrumb[breadcrumb.length - 1]?.name ?? "this folder") : "the vault";
-  const filtering = filter !== "all" || query.trim().length > 0;
+  const filtering = query.trim().length > 0;
   const emptyVault = folders.length === 0 && documents.length === 0 && uploads.length === 0;
   const noMatches = visibleFolders.length === 0 && visibleDocuments.length === 0;
 
@@ -530,9 +521,8 @@ export function DocumentVault({
       }
       setNewFolderOpen(false);
       setFolderName("");
-      // A new folder is only useful if it is visible: drop any review filter
-      // or search that would hide it, then let the server list pick it up.
-      setFilter("all");
+      // A new folder is only useful if it is visible: drop any search that
+      // would hide it, then let the server list pick it up.
       setQuery("");
       setCreatedFolder(result.name);
       router.refresh();
@@ -544,7 +534,6 @@ export function DocumentVault({
   }
 
   const showEverything = () => {
-    setFilter("all");
     setQuery("");
   };
 
@@ -844,22 +833,13 @@ export function DocumentVault({
           ))}
         </nav>
 
-        <div role="group" aria-label="Filter documents" className="flex shrink-0 items-center gap-0.5">
-          {FILTERS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={filter === item.id}
-              onClick={() => setFilter(item.id)}
-              className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] transition-colors",
-                filter === item.id ? "bg-muted text-foreground font-medium" : "text-muted-foreground hover:bg-muted/60",
-              )}
-            >
-              {item.label}
-              <span className="text-muted-foreground text-[11px] tabular-nums">{counts[item.id]}</span>
-            </button>
-          ))}
+        <div role="group" aria-label="Review state" className="flex shrink-0 items-center gap-3 text-[13px]">
+          <span className="text-muted-foreground">
+            <span className="text-foreground tabular-nums">{counts.review}</span> need review
+          </span>
+          <span className="text-muted-foreground">
+            <span className="text-foreground tabular-nums">{counts.unread}</span> not read
+          </span>
         </div>
 
         <Select
@@ -985,19 +965,24 @@ export function DocumentVault({
       </AnimatePresence>
 
       {emptyVault ? (
-        <div className="panel-empty flex flex-col items-center gap-1.5 rounded-md px-6 py-12 text-center">
-          <p className="text-[13px] font-medium">The vault is empty</p>
-          <p className="text-muted-foreground max-w-sm text-xs">
-            Drop files or a folder anywhere on this surface, or use New. Polymath reads what arrives and proposes the fields. Nothing is filed until you file it.
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          className="panel-empty flex flex-col items-center gap-2 rounded-md px-6 py-12 text-center transition-colors hover:bg-muted/30"
+        >
+          <span className="border-border text-muted-foreground grid size-10 place-items-center rounded-md border border-dashed">
+            <Plus className="size-5" aria-hidden />
+          </span>
+          <span className="text-[13px] font-medium">Add your first document</span>
+          <span className="text-muted-foreground max-w-sm text-xs">
+            Choose files to upload. Polymath reads what arrives and proposes the fields. Nothing is filed until you file it.
+          </span>
+        </button>
       ) : noMatches && uploads.length === 0 ? (
         <div className="panel-empty flex flex-col items-center gap-2 rounded-md px-6 py-12 text-center">
           <p className="text-[13px] font-medium">{filtering ? "Nothing here matches" : `Nothing in ${currentName} yet`}</p>
           <p className="text-muted-foreground max-w-sm text-xs">
-            {filtering
-              ? "Clear the search or pick another review filter."
-              : "Drop files here, or use New to add something."}
+            {filtering ? "Clear the search to see everything here." : "Drop files here, or use New to add something."}
           </p>
           {filtering ? (
             <Button type="button" variant="outline" onClick={showEverything} className="mt-1">
@@ -1104,6 +1089,7 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
   const [textState, setTextState] = useState<"idle" | "loading" | "ready" | "empty" | "error">("idle");
   const [retrying, setRetrying] = useState(false);
   const [retryNote, setRetryNote] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadText = useCallback(async () => {
     setTextState("loading");
@@ -1156,6 +1142,33 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Under five thousand words the whole read fits through the clipboard, so
+  // copy is offered; above it the text becomes a file the person saves.
+  const wordCount = text ? text.trim().split(/\s+/).length : 0;
+  const copyable = textState === "ready" && wordCount > 0 && wordCount <= 5000;
+
+  async function copyText() {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setRetryNote("The text could not be copied. Select it and copy by hand.");
+    }
+  }
+
+  function downloadText() {
+    if (!text) return;
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${doc.title.replace(/[^\w\-. ]+/g, "_") || "document"}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   const inline = doc.kind === "file" && (doc.mimeType === "application/pdf" || doc.mimeType?.startsWith("image/"));
   const review = vaultReview(doc.reviewKey, doc.undecidedProposals);
   const textNote =
@@ -1202,6 +1215,27 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
         <Link href={doc.href} className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
           Review fields
         </Link>
+        {textState === "ready" && wordCount > 0 ? (
+          <div className="flex shrink-0 items-center gap-0.5">
+            {copyable ? (
+              <button
+                type="button"
+                onClick={() => void copyText()}
+                className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
+              >
+                {copied ? <Check className="size-3.5" aria-hidden /> : <CopyIcon className="size-3.5" aria-hidden />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={downloadText}
+              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
+            >
+              <Download className="size-3.5" aria-hidden /> Save
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
@@ -1242,7 +1276,9 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Reading the extracted text…
             </div>
           ) : textState === "ready" ? (
-            <pre className="text-foreground/90 p-4 font-sans text-[13px] leading-relaxed whitespace-pre-wrap">{text}</pre>
+            <div className="p-4">
+              <Markdown text={text ?? ""} />
+            </div>
           ) : (
             <div className="flex h-full flex-col items-start gap-3 p-4">
               <p className="text-muted-foreground text-xs">{textNote}</p>

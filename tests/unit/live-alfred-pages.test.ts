@@ -85,7 +85,7 @@ async function knowledge(doc?: string) {
 describe("live Alfred route functionality", () => {
   it("keeps one enabled upload affordance in both empty and populated vaults", async () => {
     const empty = await knowledge();
-    expect(empty).toContain("The vault is empty");
+    expect(empty).toContain("Add your first document");
     expect(empty.match(/aria-label="New"/g)).toHaveLength(1);
     vi.mocked(getVaultDocuments).mockResolvedValue([
       {

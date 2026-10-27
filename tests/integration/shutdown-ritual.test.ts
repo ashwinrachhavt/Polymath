@@ -8,7 +8,7 @@ import { focusSessions } from "@/domains/focus/schema";
 import { artifacts } from "@/domains/knowledge/schema";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
-import { briefingSeeds, dailyOutcomes, tasks } from "@/domains/work/schema";
+import { briefingSeeds, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -39,7 +39,6 @@ let db: NonNullable<typeof handle>["db"];
 let shutdown: typeof import("@/domains/daybook/shutdown");
 let parking: typeof import("@/domains/capture/parking");
 let focus: typeof import("@/domains/focus/commands");
-let briefing: typeof import("@/domains/work/briefing");
 let enrichment: typeof import("@/domains/capture/enrichment-handler");
 
 beforeAll(async () => {
@@ -49,7 +48,6 @@ beforeAll(async () => {
   shutdown = await import("@/domains/daybook/shutdown");
   parking = await import("@/domains/capture/parking");
   focus = await import("@/domains/focus/commands");
-  briefing = await import("@/domains/work/briefing");
   enrichment = await import("@/domains/capture/enrichment-handler");
 });
 
@@ -257,22 +255,21 @@ suite("shutdown ritual", () => {
   });
 
   describe("briefing seeds", () => {
-    it("lead tomorrow's suggestions without becoming accepted outcomes, and stay inside the workspace", async () => {
+    it("writes one seed per chosen task, scopes to the workspace, and never writes a daily outcome", async () => {
       const a = await workspace("seed-a");
       const b = await workspace("seed-b");
-      const first = await task(a.workspaceId, "First by rank", { rank: "a" });
       const carried = await task(a.workspaceId, "Carried over", { rank: "z" });
       const foreign = await task(b.workspaceId, "Not yours");
       await expect(shutdown.applyShutdown(a.auth, { idempotencyKey: key(), park: [], seedTaskIds: [foreign.id] })).rejects.toMatchObject({ code: "stale_write" });
       const result = await shutdown.applyShutdown(a.auth, { idempotencyKey: key(), park: [], seedTaskIds: [carried.id] });
-      // Move the seed to the briefing's own day so the consumer reads it.
-      await db.update(briefingSeeds).set({ onDate: result.today }).where(eq(briefingSeeds.workspaceId, a.workspaceId));
-      const data = await briefing.getBriefing(a.auth);
-      expect(data.suggested.map((t) => t.id)).toEqual([carried.id, first.id]);
-      expect(data.suggested[0].seeded).toBe(true);
-      expect(data.suggested[1].seeded).toBeUndefined();
-      expect(data.outcomes).toHaveLength(0);
-      expect(await db.select().from(dailyOutcomes).where(eq(dailyOutcomes.workspaceId, a.workspaceId))).toHaveLength(0);
+      // The seed row itself is the contract now: getBriefing, which used to
+      // consume it and order the next day's suggestions, was removed with the
+      // outcome machinery. One row for the chosen task, on the next local day.
+      const rows = await db.select().from(briefingSeeds).where(eq(briefingSeeds.workspaceId, a.workspaceId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].taskId).toBe(carried.id);
+      expect(rows[0].onDate).toBe(result.tomorrow);
+      expect(await db.select().from(briefingSeeds).where(eq(briefingSeeds.workspaceId, b.workspaceId))).toHaveLength(0);
     });
 
     it("never resurrects a dismissed seed on replay, and disappears with a deleted task", async () => {

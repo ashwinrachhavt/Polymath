@@ -73,7 +73,7 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
   return (
     <Screen
       title={label}
-      actions={<Button asChild variant="outline" size="sm"><Link href="/command-center/briefing">Back to Today</Link></Button>}
+      actions={<Button asChild variant="outline" size="sm"><Link href="/command-center/inbox">Back to Inbox</Link></Button>}
     >
       {day.created.length ? (
         <Panel title="Created" description="What came into being this day.">
@@ -90,19 +90,6 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
       {day.captured.length ? (
         <Panel title="Captured" description="What arrived this day.">
           <ItemRows items={day.captured} />
-        </Panel>
-      ) : null}
-
-      {day.planned.length ? (
-        <Panel title="Planned" description="What you committed to this day.">
-          <div className="divide-y divide-border">
-            {day.planned.map((task) => (
-              <div key={task.id} className="flex items-baseline justify-between gap-3 py-2 first:pt-0">
-                <span className="text-[13px]">{task.title}</span>
-                <span className="text-xs text-muted-foreground">{task.completedAt ? "completed" : "open"}</span>
-              </div>
-            ))}
-          </div>
         </Panel>
       ) : null}
 
@@ -154,7 +141,6 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
       {!day.created.length &&
       !day.workedOn.length &&
       !day.captured.length &&
-      !day.planned.length &&
       !day.sessions.length &&
       !day.meetings.length &&
       !day.pins.length ? (

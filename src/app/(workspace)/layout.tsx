@@ -8,6 +8,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { getAuthContext } from "@/lib/auth";
 import { getPreferences, resolveInterfaceMode } from "@/domains/identity/preferences";
+import { listNotifications, type NotificationFeed } from "@/domains/notifications/feed";
 
 /*
  * Every destination shares the shell. A route group rather than a path
@@ -36,6 +37,10 @@ import { getPreferences, resolveInterfaceMode } from "@/domains/identity/prefere
  */
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let storageScope = "anonymous";
+  // The notifications panel is chrome, so its feed is read here once for the
+  // whole workspace rather than per page. A read failure must never take the
+  // shell down with it: an empty feed is honest, a blank app is not.
+  let notifications: NotificationFeed = { items: [], counts: { decision: 0, run: 0, audit: 0 }, needsAction: 0 };
   // ASH-312: the interface language is an account preference resolved on the
   // server, so every destination renders in the owner's mode on first paint -
   // no client flash, and "auto" settles in the owner's timezone. The public
@@ -50,8 +55,12 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     await io();
     const authContext = await getAuthContext();
     if (authContext) {
-      const preferences = await getPreferences(authContext);
+      const [preferences, feed] = await Promise.all([
+        getPreferences(authContext),
+        listNotifications(authContext).catch(() => notifications),
+      ]);
       interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);
+      notifications = feed;
     }
   } catch {
     // A preference read failure never blocks the workspace; default mode.
@@ -71,11 +80,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // ~220 KB first-load. Sign-in and sign-up wrap themselves because their
   // Clerk components need the same context.
   if (!clerkConfigured) {
-    return <AppShell storageScope={storageScope} clerkConfigured={false} interfaceMode={interfaceMode}>{children}</AppShell>;
+    return <AppShell storageScope={storageScope} clerkConfigured={false} interfaceMode={interfaceMode} notifications={notifications}>{children}</AppShell>;
   }
   return (
     <ClerkAuthProvider>
-      <AppShell storageScope={storageScope} clerkConfigured interfaceMode={interfaceMode}>{children}</AppShell>
+      <AppShell storageScope={storageScope} clerkConfigured interfaceMode={interfaceMode} notifications={notifications}>{children}</AppShell>
     </ClerkAuthProvider>
   );
 }

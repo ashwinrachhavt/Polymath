@@ -48,6 +48,8 @@ export async function createTask(
     estimateMinutes?: number;
     tags?: string[];
     rank?: string;
+    /** Defaults to `inbox`: capture never commits silently. */
+    status?: (typeof tasks.$inferSelect)["status"];
     links?: TaskLinkInput[];
   },
   tx: Db = db,
@@ -75,6 +77,7 @@ export async function createTask(
       description: input.description ?? null,
       dueAt: input.dueAt ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
+      ...(input.status ? { status: input.status } : {}),
       ...(input.estimateMinutes ? { estimateMinutes: input.estimateMinutes } : {}),
       ...(input.tags?.length ? { tags: input.tags } : {}),
       rank,
@@ -114,6 +117,8 @@ export async function createOwnerTask(
     tags?: string[];
     personId?: string; organizationId?: string;
     idempotencyKey?: string;
+    /** `ready` when the owner adds a task on a surface that means "today". */
+    status?: (typeof tasks.$inferSelect)["status"];
   },
 ): Promise<{ id: string }> {
   return withTransaction(async (tx) => {
@@ -155,6 +160,7 @@ export async function createOwnerTask(
         priority: input.priority,
         estimateMinutes: input.estimateMinutes,
         tags: input.tags,
+        status: input.status,
         links,
       },
       tx,

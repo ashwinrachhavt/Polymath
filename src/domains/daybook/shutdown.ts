@@ -14,7 +14,6 @@ import { createNoteInTx } from "@/domains/knowledge/notes";
 import { artifacts } from "@/domains/knowledge/schema";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { tierAllows } from "@/domains/integrations/capabilities";
-import { getBriefing } from "@/domains/work/briefing";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -113,6 +112,40 @@ async function localDays(tx: TxDrizzle | typeof db, auth: AuthContext): Promise<
 
 const shutdownLogTitle = (today: string) => `Shutdown log ${today}`;
 
+/**
+ * Open tasks due today or already overdue — the work the ritual offers to seed
+ * into tomorrow.
+ *
+ * This used to come from getBriefing, which also carried an `outcomes` list.
+ * Only the owner could produce an outcome (by tagging a task `Outcome:<day>`),
+ * and the picker that did so was removed with the Briefing page, so that list
+ * could never be non-empty. Reading it would have been reading a permanently
+ * empty array; the tag machinery is gone with it.
+ */
+async function seedCandidatesQuery(
+  tx: TxDrizzle | typeof db,
+  auth: AuthContext,
+  today: string,
+): Promise<Array<{ id: string; title: string }>> {
+  return tx
+    .select({ id: tasks.id, title: tasks.title })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.workspaceId, auth.workspaceId),
+        isNull(tasks.archivedAt),
+        isNull(tasks.parentTaskId),
+        notInArray(tasks.status, ["done", "cancelled", "waiting"]),
+        sql`(${tasks.dueAt} at time zone coalesce(
+          (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}), 'UTC'
+        ))::date <= ${today}::date`,
+        sql`${tasks.dueAt} is not null`,
+      ),
+    )
+    .orderBy(tasks.dueAt)
+    .limit(10);
+}
+
 /** The day's already-written shutdown log, if an earlier apply pinned one. */
 async function findShutdownLog(tx: TxDrizzle | typeof db, auth: AuthContext, today: string): Promise<{ id: string; title: string } | null> {
   const rows = await tx
@@ -133,8 +166,10 @@ async function findShutdownLog(tx: TxDrizzle | typeof db, auth: AuthContext, tod
 }
 
 export async function previewShutdown(auth: AuthContext): Promise<ShutdownPreview> {
-  const [days, live, planned, openCaptures, briefing] = await Promise.all([
-    localDays(db, auth),
+  // The local day is read first because the seed query filters against it;
+  // everything else is independent and issues together.
+  const days = await localDays(db, auth);
+  const [live, planned, openCaptures, seedCandidates] = await Promise.all([
     getActiveFocusSession(auth),
     db
       .select({ n: sql<number>`count(*)::int` })
@@ -167,21 +202,20 @@ export async function previewShutdown(auth: AuthContext): Promise<ShutdownPrevie
       )
       .orderBy(desc(captures.createdAt))
       .limit(MAX_LIST),
-    getBriefing(auth),
+    seedCandidatesQuery(db, auth, days.today),
   ]);
 
   const seen = new Set<string>();
-  const seedCandidates: ShutdownPreview["seedCandidates"] = [];
+  const rows: ShutdownPreview["seedCandidates"] = [];
   const add = (list: Array<{ id: string; title: string }>, reason: string) => {
     for (const task of list) {
-      if (seen.has(task.id) || seedCandidates.length >= 10) continue;
+      if (seen.has(task.id) || rows.length >= 10) continue;
       seen.add(task.id);
-      seedCandidates.push({ taskId: task.id, title: task.title, reason });
+      rows.push({ taskId: task.id, title: task.title, reason });
     }
   };
   // Deterministic reasons only: what the record already says, not a model's opinion.
-  add(briefing.outcomes, "Accepted for today and not finished");
-  add(briefing.dueTodayOrOverdue, "Due today or overdue");
+  add(seedCandidates, "Due today or overdue");
 
   const closedLog = await findShutdownLog(db, auth, days.today);
   return {
@@ -207,7 +241,7 @@ export async function previewShutdown(auth: AuthContext): Promise<ShutdownPrevie
       state: c.state,
       label: captureLinkLabel(c),
     })),
-    seedCandidates,
+    seedCandidates: rows,
   };
 }
 

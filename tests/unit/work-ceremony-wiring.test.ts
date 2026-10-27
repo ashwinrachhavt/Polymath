@@ -20,9 +20,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const completeTaskAction = vi.fn();
 const completeTasksAction = vi.fn();
 const createTaskAction = vi.fn();
+const commitTaskAction = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/(workspace)/neuralflow/work/actions", () => ({
+  commitTaskAction: (...args: unknown[]) => commitTaskAction(...args),
   completeTaskAction: (...args: unknown[]) => completeTaskAction(...args),
   completeTasksAction: (...args: unknown[]) => completeTasksAction(...args),
   createTaskAction: (...args: unknown[]) => createTaskAction(...args),
@@ -35,7 +37,7 @@ const rows: WorkListItem[] = [
   { row: { id: "22222222-2222-4222-8222-222222222222", title: "Sweep the lint suppressions", status: "ready", priority: "low", dueAt: null, version: 1, subtaskCount: 0, subtasksDone: 0, blockedBy: 0 }, href: "#", selected: false },
 ];
 
-const renderList = () => render(h(WorkList, { items: rows, showQuickAdd: false, emptyState: h("p", null, "No tasks.") }));
+const renderList = () => render(h(WorkList, { items: rows, addToToday: false, emptyState: h("p", null, "No tasks.") }));
 
 beforeEach(() => {
   window.localStorage.clear();

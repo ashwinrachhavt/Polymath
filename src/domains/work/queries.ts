@@ -201,6 +201,26 @@ function viewWhere(auth: Pick<AuthContext, "workspaceId">, view: "today" | "open
   return sql`t.workspace_id = ${auth.workspaceId} and t.archived_at is null and t.parent_task_id is null and ${statusFilter} ${priority} ${status} ${query}`;
 }
 
+/**
+ * How many tasks sit in each status. The Work page's section headers need the
+ * count of what is *not* on screen (Inbox waiting, open not committed) without
+ * a second list query per section, so this is one grouped count.
+ */
+export async function countWorkByStatus(
+  auth: Pick<AuthContext, "workspaceId">,
+): Promise<Record<(typeof tasks.$inferSelect)["status"], number>> {
+  const rows = (await db.execute(sql`
+    select status, count(*)::int as n
+      from tasks
+     where workspace_id = ${auth.workspaceId} and archived_at is null and parent_task_id is null
+     group by status`)) as unknown as Array<{ status: string; n: number }>;
+  const counts = { inbox: 0, backlog: 0, ready: 0, in_progress: 0, waiting: 0, done: 0, cancelled: 0 };
+  for (const row of rows) {
+    if (row.status in counts) counts[row.status as keyof typeof counts] = row.n;
+  }
+  return counts;
+}
+
 async function countWorkRows(
   auth: Pick<AuthContext, "workspaceId">,
   view: "today" | "open" | "done",

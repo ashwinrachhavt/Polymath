@@ -223,12 +223,15 @@ async function enrichLeased(
     processingState: "classifying",
   });
 
-  // Tier 2 (ASH-272): the Jev classifier. The registry enables it
-  // (enabled 2026-10-25), so production takes this branch; a workspace with no
-  // allowance left is a skip, not an event failure, and the reason lands on
-  // the capture below. A Jev request error fails the event for redelivery; an
-  // unreadable answer degrades to a low-confidence note proposal, never a
-  // crash and never a silent skip.
+  // Tier 2 (ASH-272): the Jev classifier. The registry entry is enabled
+  // (registry.ts, verified 2026-10-25), so this tier runs unless the workspace
+  // has no JEV_MONTHLY_INPUT_TOKENS budget: the quota ledger has no default
+  // allowance, and an unset or zero cap refuses Jev before it spends anything.
+  // That refusal is a skip, not an event failure: the deterministic ladder's
+  // work would otherwise be thrown away, so `skipped` carries the reason to
+  // record. A Jev request error fails the event for redelivery; an unreadable
+  // answer degrades to a low-confidence note proposal, never a crash and never
+  // a silent skip.
   const jev = await tryJevTriage(token, captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
   if (jev.outcome === "handled") return;
   // Why the optional paid tier did not run, on the row the owner reads. A later
@@ -307,9 +310,11 @@ const ALLOWANCE_SKIPPED =
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
  * Jev path owns the outcome (proposal rows written, capture enriched), and
- * "fallback" when the generation tier should run instead - Jev disabled or
- * unconfigured (the pre-ASH-272 behavior, unchanged), or enabled with no
- * allowance left, in which case `skipped` carries the reason to record.
+ * "fallback" when the generation tier should run instead: the entry is disabled
+ * in the registry (the owner's kill switch), the workspace set no monthly token
+ * budget or has spent it, or the capture is flagged sensitive. In the budget
+ * cases `skipped` carries the reason, so a paid tier that did not run is
+ * recorded rather than silently omitted.
  */
 async function tryJevTriage(
   token: string,
@@ -322,8 +327,9 @@ async function tryJevTriage(
   injectedJudger?: ClassifyJudger,
 ): Promise<JevTriage> {
   // Fast path: with no injected judger and the registry entry disabled, fall
-  // through without touching the taxonomy table. The registry enables Jev
-  // (2026-10-25), so this is the owner's kill switch, not the shipped default.
+  // through without touching the taxonomy table. The shipped entry is enabled
+  // (registry.ts, 2026-10-25), so this branch is the owner's kill switch and
+  // the test path, not the default.
   if (!injectedJudger && !providerEntry("jev")?.enabled) return { outcome: "fallback", skipped: null };
   const judger = injectedJudger ?? jevClassifier(workspaceId);
 

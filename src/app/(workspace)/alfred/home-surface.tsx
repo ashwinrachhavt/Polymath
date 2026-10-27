@@ -70,10 +70,11 @@ export function HomeSurface({
               // groups so it appears without a manual refresh.
               startTransition(() => router.refresh());
             }}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] whitespace-nowrap outline-none transition-colors focus-visible:ring-2"
+            aria-label="New chat"
+            title="New chat"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2"
           >
             <Plus aria-hidden className="size-3.5 shrink-0" />
-            <span>New chat</span>
           </button>
           {/* The model is frozen per run; it stays reachable, off the reading column. */}
           <div className="ml-auto min-w-0">
