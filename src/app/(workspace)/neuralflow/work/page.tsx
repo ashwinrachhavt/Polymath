@@ -14,23 +14,29 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   const view = workView(query.view);
   const task = typeof query.task === "string" ? query.task : undefined;
   const date = typeof query.date === "string" ? query.date : undefined;
-  let surface;
+  const show = typeof query.show === "string" ? query.show : undefined;
 
-  // Every Work view reads the same canonical Neon tasks. The browser-only
-  // preview survives only on the standalone /apps/neuralflow route.
+  // Today / Open / Finished are a scope over the same rows, carried in `show`
+  // and valid on any list presentation. The destination tab is derived from
+  // the effective scope, not from `view`, so "Finished" still reads as List.
+  const listed = view !== "board" && view !== "calendar";
+  const scope = show === "today" ? "today" : show === "done" ? "done" : view === "today" ? "today" : "open";
+  const destination = listed && scope === "today" ? "today" : "list";
+  const presentation = listed ? "saved" : view;
+
+  let surface;
   if (view === "board") {
     surface = <NeonBoard raw={query} />;
   } else if (view === "calendar") {
     surface = <NeonCalendar key={date || "current"} date={date} />;
   } else {
-    const show = typeof query.show === "string" ? query.show : undefined;
-    surface = <NeonTasks show={view === "today" ? "today" : show} selectedTask={task} raw={query} />;
+    surface = <NeonTasks show={show ?? (view === "today" ? "today" : undefined)} selectedTask={task} raw={query} />;
   }
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3 md:px-6">
-        <WorkViewLinks active={view} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 md:px-6">
+        <WorkViewLinks active={destination} presentation={presentation} />
       </div>
       {surface}
     </>

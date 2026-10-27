@@ -30,7 +30,7 @@ export async function pinArtifactAction(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not pin this." };
   }
-  revalidatePath(`/command-center/briefing/day/${input.localDate}`);
+  revalidatePath(`/command-center/day/${input.localDate}`);
   return { ok: true };
 }
 
@@ -44,6 +44,6 @@ export async function unpinArtifactAction(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not remove the pin." };
   }
-  revalidatePath(`/command-center/briefing/day/${input.localDate}`);
+  revalidatePath(`/command-center/day/${input.localDate}`);
   return { ok: true };
 }

@@ -25,7 +25,9 @@ export async function decideHomeAgentAction(input: {
   // delegated action (both guard; the sweep reads this one).
   requireRole(await getAuthContext(), "member");
   const result = await decideProposalAction(input);
-  if (result.ok) revalidatePath("/");
+  // The queue renders in the shell's notifications panel now, so the
+  // revalidation is the workspace layout rather than the root page.
+  if (result.ok) revalidatePath("/", "layout");
   return result;
 }
 
@@ -35,6 +37,8 @@ export async function decideHomeCaptureAction(input: { proposalId: string; decis
     input.decision === "accepted"
       ? await acceptProposalAction({ proposalId: input.proposalId })
       : await rejectProposalAction({ proposalId: input.proposalId });
-  if (result.ok) revalidatePath("/");
+  // The queue renders in the shell's notifications panel now, so the
+  // revalidation is the workspace layout rather than the root page.
+  if (result.ok) revalidatePath("/", "layout");
   return result;
 }

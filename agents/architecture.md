@@ -234,9 +234,30 @@ Recorded here so an agent does not build on a foundation that is not there.
    handler, so those rows commit and stay pending.
 2. **`src/workflows/` does not exist.** `coding.md` names it as a module
    boundary and marks it as not yet created.
-3. **Capture classification is not built.** `classifying` and `enriched` are
-   never set by anything in `src/`. `capture_proposals` has no producer.
-4. **Inbox enrichment is not built.** No path sets a capture to `enriched`.
+3. **Capture enrichment is built, including the `classifying` state.**
+   `enrichment-handler.ts`, `enrichment-lease.ts`, `url-content-handler.ts` and
+   `zettel-generation.ts` exist and are registered in `outboxHandlers()`.
+   `processingState` is set to `'classifying'` while the model call is in
+   flight (`enrichment-handler.ts:218`, `url-content-handler.ts:76`) and to
+   `'enriched'` on completion. `capture_proposals` rows are written by the
+   enrichment handler (`enrichment-handler.ts:400`) and by `jev-classify.ts`,
+   which restricts the kinds it may propose to task, contact, note and discard
+   (`jev-classify.ts:31`). The earlier version of this
+   file claimed none of that was built; it was wrong on every count. Note when
+   grepping: the states appear as object values (`processingState: "enriched"`)
+   as well as string literals, so a quoted-literal grep under-reports.
+4. **DEFECT, dated 2026-10-26 — delete this entry when it is fixed; it is a
+   bug, not a design choice.** Enrichment runs and fails at the Jev step. The
+   registry entry for `jev` is `enabled: true` (owner decision, 2026-10-25)
+   while `tryJevTriage` catches only
+   `JevDisabledError`/`JevUnconfiguredError`. `jevClassifier` throws
+   `QuotaExhaustedError` when `JEV_MONTHLY_INPUT_TOKENS` is unset, and that
+   escapes as a redeliverable error instead of falling back. The result is a
+   redelivery loop with the deterministic tiers' work discarded — not a missing
+   feature, so do not read this entry as "enrichment is unbuilt". Two comments
+   in `enrichment-handler.ts` still claim the registry "ships disabled".
+   Tracked as ingestion-repair 4.6; remove this entry in the PR that makes
+   `QuotaExhaustedError` fall back.
 5. **Extraction runs inside the request** via `after()` in
    `src/app/api/v1/files/route.ts`. A long document can outlive the function
    duration on the default plan.

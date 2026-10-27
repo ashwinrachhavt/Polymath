@@ -4,18 +4,19 @@ import {
   Activity,
   BookOpen,
   Briefcase,
+  CalendarDays,
   Inbox,
   Layers,
   LayoutList,
   Library,
+  Moon,
   NotebookPen,
   Puzzle,
+  Receipt,
   Settings,
   ShieldCheck,
-  Scale,
   Sparkles,
   SquareCheckBig,
-  Target,
   Unplug,
   Users,
 } from "lucide-react";
@@ -43,28 +44,18 @@ export type Destination = {
   group: AppSlug | "shared";
 };
 
-/** Array order is rail order. Decisions lead: the product is a decision engine (ASH-309). */
+/**
+ * Array order is rail order. The conversation leads: "/" redirects to it, and
+ * the decision queue that used to hold the front door now lives in the
+ * notifications panel in the header, beside the runs and the audit trail.
+ */
 export const destinations: Destination[] = [
-  {
-    href: "/",
-    label: "Decisions",
-    purpose: "Decide what agents and captures propose.",
-    icon: Scale,
-    group: "command-center",
-  },
   {
     href: "/alfred",
     label: "Polymath",
     purpose: "Start or continue a conversation.",
     icon: Sparkles,
     group: "alfred",
-  },
-  {
-    href: "/command-center/briefing",
-    label: "Today",
-    purpose: "Decide what to do today.",
-    icon: Target,
-    group: "command-center",
   },
   {
     href: "/command-center/inbox",
@@ -137,6 +128,20 @@ export const destinations: Destination[] = [
     group: "command-center",
   },
   {
+    href: "/command-center/day",
+    label: "Day",
+    purpose: "Review one day's record.",
+    icon: CalendarDays,
+    group: "command-center",
+  },
+  {
+    href: "/command-center/shutdown",
+    label: "Shut down",
+    purpose: "Close the day and seed tomorrow.",
+    icon: Moon,
+    group: "command-center",
+  },
+  {
     href: "/reviews",
     label: "Reviews",
     purpose: "Decide what happens next.",
@@ -148,6 +153,13 @@ export const destinations: Destination[] = [
     label: "Activity",
     purpose: "See what changed and why.",
     icon: Activity,
+    group: "shared",
+  },
+  {
+    href: "/command-center/spending",
+    label: "Spending",
+    purpose: "See what the agents have spent.",
+    icon: Receipt,
     group: "shared",
   },
   {
@@ -164,7 +176,7 @@ const featureRoutes: Record<string, string> = {
   // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
   // to the Notes destination for as long as that bridge exists.
   "/alfred/notebook": "/alfred/notes",
-  "/apps/command-center/briefing": "/command-center/briefing",
+  "/apps/command-center/briefing": "/neuralflow/work?view=today",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships/people",
   "/command-center/relationships": "/command-center/relationships/people",

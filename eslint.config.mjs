@@ -34,6 +34,13 @@ const eslintConfig = defineConfig([
     // The Chrome companion is browser code, not part of the Next build. Its
     // libs/ are vendored (Readability, Turndown) and fail rules they predate.
     "extensions/**",
+    // Scratch: gitignored by design, so CI never lints it - but `pnpm lint`
+    // walks the working tree, and a local-only failure made the documented
+    // gate red for anyone who had run a dev session or a skill. Linting
+    // untracked scratch proves nothing about the source that ships.
+    ".superpowers/**",
+    ".gstack/**",
+    ".run/**",
   ]),
 ]);
 

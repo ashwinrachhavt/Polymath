@@ -6,6 +6,9 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.goto("/neuralflow/work?view=list");
   await waitSettled(page);
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
+  // New tasks rank to the end of the global order; on a long-lived workspace
+  // that is past page one, so narrow the list to this test's row first.
+  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
@@ -20,10 +23,10 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Today", exact: true }).click();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   // Board and Calendar read the same rows.
-  await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Board", exact: true }).click();
+  await page.getByRole("navigation", { name: "Presentation" }).getByRole("link", { name: "Board", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
-  await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Calendar", exact: true }).click();
+  await page.getByRole("navigation", { name: "Presentation" }).getByRole("link", { name: "Calendar", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Previous week", exact: true })).toBeVisible();
   // The relocated tools live in their contextual homes, wired to the real
@@ -48,12 +51,11 @@ test("a canonical task deep link opens its detail and starts a focus session fro
   const title = `Focus linked ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=saved");
   await waitSettled(page);
+  // A new task ranks to the end of the list, which on a long-lived workspace
+  // is past the first page; narrow first so the row is on screen to assert.
+  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
-  // A new task ranks to the end of the list, which on a long-lived workspace
-  // is past the first page; the search filter narrows the view to the row.
-  await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
-  // The debounced search narrows the view to the new row.
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   await page.getByRole("link", { name: title, exact: true }).click();
   await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);

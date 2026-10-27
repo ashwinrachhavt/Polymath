@@ -218,11 +218,13 @@ async function enrichLeased(
     processingState: "classifying",
   });
 
-  // Tier 2 (ASH-272): the Jev classifier, when the registry enables it. The
-  // registry entry ships disabled, so today this always falls through to the
-  // generation prompt below with byte-identical behavior. A Jev request
-  // error fails the event for redelivery; an unreadable answer degrades to a
-  // low-confidence note proposal, never a crash and never a silent skip.
+  // Tier 2 (ASH-272): the Jev classifier. The registry entry is enabled
+  // (registry.ts, verified 2026-10-25), so this tier runs unless the workspace
+  // has no JEV_MONTHLY_INPUT_TOKENS budget: the quota ledger has no default
+  // allowance, and an unset or zero cap refuses Jev before it spends anything.
+  // A Jev request error fails the event for redelivery; an unreadable answer
+  // degrades to a low-confidence note proposal, never a crash and never a
+  // silent skip.
   const jev = await tryJevTriage(token, captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
   if (jev === "handled") return;
 
@@ -286,8 +288,9 @@ const noul = (answer: JevAnswer | undefined): number => (answer && answer.type =
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
  * Jev path owns the outcome (proposal rows written, capture enriched),
- * "fallback" when the generation tier should run instead (Jev disabled or
- * unconfigured - the pre-ASH-272 behavior, unchanged).
+ * "fallback" when the generation tier should run instead: the entry is
+ * disabled in the registry, the workspace set no monthly token budget, or the
+ * capture is flagged sensitive (which this provider refuses).
  */
 async function tryJevTriage(
   token: string,
@@ -299,9 +302,10 @@ async function tryJevTriage(
   structure: string,
   injectedJudger?: ClassifyJudger,
 ): Promise<"handled" | "fallback"> {
-  // Fast path: with no injected judger and the registry entry disabled (the
-  // shipped default), fall through without touching the taxonomy table, so
-  // the disabled-Jev path stays byte-identical to the pre-ASH-272 ladder.
+  // Fast path: with no injected judger and the registry entry disabled, fall
+  // through without touching the taxonomy table, so the disabled-Jev path
+  // stays byte-identical to the pre-ASH-272 ladder. The shipped entry is
+  // enabled, so this branch is the test and rollback path, not the default.
   if (!injectedJudger && !providerEntry("jev")?.enabled) return "fallback";
   const judger = injectedJudger ?? jevClassifier(workspaceId);
 

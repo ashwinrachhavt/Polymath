@@ -30,7 +30,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const revalidate = () => {
   revalidatePath("/reviews");
-  revalidatePath("/command-center/briefing");
+  revalidatePath("/");
 };
 
 async function authorize() {
