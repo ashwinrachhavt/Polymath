@@ -90,6 +90,7 @@ function dataset(overrides: Partial<PersonalSeed> = {}): PersonalSeed {
         company: "Axle",
         title: "Founding AI Engineer at Axle",
         stage: "interviewing",
+        outcome: "pending",
         primaryContactEmail: "chris@axleaccess.com",
       },
     ],

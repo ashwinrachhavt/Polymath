@@ -2,7 +2,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, QuotaExhaustedError, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 import { firecrawlSearchCost } from "@/integrations/search/firecrawl";
-import { WebSearchError, webSearchProvider, type WebSearchResponse } from "@/integrations/search/provider";
+import { WebSearchError, webSearchChain, type WebSearchResponse } from "@/integrations/search/provider";
 
 /*
  * What the agent's `web.search` tool and the /api/v1/search route both call.
@@ -39,33 +39,56 @@ export async function searchWebForAgent(
   const query = input.query.trim();
   if (!query) return { ok: false, error: "query is empty" };
   const limit = Math.min(Math.max(input.limit ?? 5, 1), WEB_SEARCH_MAX_RESULTS);
-  try {
-    const provider = webSearchProvider();
+  // Every provider this deployment can reach, in order. A registered-but-
+  // disabled entry is skipped rather than failing the whole search, and a
+  // provider that throws falls through to the next: one dead backend is not a
+  // reason to report "no results" when another key is already paid for.
+  const chain = webSearchChain();
+  const failures: string[] = [];
+  const exhausted: string[] = [];
+  for (const provider of chain) {
     // Fail closed like every other provider route: a registry-disabled entry
     // (parallel's card-backed tier, the gateway's post-promo billing) must not
     // execute because its key happens to be set. The gateway adapters report
     // per-tool names (ai-gateway-tako, ...) over one shared registry entry.
     const entry = providerEntry(provider.name) ?? providerEntry(provider.name.replace(/^(ai-gateway-).+/, "$1search"));
     if (!entry || !entry.enabled) {
-      return {
-        ok: false,
-        error: `web search provider ${provider.name} is registered as disabled; enabling it is a code change in the provider registry, not a setting`,
-      };
+      failures.push(`${provider.name}: disabled`);
+      continue;
     }
-    const run = () => provider.search(query, limit);
-    const results = entry.quota
-      ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
-      : await run();
-    return { ok: true, provider: provider.name, query, results };
-  } catch (cause) {
-    if (cause instanceof QuotaExhaustedError) {
-      return { ok: false, error: `free search allowance exhausted for ${cause.provider}; it renews with the next period` };
+    try {
+      const run = () => provider.search(query, limit);
+      const results = entry.quota
+        ? await withQuota(quotaStore ?? drizzleQuotaStore(), entry, auth.workspaceId, searchCostEstimate(provider.name, limit), run)
+        : await run();
+      // Answered: stop here even when the result list is empty. "Nothing
+      // matched" is a real answer, and it is not the same thing as a provider
+      // being unreachable — only the latter falls through to the next one.
+      return { ok: true, provider: provider.name, query, results };
+    } catch (cause) {
+      if (cause instanceof QuotaExhaustedError) {
+        exhausted.push(cause.provider);
+        failures.push(`${cause.provider}: allowance exhausted`);
+        continue;
+      }
+      const label = cause instanceof WebSearchError ? cause.provider : provider.name;
+      failures.push(`${label}: failed`);
     }
-    if (cause instanceof WebSearchError) {
-      return { ok: false, error: `web search failed (${cause.provider}), try again` };
-    }
-    return { ok: false, error: "web search failed, try again" };
   }
+  // Exhaustion is the actionable case: it is the one the owner can fix, and the
+  // message says so. It is reported ahead of generic transport failures.
+  if (exhausted.length) {
+    return {
+      ok: false,
+      error: `free search allowance exhausted for ${exhausted.join(", ")}; it renews with the next period`,
+    };
+  }
+  return {
+    ok: false,
+    error: failures.length
+      ? `web search failed (${failures.join("; ")})`
+      : "no web search provider is configured",
+  };
 }
 
 /** What one search call costs the provider's allowance, from the registry entry's verified pricing. */

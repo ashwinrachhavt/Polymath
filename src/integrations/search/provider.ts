@@ -65,6 +65,33 @@ import { tavilyProvider } from "./tavily";
  * explicit SEARCH_PROVIDER), and with nothing configured
  * the zero-key DuckDuckGo adapter so the tool works with no setup and no spend.
  */
+/**
+ * The provider, plus the ones this deployment could fall back to, in order.
+ *
+ * `webSearchProvider` picks exactly one adapter, which is right when a single
+ * provider is the deliberate choice. It is wrong when the chosen provider is a
+ * local service that can be down: an owner with SearXNG running on their laptop
+ * and live Tavily and Exa keys had no search at all the moment that container
+ * stopped, because nothing consulted the keys it was already paying for.
+ *
+ * SEARCH_PROVIDER still wins outright and yields a one-entry chain: an explicit
+ * choice is not second-guessed. Parallel is never added automatically — the
+ * registry makes it card-backed opt-in, so it is reachable only by naming it.
+ */
+export function webSearchChain(env: Record<string, string | undefined> = process.env): WebSearchProvider[] {
+  const chosen = webSearchProvider(env);
+  if (env.SEARCH_PROVIDER?.trim()) return [chosen];
+  if (!env.SEARXNG_URL) return [chosen];
+
+  const rest: WebSearchProvider[] = [];
+  if (env.FIRECRAWL_HOSTED_API_KEY) rest.push(firecrawlSearchProvider(env));
+  if (env.BRAVE_SEARCH_API_KEY) rest.push(braveProvider(env));
+  if (env.TAVILY_API_KEY) rest.push(tavilyProvider(env));
+  if (env.EXA_API_KEY) rest.push(exaProvider(env));
+  rest.push(duckDuckGoProvider()); // zero-key, always answers
+  return [chosen, ...rest.filter((p) => p.name !== chosen.name)];
+}
+
 export function webSearchProvider(env: Record<string, string | undefined> = process.env): WebSearchProvider {
   const choice = env.SEARCH_PROVIDER?.toLowerCase();
   const gatewayProvider = AI_GATEWAY_SEARCH_PROVIDERS.find((p) => `ai-gateway-${p}` === choice);
