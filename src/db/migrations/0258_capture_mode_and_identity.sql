@@ -6,9 +6,9 @@
 --
 -- CI and deploy apply one `psql -f` per file with no `-1`, so a failure partway
 -- through commits the statements before it. Every statement below is therefore
--- safe to re-run: guarded types and constraint, IF EXISTS, IF NOT EXISTS, one
--- update that only fills a null hash, and one that only changes a hash an
--- earlier row already holds.
+-- safe to re-run: guarded types and constraint, IF EXISTS, IF NOT EXISTS, a
+-- backfill that computes its target and writes only rows that differ, and a
+-- VALIDATE that is a no-op once satisfied.
 --
 -- Order is load-bearing, and it is not the obvious one.
 --
@@ -22,13 +22,14 @@
 -- be written again: enrichment, parking, and conversion all update captures.
 --
 -- So duplicates are resolved by giving the later row a distinct hash rather than
--- a null one: fill every hash from the arriving text, then fold the row's id
--- into any hash an earlier row at the same identity already holds. The earliest
--- row keeps the plain hash, so a re-capture still dedupes against it; later
+-- a null one: rank within each identity and write the plain hash to rank 1 and
+-- the id-folded hash to every other row, in one statement. The earliest row
+-- keeps the plain hash, so a re-capture still dedupes against it; later
 -- duplicates stay non-null, distinct, and still a hash of what arrived. Nulling
--- them would satisfy the index alone but strand them under the CHECK, and
--- re-hashing them to the survivor's value would violate the index -- the
--- two-pass fill-then-disambiguate is what satisfies both. A row with an empty
+-- them would satisfy the index alone but strand them under the CHECK, equal
+-- hashes would violate the index, and assigning in two passes would collide
+-- mid-flight on a database that already has the index. One ranked statement
+-- never holds two equal hashes at one identity at any point. A row with an empty
 -- body hashes the empty string, so no url-bearing page or selection row is left
 -- without a hash at all.
 DO $$ BEGIN
@@ -58,28 +59,33 @@ update captures set capture_mode = case
 -- capture yields today, and re-capturing one would insert a duplicate instead of
 -- colliding. clean_text is the fallback for a row with no text; an empty body
 -- hashes the empty string rather than staying null.
+--
+-- Rank within each identity and assign both values in ONE statement. A database
+-- that already ran an earlier cut of this migration holds the unique index, a
+-- survivor with the plain hash and its duplicates with none; filling the nulls
+-- first would write the survivor's own hash into a duplicate and the index would
+-- reject the statement halfway through. Going through a ranked target instead
+-- means every row's new value is either the plain hash (rank 1 only) or a hash
+-- with that row's id folded in (never equal to any other row's), so no
+-- intermediate state holds two equal hashes at one identity, and no row is left
+-- without one. `is distinct from` makes a re-run write nothing at all.
 update captures c
-   set content_hash = encode(sha256(convert_to(coalesce(c.text, c.clean_text, ''), 'UTF8')), 'hex')
- where c.url is not null and c.capture_mode not in ('url-reference', 'blob')
-   and c.content_hash is null;--> statement-breakpoint
--- Then break ties. Two readings of one URL with different bodies (a page grab,
--- then a selection) are not duplicates and keep the plain hash of their own text.
--- Two identical bodies at one identity are, and the unique index below forbids
--- them sharing a hash while the CHECK forbids them being null, so the later one
--- gets its id folded into its hash: still a hash of what arrived, non-null, and
--- unable to collide. The earliest keeps the plain hash, so a re-capture of that
--- text still dedupes against it. This runs as a separate pass, after the fill,
--- because a database left behind by the earlier null-dedupe already holds a
--- plain hash on a later row; deciding by rank during the fill would then hand
--- the plain hash to the earliest row and collide with it.
-update captures c
-   set content_hash = encode(sha256(convert_to(coalesce(c.text, c.clean_text, '') || '#' || c.id::text, 'UTF8')), 'hex')
- where c.content_hash is not null and exists (
-   select 1 from captures d
-    where d.workspace_id = c.workspace_id and d.source = c.source
-      and d.url = c.url and d.capture_mode = c.capture_mode
-      and d.content_hash = c.content_hash
-      and (d.created_at, d.id) < (c.created_at, c.id));--> statement-breakpoint
+   set content_hash = t.target
+  from (
+    select r.id, encode(sha256(convert_to(
+             coalesce(r.text, r.clean_text, '')
+               || case when r.rn = 1 then '' else '#' || r.id::text end,
+             'UTF8')), 'hex') as target
+      from (
+        select id, text, clean_text, row_number() over (
+                 partition by workspace_id, source, url, capture_mode
+                 order by created_at, id) as rn
+          from captures
+         where url is not null and capture_mode not in ('url-reference', 'blob')
+      ) r
+  ) t
+ where c.id = t.id
+   and c.content_hash is distinct from t.target;--> statement-breakpoint
 alter table captures alter column capture_mode set not null;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "captures_identity_key" ON "captures" USING btree ("workspace_id","source","url","capture_mode","content_hash") WHERE url is not null and capture_mode <> 'url-reference';--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "captures_url_reference_key" ON "captures" USING btree ("workspace_id","source","url") WHERE url is not null and capture_mode = 'url-reference';--> statement-breakpoint
@@ -89,10 +95,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS "captures_url_reference_key" ON "captures" USI
 -- runs on every later UPDATE, so it would strand exactly the historical rows the
 -- backfill above has already repaired. If any such row somehow survives, the ADD
 -- fails and the migration rolls back instead of leaving an unwritable table.
--- Guarded like the types above, because a partial apply may already have added it.
+-- Guarded like the types above, because a partial apply -- or an earlier cut of
+-- this migration -- may already have added it.
 DO $$ BEGIN
   ALTER TABLE "captures" ADD CONSTRAINT "captures_identity_hash_present"
     CHECK (url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null);
 EXCEPTION
   WHEN duplicate_object THEN null;
-END $$;
+END $$;--> statement-breakpoint
+-- An earlier cut added it NOT VALID, which would leave it meeting every write
+-- from now on but never proven over the rows it already guards. VALIDATE is a
+-- no-op on an already-valid constraint, so this runs on both paths and both end
+-- with a constraint that is both enforced and validated. It fails loudly if the
+-- backfill above left a row the constraint would reject, rather than shipping a
+-- table whose rows cannot be written.
+ALTER TABLE "captures" VALIDATE CONSTRAINT "captures_identity_hash_present";
