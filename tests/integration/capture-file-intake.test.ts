@@ -269,9 +269,11 @@ suite("capture file intake", () => {
     const [before] = await db.select().from(captures).where(eq(captures.id, body.captureId));
     const { task } = await convertCaptureToTask(holder.auth!, { captureId: body.captureId, expectedVersion: before.version });
 
-    const { tasks } = await import("@/domains/work/schema");
-    const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
-    expect(row.title).toBe("design notes.png");
+    // The title lives on the task's note (one note substrate), so the
+    // assertion reads it through the production detail path, not the row.
+    const { getTaskDetail } = await import("@/domains/work/queries");
+    const detail = await getTaskDetail(holder.auth!, task.id);
+    expect(detail?.task.title).toBe("design notes.png");
 
     const [after] = await db.select().from(captures).where(eq(captures.id, body.captureId));
     expect(after.processingState).toBe("converted");

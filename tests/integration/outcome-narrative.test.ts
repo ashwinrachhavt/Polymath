@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { focusSessions } from "@/domains/focus/schema";
 import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";
-import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
+import { seedTaskWithNote } from "../helpers/task-note";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -26,7 +27,7 @@ suite("weekly outcome narrative (ASH-280)", () => {
     const s = await seedWorkspace(db, `narr-${Date.now()}`);
     const other = await seedWorkspace(db, `narr-other-${Date.now()}`);
     const auth = ownerAuth(s.userId, s.workspaceId);
-    const task = await seedTask(db, s.workspaceId, { title: "Draft the roadmap", status: "ready" });
+    const task = await seedTaskWithNote(db, { workspaceId: s.workspaceId, title: "Draft the roadmap", status: "ready" });
 
     const session = (workspaceId: string, over: Partial<typeof focusSessions.$inferInsert>) => ({
       workspaceId, state: "finished" as const, accumulatedSeconds: 1500, startedAt: new Date("2026-10-14T17:00:00Z"), endedAt: new Date("2026-10-14T17:25:00Z"), ...over,

@@ -9,7 +9,8 @@ import { artifacts } from "@/domains/knowledge/schema";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
-import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
+import { seedTaskWithNote } from "../helpers/task-note";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The end-of-day shutdown (ASH-305) against real Postgres: explicit session
@@ -72,12 +73,9 @@ async function capture(workspaceId: string, over: Partial<typeof captures.$infer
   return row;
 }
 
-async function task(
-  workspaceId: string,
-  title: string,
-  over: Omit<Partial<typeof tasks.$inferInsert>, "workspaceId" | "noteId" | "title"> = {},
-) {
-  return seedTask(db, workspaceId, { title, rank: "m", status: "ready", ...over });
+async function task(workspaceId: string, title: string, over: Partial<typeof tasks.$inferInsert> = {}) {
+  const { title: _dropped, ...rest } = over as { title?: string };
+  return seedTaskWithNote(db, { workspaceId, title, rank: "m", status: "ready", ...rest });
 }
 
 const key = () => crypto.randomUUID();

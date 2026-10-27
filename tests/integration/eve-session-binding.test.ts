@@ -45,7 +45,6 @@ async function insertTask(
     .values({
       workspaceId: row.workspaceId,
       noteId: note.id,
-      title: row.title,
       ...(row.status ? { status: row.status } : {}),
       ...(row.rank ? { rank: row.rank } : {}),
       ...(row.archivedAt ? { archivedAt: row.archivedAt } : {}),

@@ -11,10 +11,10 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * covered in work-task-prose.test.ts, and the rest of the task suites prove
  * nothing regressed.
  *
- * The dual write is asserted, not tolerated: during this window `tasks.title`
- * is still NOT NULL and `tasks.description` still exists, so a create that
- * wrote only the note would fail the constraint and one that wrote only the
- * columns would leave an invisible task. Both must carry the same prose.
+ * The dual write is asserted, not tolerated: 0260 dropped `tasks.title` and
+ * `tasks.description` and made `note_id` NOT NULL, so the note is now the only
+ * place a task's prose can live. Every create path must write it, and each
+ * case below proves the note, its version 1 and the task's pointer agree.
  */
 
 const handle = makeTestDb();
@@ -90,12 +90,11 @@ suite("a task is created with its note", () => {
       content: { format: "markdown", text: description },
     });
 
-    // Dual write: the columns still carry the same prose until 0260 drops them.
-    const [column] = await db
-      .select({ title: tasks.title, description: tasks.description })
-      .from(tasks)
-      .where(eq(tasks.id, task.id));
-    expect(column).toEqual({ title: "Renew domains", description });
+    // The task row carries the note and nothing else: 0260 dropped the prose
+    // columns, so there is no second copy to compare against. The note above
+    // is the only store, and the detail read (prose test) proves it surfaces.
+    const [row] = await db.select({ noteId: tasks.noteId }).from(tasks).where(eq(tasks.id, task.id));
+    expect(row.noteId).toBe(note.id);
 
     // The note's own audit row (written by createNoteInTx) plus the caller's,
     // never two of either.

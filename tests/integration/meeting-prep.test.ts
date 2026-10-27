@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { calendars, eventAttendees, eventLinks, events } from "@/domains/calendar/schema";
 import { contacts } from "@/domains/crm/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
-import { tasks } from "@/domains/work/schema";
-import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
+import { seedTaskWithNote } from "../helpers/task-note";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * Meeting prep (ASH-302), end to end against a scratch database:
@@ -94,7 +94,7 @@ async function seedFullContext(workspaceId: string, userId: string, eventId: str
     .returning();
   await db.update(artifacts).set({ currentVersionId: v1.id }).where(eq(artifacts.id, note.id));
 
-  await seedTask(db, workspaceId, { title: "Send the Q3 roadmap to Priya Nair", status: "ready", createdBy: userId, updatedBy: userId });
+  await seedTaskWithNote(db, { workspaceId, title: "Send the Q3 roadmap to Priya Nair", status: "ready", createdBy: userId, updatedBy: userId });
 }
 
 suite("meeting prep", () => {
