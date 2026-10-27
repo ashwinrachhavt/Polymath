@@ -302,7 +302,6 @@ export async function createSubtask(
           parentTaskId: parent.id,
           projectId: parent.projectId,
           spaceId: parent.spaceId,
-          title: input.title,
           rank: rankBetween(last?.rank ?? null, null),
           createdBy: auth.userId,
           updatedBy: auth.userId,

@@ -291,8 +291,6 @@ async function upsertLinear(
         workspaceId: auth.workspaceId,
         noteId: note.id,
         projectId,
-        title,
-        description,
         status: linearStatus[key(issue.status)] ?? "backlog",
         priority: issue.priority,
         tags: ["linear", issue.identifier],
