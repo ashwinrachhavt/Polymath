@@ -7,7 +7,7 @@ import { createProposal, withSenderAccountPin } from "@/domains/actions/commands
 import { actionRevisions } from "@/domains/actions/schema";
 import { contacts } from "@/domains/crm/schema";
 import { focusSessions } from "@/domains/focus/schema";
-import { tasks } from "@/domains/work/schema";
+import { getTaskTitle } from "@/domains/work/queries";
 import { decideAndRecordToolInvocation } from "./authorization";
 import { draftFollowUp, draftReply, WriterDraftError, type ResolvedSenderAccount } from "./writer-draft";
 import { getDelegationGrant, hashDelegationGrant } from "./delegation";
@@ -1171,17 +1171,13 @@ export function createGateway({ transport }: { transport: Transport }) {
         });
         return { ok: false, status: 422, code: "session_not_finished", message: "Only a finished focus session with a linked task earns a follow-up pair." };
       }
-      const [task] = await db
-        .select({ title: tasks.title })
-        .from(tasks)
-        .where(and(eq(tasks.id, session.taskId), eq(tasks.workspaceId, context.auth.workspaceId)))
-        .limit(1);
+      const taskTitle = await getTaskTitle(context.auth, session.taskId);
       const [contact] = await db
         .select({ fullName: contacts.fullName, primaryEmail: contacts.primaryEmail })
         .from(contacts)
         .where(and(eq(contacts.id, parsed.args.contactId), eq(contacts.workspaceId, context.auth.workspaceId)))
         .limit(1);
-      if (!task || !contact) {
+      if (!taskTitle || !contact) {
         await settleCall(reservation.reservationId, {
           ok: false,
           errorCode: "party_not_found",
@@ -1199,7 +1195,7 @@ export function createGateway({ transport }: { transport: Transport }) {
           threadId: parsed.args.threadId,
           taskId: session.taskId,
           session: { outcome: session.outcome, whatChanged: session.whatChanged, nextStep: session.nextStep, endedAt: session.endedAt },
-          taskTitle: task.title,
+          taskTitle,
           contact,
         },
         { transport, account },

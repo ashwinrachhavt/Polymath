@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { getTaskTitle } from "@/domains/work/queries";
 import { db } from "@/lib/db";
-import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
 
 /*
@@ -58,10 +58,9 @@ export async function getLiveFocusDock(
       id: focusSessions.id,
       state: focusSessions.state,
       subject: focusSessions.subject,
-      taskTitle: tasks.title,
+      taskId: focusSessions.taskId,
     })
     .from(focusSessions)
-    .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
     .where(
       and(
         eq(focusSessions.workspaceId, auth.workspaceId),
@@ -72,7 +71,10 @@ export async function getLiveFocusDock(
     )
     .limit(1);
   if (!row || (row.state !== "running" && row.state !== "paused")) return null;
-  return { id: row.id, state: row.state, title: row.taskTitle ?? row.subject ?? "Focus session" };
+  // The task's name is the work domain's to resolve: a task's prose lives on its
+  // note, and the join that reads it stays behind that boundary.
+  const taskTitle = row.taskId ? await getTaskTitle(auth, row.taskId) : null;
+  return { id: row.id, state: row.state, title: taskTitle ?? row.subject ?? "Focus session" };
 }
 
 /** Closed sessions, newest first. */

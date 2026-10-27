@@ -1,11 +1,11 @@
-import { and, eq, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, ilike, isNotNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { markdownToPlainText } from "@/lib/display-text";
 import { recordAudit } from "@/domains/audit/record";
 import { eventAttendees, eventLinks, events } from "@/domains/calendar/schema";
 import { contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { tasks } from "@/domains/work/schema";
+import { searchTasksByProse } from "@/domains/work/queries";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
@@ -150,22 +150,11 @@ async function gatherContext(auth: AuthContext, eventId: string) {
   const openTasks =
     needles.length === 0
       ? []
-      : await db
-          .select({ title: tasks.title, status: tasks.status, dueAt: tasks.dueAt })
-          .from(tasks)
-          .where(
-            and(
-              eq(tasks.workspaceId, auth.workspaceId),
-              inArray(tasks.status, ["inbox", "backlog", "ready", "in_progress", "waiting"]),
-              or(
-                ...needles.flatMap((n) => {
-                  const pat = `%${escapeLike(n)}%`;
-                  return [ilike(tasks.title, pat), sql`${tasks.description} is not null and ${tasks.description} ilike ${pat}`];
-                }),
-              ),
-            ),
-          )
-          .limit(PREP_MAX_TASKS);
+      : await searchTasksByProse(auth, needles, {
+          inBody: true,
+          statuses: ["inbox", "backlog", "ready", "in_progress", "waiting"],
+          limit: PREP_MAX_TASKS,
+        });
 
   return { event, attendees, pastNotes, openTasks };
 }
