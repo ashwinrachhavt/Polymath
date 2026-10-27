@@ -54,11 +54,16 @@ const key = () => crypto.randomUUID();
  * about the update path.
  */
 async function ensureNote(taskId: string, workspaceId: string): Promise<string> {
-  const [task] = await db.select({ noteId: tasks.noteId, title: tasks.title }).from(tasks).where(eq(tasks.id, taskId));
+  const [task] = await db.select({ noteId: tasks.noteId }).from(tasks).where(eq(tasks.id, taskId));
+  const [{ title }] = await db
+    .select({ title: tasks.id })
+    .from(tasks)
+    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .where(eq(tasks.id, taskId));
   if (task.noteId) return task.noteId;
   const [note] = await db
     .insert(artifacts)
-    .values({ workspaceId, kind: "note", title: task.title })
+    .values({ workspaceId, kind: "note", title })
     .returning({ id: artifacts.id });
   const [v] = await db
     .insert(artifactVersions)

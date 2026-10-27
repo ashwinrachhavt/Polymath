@@ -36,6 +36,7 @@ let db: NonNullable<typeof handle>["db"];
 // Lazy imports: makeTestDb points DATABASE_URL at the scratch database, and
 // these modules read it (directly or through lib/db-transaction) at load.
 let notes: typeof import("@/domains/knowledge/notes");
+let work: typeof import("@/domains/work/commands");
 let templates: typeof import("@/domains/knowledge/templates");
 let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
 let noteMarkdown: typeof import("@/app/(workspace)/alfred/notes/page").noteMarkdown;
@@ -44,6 +45,7 @@ beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   notes = await import("@/domains/knowledge/notes");
+  work = await import("@/domains/work/commands");
   templates = await import("@/domains/knowledge/templates");
   ({ withTransaction } = await import("@/lib/db-transaction"));
   ({ noteMarkdown } = await import("@/app/(workspace)/alfred/notes/page"));
@@ -91,16 +93,38 @@ async function seedNote(
 }
 
 /** A task row, inserted raw: this suite is about what the table accepts, not what a command writes. */
-async function seedTask(workspaceId: string, row: { title: string; noteId?: string | null; userId: string }) {
+/**
+ * A task row, inserted raw: this suite is about what the table accepts, not what
+ * a command writes. `title` is accepted for readability at the call sites and is
+ * deliberately not written - post-0260 the prose lives on the note, and a raw
+ * insert with no note is exactly the case this suite exists to probe.
+ */
+async function seedTask(
+  workspaceId: string,
+  row: { title?: string; noteId: string; userId: string },
+) {
   const [task] = await db
     .insert(tasks)
     .values({
       workspaceId,
-      title: row.title,
-      noteId: row.noteId ?? null,
+      noteId: row.noteId,
       createdBy: row.userId,
       updatedBy: row.userId,
     })
+    .returning({ id: tasks.id });
+  return task.id;
+}
+
+/**
+ * The backfill's remaining subject: a task created BEFORE 0259, so it has no
+ * note. 0260 makes this row unrepresentable, so it is only reachable by
+ * removing the constraint for the duration of the test - which is what the
+ * backfill test does deliberately, and why this helper exists separately.
+ */
+async function seedNoteLessTask(workspaceId: string, userId: string): Promise<string> {
+  const [task] = await db
+    .insert(tasks)
+    .values({ workspaceId, noteId: null as unknown as string, createdBy: userId, updatedBy: userId })
     .returning({ id: tasks.id });
   return task.id;
 }
@@ -158,7 +182,7 @@ suite("one note substrate invariants", () => {
     // below shows a same-workspace note is still accepted, so this is tenancy
     // and not the constraint rejecting every note.
     expect(
-      await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.workspaceId, mine.workspaceId), eq(tasks.title, "Smuggler"))),
+      await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.workspaceId, mine.workspaceId)),
     ).toEqual([]);
   });
 
@@ -239,18 +263,16 @@ suite("one note substrate invariants", () => {
    * separate that from a failed read, which returns no detail at all.
    */
   it("a task with no body opens as an empty note, not as a failed read", async () => {
-    const { a, userId, workspaceId } = await setup("empty-body");
-    const taskId = await seedTask(workspaceId, { title: "Nothing written yet", userId });
-
-    // The shipped backfill, verbatim, so the fixture is exactly what production
-    // holds for an undescribed task.
-    await handle!.client.unsafe(BACKFILL);
-
+    const { a, workspaceId } = await setup("empty-body");
+    // A task created through the real command with no description: the note
+    // exists and its body is empty. This is the row 0260 guarantees, because a
+    // task without a note is no longer representable.
+    const created = await work.createOwnerTask(a, { title: "Nothing written yet" });
     const [row] = await db
       .select({ noteId: tasks.noteId })
       .from(tasks)
-      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId)));
-    expect(row.noteId, "the backfill must give the task its note").not.toBeNull();
+      .where(and(eq(tasks.id, created.id), eq(tasks.workspaceId, workspaceId)));
+    expect(row.noteId, "creating a task must create its note").not.toBeNull();
 
     const detail = await notes.getNote(a, row.noteId!);
     // Three separate claims, and they are separate on purpose: a blank page is
@@ -263,5 +285,13 @@ suite("one note substrate invariants", () => {
     // The contrast this case exists for: a read that genuinely failed returns
     // null, so "" above cannot be mistaken for it.
     expect(await notes.getNote(a, "00000000-0000-4000-8000-000000000000")).toBeNull();
+  });
+
+  it("a task without a note is unrepresentable, which is what makes the read above safe", async () => {
+    const { userId, workspaceId } = await setup("no-note-impossible");
+    // 0260 made this column NOT NULL. Asserting the rejection - rather than
+    // deleting the fixture that used to seed a note-less task - is the check
+    // that the constraint is doing the job the reads assume it does.
+    await expect(seedNoteLessTask(workspaceId, userId)).rejects.toThrow();
   });
 });

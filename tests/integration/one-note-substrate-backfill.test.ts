@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { and, eq, inArray } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, type TestContext } from "vitest";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
-import { recurrenceTemplates, tasks } from "@/domains/work/schema";
+import { recurrenceTemplates } from "@/domains/work/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -10,6 +10,15 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
  * artifacts row of kind `note` carrying the `issue` template, plus version 1
  * whose plain text is the task's description (or an empty doc when there is
  * none), and tasks.note_id pointing at it.
+ *
+ * This suite tests a migration that is now history. 0259 reads `tasks.title`
+ * and `tasks.description`, and 0260 dropped both - so on a database past 0260
+ * the file cannot run at all, and pretending otherwise would need a second
+ * schema. The suite therefore SKIPS when the columns are absent (checked in
+ * `information_schema`, per test, with the reason attached) and still runs in
+ * full against a database that stops before 0260. The fixtures are raw SQL for
+ * the same reason: naming the dropped columns through Drizzle cannot compile
+ * now that the schema no longer declares them.
  *
  * The migration file itself is what runs here, twice, so the assertions cover
  * the shipped SQL rather than a transcription of it. Three things this suite
@@ -28,10 +37,15 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 const MIGRATION = readFileSync("src/db/migrations/0259_one_note_substrate_add.sql", "utf8");
 
+const SKIP_REASON =
+  "requires tasks.title / tasks.description, which 0260 drops; run this suite against a database migrated to 0259 only";
+
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let noteMarkdown: typeof import("@/app/(workspace)/alfred/notes/page").noteMarkdown;
+/** Whether this database still has the pre-0260 columns 0259 reads. */
+let legacyColumns = false;
 
 beforeAll(async () => {
   if (!handle) return;
@@ -39,31 +53,63 @@ beforeAll(async () => {
   // Lazy, after makeTestDb has pointed DATABASE_URL at the scratch database:
   // the notes page reaches @/lib/db at module load.
   ({ noteMarkdown } = await import("@/app/(workspace)/alfred/notes/page"));
+
+  const columns = (await db.execute(sql`
+    select column_name from information_schema.columns
+     where table_schema = 'public' and table_name = 'tasks'
+       and column_name in ('title', 'description')`)) as unknown as { column_name: string }[];
+  legacyColumns = columns.length === 2;
 });
 
 afterAll(async () => {
   await handle?.client.end();
 });
 
+/** Skip with the reason visible in the reporter, rather than passing vacuously. */
+function requireLegacyColumns(ctx: TestContext) {
+  if (!legacyColumns) ctx.skip(SKIP_REASON);
+}
+
 async function runBackfill(): Promise<void> {
   await handle!.client.unsafe(MIGRATION);
 }
 
-async function noteRows(workspaceId: string) {
-  return db
-    .select({
-      noteId: tasks.noteId,
-      description: tasks.description,
-      artifactId: artifacts.id,
-      artifactTitle: artifacts.title,
-      template: artifacts.template,
-      kind: artifacts.kind,
-      artifactWorkspaceId: artifacts.workspaceId,
-      currentVersionId: artifacts.currentVersionId,
-    })
-    .from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
-    .where(eq(tasks.workspaceId, workspaceId));
+/** A pre-0260 task row, written in raw SQL because the columns are gone from the schema. */
+async function insertLegacyTask(
+  row: { title: string; description: string | null; recurrenceTemplateId?: string },
+  ids: { workspaceId: string; userId: string },
+): Promise<string> {
+  const rows = (await db.execute(sql`
+    insert into tasks (workspace_id, title, description, created_by, updated_by, recurrence_template_id)
+    values (${ids.workspaceId}, ${row.title}, ${row.description}, ${ids.userId}, ${ids.userId}, ${row.recurrenceTemplateId ?? null})
+    returning id`)) as unknown as { id: string }[];
+  return rows[0]!.id;
+}
+
+type NoteRow = {
+  noteId: string | null;
+  description: string | null;
+  artifactId: string;
+  artifactTitle: string;
+  template: string | null;
+  kind: string;
+  artifactWorkspaceId: string;
+  currentVersionId: string | null;
+};
+
+async function noteRows(workspaceId: string): Promise<NoteRow[]> {
+  return (await db.execute(sql`
+    select t.note_id as "noteId",
+           t.description as "description",
+           a.id as "artifactId",
+           a.title as "artifactTitle",
+           a.template as "template",
+           a.kind as "kind",
+           a.workspace_id as "artifactWorkspaceId",
+           a.current_version_id as "currentVersionId"
+      from tasks t
+      join artifacts a on a.id = t.note_id
+     where t.workspace_id = ${workspaceId}`)) as unknown as NoteRow[];
 }
 
 async function versionRows(workspaceId: string, notes: { noteId: string | null }[]) {
@@ -88,39 +134,30 @@ async function versionRows(workspaceId: string, notes: { noteId: string | null }
 }
 
 suite("one note substrate backfill (0259)", () => {
-  it("gives every task a note, in the task's workspace, and never by title", async () => {
+  it("gives every task a note, in the task's workspace, and never by title", async (ctx) => {
+    requireLegacyColumns(ctx);
     const { userId, workspaceId } = await seedWorkspace(db, `notes-backfill-${Date.now()}`);
+    const ids = { workspaceId, userId };
     // Same title, different bodies: title-matching would collide here.
-    const seeded = await db.transaction(async (tx) =>
-      tx
-        .insert(tasks)
-        .values([
-          {
-            workspaceId,
-            title: "Ship the weekly digest",
-            description: "Send it Friday, to the paying customers first.",
-            createdBy: userId,
-            updatedBy: userId,
-          },
-          {
-            workspaceId,
-            title: "Ship the weekly digest",
-            description: null,
-            createdBy: userId,
-            updatedBy: userId,
-          },
-          {
-            workspaceId,
-            title: "Whitespace only",
-            // Not null, but the same nothing: content and plain_text must agree
-            // that this note is empty rather than storing a body of spaces.
-            description: "  \n\t ",
-            createdBy: userId,
-            updatedBy: userId,
-          },
-        ])
-        .returning({ id: tasks.id }),
-    );
+    const seeded = await Promise.all([
+      insertLegacyTask(
+        {
+          title: "Ship the weekly digest",
+          description: "Send it Friday, to the paying customers first.",
+        },
+        ids,
+      ),
+      insertLegacyTask({ title: "Ship the weekly digest", description: null }, ids),
+      insertLegacyTask(
+        {
+          title: "Whitespace only",
+          // Not null, but the same nothing: content and plain_text must agree
+          // that this note is empty rather than storing a body of spaces.
+          description: "  \n\t ",
+        },
+        ids,
+      ),
+    ]);
     expect(seeded).toHaveLength(3);
 
     await runBackfill();
@@ -177,16 +214,11 @@ suite("one note substrate backfill (0259)", () => {
     ].sort());
   });
 
-  it("writes a body the Notes surface can actually render", async () => {
+  it("writes a body the Notes surface can actually render", async (ctx) => {
+    requireLegacyColumns(ctx);
     const { userId, workspaceId } = await seedWorkspace(db, `notes-render-${Date.now()}`);
     const description = "Cut the release on Wednesday, then post the changelog.";
-    await db.insert(tasks).values({
-      workspaceId,
-      title: "Release the digest",
-      description,
-      createdBy: userId,
-      updatedBy: userId,
-    });
+    await insertLegacyTask({ title: "Release the digest", description }, { workspaceId, userId });
 
     await runBackfill();
 
@@ -199,17 +231,13 @@ suite("one note substrate backfill (0259)", () => {
     expect(noteMarkdown(version!.content as Record<string, unknown>)).toBe(description);
   });
 
-  it("is idempotent: a second run inserts no artifact and no version", async () => {
+  it("is idempotent: a second run inserts no artifact and no version", async (ctx) => {
+    requireLegacyColumns(ctx);
     const { userId, workspaceId } = await seedWorkspace(db, `notes-idempotent-${Date.now()}`);
-    await db.insert(tasks).values(
-      [1, 2, 3].map((n) => ({
-        workspaceId,
-        title: `Retry check ${n}`,
-        description: n === 2 ? null : `Body ${n}`,
-        createdBy: userId,
-        updatedBy: userId,
-      })),
-    );
+    const ids = { workspaceId, userId };
+    for (const n of [1, 2, 3]) {
+      await insertLegacyTask({ title: `Retry check ${n}`, description: n === 2 ? null : `Body ${n}` }, ids);
+    }
 
     await runBackfill();
     const firstArtifactCount = await db
@@ -236,7 +264,8 @@ suite("one note substrate backfill (0259)", () => {
     expect(versions.filter((version) => version.versionNumber !== 1)).toEqual([]);
   });
 
-  it("fans a recurrence template's 200 instances out in one statement set", async () => {
+  it("fans a recurrence template's 200 instances out in one statement set", async (ctx) => {
+    requireLegacyColumns(ctx);
     const { userId, workspaceId } = await seedWorkspace(db, `notes-fanout-${Date.now()}`);
     const [template] = await db
       .insert(recurrenceTemplates)
@@ -249,15 +278,14 @@ suite("one note substrate backfill (0259)", () => {
       })
       .returning({ id: recurrenceTemplates.id });
 
-    const instances = Array.from({ length: 200 }, (_, index) => ({
-      workspaceId,
-      recurrenceTemplateId: template.id,
-      title: "Weekly review",
-      description: index % 2 === 0 ? `Instance ${index}` : null,
-      createdBy: userId,
-      updatedBy: userId,
-    }));
-    await db.insert(tasks).values(instances);
+    // One INSERT … SELECT, so the fixture itself stays a fan-out rather than
+    // 200 round trips that would make the migration's cost unreadable.
+    await db.execute(sql`
+      insert into tasks (workspace_id, recurrence_template_id, title, description, created_by, updated_by)
+      select ${workspaceId}, ${template!.id}, 'Weekly review',
+             case when i % 2 = 0 then 'Instance ' || i else null end,
+             ${userId}, ${userId}
+        from generate_series(0, 199) as i`);
 
     await runBackfill();
 

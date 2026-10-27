@@ -57,7 +57,7 @@ async function seedTask(workspaceId: string, title: string, rank: string) {
   await db.update(artifacts).set({ currentVersionId: v.id }).where(eq(artifacts.id, note.id));
   const [row] = await db
     .insert(tasks)
-    .values({ workspaceId, noteId: note.id, title, rank })
+    .values({ workspaceId, noteId: note.id, rank })
     .returning({ id: tasks.id });
   return row.id;
 }
@@ -71,8 +71,10 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
       patch: { title: "Draft the board memo", priority: "high", status: "in_progress", tags: ["board"] },
     });
     expect(out).toEqual({ id, version: 2 });
-    const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
-    expect(row).toMatchObject({ title: "Draft the board memo", priority: "high", status: "in_progress", version: 2 });
+    // Prose lives on the note: the title comes back through the detail read,
+    // the columns through the row.
+    const detail = await queries.getTaskDetail(a, id);
+    expect(detail?.task).toMatchObject({ title: "Draft the board memo", priority: "high", status: "in_progress", version: 2 });
     const audits = await db.select().from(auditEvents).where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.updated")));
     expect(audits).toHaveLength(1);
     const outbox = await db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, workspaceId));
@@ -138,8 +140,11 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
     await expect(
       cmd.updateTask(two.a, { taskId: id, expectedVersion: 1, idempotencyKey: key(), patch: { title: "Hijacked" } }),
     ).rejects.toBeInstanceOf(cmd.TaskNotFoundError);
-    const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
-    expect(row.title).toBe("Private");
+    // Refused, so the note's title (where prose lives) is unchanged and the
+    // row never moved past its first version.
+    expect((await queries.getTaskDetail(one.a, id))?.task.title).toBe("Private");
+    const [row] = await db.select({ version: tasks.version }).from(tasks).where(eq(tasks.id, id));
+    expect(row.version).toBe(1);
   });
 
   it("a failed command leaves no receipt, so the same key can be retried after fixing the input", async () => {

@@ -44,7 +44,7 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
     day as (
       select (now() at time zone (select tz from ws))::date as today
     )
-    select t.id, t.title, t.status, t.priority, t.due_at, t.tags, t.version,
+    select t.id, a.title, t.status, t.priority, t.due_at, t.tags, t.version,
       (select today from day)::text as today,
       (t.tags @> ${sql`jsonb_build_array('Outcome:' || (select today from day)::text)`}) as is_outcome,
       exists (
@@ -53,6 +53,7 @@ export async function getBriefing(auth: AuthContext): Promise<BriefingData> {
           and s.on_date = (select today from day) and s.archived_at is null
       ) as is_seed
     from tasks t
+    join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id
     where t.workspace_id = ${auth.workspaceId}
       and t.archived_at is null
       and t.parent_task_id is null

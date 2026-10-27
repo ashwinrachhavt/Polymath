@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { companies, contacts } from "@/domains/crm/schema";
 import { artifactLinks, artifacts, artifactVersions, documents } from "@/domains/knowledge/schema";
 import { opportunities } from "@/domains/opportunities/schema";
-import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
+import { seedTaskWithNote } from "../helpers/task-note";
+import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -54,7 +55,8 @@ let companyId: string;
       .insert(artifactLinks)
       .values({ workspaceId: seed.workspaceId, artifactId, targetType: "document", targetId: documentId, label: "pinned:deadbeef1234" });
 
-    const task = await seedTask(handle.db, seed.workspaceId, {
+    const task = await seedTaskWithNote(handle.db, {
+      workspaceId: seed.workspaceId,
       title: "Follow up on the brief",
       createdBy: seed.userId,
       updatedBy: seed.userId,

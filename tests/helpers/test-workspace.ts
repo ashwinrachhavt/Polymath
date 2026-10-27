@@ -74,15 +74,18 @@ export function ownerAuth(userId: string, workspaceId: string) {
 export async function seedTask(
   db: ReturnType<typeof drizzle>,
   workspaceId: string,
-  row: Omit<typeof tasks.$inferInsert, "workspaceId" | "noteId">,
+  row: Omit<typeof tasks.$inferInsert, "workspaceId" | "noteId"> & { title: string; body?: string | null },
 ): Promise<typeof tasks.$inferSelect> {
-  const text = row.description?.trim() ? row.description : null;
+  // Post-0260 the prose lives on the note, so title/body are consumed here and
+  // never reach the task row.
+  const { title, body, ...taskRow } = row;
+  const text = body?.trim() ? body : null;
   const [note] = await db
     .insert(artifacts)
     .values({
       workspaceId,
       kind: "note",
-      title: row.title,
+      title,
       template: "issue",
       ...(row.createdBy ? { createdBy: row.createdBy } : {}),
       ...(row.updatedBy ? { updatedBy: row.updatedBy } : {}),
@@ -103,7 +106,7 @@ export async function seedTask(
   await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
   const [task] = await db
     .insert(tasks)
-    .values({ ...row, workspaceId, noteId: note.id })
+    .values({ ...taskRow, workspaceId, noteId: note.id } as typeof tasks.$inferInsert)
     .returning();
   return task;
 }

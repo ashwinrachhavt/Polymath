@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { tasks } from "@/domains/work/schema";
+import { seedTaskWithNote } from "../helpers/task-note";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -44,8 +44,8 @@ suite("briefing", () => {
       { title: "Parked", rank: "e", status: "waiting" as const, dueAt: noonUtc(yesterday) },
       { title: "Finished", rank: "f", status: "done" as const, dueAt: noonUtc(yesterday) },
     ];
-    await db.insert(tasks).values(
-      seed.map((row) => ({
+    for (const row of seed) {
+      await seedTaskWithNote(db, {
         workspaceId,
         title: row.title,
         rank: row.rank,
@@ -54,8 +54,8 @@ suite("briefing", () => {
         dueAt: row.dueAt ?? null,
         createdBy: userId,
         updatedBy: userId,
-      })),
-    );
+      });
+    }
 
     const data = await briefing.getBriefing(auth);
     expect(data.today).toBe(today);

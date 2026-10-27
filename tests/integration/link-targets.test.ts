@@ -52,7 +52,7 @@ async function insertTask(workspaceId: string, title: string): Promise<{ id: str
   await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
   const [task] = await db
     .insert(tasks)
-    .values({ workspaceId, noteId: note.id, title })
+    .values({ workspaceId, noteId: note.id })
     .returning({ id: tasks.id });
   return task;
 }

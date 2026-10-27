@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { agentProfiles, agentRuns } from "@/domains/agents/schema";
+import { artifacts } from "@/domains/knowledge/schema";
 import { tasks, taskLinks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -76,7 +77,13 @@ async function propose(auth: ReturnType<typeof ownerAuth>, runId: string, dedupe
 }
 
 async function tasksFor(workspaceId: string) {
-  return db.select().from(tasks).where(eq(tasks.workspaceId, workspaceId));
+  // Prose lives on the note, so the title is joined in rather than selected
+  // from the dropped task column.
+  return db
+    .select({ task: tasks, title: artifacts.title })
+    .from(tasks)
+    .innerJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
+    .where(eq(tasks.workspaceId, workspaceId));
 }
 
 suite("task proposal execution checks", () => {
@@ -89,9 +96,9 @@ suite("task proposal execution checks", () => {
     expect(first).toMatchObject({ status: "executed" });
     const created = await tasksFor(workspaceId);
     expect(created).toHaveLength(1);
-    expect(created[0].title).toBe("Follow up on the lease renewal clause");
-    expect(created[0].estimateMinutes).toBe(30);
-    const links = await db.select().from(taskLinks).where(eq(taskLinks.taskId, created[0].id));
+    expect(created[0]!.title).toBe("Follow up on the lease renewal clause");
+    expect(created[0]!.task.estimateMinutes).toBe(30);
+    const links = await db.select().from(taskLinks).where(eq(taskLinks.taskId, created[0]!.task.id));
     expect(links).toHaveLength(1);
     expect(links[0].targetType).toBe("document");
 
