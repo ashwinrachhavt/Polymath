@@ -125,8 +125,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                         {f.label}
                         {/* Decoration on the link's name: without aria-hidden the
                             accessible name becomes "Converted 3" and the tab
-                            stops being addressable as "Converted". */}
-                        <span aria-hidden="true" className="readout tabular-nums opacity-70">
+                            stops being addressable as "Converted". Full-strength
+                            muted-foreground, no opacity cut: on bg-muted a 70%
+                            count lands at 2.77:1, under WCAG 2.2 AA. */}
+                        <span aria-hidden="true" className="readout tabular-nums">
                           {tabs[f.value]}
                         </span>
                       </Link>

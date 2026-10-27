@@ -56,37 +56,12 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
   }
 
   // Client-side transitions: click the in-shell link, time to new content.
-  // The pill nav is app-scoped: same-app routes are one pill click away,
-  // cross-app routes go through the top-right launcher grid, and the shared
-  // Reviews surface lives in the header.
+  // The shell has one flat rail and no app layer to switch between: every
+  // hero route, shared Reviews included, is one Workspace-nav click away.
   for (const route of HERO_ROUTES) {
-    let link = route.path === "/reviews"
-      ? page.getByRole("link", { name: "Open shared reviews" })
-      : page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
-    let started = Date.now();
-    if (!(await link.isVisible())) {
-      // The rail is app-scoped by design (#59): switch to the route's app via
-      // the top-right launcher grid, then take the same-app rail hop (or stop
-      // at the app root when that is the route).
-      const appRoot = route.path.startsWith("/neuralflow")
-        ? "/neuralflow/work"
-        : route.path.startsWith("/alfred")
-          ? "/alfred"
-          : "/command-center/inbox";
-      await page.getByRole("button", { name: "Open apps" }).click();
-      await page.locator(`[data-radix-popper-content-wrapper] a[href="${appRoot}"]`).first().click();
-      await page.waitForURL(`**${appRoot}**`);
-      await expect(page.locator("main#content")).toBeVisible();
-      if (appRoot === route.path) {
-        report[route.path] = { ...report[route.path], clientNavMs: Date.now() - started };
-        continue;
-      }
-      link = route.path === "/reviews"
-        ? page.getByRole("link", { name: "Open shared reviews" })
-        : page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
-      await expect(link, `shell link to ${route.path}`).toBeVisible();
-      started = Date.now();
-    }
+    const link = page.locator(`nav[aria-label="Workspace"] a[href="${route.path}"]`).first();
+    await expect(link, `shell link to ${route.path}`).toBeVisible();
+    const started = Date.now();
     await link.click();
     await page.waitForURL(`**${route.path}**`);
     await expect(page.locator("main#content h1, main#content [role='heading']").first()).toBeVisible();
