@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import { cleanupSeededTasks, readTaskDescription, seedTask } from "./helpers/tasks";
+
 
 /*
  * A task keeps its own description column; the Notes field edits it with the
@@ -83,4 +85,50 @@ test("task Notes editor fits a phone viewport", async ({ page }) => {
   const box = await notes.boundingBox();
   expect(box && box.width <= 390).toBe(true);
   await page.screenshot({ path: "test-results/feature-pixels/task-notes-editor-mobile.png" });
+});
+
+/*
+ * Legacy descriptions seeded straight into the column, then saved through the
+ * form after changing only Priority. The stored bytes must not move: one case
+ * the rich editor represents, one it cannot (raw HTML opens in source mode).
+ * Then each is cleared and must store null.
+ */
+const LEGACY: Array<{ label: string; text: string; source: boolean }> = [
+  { label: "plain", text: "Ship by Friday: a_b, 50% done, (call Sam)\n\n* star", source: false },
+  { label: "raw html", text: "Keep <b>this</b> exactly\n<!-- and this -->", source: true },
+];
+
+for (const legacy of LEGACY) {
+  test(`legacy ${legacy.label} Notes survive an unrelated save byte for byte, and clearing stores null`, async ({ page }) => {
+    const title = `Legacy ${legacy.label} ${Date.now().toString(36)}`;
+    const seeded = await seedTask({ title, description: legacy.text });
+    test.skip(!seeded, "no database configured for seeding");
+    const id = seeded!.id;
+    await page.goto("/neuralflow/work?view=saved");
+    await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
+    await page.getByRole("link", { name: title, exact: true }).click();
+    const field = legacy.source
+      ? page.getByRole("textbox", { name: "Markdown source" })
+      : page.getByRole("textbox", { name: "Rich note content" });
+    await expect(field).toBeVisible();
+
+    await page.getByRole("combobox", { name: "Priority", exact: true }).selectOption("high");
+    await page.getByRole("button", { name: "Save task" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: title }).getByText("high", { exact: true })).toBeVisible();
+    expect((await readTaskDescription(id))?.description).toBe(legacy.text);
+
+    await page.reload();
+    await page.getByRole("searchbox", { name: "Search tasks" }).fill(title);
+    await page.getByRole("link", { name: title, exact: true }).click();
+    await expect(field).toBeVisible();
+    await field.click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Backspace");
+    await page.getByRole("button", { name: "Save task" }).click();
+    await expect.poll(async () => (await readTaskDescription(id))?.description ?? "unset", { timeout: 15_000 }).toBe("unset");
+  });
+}
+
+test.afterAll(async () => {
+  await cleanupSeededTasks();
 });
