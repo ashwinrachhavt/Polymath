@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
-import { CAPTURE_TEMPLATES, type DraftTemplate } from "@/domains/knowledge/templates";
+import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-templates";
 import {
   ConflictError,
   NotFoundError,
@@ -74,7 +74,7 @@ export async function makeTaskAction(input: { captureId: string; expectedVersion
 const makeDraftInput = z.object({
   captureId: z.string().uuid(),
   expectedVersion: z.number().int().min(1),
-  template: z.enum(CAPTURE_TEMPLATES),
+  template: z.enum(DRAFT_TEMPLATES),
 });
 
 /** Turn a capture into a starter draft (email / product spec / tech spec) - one transaction, same guards as note conversion. */

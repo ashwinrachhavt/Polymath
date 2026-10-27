@@ -2,16 +2,15 @@ import { expect, test } from "@playwright/test";
 import { waitSettled } from "./helpers/settled";
 
 /*
- * ASH-285: drafting an issue, end to end. The e2e generation fixture answers
- * the proposal, so both journeys produce real, deterministic content the owner
- * reviews - nothing is ever sent to Linear. Journey one starts from a capture
- * in the inbox (the generic issue template); journey two starts from a note in
- * the notebook and runs the Linear-specific proposal path.
+ * ASH-285: drafting a Linear issue, end to end. The e2e generation fixture
+ * answers the proposal, so both journeys produce real, deterministic content
+ * the owner reviews - nothing is ever sent to Linear. Journey one starts
+ * from a capture in the inbox, journey two from a note in the notebook.
  */
 
 const SOURCE_TEXT = "Priya needs the Q3 roadmap by Friday and the launch date is still unconfirmed.";
 
-test("a capture turns into a fully formed issue draft", async ({ page }) => {
+test("a capture turns into a fully formed Linear issue draft", async ({ page }) => {
   await page.goto("/command-center/inbox");
   await waitSettled(page);
 
@@ -27,7 +26,7 @@ test("a capture turns into a fully formed issue draft", async ({ page }) => {
   await waitSettled(page);
   const detail = page.getByRole("article");
   await expect(detail).toContainText("Turn into");
-  await detail.getByRole("button", { name: "Issue", exact: true }).click();
+  await detail.getByRole("button", { name: "Linear issue", exact: true }).click();
   await waitSettled(page);
 
   await detail.getByRole("link", { name: "Open draft", exact: true }).click();

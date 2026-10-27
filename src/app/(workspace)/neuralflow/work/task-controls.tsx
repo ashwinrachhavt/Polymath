@@ -25,6 +25,18 @@ const RichEditor = dynamic(() => import("@/components/products/alfred/rich-edito
   loading: () => <div className="h-24 animate-pulse rounded-md border border-border bg-muted/40" />,
 });
 
+/* Holds the draft Markdown for one task form. The form is keyed by the saved
+ * version, so this remounts (and resets to the saved text) after every save. */
+function TaskNotesEditor({ initial }: { initial: string }) {
+  const [description, setDescription] = useState(initial);
+  return (
+    <>
+      <input type="hidden" name="description" value={description} />
+      <RichEditor content={description} onChange={setDescription} chrome="minimal" compact />
+    </>
+  );
+}
+
 /*
  * Client islands for the Neon-backed Work list. Each user intent mints one
  * idempotency key and keeps it until the action succeeds, so a retry after a
@@ -120,7 +132,6 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
   const toggleRun = useRun();
   const reopenRun = useRun();
   const [reopenNote, setReopenNote] = useState<string | null>(null);
-  const [description, setDescription] = useState(data.description ?? "");
   const [subTitle, setSubTitle] = useState("");
   const [otherId, setOtherId] = useState("");
   const [kind, setKind] = useState<"blocked_by" | "blocks">("blocked_by");
@@ -181,8 +192,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
           </Field>
         </div>
         <Field label="Notes">
-          <input type="hidden" name="description" value={description} />
-          <RichEditor content={description} onChange={setDescription} chrome="minimal" />
+          <TaskNotesEditor initial={data.description ?? ""} />
         </Field>
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={saver.pending}>

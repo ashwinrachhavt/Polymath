@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CAPTURE_TEMPLATES, DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/domains/knowledge/templates";
+import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, draftTitle } from "@/domains/capture/draft-templates";
 
 /*
  * "Turn it into anything" scaffolds: every template produces an honest
  * starter draft - named sections, bracketed slots for the owner, and the
  * capture quoted verbatim as source material the draft must stay true to.
- * The system invents no prose, so the tests pin exactly that shape. `todo` is
- * the exception by design: it starts from a phrase the owner typed, not a
- * capture, so it carries no source-material section and is never offered as a
- * capture conversion.
+ * The system invents no prose, so the tests pin exactly that shape.
  *
  * Value: protects=a draft always carries its capture's words and never
  * fabricates content; fails_when=a template drops the source material,
@@ -19,40 +16,15 @@ import { CAPTURE_TEMPLATES, DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATES, draftBody, dra
 
 const material = "Launch review moved to Friday.\nBring the pricing doc.";
 
-describe("the registry", () => {
-  it("holds exactly these slugs, so no second name for one scaffold creeps back", () => {
-    expect(DRAFT_TEMPLATES).toEqual(["email", "product-spec", "tech-spec", "issue", "todo"]);
-  });
-
-  it("offers every sourced template as a capture conversion, and never todo", () => {
-    expect(CAPTURE_TEMPLATES).toEqual(["email", "product-spec", "tech-spec", "issue"]);
-    expect(CAPTURE_TEMPLATES).not.toContain("todo");
-    for (const template of DRAFT_TEMPLATES) {
-      if (template !== "todo") expect(CAPTURE_TEMPLATES).toContain(template);
-    }
-  });
-});
-
 describe("draftBody", () => {
-  it("quotes the capture verbatim in every template a capture can turn into", () => {
-    for (const template of CAPTURE_TEMPLATES) {
+  it("quotes the capture verbatim in every template", () => {
+    for (const template of DRAFT_TEMPLATES) {
       const body = draftBody(template, { firstLine: "Launch review moved to Friday.", material });
       expect(body).toContain("## Source material");
       expect(body).toContain("> Launch review moved to Friday.");
       expect(body).toContain("> Bring the pricing doc.");
       expect(body).toContain("nothing here was written for you");
     }
-  });
-
-  it("shapes a todo as its own task and notes, with no source material", () => {
-    const body = draftBody("todo", { firstLine: "Call the dentist", material });
-    expect(body).toContain("## Task");
-    expect(body).toContain("Call the dentist");
-    expect(body).toContain("## Notes");
-    expect(body).toContain("[What done looks like.]");
-    expect(body).not.toContain("## Source material");
-    expect(body).not.toContain("> Launch review moved to Friday.");
-    expect(body).not.toContain("nothing here was written for you");
   });
 
   it("shapes the email draft as To/Subject/body with owner slots", () => {
