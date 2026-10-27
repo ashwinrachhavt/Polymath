@@ -236,6 +236,10 @@ export async function completeTask(
   // caps the length; the domain trims defensively.
   const note = input.sentence?.trim().slice(0, 1000) || undefined;
   return withTransaction(async (tx) => {
+    // The title is the note's, joined in the same statement: the audit summary
+    // needs it and `tasks.title` goes away with 0260. The join is guarded on
+    // workspace too - `tasks.note_id` is a single-column FK, so Postgres cannot
+    // express that the artifact is in this tenant.
     const [task] = await tx
       .update(tasks)
       .set({
@@ -245,14 +249,17 @@ export async function completeTask(
         updatedBy: auth.userId,
         version: sql`${tasks.version} + 1`,
       })
+      .from(artifacts)
       .where(
         and(
+          eq(artifacts.id, tasks.noteId),
+          eq(artifacts.workspaceId, tasks.workspaceId),
           eq(tasks.id, input.taskId),
           eq(tasks.workspaceId, auth.workspaceId),
           sql`${tasks.status} not in ('done', 'cancelled')`,
         ),
       )
-      .returning({ id: tasks.id, title: tasks.title });
+      .returning({ id: tasks.id, title: artifacts.title });
     // A no-op click writes nothing, including no audit row: the guard decided
     // there was no change to record.
     if (!task) return null;
@@ -376,9 +383,15 @@ export async function reopenTask(
   input: { taskId: string; expectedVersion: number },
 ): Promise<ReopenOutcome> {
   return withTransaction(async (tx) => {
+    // The title comes from the note, in the same read: `tasks.title` goes away
+    // with 0260, and the reopen audit summary names the task it undid.
     const [before] = await tx
-      .select({ status: tasks.status, version: tasks.version, title: tasks.title })
+      .select({ status: tasks.status, version: tasks.version, title: artifacts.title })
       .from(tasks)
+      .innerJoin(
+        artifacts,
+        and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+      )
       .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!before) return null;

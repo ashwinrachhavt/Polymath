@@ -9,6 +9,7 @@ import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
 import { RUN_CRITIQUE_TOPIC, runCritiqueRequestedHandler } from "@/domains/agents/critique";
 import { THREAD_CHANGED_TOPIC, threadChangedHandler } from "@/domains/knowledge/thread-graph";
+import { NOTE_CREATED_TOPIC, noteCreatedHandler } from "@/domains/knowledge/note-created-handler";
 import { FOCUS_FOLLOW_UP_TOPIC, followUpRequestedHandler } from "@/domains/focus/follow-up";
 import { youtubeHandlers } from "@/domains/knowledge/youtube-handler";
 import { urlContentRequestedHandler } from "@/domains/capture/url-content-handler";
@@ -294,6 +295,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     "document.extraction_requested": extractionRequestedHandler,
     [CRAWL_TOPIC]: crawlRequestedHandler,
     ...youtubeHandlers,
+    [NOTE_CREATED_TOPIC]: noteCreatedHandler(workspaceOwnerAuth),
     [THREAD_CHANGED_TOPIC]: threadChangedHandler(workspaceOwnerAuth),
     [FOCUS_FOLLOW_UP_TOPIC]: followUpRequestedHandler(workspaceOwnerAuth),
     [CAPTURE_URL_CONTENT_TOPIC]: urlContentRequestedHandler,

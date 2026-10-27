@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
+import { insertTaskNote } from "./helpers/task-note";
 
 /*
  * Pixels and journey for the weekly outcome narrative (ASH-280) on Reports:
@@ -42,8 +43,12 @@ async function seedWeek(): Promise<boolean> {
     await client`delete from reward_ledger where idempotency_key like ${`${STONE_KEY}-%`}`;
     await client`delete from focus_sessions where outcome = ${OUTCOME}`;
     await client`delete from tasks where title = ${TASK_TITLE}`;
+    await client`delete from artifacts where title = ${TASK_TITLE} and template = 'issue'`;
+    // The session's task needs its note: every work read inner-joins it.
+    const taskNote = await insertTaskNote(client, { workspaceId: ws, title: TASK_TITLE });
     const [task] = await client<{ id: string }[]>`
-      insert into tasks (workspace_id, title, status) values (${ws}, ${TASK_TITLE}, 'ready') returning id`;
+      insert into tasks (workspace_id, note_id, title, status)
+      values (${ws}, ${taskNote}, ${TASK_TITLE}, 'ready') returning id`;
     await client`
       insert into focus_sessions (workspace_id, task_id, state, started_at, ended_at, accumulated_seconds, outcome)
       values (${ws}, ${task.id}, 'finished', now() - interval '25 minutes', now() - interval '1 minute', 1500, ${OUTCOME})`;
@@ -68,6 +73,7 @@ async function removeSeeded(): Promise<void> {
     await client`delete from reward_definitions where key = ${STONE_KEY}`;
     await client`delete from focus_sessions where outcome = ${OUTCOME}`;
     await client`delete from tasks where title = ${TASK_TITLE}`;
+    await client`delete from artifacts where title = ${TASK_TITLE} and template = 'issue'`;
     await client`delete from artifacts where kind = 'note' and title like 'Week of %' and id in (
       select artifact_id from artifact_versions where plain_text like ${`%${OUTCOME}%`})`;
   } finally {

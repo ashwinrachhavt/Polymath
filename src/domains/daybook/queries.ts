@@ -82,6 +82,15 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
         and a.created_at >= (select day_start from bounds)
         and a.created_at < (select day_end from bounds)
         and a.archived_at is null
+        -- A task stands on a note, but that note is not a separately created
+        -- note: the task's own task.created audit row is its one daybook
+        -- entry. Without this, one task create appears twice (here and in
+        -- worked-on) and reads as two things happening. The lookup is an
+        -- index probe on tasks.note_id once 0260's unique index lands.
+        and not exists (
+          select 1 from tasks t
+          where t.note_id = a.id and t.workspace_id = a.workspace_id
+        )
       limit 50
     ) created on true
     left join lateral (
