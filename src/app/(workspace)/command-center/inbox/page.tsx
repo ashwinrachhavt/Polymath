@@ -217,6 +217,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                     rawPayload: selected.capture.rawPayload,
                     version: selected.capture.version,
                     failureReason: selected.capture.failureReason,
+                    fetchOutcome: selected.capture.fetchOutcome,
                     convertedType: selected.capture.convertedType,
                     convertedId: selected.capture.convertedId,
                   }
