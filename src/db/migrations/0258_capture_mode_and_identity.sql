@@ -60,15 +60,22 @@ update captures set capture_mode = case
 -- colliding. clean_text is the fallback for a row with no text; an empty body
 -- hashes the empty string rather than staying null.
 --
--- Rank within each identity and assign both values in ONE statement. A database
--- that already ran an earlier cut of this migration holds the unique index, a
--- survivor with the plain hash and its duplicates with none; filling the nulls
--- first would write the survivor's own hash into a duplicate and the index would
--- reject the statement halfway through. Going through a ranked target instead
--- means every row's new value is either the plain hash (rank 1 only) or a hash
--- with that row's id folded in (never equal to any other row's), so no
--- intermediate state holds two equal hashes at one identity, and no row is left
--- without one. `is distinct from` makes a re-run write nothing at all.
+-- Rank within each identity and assign both values in ONE statement. Residue is
+-- then zero by construction: this subquery's predicate is the exact complement
+-- of the CHECK added below, and coalesce(..., '') means the target is never
+-- null, so every row the constraint could reject is written here.
+--
+-- The ranking arm defends states this migration can be run against, not ones
+-- observed in production. A 0256 database cannot hold two rows at one identity
+-- (captures_workspace_source_url_key was UNIQUE on workspace_id, source, url),
+-- so on a real upgrade every partition holds one row and rank 1 is chosen every
+-- time. What the rank>1 arm covers is a partially applied run -- CI applies one
+-- psql -f per file with no -1 -- or a later relaxation of that index. It costs
+-- nothing over a plain fill and removes the ordering hazard entirely: with a
+-- plain fill, a duplicate holding NULL would be written the survivor's own hash
+-- and the unique index would reject the statement halfway through.
+--
+-- `is distinct from` makes a re-run write nothing at all.
 update captures c
    set content_hash = t.target
   from (
