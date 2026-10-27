@@ -262,6 +262,54 @@ export async function autosaveNoteDraft(
 }
 
 /*
+ * The row-level half of commitNoteSnapshot, for a caller that already holds a
+ * transaction and its own receipt (a task body edit, which must commit the new
+ * version and its task row together or not at all). Same compare-and-set, same
+ * append, same pointer move, same audit and outbox rows; the embedding pass
+ * stays with the outer command, because it belongs after the commit, not in it.
+ */
+export async function commitNoteSnapshotInTx(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { artifactId: string; expectedVersion: number; content: NoteContent; plainText?: string; note?: string },
+): Promise<{ versionId: string; versionNumber: number; version: number }> {
+  const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
+  const [max] = await tx
+    .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
+    .from(artifactVersions)
+    .where(eq(artifactVersions.artifactId, artifact.id));
+  const [snapshot] = await tx
+    .insert(artifactVersions)
+    .values({
+      workspaceId: auth.workspaceId,
+      artifactId: artifact.id,
+      versionNumber: max.n + 1,
+      content: input.content,
+      plainText: input.plainText ?? null,
+      reason: "edited",
+      note: input.note ?? null,
+      createdBy: auth.userId,
+    })
+    .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
+  await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+  await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
+  await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
+  await recordAudit(
+    auth,
+    {
+      action: "note.snapshot",
+      subjectType: "artifact",
+      subjectId: artifact.id,
+      summary: `Saved version ${snapshot.versionNumber} of "${artifact.title}"`,
+      metadata: { versionId: snapshot.id, versionNumber: snapshot.versionNumber },
+    },
+    tx,
+  );
+  await emit(tx, auth, "note.snapshot", { artifactId: artifact.id, versionId: snapshot.id, versionNumber: snapshot.versionNumber });
+  return { versionId: snapshot.id, versionNumber: snapshot.versionNumber, version: artifact.version };
+}
+
+/*
  * Committing a draft is what makes a version: the immutable snapshot is
  * appended, the pointer moves to it, and the draft is cleared - all under the
  * same version guard, so a commit cannot land on top of an unseen autosave
@@ -278,42 +326,9 @@ export async function commitNoteSnapshot(
   },
 ): Promise<{ versionId: string; versionNumber: number; version: number }> {
   const value = await withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "commitNoteSnapshot", ...input }, async () => {
-      const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
-      const [max] = await tx
-        .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
-        .from(artifactVersions)
-        .where(eq(artifactVersions.artifactId, artifact.id));
-      const [snapshot] = await tx
-        .insert(artifactVersions)
-        .values({
-          workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          versionNumber: max.n + 1,
-          content: input.content,
-          plainText: input.plainText ?? null,
-          reason: "edited",
-          note: input.note ?? null,
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
-      await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-      await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
-      await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
-      await recordAudit(
-        auth,
-        {
-          action: "note.snapshot",
-          subjectType: "artifact",
-          subjectId: artifact.id,
-          summary: `Saved version ${snapshot.versionNumber} of "${artifact.title}"`,
-          metadata: { versionId: snapshot.id, versionNumber: snapshot.versionNumber },
-        },
-        tx,
-      );
-      await emit(tx, auth, "note.snapshot", { artifactId: artifact.id, versionId: snapshot.id, versionNumber: snapshot.versionNumber });
-      return { versionId: snapshot.id, versionNumber: snapshot.versionNumber, version: artifact.version };
-    });
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "commitNoteSnapshot", ...input }, async () =>
+      commitNoteSnapshotInTx(tx, auth, input),
+    );
     return value;
   });
   // A committed version is the text the card embeds from; refresh its
@@ -327,21 +342,36 @@ export async function commitNoteSnapshot(
   return value;
 }
 
+/*
+ * The row-level half of renameNote, for a caller that already holds a
+ * transaction and its own receipt (a task rename, which must commit the title
+ * and its task row together). A title change is not a body change: no version
+ * is minted, only the artifact pointer row moves.
+ */
+export async function renameNoteInTx(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { artifactId: string; expectedVersion: number; title: string },
+): Promise<{ version: number; title: string }> {
+  const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
+  await tx.update(artifacts).set({ title: input.title }).where(eq(artifacts.id, artifact.id));
+  await recordAudit(
+    auth,
+    { action: "note.renamed", subjectType: "artifact", subjectId: artifact.id, summary: `Renamed note to "${input.title}"`, metadata: {} },
+    tx,
+  );
+  await emit(tx, auth, "note.renamed", { artifactId: artifact.id });
+  return { version: artifact.version, title: input.title };
+}
+
 export async function renameNote(
   auth: AuthContext,
   input: Keyed & { artifactId: string; expectedVersion: number; title: string },
 ): Promise<{ version: number }> {
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "renameNote", ...input }, async () => {
-      const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
-      await tx.update(artifacts).set({ title: input.title }).where(eq(artifacts.id, artifact.id));
-      await recordAudit(
-        auth,
-        { action: "note.renamed", subjectType: "artifact", subjectId: artifact.id, summary: `Renamed note to "${input.title}"`, metadata: {} },
-        tx,
-      );
-      await emit(tx, auth, "note.renamed", { artifactId: artifact.id });
-      return { version: artifact.version };
+      const { version } = await renameNoteInTx(tx, auth, input);
+      return { version };
     });
     return value;
   });

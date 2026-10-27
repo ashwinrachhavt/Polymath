@@ -5,6 +5,8 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { organizations, people } from "@/domains/identity/schema";
+import { artifacts } from "@/domains/knowledge/schema";
+import { commitNoteSnapshotInTx, renameNoteInTx } from "@/domains/knowledge/notes";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { rankBetween } from "./rank";
 import { taskDependencies, tasks } from "./schema";
@@ -64,6 +66,21 @@ export type TaskPatch = {
 
 type Keyed = { idempotencyKey?: string };
 
+/*
+ * A task's prose is markdown (`{format, text}`), the same shape the 0259
+ * backfill and `createTaskNote` write - the Notes surface renders `content.text`
+ * and returns "" for anything else, so a doc-shaped body would open blank and
+ * the next autosave would overwrite it. Clearing the body keeps the empty doc,
+ * the same nothing a fresh note carries; `plain_text` is null then, so "no
+ * body" reads as null rather than as an empty string that is not the text.
+ */
+function taskBody(description: string | null): { content: Record<string, unknown>; plainText: string | null } {
+  if (description === null || description.trim() === "") {
+    return { content: { type: "doc", content: [] }, plainText: null };
+  }
+  return { content: { format: "markdown", text: description }, plainText: description };
+}
+
 async function emit(tx: TxDrizzle, auth: AuthContext, topic: string, payload: Record<string, unknown>) {
   await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic, payload });
 }
@@ -103,28 +120,84 @@ export async function updateTask(
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "updateTask", ...input }, async () => {
       const p = input.patch;
+      // One read up front: the status (a terminal re-save must not overwrite
+      // the attribution the real transition recorded) and the note the task's
+      // prose lives on, which is the note the prose fields are written to.
+      const [before] = await tx
+        .select({
+          noteId: tasks.noteId,
+          noteTitle: artifacts.title,
+          noteVersion: artifacts.version,
+          status: tasks.status,
+        })
+        .from(tasks)
+        .leftJoin(
+          artifacts,
+          and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId), isNull(artifacts.archivedAt)),
+        )
+        .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+        .limit(1);
+      if (!before) throw new TaskNotFoundError();
+
       // Finishing a task from the board or detail view must earn the same
-      // daily Quartz as the list's Done button, so note the prior status.
-      let finishing = false;
+      // daily Quartz as the list's Done button.
       // A terminal transition only truly happens from a non-terminal state:
       // re-saving an already-done task with status "done" (the detail form
       // always sends its status) must not overwrite the attribution the real
       // transition recorded.
-      let terminalizing = false;
-      if (p.status === "done" || p.status === "cancelled") {
-        const [before] = await tx
-          .select({ status: tasks.status })
-          .from(tasks)
-          .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
-          .limit(1);
-        finishing = p.status === "done" && !!before && before.status !== "done";
-        terminalizing = !!before && before.status !== "done" && before.status !== "cancelled";
+      const terminal = p.status === "done" || p.status === "cancelled";
+      const finishing = p.status === "done" && before.status !== "done";
+      const terminalizing = terminal && before.status !== "done" && before.status !== "cancelled";
+
+      // Prose belongs to the note, not the task row: a body edit mints a
+      // version, a rename moves `artifacts.title`. Both go through the note
+      // commands, in this transaction and under this receipt, so a task edit
+      // and its task row commit together or not at all.
+      //
+      // A task with no note is a state only the pre-0260 window can produce
+      // (create paths write one; 0260 requires it). There the legacy column
+      // write below is the only prose store that exists, so the routing is
+      // skipped rather than refused. Ceiling: it disappears with the columns.
+      const { noteId, noteVersion } = before;
+      if ((p.title !== undefined || p.description !== undefined) && noteId !== null && noteVersion !== null) {
+        // Each note command compare-and-sets the artifact's version, so the
+        // first write's result is the second's expected version.
+        let expected = noteVersion;
+        if (p.description !== undefined) {
+          const body = taskBody(p.description);
+          expected = (
+            await commitNoteSnapshotInTx(tx, auth, {
+              artifactId: noteId,
+              expectedVersion: expected,
+              content: body.content,
+              plainText: body.plainText ?? undefined,
+            })
+          ).version;
+        }
+        if (p.title !== undefined) {
+          await renameNoteInTx(tx, auth, { artifactId: noteId, expectedVersion: expected, title: p.title });
+        }
       }
+
+      // Task activity is the only thing that moves `updated_at`: it is what a
+      // board sorted by task activity reads, so a prose edit leaves the clock
+      // alone and nobody's card jumps while they type. The version still bumps
+      // - it is the compare-token, not an activity signal.
+      const activity =
+        p.priority !== undefined ||
+        p.dueAt !== undefined ||
+        p.estimateMinutes !== undefined ||
+        p.tags !== undefined ||
+        p.status !== undefined;
       const set: Record<string, unknown> = {
-        updatedAt: new Date(),
         updatedBy: auth.userId,
         version: sql`${tasks.version} + 1`,
       };
+      if (activity) set.updatedAt = new Date();
+      // Dual write for the 0259-0260 window: the note is authoritative and
+      // every read goes through it, while these columns keep their legacy
+      // readers truthful until 0260 drops them (the same window choice
+      // `createTask` makes). 0260 removes them and this write with them.
       if (p.title !== undefined) set.title = p.title;
       if (p.description !== undefined) set.description = p.description;
       if (p.priority !== undefined) set.priority = p.priority;
@@ -148,7 +221,7 @@ export async function updateTask(
             isNull(tasks.archivedAt),
           ),
         )
-        .returning({ id: tasks.id, version: tasks.version, title: tasks.title });
+        .returning({ id: tasks.id, version: tasks.version });
       if (!row) {
         const [exists] = await tx
           .select({ id: tasks.id })
@@ -170,6 +243,9 @@ export async function updateTask(
         await settleBlockers(tx, auth, row.id, false);
       }
 
+      // The summary names the task the way a reader sees it: the new title if
+      // this patch renamed it, otherwise the note's.
+      const subject = (p.title ?? before.noteTitle) ? `Updated task "${p.title ?? before.noteTitle}"` : "Updated task";
       const changed = Object.keys(p).filter((k) => (p as Record<string, unknown>)[k] !== undefined);
       await recordAudit(
         auth,
@@ -177,7 +253,7 @@ export async function updateTask(
           action: "task.updated",
           subjectType: "task",
           subjectId: row.id,
-          summary: `Updated task "${row.title}" (${changed.join(", ")})`,
+          summary: `${subject} (${changed.join(", ")})`,
           metadata: { fields: changed, version: row.version, ...(terminalizing ? { settledEdges: settledEdgeIds } : {}) },
         },
         tx,
@@ -291,7 +367,7 @@ export async function moveTask(
             isNull(tasks.archivedAt),
           ),
         )
-        .returning({ id: tasks.id, rank: tasks.rank, version: tasks.version, title: tasks.title });
+        .returning({ id: tasks.id, rank: tasks.rank, version: tasks.version });
       if (!row) {
         const [exists] = await tx
           .select({ id: tasks.id })
@@ -300,13 +376,21 @@ export async function moveTask(
           .limit(1);
         throw exists ? new VersionConflictError() : new TaskNotFoundError();
       }
+      // The title is the note's (0260 drops `tasks.title`), so it is read
+      // from the artifact the task stands on - the same row the lists read.
+      const [note] = await tx
+        .select({ title: artifacts.title })
+        .from(tasks)
+        .leftJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
+        .where(eq(tasks.id, row.id))
+        .limit(1);
       await recordAudit(
         auth,
         {
           action: "task.moved",
           subjectType: "task",
           subjectId: row.id,
-          summary: `Reordered task "${row.title}"`,
+          summary: `Reordered task "${note?.title ?? ""}"`,
           metadata: { rank },
         },
         tx,
@@ -336,12 +420,15 @@ async function spreadRanks(tx: TxDrizzle, auth: AuthContext) {
 
 async function ownedTask(tx: TxDrizzle, auth: AuthContext, id: string) {
   const [t] = await tx
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+    .select({ id: tasks.id, title: artifacts.title, status: tasks.status })
     .from(tasks)
+    // Left, not inner: a task with no note is a pre-0260 state only, and it
+    // must still be reachable for a dependency write rather than read as gone.
+    .leftJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
     .where(and(eq(tasks.id, id), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .limit(1);
   if (!t) throw new TaskNotFoundError();
-  return t;
+  return { id: t.id, status: t.status, title: t.title ?? "" };
 }
 
 /**
