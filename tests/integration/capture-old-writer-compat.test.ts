@@ -39,17 +39,27 @@ async function oldInsert(kind: string, text: string | null, url: string | null) 
 
 suite("captures written by the pre-0258 build", () => {
   it("fills mode and hash from the row's shape, matching inferCaptureMode", async () => {
-    expect(await oldInsert("url", null, "https://old.example/ref")).toMatchObject({ capture_mode: "url-reference", content_hash: null });
+    expect(await oldInsert("url", null, "https://old.example/ref")).toMatchObject({
+      capture_mode: "url-reference",
+      content_hash: null,
+    });
     const page = await oldInsert("text", "grabbed words", "https://old.example/page");
     expect(page.capture_mode).toBe("page");
     expect(page.content_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(await oldInsert("text", "just a note", null)).toMatchObject({ capture_mode: "authored", content_hash: null });
+    expect(await oldInsert("text", "just a note", null)).toMatchObject({
+      capture_mode: "authored",
+      content_hash: null,
+    });
     expect(await oldInsert("file", null, null)).toMatchObject({ capture_mode: "blob", content_hash: null });
   });
 
   it("still dedupes: same address twice and the same page text twice are 23505, a new reading is not", async () => {
     await expect(oldInsert("url", null, "https://old.example/ref")).rejects.toMatchObject({ code: "23505" });
-    await expect(oldInsert("text", "grabbed words", "https://old.example/page")).rejects.toMatchObject({ code: "23505" });
-    await expect(oldInsert("text", "a different reading", "https://old.example/page")).resolves.toMatchObject({ capture_mode: "page" });
+    await expect(oldInsert("text", "grabbed words", "https://old.example/page")).rejects.toMatchObject({
+      code: "23505",
+    });
+    await expect(oldInsert("text", "a different reading", "https://old.example/page")).resolves.toMatchObject({
+      capture_mode: "page",
+    });
   });
 });
