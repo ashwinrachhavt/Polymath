@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import { captureMode } from "./schema";
 
-export type CaptureMode = "authored" | "selection" | "page" | "url-reference" | "blob";
+// The enum column is the authority; this is the same union, not a second copy.
+export type CaptureMode = (typeof captureMode.enumValues)[number];
 
 const BARE_ADDRESS = /^https?:\/\/\S+$/i;
 

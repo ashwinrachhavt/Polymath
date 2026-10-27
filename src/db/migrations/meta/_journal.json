@@ -582,6 +582,13 @@
       "when": 1793200005000,
       "tag": "0256_shutdown_ritual",
       "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1793250000001,
+      "tag": "0258_capture_mode_and_identity",
+      "breakpoints": true
     }
   ]
 }
