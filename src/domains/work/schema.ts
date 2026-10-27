@@ -137,16 +137,16 @@ export const tasks = pgTable(
     recurrenceTemplateId: uuid("recurrence_template_id").references(() => recurrenceTemplates.id, {
       onDelete: "set null",
     }),
-    title: text("title").notNull(),
-    description: text("description"),
     /**
      * The note this task stands on: a 1:1 extension row, not a second store of
-     * prose. Nullable until 0260, which requires it once every read and write
-     * has moved; the unique index that makes it 1:1 arrives with it. No cascade
-     * on delete — a note backing a task is not disposable, and 0260's test pins
-     * the refusal.
+     * prose. Required since 0260 — a task without a note is no longer
+     * representable — and unique (tasks_note_key), so one note backs one task.
+     * No cascade on delete: a note backing a task is not disposable, and the
+     * drop suite pins the refusal.
      */
-    noteId: uuid("note_id").references(() => artifacts.id),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => artifacts.id),
     status: taskStatus("status").notNull().default("inbox"),
     priority: taskPriority("priority").notNull().default("none"),
     /** Fractional rank for list and board order; a drag writes one row. */
@@ -170,6 +170,7 @@ export const tasks = pgTable(
     index("tasks_space_idx").on(t.spaceId),
     index("tasks_recurrence_template_idx").on(t.recurrenceTemplateId),
     index("tasks_parent_idx").on(t.parentTaskId).where(sql`parent_task_id is not null`),
+    uniqueIndex("tasks_note_key").on(t.noteId),
     check("tasks_parent_not_self_check", sql`parent_task_id is null or parent_task_id <> id`),
     check("tasks_rank_format_check", sql`rank ~ '^[a-z]+$'`),
   ],
