@@ -86,6 +86,9 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   // The saved row comes back from the server with its new priority badge.
   await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("high", { exact: true })).toBeVisible();
   await page.goto("/neuralflow/work?view=saved&show=today");
+  // Today can hold more than one page on a long-lived workspace, and the new
+  // task ranks to the end, so narrow before asserting it is on screen.
+  await narrowTo(page, tag);
   await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
 
