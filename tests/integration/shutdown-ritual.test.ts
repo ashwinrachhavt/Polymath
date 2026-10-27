@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
@@ -185,7 +185,16 @@ suite("shutdown ritual", () => {
     const first = await shutdown.applyShutdown(auth, input);
     const second = await shutdown.applyShutdown(auth, input);
     expect(second).toEqual(first);
-    expect(await db.select().from(artifacts).where(eq(artifacts.workspaceId, workspaceId))).toHaveLength(1);
+    // The workspace's artifacts are the task's own note (a task is a note plus an
+    // extension row) and the shutdown log. A replay must not write a second log.
+    const logs = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.id, first.logNoteId)));
+    expect(logs).toHaveLength(1);
+    expect(
+      await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, workspaceId), ne(artifacts.id, t.noteId!))),
+    ).toHaveLength(1);
     expect(await db.select().from(briefingSeeds).where(eq(briefingSeeds.workspaceId, workspaceId))).toHaveLength(1);
     await expect(shutdown.applyShutdown(auth, { ...input, seedTaskIds: [] })).rejects.toMatchObject({ code: "idempotency_conflict" });
   });
