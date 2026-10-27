@@ -74,32 +74,32 @@ async function currentDestination() {
  * Outbox.classifyDelivery needs.
  */
 async function deliver(entry) {
-  // Never send a queued capture to a destination it was not captured for: an
-  // account switch or a different server must park the entry, not silently
-  // deliver the user's words elsewhere. Unbound (pre-binding) entries park
-  // too — conservative beats guessing.
-  const current = await currentDestination();
-  if (!Outbox.destinationsMatch(entry.destination, current)) {
-    return { identityMismatch: true };
-  }
-  const base = await AlfredAPI.base();
-  const token = await AlfredAPI.token();
-  const headers = {
-    "Content-Type": "application/json",
-    // Minted once at enqueue; the server's request_receipts make every retry
-    // of this key exactly-once.
-    "Idempotency-Key": entry.id,
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
   try {
+    // Never send a queued capture to a destination it was not captured for: an
+    // account switch or a different server must park the entry, not silently
+    // deliver the user's words elsewhere. Unbound (pre-binding) entries park
+    // too — conservative beats guessing.
+    //
+    // This probe makes a live request to the configured server, so it can fail
+    // exactly like a delivery can. It belongs inside the try: a throw here is
+    // a failed attempt to classify, not a reason to reject the pump.
+    const current = await currentDestination();
+    if (!Outbox.destinationsMatch(entry.destination, current)) {
+      return { identityMismatch: true };
+    }
+    const base = await AlfredAPI.base();
+    const token = await AlfredAPI.token();
+    const headers = {
+      "Content-Type": "application/json",
+      // Minted once at enqueue; the server's request_receipts make every retry
+      // of this key exactly-once.
+      "Idempotency-Key": entry.id,
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const resp = await fetch(`${base}/api/v1/captures`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        text: entry.text,
-        ...(entry.url ? { url: entry.url } : {}),
-        ...(entry.title ? { title: entry.title } : {}),
-      }),
+      body: JSON.stringify(Outbox.deliveryBody(entry)),
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
     let errorText = null;
@@ -118,6 +118,9 @@ async function deliver(entry) {
     }
     return { ok: resp.ok, status: resp.status, errorText, problemCode, problemType, problemTitle };
   } catch {
+    // A failed destination probe reads as unreachable, the same outcome as a
+    // refused connection: the entry stays queued and retries with backoff.
+    // Never let the probe's throw escape as an unhandled rejection.
     return null;
   }
 }
@@ -247,6 +250,7 @@ async function enqueueCapture(msg) {
       text: (msg.text || "").trim(),
       url: (msg.url || "").trim(),
       title: (msg.title || "").trim(),
+      mode: msg.mode || null,
       history: msg.history || null,
       destination: await currentDestination(),
     },
@@ -400,6 +404,8 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           text: source.url ? source.text + "\n\nSource: " + source.url : source.text,
           url: "",
           title: source.title,
+          // The replacement is the same arrival mode as the capture it rescues.
+          mode: source.mode || null,
           history: source.history,
           destination: await currentDestination(),
         },

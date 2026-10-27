@@ -110,15 +110,20 @@
   }
 
   /** Fresh entry. The id doubles as the server idempotency key. */
-  function makeEntry({ id, text, url, title, history, destination }, now) {
+  function makeEntry(fields, now) {
     return {
       v: SCHEMA_VERSION,
-      id,
-      text,
-      url: url || null,
-      title: title || null,
-      history: history || null,
-      destination: destination || null,
+      id: fields.id,
+      text: fields.text,
+      url: fields.url || null,
+      title: fields.title || null,
+      // How the content arrived ("page" | "selection" | ...), so the server
+      // does not have to infer it. Defaults to null because this module
+      // persists to storage: an entry queued by a build that predates this
+      // field must still load and deliver, not fail on a missing key.
+      mode: fields.mode || null,
+      history: fields.history || null,
+      destination: fields.destination || null,
       status: "queued", // queued | sending | failed | needs-auth | conflicted | parked-identity
       attempts: 0,
       createdAt: now,
@@ -126,6 +131,20 @@
       nextAttemptAt: now,
       lastError: null,
     };
+  }
+
+  /**
+   * The POST body for one entry. Optional fields are omitted when empty rather
+   * than sent as null, and `mode` is omitted rather than sent as null: an entry
+   * queued before mode existed posts exactly the body it always posted, and the
+   * server infers the mode from what it receives.
+   */
+  function deliveryBody(entry) {
+    const body = { text: entry.text };
+    if (entry.url) body.url = entry.url;
+    if (entry.title) body.title = entry.title;
+    if (entry.mode) body.mode = entry.mode;
+    return body;
   }
 
   /**
@@ -239,6 +258,7 @@
     isDue,
     destinationsMatch,
     makeEntry,
+    deliveryBody,
     applyOutcome,
     requeue,
     rebind,
