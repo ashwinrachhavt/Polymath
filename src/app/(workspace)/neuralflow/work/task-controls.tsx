@@ -5,6 +5,7 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
+import dynamic from "next/dynamic";
 import { Select } from "@/components/ui/select";
 import {
   addDependencyAction,
@@ -14,6 +15,27 @@ import {
   reopenTaskAction,
   updateTaskAction,
 } from "./actions";
+
+/* Tasks and notes stay separate records; what they share is the editor. The
+ * task body is Markdown edited through the same RichEditor island the Notes
+ * surface uses (chrome "minimal"), so prose behaves identically in both
+ * places without the task becoming a note. */
+const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), {
+  ssr: false,
+  loading: () => <div className="h-24 animate-pulse rounded-md border border-border bg-muted/40" />,
+});
+
+/* Holds the draft Markdown for one task form. The form is keyed by the saved
+ * version, so this remounts (and resets to the saved text) after every save. */
+function TaskNotesEditor({ initial }: { initial: string }) {
+  const [description, setDescription] = useState(initial);
+  return (
+    <>
+      <input type="hidden" name="description" value={description} />
+      <RichEditor content={description} onChange={setDescription} chrome="minimal" compact />
+    </>
+  );
+}
 
 /*
  * Client islands for the Neon-backed Work list. Each user intent mints one
@@ -170,7 +192,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
           </Field>
         </div>
         <Field label="Notes">
-          <textarea name="description" defaultValue={data.description ?? ""} rows={3} className="w-full rounded-md border border-input bg-background p-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          <TaskNotesEditor initial={data.description ?? ""} />
         </Field>
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={saver.pending}>
