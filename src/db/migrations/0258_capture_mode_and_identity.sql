@@ -6,8 +6,9 @@
 --
 -- CI and deploy apply one `psql -f` per file with no `-1`, so a failure partway
 -- through commits the statements before it. Every statement below is therefore
--- safe to re-run: guarded types, IF EXISTS, IF NOT EXISTS, and an update that
--- only touches rows whose hash is still null.
+-- safe to re-run: guarded types and constraint, IF EXISTS, IF NOT EXISTS, one
+-- update that only fills a null hash, and one that only changes a hash an
+-- earlier row already holds.
 --
 -- Order is load-bearing, and it is not the obvious one.
 --
@@ -21,14 +22,15 @@
 -- be written again: enrichment, parking, and conversion all update captures.
 --
 -- So duplicates are resolved by giving the later row a distinct hash rather than
--- a null one. Rows are grouped by their exact body, and only a genuine repeat
--- gets its id folded in; the earliest of each body keeps the plain hash, so a
--- re-capture still dedupes against it. A later duplicate gets a hash of its text
--- plus its own id: still a hash of what arrived, non-null, and unable to collide.
--- That ordering is what lets the index be created -- re-hashing a duplicate to
--- the survivor's hash would violate it, and nulling it would strand the row. A
--- row with an empty body hashes the empty string, so no url-bearing page or
--- selection row is left without a hash at all.
+-- a null one: fill every hash from the arriving text, then fold the row's id
+-- into any hash an earlier row at the same identity already holds. The earliest
+-- row keeps the plain hash, so a re-capture still dedupes against it; later
+-- duplicates stay non-null, distinct, and still a hash of what arrived. Nulling
+-- them would satisfy the index alone but strand them under the CHECK, and
+-- re-hashing them to the survivor's value would violate the index -- the
+-- two-pass fill-then-disambiguate is what satisfies both. A row with an empty
+-- body hashes the empty string, so no url-bearing page or selection row is left
+-- without a hash at all.
 DO $$ BEGIN
   CREATE TYPE "public"."capture_fetch_outcome" AS ENUM('pending', 'acquired', 'error-page', 'access-denied', 'empty', 'provider-unavailable');
 EXCEPTION
@@ -56,29 +58,28 @@ update captures set capture_mode = case
 -- capture yields today, and re-capturing one would insert a duplicate instead of
 -- colliding. clean_text is the fallback for a row with no text; an empty body
 -- hashes the empty string rather than staying null.
---
--- Two different readings of one URL (a page grab, then a selection) are not
--- duplicates and each gets the plain hash of its own text. Two identical bodies
--- at one identity are, and the later of them gets its own id folded in: the
--- unique index below forbids them sharing a hash, the CHECK below forbids them
--- being null, so a distinct hash is the only value that satisfies both. The
--- earliest row keeps the plain hash, so a re-capture of that text still dedupes
--- against it; the suffixed rows are historical duplicates being preserved, not
--- rows a future insert should ever match.
 update captures c
-   set content_hash = encode(sha256(convert_to(
-         coalesce(c.text, c.clean_text, '')
-           || case when r.rn = 1 then '' else '#' || c.id::text end,
-         'UTF8')), 'hex')
-  from (
-    select id, row_number() over (
-             partition by workspace_id, source, url, capture_mode,
-                          encode(sha256(convert_to(coalesce(text, clean_text, ''), 'UTF8')), 'hex')
-             order by created_at, id) as rn
-      from captures
-     where url is not null and capture_mode not in ('url-reference', 'blob')
-  ) r
- where c.id = r.id and c.content_hash is null;--> statement-breakpoint
+   set content_hash = encode(sha256(convert_to(coalesce(c.text, c.clean_text, ''), 'UTF8')), 'hex')
+ where c.url is not null and c.capture_mode not in ('url-reference', 'blob')
+   and c.content_hash is null;--> statement-breakpoint
+-- Then break ties. Two readings of one URL with different bodies (a page grab,
+-- then a selection) are not duplicates and keep the plain hash of their own text.
+-- Two identical bodies at one identity are, and the unique index below forbids
+-- them sharing a hash while the CHECK forbids them being null, so the later one
+-- gets its id folded into its hash: still a hash of what arrived, non-null, and
+-- unable to collide. The earliest keeps the plain hash, so a re-capture of that
+-- text still dedupes against it. This runs as a separate pass, after the fill,
+-- because a database left behind by the earlier null-dedupe already holds a
+-- plain hash on a later row; deciding by rank during the fill would then hand
+-- the plain hash to the earliest row and collide with it.
+update captures c
+   set content_hash = encode(sha256(convert_to(coalesce(c.text, c.clean_text, '') || '#' || c.id::text, 'UTF8')), 'hex')
+ where c.content_hash is not null and exists (
+   select 1 from captures d
+    where d.workspace_id = c.workspace_id and d.source = c.source
+      and d.url = c.url and d.capture_mode = c.capture_mode
+      and d.content_hash = c.content_hash
+      and (d.created_at, d.id) < (c.created_at, c.id));--> statement-breakpoint
 alter table captures alter column capture_mode set not null;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "captures_identity_key" ON "captures" USING btree ("workspace_id","source","url","capture_mode","content_hash") WHERE url is not null and capture_mode <> 'url-reference';--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "captures_url_reference_key" ON "captures" USING btree ("workspace_id","source","url") WHERE url is not null and capture_mode = 'url-reference';--> statement-breakpoint
