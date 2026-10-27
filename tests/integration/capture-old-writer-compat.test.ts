@@ -59,6 +59,13 @@ suite("captures written by the pre-0258 build", () => {
       capture_mode: "url-reference",
       content_hash: null,
     });
+    // The old companion route sent a bare address as text AND url (stored kind text, text == url).
+    expect(
+      await oldInsert("text", "https://old.example/bare", "https://old.example/bare", {
+        url: "https://old.example/bare",
+        text: "https://old.example/bare",
+      }),
+    ).toMatchObject({ capture_mode: "url-reference", content_hash: null });
     // An owner-edited page: identity is the arriving words (raw_payload.text), not the edit.
     const { createHash } = await import("node:crypto");
     const edited = await oldInsert("text", "edited later", "https://old.example/edited", { text: "original arrival" });

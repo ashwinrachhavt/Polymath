@@ -45,7 +45,10 @@ ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "fetch_outcome" "capture_fetch_o
 -- a url-reference is identified by its address, not its text; no url is
 -- authored (a bare address typed as kind 'text' with no url is not produced by
 -- either build, and a url-reference needs a url, so it stays authored); any
--- other row with a url is a page grab if it has text, else url-reference.
+-- other row with a url is a page grab if it has text, else url-reference. The
+-- old companion route sent a bare address as text AND url, which the old
+-- createCapture stored as kind 'text' with text equal to the url: that is the
+-- address itself too, and the new route sends it as a url-reference.
 -- The hash is of the ARRIVING text, unmapped, exactly what contentHash() gets at
 -- insert: raw_payload.text (immutable, written trimmed by both builds), else
 -- text, else clean_text, else ''. text alone is wrong for historical rows: an
@@ -58,6 +61,7 @@ BEGIN
       WHEN NEW.kind IN ('file', 'voice') THEN 'blob'::capture_mode
       WHEN NEW.url IS NULL THEN 'authored'::capture_mode
       WHEN NEW.kind = 'url' THEN 'url-reference'::capture_mode
+      WHEN btrim(NEW.text) = btrim(NEW.url) THEN 'url-reference'::capture_mode
       WHEN nullif(btrim(NEW.text), '') IS NULL THEN 'url-reference'::capture_mode
       ELSE 'page'::capture_mode
     END;
