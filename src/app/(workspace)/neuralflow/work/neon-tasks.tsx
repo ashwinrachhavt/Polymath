@@ -15,6 +15,10 @@ import { FocusTaskButton, ActiveSessionControls } from "./focus-controls";
 import { TaskEvidence } from "./task-evidence";
 import { CommitList, WorkList } from "./work-list";
 import { DayStrip } from "./day-strip";
+import { SeedSuggestions } from "./seed-suggestions";
+import { listSeedsForDay } from "@/domains/work/seeds";
+import { todayKeyInTimezone } from "@/lib/local-date";
+import { getPreferences } from "@/domains/identity/preferences";
 
 /*
  * The Work list on Neon. Server component: reads through the work domain's
@@ -68,7 +72,10 @@ export async function NeonTasks({
   const filtered = Boolean(list.q || list.filters.priority || list.filters.status);
   const validSelection = selectedTask && UUID.test(selectedTask) ? selectedTask : undefined;
 
-  const [found, openRows, counts, activeSession] = await Promise.all([
+  // Tomorrow's suggestions belong to today: the shutdown ritual wrote them for
+  // this local day, and "today" compares in the owner's saved timezone.
+  const { timezone } = await getPreferences(auth);
+  const [found, openRows, counts, activeSession, seeds] = await Promise.all([
     listWorkPageForPage(auth, scope, {
       limit: list.pageSize,
       offset: offsetFor(list.page, list.pageSize),
@@ -79,6 +86,7 @@ export async function NeonTasks({
     listWorkRowsForPage(auth, "open"),
     countWorkByStatus(auth),
     getActiveFocusSessionForPage(auth),
+    listSeedsForDay(auth, todayKeyInTimezone(timezone)).catch(() => []),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const rows = found.rows;
@@ -102,7 +110,11 @@ export async function NeonTasks({
   // whatever was captured and never triaged. Both are counts of real rows, and
   // both disappear once there is nothing left to commit.
   const committedIds = new Set(openRows.filter((r) => r.status === "ready" || r.status === "in_progress").map((r) => r.id));
-  const nextUp = openRows.filter((r) => !committedIds.has(r.id)).slice(0, 5);
+  // A suggested task is offered once, by the suggestion: the same row in Next
+  // up would be two controls for one decision, and the owner would see the
+  // task they are deciding about twice before deciding.
+  const suggestedIds = new Set(seeds.map((seed) => seed.taskId));
+  const nextUp = openRows.filter((r) => !committedIds.has(r.id) && !suggestedIds.has(r.id)).slice(0, 5);
   const inboxCount = counts.inbox;
 
   const hrefFor = (id: string) => listHref(BASE, raw, { view: "saved", task: id });
@@ -193,6 +205,8 @@ export async function NeonTasks({
               noun={found.total === 1 ? "task" : "tasks"}
             />
           </div>
+
+          {scope === "today" && !filtered ? <SeedSuggestions seeds={seeds} /> : null}
 
           <WorkList
             addToToday={scope === "today"}

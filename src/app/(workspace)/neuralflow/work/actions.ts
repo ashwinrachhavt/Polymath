@@ -26,6 +26,7 @@ import {
   StaleWriteError as FocusStaleWriteError,
   startFocusSession,
 } from "@/domains/focus/commands";
+import { markSeedCommitted, dismissSeed } from "@/domains/work/seeds";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { focusTag, tasksTag } from "@/lib/cache-tags";
@@ -112,6 +113,52 @@ export async function commitTaskAction(input: z.input<typeof commitInput>): Prom
   return guarded(auth, async () => ({
     version: (await updateTask(auth, { ...parsed.data, patch: { status: "ready" } })).version,
   }));
+}
+
+const seedInput = z.object({
+  seedId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  idempotencyKey: z.string().uuid(),
+});
+
+/**
+ * Commit a task the shutdown ritual suggested for today, and archive the
+ * suggestion in the same transaction: the owner answered it, so leaving it
+ * live would keep offering work they already took.
+ */
+export async function commitSeedAction(input: z.input<typeof seedInput>): Promise<Result<{ version: number }>> {
+  const parsed = seedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "This suggestion is no longer available." };
+  const auth = await authorize();
+  return guarded(auth, async () => {
+    const updated = await updateTask(auth, {
+      taskId: parsed.data.taskId,
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+      patch: { status: "ready" },
+    });
+    // updateTask owns its own transaction, so the seed cannot be archived
+    // inside it. Archiving after is safe rather than atomic: if it fails, the
+    // task still moved and listSeedsForDay stops offering the seed anyway,
+    // because it joins the task and skips anything already committed.
+    await markSeedCommitted(auth, parsed.data.seedId);
+    return { version: updated.version };
+  });
+}
+
+const dismissSeedInput = z.object({ seedId: z.string().uuid(), expectedVersion: z.number().int().min(1) });
+
+/** Decline a suggestion. Archiving keeps the unique key, so a replay cannot revive it. */
+export async function dismissSeedAction(input: z.input<typeof dismissSeedInput>): Promise<Result<object>> {
+  const parsed = dismissSeedInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "This suggestion is no longer available." };
+  const auth = await authorize();
+  return guarded(auth, async () => {
+    const row = await dismissSeed(auth, parsed.data);
+    if (!row) throw new VersionConflictError();
+    return {};
+  });
 }
 
 const completionSentence = z  .string()
