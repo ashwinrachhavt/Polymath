@@ -2,7 +2,7 @@
 -- a 1:1 extension row in tasks, so this is the additive half: two nullable
 -- columns and a backfill that gives every existing task the note it will stand
 -- on. The drops (tasks.title, tasks.description, a nullable note_id) land in
--- 0258, after every read and write has moved. Additive and nullable, so mixed
+-- 0260, after every read and write has moved. Additive and nullable, so mixed
 -- version deploys are safe: old code never names template or note_id, and the
 -- artifacts this creates are ordinary notes.
 --
