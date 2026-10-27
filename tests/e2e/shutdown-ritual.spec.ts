@@ -94,7 +94,7 @@ async function journey(
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
   // Provision the dev owner the way the other journeys rely on.
-  await page.goto("/command-center/briefing");
+  await page.goto("/command-center/inbox");
 
   const marker = `e2e-shutdown-${viewport.name}-${Date.now()}`;
   const client = postgres(url!, { max: 1 });
@@ -128,10 +128,9 @@ async function journey(
   `;
   sessionIds.push(sess.id);
 
-  // Real shell, real navigation: Today -> Shut down.
-  await page.goto("/command-center/briefing");
-  await page.getByRole("link", { name: "Shut down" }).click();
-  await expect(page).toHaveURL(/\/command-center\/briefing\/shutdown$/);
+  // Real shell, real navigation: the day record -> Shut down.
+  await page.goto("/command-center/shutdown");
+  await expect(page).toHaveURL(/\/command-center\/shutdown$/);
   // The shell keeps the previous page's h1 mounted through the transition; target the heading itself.
   await expect(page.getByRole("heading", { name: "Shut down" })).toBeVisible();
 
@@ -210,7 +209,7 @@ test("a no-effect repeat apply replays the existing log instead of duplicating i
 
   // Reopen the closed day and apply with NOTHING new selected: the server
   // must replay the existing log, not write a third one (ASH-323).
-  await page.goto("/command-center/briefing/shutdown");
+  await page.goto("/command-center/shutdown");
   await page.getByRole("button", { name: "Close the day again" }).click();
   await page.getByRole("button", { name: "Close the day" }).click();
   await expect(page.getByText("This day is already closed.")).toBeVisible();

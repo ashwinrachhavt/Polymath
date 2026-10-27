@@ -1,6 +1,20 @@
-import { redirect } from "next/navigation";
+import { Screen } from "@/components/workspace/ui";
+import { SpendingPanel } from "./spending-panel";
 
-// Spending left the rail in the IA simplification; it is a Briefing tab now.
+export const metadata = { title: "Spending · Polymath" };
+
+/*
+ * The canonical spending ledger. It lived as a tab inside Briefing; when
+ * Briefing was removed this became a route of its own rather than a redirect
+ * into a page that no longer exists.
+ */
 export default function SpendingPage() {
-  redirect("/command-center/briefing?tab=spending");
+  return (
+    <Screen
+      title="Spending"
+      description="What the agents have spent, from recorded usage events. Unpriced work shows as unpriced, never as zero."
+    >
+      <SpendingPanel />
+    </Screen>
+  );
 }

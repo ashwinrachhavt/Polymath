@@ -6,6 +6,7 @@ import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
+import type { NotificationFeed } from "@/domains/notifications/feed";
 import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +26,19 @@ const subscribeToHydration = () => () => {};
  * one destination with no page heading of its own, so it yields its row there.
  * The composer is the page.
  */
-export function AppShell({ children, storageScope = "anonymous", clerkConfigured = false, interfaceMode = "action" }: { children: ReactNode; storageScope?: string; clerkConfigured?: boolean; interfaceMode?: "library" | "action" }) {
+export function AppShell({
+  children,
+  storageScope = "anonymous",
+  clerkConfigured = false,
+  interfaceMode = "action",
+  notifications,
+}: {
+  children: ReactNode;
+  storageScope?: string;
+  clerkConfigured?: boolean;
+  interfaceMode?: "library" | "action";
+  notifications: NotificationFeed;
+}) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   // Browser-preview records live in localStorage; rendering the server's empty
@@ -41,7 +54,7 @@ export function AppShell({ children, storageScope = "anonymous", clerkConfigured
       <div className="flex min-h-dvh flex-1" data-interface-mode={interfaceMode}>
         <SideNav />
         <div className="flex min-w-0 flex-1 flex-col">
-          {!headerless ? <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} /> : null}
+          {!headerless ? <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} notifications={notifications} /> : null}
           <main
             id="content"
             tabIndex={-1}

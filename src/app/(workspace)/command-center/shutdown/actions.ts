@@ -52,7 +52,7 @@ export async function applyShutdownAction(raw: ShutdownActionInput): Promise<Shu
     const result = await applyShutdown(auth, { ...parsed.data, email: parsed.data.email ?? null });
     updateTag(capturesTag(auth));
     updateTag(tasksTag(auth));
-    revalidatePath("/command-center/briefing");
+    revalidatePath("/");
     revalidatePath("/command-center/inbox");
     return { ok: true, result };
   } catch (error) {

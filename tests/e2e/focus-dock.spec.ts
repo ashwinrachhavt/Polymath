@@ -33,7 +33,7 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await expect(page.getByLabel("Focus session")).toBeHidden();
 
     // Navigate away: the dock names the live session and links back.
-    await page.goto("/command-center/briefing");
+    await page.goto("/command-center/inbox");
     const dock = page.getByLabel("Focus session");
     await expect(dock).toBeVisible();
     await expect(dock).toContainText("Focus running");
@@ -76,7 +76,7 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Finish", exact: true }).click();
     await expect(page.getByText("A focus session is running.", { exact: true })).toBeHidden();
-    await page.goto("/command-center/briefing");
+    await page.goto("/command-center/inbox");
     await expect(page.getByLabel("Focus session")).toBeHidden();
   } finally {
     if (client) {

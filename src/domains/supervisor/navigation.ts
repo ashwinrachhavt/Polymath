@@ -46,7 +46,7 @@ export function parseNavigationIntent(message: string): NavigationIntent | null 
 export const SURFACE_HREF: Record<SurfaceKind, string> = {
   tasks: "/neuralflow/work",
   notes: "/alfred/notes",
-  calendar: "/command-center/briefing",
+  calendar: "/command-center/day",
   runs: "/activity",
   decisions: "/",
   library: "/alfred/library",

@@ -17,10 +17,9 @@ import { artifactLinks, artifacts, claimEvidence, claims, documentReadingState, 
  *   row. A claim without a passage is an opinion wearing a citation's
  *   clothes; rejected and retracted claims are out by definition.
  * - tasks without rationale: open tasks whose note has no body - the one
- *   place a task can carry its "why". (The literal rationale field lives
- *   on daily_outcomes, the day's commitments, not on the task itself. A
- *   task's prose lives on its note, so "no body" is the note's absence of
- *   plain text, not a null column.)
+ *   place a task can carry its "why". There is no separate rationale
+ *   column on a task; the task's prose lives on its note, so "no body" is
+ *   the note's absence of plain text, not a null column.
  * - never-opened documents: sources with an extraction that nobody has
  *   opened. Captured, processed, and never read - the engagement signal.
  */

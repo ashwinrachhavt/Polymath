@@ -55,11 +55,13 @@ test("interface mode is an account preference with two visual languages", async 
       await expect(page.locator('select[name="interfaceMode"]')).toHaveValue("library");
     }).toPass({ timeout: 30_000 });
 
-    await page.goto("/");
+    // "/" redirects to the conversation now, and the conversation has no page
+    // heading, so the library register is read on a destination that does.
+    await page.goto("/neuralflow/work");
     await waitSettled(page);
     expect(await resolvedMode(page)).toBe("library");
     const title = page.locator("#content h1");
-    await expect(title).toHaveText("Decisions");
+    await expect(title).toHaveText("Work");
     const libraryFont = await title.evaluate((el) => getComputedStyle(el).fontFamily);
     expect(libraryFont).toMatch(/Iowan|Palatino|Georgia/);
 

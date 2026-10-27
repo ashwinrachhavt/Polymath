@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-10-27
 
 ### Added
 
@@ -17,9 +17,38 @@
 - Search: Parallel's direct Search API (5,000 requests/month, card-backed)
   and the AI Gateway server-tool route (Exa/Tako/Parallel/Perplexity) join
   the adapter seam, both registry-disabled until the spend is opted into.
+- Notifications: a panel in the header holds the decision queue, running work
+  and the agent audit trail, replacing the Decisions page. The count is read
+  on the server per request, so it cannot disagree with the records behind it.
+- Work: a board where cards move between lanes by drag, one status patch per
+  drop, and a card opens a small dialog rather than the full inspector.
+- Work: tomorrow's suggestions, as the shutdown ritual recorded them, with
+  Commit and Dismiss. Dismissing archives the seed, so a replayed shutdown
+  cannot revive a suggestion you declined.
+- Day and Shut down are destinations again, and Spending joins them. Retiring
+  Briefing had moved all three onto their own routes and left every one of
+  them with no way in.
+
+### Changed
+
+- The front door is the conversation. "/" redirects to the Assistant; the
+  decision queue it used to hold lives in the notifications panel.
+- The vault reads extracted text as markdown rather than showing its syntax,
+  replaces its three review filters with two counts, and makes the empty
+  state the upload target. Copy and Save appear on the text itself.
+
+### Removed
+
+- Briefing, its day theatre, and the outcome picker. The shutdown ritual and
+  the daybook keep their own routes; the spending ledger keeps its own.
+- `daily_outcomes` and the `Outcome:YYYY-MM-DD` tag convention (migration
+  0257). Committed-today is a task's own status, which cannot go stale.
 
 ### Fixed
 
+- The day record no longer reads the dropped `daily_outcomes` table. The
+  query was raw SQL that TypeScript never checked, so the page compiled and
+  then returned a 500 for every date (found in review, fixed before ship).
 - Search: the provider registry's fail-closed rule is now enforced. A
   disabled entry (parallel's card-backed tier, the gateway's post-promo
   billing) refuses at the gate instead of executing because its key is set,

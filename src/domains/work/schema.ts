@@ -295,41 +295,14 @@ export const savedViews = pgTable(
 );
 
 /*
- * The day's accepted commitments. Acceptance is a deliberate act by the owner
- * — it is what makes an outcome a commitment rather than a suggestion.
- */
-export const dailyOutcomes = pgTable(
-  "daily_outcomes",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    /** Local date in the owner's timezone; the briefing's one key. */
-    onDate: date("on_date").notNull(),
-    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
-    title: text("title").notNull(),
-    /** Why this, why today — deterministic reasons, not a model's opinion. */
-    rationale: text("rationale"),
-    rank: text("rank").notNull().default("m"),
-    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    ...mutable,
-  },
-  (t) => [
-    index("daily_outcomes_day_idx").on(t.workspaceId, t.onDate, t.rank),
-    uniqueIndex("daily_outcomes_day_task_key")
-      .on(t.workspaceId, t.onDate, t.taskId)
-      .where(sql`task_id is not null`),
-  ],
-);
-
-/*
  * ASH-305: tomorrow's briefing seed. The shutdown ritual's suggestion that a
- * task lead the next day's "suggested" list. It is NOT a commitment:
- * daily_outcomes stays the owner-accepted table and is never written from
- * here. A seed lives only as long as its task (cascade, so no orphan rows to
- * guard against), is idempotent per (day, task), and is dismissed by archiving
- * the row, never by deleting it, so a replayed shutdown cannot resurrect a
- * seed the owner dismissed (the unique key still holds).
+ * task lead the next day's "suggested" list. It is NOT a commitment: a task
+ * is committed for a day by its own status (ready or in progress), never by
+ * a row here, and nothing is written from this table back onto the task. A
+ * seed lives only as long as its task (cascade, so no orphan rows to guard
+ * against), is idempotent per (day, task), and is dismissed by archiving the
+ * row, never by deleting it, so a replayed shutdown cannot resurrect a seed
+ * the owner dismissed (the unique key still holds).
  */
 export const briefingSeeds = pgTable(
   "briefing_seeds",

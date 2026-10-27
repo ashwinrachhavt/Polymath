@@ -11,7 +11,7 @@ const stamp = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", ye
  * the passage it rests on, and the decisions the audit kept. A task that did
  * not come from a document renders nothing, so ordinary tasks stay quiet.
  */
-export function TaskEvidence({ items }: { items: Provenance }) {
+export function TaskEvidence({ items, taskId }: { items: Provenance; taskId: string }) {
   if (items.length === 0) return null;
   return (
     <div className="border-border mt-4 border-t pt-4">
@@ -51,6 +51,11 @@ export function TaskEvidence({ items }: { items: Provenance }) {
           </li>
         ))}
       </ul>
+      <p className="mt-3 text-xs">
+        <Link href={`/alfred/files?task=${taskId}`} className="underline-offset-4 hover:underline">
+          See all documents linked to this task
+        </Link>
+      </p>
     </div>
   );
 }

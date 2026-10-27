@@ -1,35 +1,61 @@
 import Link from "next/link";
 
 /*
- * The Work view tabs are task views only - Today, List, Board, Calendar and
- * Saved tasks. Whole features (Scheduler, Meetings, Brain dump, Weekly
- * review, Stone collection, Projects) are not tabs: they live where they are
- * used (the Calendar and Today surfaces link theirs) and in the More index
- * and command layer.
+ * Work's two destinations and three presentations.
+ *
+ * Today and List are the destinations: today is the owner's commitment, List
+ * is every task. Board and Calendar are not destinations - they render the
+ * same canonical rows three ways, so they live as a presentation switch on the
+ * same row rather than as tabs beside Today. Saved views were the Calendar's
+ * bookmark store and are gone from this row.
  */
-import type { WorkView } from "@/components/products/neuralflow/work-views";
+export type WorkDestination = "today" | "list";
 
-const views: { id: WorkView; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "list", label: "List" },
-  { id: "board", label: "Board" },
-  { id: "calendar", label: "Calendar" },
-  { id: "saved", label: "Saved tasks" },
+const destinations: { id: WorkDestination; label: string; href: string }[] = [
+  { id: "today", label: "Today", href: "/neuralflow/work?view=today" },
+  { id: "list", label: "List", href: "/neuralflow/work?view=saved" },
 ];
 
-export function WorkViewLinks({ active }: { active: WorkView }) {
+const presentations: { id: "saved" | "board" | "calendar"; label: string }[] = [
+  { id: "saved", label: "List" },
+  { id: "board", label: "Board" },
+  { id: "calendar", label: "Calendar" },
+];
+
+export function WorkViewLinks({ active, presentation }: { active: WorkDestination; presentation?: "saved" | "board" | "calendar" }) {
   return (
-    <nav aria-label="Work views" className="-mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 md:flex-wrap md:overflow-visible">
-      {views.map(({ id, label }) => (
-        <Link
-          key={id}
-          href={`/neuralflow/work?view=${id}`}
-          aria-current={active === id ? "page" : undefined}
-          className={`inline-flex min-h-9 items-center rounded-md px-3 text-[13px] font-medium transition-colors active:translate-y-px ${active === id ? "bg-app-accent text-app-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-        >
-          {label}
-        </Link>
-      ))}
-    </nav>
+    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1 border-b border-border">
+      <nav aria-label="Work views" className="flex gap-5">
+        {destinations.map(({ id, label, href }) => {
+          const current = active === id;
+          return (
+            <Link
+              key={id}
+              href={href}
+              aria-current={current ? "page" : undefined}
+              className={`-mb-px border-b-2 pb-2 text-[13px] transition-colors ${
+                current
+                  ? "border-primary font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+      <nav aria-label="Presentation" className="mb-1.5 flex gap-3 text-[12px]">
+        {presentations.map(({ id, label }) => (
+          <Link
+            key={id}
+            href={`/neuralflow/work?view=${id}`}
+            aria-current={presentation === id ? "true" : undefined}
+            className={presentation === id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+    </div>
   );
 }

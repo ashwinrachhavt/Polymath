@@ -9,12 +9,13 @@ test.afterAll(async () => {
   await removeSeededRuns();
 });
 
-test("home is the decision queue", async ({ page }) => {
+test("the root opens the conversation", async ({ page }) => {
   await page.goto("/");
-  // ASH-309: the root surface is the ranked decision queue; the Assistant
-  // conversation stays one click away at /alfred.
-  await expect(page).toHaveURL("/");
-  await expect(page.locator("#content h1")).toHaveText("Decisions");
+  // The conversation is home. The decision queue that used to hold this route
+  // lives in the header's notifications panel now, so "/" redirects rather
+  // than rendering a queue nobody reaches by typing the root.
+  await expect(page).toHaveURL(/\/alfred$/);
+  await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
   // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
 });
@@ -44,7 +45,7 @@ test("the Assistant home carries only the new conversation copy", async ({ page 
   }
 });
 
-test("the rail leads with Decisions, then Polymath", async ({ page }) => {
+test("the rail leads with the conversation, then Inbox", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/alfred");
   // The home streams: the shell hydrates and the Suspense boundary swaps its
@@ -55,11 +56,17 @@ test("the rail leads with Decisions, then Polymath", async ({ page }) => {
   // Destination links carry their label as an accessible name; the wordmark's
   // name comes from its visible text, so it does not match a[aria-label] and is
   // excluded by the query itself.
-  const labels = await page
-    .getByRole("navigation", { name: "Workspace", exact: true })
-    .locator("a[aria-label]")
-    .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")));
-  expect(labels.slice(0, 3)).toEqual(["Decisions", "Polymath", "Today"]);
+  // Retried, not read once: the rail mounts with the shell, and waitSettled can
+  // return before it is in the DOM, which made a one-shot read see no links.
+  // Decisions left the rail when its queue moved into the notifications panel.
+  await expect
+    .poll(async () =>
+      await page
+        .getByRole("navigation", { name: "Workspace", exact: true })
+        .locator("a[aria-label]")
+        .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")).slice(0, 3)),
+    )
+    .toEqual(["Polymath", "Inbox", "Work"]);
 });
 
 /*
@@ -73,7 +80,7 @@ test("canonical routes render", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page.locator("#content h1")).toHaveText("Decisions");
+  await expect(page).toHaveURL(/\/alfred$/);
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],
@@ -108,7 +115,7 @@ test("rail destinations are real screens", async ({ page }) => {
 });
 
 test("the launcher lists destinations and shared routes are reachable", async ({ page }) => {
-  await page.goto("/command-center/briefing");
+  await page.goto("/command-center/inbox");
   await page.getByRole("button", { name: "Open destinations" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
@@ -242,12 +249,19 @@ test("removed IA destinations redirect to their new homes, or 404 when the route
     ["/alfred/sources", "/projects"],
     ["/alfred/dossiers", "/projects"],
     ["/alfred/wiki", "/alfred/knowledge"],
-    ["/command-center/spending", "/command-center/briefing?tab=spending"],
+    ["/command-center/briefing", "/neuralflow/work?view=today"],
     ["/command-center/opportunities", "/command-center/relationships/people"],
     ["/neuralflow/focus", "/neuralflow/work"],
   ] as const) {
     await page.goto(`${from}?stale=param`);
-    await expect(page, from).toHaveURL(to);
+    // Briefing's bridge drops the query on purpose: the stale param is from a
+    // surface that no longer reads it, and forwarding it would land Work on an
+    // unknown view. Everything else keeps its params.
+    if (to.includes("?")) {
+      await expect(page, from).toHaveURL(new RegExp(to.replace("?", "\\?") + "$"));
+    } else {
+      await expect(page, from).toHaveURL(to);
+    }
   }
   // The old notebook address keeps the note deep link it once owned.
   await page.goto("/alfred/notebook?id=00000000-0000-4000-8000-000000000001");
@@ -285,7 +299,7 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
           })})`;
       }
     }
-    for (const path of ["/command-center/briefing", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
+    for (const path of ["/command-center/inbox", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
       await page.goto(path);
       // Axe must evaluate the settled page: the topbar buttons sit at
       // disabled:opacity-50 until hydration and transition to full opacity,
