@@ -1,24 +1,20 @@
 /*
  * "Turn it into anything" (Product Spec, the Omnibox inbox): a capture
  * becomes a starter draft in a writing template the owner picks - an email
- * draft, a product spec, a tech spec, an issue. These are deterministic
- * scaffolds, not generated prose: the template carries the section skeleton and
- * the capture rides along verbatim as quoted source material, so nothing the
- * draft says was invented by the system. The owner fills the bracketed slots.
- *
- * Lives in knowledge, not capture: a task's note and a bare note use the same
- * scaffolds, so capture is no longer the owner of this registry.
+ * draft, a product spec, a tech spec. These are deterministic scaffolds,
+ * not generated prose: the template carries the section skeleton and the capture
+ * rides along verbatim as quoted source material, so nothing the draft says
+ * was invented by the system. The owner fills the bracketed slots.
  */
 
-export const DRAFT_TEMPLATES = ["email", "product-spec", "tech-spec", "issue", "todo"] as const;
+export const DRAFT_TEMPLATES = ["email", "product-spec", "tech-spec", "linear-issue"] as const;
 export type DraftTemplate = (typeof DRAFT_TEMPLATES)[number];
 
 export const DRAFT_TEMPLATE_LABEL: Record<DraftTemplate, string> = {
   email: "Email draft",
   "product-spec": "Product spec",
   "tech-spec": "Tech spec",
-  issue: "Issue",
-  todo: "Todo",
+  "linear-issue": "Linear issue",
 };
 
 /*
@@ -31,48 +27,8 @@ export const DRAFT_TEMPLATE_KIND: Record<DraftTemplate, "note"> = {
   email: "note",
   "product-spec": "note",
   "tech-spec": "note",
-  issue: "note",
-  todo: "note",
+  "linear-issue": "note",
 };
-
-/*
- * A template is a starting point, not a state, so the column is plain text and
- * a note outlives the scaffold it began from. Reads therefore resolve
- * leniently: a slug no longer in the registry degrades to a plain note rather
- * than failing, because removing a template must never break a note someone is
- * already reading. Only a write rejects an unknown slug, where the caller can
- * still choose a real one.
- */
-export function resolveTemplate(slug: string | null | undefined): DraftTemplate | null {
-  if (typeof slug !== "string") return null;
-  return (DRAFT_TEMPLATES as readonly string[]).includes(slug) ? (slug as DraftTemplate) : null;
-}
-
-/** An unknown template slug on a write: problem+json `unknown_template`, status 422. */
-export class UnknownTemplateError extends Error {
-  readonly code = "unknown_template";
-  readonly status = 422;
-  constructor(readonly slug: string) {
-    super(`There is no "${slug}" template.`);
-    this.name = "UnknownTemplateError";
-  }
-}
-
-/** The write-side half of `resolveTemplate`: same lookup, an unknown slug throws. */
-export function requireTemplate(slug: string | null | undefined): DraftTemplate | null {
-  if (slug === null || slug === undefined) return null;
-  const template = resolveTemplate(slug);
-  if (!template) throw new UnknownTemplateError(slug);
-  return template;
-}
-
-/**
- * The templates a capture can turn into. A capture conversion quotes the
- * capture verbatim as source material; `todo` has no source section by
- * design, so offering it here would silently drop the text the person just
- * captured. Tasks consume `todo` directly and are not created from a capture.
- */
-export const CAPTURE_TEMPLATES = DRAFT_TEMPLATES.filter((template) => template !== "todo");
 
 const MAX_TITLE = 120;
 
@@ -149,7 +105,7 @@ export function draftBody(template: DraftTemplate, input: { firstLine: string; m
         ``,
         `- [ ] [What breaks if this is wrong?]`,
       ].join("\n") + SCAFFOLD_NOTE;
-    case "issue":
+    case "linear-issue":
       // ASH-285: a capture becomes a well-scoped issue draft. The acceptance
       // criteria start as checkboxes the owner edits, and the source stays
       // quoted below so every criterion traces back to what was captured.
@@ -176,18 +132,5 @@ export function draftBody(template: DraftTemplate, input: { firstLine: string; m
         ``,
         sourceSection(material),
       ].join("\n") + SCAFFOLD_NOTE;
-    case "todo":
-      // A todo has no captured source to stay faithful to, so it carries no
-      // source section and no "starter draft from a capture" footer: the first
-      // line is the task, and the notes hold the owner's definition of done.
-      return [
-        `## Task`,
-        ``,
-        firstLine,
-        ``,
-        `## Notes`,
-        ``,
-        `[What done looks like.]`,
-      ].join("\n");
   }
 }

@@ -140,7 +140,7 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { artifactVersions, artifacts, workingDrafts } from "@/domains/knowledge/schema";
-import { draftBody } from "@/domains/knowledge/templates";
+import { draftBody } from "@/domains/capture/draft-templates";
 import type { GenerationProvider } from "@/integrations/generation/provider";
 
 export class LinearIssueNoteError extends Error {
@@ -243,7 +243,7 @@ async function renderForSource(
   } catch {
     const firstLine = source.markdown.split("\n").map((line) => line.trim()).find(Boolean) ?? source.title;
     title = `Linear issue: ${firstLine}`;
-    body = draftBody("issue", { firstLine, material: source.markdown });
+    body = draftBody("linear-issue", { firstLine, material: source.markdown });
   }
   return { title, body, generated };
 }

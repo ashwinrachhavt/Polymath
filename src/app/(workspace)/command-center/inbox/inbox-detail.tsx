@@ -5,7 +5,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import { Button } from "@/components/ui/button";
 import { acceptProposalAction, makeDraftAction, makeDocumentAction,
   makeNoteAction, makeTaskAction, rejectProposalAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
-import { CAPTURE_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/knowledge/templates";
+import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
 import { CaptureBody } from "./capture-body";
@@ -373,7 +373,7 @@ export function InboxDetail({
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 Turn into
-                {CAPTURE_TEMPLATES.map((template) => (
+                {DRAFT_TEMPLATES.map((template) => (
                   <Button key={template} size="sm" variant="ghost" disabled={pending} onClick={() => saveAsDraft(template)}>
                     {DRAFT_TEMPLATE_LABEL[template]}
                   </Button>
