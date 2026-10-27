@@ -292,7 +292,9 @@
       showToast(
         result.delivered
           ? (isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!")
-          : "Saved on this device — will sync to Polymath when it is reachable.",
+          : result.unconfirmed
+            ? "On this device. This browser could not confirm Polymath received it yet."
+            : "Queued on this device. It syncs when Polymath is reachable.",
         "success",
       );
       refreshRecentCaptures();
@@ -322,7 +324,9 @@
       showToast(
         result.delivered
           ? `Page captured to Polymath! (${qualityLabel})`
-          : "Saved on this device — will sync to Polymath when it is reachable.",
+          : result.unconfirmed
+            ? "On this device. This browser could not confirm Polymath received it yet."
+            : "Queued on this device. It syncs when Polymath is reachable.",
         "success",
       );
       refreshRecentCaptures();
@@ -350,7 +354,9 @@
       showToast(
         result.delivered
           ? "Selection saved to Polymath!"
-          : "Saved on this device — will sync to Polymath when it is reachable.",
+          : result.unconfirmed
+            ? "On this device. This browser could not confirm Polymath received it yet."
+            : "Queued on this device. It syncs when Polymath is reachable.",
         "success",
       );
       refreshRecentCaptures();
