@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DRAFT_TEMPLATES, type DraftTemplate } from "@/domains/capture/draft-templates";
 import {
   ConflictError,
+  NotFoundError,
   StaleWriteError,
   acceptCaptureProposal,
   convertCaptureToDocument,
@@ -13,6 +14,7 @@ import {
   convertCaptureToTask,
   createCapture,
   rejectCaptureProposal,
+  retryCaptureUrl,
   setCaptureState,
   updateCaptureText,
 } from "@/domains/capture/commands";
@@ -171,6 +173,29 @@ export async function unparkCaptureAction(input: { captureId: string; expectedVe
   try {
     await unparkCapture(auth, input);
   } catch (error) {
+    return fail(error);
+  }
+  revalidate(auth);
+  return { ok: true };
+}
+
+const retryUrlInput = z.object({ captureId: z.string().uuid() });
+
+/**
+ * Fetch a failed capture's page again. The command needs no version: it does
+ * not edit what the person wrote, only re-queues the fetch. A capture from
+ * another workspace is a not-found by design.
+ */
+export async function retryCaptureUrlAction(input: { captureId: string }): Promise<Result> {
+  const parsed = retryUrlInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That capture could not be found. Reload the inbox." };
+  const auth = await authorize();
+  try {
+    await retryCaptureUrl(auth, parsed.data);
+  } catch (error) {
+    if (error instanceof ConflictError || error instanceof NotFoundError) {
+      return { ok: false, error: error.message };
+    }
     return fail(error);
   }
   revalidate(auth);

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   jsonb,
   pgEnum,
@@ -19,6 +20,20 @@ import { blobObjects } from "../audit/schema";
  */
 
 export const captureKind = pgEnum("capture_kind", ["text", "url", "file", "voice", "forwarded"]);
+/*
+ * How the text arrived, which decides what "the same capture" means. A
+ * selection or a page grab is one reading of a URL and many may exist; a
+ * url-reference is the URL itself, so it may exist only once.
+ */
+export const captureMode = pgEnum("capture_mode", ["authored", "selection", "page", "url-reference", "blob"]);
+export const captureFetchOutcome = pgEnum("capture_fetch_outcome", [
+  "pending",
+  "acquired",
+  "error-page",
+  "access-denied",
+  "empty",
+  "provider-unavailable",
+]);
 export const captureSource = pgEnum("capture_source", [
   "quick_capture",
   "email",
@@ -64,6 +79,18 @@ export const captures = pgTable(
     rawPayload: jsonb("raw_payload").notNull(),
     text: text("text"),
     url: text("url"),
+    /**
+     * The command always supplies this and the 0258 backfill filled history, so
+     * there is no default: a row that arrives without a mode is a bug, not a
+     * silently-authored capture.
+     */
+    captureMode: captureMode("capture_mode").notNull(),
+    /** The server's reading of the URL, kept apart from what the person sent. */
+    fetchedText: text("fetched_text"),
+    /** sha256 of the arriving text; null for blob and url-reference. */
+    contentHash: text("content_hash"),
+    /** Null until a fetch is attempted. */
+    fetchOutcome: captureFetchOutcome("fetch_outcome"),
     blobId: uuid("blob_id").references(() => blobObjects.id, { onDelete: "set null" }),
     processingState: captureProcessingState("processing_state").notNull().default("unprocessed"),
     /** Suggested by enrichment; never overwrites a person-supplied title. */
@@ -103,10 +130,22 @@ export const captures = pgTable(
   (t) => [
     // Partial index: the Inbox queue is the unprocessed rows.
     index("captures_inbox_idx").on(t.workspaceId, t.createdAt).where(sql`processing_state in ('unprocessed', 'classifying')`),
-    // Duplicate detection on the provider identity and URL that arrived.
-    uniqueIndex("captures_workspace_source_url_key")
+    // Identity on what actually arrived: one article yields many selections and
+    // one page grab, but the identical text twice is the same capture. A bare
+    // url-reference is the URL itself and gets its own rule below.
+    uniqueIndex("captures_identity_key")
+      .on(t.workspaceId, t.source, t.url, t.captureMode, t.contentHash)
+      .where(sql`url is not null and capture_mode <> 'url-reference'`),
+    uniqueIndex("captures_url_reference_key")
       .on(t.workspaceId, t.source, t.url)
-      .where(sql`url is not null`),
+      .where(sql`url is not null and capture_mode = 'url-reference'`),
+    // Uniqueness over a nullable column does not dedupe (btree is NULLS
+    // DISTINCT), so a caller that forgot the hash would silently switch
+    // identity off for that row. The database refuses it.
+    check(
+      "captures_identity_hash_present",
+      sql`url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null`,
+    ),
   ],
 );
 

@@ -63,8 +63,8 @@ export async function seedCaptureProposal(input: { text: string; kind: "task" | 
     const workspaceId = await workspaceIdOf(client);
     if (!workspaceId) return null;
     const [capture] = await client<{ id: string }[]>`
-      insert into captures (workspace_id, kind, text, raw_payload)
-      values (${workspaceId}, 'text', ${input.text}, ${JSON.stringify({ text: input.text })}::jsonb)
+      insert into captures (workspace_id, kind, text, raw_payload, capture_mode)
+      values (${workspaceId}, 'text', ${input.text}, ${JSON.stringify({ text: input.text })}::jsonb, 'authored')
       returning id
     `;
     const [proposal] = await client<{ id: string }[]>`

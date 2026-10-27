@@ -25,7 +25,7 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 
-import { convertCaptureToDocument, ConflictError, StaleWriteError } from "@/domains/capture/commands";
+import { convertCaptureToDocument, createCapture, ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { proposeZettels } from "@/domains/knowledge/zettels";
 
@@ -42,7 +42,7 @@ afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 async function addTextCapture(db: NonNullable<typeof holder.db>, ws: string, userId: string, text: string | null) {
   const [row] = await db
     .insert(captures)
-    .values({ workspaceId: ws, kind: "text", rawPayload: text ? { text } : {}, text, createdBy: userId, updatedBy: userId })
+    .values({ workspaceId: ws, kind: "text", captureMode: "authored", rawPayload: text ? { text } : {}, text, createdBy: userId, updatedBy: userId })
     .returning();
   return row;
 }
@@ -130,5 +130,44 @@ suite("convertCaptureToDocument", () => {
     const foreign = await addTextCapture(holder.db!, other.workspaceId, other.userId, BODY);
     await expect(convertCaptureToDocument(auth, { captureId: foreign.id, expectedVersion: foreign.version }))
       .rejects.toBeInstanceOf(StaleWriteError);
+  });
+
+  it("carries the capture's url onto the document", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-url-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const url = `https://example.com/provenance-${Date.now()}`;
+    const capture = await createCapture(auth, { text: BODY, url, mode: "selection" });
+
+    const { documentId } = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
+
+    const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, documentId!));
+    expect(doc.sourceUrl).toBe(url);
+    expect(doc.title).toBe("Atomic notes compound.");
+  });
+
+  it("refuses a second capture of an article already in the library, creating no second document", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-dup-url-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const url = `https://example.com/duplicate-${Date.now()}`;
+    const first = await createCapture(auth, { text: BODY, url, mode: "selection" });
+    const second = await createCapture(auth, { text: `${BODY}\n\nA second reading.`, url, mode: "selection" });
+
+    const { documentId } = await convertCaptureToDocument(auth, { captureId: first.id, expectedVersion: first.version });
+
+    const error = await convertCaptureToDocument(auth, { captureId: second.id, expectedVersion: second.version })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect((error as ConflictError).code).toBe("conflict");
+    expect((error as Error).message).toBe("That article is already in your library.");
+
+    const filed = await holder.db!
+      .select({ id: documents.id })
+      .from(documents)
+      .where(and(eq(documents.workspaceId, workspaceId), eq(documents.sourceUrl, url)));
+    expect(filed).toHaveLength(1);
+    expect(filed[0].id).toBe(documentId);
+
+    const [stillOpen] = await holder.db!.select().from(captures).where(eq(captures.id, second.id));
+    expect(stillOpen.processingState).not.toBe("converted");
   });
 });

@@ -111,4 +111,29 @@ suite("POST /api/v1/captures duplicate contract", () => {
     const rows = await holder.db!.select().from(captures).where(eq(captures.workspaceId, workspaceId));
     expect(rows).toHaveLength(1);
   });
+
+  it("records an explicit selection mode", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-selection-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(captureRequest({ text: "fragment", url: "https://example.com/s", mode: "selection" }), undefined);
+    expect(res.status).toBe(201);
+    const capture = (await res.json()).capture;
+    expect(capture.captureMode).toBe("selection");
+  });
+
+  it("treats an address-only body as a url reference", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-bare-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(captureRequest({ url: "https://example.com/bare" }), undefined);
+    expect(res.status).toBe(201);
+    expect((await res.json()).capture.kind).toBe("url");
+  });
+
+  it("still accepts a body with no mode from an older extension", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-legacy-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(captureRequest({ text: "legacy", url: "https://example.com/legacy" }), undefined);
+    expect(res.status).toBe(201);
+    expect((await res.json()).capture.captureMode).toBe("page");
+  });
 });

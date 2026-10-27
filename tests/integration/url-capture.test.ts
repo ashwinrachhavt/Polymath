@@ -32,6 +32,9 @@ vi.mock("@/integrations/object-store/object-store", () => ({
 }));
 
 import { captureUrl } from "@/domains/knowledge/capture-url";
+import * as commands from "@/domains/capture/commands";
+import { captures } from "@/domains/capture/schema";
+import { outboxEvents } from "@/domains/audit/schema";
 
 let server: Server;
 let base: string;
@@ -209,5 +212,53 @@ suite("URL capture (real Postgres)", () => {
     const auth = await workspace();
     expect(await captureUrl(auth, { url: "http://169.254.169.254/latest/meta-data" })).toMatchObject({ ok: false, documentId: null });
     expect(await docsFor(auth.workspaceId)).toHaveLength(0);
+  });
+});
+
+/*
+ * A failed inbox fetch is retried on the capture itself. Re-pasting the
+ * address is a duplicate and enqueues nothing, so a retry is its own command:
+ * a fresh dispatch key (the original is already dispatched and would dedupe
+ * into nothing), the reason cleared, and the outcome back to pending.
+ */
+suite("inbox capture fetch retry", () => {
+  it("re-enqueues a failed fetch and clears the reason", async () => {
+    const auth = await workspace();
+    const capture = await commands.createCapture(auth, { text: `https://example.com/broken-${crypto.randomUUID()}` });
+    await holder.db!.update(captures)
+      .set({ processingState: "failed", failureReason: "The page could not be read: timeout.", fetchOutcome: "provider-unavailable" })
+      .where(eq(captures.id, capture.id));
+    const result = await commands.retryCaptureUrl(auth, { captureId: capture.id });
+    expect(result.enqueued).toBe(true);
+    const events = await holder.db!.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(2);
+    const [after] = await holder.db!.select().from(captures).where(eq(captures.id, capture.id));
+    expect(after.failureReason).toBeNull();
+    expect(after.fetchOutcome).toBe("pending");
+  });
+
+  it("refuses to retry a capture with no address", async () => {
+    const auth = await workspace();
+    const capture = await commands.createCapture(auth, { text: "a thought" });
+    await expect(commands.retryCaptureUrl(auth, { captureId: capture.id }))
+      .rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("refuses a capture from another workspace", async () => {
+    const owner = await workspace();
+    const other = await workspace();
+    const capture = await commands.createCapture(owner, { text: `https://example.com/cross-${crypto.randomUUID()}` });
+    await expect(commands.retryCaptureUrl(other, { captureId: capture.id }))
+      .rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("replays a repeated idempotency key without a second event", async () => {
+    const auth = await workspace();
+    const capture = await commands.createCapture(auth, { text: `https://example.com/once-${crypto.randomUUID()}` });
+    const key = crypto.randomUUID();
+    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({ enqueued: true });
+    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({ enqueued: true });
+    const events = await holder.db!.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(2);
   });
 });

@@ -196,6 +196,7 @@ suite("daybook (Neon)", () => {
     await holder.db!.insert(captures).values({
       workspaceId: ws.workspaceId,
       kind: "text",
+      captureMode: "authored",
       rawPayload: { text: "a captured thought" },
       text: "a captured thought",
       processingState: "enriched",

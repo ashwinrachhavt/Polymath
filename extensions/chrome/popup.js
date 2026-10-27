@@ -106,11 +106,15 @@
       history: { title: `[Page] ${page.title}`, url: page.url, type: "page-capture", quality: page.quality },
     });
     const qualityLabel = page.quality === "rich" ? "Rich capture \u2713" : "Basic capture";
-    flashStatus(
-      flashContainer,
-      result.delivered ? `Page captured! (${qualityLabel})` : "Saved on this device — will sync when Polymath is reachable.",
-      "success",
-    );
+    let message;
+    if (result.delivered) {
+      message = `Page captured! (${qualityLabel})`;
+    } else if (result.unconfirmed) {
+      message = "On this device. This browser could not confirm Polymath received it yet.";
+    } else {
+      message = "Queued on this device. It syncs when Polymath is reachable.";
+    }
+    flashStatus(flashContainer, message, "success");
     refreshOutbox();
   }
 
@@ -180,12 +184,16 @@
         selectedText: text,
         history: { title: text.slice(0, 80), url: tab?.url || "", type: "quick-note" },
       });
+      let message;
+      if (result.delivered) {
+        message = "Note saved!";
+      } else if (result.unconfirmed) {
+        message = "On this device. This browser could not confirm Polymath received it yet.";
+      } else {
+        message = "Queued on this device. It syncs when Polymath is reachable.";
+      }
       $("#note-input").value = "";
-      flashStatus(
-        $("#quick-note"),
-        result.delivered ? "Note saved!" : "Saved on this device — will sync when Polymath is reachable.",
-        "success",
-      );
+      flashStatus($("#quick-note"), message, "success");
       refreshOutbox();
     } catch (err) {
       flashStatus($("#quick-note"), `Error: ${err.message}`, "error");

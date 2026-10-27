@@ -11,7 +11,8 @@ import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type 
 import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-proposal";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
-import { findCaptureIdByUrl } from "./queries";
+import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
+import { findCaptureByUrl } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
@@ -63,91 +64,115 @@ export class NotFoundError extends Error {
   readonly code = "not_found";
 }
 
-function isUniqueViolation(cause: unknown): boolean {
-  return (cause as { cause?: { code?: string } })?.cause?.code === "23505";
-}
-
 export async function createCapture(
   auth: AuthContext,
   input: {
     text: string;
     /**
-     * A URL-only capture is the inbox's paste path; a page grab from the
-     * companion carries the article text too, so the URL is provenance, not
-     * the capture itself. Only url-only captures dedupe on URL.
+     * A page grab from the companion carries the article text too, so the URL
+     * is provenance, not the capture itself. Identity is mode-aware: a
+     * url-reference is the address itself and may exist once per source, while
+     * a selection or a page is one reading of that address and dedupes on the
+     * text that actually arrived.
      */
     url?: string;
     title?: string;
+    /** Omitted means the server infers it from what arrived. */
+    mode?: CaptureMode;
     source?: (typeof captureSource.enumValues)[number];
     idempotencyKey?: string;
   },
 ) {
   const trimmed = input.text.trim();
   if (!trimmed) throw new ConflictError("Nothing to capture.");
-  const isUrl = !input.url && /^https?:\/\/\S+$/i.test(trimmed);
-  const url = isUrl ? trimmed : (input.url?.trim() || null);
-  try {
-    return await withTransaction(async (tx) => {
-      const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createCapture", ...input }, async () => {
-        const [capture] = await tx
-          .insert(captures)
-          .values({
-            workspaceId: auth.workspaceId,
-            kind: isUrl ? "url" : "text",
-            source: input.source ?? "quick_capture",
-            rawPayload: {
-              ...(url ? { url } : {}),
-              ...(isUrl ? {} : { text: trimmed }),
-              ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-            },
-            text: isUrl ? null : trimmed,
-            url,
-            createdBy: auth.userId,
-            updatedBy: auth.userId,
-          })
-          .returning();
-        await recordAudit(
-          auth,
-          { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind}` },
-          tx,
-        );
-        // A URL capture promises the page's content; a page grab from the
-        // companion carries its own text, but that text is flattened innerText,
-        // not markdown — the scrape replaces it with the page's real structure
-        // once it lands (the grab survives in rawPayload). The scrape is long
-        // work, so it parks in the outbox instead of holding the request open.
-        if (capture.url) {
-          await enqueueOutbox(tx, auth, {
-            topic: CAPTURE_URL_CONTENT_TOPIC,
-            payload: { captureId: capture.id, url: capture.url },
-            dispatchKey: `capture-url-content:${capture.id}`,
-          });
+  const mode = input.mode ?? inferCaptureMode({ text: trimmed, url: input.url, kind: undefined });
+  const isUrlReference = mode === "url-reference";
+  const url = isUrlReference ? (input.url?.trim() || trimmed) : (input.url?.trim() || null);
+  const source = input.source ?? "quick_capture";
+  const text = isUrlReference ? null : trimmed;
+  // The arriving text is the working text at insert; fetchedText only appears
+  // later, once a fetch runs.
+  const working = workingText({ captureMode: mode, text, fetchedText: null });
+  const hash = mode === "blob" || working === null ? null : contentHash(working);
+  const result = await withTransaction<typeof captures.$inferSelect | { survivorId: string }>(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createCapture", ...input }, async () => {
+      // onConflictDoNothing, not a caught 23505: a unique violation aborts the
+      // transaction, and the survivor's title is written below in this one.
+      const [capture] = await tx
+        .insert(captures)
+        .values({
+          workspaceId: auth.workspaceId,
+          kind: isUrlReference ? "url" : "text",
+          source,
+          rawPayload: {
+            ...(url ? { url } : {}),
+            ...(isUrlReference ? {} : { text: trimmed }),
+            ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+          },
+          text,
+          url,
+          captureMode: mode,
+          contentHash: hash,
+          title: input.title?.trim() || null,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!capture) {
+        // The survivor is the row the identity indexes already hold. What this
+        // submission added and the first did not - a title - is written onto
+        // it here, in the same transaction as the deduped insert. A submission
+        // that supplied no title writes nothing: a re-capture must not clear
+        // the survivor's title, whether the person or enrichment supplied it.
+        const survivorId = url ? await findCaptureByUrl(auth, { source, url, mode, contentHash: hash }) : undefined;
+        if (!survivorId) throw new ConflictError("That URL is already in the inbox.");
+        const lateTitle = input.title?.trim();
+        if (lateTitle) {
+          await tx
+            .update(captures)
+            .set({ title: lateTitle, updatedAt: new Date(), updatedBy: auth.userId })
+            .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, survivorId)));
         }
-        // Enrichment runs after URL content lands, so the ladder classifies
-        // the fetched reading text, not just the address.
+        return { survivorId };
+      }
+      await recordAudit(
+        auth,
+        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind} (${mode})` },
+        tx,
+      );
+      // Only a page or a bare address promises the page's content, so only
+      // those fetch: a selection is the words the person chose, and fetching
+      // the page around them would add text they did not capture. A page grab
+      // from the companion carries its own text, but that text is flattened
+      // innerText, not markdown - the fetch fills `fetchedText` with the page's
+      // real structure beside it (the grab stays the working text and survives
+      // in rawPayload). The fetch is long work, so it parks in the outbox
+      // instead of holding the request open.
+      if (capture.url && (mode === "page" || mode === "url-reference")) {
         await enqueueOutbox(tx, auth, {
-          topic: CAPTURE_ENRICHMENT_TOPIC,
-          payload: { captureId: capture.id },
-          dispatchKey: `capture-enrichment:${capture.id}`,
-          ...(capture.kind === "url" ? { availableAt: new Date(Date.now() + 30_000) } : {}),
+          topic: CAPTURE_URL_CONTENT_TOPIC,
+          payload: { captureId: capture.id, url: capture.url },
+          dispatchKey: `capture-url-content:${capture.id}`,
         });
-        return capture;
+      }
+      // Enrichment runs after URL content lands, so the ladder classifies
+      // the fetched reading text, not just the address.
+      await enqueueOutbox(tx, auth, {
+        topic: CAPTURE_ENRICHMENT_TOPIC,
+        payload: { captureId: capture.id },
+        dispatchKey: `capture-enrichment:${capture.id}`,
+        ...(capture.kind === "url" ? { availableAt: new Date(Date.now() + 30_000) } : {}),
       });
-      return value;
+      return capture;
     });
-  } catch (cause) {
-    if (isUniqueViolation(cause)) {
-      // The only unique constraint a capture can hit is (workspace, source, url),
-      // so point the caller at the row that is already there: told it exists
-      // becomes a link to it. The API keeps its four-member 409 body byte-exact
-      // (companion contract); the id rides along as an additive member.
-      const existing = url
-        ? await findCaptureIdByUrl(auth, { source: input.source ?? "quick_capture", url })
-        : undefined;
-      throw new ConflictError("That URL is already in the inbox.", existing);
-    }
-    throw cause;
-  }
+    return value;
+  });
+  // Thrown after commit so the survivor's title write is not rolled back with
+  // the 409. The API keeps its four-member body byte-exact (companion
+  // contract); the id rides along as an additive member.
+  if ("survivorId" in result) throw new ConflictError("That URL is already in the inbox.", result.survivorId);
+  return result;
 }
 
 /**
@@ -238,6 +263,9 @@ export async function createFileCapture(
           // Content decides the kind, same as the verdict decides the type: a
           // sniffed audio payload is a voice capture, everything else a file.
           kind: mimeType.startsWith("audio/") ? "voice" : "file",
+          // A blob is the bytes, not a reading of text: it never dedupes on
+          // content, so it carries no content hash.
+          captureMode: "blob",
           source: input.source ?? "quick_capture",
           rawPayload: {
             filename,
@@ -445,44 +473,70 @@ export async function convertCaptureToDocument(
     throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
   }
 
-  // The enriched text is the document when the ladder produced it; the raw
-  // paste otherwise. Only text carries in - a file capture's bytes are
-  // already stored under their own filename.
-  const body = (capture.cleanText ?? capture.text ?? "").trim();
+  // A page files the fetched reading, a selection its selection. Only text
+  // carries in - a file capture's bytes are already stored under their own
+  // filename.
+  const body = workingText(capture)?.trim() ?? "";
   if (!body) throw new ConflictError("That capture has no text to file.");
   const firstLine = body.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured text";
   const title = input.title?.trim() || capture.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
 
-  const result = await intakeFile(auth, {
-    bytes: new TextEncoder().encode(body),
-    filename: `${title}.md`,
-    title,
-    verdict: { ok: true, mimeType: "text/markdown" },
-    origin: "capture",
-    inTransaction: async (tx, { documentId }) => {
-      const [updated] = await tx
-        .update(captures)
-        .set({
-          processingState: "converted",
-          convertedType: "document",
-          convertedId: documentId,
-          convertedAt: new Date(),
-          version: sql`${captures.version} + 1`,
-          updatedAt: new Date(),
-          updatedBy: auth.userId,
-        })
-        .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
-        .returning();
-      if (!updated) {
-        throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+  // Drizzle wraps the driver error, so the Postgres code sits one level down
+  // (the probe showed `{ query, params, cause: PostgresError }`). Matching the
+  // constraint name too keeps an unrelated 23505 out of this message.
+  const isDuplicateSourceUrl = (cause: unknown) => {
+    let current: unknown = cause;
+    for (let depth = 0; depth < 4 && current; depth += 1) {
+      const error = current as { code?: unknown; constraint_name?: unknown };
+      if (error.code === "23505" && (!error.constraint_name || error.constraint_name === "documents_workspace_source_url_key")) {
+        return true;
       }
-      await recordAudit(
-        auth,
-        { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
-        tx,
-      );
-    },
-  });
+      current = (current as { cause?: unknown }).cause;
+    }
+    return false;
+  };
+
+  let result: Awaited<ReturnType<typeof intakeFile>>;
+  try {
+    result = await intakeFile(auth, {
+      bytes: new TextEncoder().encode(body),
+      filename: `${title}.md`,
+      title,
+      verdict: { ok: true, mimeType: "text/markdown" },
+      origin: "capture",
+      sourceUrl: capture.url ?? undefined,
+      inTransaction: async (tx, { documentId }) => {
+        const [updated] = await tx
+          .update(captures)
+          .set({
+            processingState: "converted",
+            convertedType: "document",
+            convertedId: documentId,
+            convertedAt: new Date(),
+            version: sql`${captures.version} + 1`,
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+          })
+          .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
+          .returning();
+        if (!updated) {
+          throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+        await recordAudit(
+          auth,
+          { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
+          tx,
+        );
+      },
+    });
+  } catch (cause) {
+    // documents_workspace_source_url_key is one document per URL per
+    // workspace; a second capture of the same article is a refusal with
+    // somewhere to go, not a driver error. Drizzle wraps the PostgresError, so
+    // the code can sit one level down.
+    if (isDuplicateSourceUrl(cause)) throw new ConflictError("That article is already in your library.");
+    throw cause;
+  }
   return { documentId: result.documentId, fileId: result.fileId };
 }
 
@@ -654,6 +708,70 @@ export async function updateCaptureText(
         return updated;
       },
     );
+    return value;
+  });
+}
+
+/**
+ * Fetch a failed capture's page again, without inventing a second capture.
+ * Re-pasting the address is a duplicate and enqueues nothing, so this is the
+ * explicit way back for a page that failed to load (the parked/unpark detour
+ * that used to be the only one is not a person's intent).
+ *
+ * The fetch is a new attempt, so it needs a new dispatch key: the original
+ * `capture-url-content:<id>` is already dispatched and a repeat would dedupe
+ * into nothing. State and outcome go back to waiting; the handler's own guard
+ * decides whether the row still needs a page. The caller is the conversation's
+ * owner rule - the capture's author or a workspace owner.
+ */
+export async function retryCaptureUrl(
+  auth: AuthContext,
+  input: { captureId: string; idempotencyKey?: string },
+): Promise<{ enqueued: boolean }> {
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "retryCaptureUrl", captureId: input.captureId }, async () => {
+      const [capture] = await tx
+        .select()
+        .from(captures)
+        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+        .limit(1);
+      if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      if (!capture.url) throw new ConflictError("That capture has no address to read.");
+      if (capture.createdBy !== auth.userId && auth.role !== "owner") {
+        // A capture someone else owns is indistinguishable from one that is
+        // not there: the same rule every tenant-scoped read follows.
+        throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      }
+      const [updated] = await tx
+        .update(captures)
+        .set({
+          fetchOutcome: "pending",
+          failureReason: null,
+          version: sql`${captures.version} + 1`,
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+        })
+        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
+        .returning({ id: captures.id });
+      if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      const event = await enqueueOutbox(tx, auth, {
+        topic: CAPTURE_URL_CONTENT_TOPIC,
+        payload: { captureId: capture.id, url: capture.url },
+        // A repeated key enqueues nothing, so each retry gets its own.
+        dispatchKey: `capture-url-retry:${capture.id}:${Date.now()}`,
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "capture.url_retry_requested",
+          subjectType: "capture",
+          subjectId: capture.id,
+          summary: "Page fetch retried",
+        },
+        tx,
+      );
+      return { enqueued: event.enqueued };
+    });
     return value;
   });
 }

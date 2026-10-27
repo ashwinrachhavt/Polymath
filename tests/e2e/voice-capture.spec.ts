@@ -42,11 +42,15 @@ test("a voice note records, transcribes, and converts like any capture", async (
   await dialog.getByRole("button", { name: "Stop and save", exact: true }).click();
 
   // The upload navigates to the new capture: a voice note whose transcript
-  // has not landed yet says so plainly - no words to convert yet.
+  // has not landed yet says so plainly - no words to convert yet. The hint
+  // states this deployment's truth, so it names whichever applies: the
+  // transcript is on its way, or transcription could not run at all and the
+  // capture carries the reason (TRANSCRIPTION_PROVIDER unset). Asserting the
+  // state rather than one sentence keeps the journey honest in both harnesses.
   await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
   const detail = page.getByRole("article");
   await expect(detail.getByText("Voice", { exact: true })).toBeVisible();
-  await expect(detail.getByText("The transcript lands here once transcription runs; then it works like any text capture.")).toBeVisible();
+  await expect(detail.getByText(/transcription (is not configured|runs)/i).first()).toBeVisible();
   await expect(detail.getByRole("button", { name: "Save as note", exact: true })).toHaveCount(0);
 
   // Deliberate dispatcher passes: transcription is async by design, and the

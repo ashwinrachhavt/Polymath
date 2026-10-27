@@ -589,6 +589,13 @@
       "when": 1793200006000,
       "tag": "0257_drop_daily_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1793250000001,
+      "tag": "0258_capture_mode_and_identity",
+      "breakpoints": true
     }
   ]
 }

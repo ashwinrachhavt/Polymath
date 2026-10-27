@@ -179,12 +179,15 @@
     btn.textContent = "Saving...";
     try {
       const result = await AlfredAPI.queueCapture({
+        mode: "authored",
         text: content,
         history: { title: content.slice(0, 80), url: "", type: "quick-note" },
       });
       $("#note-modal").classList.add("hidden");
       if (result.delivered) {
         await loadNotes();
+      } else if (result.unconfirmed) {
+        alert("Saved on this device. This browser could not confirm the server received it yet.");
       } else {
         alert("Saved on this device. It will appear in the inbox once it syncs.");
       }

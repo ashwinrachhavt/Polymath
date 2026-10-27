@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { acceptProposalAction, makeDraftAction, makeDocumentAction,
-  makeNoteAction, makeTaskAction, rejectProposalAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
+  makeNoteAction, makeTaskAction, rejectProposalAction, retryCaptureUrlAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
@@ -84,13 +84,30 @@ function confidenceLabel(confidence: string | null): string | null {
   return `${Math.round(value * 100)}% sure`;
 }
 
+/**
+ * The fetch outcomes that mean the page was not read and asking again could
+ * change that. `acquired` speaks for itself; `pending` is a read in flight.
+ */
+const FETCH_FAILURES = new Set(["error-page", "access-denied", "empty", "provider-unavailable"]);
+
 export function InboxDetail({
   capture,
   priorWriting,
   proposals = [],
 }: {
   proposals?: CaptureSuggestion[];
-  capture: (Omit<InboxRow, "preview"> & { text: string | null; cleanText?: string | null; failureReason?: string | null; rawPayload?: unknown }) | null;
+  capture: (Omit<InboxRow, "preview"> & {
+    text: string | null;
+    cleanText?: string | null;
+    failureReason?: string | null;
+    /**
+     * What the page fetch produced (ed97a9b): null until a fetch is attempted,
+     * so a caller that does not pass it reads the legacy way - a reason on a
+     * capture with no text of its own means the page was not read.
+     */
+    fetchOutcome?: string | null;
+    rawPayload?: unknown;
+  }) | null;
   /** What the workspace already holds about this capture's URL; null for non-URL captures. */
   priorWriting?: PriorWriting | null;
 }) {
@@ -165,6 +182,26 @@ export function InboxDetail({
   // A name only when one exists apart from the body; an unlabeled text capture
   // renders its body directly instead of the derived first line twice.
   const heading = captureDetailHeading(capture);
+  /*
+   * A page that was not read says why, and only a read that can be repeated is
+   * offered again. `fetchOutcome` is the record of the attempt (ed97a9b); a
+   * retained reason on a capture with no text of its own is the same fact for
+   * a caller that has not passed the outcome through, because enrichment
+   * clears the reason as soon as any text exists.
+   */
+  const fetchFailed =
+    capture.fetchOutcome !== undefined && capture.fetchOutcome !== null
+      ? FETCH_FAILURES.has(capture.fetchOutcome)
+      : Boolean(capture.failureReason);
+  const captureId = capture.id;
+
+  function retryFetch() {
+    setError(null);
+    startTransition(async () => {
+      const result = await retryCaptureUrlAction({ captureId });
+      if (!result.ok) setError(result.error);
+    });
+  }
 
   function saveAsDocument() {
     setError(null);
@@ -217,7 +254,11 @@ export function InboxDetail({
             {heading}
           </h2>
         ) : null}
-        {capture.kind === "url" && capture.url && isHttpUrl(capture.url) && capture.url !== (heading ?? title) ? (
+        {/* The address a capture came from, shown whenever it is not already
+            the heading or the body. A selection keeps the person's words as
+            its text and the page as its origin, so the URL is the provenance
+            line rather than the content. */}
+        {capture.url && isHttpUrl(capture.url) && capture.url !== (heading ?? title) ? (
           <a
             href={capture.url}
             target="_blank"
@@ -262,26 +303,42 @@ export function InboxDetail({
               label="From the page"
               editable={state === "unprocessed" || state === "classifying"}
             />
-          ) : capture.failureReason ? (
-            <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
-              {capture.failureReason}
-            </p>
-          ) : (
+          ) : fetchFailed ? (
+            <div className="max-w-[70ch]" role="status">
+              <p className="text-[13px] text-muted-foreground">
+                {capture.failureReason ?? "The page could not be read."}
+              </p>
+              <Button className="mt-2" size="sm" variant="outline" disabled={pending} onClick={retryFetch}>
+                Retry
+              </Button>
+            </div>
+          ) : capture.fetchOutcome === "acquired" ? null : (
             <p className="max-w-[70ch] text-[13px] text-muted-foreground">
               Reading the page now. The text lands here when it arrives.
             </p>
           )
         ) : (
-          <CaptureBody
-            captureId={capture.id}
-            version={capture.version}
-            text={capture.text ?? ""}
-            label={capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
-            // Only conversion closes editing: an enriched capture's words are
-            // still the owner's working text (an edit re-runs classification);
-            // after conversion the derived task or note owns the text.
-            editable={state === "unprocessed" || state === "classifying" || state === "enriched"}
-          />
+          <>
+            {/* A capture whose words never arrived says why above its (empty)
+                body. A voice note already says it in the hint beside the
+                actions, so this stays out of its way rather than printing the
+                same sentence twice. */}
+            {capture.failureReason && !voiceWithoutTranscript ? (
+              <p className="mb-3 max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+                {capture.failureReason}
+              </p>
+            ) : null}
+            <CaptureBody
+              captureId={capture.id}
+              version={capture.version}
+              text={capture.text ?? ""}
+              label={capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
+              // Only conversion closes editing: an enriched capture's words are
+              // still the owner's working text (an edit re-runs classification);
+              // after conversion the derived task or note owns the text.
+              editable={state === "unprocessed" || state === "classifying" || state === "enriched"}
+            />
+          </>
         )}
       </div>
 
@@ -368,7 +425,7 @@ export function InboxDetail({
               </span>
             ) : voiceWithoutTranscript ? (
               <span className="flex items-center text-xs text-muted-foreground">
-                The transcript lands here once transcription runs; then it works like any text capture.
+                {capture.failureReason ?? "The transcript lands here once transcription runs; then it works like any text capture."}
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">

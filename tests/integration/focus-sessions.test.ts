@@ -174,7 +174,7 @@ suite("focus sessions", () => {
 async function seedCapture(workspaceId: string, userId: string, title: string) {
   const [capture] = await db
     .insert(captures)
-    .values({ workspaceId, kind: "text", rawPayload: { text: title }, text: title, title, createdBy: userId, updatedBy: userId })
+    .values({ workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: title }, text: title, title, createdBy: userId, updatedBy: userId })
     .returning();
   return capture;
 }

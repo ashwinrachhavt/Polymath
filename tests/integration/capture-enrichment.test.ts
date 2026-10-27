@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { workspaces } from "@/domains/identity/schema";
-import { captures } from "@/domains/capture/schema";
+import { captureProposals, captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -11,8 +11,11 @@ import type { AuthContext } from "@/domains/identity/resolve";
  * Verified here: enqueue on every capture (URL tier delayed 30s so the scrape
  * lands first), Tier 0+1 landing on the row without any model, the LLM tier
  * writing title/domain/tags as signal, unconfigured-provider skipping instead
- * of failing, and a readable-but-wrong model answer degrading to enriched
- * with the deterministic tiers intact rather than retrying forever.
+ * of failing, a readable-but-wrong model answer degrading to enriched with the
+ * deterministic tiers intact rather than retrying forever, an enabled-but-
+ * unfunded Jev tier degrading to the same ladder and saying so, and Tier 0
+ * reading the mode's working text (the fetched page for a page capture, the
+ * selection for a selection).
  */
 
 const generate = vi.fn();
@@ -63,6 +66,21 @@ beforeEach(() => {
     generate: (...args: unknown[]) => generate(...(args as [])),
   }) as never);
 });
+
+afterEach(() => vi.unstubAllEnvs());
+
+/** The fetch's own event, so a URL capture can be enriched without waiting for a scrape. */
+async function settleUrlFetch(captureId: string) {
+  const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+  const urlEvent = events.find((e) => (e.payload as { captureId: string }).captureId === captureId);
+  if (!urlEvent) throw new Error("no url fetch event enqueued");
+  await db.update(outboxEvents).set({ status: "dispatched" }).where(eq(outboxEvents.id, urlEvent.id));
+}
+
+const LONG_PROSE = Array.from(
+  { length: 12 },
+  (_, i) => `Sentence ${i} of prose long enough that the model tier is worth asking.`,
+).join(" ");
 
 async function enqueueAndRun(captureId: string) {
   const events = await db
@@ -223,5 +241,75 @@ suite("capture enrichment ladder", () => {
     const row = await getCapture(capture.id);
     expect(row.processingState).toBe("converted");
     expect(row.cleanText).toBeNull();
+  });
+
+  it("falls back to the deterministic ladder when Jev has no allowance, and says so", async () => {
+    // The registry enables Jev; an unset or zero allowance makes jevClassifier
+    // refuse before any HTTP. A key is present so that refusal is the quota,
+    // not the unconfigured path. No generation provider either, so the row is
+    // the deterministic tiers alone plus the reason the paid one was skipped.
+    const { GenerationUnconfiguredError } = await import("@/integrations/generation/provider");
+    vi.mocked(generationProvider).mockImplementation(() => {
+      throw new GenerationUnconfiguredError();
+    });
+    vi.stubEnv("TYPESAFE_API_KEY", "test-key");
+    vi.stubEnv("JEV_MONTHLY_INPUT_TOKENS", "0");
+    const capture = await commands.createCapture(auth, { text: LONG_PROSE });
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.enrichmentLeaseToken).toBeNull();
+    expect(row.cleanText).toBe(LONG_PROSE);
+    expect(row.failureReason).toContain("paid classification tier");
+    expect(await db.select().from(captureProposals).where(eq(captureProposals.captureId, capture.id))).toHaveLength(0);
+  });
+
+  it("still runs the generation tier after a skipped paid tier", async () => {
+    vi.stubEnv("TYPESAFE_API_KEY", "test-key");
+    vi.stubEnv("JEV_MONTHLY_INPUT_TOKENS", "0");
+    generate.mockResolvedValue({ text: JSON.stringify({ title: "Allowance-free title", domain: null, tags: null }) });
+    const capture = await commands.createCapture(auth, { text: LONG_PROSE });
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.title).toBe("Allowance-free title");
+    expect(row.failureReason).toContain("paid classification tier");
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes the fetched page for a page capture, leaving the grab as the person's text", async () => {
+    generate.mockResolvedValue({ text: JSON.stringify({ title: "Page reading", domain: null, tags: null }) });
+    const capture = await commands.createCapture(auth, {
+      text: "grabbed innerText",
+      url: `https://example.com/page-${Date.now()}`,
+      mode: "page",
+    });
+    await db.update(captures).set({ fetchedText: LONG_PROSE }).where(eq(captures.id, capture.id));
+    await settleUrlFetch(capture.id);
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.text).toBe("grabbed innerText");
+    expect(row.cleanText).toBe(LONG_PROSE);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes the selection, not the page it was read from", async () => {
+    // A selection never fetches its page (the words are what the person chose),
+    // so fetchedText is null in practice. Setting it here proves tier 0 reads
+    // the working text for the mode rather than whatever is longest on the row.
+    const capture = await commands.createCapture(auth, {
+      text: "The selected sentence.",
+      url: `https://example.com/selection-${Date.now()}`,
+      mode: "selection",
+    });
+    await db.update(captures).set({ fetchedText: LONG_PROSE }).where(eq(captures.id, capture.id));
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.cleanText).toBe("The selected sentence.");
+    expect(generate).not.toHaveBeenCalled();
   });
 });

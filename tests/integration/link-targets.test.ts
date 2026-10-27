@@ -38,8 +38,8 @@ suite("link-target search", () => {
   it("matches captures and tasks in the workspace with canonical hrefs, never the neighbor's", async () => {
     const { auth, workspaceId } = await seed("lt-main");
     const other = await seed("lt-other");
-    await db.insert(captures).values({ workspaceId, kind: "text", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
-    await db.insert(captures).values({ workspaceId: other.workspaceId, kind: "text", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
+    await db.insert(captures).values({ workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
+    await db.insert(captures).values({ workspaceId: other.workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: "Call the accountant about Q3" }, text: "Call the accountant about Q3" });
     await db.insert(tasks).values({ workspaceId, title: "Accountant follow-up" });
     await db.insert(tasks).values({ workspaceId: other.workspaceId, title: "Accountant follow-up" });
 
@@ -58,7 +58,7 @@ suite("link-target search", () => {
 
   it("excludes archived captures and archived tasks", async () => {
     const { auth, workspaceId } = await seed("lt-arch");
-    const [cap] = await db.insert(captures).values({ workspaceId, kind: "text", rawPayload: { text: "archived accountant note" }, text: "archived accountant note" }).returning();
+    const [cap] = await db.insert(captures).values({ workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: "archived accountant note" }, text: "archived accountant note" }).returning();
     const [task] = await db.insert(tasks).values({ workspaceId, title: "archived accountant task" }).returning();
     await db.update(captures).set({ archivedAt: new Date() }).where(eq(captures.id, cap.id));
     await db.update(tasks).set({ archivedAt: new Date() }).where(eq(tasks.id, task.id));

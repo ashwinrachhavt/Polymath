@@ -16,15 +16,32 @@ export type InboxFilter = "unprocessed" | "parked" | "converted" | "discarded" |
 export const CAPTURE_KINDS = ["text", "url", "file", "voice", "forwarded"] as const;
 export type CaptureKindFilter = (typeof CAPTURE_KINDS)[number];
 
-/** The capture a URL-only duplicate collided with, so the notice can link to it. */
-export async function findCaptureIdByUrl(
+/**
+ * The capture a mode-aware duplicate collided with, so the notice can link to
+ * it. Identity is (workspace, source, url, mode, content hash), so the lookup
+ * asks the same question the failing index asked.
+ */
+export async function findCaptureByUrl(
   auth: AuthContext,
-  input: { source: (typeof captures.$inferSelect)["source"]; url: string },
+  input: {
+    source: (typeof captures.$inferSelect)["source"];
+    url: string;
+    mode: (typeof captures.$inferSelect)["captureMode"];
+    contentHash: string | null;
+  },
 ): Promise<string | undefined> {
   const [row] = await db
     .select({ id: captures.id })
     .from(captures)
-    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.source, input.source), eq(captures.url, input.url)))
+    .where(
+      and(
+        eq(captures.workspaceId, auth.workspaceId),
+        eq(captures.source, input.source),
+        eq(captures.url, input.url),
+        eq(captures.captureMode, input.mode),
+        input.contentHash === null ? isNull(captures.contentHash) : eq(captures.contentHash, input.contentHash),
+      ),
+    )
     .limit(1);
   return row?.id;
 }

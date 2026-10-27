@@ -93,6 +93,7 @@ async function insertCapture(workspaceId: string, text: string) {
       workspaceId,
       kind: "text" as const,
       source: "quick_capture" as const,
+      captureMode: "authored" as const,
       rawPayload: { text },
       text,
       processingState: "unprocessed" as const,
