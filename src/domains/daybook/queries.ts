@@ -46,7 +46,6 @@ export type DayPage = {
   created: DayItem[];
   workedOn: DayItem[];
   captured: DayItem[];
-  planned: Array<{ id: string; title: string; rank: string; completedAt: Date | null }>;
   sessions: Array<{ id: string; subject: string | null; startedAt: Date; endedAt: Date | null; minutes: number }>;
   meetings: DayItem[];
   pins: Array<{
@@ -87,7 +86,6 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
       coalesce(created.items, '[]'::json) as created,
       coalesce(worked.items, '[]'::json) as worked_on,
       coalesce(captured.items, '[]'::json) as captured,
-      coalesce(planned.items, '[]'::json) as planned,
       coalesce(sessions.items, '[]'::json) as sessions,
       coalesce(meetings.items, '[]'::json) as meetings
     from bounds
@@ -127,14 +125,6 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
     ) captured on true
     left join lateral (
       select json_agg(json_build_object(
-        'id', o.id, 'title', o.title, 'rank', o.rank, 'completed_at', o.completed_at
-      ) order by o.rank collate "C" asc) as items
-      from daily_outcomes o
-      where o.workspace_id = ${auth.workspaceId}
-        and o.on_date = ${localDate}::date
-    ) planned on true
-    left join lateral (
-      select json_agg(json_build_object(
         'id', fs.id, 'subject', fs.subject, 'started_at', fs.started_at, 'ended_at', fs.ended_at,
         'minutes', floor(coalesce(fs.accumulated_seconds, 0) / 60.0)
       ) order by fs.started_at asc) as items
@@ -163,7 +153,6 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
       created: [],
       workedOn: [],
       captured: [],
-      planned: [],
       sessions: [],
       meetings: [],
       pins: [],
@@ -210,14 +199,6 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
     created: asItems(row.created),
     workedOn: asItems(row.worked_on),
     captured: asItems(row.captured),
-    planned: Array.isArray(row.planned)
-      ? (row.planned as Array<Record<string, unknown>>).map((r) => ({
-          id: r.id as string,
-          title: r.title as string,
-          rank: r.rank as string,
-          completedAt: r.completed_at ? new Date(r.completed_at as string) : null,
-        }))
-      : [],
     sessions: Array.isArray(row.sessions)
       ? (row.sessions as Array<Record<string, unknown>>).map((r) => ({
           id: r.id as string,

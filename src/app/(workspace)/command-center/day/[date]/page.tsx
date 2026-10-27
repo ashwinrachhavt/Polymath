@@ -93,19 +93,6 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
         </Panel>
       ) : null}
 
-      {day.planned.length ? (
-        <Panel title="Planned" description="What you committed to this day.">
-          <div className="divide-y divide-border">
-            {day.planned.map((task) => (
-              <div key={task.id} className="flex items-baseline justify-between gap-3 py-2 first:pt-0">
-                <span className="text-[13px]">{task.title}</span>
-                <span className="text-xs text-muted-foreground">{task.completedAt ? "completed" : "open"}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      ) : null}
-
       {day.sessions.length ? (
         <Panel title="Focus" description="Sessions touching this day.">
           <div className="divide-y divide-border">
@@ -154,7 +141,6 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
       {!day.created.length &&
       !day.workedOn.length &&
       !day.captured.length &&
-      !day.planned.length &&
       !day.sessions.length &&
       !day.meetings.length &&
       !day.pins.length ? (
