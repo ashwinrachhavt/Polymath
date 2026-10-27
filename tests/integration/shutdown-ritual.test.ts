@@ -9,6 +9,7 @@ import { artifacts } from "@/domains/knowledge/schema";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { briefingSeeds, dailyOutcomes, tasks } from "@/domains/work/schema";
+import { seedTaskWithNote } from "../helpers/task-note";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -75,8 +76,8 @@ async function capture(workspaceId: string, over: Partial<typeof captures.$infer
 }
 
 async function task(workspaceId: string, title: string, over: Partial<typeof tasks.$inferInsert> = {}) {
-  const [row] = await db.insert(tasks).values({ workspaceId, title, rank: "m", status: "ready", ...over }).returning();
-  return row;
+  const { title: _dropped, ...rest } = over as { title?: string };
+  return seedTaskWithNote(db, { workspaceId, title, rank: "m", status: "ready", ...rest });
 }
 
 const key = () => crypto.randomUUID();

@@ -1,30 +1,27 @@
-import { readFileSync } from "node:fs";
 import { and, eq, gte, ilike, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { taskDependencies, tasks } from "@/domains/work/schema";
+import { seedTaskWithNote } from "../helpers/task-note";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * Task prose reads from the note (one note substrate, phase one).
+ * Task prose reads from the note (one note substrate).
  *
  * Every read in work/queries.ts joins `artifacts` on `tasks.note_id` instead of
- * selecting `tasks.title` / `tasks.description`. Two things this suite has to
- * prove, because the rows alone cannot:
+ * selecting a task column for the prose. 0260 dropped `tasks.title` and
+ * `tasks.description`, so the column the read must NOT use no longer exists;
+ * what is still provable, and what this suite therefore pins, is:
  *
- *  1. the prose shown is the note's, not the task column's - so every fixture
- *     is renamed on the note after backfill, leaving the column holding a
- *     different value that any surviving column read would return;
- *  2. no task is silently dropped. An inner join on a null `note_id` loses rows
- *     rather than misreading them, and a per-row assertion still passes on the
- *     rows that survive. Each list read is therefore checked as a set
+ *  1. the prose shown is the note's CURRENT version, not the fixture's original
+ *     one - every fixture is seeded with one title and body and then reworded
+ *     into a version 2, so a read that returned anything but the current note
+ *     (the creation values, a stale version, or a cached copy) fails;
+ *  2. no task is silently dropped. An inner join on a missing note would lose
+ *     rows rather than misread them, and a per-row assertion still passes on
+ *     the rows that survive. Each list read is therefore checked as a set
  *     difference against the tasks the same filters say exist.
- *
- * The fixtures are created by running the shipped 0259 backfill, so the join is
- * exercised on exactly the rows production has today.
  */
-
-const MIGRATION = readFileSync("src/db/migrations/0259_one_note_substrate_add.sql", "utf8");
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -41,11 +38,7 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-/** The shipped backfill, run verbatim: a null-note task gets its note. */
-async function backfill(): Promise<void> {
-  await handle!.client.unsafe(MIGRATION);
-}
-
+/** A task with a note, seeded under its "original" (pre-rewording) prose. */
 async function seedTask(
   workspaceId: string,
   row: {
@@ -57,25 +50,22 @@ async function seedTask(
     parentTaskId?: string;
   },
 ): Promise<string> {
-  const [created] = await db
-    .insert(tasks)
-    .values({
-      workspaceId,
-      title: row.title,
-      description: row.description ?? null,
-      ...(row.status ? { status: row.status } : {}),
-      ...(row.dueAt ? { dueAt: row.dueAt } : {}),
-      ...(row.completedAt ? { completedAt: row.completedAt } : {}),
-      ...(row.parentTaskId ? { parentTaskId: row.parentTaskId } : {}),
-    })
-    .returning({ id: tasks.id });
+  const created = await seedTaskWithNote(db, {
+    workspaceId,
+    title: row.title,
+    body: row.description ?? null,
+    ...(row.status ? { status: row.status } : {}),
+    ...(row.dueAt ? { dueAt: row.dueAt } : {}),
+    ...(row.completedAt ? { completedAt: row.completedAt } : {}),
+    ...(row.parentTaskId ? { parentTaskId: row.parentTaskId } : {}),
+  });
   return created.id;
 }
 
 /**
- * Give the task's note new prose the task columns do not have: a renamed title
- * and a version 2 body. Without this the two sources agree and no read can be
- * told apart.
+ * Give the task's note new prose: a renamed title and a version 2 body. Without
+ * this the note still holds the values it was seeded with and no read can be
+ * told apart from a fixture echoing its input.
  */
 async function rewordNote(taskId: string, title: string, body: string | null): Promise<void> {
   const [row] = await db
@@ -89,7 +79,7 @@ async function rewordNote(taskId: string, title: string, body: string | null): P
       workspaceId: row.workspaceId,
       artifactId: noteId,
       versionNumber: 2,
-      content: { type: "doc", content: [] },
+      content: body ? { format: "markdown", text: body } : { type: "doc", content: [] },
       plainText: body,
       reason: "edited",
     })
@@ -111,9 +101,8 @@ async function noteProse(workspaceId: string) {
 /**
  * The set difference the row assertions cannot see: tasks matching the query's
  * own filters that the read did not return. Measured in SQL against `tasks`
- * alone, so a task with no note counts as missing rather than invisible twice.
- * A filter written on the note's prose passes `onNote`, which adds the same
- * join the read has - a task with no note cannot match a title filter anyway.
+ * alone, so a task the read dropped counts as missing. A filter written on the
+ * note's prose passes `onNote`, which adds the same join the read has.
  */
 async function missingFrom(where: SQL, returnedIds: string[], onNote = false): Promise<string[]> {
   const base = db.select({ id: tasks.id }).from(tasks);
@@ -138,14 +127,12 @@ async function expectProse(
 }
 
 suite("task prose reads from the note", () => {
-  it("getTaskDetail shows the note's title and body, and a subtask's title resolves through the join", async () => {
+  it("getTaskDetail shows the note's current title and body, and a subtask's title resolves through the join", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `prose-detail-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
-    const parent = await seedTask(workspaceId, { title: "Column parent", description: "Column body", status: "ready" });
-    await backfill();
-    const child = await seedTask(workspaceId, { title: "Column child", parentTaskId: parent });
-    const peer = await seedTask(workspaceId, { title: "Column peer" });
-    await backfill();
+    const parent = await seedTask(workspaceId, { title: "Seeded parent", description: "Seeded body", status: "ready" });
+    const child = await seedTask(workspaceId, { title: "Seeded child", parentTaskId: parent });
+    const peer = await seedTask(workspaceId, { title: "Seeded peer" });
 
     await rewordNote(parent, "Parent note", "Parent note body");
     await rewordNote(child, "Child note", "Child note body");
@@ -159,21 +146,14 @@ suite("task prose reads from the note", () => {
 
     const detail = await queries.getTaskDetail(a, parent);
     expect(detail).not.toBeNull();
+    // The current note version, not the prose the fixture was seeded with.
     expect(detail!.task.title).toBe("Parent note");
     expect(detail!.task.description).toBe("Parent note body");
-    // The task row still holds the pre-move prose; if it ever surfaces here the
-    // read has not moved.
-    const [column] = await db
-      .select({ title: tasks.title, description: tasks.description })
-      .from(tasks)
-      .where(eq(tasks.id, parent));
-    expect(column.title).toBe("Column parent");
-    expect(detail!.task.title).not.toBe(column.title);
     expect(detail!.task).toMatchObject({ status: "ready", version: 1 });
 
     expect(detail!.subtasks.map((s) => [s.id, s.title])).toEqual([[child, "Child note"]]);
     expect(detail!.blocking.map((b) => [b.taskId, b.title])).toEqual([[peer, "Peer note"]]);
-    // A task with no body reads as an empty body, not as the column value.
+    // A task with no body reads as an empty body, not as the seeded one.
     expect((await queries.getTaskDetail(a, peer))!.task.description).toBeNull();
   });
 
@@ -184,22 +164,20 @@ suite("task prose reads from the note", () => {
     const dueLate = new Date("2026-03-03T12:00:00Z");
 
     const alpha = await seedTask(workspaceId, {
-      title: "Column Alpha",
-      description: "Column alpha body",
+      title: "Seeded Alpha",
+      description: "Seeded alpha body",
       status: "ready",
       dueAt: dueEarly,
     });
     const beta = await seedTask(workspaceId, {
-      title: "Column Beta",
-      description: "Column beta body",
+      title: "Seeded Beta",
+      description: "Seeded beta body",
       status: "done",
       dueAt: dueLate,
       completedAt: new Date(),
     });
-    const gamma = await seedTask(workspaceId, { title: "Column Gamma", status: "inbox" });
-    await backfill();
-    const child = await seedTask(workspaceId, { title: "Column child", parentTaskId: alpha, dueAt: dueEarly });
-    await backfill();
+    const gamma = await seedTask(workspaceId, { title: "Seeded Gamma", status: "inbox" });
+    const child = await seedTask(workspaceId, { title: "Seeded child", parentTaskId: alpha, dueAt: dueEarly });
 
     await rewordNote(alpha, "Alpha note", "Alpha note body");
     await rewordNote(beta, "Beta note", "Beta note body");
@@ -238,13 +216,14 @@ suite("task prose reads from the note", () => {
     ).toEqual([]);
 
     // The link picker filters and orders on the note's title. Searching the
-    // task column's word finds nothing; searching the note's word finds every
-    // task, subtasks and finished ones included (a finished task is still a
-    // destination). The limit is raised past the fixture count on purpose - the
-    // picker's own default of 3 would turn this into a pagination assertion.
+    // word the fixtures were seeded with finds nothing once the note has been
+    // reworded; searching the note's word finds every task, subtasks and
+    // finished ones included (a finished task is still a destination). The
+    // limit is raised past the fixture count on purpose - the picker's own
+    // default of 3 would turn this into a pagination assertion.
     const byNoteTitle = await queries.searchTasksForLink(a, "note", 10);
     expect(byNoteTitle.map((r) => r.title)).toEqual(["Alpha note", "Beta note", "Child note", "Gamma note"]);
-    expect(await queries.searchTasksForLink(a, "Column")).toEqual([]);
+    expect(await queries.searchTasksForLink(a, "Seeded")).toEqual([]);
     expect(
       await missingFrom(
         and(eq(tasks.workspaceId, workspaceId), isNull(tasks.archivedAt), ilike(artifacts.title, "%note%"))!,
@@ -288,7 +267,7 @@ suite("task prose reads from the note", () => {
     expect(filtered.rows.map((r) => r.id)).toEqual([gamma]);
     expect(filtered.total).toBe(1);
     await expectProse(workspaceId, filtered.rows);
-    const noneMatching = await queries.listWorkPage(a, "open", { limit: 10, offset: 0, query: "Column" });
+    const noneMatching = await queries.listWorkPage(a, "open", { limit: 10, offset: 0, query: "Seeded" });
     expect(noneMatching.rows).toEqual([]);
     expect(noneMatching.total).toBe(0);
     expect(
@@ -307,7 +286,6 @@ suite("task prose reads from the note", () => {
     const { userId, workspaceId } = await seedWorkspace(db, `prose-version-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
     const taskId = await seedTask(workspaceId, { title: "No version yet", status: "ready" });
-    await backfill();
     const [row] = await db.select({ noteId: tasks.noteId }).from(tasks).where(eq(tasks.id, taskId));
     await db.update(artifacts).set({ currentVersionId: null }).where(eq(artifacts.id, row.noteId!));
 
@@ -316,10 +294,10 @@ suite("task prose reads from the note", () => {
     expect(detail?.task.description).toBeNull();
     expect((await queries.listWorkRows(a, "open")).map((r) => r.id)).toEqual([taskId]);
 
-    // The measurement over the rest of this workspace: 0259 writes one version
-    // per note and points at it, so any other broken pointer means a write left
-    // a task unreadable. Scoped to the workspace because the shared test
-    // database carries other suites' fixtures.
+    // The measurement over the rest of this workspace: every live task's note
+    // points at a version, so any other broken pointer means a write left a
+    // task unreadable. Scoped to the workspace because the shared test database
+    // carries other suites' fixtures.
     const orphans = await db.execute(sql`
       select t.id from tasks t
         join artifacts a on a.id = t.note_id
@@ -334,7 +312,6 @@ suite("task prose reads from the note", () => {
     const a = ownerAuth(one.userId, one.workspaceId);
     const mine = await seedTask(one.workspaceId, { title: "Mine", status: "ready" });
     const theirs = await seedTask(two.workspaceId, { title: "Theirs", status: "ready" });
-    await backfill();
 
     expect((await queries.listOpenTasks({ workspaceId: one.workspaceId })).map((r) => r.id)).toEqual([mine]);
     expect((await queries.listWorkRows(a, "open")).map((r) => r.id)).toEqual([mine]);
