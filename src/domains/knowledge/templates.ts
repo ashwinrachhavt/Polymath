@@ -35,6 +35,37 @@ export const DRAFT_TEMPLATE_KIND: Record<DraftTemplate, "note"> = {
   todo: "note",
 };
 
+/*
+ * A template is a starting point, not a state, so the column is plain text and
+ * a note outlives the scaffold it began from. Reads therefore resolve
+ * leniently: a slug no longer in the registry degrades to a plain note rather
+ * than failing, because removing a template must never break a note someone is
+ * already reading. Only a write rejects an unknown slug, where the caller can
+ * still choose a real one.
+ */
+export function resolveTemplate(slug: string | null | undefined): DraftTemplate | null {
+  if (typeof slug !== "string") return null;
+  return (DRAFT_TEMPLATES as readonly string[]).includes(slug) ? (slug as DraftTemplate) : null;
+}
+
+/** An unknown template slug on a write: problem+json `unknown_template`, status 422. */
+export class UnknownTemplateError extends Error {
+  readonly code = "unknown_template";
+  readonly status = 422;
+  constructor(readonly slug: string) {
+    super(`There is no "${slug}" template.`);
+    this.name = "UnknownTemplateError";
+  }
+}
+
+/** The write-side half of `resolveTemplate`: same lookup, an unknown slug throws. */
+export function requireTemplate(slug: string | null | undefined): DraftTemplate | null {
+  if (slug === null || slug === undefined) return null;
+  const template = resolveTemplate(slug);
+  if (!template) throw new UnknownTemplateError(slug);
+  return template;
+}
+
 /**
  * The templates a capture can turn into. A capture conversion quotes the
  * capture verbatim as source material; `todo` has no source section by
