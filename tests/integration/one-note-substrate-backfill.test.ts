@@ -6,7 +6,7 @@ import { recurrenceTemplates, tasks } from "@/domains/work/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * One note substrate, phase one (0257). Every existing task gains a note: an
+ * One note substrate, phase one (0259). Every existing task gains a note: an
  * artifacts row of kind `note` carrying the `issue` template, plus version 1
  * whose plain text is the task's description (or an empty doc when there is
  * none), and tasks.note_id pointing at it.
@@ -26,7 +26,7 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
  *    LOOP) in the same test.
  */
 
-const MIGRATION = readFileSync("src/db/migrations/0257_one_note_substrate_add.sql", "utf8");
+const MIGRATION = readFileSync("src/db/migrations/0259_one_note_substrate_add.sql", "utf8");
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -82,7 +82,7 @@ async function versionRows(workspaceId: string, notes: { noteId: string | null }
     );
 }
 
-suite("one note substrate backfill (0257)", () => {
+suite("one note substrate backfill (0259)", () => {
   it("gives every task a note, in the task's workspace, and never by title", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `notes-backfill-${Date.now()}`);
     // Same title, different bodies: title-matching would collide here.

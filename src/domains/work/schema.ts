@@ -141,9 +141,9 @@ export const tasks = pgTable(
     description: text("description"),
     /**
      * The note this task stands on: a 1:1 extension row, not a second store of
-     * prose. Nullable until 0258, which requires it once every read and write
+     * prose. Nullable until 0260, which requires it once every read and write
      * has moved; the unique index that makes it 1:1 arrives with it. No cascade
-     * on delete — a note backing a task is not disposable, and 0258's test pins
+     * on delete — a note backing a task is not disposable, and 0260's test pins
      * the refusal.
      */
     noteId: uuid("note_id").references(() => artifacts.id),
