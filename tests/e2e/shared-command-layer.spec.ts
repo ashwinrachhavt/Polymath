@@ -172,7 +172,8 @@ test("preview routes retain app context and all tools are reachable on a phone",
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Today", exact: true })).toHaveAttribute("aria-current", "page");
+  // Inbox is the destination now that Today left the rail with Briefing.
+  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Inbox", exact: true })).toHaveAttribute("aria-current", "page");
   await page.goto("/neuralflow/work");
   await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Work", exact: true })).toHaveAttribute("aria-current", "page");
   await page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "More", exact: true }).click();

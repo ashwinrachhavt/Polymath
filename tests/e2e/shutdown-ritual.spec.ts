@@ -116,8 +116,8 @@ async function journey(
   // the ritual must ask about, never close silently. (The isolated database
   // holds no other live session; the serial mode keeps the two journeys apart.)
   const [cap] = await client<{ id: string }[]>`
-    insert into captures (workspace_id, kind, source, raw_payload, text, processing_state)
-    values (${workspaceId}, 'text', 'quick_capture', ${client.json({ text: marker })}, ${`Park me ${marker}`}, 'unprocessed')
+    insert into captures (workspace_id, kind, source, raw_payload, text, processing_state, capture_mode)
+    values (${workspaceId}, 'text', 'quick_capture', ${client.json({ text: marker })}, ${`Park me ${marker}`}, 'unprocessed', 'authored')
     returning id
   `;
   captureIds.push(cap.id);
