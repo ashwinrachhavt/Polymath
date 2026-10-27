@@ -31,9 +31,9 @@ import { captures } from "./schema";
  * A fetch that fails records a real outcome (`error-page`, `empty`, or
  * `provider-unavailable`) and a reason, and the event completes: a dead
  * address would fail the same way on every retry. The person sees "Could not
- * be read". There is no retry command yet: pasting the URL again is refused
- * as a duplicate and enqueues nothing (ASH-318), so a failed capture
- * continues as an address-only capture.
+ * be read" and can ask again: `retryCaptureUrl` enqueues a fresh attempt under
+ * a new dispatch key and clears the reason. Re-pasting the address does not -
+ * it returns the existing capture as a duplicate and enqueues nothing.
  *
  * The URL was captured by a person, not supplied by a model, but it still
  * goes through assertPublicUrl: a pasted internal address must not become a

@@ -686,6 +686,70 @@ export async function updateCaptureText(
   });
 }
 
+/**
+ * Fetch a failed capture's page again, without inventing a second capture.
+ * Re-pasting the address is a duplicate and enqueues nothing, so this is the
+ * explicit way back for a page that failed to load (the parked/unpark detour
+ * that used to be the only one is not a person's intent).
+ *
+ * The fetch is a new attempt, so it needs a new dispatch key: the original
+ * `capture-url-content:<id>` is already dispatched and a repeat would dedupe
+ * into nothing. State and outcome go back to waiting; the handler's own guard
+ * decides whether the row still needs a page. The caller is the conversation's
+ * owner rule - the capture's author or a workspace owner.
+ */
+export async function retryCaptureUrl(
+  auth: AuthContext,
+  input: { captureId: string; idempotencyKey?: string },
+): Promise<{ enqueued: boolean }> {
+  return withTransaction(async (tx) => {
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "retryCaptureUrl", captureId: input.captureId }, async () => {
+      const [capture] = await tx
+        .select()
+        .from(captures)
+        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+        .limit(1);
+      if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      if (!capture.url) throw new ConflictError("That capture has no address to read.");
+      if (capture.createdBy !== auth.userId && auth.role !== "owner") {
+        // A capture someone else owns is indistinguishable from one that is
+        // not there: the same rule every tenant-scoped read follows.
+        throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      }
+      const [updated] = await tx
+        .update(captures)
+        .set({
+          fetchOutcome: "pending",
+          failureReason: null,
+          version: sql`${captures.version} + 1`,
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+        })
+        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
+        .returning({ id: captures.id });
+      if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+      const event = await enqueueOutbox(tx, auth, {
+        topic: CAPTURE_URL_CONTENT_TOPIC,
+        payload: { captureId: capture.id, url: capture.url },
+        // A repeated key enqueues nothing, so each retry gets its own.
+        dispatchKey: `capture-url-retry:${capture.id}:${Date.now()}`,
+      });
+      await recordAudit(
+        auth,
+        {
+          action: "capture.url_retry_requested",
+          subjectType: "capture",
+          subjectId: capture.id,
+          summary: "Page fetch retried",
+        },
+        tx,
+      );
+      return { enqueued: event.enqueued };
+    });
+    return value;
+  });
+}
+
 /** Archive (discard) or restore a capture. Version-checked like every write. */
 export async function setCaptureState(
   auth: AuthContext,
