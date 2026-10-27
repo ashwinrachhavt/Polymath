@@ -31,9 +31,14 @@ const MIGRATION = readFileSync("src/db/migrations/0259_one_note_substrate_add.sq
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
+let noteMarkdown: typeof import("@/app/(workspace)/alfred/notes/page").noteMarkdown;
 
-beforeAll(() => {
-  if (handle) ({ db } = handle);
+beforeAll(async () => {
+  if (!handle) return;
+  ({ db } = handle);
+  // Lazy, after makeTestDb has pointed DATABASE_URL at the scratch database:
+  // the notes page reaches @/lib/db at module load.
+  ({ noteMarkdown } = await import("@/app/(workspace)/alfred/notes/page"));
 });
 
 afterAll(async () => {
@@ -104,22 +109,31 @@ suite("one note substrate backfill (0259)", () => {
             createdBy: userId,
             updatedBy: userId,
           },
+          {
+            workspaceId,
+            title: "Whitespace only",
+            // Not null, but the same nothing: content and plain_text must agree
+            // that this note is empty rather than storing a body of spaces.
+            description: "  \n\t ",
+            createdBy: userId,
+            updatedBy: userId,
+          },
         ])
         .returning({ id: tasks.id }),
     );
-    expect(seeded).toHaveLength(2);
+    expect(seeded).toHaveLength(3);
 
     await runBackfill();
 
     const notes = await noteRows(workspaceId);
-    expect(notes).toHaveLength(2);
+    expect(notes).toHaveLength(3);
     // Each task got its own note: a shared title did not collapse the pair.
-    expect(new Set(notes.map((note) => note.artifactId)).size).toBe(2);
-    expect(new Set(notes.map((note) => note.noteId)).size).toBe(2);
+    expect(new Set(notes.map((note) => note.artifactId)).size).toBe(3);
+    expect(new Set(notes.map((note) => note.noteId)).size).toBe(3);
     for (const note of notes) {
       expect(note.noteId).not.toBeNull();
       expect(note.artifactId).toBe(note.noteId);
-      expect(note.artifactTitle).toBe("Ship the weekly digest");
+      expect(note.artifactTitle).toBe(note.description === "  \n\t " ? "Whitespace only" : "Ship the weekly digest");
       expect(note.template).toBe("issue");
       expect(note.kind).toBe("note");
       expect(note.artifactWorkspaceId).toBe(workspaceId);
@@ -127,41 +141,62 @@ suite("one note substrate backfill (0259)", () => {
     }
 
     const versions = await versionRows(workspaceId, notes);
-    expect(versions).toHaveLength(2);
+    expect(versions).toHaveLength(3);
     for (const version of versions) {
       expect(version.versionNumber).toBe(1);
       expect(version.reason).toBe("created");
       expect(version.versionWorkspaceId).toBe(workspaceId);
     }
 
-    // The description is the body, once; the undescribed task gets the empty
-    // doc createNoteInTx writes, and that is not an error.
+    // A description with real text becomes the body as markdown; null and
+    // whitespace-only both become the empty doc createNoteInTx writes, and
+    // neither is an error.
     const byNote = new Map(versions.map((version) => [version.artifactId, version]));
     for (const note of notes) {
       const version = byNote.get(note.artifactId)!;
       // current_version_id points at the version just written, the same order
       // createNoteInTx uses (insert, insert, then move the pointer).
       expect(note.currentVersionId).toBe(version.versionId);
-      if (note.description === null) {
+      const blank = note.description === null || note.description.trim() === "";
+      if (blank) {
         expect(version.plainText).toBeNull();
         expect(version.content).toEqual({ type: "doc", content: [] });
       } else {
         expect(version.plainText).toBe(note.description);
-        expect(version.content).toEqual({
-          type: "doc",
-          content: [
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: note.description }],
-            },
-          ],
-        });
+        // Markdown, not ProseMirror doc JSON. The Notes surface reads only
+        // content.text, so a doc-shaped body opens blank and the next autosave
+        // overwrites it with empty text. This assertion is what fails if doc
+        // JSON comes back.
+        expect(version.content).toEqual({ format: "markdown", text: note.description });
       }
     }
     expect(notes.map((note) => note.description).sort()).toEqual([
-      null,
+      "  \n\t ",
       "Send it Friday, to the paying customers first.",
+      null,
     ].sort());
+  });
+
+  it("writes a body the Notes surface can actually render", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `notes-render-${Date.now()}`);
+    const description = "Cut the release on Wednesday, then post the changelog.";
+    await db.insert(tasks).values({
+      workspaceId,
+      title: "Release the digest",
+      description,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    await runBackfill();
+
+    const [note] = await noteRows(workspaceId);
+    const [version] = await versionRows(workspaceId, [note!]);
+    // The consequence, end to end: the real reader this defect was reported
+    // against returns the description, not "". noteMarkdown is the exact
+    // function the /alfred/notes page uses, so this is the assertion that would
+    // have caught the original bug at the level a user would notice it.
+    expect(noteMarkdown(version!.content as Record<string, unknown>)).toBe(description);
   });
 
   it("is idempotent: a second run inserts no artifact and no version", async () => {
