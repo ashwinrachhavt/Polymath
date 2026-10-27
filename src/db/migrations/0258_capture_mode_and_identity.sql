@@ -39,22 +39,31 @@ ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "capture_mode" "capture_mode";--
 ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "fetched_text" text;--> statement-breakpoint
 ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "content_hash" text;--> statement-breakpoint
 ALTER TABLE "captures" ADD COLUMN IF NOT EXISTS "fetch_outcome" "capture_fetch_outcome";--> statement-breakpoint
--- Mirrors inferCaptureMode(): file and voice are blobs; no url is authored; a
--- url with text is a page grab; a url with no text is the address itself.
--- The hash is of the arriving text (text, else clean_text, else ''), unmapped,
--- exactly what contentHash() hashes at insert. Blob and url-reference stay null.
+-- Mirrors how the two builds write rows, not a fresh guess: file and voice are
+-- blobs; kind 'url' with an address is the address itself (url-reference), even
+-- when the OLD url handler later filled text with the fetched reading, because
+-- a url-reference is identified by its address, not its text; no url is
+-- authored (a bare address typed as kind 'text' with no url is not produced by
+-- either build, and a url-reference needs a url, so it stays authored); any
+-- other row with a url is a page grab if it has text, else url-reference.
+-- The hash is of the ARRIVING text, unmapped, exactly what contentHash() gets at
+-- insert: raw_payload.text (immutable, written trimmed by both builds), else
+-- text, else clean_text, else ''. text alone is wrong for historical rows: an
+-- owner edit or the old fetch rewrote it after arrival. Blob and url-reference
+-- keep a null hash on purpose.
 CREATE OR REPLACE FUNCTION captures_compat_fill() RETURNS trigger AS $fn$
 BEGIN
   IF NEW.capture_mode IS NULL THEN
     NEW.capture_mode := CASE
       WHEN NEW.kind IN ('file', 'voice') THEN 'blob'::capture_mode
       WHEN NEW.url IS NULL THEN 'authored'::capture_mode
+      WHEN NEW.kind = 'url' THEN 'url-reference'::capture_mode
       WHEN nullif(btrim(NEW.text), '') IS NULL THEN 'url-reference'::capture_mode
       ELSE 'page'::capture_mode
     END;
   END IF;
   IF NEW.content_hash IS NULL AND NEW.url IS NOT NULL AND NEW.capture_mode NOT IN ('url-reference', 'blob') THEN
-    NEW.content_hash := encode(sha256(convert_to(coalesce(NEW.text, NEW.clean_text, ''), 'UTF8')), 'hex');
+    NEW.content_hash := encode(sha256(convert_to(coalesce(nullif(NEW.raw_payload ->> 'text', ''), NEW.text, NEW.clean_text, ''), 'UTF8')), 'hex');
   END IF;
   RETURN NEW;
 END

@@ -28,10 +28,10 @@ afterAll(async () => {
   await handle.client.end();
 });
 
-async function oldInsert(kind: string, text: string | null, url: string | null) {
+async function oldInsert(kind: string, text: string | null, url: string | null, raw: object = {}) {
   const c = handle!.client;
   await c`insert into captures (workspace_id, kind, source, raw_payload, text, url)
-          values (${workspaceId}, ${kind}, 'quick_capture', '{}'::jsonb, ${text}, ${url})`;
+          values (${workspaceId}, ${kind}, 'quick_capture', ${JSON.stringify(raw)}::jsonb, ${text}, ${url})`;
   const [row] = await c`select capture_mode, content_hash from captures
                          where workspace_id = ${workspaceId} and kind = ${kind} order by created_at desc, id desc limit 1`;
   return row as { capture_mode: string; content_hash: string | null };
@@ -51,6 +51,18 @@ suite("captures written by the pre-0258 build", () => {
       content_hash: null,
     });
     expect(await oldInsert("file", null, null)).toMatchObject({ capture_mode: "blob", content_hash: null });
+  });
+
+  it("classifies legacy shapes by how the old build wrote them", async () => {
+    // The old url handler wrote the fetched reading into text: still the address itself.
+    expect(await oldInsert("url", "fetched reading", "https://old.example/fetched")).toMatchObject({
+      capture_mode: "url-reference",
+      content_hash: null,
+    });
+    // An owner-edited page: identity is the arriving words (raw_payload.text), not the edit.
+    const { createHash } = await import("node:crypto");
+    const edited = await oldInsert("text", "edited later", "https://old.example/edited", { text: "original arrival" });
+    expect(edited.content_hash).toBe(createHash("sha256").update("original arrival").digest("hex"));
   });
 
   it("still dedupes: same address twice and the same page text twice are 23505, a new reading is not", async () => {
