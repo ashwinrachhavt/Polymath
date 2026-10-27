@@ -84,6 +84,17 @@ describe("listNotifications", () => {
     expect(feed.counts).toEqual({ decision: 3, run: 2, audit: 1 });
   });
 
+  it("keeps the queue's own risk ranking among decisions", async () => {
+    seed();
+    const feed = await listNotifications({ workspaceId: "ws-1" });
+    // The capture proposal was created LAST (5 min ago vs the agent's 10), so
+    // ordering by time would put it first. The agent's external write outranks
+    // it because listHomeQueue ranked it that way, and the panel must not
+    // re-litigate that: the rank is the queue's opinion.
+    const decisionTitles = feed.items.filter((item) => item.kind === "decision").map((item) => item.title);
+    expect(decisionTitles.slice(0, 2)).toEqual(["Send the deck to Priya", "Quarterly plan"]);
+  });
+
   it("leads with what needs the owner, then newest first", async () => {
     seed();
     const feed = await listNotifications({ workspaceId: "ws-1" });
@@ -92,11 +103,10 @@ describe("listNotifications", () => {
     expect(feed.items[0].title).toBe("Summarize the week");
     const firstHistory = feed.items.findIndex((item) => !item.needsAction);
     expect(feed.items.slice(firstHistory).every((item) => !item.needsAction)).toBe(true);
-    // Within each group, newest first.
-    for (const group of [feed.items.slice(0, firstHistory), feed.items.slice(firstHistory)]) {
-      const times = group.map((item) => item.at.getTime());
-      expect([...times].sort((a, b) => b - a)).toEqual(times);
-    }
+    // History is newest first. Needing-action items are not: decisions keep
+    // the queue's risk ranking, so time is not their order.
+    const history = feed.items.slice(firstHistory).map((item) => item.at.getTime());
+    expect([...history].sort((a, b) => b - a)).toEqual(history);
   });
 
   it("marks a running run as needing action and a finished one as not", async () => {

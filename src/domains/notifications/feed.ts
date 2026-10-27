@@ -140,8 +140,18 @@ export async function listNotifications(
   // What needs the owner leads, then recency. Sorting the three kinds purely
   // by time buried a running run under two dozen audit rows about things that
   // had already happened - which is the failure this panel exists to fix.
+  //
+  // Decisions are NOT re-sorted among themselves: listHomeQueue already ranked
+  // them (what expires, then what risks more, then what is newest), and
+  // re-ordering by time alone would put a capture read above an external write
+  // just for being newer. The rank order is the queue's own opinion and it
+  // survives into the panel.
+  const decisionOrder = new Map(decisionItems.map((item, index) => [item.id, index]));
   const items = [...decisionItems, ...runItems, ...auditItems].sort((a, b) => {
     if (a.needsAction !== b.needsAction) return a.needsAction ? -1 : 1;
+    const rankA = decisionOrder.get(a.id);
+    const rankB = decisionOrder.get(b.id);
+    if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
     return b.at.getTime() - a.at.getTime();
   });
 
