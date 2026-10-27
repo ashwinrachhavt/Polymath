@@ -211,7 +211,9 @@ uniqueIndex("captures_url_reference_key")
 
 - [ ] **Step 4: Generate and extend the migration**
 
-Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/0258_snapshot.json`, and the `_journal.json` entry. Do not hand-write those three.
+Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/0258_snapshot.json`, and the `_journal.json` entry. Do not hand-write the snapshot.
+
+**The generated SQL is NOT your migration.** `src/db/migrations/meta/` holds snapshots only through `0253`; `0254`, `0255` and `0256` each added a journal entry with no snapshot, so drizzle cannot see them and believes the schema has drift. Verified on a scratch database: `generate` emits 11 statements of which 7 re-create things that already exist — `CREATE TYPE interface_mode`, `CREATE TABLE briefing_seeds`, four `ALTER TABLE captures ADD COLUMN` (parked_at, parked_by, enrichment_lease_token, enrichment_lease_until), and `ALTER TABLE user_preferences ADD COLUMN interface_mode`. Shipping that would fail on every real database. **Delete every generated statement, keeping only what belongs to this change** (the two enum types, the four `captures` columns, the index drop, the two new partial indexes, and the backfill below). Keep the snapshot file the generator wrote — that is the part you want.
 
 **Then set the journal `when` by hand.** `drizzle-kit` stamps it with the current millisecond, today about `1793060385000`. Every recent entry is already future-dated (`0252` = `1793200001000` through `0256` = `1793200005000`), so a generated value is BELOW all of them and `tests/unit/migration-journal.test.ts` fails: the rule is *strictly increasing*, not *honest dates*. Do not "fix" the older entries — re-dating any of them below its predecessor breaks the same suite. Edit the new entry in `src/db/migrations/meta/_journal.json` to `"when": 1793250000001`, the smallest value above `0257_drop_daily_outcomes`'s `1793250000000`, and confirm with `pnpm exec vitest run tests/unit/migration-journal.test.ts`. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
 
@@ -243,20 +245,19 @@ alter table captures alter column capture_mode set not null;
 
 If `db:generate` emitted the two new indexes and the index drop already, leave those statements where they are and only append the four backfill statements above **before** the `set not null` and before the `create unique index` lines. Reorder as needed; the constraint is that ordering, not the file layout.
 
-- [ ] **Step 5: Verify the migration metadata still agrees with the schema**
+- [ ] **Step 5: Verify the migration against the database, not against `db:generate`**
 
-Hand-editing generated SQL after `db:generate` is safe only while the snapshot still
-describes the schema. Confirm it does:
+`db:generate` will keep reporting drift until a snapshot newer than `0253` lands, so a "no changes" check cannot pass on this branch and is not evidence of anything. Verify against the applied database instead:
 
 ```bash
+DATABASE_URL="$TEST_DATABASE_URL" pnpm db:migrate
 pnpm check:migrations
-pnpm db:generate   # must report no changes; if it writes a 0259, the snapshot drifted
+docker exec axiom-db-1 psql -U axiom -d axiom_test_ingest -c "\d captures" | grep -E "capture_mode|fetched_text|content_hash|fetch_outcome"
+docker exec axiom-db-1 psql -U axiom -d axiom_test_ingest -c "\di captures_*"
+pnpm exec vitest run tests/unit/migration-journal.test.ts
 ```
 
-Expected: `check:migrations` clean, and `db:generate` produces nothing. If it
-produces a second migration, delete it and fix `schema.ts` to match what the SQL
-actually created, then regenerate — the snapshot is derived from `schema.ts`, so a
-drift means one of them is wrong.
+Expected: the migrate applies cleanly; `check:migrations` is clean; `\d captures` lists all four new columns; `\di` lists `captures_identity_key` and `captures_url_reference_key` and no longer lists `captures_workspace_source_url_key`; the journal test passes.
 
 - [ ] **Step 6: Apply to the test database, then run the test**
 
