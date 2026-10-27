@@ -141,12 +141,15 @@ export async function createCapture(
         { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind} (${mode})` },
         tx,
       );
-      // A URL capture promises the page's content; a page grab from the
-      // companion carries its own text, but that text is flattened innerText,
-      // not markdown - the scrape replaces it with the page's real structure
-      // once it lands (the grab survives in rawPayload). The scrape is long
-      // work, so it parks in the outbox instead of holding the request open.
-      if (capture.url) {
+      // Only a page or a bare address promises the page's content, so only
+      // those fetch: a selection is the words the person chose, and fetching
+      // the page around them would add text they did not capture. A page grab
+      // from the companion carries its own text, but that text is flattened
+      // innerText, not markdown - the fetch fills `fetchedText` with the page's
+      // real structure beside it (the grab stays the working text and survives
+      // in rawPayload). The fetch is long work, so it parks in the outbox
+      // instead of holding the request open.
+      if (capture.url && (mode === "page" || mode === "url-reference")) {
         await enqueueOutbox(tx, auth, {
           topic: CAPTURE_URL_CONTENT_TOPIC,
           payload: { captureId: capture.id, url: capture.url },

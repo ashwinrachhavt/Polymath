@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { outboxEvents } from "@/domains/audit/schema";
 import { workspaces } from "@/domains/identity/schema";
 import { captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -94,5 +95,21 @@ suite("capture identity", () => {
     await commands.createCapture(auth, { text: url });
     await expect(commands.createCapture(auth, { text: url }))
       .rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("does not fetch the page for a selection", async () => {
+    const capture = await commands.createCapture(auth, {
+      text: "just this paragraph",
+      url: "https://example.com/never-fetched",
+      mode: "selection",
+    });
+    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(0);
+  });
+
+  it("does fetch for a bare address", async () => {
+    const capture = await commands.createCapture(auth, { text: "https://example.com/fetched" });
+    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);
   });
 });
