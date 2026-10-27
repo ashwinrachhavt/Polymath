@@ -1,9 +1,22 @@
-import { and, asc, desc, eq, gte, ilike, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
+import type { TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { tasks } from "./schema";
+
+/** Reads may run inside a caller's transaction (a command that reads before it writes). */
+type Db = typeof db | TxDrizzle;
+
+/**
+ * The note join every read uses. `tasks.note_id` is a single-column FK, so it
+ * cannot enforce that the artifact shares the task's workspace; matching
+ * `workspace_id` as well is what keeps a foreign note id from leaking a title.
+ */
+function noteOf() {
+  return and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId));
+}
 
 /*
  * A task's prose lives on its note, not on the task row. Every read here joins
@@ -27,10 +40,7 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
     priority: tasks.priority,
     dueAt: tasks.dueAt,
   }).from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -56,10 +66,7 @@ export async function searchTasksForLink(auth: AuthContext, query: string, limit
   const rows = await db
     .select({ id: tasks.id, title: artifacts.title })
     .from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(artifacts.title, like)))
     .orderBy(asc(artifacts.title), asc(tasks.id))
     .limit(limit);
@@ -87,10 +94,7 @@ export async function listRecentlyCompletedTasks(
     priority: tasks.priority,
     completedAt: tasks.completedAt,
   }).from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -170,10 +174,7 @@ export async function getTaskDetail(
       archivedAt: tasks.archivedAt,
     })
     .from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     // Left, not inner: a note whose current version pointer has not been set
     // yet reads as a task with no body rather than vanishing from the card.
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
@@ -184,10 +185,7 @@ export async function getTaskDetail(
   const subtasks = await db
     .select({ id: tasks.id, title: artifacts.title, status: tasks.status, rank: tasks.rank, version: tasks.version })
     .from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     .where(and(eq(tasks.parentTaskId, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id));
 
@@ -379,10 +377,7 @@ export async function listTasksDueBetween(
   const rows = await db
     .select({ id: tasks.id, title: artifacts.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
     .from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
+    .innerJoin(artifacts, noteOf())
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),
@@ -426,4 +421,183 @@ export async function getCompletionConflictState(
   `);
   const note = (rows as unknown as Array<{ note: string | null }>)[0]?.note ?? null;
   return { status: task.status, completionNote: note };
+}
+
+/** One task's title, or null when it does not exist here. For callers that need only a label. */
+export async function getTaskTitle(
+  auth: Pick<AuthContext, "workspaceId">,
+  taskId: string,
+  tx: Db = db,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ title: artifacts.title })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId)))
+    .limit(1);
+  return row?.title ?? null;
+}
+
+/**
+ * The columns a caller outside this domain needs to label or schedule one task:
+ * its note's title and its own estimate. One round trip; null when the task is
+ * not in this workspace or is archived.
+ */export async function getTaskHeader(
+  auth: Pick<AuthContext, "workspaceId">,
+  taskId: string,
+  tx: Db = db,
+): Promise<{ id: string; title: string; estimateMinutes: number | null } | null> {
+  const [row] = await tx
+    .select({ id: tasks.id, title: artifacts.title, estimateMinutes: tasks.estimateMinutes })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Titles for a set of tasks, keyed by id. Missing ids are absent, not blank. */
+export async function getTaskTitles(
+  auth: Pick<AuthContext, "workspaceId">,
+  taskIds: string[],
+): Promise<Map<string, string>> {
+  if (taskIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: tasks.id, title: artifacts.title })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .where(and(eq(tasks.workspaceId, auth.workspaceId), inArray(tasks.id, taskIds)));
+  return new Map(rows.map((row) => [row.id, row.title]));
+}
+
+/**
+ * Task labels by id, newest first: a picker's list, or the set of titles the
+ * Linear import dedupes against. `limit` is optional because the importer needs
+ * every title in the workspace; that read is one column and was already
+ * unbounded before the prose moved, so it is a ceiling, not a regression.
+ */
+export async function listTaskTitles(
+  auth: Pick<AuthContext, "workspaceId">,
+  options: { limit?: number; includeArchived?: boolean } = {},
+  tx: Db = db,
+) {
+  const { limit } = options;
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 1000)) {
+    throw new Error("Invalid task limit");
+  }
+  return tx
+    .select({ id: tasks.id, title: artifacts.title })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .where(and(
+      eq(tasks.workspaceId, auth.workspaceId),
+      options.includeArchived ? undefined : isNull(tasks.archivedAt),
+    ))
+    .orderBy(desc(tasks.updatedAt))
+    .limit(limit ?? 1000);
+}
+
+/**
+ * Tasks matching one of `needles`, newest first. The predicate runs in SQL
+ * rather than in JS: fetching the table to filter it here would be an unbounded
+ * read. With `inBody` the note's current plain text is searched as well as its
+ * title, which only this file knows how to reach.
+ */
+export async function searchTasksByProse(
+  auth: Pick<AuthContext, "workspaceId">,
+  needles: string[],
+  options: {
+    inBody?: boolean;
+    statuses?: readonly (typeof tasks.$inferSelect)["status"][];
+    limit: number;
+  },
+) {
+  if (needles.length === 0) return [];
+  const patterns = needles.map((needle) => `%${escapeLike(needle)}%`);
+  const match = options.inBody
+    ? or(...patterns.flatMap((pattern) => [
+        ilike(artifacts.title, pattern),
+        sql`${artifactVersions.plainText} ilike ${pattern}`,
+      ]))
+    : or(...patterns.map((pattern) => ilike(artifacts.title, pattern)));
+  return db
+    .select({
+      id: tasks.id,
+      title: artifacts.title,
+      status: tasks.status,
+      dueAt: tasks.dueAt,
+    })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    // Left, like every other body read: a note with no current version has no
+    // plain text, and a body predicate on null is simply false.
+    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(
+      eq(tasks.workspaceId, auth.workspaceId),
+      isNull(tasks.archivedAt),
+      options.statuses ? inArray(tasks.status, [...options.statuses]) : undefined,
+      match,
+    ))
+    .orderBy(desc(tasks.updatedAt))
+    .limit(options.limit);
+}
+
+/**
+ * The artifacts that back a task in this workspace. A task's note is prose the
+ * owner already sees on the Work screen, so a library report must not count it
+ * as a note in its own right. Which notes belong to a task is this domain's
+ * fact, so the set is answered here rather than by a foreign anti-join.
+ */
+export async function listTaskNoteIds(auth: Pick<AuthContext, "workspaceId">): Promise<string[]> {
+  const rows = await db
+    .select({ noteId: tasks.noteId })
+    .from(tasks)
+    .where(eq(tasks.workspaceId, auth.workspaceId));
+  return rows.flatMap((row) => (row.noteId ? [row.noteId] : []));
+}
+
+/**
+ * Open tasks whose note body is empty: the knowledge-debt signal. "No body"
+ * means the note's plain text is absent or only whitespace - the same nothing
+ * the backfill recorded for a descriptionless task, now read from the note.
+ * The left join keeps a note with no current version in scope, where a null
+ * plain text is exactly the empty body this asks for.
+ */
+export async function listTasksWithoutBody(auth: Pick<AuthContext, "workspaceId">, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("Invalid task limit");
+  return db
+    .select({ id: tasks.id, title: artifacts.title, status: tasks.status })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(
+      eq(tasks.workspaceId, auth.workspaceId),
+      notInArray(tasks.status, ["done", "cancelled"]),
+      or(isNull(artifactVersions.plainText), sql`btrim(${artifactVersions.plainText}) = ''`),
+    ))
+    .orderBy(desc(tasks.updatedAt))
+    .limit(limit);
+}
+
+/**
+ * The tasks behind a set of ids that are still open in this workspace, with the
+ * note's title. The shutdown ritual uses this to reject a stale seed choice in
+ * the same transaction that would write the seeds.
+ */
+export async function listOpenTasksByIds(
+  auth: Pick<AuthContext, "workspaceId">,
+  taskIds: string[],
+  tx: Db = db,
+) {
+  if (taskIds.length === 0) return [];
+  return tx
+    .select({ id: tasks.id, title: artifacts.title })
+    .from(tasks)
+    .innerJoin(artifacts, noteOf())
+    .where(and(
+      eq(tasks.workspaceId, auth.workspaceId),
+      inArray(tasks.id, taskIds),
+      isNull(tasks.archivedAt),
+      notInArray(tasks.status, ["done", "cancelled"]),
+    ));
 }

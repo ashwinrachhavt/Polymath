@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { createProposal, senderAccountPin, withSenderAccountPin } from "@/domains/actions/commands";
 import { actionRevisions } from "@/domains/actions/schema";
 import { recordAudit } from "@/domains/audit/record";
@@ -14,6 +14,7 @@ import { createNoteInTx } from "@/domains/knowledge/notes";
 import { artifacts } from "@/domains/knowledge/schema";
 import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { tierAllows } from "@/domains/integrations/capabilities";
+import { listOpenTasksByIds } from "@/domains/work/queries";
 import { briefingSeeds, tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -359,17 +360,7 @@ export async function applyShutdown(auth: AuthContext, input: ShutdownInput): Pr
         const seedIds = [...new Set(input.seedTaskIds)];
         let seeded = 0;
         if (seedIds.length > 0) {
-          const valid = await tx
-            .select({ id: tasks.id, title: tasks.title })
-            .from(tasks)
-            .where(
-              and(
-                eq(tasks.workspaceId, auth.workspaceId),
-                inArray(tasks.id, seedIds),
-                isNull(tasks.archivedAt),
-                notInArray(tasks.status, ["done", "cancelled"]),
-              ),
-            );
+          const valid = await listOpenTasksByIds(auth, seedIds, tx);
           if (valid.length !== seedIds.length) {
             throw new ShutdownStaleError("A task you chose is no longer open. Reload and try again.");
           }

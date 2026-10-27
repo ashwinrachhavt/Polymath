@@ -1,7 +1,7 @@
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tasks } from "@/domains/work/schema";
-import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
+import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The app shell's focus dock reads the same live session Work controls
@@ -54,7 +54,7 @@ suite("focus dock read", () => {
 
   it("names a running session by its task, then paused, then null once finished", async () => {
     const { auth, workspaceId } = await workspace("task");
-    const [task] = await db.insert(tasks).values({ workspaceId, title: "Draft the Q4 memo", rank: "m", status: "ready" }).returning();
+    const task = await seedTask(db, workspaceId, { title: "Draft the Q4 memo", rank: "m", status: "ready" });
     const session = await commands.startFocusSession(auth, { taskId: task.id });
     expect(await queries.getLiveFocusDock(auth)).toEqual({ id: session.id, state: "running", title: "Draft the Q4 memo" });
 
