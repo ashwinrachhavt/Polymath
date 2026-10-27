@@ -12,7 +12,6 @@ import {
   Puzzle,
   Settings,
   ShieldCheck,
-  Scale,
   Sparkles,
   SquareCheckBig,
   Unplug,
@@ -42,15 +41,12 @@ export type Destination = {
   group: AppSlug | "shared";
 };
 
-/** Array order is rail order. Decisions lead: the product is a decision engine (ASH-309). */
+/**
+ * Array order is rail order. The conversation leads: "/" redirects to it, and
+ * the decision queue that used to hold the front door now lives in the
+ * notifications panel in the header, beside the runs and the audit trail.
+ */
 export const destinations: Destination[] = [
-  {
-    href: "/",
-    label: "Decisions",
-    purpose: "Decide what agents and captures propose.",
-    icon: Scale,
-    group: "command-center",
-  },
   {
     href: "/alfred",
     label: "Polymath",

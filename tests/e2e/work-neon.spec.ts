@@ -17,6 +17,15 @@ async function isAbove(upper: Locator, lower: Locator): Promise<boolean> {
   return up.y + up.height / 2 < low.y + low.height / 2;
 }
 
+/**
+ * A new task ranks to the end of the global order, which on a long-lived
+ * workspace sits past the first page. Narrow the list to the tagged rows
+ * through the list's own search instead of assuming page one holds them.
+ */
+async function narrowTo(page: Page, tag: string): Promise<void> {
+  await page.getByRole("searchbox", { name: "Search tasks" }).fill(tag);
+}
+
 /** The saved-list scope holding both tagged rows, with both rendered. */
 function savedRows(page: Page, a: string, b: string): { linkA: Locator; linkB: Locator } {
   const list = page.getByRole("list").filter({ has: page.getByRole("link", { name: a, exact: true }) }).first();
@@ -29,6 +38,10 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   const b = `Write copy ${tag}`;
   await page.goto("/neuralflow/work?view=saved");
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
+  // A new task ranks to the end of the global order, which on a long-lived
+  // workspace sits past the first page. Narrow the list to this test's rows
+  // through the list's own search rather than assuming page one holds them.
+  await narrowTo(page, tag);
 
   for (const title of [a, b]) {
     await page.getByLabel("New task title").fill(title);
@@ -57,6 +70,7 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   const cardB = page.getByText(b, { exact: true });
   await expect.poll(() => isAbove(cardB, cardA), { timeout: 30_000 }).toBe(true);
   await page.goto("/neuralflow/work?view=saved");
+  await narrowTo(page, tag);
   await expect(page.getByRole("button", { name: `Done: complete ${b}` })).toBeEnabled();
   await page.reload();
   const moved = savedRows(page, a, b);
@@ -75,15 +89,20 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
   await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: b, exact: true })).toHaveCount(0);
 
-  // Subtask and dependency on the card.
+  // Subtask and dependency on the card. Selecting a row is a navigation, so
+  // wait for the inspector to commit before typing into its form: filling
+  // during the transition loses the value when the panel re-renders.
   await page.getByRole("link", { name: a, exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(a);
   await page.getByLabel("New subtask title").fill(`Outline ${tag}`);
   await page.getByRole("button", { name: "Add subtask" }).click();
   await expect(page.getByText(`Outline ${tag}`)).toBeVisible();
-  await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("0/1 subtasks")).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: a }).getByText("0/1", { exact: true })).toBeVisible();
 
   await page.goto("/neuralflow/work?view=saved");
+  await narrowTo(page, tag);
   await page.getByRole("link", { name: a, exact: true }).click();
+  await page.getByRole("textbox", { name: "Title", exact: true }).waitFor();
   await page.getByLabel("Other task").selectOption({ label: b });
   await page.getByRole("button", { name: "Add dependency" }).click();
   await expect(page.getByText(`Blocked by ${b}`, { exact: true })).toBeVisible();
@@ -91,6 +110,7 @@ test("capture, commit, split, block, reorder and finish a task, saved in the wor
 
   // A cycle is refused with a message, not a crash.
   await page.getByRole("link", { name: b, exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(b);
   await page.getByLabel("Other task").selectOption({ label: a });
   await page.getByRole("button", { name: "Add dependency" }).click();
   await expect(page.getByText("That dependency would make the tasks wait on each other.")).toBeVisible();
@@ -111,6 +131,7 @@ test("board lanes and the calendar show the same saved rows", async ({ page }) =
   const due = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10); // tomorrow, UTC
 
   await page.goto("/neuralflow/work?view=saved");
+  await narrowTo(page, tag);
   await page.getByLabel("New task title").fill(a);
   await page.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByRole("link", { name: a, exact: true })).toBeVisible();

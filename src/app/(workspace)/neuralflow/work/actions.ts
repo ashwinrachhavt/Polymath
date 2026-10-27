@@ -66,6 +66,12 @@ const createInput = z.object({
   personId: z.string().uuid().optional(),
   organizationId: z.string().uuid().optional(),
   idempotencyKey: z.string().uuid().optional(),
+  /**
+   * Only `ready` is accepted from a surface: adding on Work's Today tab means
+   * "I am committing to this today", and the task must appear in the list it
+   * was typed into. Every other status is reached from the task card.
+   */
+  status: z.literal("ready").optional(),
 });
 
 export async function createTaskAction(input: {
@@ -77,6 +83,7 @@ export async function createTaskAction(input: {
   personId?: string;
   organizationId?: string;
   idempotencyKey?: string;
+  status?: "ready";
 }): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the task a title." };
@@ -87,8 +94,27 @@ export async function createTaskAction(input: {
   return { ok: true, taskId: id };
 }
 
-const completionSentence = z
-  .string()
+const commitInput = z.object({
+  taskId: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
+  idempotencyKey: z.string().uuid(),
+});
+
+/**
+ * Commit a task to today. "Today" is the owner's explicit commitment (Ready or
+ * In progress), so this is the only write the Next up and Inbox lists need and
+ * it reuses updateTask's version check rather than a second path to the row.
+ */
+export async function commitTaskAction(input: z.input<typeof commitInput>): Promise<Result<{ version: number }>> {
+  const parsed = commitInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "This task is no longer available." };
+  const auth = await authorize();
+  return guarded(auth, async () => ({
+    version: (await updateTask(auth, { ...parsed.data, patch: { status: "ready" } })).version,
+  }));
+}
+
+const completionSentence = z  .string()
   .trim()
   .max(280, "Keep the sentence under 280 characters.")
   .optional();

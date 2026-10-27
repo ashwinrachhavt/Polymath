@@ -73,16 +73,17 @@ describe("navigation", () => {
   });
 
   /*
-   * The rail's first entry is the product's thesis (ASH-309: a decision
-   * engine, not a place to perform work): the decision queue leads, then the
-   * conversation. Order is behaviour, not styling, so it gets an assertion
-   * rather than a review note.
+   * The rail's first entry is the product's stance (agents/product.md: "a
+   * conversation is home"). Decisions left the rail when its queue moved into
+   * the header's notifications panel, beside runs and the audit trail; "/"
+   * now redirects to the conversation. Order is behaviour, not styling, so it
+   * gets an assertion rather than a review note.
    */
-  it("opens the rail with Decisions, then Polymath", () => {
-    expect(destinations[0].href).toBe("/");
-    expect(destinations[0].label).toBe("Decisions");
-    expect(destinations[1].href).toBe("/alfred");
-    expect(destinations[2].href).toBe("/command-center/inbox");
+  it("opens the rail with the conversation, then Inbox", () => {
+    expect(destinations[0].href).toBe("/alfred");
+    expect(destinations[0].label).toBe("Polymath");
+    expect(destinations[1].href).toBe("/command-center/inbox");
+    expect(destinations.some((destination) => destination.label === "Decisions")).toBe(false);
   });
 
   /*
@@ -93,13 +94,14 @@ describe("navigation", () => {
    * keep their donor labels, only the rail governs.
    */
 
-  it("rails exactly the fifteen destinations in order", () => {
+  it("rails exactly the fourteen destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
-    // context moved to Work's Today view.
+    // context moved to Work's Today view. Decisions left when its queue moved
+    // into the header's notifications panel.
     expect(destinations.map((destination) => destination.label)).toEqual([
-      "Decisions", "Polymath", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
+      "Polymath", "Inbox", "Work", "Notes", "Document Vault", "Notebook",
       "Artifacts", "Skills", "People", "Companies", "Connectors",
       "Reviews", "Activity", "Settings",
     ]);

@@ -40,12 +40,14 @@ describe("workspace page shells", () => {
     }
   });
 
-  it("the root is the decision queue (ASH-309)", () => {
-    // The old root redirected to the Assistant; the decision engine is the
-    // front door now, rendered inside the workspace shell.
+  it("the root sends the owner to the conversation", () => {
+    // Decisions held the front door (ASH-309); it left when the queue moved
+    // into the header's notifications panel. The root renders nothing itself
+    // and redirects, so there is no second surface listing the same proposals.
     expect(fs.existsSync(path.join(ROOT, "src/app/page.tsx"))).toBe(false);
     const source = fs.readFileSync(path.join(ROOT, "src/app/(workspace)/page.tsx"), "utf8");
-    expect(source).toContain("listHomeQueue");
+    expect(source).toContain("redirect(\"/alfred\")");
+    expect(source).not.toContain("listHomeQueue");
   });
 
   it("page shells do not hardcode legacy /apps routes", () => {
