@@ -129,7 +129,21 @@ async function seedCanvaAccount(): Promise<string | null> {
       where u.clerk_user_id = 'dev-user' and m.status = 'active'
       limit 1`;
     if (!owner) return null;
-    const alias = `canva-e2e-${crypto.randomUUID().slice(0, 8)}`;
+    // One journey = one connected Canva account. The executor refuses to
+    // guess between two active accounts (ambiguity is surfaced, never
+    // guessed), so revoke a stale seed from this spec's own earlier journey
+    // or interrupted run before connecting this journey's own. The revoke is
+    // scoped to this spec's own 'canva-e2e-handoff-' namespace: the only
+    // other e2e canva producer is the fixture spec's 'canva-e2e-fixture-'
+    // family in a separate CI step, and every other e2e external_accounts
+    // producer connects gmail. The journeys are serial (describe.configure
+    // at the bottom of this file), so the revoke never overlaps a sibling
+    // seed; afterAll still deletes every tracked row by id.
+    await client`
+      update external_accounts set status = 'revoked'
+      where workspace_id = ${owner.workspace_id} and provider = 'canva'
+        and status = 'active' and alias like 'canva-e2e-handoff-%'`;
+    const alias = `canva-e2e-handoff-${crypto.randomUUID().slice(0, 8)}`;
     const [account] = await client<{ id: string }[]>`
       insert into external_accounts (workspace_id, provider, alias, status, composio_connected_account_id, created_by, updated_by)
       values (${owner.workspace_id}, 'canva', ${alias}, 'active', ${`ca_e2e_${crypto.randomUUID()}`}, ${owner.user_id}, ${owner.user_id})
@@ -222,79 +236,6 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("status")).toContainText("Copied");
   });
 
-  test(`hand off a brief to Canva: proposal, then an honest unconfigured refusal [${vp.name}]`, async ({ page }) => {
-    test.setTimeout(180_000);
-    await page.setViewportSize({ width: vp.width, height: vp.height });
-    const artifact = await seedArtifact("report", `${SOURCE_TITLE} (handoff)`, SOURCE_TEXT);
-    test.skip(!artifact, "DATABASE_URL not configured");
-    const accountAlias = await seedCanvaAccount();
-    test.skip(!accountAlias, "DATABASE_URL not configured");
-
-    // Generate the brief, then hand it off from the brief page.
-    await page.goto(`/artifacts/${artifact!.id}`);
-    await page.getByRole("button", { name: "Design brief" }).click();
-    await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
-    await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
-    await expect(page.getByRole("heading", { level: 1, name: "Design brief: Q3 roadmap one-pager" })).toBeVisible();
-
-    const sendButton = page.getByRole("button", { name: "Send to Canva" });
-    await expect(sendButton).toBeVisible();
-    await expectToolbarContained(page, vp.width);
-    await sendButton.click();
-    await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
-    await expectToolbarContained(page, vp.width);
-    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-proposed-${vp.name}.png`, style: HIDE_DEV_CHROME });
-
-    // Repeat click resolves the same proposal; no second one is filed.
-    await sendButton.click();
-    await expect(page.getByRole("status")).toContainText("Import already proposed", { timeout: 30_000 });
-
-    // The review card names the exact effect and the unverified fidelity.
-    await page.getByRole("link", { name: "Review in Reviews" }).click();
-    await expect(page.getByText('Import design brief "Q3 roadmap one-pager" to Canva')).toBeVisible();
-    await expect(page.getByText("Canva's rendering of the generated document is not verified yet")).toBeVisible();
-    await expect(page.getByText("canva.design.import")).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-review-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
-
-    // Approving runs the executor's gates. This environment has neither
-    // CANVA_IMPORT_ENABLED nor a COMPOSIO_API_KEY, so dispatch is provably
-    // impossible: the honest outcome is a refusal BEFORE any claim, the
-    // approval stands, and no UNKNOWN attempt blocks the proposal against a
-    // configuration fix. Enablement is the first gate: a generic Composio
-    // key (present for Gmail) must never stand in for the Canva opt-in.
-    // Approve OUR proposal: the two viewport journeys run in parallel with
-    // identical card titles, so the alias seeds the card's identity.
-    const card = page.locator("section").filter({ hasText: accountAlias! });
-    await card.getByRole("button", { name: "Approve" }).click();
-    await expect(
-      card.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
-    ).toBeVisible({ timeout: 30_000 });
-    // The held decided card offers no way to fire again while its refusal shows.
-    await expect(card.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
-    expect(await importAttemptCount()).toBe(0);
-
-    // Reloaded, the refusal persists NO manufactured outcome: the approval
-    // stands against a configuration fix, the decided card names no import
-    // and no failure, and it offers no way to fire again.
-    await page.goto("/reviews?status=approved");
-    await expect(page).toHaveURL(/status=approved/);
-    const decided = page.locator("section").filter({ hasText: accountAlias! });
-    await expect(decided.getByText("Decided")).toBeVisible({ timeout: 30_000 });
-    // The refusal survives the reload through the card's persisted review
-    // history - visibility of a committed refusal is durable, not a flash.
-    await expect(
-      decided.getByText(/Execution refused: Canva import is not enabled on this deployment/),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(decided.getByText("Imported to Canva.")).toHaveCount(0);
-    await expect(decided.getByText(/Not imported\./)).toHaveCount(0);
-    await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);
-    // The outcome pixel is the RELOADED decided card: the immediate alert is
-    // a flash the decided overlay replaces within a frame, while this view -
-    // persisted refusal history, approval standing, no re-fire control - is
-    // the durable evidence.
-    await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
-  });
-
   test(`a transcript never offers the design brief [${vp.name}]`, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -331,3 +272,91 @@ for (const vp of VIEWPORTS) {
     expect(await briefCountFor(artifact!.id)).toBe(0);
   });
 }
+
+/*
+ * The two handoff journeys share the e2e workspace and the executor
+ * refuses to guess between two active Canva accounts, so each journey
+ * revokes the previous seed and connects its own - safe only when the
+ * journeys never overlap. Serial mode pins them to one worker in order
+ * under the repo-wide fullyParallel default.
+ */
+test.describe("canva handoff, one connected account at a time", () => {
+  test.describe.configure({ mode: "serial" });
+  for (const vp of VIEWPORTS) {
+    test(`hand off a brief to Canva: proposal, then an honest unconfigured refusal [${vp.name}]`, async ({ page }) => {
+      test.setTimeout(180_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const artifact = await seedArtifact("report", `${SOURCE_TITLE} (handoff)`, SOURCE_TEXT);
+      test.skip(!artifact, "DATABASE_URL not configured");
+      const accountAlias = await seedCanvaAccount();
+      test.skip(!accountAlias, "DATABASE_URL not configured");
+
+      // Generate the brief, then hand it off from the brief page.
+      await page.goto(`/artifacts/${artifact!.id}`);
+      await page.getByRole("button", { name: "Design brief" }).click();
+      await expect(page.getByRole("status")).toContainText("Brief drafted", { timeout: 60_000 });
+      await page.goto((await page.getByRole("link", { name: "Open brief" }).getAttribute("href"))!);
+      await expect(page.getByRole("heading", { level: 1, name: "Design brief: Q3 roadmap one-pager" })).toBeVisible();
+
+      const sendButton = page.getByRole("button", { name: "Send to Canva" });
+      await expect(sendButton).toBeVisible();
+      await expectToolbarContained(page, vp.width);
+      await sendButton.click();
+      await expect(page.getByRole("status")).toContainText("Import proposed", { timeout: 30_000 });
+      await expectToolbarContained(page, vp.width);
+      await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-proposed-${vp.name}.png`, style: HIDE_DEV_CHROME });
+
+      // Repeat click resolves the same proposal; no second one is filed.
+      await sendButton.click();
+      await expect(page.getByRole("status")).toContainText("Import already proposed", { timeout: 30_000 });
+
+      // The review card names the exact effect and the unverified fidelity.
+      await page.getByRole("link", { name: "Review in Reviews" }).click();
+      // Scope every assertion to this journey's card: the workspace is
+      // shared, the generator's fixed brief title is identical across
+      // journeys and specs, and a sibling's decided card stays on the
+      // queue - bare text queries resolve to two elements.
+      const card = page.locator("section").filter({ hasText: accountAlias! });
+      await expect(card.getByText('Import design brief "Q3 roadmap one-pager" to Canva')).toBeVisible();
+      await expect(card.getByText("Canva's rendering of the generated document is not verified yet")).toBeVisible();
+      await expect(card.getByText("canva.design.import")).toBeVisible();
+      await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-review-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: vp.name === "desktop" });
+
+      // Approving runs the executor's gates. This environment has neither
+      // CANVA_IMPORT_ENABLED nor a COMPOSIO_API_KEY, so dispatch is provably
+      // impossible: the honest outcome is a refusal BEFORE any claim, the
+      // approval stands, and no UNKNOWN attempt blocks the proposal against a
+      // configuration fix. Enablement is the first gate: a generic Composio
+      // key (present for Gmail) must never stand in for the Canva opt-in.
+      // Approve OUR proposal: the seeded alias names this journey's card.
+      await card.getByRole("button", { name: "Approve" }).click();
+      await expect(
+        card.getByRole("alert").filter({ hasText: "Canva import is not enabled on this deployment; the import cannot be dispatched." }),
+      ).toBeVisible({ timeout: 30_000 });
+      // The held decided card offers no way to fire again while its refusal shows.
+      await expect(card.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      expect(await importAttemptCount()).toBe(0);
+
+      // Reloaded, the refusal persists NO manufactured outcome: the approval
+      // stands against a configuration fix, the decided card names no import
+      // and no failure, and it offers no way to fire again.
+      await page.goto("/reviews?status=approved");
+      await expect(page).toHaveURL(/status=approved/);
+      const decided = page.locator("section").filter({ hasText: accountAlias! });
+      await expect(decided.getByText("Decided")).toBeVisible({ timeout: 30_000 });
+      // The refusal survives the reload through the card's persisted review
+      // history - visibility of a committed refusal is durable, not a flash.
+      await expect(
+        decided.getByText(/Execution refused: Canva import is not enabled on this deployment/),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(decided.getByText("Imported to Canva.")).toHaveCount(0);
+      await expect(decided.getByText(/Not imported\./)).toHaveCount(0);
+      await expect(decided.getByRole("button", { name: "Approve" })).toHaveCount(0);
+      // The outcome pixel is the RELOADED decided card: the immediate alert is
+      // a flash the decided overlay replaces within a frame, while this view -
+      // persisted refusal history, approval standing, no re-fire control - is
+      // the durable evidence.
+      await page.screenshot({ path: `test-results/feature-pixels/design-brief-handoff-outcome-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    });
+  }
+});
