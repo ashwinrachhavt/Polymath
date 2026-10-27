@@ -14,7 +14,7 @@
 
 - `make check` (`pnpm lint && pnpm typecheck && pnpm test && pnpm build`) is the gate. Never `--no-verify`.
 - Integration tests need `TEST_DATABASE_URL`. **Never** point it at the app database. When `CI` is set a missing URL throws rather than skipping.
-- Migrations are forward-only and never edited after they run. Next number is `0257`.
+- Migrations are forward-only and never edited after they run. Next free number is `0258` (`0257` is taken by `81ee900` on branch `notebooklm-2`).
 - Every owned row carries `workspace_id`; every query is scoped by `AuthContext`. A client never supplies the workspace.
 - Every mutation takes an idempotency key recorded in `request_receipts`; audit and outbox rows are written in the same transaction as the change.
 - Invariants live in the database (unique, check, not null, partial indexes), not only in application code.
@@ -138,7 +138,7 @@ git commit -m "feat(capture): arrival mode and content hash helpers"
 
 **Files:**
 - Modify: `src/domains/capture/schema.ts:21` (add enum), `:55-110` (columns + indexes), `src/domains/capture/mode.ts` (re-export the type from schema)
-- Create: `src/db/migrations/0257_capture_mode_and_identity.sql` (generated, then extended by hand), `src/db/migrations/meta/0257_snapshot.json`, `_journal.json` entry
+- Create: `src/db/migrations/0258_capture_mode_and_identity.sql` (generated, then extended by hand), `src/db/migrations/meta/0258_snapshot.json`, `_journal.json` entry
 - Test: `tests/integration/capture-identity.test.ts` (first two tests only; the rest come in Task 3)
 
 **Interfaces:**
@@ -204,7 +204,7 @@ uniqueIndex("captures_url_reference_key")
 
 - [ ] **Step 4: Generate and extend the migration**
 
-Run: `pnpm db:generate` — this writes `src/db/migrations/0257_*.sql`, `meta/0257_snapshot.json`, and the `_journal.json` entry. Do not hand-write those three. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
+Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/0258_snapshot.json`, and the `_journal.json` entry. Do not hand-write those three. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
 
 ```sql
 update captures set capture_mode = case
@@ -241,7 +241,7 @@ describes the schema. Confirm it does:
 
 ```bash
 pnpm check:migrations
-pnpm db:generate   # must report no changes; if it writes a 0258, the snapshot drifted
+pnpm db:generate   # must report no changes; if it writes a 0259, the snapshot drifted
 ```
 
 Expected: `check:migrations` clean, and `db:generate` produces nothing. If it
