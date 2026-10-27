@@ -8,7 +8,7 @@ import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
-import type { DraftTemplate } from "./templates";
+import { requireTemplate, resolveTemplate, type DraftTemplate } from "./templates";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 
 /*
@@ -37,6 +37,36 @@ export class VersionConflictError extends Error {
   constructor() {
     super("This note changed since you loaded it. Reload and try again.");
   }
+}
+
+/*
+ * `tasks.note_id` is a single-column FK, so Postgres cannot say "the note is in
+ * the same workspace as the task" - a foreign note id would still satisfy the
+ * reference and leak another tenant's prose through the task read. Until a
+ * composite FK on (note_id, workspace_id) exists, the write path asserts it
+ * here, inside the caller's transaction, so a task can never commit carrying a
+ * note from somewhere else.
+ */
+export class WorkspaceMismatchError extends Error {
+  readonly code = "workspace_mismatch";
+  readonly status = 409;
+  constructor(subject = "That record") {
+    super(`${subject} belongs to another workspace.`);
+  }
+}
+
+/** Throw unless `artifactId` is an artifact in `workspaceId`. Reads nothing else. */
+export async function assertArtifactInWorkspace(
+  tx: TxDrizzle,
+  workspaceId: string,
+  artifactId: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({ id: artifacts.id })
+    .from(artifacts)
+    .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, workspaceId)))
+    .limit(1);
+  if (!row) throw new WorkspaceMismatchError();
 }
 
 /** Tiptap/ProseMirror document JSON, or a structured payload. */
@@ -184,17 +214,23 @@ export async function createNoteInTx(
     content?: NoteContent;
     plainText?: string;
     kind?: NoteKind;
-    /** The scaffold this note started from; null (the default) is a plain note. */
-    template?: DraftTemplate | null;
+    /**
+     * The scaffold this note started from, or null for a plain note. Typed as a
+     * plain string because everything reaching it from outside (a form field, a
+     * stored row, a provider payload) is untrusted until checked - an unknown
+     * slug is a rejected write, never a silently stored value.
+     */
+    template?: string | null;
   },
 ): Promise<{ id: string; versionId: string; version: number }> {
+  const template = requireTemplate(input.template);
   const [artifact] = await tx
     .insert(artifacts)
     .values({
       workspaceId: auth.workspaceId,
       kind: input.kind ?? "note",
       title: input.title,
-      template: input.template ?? null,
+      template,
       createdBy: auth.userId,
       updatedBy: auth.userId,
     })
@@ -551,6 +587,12 @@ export type NoteDetail = {
   embedError: string | null;
   /** Whether the CURRENT committed version has vectors - the note answers meaning search. */
   indexed: boolean;
+  /**
+   * The scaffold the note started from, resolved through the registry. A slug
+   * that is no longer registered reads as `null` - a plain note - rather than
+   * throwing, so removing a template cannot break an existing note.
+   */
+  template: DraftTemplate | null;
 };
 
 export async function getNote(auth: AuthContext, artifactId: string): Promise<NoteDetail | null> {
@@ -567,6 +609,9 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
         version: artifacts.version,
         currentVersionId: artifacts.currentVersionId,
         tags: artifacts.tags,
+        // Resolved, not raw: a slug removed from the registry reads as a plain
+        // note instead of a value no reader can interpret.
+        template: artifacts.template,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
         embedError: artifacts.embedError,
@@ -603,6 +648,7 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       embedError: safeArtifactEmbedError(row.embedError),
       indexed: row.indexed,
       content: (row.content as NoteContent | null) ?? null,
+      template: resolveTemplate(row.template),
       draft: row.draftContent ? { content: row.draftContent as NoteContent, baseVersionId: row.draftBaseVersionId, updatedAt: row.draftUpdatedAt! } : null,
     };
   });
