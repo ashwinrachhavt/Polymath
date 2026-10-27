@@ -70,8 +70,15 @@ describe("inferCaptureMode", () => {
   it("is page when text arrived with a url and no mode was supplied", () => {
     expect(inferCaptureMode({ text: "body", url: "https://example.com/a" })).toBe("page");
   });
-  it("is authored when the text is itself a bare address and no url was supplied", () => {
+  it("is url-reference when the text is itself a bare address and no url was supplied", () => {
     expect(inferCaptureMode({ text: "https://example.com/a" })).toBe("url-reference");
+  });
+  it("prefers blob when a kind is given, regardless of text and url", () => {
+    expect(inferCaptureMode({ kind: "voice", text: "words", url: "https://example.com/a" })).toBe("blob");
+  });
+  it("treats whitespace-only text as no text", () => {
+    expect(inferCaptureMode({ text: "   " })).toBe("authored");
+    expect(inferCaptureMode({ text: "   ", url: "https://example.com/a" })).toBe("url-reference");
   });
   it("is blob for a file or a voice capture", () => {
     expect(inferCaptureMode({ kind: "file" })).toBe("blob");
@@ -123,7 +130,7 @@ Expected: FAIL — cannot resolve `@/domains/capture/mode`.
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run tests/unit/capture-mode.test.ts`
-Expected: PASS, 13 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -204,7 +211,9 @@ uniqueIndex("captures_url_reference_key")
 
 - [ ] **Step 4: Generate and extend the migration**
 
-Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/0258_snapshot.json`, and the `_journal.json` entry. Do not hand-write those three. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
+Run: `pnpm db:generate` — this writes `src/db/migrations/0258_*.sql`, `meta/0258_snapshot.json`, and the `_journal.json` entry. Do not hand-write those three.
+
+**Then set the journal `when` by hand.** `drizzle-kit` stamps it with the current millisecond, today about `1793060333000`, which is BELOW the `1793250000000` that `0257_drop_daily_outcomes` carries (that entry is dated in the future). `tests/unit/migration-journal.test.ts` requires each appended entry's `when` to exceed every earlier one, so the generated value fails the suite. Edit the new entry in `src/db/migrations/meta/_journal.json` to `"when": 1793250000001` and confirm with `pnpm exec vitest run tests/unit/migration-journal.test.ts`. Then **append** the backfill and index swap to the generated SQL, in this order (the addition of `capture_mode` must happen before `not null` is enforced, and existing duplicate rows must be neutralised before the unique index is created):
 
 ```sql
 update captures set capture_mode = case
