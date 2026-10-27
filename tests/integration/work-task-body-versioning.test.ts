@@ -84,6 +84,21 @@ async function noteLedger(noteId: string) {
   return { versions, note };
 }
 
+/**
+ * The note's `note.*` audit rows, ids and all. Every assertion about "this
+ * patch wrote no note activity" is a delta against this, never an absolute
+ * emptiness check: creation legitimately writes `note.created` now that a task
+ * writes its note in the create transaction, and forbidding that outright
+ * would pass for the wrong reason the moment creation changes again.
+ */
+async function noteAuditIds(noteId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: auditEvents.id })
+    .from(auditEvents)
+    .where(and(eq(auditEvents.subjectId, noteId), sql`${auditEvents.action} like 'note.%'`));
+  return rows.map((r) => r.id).sort();
+}
+
 suite("task prose edits version the note and leave task activity alone", () => {
   it("patching description mints a new note version and does not move tasks.updated_at", async () => {
     const { a, workspaceId } = await setup("body");
@@ -91,6 +106,7 @@ suite("task prose edits version the note and leave task activity alone", () => {
     const noteId = await ensureNote(id, workspaceId);
     const before = await taskRow(id);
     expect(before.noteId).toBe(noteId);
+    const auditsBefore = await noteAuditIds(noteId);
 
     await cmd.updateTask(a, {
       taskId: id,
@@ -113,6 +129,10 @@ suite("task prose edits version the note and leave task activity alone", () => {
     });
     expect(note.currentVersionId).not.toBeNull();
 
+    // The body edit is note activity: wrapping the version commit in
+    // "no note audits" would contradict the very thing this test proves.
+    expect((await noteAuditIds(noteId)).length).toBe(auditsBefore.length + 1);
+
     // What a reader sees is the new body, not a copy left on the task row.
     const detail = await queries.getTaskDetail(a, id);
     expect(detail?.task.description).toBe("Ship it Friday.\n\nAsk Priya first.");
@@ -124,6 +144,7 @@ suite("task prose edits version the note and leave task activity alone", () => {
     const { id } = await work.createOwnerTask(a, { title: "Old name" });
     const noteId = await ensureNote(id, workspaceId);
     const before = await taskRow(id);
+    const auditsBefore = await noteAuditIds(noteId);
 
     await cmd.updateTask(a, {
       taskId: id,
@@ -138,8 +159,10 @@ suite("task prose edits version the note and leave task activity alone", () => {
 
     const { note, versions } = await noteLedger(noteId);
     expect(note.title).toBe("New name");
-    // A rename is a title write, not a body write: no new version is minted.
+    // A rename is a title write, not a body write: no new version is minted,
+    // and it is note activity exactly once (`note.renamed`).
     expect(versions).toHaveLength(1);
+    expect((await noteAuditIds(noteId)).length).toBe(auditsBefore.length + 1);
     expect((await queries.getTaskDetail(a, id))?.task.title).toBe("New name");
   });
 
@@ -149,6 +172,7 @@ suite("task prose edits version the note and leave task activity alone", () => {
     const noteId = await ensureNote(id, workspaceId);
     const before = await taskRow(id);
     const ledgerBefore = await noteLedger(noteId);
+    const auditsBefore = await noteAuditIds(noteId);
 
     await cmd.updateTask(a, {
       taskId: id,
@@ -163,23 +187,15 @@ suite("task prose edits version the note and leave task activity alone", () => {
     // Status is task activity, so this one does move the clock.
     expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
 
+    // The note is untouched across the patch - not "the note is empty", which
+    // creation already made false: the same versions, the same pointer, the
+    // same clock, and not one new note audit row.
     const ledgerAfter = await noteLedger(noteId);
-    expect(ledgerAfter.versions).toHaveLength(ledgerBefore.versions.length);
+    expect(ledgerAfter.versions).toEqual(ledgerBefore.versions);
     expect(ledgerAfter.note.currentVersionId).toBe(ledgerBefore.note.currentVersionId);
     expect(ledgerAfter.note.version).toBe(ledgerBefore.note.version);
     expect(ledgerAfter.note.updatedAt).toEqual(ledgerBefore.note.updatedAt);
-
-    // ... and it writes no note audit row.
-    const noteAudits = await db
-      .select({ action: auditEvents.action })
-      .from(auditEvents)
-      .where(
-        and(
-          eq(auditEvents.subjectId, noteId),
-          sql`${auditEvents.action} like 'note.%'`,
-        ),
-      );
-    expect(noteAudits).toEqual([]);
+    expect(await noteAuditIds(noteId)).toEqual(auditsBefore);
     expect((await queries.getTaskDetail(a, id))?.task.status).toBe("in_progress");
   });
 });
