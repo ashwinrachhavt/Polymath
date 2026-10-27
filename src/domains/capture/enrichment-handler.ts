@@ -26,7 +26,7 @@ import { withTransaction } from "@/lib/db-transaction";
 import { blobObjects } from "../audit/schema";
 import { recordAudit } from "@/domains/audit/record";
 import { workspaceOwnerAuth } from "@/domains/audit/outbox-handlers";
-import { drizzleQuotaStore, withQuota } from "@/integrations/providers/quota";
+import { QuotaExhaustedError, drizzleQuotaStore, withQuota } from "@/integrations/providers/quota";
 import { readBlob } from "@/integrations/object-store/object-store";
 import {
   transcriptionProvider,
@@ -35,6 +35,7 @@ import {
 } from "@/integrations/transcription/provider";
 import { captureProposals, captures } from "./schema";
 import { triageCapture } from "./jev-classify";
+import { workingText } from "./mode";
 import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } from "./classification";
 /*
  * The capture enrichment ladder, as an outbox consumer. Ordered after the URL
@@ -47,12 +48,14 @@ import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } f
  *   Tier 2  Jev classifier (when the registry enables it): typed judgments
  *           -> pending capture_proposals rows + validated taxonomy domain
  *   Tier 3  generation prompt (the pre-ASH-272 behavior; also the fallback
- *           whenever Jev is disabled or unconfigured) -> title, domain, tags
+ *           whenever Jev is disabled, unconfigured, or over its allowance)
+ *           -> title, domain, tags
  *
  * The LLM proposes, the capture keeps it as signal; nothing is auto-converted.
- * A provider that is not configured is a skip, not a failure: Tier 0+1 already
- * improved the row, and the ladder should not turn into an error pump just
- * because no key is set. A provider error fails the event for redelivery.
+ * A provider that is not configured, or whose allowance cannot cover the work,
+ * is a skip, not a failure: Tier 0+1 already improved the row, and the ladder
+ * should not turn into an error pump because no key is set or the month's
+ * budget is gone. A provider error fails the event for redelivery.
  */
 
 export const CAPTURE_ENRICHMENT_TOPIC = "capture.enrichment_requested";
@@ -174,15 +177,17 @@ async function enrichLeased(
 ) {
   const captureId = capture.id;
 
-  // Tier 0 + 1 run on whatever text exists: the paste itself, or the fetched
-  // page for a URL capture.
+  // Tier 0 + 1 run on the capture's working text: the paste for an authored or
+  // selection capture, the page's fetched reading for a page. A capture with no
+  // working text (a blob still awaiting transcription) classifies as empty,
+  // exactly as it did when this read `capture.text` alone.
   // Voice first (ASH-298): the transcript becomes the capture's text, then
   // the SAME ladder reads it - no parallel audio pipeline. Unconfigured is
   // honest: the capture keeps its audio, carries the reason, and this event
   // completes instead of redelivering against a missing key forever. A
   // provider ERROR stays redeliverable, like the other tiers.
-  let textForLadder = capture.text ?? "";
-  if (capture.kind === "voice" && !capture.text) {
+  let textForLadder = workingText(capture) ?? "";
+  if (capture.kind === "voice" && !textForLadder) {
     const transcript = await transcribeVoiceCapture(token, capture, event, deps.transcriber);
     if (transcript === null) return;
     textForLadder = transcript;
@@ -218,13 +223,17 @@ async function enrichLeased(
     processingState: "classifying",
   });
 
-  // Tier 2 (ASH-272): the Jev classifier, when the registry enables it. The
-  // registry entry ships disabled, so today this always falls through to the
-  // generation prompt below with byte-identical behavior. A Jev request
-  // error fails the event for redelivery; an unreadable answer degrades to a
-  // low-confidence note proposal, never a crash and never a silent skip.
+  // Tier 2 (ASH-272): the Jev classifier. The registry enables it
+  // (enabled 2026-10-25), so production takes this branch; a workspace with no
+  // allowance left is a skip, not an event failure, and the reason lands on
+  // the capture below. A Jev request error fails the event for redelivery; an
+  // unreadable answer degrades to a low-confidence note proposal, never a
+  // crash and never a silent skip.
   const jev = await tryJevTriage(token, captureId, event.workspaceId, capture, base, cleanText, structure, deps.judger);
-  if (jev === "handled") return;
+  if (jev.outcome === "handled") return;
+  // Why the optional paid tier did not run, on the row the owner reads. A later
+  // redelivery that reaches Jev clears it, like every other settled reason.
+  const paidTierSkipped = jev.skipped;
 
   let provider: ReturnType<typeof generationProvider>;
   try {
@@ -235,7 +244,7 @@ async function enrichLeased(
       await ownedUpdate(token, captureId, {
         ...base,
         processingState: "enriched",
-        failureReason: settledFailureReason(capture, body),
+        failureReason: settledFailureReason(capture, body) ?? paidTierSkipped,
         ...RELEASE,
       });
       return;
@@ -276,18 +285,31 @@ async function enrichLeased(
     domain: parsed.domain?.toLowerCase().trim() || null,
     tags: tags && tags.length > 0 ? tags : null,
     processingState: "enriched",
-    failureReason: settledFailureReason(capture, body),
+    failureReason: settledFailureReason(capture, body) ?? paidTierSkipped,
     ...RELEASE,
   });
 }
 
 const noul = (answer: JevAnswer | undefined): number => (answer && answer.type === "noul" ? answer.noul : Number.NaN);
 
+type JevTriage =
+  | { outcome: "handled"; skipped: null }
+  | { outcome: "fallback"; skipped: string | null };
+
+/**
+ * Why the paid tier did not run, in the owner's words, or null when it was
+ * never in question. Only an exhausted allowance is stated: a disabled or
+ * unconfigured provider is the deployment's shape, not news about this capture.
+ */
+const ALLOWANCE_SKIPPED =
+  "Enriched without the paid classification tier: its allowance for this period is used up.";
+
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
- * Jev path owns the outcome (proposal rows written, capture enriched),
- * "fallback" when the generation tier should run instead (Jev disabled or
- * unconfigured - the pre-ASH-272 behavior, unchanged).
+ * Jev path owns the outcome (proposal rows written, capture enriched), and
+ * "fallback" when the generation tier should run instead - Jev disabled or
+ * unconfigured (the pre-ASH-272 behavior, unchanged), or enabled with no
+ * allowance left, in which case `skipped` carries the reason to record.
  */
 async function tryJevTriage(
   token: string,
@@ -298,11 +320,11 @@ async function tryJevTriage(
   cleanText: string,
   structure: string,
   injectedJudger?: ClassifyJudger,
-): Promise<"handled" | "fallback"> {
-  // Fast path: with no injected judger and the registry entry disabled (the
-  // shipped default), fall through without touching the taxonomy table, so
-  // the disabled-Jev path stays byte-identical to the pre-ASH-272 ladder.
-  if (!injectedJudger && !providerEntry("jev")?.enabled) return "fallback";
+): Promise<JevTriage> {
+  // Fast path: with no injected judger and the registry entry disabled, fall
+  // through without touching the taxonomy table. The registry enables Jev
+  // (2026-10-25), so this is the owner's kill switch, not the shipped default.
+  if (!injectedJudger && !providerEntry("jev")?.enabled) return { outcome: "fallback", skipped: null };
   const judger = injectedJudger ?? jevClassifier(workspaceId);
 
   // The domain Choice's options come from the workspace's seeded taxonomy; an
@@ -332,7 +354,10 @@ async function tryJevTriage(
     answers = result.answers;
     model = result.model;
   } catch (cause) {
-    if (cause instanceof JevDisabledError || cause instanceof JevUnconfiguredError) return "fallback";
+    if (cause instanceof QuotaExhaustedError) return { outcome: "fallback", skipped: ALLOWANCE_SKIPPED };
+    if (cause instanceof JevDisabledError || cause instanceof JevUnconfiguredError) {
+      return { outcome: "fallback", skipped: null };
+    }
     if (cause instanceof JevRequestError) throw cause; // redeliverable, like generation errors
     throw cause;
   }
@@ -409,7 +434,7 @@ async function tryJevTriage(
       });
     }
   });
-  return "handled";
+  return { outcome: "handled", skipped: null };
 }
 
 /**
