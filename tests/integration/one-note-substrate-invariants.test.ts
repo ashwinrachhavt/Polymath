@@ -9,12 +9,14 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * The invariants the one-note migration must never violate. Three of them, each
  * one a case where a bug is quiet rather than loud:
  *
- *  (a) tenancy   - `tasks.note_id` is a single-column FK, so Postgres will
- *                  happily point a task at another workspace's note. Nothing
- *                  about the row looks wrong; the prose read is what leaks. The
- *                  database cannot express "same workspace" with one column, so
- *                  this suite pins the guard that can (notes.ts) and records the
- *                  constraint that would make it structural.
+ *  (a) tenancy   - a task's note must be in the task's workspace. The
+ *                  single-column FK on note_id proves the note exists and says
+ *                  nothing about whose it is, and the leak (another tenant's
+ *                  prose in a task read) is invisible in the rows. 0261's
+ *                  composite FK on (workspace_id, note_id) makes the mismatch
+ *                  impossible to insert; notes.ts's guard is what turns the
+ *                  attempt into a readable 409 for a command caller. Both are
+ *                  asserted.
  *  (b) template  - a template is a starting point, not a state. An unknown slug
  *                  on a write must be refused with a stable code, while a slug
  *                  that has since been removed from the registry must degrade to
@@ -105,17 +107,16 @@ async function seedTask(workspaceId: string, row: { title: string; noteId?: stri
 
 suite("one note substrate invariants", () => {
   /*
-   * (a) Tenancy. Two halves, because there are two places the check can live
-   * and only one of them exists in this tree:
+   * (a) Tenancy. Two layers, both asserted here because either one alone is a
+   * weaker promise than the product makes:
    *
-   *  - the guard notes.ts exports, which is what a write path uses when it
-   *    attaches an existing artifact to a task;
-   *  - a database constraint. `artifacts` already carries UNIQUE (workspace_id,
-   *    id) from 0150, so a composite FK on (note_id, workspace_id) is
-   *    expressible with no new index. It belongs in a migration owned by
-   *    another task, so it is recorded here as an expected failure rather than
-   *    silently assumed: when the constraint lands this case flips to red and
-   *    tells the next reader to promote it.
+   *  - the database, structurally. 0261's composite FK on (workspace_id,
+   *    note_id) -> artifacts (workspace_id, id) makes a cross-tenant attach
+   *    impossible for every caller, present and future. artifacts already
+   *    carries UNIQUE (workspace_id, id) from 0150, so no extra index.
+   *  - the write path, for the error. The same attempt through a command should
+   *    surface a readable 409 rather than a driver's foreign-key violation,
+   *    which is what assertArtifactInWorkspace gives it.
    */
   it("the write-path guard refuses a note from another workspace", async () => {
     const mine = await setup("tenancy-a");
@@ -135,28 +136,30 @@ suite("one note substrate invariants", () => {
     ).resolves.toBeUndefined();
   });
 
-  it.fails("a hand-written task insert carrying another workspace's note_id is rejected", async () => {
-    // Today the single-column FK accepts this: the note exists, so the
-    // reference is valid, and only the prose read notices the mismatch. The
-    // composite FK on (workspace_id, note_id) is what makes the rejection
-    // structural; when it ships, drop `.fails` and this becomes a requirement.
-    //
-    // The statement runs for real, so whatever it lets through is deleted again
-    // before the assertion: another suite shares this database, and a stranded
-    // cross-tenant row is exactly the defect this case is about.
+  it("a hand-written task insert carrying another workspace's note_id is rejected by the database", async () => {
+    // The structural half. This statement bypasses every command and every
+    // guard, so what stops it is only the constraint: the single-column FK
+    // would accept it (the artifact exists) and the mismatch would surface as
+    // leaked prose one layer up. 0261 makes it fail at the insert instead.
     const mine = await setup("tenancy-raw-a");
     const theirs = await setup("tenancy-raw-b");
     const foreignNote = await seedNote(theirs.workspaceId, { userId: theirs.userId, title: "Not yours" });
 
-    let smuggled: string | null = null;
-    try {
-      smuggled = await seedTask(mine.workspaceId, { title: "Smuggler", noteId: foreignNote, userId: mine.userId });
-    } catch {
-      smuggled = null;
-    } finally {
-      if (smuggled) await db.delete(tasks).where(eq(tasks.id, smuggled));
-    }
-    expect(smuggled, "the insert must be rejected, not accepted and cleaned up").toBeNull();
+    await expect(
+      seedTask(mine.workspaceId, { title: "Smuggler", noteId: foreignNote, userId: mine.userId }),
+    ).rejects.toMatchObject({
+      // Named, not just "a foreign-key error": a bare 23503 would also pass if
+      // the insert failed on tasks_workspace_id_workspaces_id_fk or on the
+      // single-column note reference, neither of which is the invariant here.
+      cause: expect.objectContaining({ code: "23503", constraint_name: "tasks_note_workspace_fk" }),
+    });
+
+    // The insert never ran, so nothing needs cleaning up - and the control case
+    // below shows a same-workspace note is still accepted, so this is tenancy
+    // and not the constraint rejecting every note.
+    expect(
+      await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.workspaceId, mine.workspaceId), eq(tasks.title, "Smuggler"))),
+    ).toEqual([]);
   });
 
   it("the row a task may legitimately point at is accepted, so the case above fails for the right reason", async () => {
