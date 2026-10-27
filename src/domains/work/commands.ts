@@ -78,8 +78,6 @@ export async function createTask(
     .values({
       workspaceId: auth.workspaceId,
       noteId: note.id,
-      title: input.title,
-      description: input.description ?? null,
       dueAt: input.dueAt ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
       ...(input.estimateMinutes ? { estimateMinutes: input.estimateMinutes } : {}),
@@ -173,7 +171,7 @@ export async function createOwnerTask(
         action: "task.created",
         subjectType: "task",
         subjectId: task.id,
-        summary: `Created task "${task.title}"`,
+        summary: `Created task "${input.title}"`,
         metadata: {
           personId: input.personId ?? null,
           organizationId: input.organizationId ?? null,
