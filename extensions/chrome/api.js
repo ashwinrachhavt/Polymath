@@ -57,6 +57,7 @@ const AlfredAPI = {
   /** Resolve the API base URL from storage or fall back to default. */
   async base() {
     if (this._baseUrl) return this._baseUrl;
+    let stored;
     try {
       // One-time migration: clear stale localhost:8080 URL from when that was the default.
       // SearXNG runs on 8080 and its /healthz returns 200, tricking the old health check.
@@ -68,34 +69,36 @@ const AlfredAPI = {
         }
         await this._setStorage("alfredUrlMigrated_v2", true);
       }
-      const stored = await this._getStorage("alfredBaseUrl");
-      // Only use stored URL if it was explicitly set and is reachable.
-      // Otherwise fall back to default to avoid stale cached URLs.
-      if (stored && stored !== this._defaultUrl) {
-        try {
-          // Verify the stored URL is actually Polymath (not another service on
-          // that port) by checking /api/v1/captures, which only Polymath serves.
-          // The endpoint requires auth, so the probe carries the saved key;
-          // without it every valid server answers 401 and the URL never sticks.
-          const probeHeaders = { "Content-Type": "application/json" };
-          const probeToken = await this.token();
-          if (probeToken) probeHeaders.Authorization = `Bearer ${probeToken}`;
-          const resp = await fetch(`${stored}/api/v1/captures`, {
-            signal: AbortSignal.timeout(1500),
-            headers: probeHeaders,
-          });
-          if (resp.ok) {
-            this._baseUrl = stored;
-            return this._baseUrl;
-          }
-        } catch {
-          // Stored URL unreachable or not Polymath — fall through to default
-        }
-      }
-      this._baseUrl = this._defaultUrl;
+      stored = await this._getStorage("alfredBaseUrl");
     } catch {
-      this._baseUrl = this._defaultUrl;
+      // Storage unreadable reads as first run: nothing was configured.
+      stored = undefined;
     }
+    // A stored URL is a promise the person made to this companion. When it no
+    // longer answers as Polymath, say so instead of quietly saving elsewhere.
+    if (stored && stored !== this._defaultUrl) {
+      let reachable = false;
+      try {
+        // Verify the stored URL is actually Polymath (not another service on
+        // that port) by checking /api/v1/captures, which only Polymath serves.
+        // The endpoint requires auth, so the probe carries the saved key;
+        // without it every valid server answers 401 and the URL never sticks.
+        const probeHeaders = { "Content-Type": "application/json" };
+        const probeToken = await this.token();
+        if (probeToken) probeHeaders.Authorization = `Bearer ${probeToken}`;
+        const resp = await fetch(`${stored}/api/v1/captures`, {
+          signal: AbortSignal.timeout(1500),
+          headers: probeHeaders,
+        });
+        reachable = resp.ok;
+      } catch {
+        reachable = false;
+      }
+      if (!reachable) throw new Error("The configured server is unreachable.");
+      this._baseUrl = stored;
+      return this._baseUrl;
+    }
+    this._baseUrl = this._defaultUrl;
     return this._baseUrl;
   },
 
@@ -155,15 +158,15 @@ const AlfredAPI = {
   // ── Capture helpers ────────────────────────────────────────────────
 
   /**
-   * One capture into the Polymath inbox. Text and URL travel together when the
-   * page was grabbed; the inbox keeps both and treats the URL as provenance.
-   * Server-side dedupe answers 409 for a repeated URL-only capture.
+   * One capture into the Polymath inbox. `mode` states how it arrived
+   * ("authored" | "selection" | "page" | "url-reference"); omitted, the server
+   * infers it. Server-side dedupe answers 409 for a repeated URL-only capture.
    */
-  async createCapture({ text, url, title, idempotencyKey }) {
+  async createCapture({ text, url, title, mode, idempotencyKey }) {
     return this._fetch("/api/v1/captures", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey || crypto.randomUUID() },
-      body: JSON.stringify({ text, url, title }),
+      body: JSON.stringify({ text, url, title, mode }),
     });
   },
 
@@ -177,6 +180,7 @@ const AlfredAPI = {
   async capturePage({ url, title, content, history }) {
     const text = (content || "").trim();
     return this.queueCapture({
+      mode: "page",
       text,
       url,
       title: title || url,
@@ -188,9 +192,10 @@ const AlfredAPI = {
   async captureSelection({ url, title, selectedText, history }) {
     const text = (selectedText || "").trim();
     return this.queueCapture({
+      mode: "selection",
       text,
       url,
-      title: title ? `${title} — selection` : url,
+      title: title || url,
       history: history || { title: text.slice(0, 80), url, type: "selection" },
     });
   },
@@ -199,12 +204,14 @@ const AlfredAPI = {
    * The durable save path. The service worker writes the capture to its
    * outbox BEFORE any network attempt and answers { delivered } — true only
    * when Polymath confirmed the save during this call. A false delivered is
-   * not a failure: the capture is safe on this device and syncs itself.
+   * not a failure: the capture is safe on this device and syncs itself. When
+   * the worker never answers at all the result also carries `unconfirmed`, so
+   * the caller can say the server has not confirmed yet instead of "saved".
    *
    * Falls back to a direct POST only when the worker cannot be messaged at
    * all (e.g. an unpacked dashboard outside the extension runtime).
    */
-  async queueCapture({ text, url, title, history }) {
+  async queueCapture({ text, url, title, mode, history }) {
     const canMessage =
       typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage;
     if (canMessage) {
@@ -216,6 +223,7 @@ const AlfredAPI = {
             text,
             url,
             title,
+            mode,
             history: history || null,
           },
           ENQUEUE_REPLY_DEADLINE_MS,
@@ -226,8 +234,10 @@ const AlfredAPI = {
           // kills an idle worker mid-await. The capture is written to the
           // outbox before any network call, so it is on this device and the
           // alarm the worker wakes on delivers it. Reporting ok:true here is
-          // deliberate — a false failure makes the person capture again.
-          return { ok: true, delivered: false };
+          // deliberate — a false failure makes the person capture again. The
+          // unconfirmed flag keeps the caller from claiming a save it cannot
+          // prove.
+          return { ok: true, delivered: false, unconfirmed: true };
         }
         // "Extension context invalidated" — the extension was reloaded or
         // updated and this page still runs the old content script.
@@ -238,7 +248,7 @@ const AlfredAPI = {
       }
       return reply;
     }
-    await this.createCapture({ text, url, title });
+    await this.createCapture({ text, url, title, mode });
     return { ok: true, delivered: true };
   },
 
