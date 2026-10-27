@@ -1,6 +1,7 @@
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { focusSessions } from "@/domains/focus/schema";
+import { artifacts } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import { tasks } from "./schema";
 import type { NarrativeSession } from "./outcome-narrative";
@@ -103,10 +104,13 @@ export async function listFinishedSessionsInWeek(
       seconds: focusSessions.accumulatedSeconds,
       subject: focusSessions.subject,
       outcome: focusSessions.outcome,
-      taskTitle: tasks.title,
+      taskTitle: artifacts.title,
     })
     .from(focusSessions)
-    .leftJoin(tasks, eq(tasks.id, focusSessions.taskId))
+    // Left, and tenancy-matched: `tasks.note_id` cannot prove the note shares
+    // the task's workspace, and a session with no task keeps its subject line.
+    .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
+    .leftJoin(artifacts, and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)))
     .where(and(eq(focusSessions.workspaceId, auth.workspaceId), eq(focusSessions.state, "finished"), isNotNull(focusSessions.endedAt), gte(focusSessions.endedAt, from), lt(focusSessions.endedAt, to)))
     .orderBy(focusSessions.endedAt)
     .limit(200);

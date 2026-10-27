@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { artifactLinks, artifacts, claimEvidence, claims, documentReadingState, documents, sources } from "@/domains/knowledge/schema";
 import { tasks } from "@/domains/work/schema";
-import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
+import { makeTestDb, ownerAuth, seedTask, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * Integration coverage for the knowledge-debt report (ASH-295): each
@@ -52,9 +52,9 @@ suite("knowledge debt", () => {
     await db.insert(claims).values({ workspaceId: other.workspaceId, statement: "Not your claim.", status: "proposed" });
 
     // Tasks: one open with no description, one open described, one done without.
-    await db.insert(tasks).values({ workspaceId, title: "Do the unexplained thing", status: "ready" });
-    await db.insert(tasks).values({ workspaceId, title: "Described work", status: "ready", description: "Because reasons." });
-    await db.insert(tasks).values({ workspaceId, title: "Finished work", status: "done" });
+    await seedTask(db, workspaceId, { title: "Do the unexplained thing", status: "ready" });
+    await seedTask(db, workspaceId, { title: "Described work", status: "ready", description: "Because reasons." });
+    await seedTask(db, workspaceId, { title: "Finished work", status: "done" });
 
     // Documents: one never opened, one opened.
     const [unreadDoc] = await db.insert(documents).values({ workspaceId, title: "Captured, never read" }).returning({ id: documents.id });

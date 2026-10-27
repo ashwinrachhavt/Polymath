@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { tasks } from "@/domains/work/schema";
+import { listTaskNoteIds, listTasksWithoutBody } from "@/domains/work/queries";
 import { db } from "@/lib/db";
 import { artifactLinks, artifacts, claimEvidence, claims, documentReadingState, documents } from "./schema";
 
@@ -16,9 +16,11 @@ import { artifactLinks, artifacts, claimEvidence, claims, documentReadingState, 
  * - unsupported claims: live claims (proposed or accepted) with no evidence
  *   row. A claim without a passage is an opinion wearing a citation's
  *   clothes; rejected and retracted claims are out by definition.
- * - tasks without rationale: open tasks with no description - the one
+ * - tasks without rationale: open tasks whose note has no body - the one
  *   place a task can carry its "why". (The literal rationale field lives
- *   on daily_outcomes, the day's commitments, not on the task itself.)
+ *   on daily_outcomes, the day's commitments, not on the task itself. A
+ *   task's prose lives on its note, so "no body" is the note's absence of
+ *   plain text, not a null column.)
  * - never-opened documents: sources with an extraction that nobody has
  *   opened. Captured, processed, and never read - the engagement signal.
  */
@@ -43,6 +45,11 @@ const noLinks = (id: typeof artifacts.id) => sql`not exists (
 )`;
 
 export async function getKnowledgeDebt(auth: AuthContext): Promise<KnowledgeDebt> {
+  // A task is a note plus an extension row, so every open task's body is a note
+  // in this workspace. Counting those as library orphans would report the same
+  // work twice - once as work, once as a note nothing links to - and bury the
+  // real orphans under it.
+  const taskNoteIds = await listTaskNoteIds(auth);
   const noteRows = await db
     .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
     .from(artifacts)
@@ -51,6 +58,7 @@ export async function getKnowledgeDebt(auth: AuthContext): Promise<KnowledgeDebt
         eq(artifacts.workspaceId, auth.workspaceId),
         inArray(artifacts.kind, ["note", "zettel"]),
         ne(artifacts.status, "archived"),
+        taskNoteIds.length ? notInArray(artifacts.id, taskNoteIds) : undefined,
         noLinks(artifacts.id),
       ),
     )
@@ -70,18 +78,7 @@ export async function getKnowledgeDebt(auth: AuthContext): Promise<KnowledgeDebt
     .orderBy(desc(claims.updatedAt))
     .limit(LIST_CAP + 1);
 
-  const taskRows = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.workspaceId, auth.workspaceId),
-        notInArray(tasks.status, ["done", "cancelled"]),
-        or(isNull(tasks.description), sql`btrim(${tasks.description}) = ''`),
-      ),
-    )
-    .orderBy(desc(tasks.updatedAt))
-    .limit(LIST_CAP + 1);
+  const taskRows = await listTasksWithoutBody(auth, LIST_CAP + 1);
 
   const docRows = await db
     .select({ id: documents.id, title: documents.title })

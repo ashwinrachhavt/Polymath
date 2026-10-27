@@ -6,6 +6,7 @@ import { artifactLinks, artifacts } from "@/domains/knowledge/schema";
 import { StudioError, type DraftLinkRow } from "@/domains/knowledge/studio";
 import { opportunities } from "@/domains/opportunities/schema";
 import { tasks } from "@/domains/work/schema";
+import { getTaskTitles, listTaskTitles } from "@/domains/work/queries";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 
@@ -21,7 +22,7 @@ export type DraftLinkTarget = (typeof DRAFT_LINK_TARGETS)[number];
 /** The picklist for the attach control: a few recent records of each kind. */
 export async function listLinkableRecords(auth: AuthContext) {
   const [taskRows, contactRows, companyRows, opportunityRows] = await Promise.all([
-    db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId)).orderBy(desc(tasks.updatedAt)).limit(12),
+    listTaskTitles(auth, { limit: 12 }),
     db
       .select({ id: contacts.id, title: contacts.fullName })
       .from(contacts)
@@ -115,8 +116,7 @@ export async function resolveLinkTitles(auth: AuthContext, links: DraftLinkRow[]
   const titles = new Map<string, string>();
   const taskIds = byType.get("task") ?? [];
   if (taskIds.length) {
-    const rows = await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId));
-    for (const r of rows) if (taskIds.includes(r.id)) titles.set(r.id, r.title);
+    for (const [id, title] of await getTaskTitles(auth, taskIds)) titles.set(id, title);
   }
   const companyIds = byType.get("company") ?? [];
   if (companyIds.length) {

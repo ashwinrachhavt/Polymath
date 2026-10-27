@@ -6,6 +6,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { contactPoints, organizations, partyEmployment, people } from "@/domains/identity/schema";
 import { sources } from "@/domains/knowledge/schema";
 import { projects, tasks } from "@/domains/work/schema";
+import { listTaskTitles } from "@/domains/work/queries";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { inventorySchema, type Inventory } from "./inventory-schema";
 
@@ -246,10 +247,7 @@ async function upsertLinear(
   orgIds: Map<string, string>,
   summary: InventoryImportSummary,
 ): Promise<void> {
-  const existing = await tx
-    .select({ title: tasks.title })
-    .from(tasks)
-    .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)));
+  const existing = await listTaskTitles(auth, {}, tx);
   const known = new Set(existing.map((row) => key(row.title)));
 
   for (const project of inventory.sources.linear.projects) {
