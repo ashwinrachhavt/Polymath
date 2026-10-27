@@ -91,7 +91,7 @@ git commit -m "refactor(templates): move the draft registry to knowledge and add
 ### Task 2: Additive migration — columns and backfill
 
 **Files:**
-- Create: `src/db/migrations/0257_one_note_substrate_add.sql`
+- Create: `src/db/migrations/0259_one_note_substrate_add.sql`
 - Modify: `src/domains/knowledge/schema.ts` (`artifacts.template`)
 - Modify: `src/domains/work/schema.ts` (`tasks.noteId`)
 - Test: `tests/integration/one-note-substrate-backfill.test.ts`
@@ -111,7 +111,7 @@ Expected: FAIL — column `template` / `note_id` does not exist.
 
 - [ ] **Step 3: Write the additive migration**
 
-`0257_one_note_substrate_add.sql` follows the repo's shape (see `0253_run_reviews.sql`): guarded DDL, `--> statement-breakpoint` between statements, one comment block at the top explaining why. The backfill is a single `INSERT ... SELECT` into `artifacts`, a second into `artifact_versions`, and an `UPDATE tasks SET note_id` joined on the artifact's `produced_by_run_id`-free correlation key — use a temporary correlation column if needed rather than matching on title, because two tasks may share a title. Mark file `src/db/migrations/meta/` snapshot regeneration via the project's drizzle command if the repo requires it.
+`0259_one_note_substrate_add.sql` follows the repo's shape (see `0253_run_reviews.sql`): guarded DDL, `--> statement-breakpoint` between statements, one comment block at the top explaining why. The backfill is a single `INSERT ... SELECT` into `artifacts`, a second into `artifact_versions`, and an `UPDATE tasks SET note_id` joined on the artifact's `produced_by_run_id`-free correlation key — use a temporary correlation column if needed rather than matching on title, because two tasks may share a title. Mark file `src/db/migrations/meta/` snapshot regeneration via the project's drizzle command if the repo requires it.
 
 - [ ] **Step 4: Mirror both columns in the Drizzle schemas**
 
@@ -134,7 +134,7 @@ Seed one recurrence template with 200 spawned instances and run the backfill. As
 
 ```bash
 git add src/db src/domains/knowledge/schema.ts src/domains/work/schema.ts tests/integration/one-note-substrate-backfill.test.ts
-git commit -m "feat(schema): add artifacts.template and tasks.note_id with backfill (0257)"
+git commit -m "feat(schema): add artifacts.template and tasks.note_id with backfill (0259)"
 ```
 
 ---
@@ -304,7 +304,7 @@ git commit -m "refactor: route every task prose reader through the work domain q
 ### Task 7: The drop migration
 
 **Files:**
-- Create: `src/db/migrations/0258_one_note_substrate_drop.sql`
+- Create: `src/db/migrations/0260_one_note_substrate_drop.sql`
 - Modify: `src/domains/work/schema.ts` (remove `title`, `description`)
 - Test: `tests/integration/one-note-substrate-drop.test.ts`
 
@@ -323,7 +323,11 @@ Expected: FAIL — both constraints are absent.
 
 - [ ] **Step 3: Write the drop migration**
 
-`0258_one_note_substrate_drop.sql`: `DO $$ ... $$` block that raises if any `note_id is null`; then `SET NOT NULL`; then `CREATE UNIQUE INDEX tasks_note_key`; then `DROP COLUMN title`, `DROP COLUMN description`. The abort must precede the drops so a partial migration can never land.
+`0260_one_note_substrate_drop.sql`: `DO $$ ... $$` block that raises if any `note_id is null`; then `SET NOT NULL`; then `CREATE UNIQUE INDEX tasks_note_key`; then `DROP COLUMN title`, `DROP COLUMN description`. The abort must precede the drops so a partial migration can never land.
+
+Add the journal entry `{"idx": 260, "version": "7", "when": 1793250002000, "tag": "0260_one_note_substrate_drop", "breakpoints": true}`. `when` must exceed every earlier entry — the sibling branches carry `1793250000000`/`1793250000001` for 0257/0258, and 0259 carries `1793250001000`; the chain is a monotonic counter, not a timestamp, so copy the predecessor and add. Do **not** regenerate the snapshot to get a new `when`: a snapshot records table structure and a `prevId`, never a `when`, and regenerating on a forked baseline re-emits other branches' applied DDL as phantom statements.
+
+Do not run `pnpm db:migrate` against a database that matters — drizzle's migrator applies only migrations above a single stored high-water mark, so it can silently skip a migration whose `when` is below it. Apply with `psql -f` in glob order, as CI does.
 
 - [ ] **Step 4: Remove the columns from the Drizzle schema**
 
@@ -338,7 +342,7 @@ Expected: PASS.
 
 ```bash
 git add src/db src/domains/work/schema.ts tests/integration/one-note-substrate-drop.test.ts
-git commit -m "feat(schema): require tasks.note_id and drop the task prose columns (0258)"
+git commit -m "feat(schema): require tasks.note_id and drop the task prose columns (0260)"
 ```
 
 ---
