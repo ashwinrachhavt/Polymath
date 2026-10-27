@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   jsonb,
   pgEnum,
@@ -138,6 +139,13 @@ export const captures = pgTable(
     uniqueIndex("captures_url_reference_key")
       .on(t.workspaceId, t.source, t.url)
       .where(sql`url is not null and capture_mode = 'url-reference'`),
+    // Uniqueness over a nullable column does not dedupe (btree is NULLS
+    // DISTINCT), so a caller that forgot the hash would silently switch
+    // identity off for that row. The database refuses it.
+    check(
+      "captures_identity_hash_present",
+      sql`url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null`,
+    ),
   ],
 );
 
