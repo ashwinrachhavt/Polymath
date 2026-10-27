@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, agentRuns } from "@/domains/agents/schema";
+import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { tasks } from "@/domains/work/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -13,6 +15,44 @@ import { listOpenTasks } from "@/domains/work/queries";
 
 beforeAll(() => { holder.db = handle?.db; });
 afterAll(async () => { await handle?.client.end(); });
+
+/**
+ * A task is a note plus its extension row, and every task read joins the note.
+ * Fixtures insert the note by hand so this suite keeps exercising real Postgres
+ * rows rather than the production writer.
+ */
+async function insertTask(
+  db: NonNullable<typeof holder.db>,
+  row: {
+    workspaceId: string;
+    title: string;
+    status?: (typeof tasks.$inferSelect)["status"];
+    rank?: string;
+    archivedAt?: Date;
+  },
+) {
+  const [note] = await db
+    .insert(artifacts)
+    .values({ workspaceId: row.workspaceId, kind: "note", title: row.title, template: "issue" })
+    .returning({ id: artifacts.id });
+  const [version] = await db
+    .insert(artifactVersions)
+    .values({ workspaceId: row.workspaceId, artifactId: note.id, versionNumber: 1, content: { type: "doc", content: [] }, reason: "created" })
+    .returning({ id: artifactVersions.id });
+  await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
+  const [task] = await db
+    .insert(tasks)
+    .values({
+      workspaceId: row.workspaceId,
+      noteId: note.id,
+      title: row.title,
+      ...(row.status ? { status: row.status } : {}),
+      ...(row.rank ? { rank: row.rank } : {}),
+      ...(row.archivedAt ? { archivedAt: row.archivedAt } : {}),
+    })
+    .returning({ id: tasks.id });
+  return task;
+}
 
 async function seedRun() {
   const db = holder.db!;
@@ -52,14 +92,14 @@ suite("persisted Eve session binding and task reads (real Postgres)", () => {
   it("returns bounded canonical open tasks without foreign, archived, done, or cancelled rows", async () => {
     const { auth } = await seedRun();
     const other = await seedWorkspace(holder.db!, `other-tasks-${crypto.randomUUID()}`);
-    await holder.db!.insert(tasks).values([
-      { workspaceId: auth.workspaceId, title: "First open", status: "ready", rank: "a" },
-      { workspaceId: auth.workspaceId, title: "Second open", status: "waiting", rank: "b" },
-      { workspaceId: auth.workspaceId, title: "Done", status: "done", rank: "a" },
-      { workspaceId: auth.workspaceId, title: "Cancelled", status: "cancelled", rank: "a" },
-      { workspaceId: auth.workspaceId, title: "Archived", status: "ready", archivedAt: new Date(), rank: "a" },
-      { workspaceId: other.workspaceId, title: "Foreign private task", status: "ready", rank: "a" },
-    ]);
+    const make = (row: { title: string; status?: (typeof tasks.$inferSelect)["status"]; rank: string; archivedAt?: Date }, workspaceId: string) =>
+      insertTask(holder.db!, { workspaceId, ...row });
+    await make({ title: "First open", status: "ready", rank: "a" }, auth.workspaceId);
+    await make({ title: "Second open", status: "waiting", rank: "b" }, auth.workspaceId);
+    await make({ title: "Done", status: "done", rank: "a" }, auth.workspaceId);
+    await make({ title: "Cancelled", status: "cancelled", rank: "a" }, auth.workspaceId);
+    await make({ title: "Archived", status: "ready", archivedAt: new Date(), rank: "a" }, auth.workspaceId);
+    await make({ title: "Foreign private task", status: "ready", rank: "a" }, other.workspaceId);
     const visible = await listOpenTasks(auth);
     expect(visible.map((task) => task.title)).toEqual(["First open", "Second open"]);
     expect((await listOpenTasks(auth, 1)).map((task) => task.title)).toEqual(["First open"]);

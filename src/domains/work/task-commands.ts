@@ -8,6 +8,7 @@ import { organizations, people } from "@/domains/identity/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { rankBetween } from "./rank";
 import { taskDependencies, tasks } from "./schema";
+import { createTaskNote } from "./task-note";
 
 /*
  * Task mutations for the owner (ASH-137 / A03). Every command is one
@@ -214,10 +215,14 @@ export async function createSubtask(
         .orderBy(sql`${tasks.rank} collate "C" desc`)
         .limit(1);
 
+      // A subtask is a note plus an extension row like any other task, so it
+      // gets one here; a task without a note is invisible to every read.
+      const note = await createTaskNote(tx, auth, { title: input.title });
       const [row] = await tx
         .insert(tasks)
         .values({
           workspaceId: auth.workspaceId,
+          noteId: note.id,
           parentTaskId: parent.id,
           projectId: parent.projectId,
           spaceId: parent.spaceId,

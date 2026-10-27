@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents, outboxEvents, requestReceipts } from "@/domains/audit/schema";
 import { people } from "@/domains/identity/schema";
+import { artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { taskDependencies, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -38,6 +39,29 @@ async function setup(label: string) {
 const key = () => crypto.randomUUID();
 const version = async (id: string) => (await db.select({ v: tasks.version }).from(tasks).where(eq(tasks.id, id)))[0].v;
 
+/**
+ * A task inserted by hand, with the note every read joins on. Used where the
+ * fixture needs a state the create command will not produce - a shared legacy
+ * rank, for instance - so it writes the note itself rather than calling the
+ * production writer under test.
+ */
+async function seedTask(workspaceId: string, title: string, rank: string) {
+  const [note] = await db
+    .insert(artifacts)
+    .values({ workspaceId, kind: "note", title, template: "issue" })
+    .returning({ id: artifacts.id });
+  const [v] = await db
+    .insert(artifactVersions)
+    .values({ workspaceId, artifactId: note.id, versionNumber: 1, content: { type: "doc", content: [] }, reason: "created" })
+    .returning({ id: artifactVersions.id });
+  await db.update(artifacts).set({ currentVersionId: v.id }).where(eq(artifacts.id, note.id));
+  const [row] = await db
+    .insert(tasks)
+    .values({ workspaceId, noteId: note.id, title, rank })
+    .returning({ id: tasks.id });
+  return row.id;
+}
+
 suite("task update: compare-and-set, receipts, audit, outbox", () => {
   it("applies a patch, bumps the version, writes one audit and one outbox row", async () => {
     const { a, workspaceId } = await setup("patch");
@@ -65,7 +89,10 @@ suite("task update: compare-and-set, receipts, audit, outbox", () => {
     const [row] = await db.select().from(tasks).where(eq(tasks.id, id));
     expect(row.priority).toBe("low");
     const outbox = await db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, workspaceId));
-    expect(outbox).toHaveLength(1);
+    // The create also emits note.created, and the first update emitted
+    // task.updated; the refused second update must add nothing.
+    expect(outbox.filter((o) => o.topic === "task.updated")).toHaveLength(1);
+    expect(outbox.filter((o) => o.topic === "note.created")).toHaveLength(1);
   });
 
   it("replays the same key without a second change, and rejects the key reused for a different request", async () => {
@@ -317,10 +344,7 @@ suite("work list reads and rank assignment", () => {
   it("a move between tasks that share a legacy rank spreads them first instead of failing", async () => {
     const { a, workspaceId } = await setup("tie");
     const made: string[] = [];
-    for (const t of ["x", "y", "z"]) {
-      const [row] = await db.insert(tasks).values({ workspaceId, title: t, rank: "m", createdBy: a.userId, updatedBy: a.userId }).returning({ id: tasks.id });
-      made.push(row.id);
-    }
+    for (const t of ["x", "y", "z"]) made.push(await seedTask(workspaceId, t, "m"));
     const order = (await queries.listWorkRows(a, "open")).map((r) => r.id);
     const [first, second, third] = order;
     // move `third` between first and second, which tie at "m"

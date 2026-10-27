@@ -6,19 +6,19 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
 import { organizations, people } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { artifacts } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { taskLinks, tasks } from "./schema";
 import { rankBetween } from "./rank";
 import { settleBlockers } from "./task-commands";
+import { createTaskNote } from "./task-note";
 
 /*
  * The work domain's mutation surface. Minimal by design: callers outside the
  * domain (e.g. knowledge accepting an obligation) go through here so task
  * invariants live in one place.
  */
-
-type Db = typeof db | TxDrizzle;
 
 /* One page per render; Today paginates past this when the list outgrows a screen. */
 const OPEN_TASK_PAGE = 100;
@@ -37,6 +37,12 @@ export type TaskLinkInput = {
  * to write, and writing it twice is how the two edges drift. The caller owns
  * the audit row, because only it knows the action name that describes the
  * change (an obligation acceptance is not a bare task creation).
+ *
+ * A task is a note plus a 1:1 extension row, so the note is created first, in
+ * the caller's transaction. `title` and `description` are still written to the
+ * task row: `title` is NOT NULL until 0260 drops both columns, and the dual
+ * write is what keeps old code reading correctly during the window. The note is
+ * authoritative - every read goes through it.
  */
 export async function createTask(
   auth: AuthContext,
@@ -52,14 +58,13 @@ export async function createTask(
     status?: (typeof tasks.$inferSelect)["status"];
     links?: TaskLinkInput[];
   },
-  tx: Db = db,
+  tx: TxDrizzle,
 ) {
   let rank = input.rank;
   if (!rank) {
     // New work goes to the end of the list. The lock makes "last rank" safe:
     // two concurrent creates would otherwise read the same last rank and tie,
     // and a tie cannot be ordered by a later move.
-    if (tx === db) throw new Error("createTask needs a transaction to assign a rank");
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`rank:${auth.workspaceId}`}, 0))`);
     const [last] = await tx
       .select({ rank: tasks.rank })
@@ -69,10 +74,12 @@ export async function createTask(
       .limit(1);
     rank = rankBetween(last?.rank ?? null, null);
   }
+  const note = await createTaskNote(tx, auth, { title: input.title, description: input.description });
   const [task] = await tx
     .insert(tasks)
     .values({
       workspaceId: auth.workspaceId,
+      noteId: note.id,
       title: input.title,
       description: input.description ?? null,
       dueAt: input.dueAt ?? null,
@@ -186,17 +193,30 @@ export async function createOwnerTask(
   });
 }
 
-/** Open tasks, soonest due first, nulls last. One page; paginate when the list outgrows a screen. */
+/**
+ * Open tasks, soonest due first, nulls last. One page; paginate when the list
+ * outgrows a screen.
+ *
+ * The title is the note's: this is a second projection of `queries.listOpenTasks`,
+ * kept because a suite imports it here. The join is guarded on
+ * `workspace_id` as well as `id` - `tasks.note_id` is a single-column FK, so
+ * Postgres cannot express "the artifact shares the task's workspace", and a
+ * foreign note id would otherwise leak another tenant's title.
+ */
 export async function listOpenTasks(auth: AuthContext) {
   return db
     .select({
       id: tasks.id,
-      title: tasks.title,
+      title: artifacts.title,
       status: tasks.status,
       dueAt: tasks.dueAt,
       createdAt: tasks.createdAt,
     })
     .from(tasks)
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),

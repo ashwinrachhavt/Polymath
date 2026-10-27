@@ -8,6 +8,7 @@ import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
+import type { DraftTemplate } from "./templates";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 
 /*
@@ -178,11 +179,25 @@ async function claimVersion(tx: TxDrizzle, auth: AuthContext, artifactId: string
 export async function createNoteInTx(
   tx: TxDrizzle,
   auth: AuthContext,
-  input: { title: string; content?: NoteContent; plainText?: string; kind?: NoteKind },
+  input: {
+    title: string;
+    content?: NoteContent;
+    plainText?: string;
+    kind?: NoteKind;
+    /** The scaffold this note started from; null (the default) is a plain note. */
+    template?: DraftTemplate | null;
+  },
 ): Promise<{ id: string; versionId: string; version: number }> {
   const [artifact] = await tx
     .insert(artifacts)
-    .values({ workspaceId: auth.workspaceId, kind: input.kind ?? "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: input.kind ?? "note",
+      title: input.title,
+      template: input.template ?? null,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
     .returning({ id: artifacts.id, version: artifacts.version });
   const empty = { type: "doc", content: [] };
   const [version] = await tx

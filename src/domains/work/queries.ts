@@ -27,7 +27,10 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
     priority: tasks.priority,
     dueAt: tasks.dueAt,
   }).from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -53,7 +56,10 @@ export async function searchTasksForLink(auth: AuthContext, query: string, limit
   const rows = await db
     .select({ id: tasks.id, title: artifacts.title })
     .from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(artifacts.title, like)))
     .orderBy(asc(artifacts.title), asc(tasks.id))
     .limit(limit);
@@ -81,7 +87,10 @@ export async function listRecentlyCompletedTasks(
     priority: tasks.priority,
     completedAt: tasks.completedAt,
   }).from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(and(
       eq(tasks.workspaceId, auth.workspaceId),
       isNull(tasks.archivedAt),
@@ -161,7 +170,10 @@ export async function getTaskDetail(
       archivedAt: tasks.archivedAt,
     })
     .from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     // Left, not inner: a note whose current version pointer has not been set
     // yet reads as a task with no body rather than vanishing from the card.
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
@@ -172,7 +184,10 @@ export async function getTaskDetail(
   const subtasks = await db
     .select({ id: tasks.id, title: artifacts.title, status: tasks.status, rank: tasks.rank, version: tasks.version })
     .from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(and(eq(tasks.parentTaskId, taskId), eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt)))
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id));
 
@@ -182,7 +197,7 @@ export async function getTaskDetail(
            a.title as other_title
       from task_dependencies d
       left join tasks t on t.id = case when d.task_id = ${taskId} then d.depends_on_task_id else d.task_id end
-      left join artifacts a on a.id = t.note_id
+      left join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id
      where d.workspace_id = ${auth.workspaceId}
        and (d.task_id = ${taskId} or d.depends_on_task_id = ${taskId})
        and d.resolved_at is null`);
@@ -303,7 +318,7 @@ async function countWorkRows(
   view: "today" | "open" | "done",
   filter: WorkFilter,
 ): Promise<number> {
-  const rows = await db.execute(sql`select count(*)::int as n from tasks t join artifacts a on a.id = t.note_id where ${viewWhere(auth, view, filter)}`);
+  const rows = await db.execute(sql`select count(*)::int as n from tasks t join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id where ${viewWhere(auth, view, filter)}`);
   return (rows as unknown as Array<{ n: number }>)[0]?.n ?? 0;
 }
 
@@ -322,7 +337,7 @@ async function selectWorkRows(
          where d.workspace_id = t.workspace_id and d.resolved_at is null
            and ((d.kind = 'blocked_by' and d.task_id = t.id) or (d.kind = 'blocks' and d.depends_on_task_id = t.id)))::int as blocked_by
     from tasks t
-    join artifacts a on a.id = t.note_id
+    join artifacts a on a.id = t.note_id and a.workspace_id = t.workspace_id
     where ${viewWhere(auth, view, input)}
     order by ${order}
     limit ${input.limit} offset ${input.offset}`);
@@ -364,7 +379,10 @@ export async function listTasksDueBetween(
   const rows = await db
     .select({ id: tasks.id, title: artifacts.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
     .from(tasks)
-    .innerJoin(artifacts, eq(artifacts.id, tasks.noteId))
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
+    )
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),

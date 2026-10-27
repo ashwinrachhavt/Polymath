@@ -6,6 +6,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { contactPoints, organizations, partyEmployment, people } from "@/domains/identity/schema";
 import { sources } from "@/domains/knowledge/schema";
 import { projects, tasks } from "@/domains/work/schema";
+import { createTaskNote } from "@/domains/work/task-note";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { inventorySchema, type Inventory } from "./inventory-schema";
 
@@ -284,13 +285,16 @@ async function upsertLinear(
         summary.tasks.matched += 1;
         continue;
       }
+      // The source status is preserved in the description; the task status is
+      // the product's vocabulary, and the two are not one-to-one.
+      const description = `Linear status: ${issue.status}. Linear project: ${project.name}.`;
+      const note = await createTaskNote(tx, auth, { title, description });
       await tx.insert(tasks).values({
         workspaceId: auth.workspaceId,
+        noteId: note.id,
         projectId,
         title,
-        // The source status is preserved in the description; the task status is
-        // the product's vocabulary, and the two are not one-to-one.
-        description: `Linear status: ${issue.status}. Linear project: ${project.name}.`,
+        description,
         status: linearStatus[key(issue.status)] ?? "backlog",
         priority: issue.priority,
         tags: ["linear", issue.identifier],
