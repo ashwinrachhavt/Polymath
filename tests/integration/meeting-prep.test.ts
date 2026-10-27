@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { calendars, eventAttendees, eventLinks, events } from "@/domains/calendar/schema";
 import { contacts } from "@/domains/crm/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
-import { seedTaskWithNote } from "../helpers/task-note";
+import { tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -94,7 +94,7 @@ async function seedFullContext(workspaceId: string, userId: string, eventId: str
     .returning();
   await db.update(artifacts).set({ currentVersionId: v1.id }).where(eq(artifacts.id, note.id));
 
-  await seedTaskWithNote(db, { workspaceId, title: "Send the Q3 roadmap to Priya Nair", status: "ready", createdBy: userId, updatedBy: userId });
+  await db.insert(tasks).values({ workspaceId, title: "Send the Q3 roadmap to Priya Nair", status: "ready", createdBy: userId, updatedBy: userId });
 }
 
 suite("meeting prep", () => {

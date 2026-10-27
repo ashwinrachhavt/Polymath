@@ -6,19 +6,19 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
 import { organizations, people } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { artifacts } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { taskLinks, tasks } from "./schema";
 import { rankBetween } from "./rank";
 import { settleBlockers } from "./task-commands";
-import { createTaskNote } from "./task-note";
 
 /*
  * The work domain's mutation surface. Minimal by design: callers outside the
  * domain (e.g. knowledge accepting an obligation) go through here so task
  * invariants live in one place.
  */
+
+type Db = typeof db | TxDrizzle;
 
 /* One page per render; Today paginates past this when the list outgrows a screen. */
 const OPEN_TASK_PAGE = 100;
@@ -37,12 +37,6 @@ export type TaskLinkInput = {
  * to write, and writing it twice is how the two edges drift. The caller owns
  * the audit row, because only it knows the action name that describes the
  * change (an obligation acceptance is not a bare task creation).
- *
- * A task is a note plus a 1:1 extension row, so the note is created first, in
- * the caller's transaction. `title` and `description` are still written to the
- * task row: `title` is NOT NULL until 0260 drops both columns, and the dual
- * write is what keeps old code reading correctly during the window. The note is
- * authoritative - every read goes through it.
  */
 export async function createTask(
   auth: AuthContext,
@@ -58,13 +52,14 @@ export async function createTask(
     status?: (typeof tasks.$inferSelect)["status"];
     links?: TaskLinkInput[];
   },
-  tx: TxDrizzle,
+  tx: Db = db,
 ) {
   let rank = input.rank;
   if (!rank) {
     // New work goes to the end of the list. The lock makes "last rank" safe:
     // two concurrent creates would otherwise read the same last rank and tie,
     // and a tie cannot be ordered by a later move.
+    if (tx === db) throw new Error("createTask needs a transaction to assign a rank");
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`rank:${auth.workspaceId}`}, 0))`);
     const [last] = await tx
       .select({ rank: tasks.rank })
@@ -74,12 +69,12 @@ export async function createTask(
       .limit(1);
     rank = rankBetween(last?.rank ?? null, null);
   }
-  const note = await createTaskNote(tx, auth, { title: input.title, description: input.description });
   const [task] = await tx
     .insert(tasks)
     .values({
       workspaceId: auth.workspaceId,
-      noteId: note.id,
+      title: input.title,
+      description: input.description ?? null,
       dueAt: input.dueAt ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
       ...(input.status ? { status: input.status } : {}),
@@ -177,7 +172,7 @@ export async function createOwnerTask(
         action: "task.created",
         subjectType: "task",
         subjectId: task.id,
-        summary: `Created task "${input.title}"`,
+        summary: `Created task "${task.title}"`,
         metadata: {
           personId: input.personId ?? null,
           organizationId: input.organizationId ?? null,
@@ -191,30 +186,17 @@ export async function createOwnerTask(
   });
 }
 
-/**
- * Open tasks, soonest due first, nulls last. One page; paginate when the list
- * outgrows a screen.
- *
- * The title is the note's: this is a second projection of `queries.listOpenTasks`,
- * kept because a suite imports it here. The join is guarded on
- * `workspace_id` as well as `id` - `tasks.note_id` is a single-column FK, so
- * Postgres cannot express "the artifact shares the task's workspace", and a
- * foreign note id would otherwise leak another tenant's title.
- */
+/** Open tasks, soonest due first, nulls last. One page; paginate when the list outgrows a screen. */
 export async function listOpenTasks(auth: AuthContext) {
   return db
     .select({
       id: tasks.id,
-      title: artifacts.title,
+      title: tasks.title,
       status: tasks.status,
       dueAt: tasks.dueAt,
       createdAt: tasks.createdAt,
     })
     .from(tasks)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-    )
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),
@@ -240,10 +222,6 @@ export async function completeTask(
   // caps the length; the domain trims defensively.
   const note = input.sentence?.trim().slice(0, 1000) || undefined;
   return withTransaction(async (tx) => {
-    // The title is the note's, joined in the same statement: the audit summary
-    // needs it and `tasks.title` goes away with 0260. The join is guarded on
-    // workspace too - `tasks.note_id` is a single-column FK, so Postgres cannot
-    // express that the artifact is in this tenant.
     const [task] = await tx
       .update(tasks)
       .set({
@@ -253,17 +231,14 @@ export async function completeTask(
         updatedBy: auth.userId,
         version: sql`${tasks.version} + 1`,
       })
-      .from(artifacts)
       .where(
         and(
-          eq(artifacts.id, tasks.noteId),
-          eq(artifacts.workspaceId, tasks.workspaceId),
           eq(tasks.id, input.taskId),
           eq(tasks.workspaceId, auth.workspaceId),
           sql`${tasks.status} not in ('done', 'cancelled')`,
         ),
       )
-      .returning({ id: tasks.id, title: artifacts.title });
+      .returning({ id: tasks.id, title: tasks.title });
     // A no-op click writes nothing, including no audit row: the guard decided
     // there was no change to record.
     if (!task) return null;
@@ -387,15 +362,9 @@ export async function reopenTask(
   input: { taskId: string; expectedVersion: number },
 ): Promise<ReopenOutcome> {
   return withTransaction(async (tx) => {
-    // The title comes from the note, in the same read: `tasks.title` goes away
-    // with 0260, and the reopen audit summary names the task it undid.
     const [before] = await tx
-      .select({ status: tasks.status, version: tasks.version, title: artifacts.title })
+      .select({ status: tasks.status, version: tasks.version, title: tasks.title })
       .from(tasks)
-      .innerJoin(
-        artifacts,
-        and(eq(artifacts.id, tasks.noteId), eq(artifacts.workspaceId, tasks.workspaceId)),
-      )
       .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!before) return null;

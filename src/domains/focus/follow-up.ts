@@ -6,8 +6,7 @@ import { createEngine, type SessionDriver } from "@/domains/agents/engine";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { agentRuns } from "@/domains/agents/schema";
 import { correspondence, contacts } from "@/domains/crm/schema";
-import { getTaskTitle } from "@/domains/work/queries";
-import { taskLinks } from "@/domains/work/schema";
+import { taskLinks, tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { focusSessions } from "./schema";
 
@@ -147,7 +146,12 @@ export function followUpRequestedHandler(
       return;
     }
 
-    const taskTitle = (await getTaskTitle({ workspaceId: event.workspaceId }, session.taskId)) ?? "the task";
+    const [task] = await db
+      .select({ title: tasks.title })
+      .from(tasks)
+      .where(and(eq(tasks.id, session.taskId), eq(tasks.workspaceId, event.workspaceId)))
+      .limit(1);
+    const taskTitle = task?.title ?? "the task";
 
     // A redelivered event (a lost lease, not a second finish) must not start
     // a second run: the linkage rides the run's subjects, so the replay check

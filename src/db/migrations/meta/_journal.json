@@ -589,34 +589,6 @@
       "when": 1793200006000,
       "tag": "0257_drop_daily_outcomes",
       "breakpoints": true
-    },
-    {
-      "idx": 258,
-      "version": "7",
-      "when": 1793250000001,
-      "tag": "0258_capture_mode_and_identity",
-      "breakpoints": true
-    },
-    {
-      "idx": 259,
-      "version": "7",
-      "when": 1793250001000,
-      "tag": "0259_one_note_substrate_add",
-      "breakpoints": true
-    },
-    {
-      "idx": 260,
-      "version": "7",
-      "when": 1793250002000,
-      "tag": "0260_one_note_substrate_drop",
-      "breakpoints": true
-    },
-    {
-      "idx": 261,
-      "version": "7",
-      "when": 1793250003000,
-      "tag": "0261_tasks_note_workspace_fk",
-      "breakpoints": true
     }
   ]
 }

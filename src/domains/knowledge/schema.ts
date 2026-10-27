@@ -106,12 +106,6 @@ export const artifacts = pgTable(
     workspaceId: tenantId(),
     kind: artifactKind("kind").notNull().default("note"),
     title: text("title").notNull(),
-    /**
-     * Which writing template this note started from (`DraftTemplate`), or null
-     * for a plain note. Text rather than an enum: a template is a starting
-     * point, not a state, and the registry in templates.ts owns the list.
-     */
-    template: text("template"),
     status: artifactStatus("status").notNull().default("draft"),
     /** The current version. Versions are append-only; this is the pointer. */
     currentVersionId: uuid("current_version_id"),

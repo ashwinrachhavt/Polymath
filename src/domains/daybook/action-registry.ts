@@ -9,14 +9,7 @@
  * Agent and system activity is excluded at query time (actor_kind = 'user').
  */
 export const DAYBOOK_ACTIONS = {
-  /*
-   * `note.created` is deliberately absent. The Created panel already lists the
-   * artifact the event describes, so registering the event shows one note
-   * creation twice - and a task is a note, which would make one task create
-   * appear three times (artifact, note.created, task.created). A note is
-   * recorded by the panel; only the mutations the panel cannot see are here.
-   */
-  created: ["capture.created", "task.created", "event.time_blocked"],
+  created: ["note.created", "capture.created", "task.created", "event.time_blocked"],
   workedOn: ["note.snapshot", "note.ai.applied", "note.tags_changed", "note.renamed"],
   decided: [
     "task.completed",
