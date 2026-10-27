@@ -3,8 +3,18 @@
 -- The column lands nullable, history is backfilled by shape, and only then is
 -- NOT NULL enforced and the unique index created: an existing database already
 -- holds rows, and those rows already collide under the new rule.
-CREATE TYPE "public"."capture_fetch_outcome" AS ENUM('pending', 'acquired', 'error-page', 'access-denied', 'empty', 'provider-unavailable');--> statement-breakpoint
-CREATE TYPE "public"."capture_mode" AS ENUM('authored', 'selection', 'page', 'url-reference', 'blob');--> statement-breakpoint
+-- CI applies one psql -f per file with no -1, so a mid-file failure commits what
+-- came before and a re-run would hard-fail on CREATE TYPE. Guarded as in 0253.
+DO $$ BEGIN
+  CREATE TYPE "public"."capture_fetch_outcome" AS ENUM('pending', 'acquired', 'error-page', 'access-denied', 'empty', 'provider-unavailable');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."capture_mode" AS ENUM('authored', 'selection', 'page', 'url-reference', 'blob');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 DROP INDEX "captures_workspace_source_url_key";--> statement-breakpoint
 ALTER TABLE "captures" ADD COLUMN "capture_mode" "capture_mode";--> statement-breakpoint
 ALTER TABLE "captures" ADD COLUMN "fetched_text" text;--> statement-breakpoint
