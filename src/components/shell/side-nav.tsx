@@ -182,7 +182,6 @@ export function SideNav() {
             </>
           )}
         </button>
-        {collapsed ? null : <kbd aria-hidden className="readout text-[11px]">⌘K</kbd>}
         </span>
 
         {/* The product's destinations, one list. Default prefetch: with

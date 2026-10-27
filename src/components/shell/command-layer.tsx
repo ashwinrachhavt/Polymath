@@ -187,7 +187,7 @@ export function CommandLayer() {
 
   return <>
     <span className="contents md:hidden"><button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" data-search-trigger className="global-search disabled:opacity-50">
-      <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span><kbd aria-hidden className="readout ml-auto hidden text-[11px] lg:block">⌘ K</kbd>
+      <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span>
     </button></span>
     <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
