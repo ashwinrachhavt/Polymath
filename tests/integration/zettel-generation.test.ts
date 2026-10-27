@@ -83,6 +83,7 @@ async function addCapture(
     .values({
       workspaceId: auth.workspaceId,
       kind: row.kind ?? "text",
+      captureMode: row.kind === "file" ? "blob" : "authored",
       rawPayload: row.text ? { text: row.text } : {},
       text: row.text ?? null,
       processingState: row.state ?? "unprocessed",

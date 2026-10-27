@@ -60,6 +60,7 @@ async function seed(tag: string) {
     .values({
       workspaceId,
       kind: "text",
+      captureMode: "authored",
       rawPayload: { text: PROSE },
       text: PROSE,
     })

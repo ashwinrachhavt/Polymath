@@ -62,7 +62,7 @@ async function seed(tag: string) {
   const { workspaceId } = await seedWorkspace(db, `url-lease-${tag}-${Date.now()}`);
   const [capture] = await db
     .insert(captures)
-    .values({ workspaceId, kind: "url", url: URL_, rawPayload: { url: URL_ } })
+    .values({ workspaceId, kind: "url", url: URL_, captureMode: "url-reference", rawPayload: { url: URL_ } })
     .returning();
   return { workspaceId, capture };
 }
@@ -128,7 +128,7 @@ suite("url content lease", () => {
     const { workspaceId } = await seedWorkspace(db, `url-lease-bad-${Date.now()}`);
     const [capture] = await db
       .insert(captures)
-      .values({ workspaceId, kind: "url", url: "http://localhost/x", rawPayload: {} })
+      .values({ workspaceId, kind: "url", url: "http://localhost/x", captureMode: "url-reference", rawPayload: {} })
       .returning();
     await urlHandler.urlContentRequestedHandler({
       id: crypto.randomUUID(),

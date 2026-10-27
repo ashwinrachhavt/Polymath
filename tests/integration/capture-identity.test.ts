@@ -55,4 +55,44 @@ suite("capture identity", () => {
     const rows = await db.select().from(captures).where(eq(captures.workspaceId, workspaceId));
     expect(rows).toHaveLength(1);
   });
+
+  it("writes the supplied title onto the capture", async () => {
+    const created = await commands.createCapture(auth, { text: "titled", title: "A real title" });
+    expect(created.title).toBe("A real title");
+  });
+
+  it("keeps the second submission's title when the text dedupes", async () => {
+    const url = "https://example.com/article-3";
+    const first = await commands.createCapture(auth, { text: "shared body", url, mode: "selection", title: "First" });
+    await expect(
+      commands.createCapture(auth, { text: "shared body", url, mode: "selection", title: "Second" }),
+    ).rejects.toMatchObject({ existingId: first.id });
+    const [survivor] = await db.select().from(captures).where(eq(captures.id, first.id));
+    expect(survivor.title).toBe("Second");
+  });
+
+  it("does not clear the survivor's title when the repeat supplies none", async () => {
+    const url = "https://example.com/article-4";
+    const first = await commands.createCapture(auth, { text: "kept body", url, mode: "selection", title: "Kept" });
+    await expect(
+      commands.createCapture(auth, { text: "kept body", url, mode: "selection" }),
+    ).rejects.toMatchObject({ existingId: first.id });
+    const [survivor] = await db.select().from(captures).where(eq(captures.id, first.id));
+    expect(survivor.title).toBe("Kept");
+  });
+
+  it("records a page capture again when the page changed", async () => {
+    const url = "https://example.com/changing";
+    await commands.createCapture(auth, { text: "version one", url, mode: "page" });
+    await commands.createCapture(auth, { text: "version two", url, mode: "page" });
+    const rows = await db.select().from(captures).where(eq(captures.workspaceId, workspaceId));
+    expect(rows.filter((r) => r.url === url)).toHaveLength(2);
+  });
+
+  it("still rejects a bare address twice", async () => {
+    const url = "https://example.com/once";
+    await commands.createCapture(auth, { text: url });
+    await expect(commands.createCapture(auth, { text: url }))
+      .rejects.toMatchObject({ code: "conflict" });
+  });
 });

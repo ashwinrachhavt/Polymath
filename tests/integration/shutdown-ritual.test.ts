@@ -69,7 +69,7 @@ async function workspace(tag: string) {
 async function capture(workspaceId: string, over: Partial<typeof captures.$inferInsert> = {}) {
   const [row] = await db
     .insert(captures)
-    .values({ workspaceId, kind: "text", rawPayload: { text: "a thought" }, text: "a thought", ...over })
+    .values({ workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: "a thought" }, text: "a thought", ...over })
     .returning();
   return row;
 }

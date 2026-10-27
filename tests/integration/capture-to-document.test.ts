@@ -42,7 +42,7 @@ afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
 async function addTextCapture(db: NonNullable<typeof holder.db>, ws: string, userId: string, text: string | null) {
   const [row] = await db
     .insert(captures)
-    .values({ workspaceId: ws, kind: "text", rawPayload: text ? { text } : {}, text, createdBy: userId, updatedBy: userId })
+    .values({ workspaceId: ws, kind: "text", captureMode: "authored", rawPayload: text ? { text } : {}, text, createdBy: userId, updatedBy: userId })
     .returning();
   return row;
 }
