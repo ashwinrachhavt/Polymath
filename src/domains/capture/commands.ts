@@ -473,44 +473,70 @@ export async function convertCaptureToDocument(
     throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
   }
 
-  // The enriched text is the document when the ladder produced it; the raw
-  // paste otherwise. Only text carries in - a file capture's bytes are
-  // already stored under their own filename.
-  const body = (capture.cleanText ?? capture.text ?? "").trim();
+  // A page files the fetched reading, a selection its selection. Only text
+  // carries in - a file capture's bytes are already stored under their own
+  // filename.
+  const body = workingText(capture)?.trim() ?? "";
   if (!body) throw new ConflictError("That capture has no text to file.");
   const firstLine = body.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured text";
   const title = input.title?.trim() || capture.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
 
-  const result = await intakeFile(auth, {
-    bytes: new TextEncoder().encode(body),
-    filename: `${title}.md`,
-    title,
-    verdict: { ok: true, mimeType: "text/markdown" },
-    origin: "capture",
-    inTransaction: async (tx, { documentId }) => {
-      const [updated] = await tx
-        .update(captures)
-        .set({
-          processingState: "converted",
-          convertedType: "document",
-          convertedId: documentId,
-          convertedAt: new Date(),
-          version: sql`${captures.version} + 1`,
-          updatedAt: new Date(),
-          updatedBy: auth.userId,
-        })
-        .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
-        .returning();
-      if (!updated) {
-        throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+  // Drizzle wraps the driver error, so the Postgres code sits one level down
+  // (the probe showed `{ query, params, cause: PostgresError }`). Matching the
+  // constraint name too keeps an unrelated 23505 out of this message.
+  const isDuplicateSourceUrl = (cause: unknown) => {
+    let current: unknown = cause;
+    for (let depth = 0; depth < 4 && current; depth += 1) {
+      const error = current as { code?: unknown; constraint_name?: unknown };
+      if (error.code === "23505" && (!error.constraint_name || error.constraint_name === "documents_workspace_source_url_key")) {
+        return true;
       }
-      await recordAudit(
-        auth,
-        { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
-        tx,
-      );
-    },
-  });
+      current = (current as { cause?: unknown }).cause;
+    }
+    return false;
+  };
+
+  let result: Awaited<ReturnType<typeof intakeFile>>;
+  try {
+    result = await intakeFile(auth, {
+      bytes: new TextEncoder().encode(body),
+      filename: `${title}.md`,
+      title,
+      verdict: { ok: true, mimeType: "text/markdown" },
+      origin: "capture",
+      sourceUrl: capture.url ?? undefined,
+      inTransaction: async (tx, { documentId }) => {
+        const [updated] = await tx
+          .update(captures)
+          .set({
+            processingState: "converted",
+            convertedType: "document",
+            convertedId: documentId,
+            convertedAt: new Date(),
+            version: sql`${captures.version} + 1`,
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+          })
+          .where(and(eq(captures.id, capture.id), eq(captures.version, input.expectedVersion)))
+          .returning();
+        if (!updated) {
+          throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+        }
+        await recordAudit(
+          auth,
+          { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
+          tx,
+        );
+      },
+    });
+  } catch (cause) {
+    // documents_workspace_source_url_key is one document per URL per
+    // workspace; a second capture of the same article is a refusal with
+    // somewhere to go, not a driver error. Drizzle wraps the PostgresError, so
+    // the code can sit one level down.
+    if (isDuplicateSourceUrl(cause)) throw new ConflictError("That article is already in your library.");
+    throw cause;
+  }
   return { documentId: result.documentId, fileId: result.fileId };
 }
 
