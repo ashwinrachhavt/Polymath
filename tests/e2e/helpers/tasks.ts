@@ -33,8 +33,8 @@ export async function seedTask(input: { title: string; status?: string; descript
     `;
     if (!owner) return null;
     const [task] = await client<{ id: string }[]>`
-      insert into tasks (workspace_id, title, status)
-      values (${owner.workspace_id}, ${input.title}, ${input.status ?? "ready"})
+      insert into tasks (workspace_id, title, status, description)
+      values (${owner.workspace_id}, ${input.title}, ${input.status ?? "ready"}, ${input.description ?? null})
       returning id
     `;
     seeded.push(task.id);
