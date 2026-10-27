@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { blobObjects } from "@/domains/audit/schema";
 import {
   documentExtractions,
+  documentObligations,
   documents,
   fieldProposals,
   files,
@@ -404,5 +405,58 @@ suite("document library", () => {
     const other = await seedAuth("tags-other");
     const foreign = await seedDocument(other, { title: "Not yours" });
     await expect(tags.addTag(auth, { documentIds: [a.id, foreign.id], tag: "x" })).rejects.toMatchObject({ code: "not_found" });
+  });
+  it("taskId filter: documents whose accepted obligation made the task, workspace-scoped, superseded ignored, composes", async () => {
+    const auth = await seedAuth("task-filter");
+    const taskId = crypto.randomUUID();
+    const otherTask = crypto.randomUUID();
+    const a = await seedDocument(auth, { title: "Lease renewal" });
+    const b = await seedDocument(auth, { title: "Insurance notice" });
+    const superseded = await seedDocument(auth, { title: "Old notice" });
+    const unrelated = await seedDocument(auth, { title: "Other task doc" });
+    await seedDocument(auth, { title: "No obligation" });
+    const obligation = (documentId: string, task: string, extra: Partial<typeof documentObligations.$inferInsert> = {}) =>
+      holder.db.insert(documentObligations).values({
+        workspaceId: auth.workspaceId,
+        documentId,
+        kind: "pay",
+        dedupeKey: `pay:${documentId}`,
+        taskId: task,
+        status: "accepted",
+        ...extra,
+      });
+    await obligation(a.id, taskId);
+    await obligation(b.id, taskId);
+    // Two obligations on one document for the same task must not duplicate the row.
+    await obligation(b.id, taskId, { dedupeKey: "pay:second" });
+    await obligation(superseded.id, taskId, { supersededBy: crypto.randomUUID() });
+    await obligation(unrelated.id, otherTask);
+
+    const page = await library.listDocuments(auth, { filters: { taskId } });
+    expect(page.rows.map((r) => r.title).sort()).toEqual(["Insurance notice", "Lease renewal"]);
+    expect(page.total).toBe(2);
+
+    // Composes with the other filters instead of replacing them.
+    const narrowed = await library.listDocuments(auth, { filters: { taskId, q: "lease" } });
+    expect(narrowed.rows.map((r) => r.title)).toEqual(["Lease renewal"]);
+
+    // A task id that produced nothing matches nothing (never the whole library).
+    const none = await library.listDocuments(auth, { filters: { taskId: crypto.randomUUID() } });
+    expect(none.rows).toEqual([]);
+    expect(none.total).toBe(0);
+
+    // Another workspace holding the same task id sees nothing of ours, and we nothing of theirs.
+    const other = await seedAuth("task-filter-other");
+    const theirs = await seedDocument(other, { title: "Their doc" });
+    await holder.db.insert(documentObligations).values({
+      workspaceId: other.workspaceId,
+      documentId: theirs.id,
+      kind: "pay",
+      dedupeKey: "pay:theirs",
+      taskId,
+      status: "accepted",
+    });
+    expect((await library.listDocuments(auth, { filters: { taskId } })).rows.map((r) => r.title).sort()).toEqual(["Insurance notice", "Lease renewal"]);
+    expect((await library.listDocuments(other, { filters: { taskId } })).rows.map((r) => r.title)).toEqual(["Their doc"]);
   });
 });

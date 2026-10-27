@@ -106,10 +106,10 @@ export async function removeTagAction(documentIds: string[], tag: string) {
 }
 
 /** Next page (or a re-sorted / searched first page) of the library, read by the explorer. Viewers may read. */
-export async function loadPageAction(input: { sort: "added" | "recent" | "title" | "size"; cursor?: string; q?: string }): Promise<ActionResult<{ page: ExplorerPage }>> {
+export async function loadPageAction(input: { sort: "added" | "recent" | "title" | "size"; cursor?: string; q?: string; taskId?: string }): Promise<ActionResult<{ page: ExplorerPage }>> {
   const auth = await getAuthContext();
   requireRole(auth, "viewer");
-  const parsed = z.object({ sort: z.enum(["added", "recent", "title", "size"]), cursor: z.string().max(500).optional(), q: z.string().max(200).optional() }).safeParse(input);
+  const parsed = z.object({ sort: z.enum(["added", "recent", "title", "size"]), cursor: z.string().max(500).optional(), q: z.string().max(200).optional(), taskId: z.string().uuid().optional() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That request was not valid." };
   const page = await getExplorerPage(auth, parsed.data);
   return { ok: true, page };

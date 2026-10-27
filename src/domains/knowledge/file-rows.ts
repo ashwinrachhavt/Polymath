@@ -69,9 +69,11 @@ export async function toBrowserRows(auth: AuthContext, rows: LibraryRow[]): Prom
 
 export async function getExplorerPage(
   auth: AuthContext,
-  input: { sort?: LibrarySort; cursor?: string; q?: string; limit?: number },
+  input: { sort?: LibrarySort; cursor?: string; q?: string; taskId?: string; limit?: number },
 ): Promise<ExplorerPage> {
-  const filters: LibraryFilters = input.q?.trim() ? { q: input.q.trim() } : {};
+  const filters: LibraryFilters = {};
+  if (input.q?.trim()) filters.q = input.q.trim();
+  if (input.taskId) filters.taskId = input.taskId;
   const page = await listDocuments(auth, { sort: input.sort, cursor: input.cursor, limit: input.limit ?? 100, filters });
   return { rows: await toBrowserRows(auth, page.rows), nextCursor: page.nextCursor, total: page.total };
 }
