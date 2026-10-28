@@ -483,7 +483,7 @@ export default function NotebookSurface({
                       {run.state === "waiting_input" ? "Answered" : run.state}
                     </Badge>
                   </div>
-                  <DraftControls runId={run.id} draft={runDrafts[run.id] ?? null} canSave={run.state === "succeeded" || run.state === "waiting_input"} />
+                  <DraftControls draft={runDrafts[run.id] ?? null} />
                   {runDrafts[run.id] ? (
                     <a
                       href={`${basePath}?draft=${runDrafts[run.id].artifactId}`}
