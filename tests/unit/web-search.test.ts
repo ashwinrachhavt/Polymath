@@ -125,10 +125,11 @@ describe("webSearchProvider resolution", () => {
 describe("searchWebForAgent registry gate", () => {
   it("fails closed when the resolved provider's registry entry is disabled", async () => {
     const { searchWebForAgent } = await import("@/domains/knowledge/web-search");
-    // parallel's key is set and SEARCH_PROVIDER names it, but its registry
-    // entry is disabled (card-backed): the call must refuse before any fetch.
-    vi.stubEnv("SEARCH_PROVIDER", "parallel");
-    vi.stubEnv("PARALLEL_API_KEY", "pl-test");
+    // The gateway's search entry is disabled (post-promo billing). Naming it
+    // explicitly must refuse before any fetch — an explicit choice yields a
+    // one-provider chain, so there is nothing to fall through to by design.
+    vi.stubEnv("SEARCH_PROVIDER", "ai-gateway-tako");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "gw-test");
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const result = await searchWebForAgent({ workspaceId: "w1" }, { query: "q" });

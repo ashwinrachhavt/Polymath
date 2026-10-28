@@ -305,3 +305,34 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
   };
   return handlers;
 }
+
+/**
+ * Topics that are written on purpose and consumed by nobody.
+ *
+ * Every one of these commits alongside an `recordAudit` carrying the same action,
+ * so the audit row is the record and the outbox row exists so a future consumer can
+ * subscribe without a backfill. Declaring them is the difference between a queue
+ * where "pending" means work-in-flight and a queue where "pending" sometimes means
+ * "never". Without this list the two are indistinguishable and the dispatcher keeps
+ * retrying rows nobody will ever claim.
+ *
+ * Adding a topic here asserts that no consumer is required. That is a review
+ * decision, not a convenience: if a security cache or a user-visible state depends
+ * on the event, it needs a handler instead.
+ */
+export const AUDIT_ONLY_TOPICS: readonly string[] = [
+  "agent_principal.registered",
+  "agent_principal.status_changed",
+  "delegation_grant.issued",
+  "delegation_grant.revoked",
+  "grant.created",
+  "grant.revoked",
+  "note.snapshot",
+  "research.company.completed",
+  "research.profile.completed",
+  "role.archived",
+  "role.assigned",
+  "role.defined",
+  "role.revised",
+  "role.unassigned",
+] as const;

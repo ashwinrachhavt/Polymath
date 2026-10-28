@@ -11,9 +11,15 @@ describe("generationProvider selection", () => {
   it("throws unconfigured without keys", () => {
     expect(() => generationProvider({})).toThrow(GenerationUnconfiguredError);
   });
-  it("keeps the OpenRouter status quo when its key is present", () => {
+  it("prefers the free Gemini allowance when both keys are present", () => {
+    // Free-first (owner decision 2026-10-27). This used to assert OpenRouter,
+    // which billed every debrief and draft while the Gemini free tier sat
+    // configured and unused.
     const p = generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" });
-    expect(p.registryId).toBe("openrouter");
+    expect(p.registryId).toBe("gemini");
+  });
+  it("still generates on OpenRouter when that is the only key", () => {
+    expect(generationProvider({ OPENROUTER_API_KEY: "k" }).registryId).toBe("openrouter");
   });
   it("serves the fixture provider only outside production", () => {
     expect(generationProvider({ GENERATION_PROVIDER: "fixture" }).registryId).toBe("fixture");

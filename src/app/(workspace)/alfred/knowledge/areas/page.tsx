@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { io } from "next/cache";
+import { Suspense } from "react";
 import { listAreas } from "@/domains/knowledge/area-queries";
 import { getAuthContext } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
@@ -21,7 +22,7 @@ function ratio(hit: number, total: number): string {
   return `${hit}/${total} (${Math.round((hit / total) * 100)}%)`;
 }
 
-export default async function AreasPage() {
+async function AreasSurface() {
   await io();
   const auth = await getAuthContext();
   const areas = await listAreas(auth);
@@ -95,5 +96,17 @@ export default async function AreasPage() {
         </Panel>
       </div>
     </>
+  );
+}
+
+/*
+ * `io()` must sit inside a Suspense boundary under cacheComponents, or
+ * navigation here is treated as blocked on uncached data.
+ */
+export default function AreasPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading areas…</p>}>
+      <AreasSurface />
+    </Suspense>
   );
 }

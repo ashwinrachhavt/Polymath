@@ -172,9 +172,32 @@ async function upsertPeople(
     }
   }
 
+  // A person the evidence gives no address for is keyed by name plus the
+  // organization this file places them at, so a re-run matches instead of
+  // creating a second Chris. A name alone still never merges: two people
+  // called Chris at two companies stay two people.
+  const knownByNameAndOrg = new Map<string, string>();
+  const existingPeople = await tx
+    .select({ id: people.id, displayName: people.displayName, organizationName: organizations.name })
+    .from(people)
+    .leftJoin(
+      partyEmployment,
+      and(
+        eq(partyEmployment.workspaceId, people.workspaceId),
+        eq(partyEmployment.personId, people.id),
+        isNull(partyEmployment.endedAt),
+      ),
+    )
+    .leftJoin(organizations, eq(organizations.id, partyEmployment.organizationId))
+    .where(and(eq(people.workspaceId, auth.workspaceId), isNull(people.archivedAt)));
+  for (const row of existingPeople) {
+    knownByNameAndOrg.set(`${key(row.displayName)}|${key(row.organizationName ?? "")}`, row.id);
+  }
+
   for (const person of dataset.people) {
     const email = person.email ? person.email.toLowerCase() : null;
-    let personId = email ? knownByEmail.get(email) ?? null : null;
+    const orgKey = `${key(person.name)}|${key(person.organization ?? "")}`;
+    let personId = email ? knownByEmail.get(email) ?? null : knownByNameAndOrg.get(orgKey) ?? null;
 
     if (personId) {
       summary.people.matched += 1;
@@ -190,6 +213,7 @@ async function upsertPeople(
         })
         .returning({ id: people.id });
       personId = created.id;
+      knownByNameAndOrg.set(orgKey, personId);
       if (email) {
         knownByEmail.set(email, personId);
         await tx.insert(contactPoints).values({

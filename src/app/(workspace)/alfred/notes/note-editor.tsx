@@ -532,6 +532,17 @@ export function NoteEditor({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>(() => markdownEditorMode(initialMarkdown));
   const sourceReason = markdownSourceReason(markdown);
+  /*
+   * The minimal chrome hides the mode row, so the only route to source mode is
+   * the Details inspector. When a paste confirms it dropped structure, show
+   * that route instead of making the person hunt for it.
+   */
+  const [sourceHint, setSourceHint] = useState(false);
+  useEffect(() => {
+    if (!sourceHint) return;
+    const timer = window.setTimeout(() => setSourceHint(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [sourceHint]);
   // A brand-new note (the empty state's "Write your first page." action) opens
   // with the composer focused; an existing note never steals focus on mount.
   const titleRef = useRef<HTMLInputElement>(null);
@@ -713,7 +724,13 @@ export function NoteEditor({
             )}
           </div>
           <div className="mt-6">
-            <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} />
+            <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} onStructuredPasteDropped={() => setSourceHint(true)} />
+            {sourceHint && editorMode === "rich" && (
+              <div role="status" className="mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+                <span>The paste lost its structure.</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => { setEditorMode("source"); setSourceHint(false); }}>Paste again in Markdown source</Button>
+              </div>
+            )}
           </div>
           {ai && (
             <div className="mt-6 flex flex-col gap-2 rounded-lg border border-border p-3">

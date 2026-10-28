@@ -1,4 +1,5 @@
 import { io } from "next/cache";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
@@ -12,7 +13,7 @@ export const metadata = { title: "Activity · Polymath" };
  * browser-preview activity component, so real writes had no read surface -
  * this page is that surface, workspace-scoped like every canonical screen.
  */
-export default async function ActivityPage() {
+async function ActivitySurface() {
   await io();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
@@ -51,5 +52,17 @@ export default async function ActivityPage() {
         )}
       </div>
     </>
+  );
+}
+
+/*
+ * `io()` must sit inside a Suspense boundary under cacheComponents, or
+ * navigation here is treated as blocked on uncached data.
+ */
+export default function ActivityPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading activity…</p>}>
+      <ActivitySurface />
+    </Suspense>
   );
 }

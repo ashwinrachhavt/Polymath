@@ -21,9 +21,11 @@
     "seed:inventory": "tsx --env-file=.env scripts/seed/inventory.ts",
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm inventory:check && pnpm build",
     "prepare": "git config core.hooksPath scripts/hooks",
-    "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts"
+    "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",
+    "inventory": "tsx scripts/tech-spec-inventory.ts",
+    "inventory:check": "tsx scripts/tech-spec-inventory.ts --check"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.101",

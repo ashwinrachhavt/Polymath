@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { getDayPage } from "@/domains/daybook/queries";
@@ -36,7 +37,7 @@ function ItemRows({ items }: { items: Array<{ id: string; title: string; at: Dat
   );
 }
 
-export default async function DayPage({ params }: { params: Promise<{ date: string }> }) {
+async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
   const { date } = await params;
   await connection();
   const auth = await getAuthContext();
@@ -150,5 +151,17 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
         />
       ) : null}
     </Screen>
+  );
+}
+
+/*
+ * `connection()` must sit inside a Suspense boundary under cacheComponents,
+ * or navigation treats the day as uncached data.
+ */
+export default function DayPage({ params }: { params: Promise<{ date: string }> }) {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading day…</p>}>
+      <DaySurface params={params} />
+    </Suspense>
   );
 }
