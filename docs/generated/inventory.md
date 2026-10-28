@@ -5,7 +5,8 @@
 Facts about the tree, read at generation time. The authored half of the
 technical specification is `docs/tech-spec-v2.md`; it does not restate any of this.
 
-Generated from `working tree`.
+Generated from the working tree. The output contains nothing environment-
+dependent, so `inventory:check` behaves the same on a laptop and in CI.
 
 ## Stack
 
