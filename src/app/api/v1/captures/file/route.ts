@@ -5,21 +5,20 @@ import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
-import { validateFile } from "@/lib/file-validation";
+import { validateFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
 import { requestReceipts } from "@/domains/audit/schema";
 import { IdempotencyConflictError, receiptRequestHash } from "@/domains/audit/receipt";
 import { ConflictError, createFileCapture, fileCaptureReceiptRequest, StorageWriteFailedError } from "@/domains/capture/commands";
 
 /*
- * The deploy-supported ceiling: 4 MB. Vercel caps a serverless request body
- * at 4.5 MB including multipart overhead, so a larger promise would fail at
- * the platform with a bare 413 before this code runs. Raising it means the
- * client-upload path (direct to Blob, then finalize) - separate work, same
- * as documents. The 25 MB library constant governs the offline/library
- * intake, not this route.
+ * The deploy-supported ceiling: 4 MB, the same one every intake path shares.
+ * Vercel caps a serverless request body at 4.5 MB including multipart
+ * overhead, so a larger promise would fail at the platform with a bare 413
+ * before this code runs. Raising it means the client-upload path (direct to
+ * Blob, then finalize) - separate work, same as documents.
  */
-export const MAX_CAPTURE_UPLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_CAPTURE_UPLOAD_BYTES = MAX_UPLOAD_BYTES;
 
 /*
  * POST /api/v1/captures/file - upload a file or screenshot straight into the
@@ -43,7 +42,7 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "invalid_request", "Attach a file in the 'file' field.");
   }
   if (file.size > MAX_CAPTURE_UPLOAD_BYTES) {
-    return problemResponse(413, "payload_too_large", "Captures are limited to 4 MB - the largest upload this deployment accepts.");
+    return problemResponse(413, "payload_too_large", `Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this deployment accepts.`);
   }
   const idempotencyKey = request.headers.get("idempotency-key");
   if (idempotencyKey !== null && !z.string().uuid().safeParse(idempotencyKey).success) {

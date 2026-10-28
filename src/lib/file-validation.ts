@@ -50,16 +50,21 @@ const ZIP_XLSX = /\.(xlsx|xls)$/i;
 const ZIP_PPTX = /\.(pptx|ppt)$/i;
 
 /*
- * 25 MB. A scanned 20-page PDF or a phone photo comfortably fits; anything
- * larger is a file the owner should process elsewhere first.
+ * 4 MB, the largest upload this deployment actually accepts. Deployed on
+ * Vercel a serverless request body maxes out at 4.5 MB including multipart
+ * overhead, so a bigger request is rejected by the platform with a bare 413
+ * before any route runs - the app never gets to format the refusal. A promise
+ * above this ceiling is therefore a promise the product cannot keep.
  *
- * Deployed on Vercel this is capped lower by the platform, not by us: a
- * serverless request body maxes out at 4.5 MB, so a bigger upload fails before
- * this check runs. Raising the deployed ceiling means the client-upload path
- * (direct to Blob, then finalize), which is separate work. Locally there is no
- * such limit.
+ * Raising it means the client-upload path (direct to Blob, then finalize),
+ * which is separate work; until that lands this is the ceiling for every
+ * intake, including the server-side fetch and extraction paths that share the
+ * constant.
  */
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+/** The same ceiling as user-facing copy reads it, so a string cannot drift from the byte count. */
+export const MAX_UPLOAD_LABEL = "4 MB";
 
 export type FileValidationResult =
   | { ok: true; mimeType: string }

@@ -6,7 +6,7 @@ import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
-import { MAX_UPLOAD_BYTES, validateFile } from "@/lib/file-validation";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, validateFile } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
 import { requestReceipts } from "@/domains/audit/schema";
 import { extractDocument } from "@/domains/knowledge/extraction";
@@ -59,7 +59,7 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "invalid_request", "Give the document a title.");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return problemResponse(413, "payload_too_large", "Files are limited to 25 MB.");
+    return problemResponse(413, "payload_too_large", `Files are limited to ${MAX_UPLOAD_LABEL}.`);
   }
 
   const idempotencyKey = request.headers.get("idempotency-key");
