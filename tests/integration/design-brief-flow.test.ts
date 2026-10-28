@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import type { GenerationProvider } from "@/integrations/generation/provider";
@@ -200,5 +200,46 @@ suite("designBriefFromArtifact", () => {
       .from(artifacts)
       .where(and(eq(artifacts.workspaceId, workspaceId), eq(artifacts.kind, "memo")));
     expect(rows).toHaveLength(0);
+  });
+
+  /*
+   * TD-10: the model call must not run inside a transaction. Holding one open
+   * across a provider call pins a Neon connection for the whole generation, and
+   * a few concurrent clicks exhaust the pool for unrelated requests. The
+   * provider is the only place that can observe it: while it runs, it asks
+   * Postgres how many backends on this database are sitting inside a
+   * transaction. A transaction wrapped around the call shows one.
+   */
+  it("calls the provider with no transaction open on this database", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `brief-tx-${Date.now()}-${process.pid}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
+
+    let openTransactions = -1;
+    const observing: GenerationProvider = {
+      name: "fixture:tx-observer",
+      registryId: "fixture",
+      generate: async () => {
+        const rows = await db.execute(sql`
+          select count(*)::int as n from pg_stat_activity
+          where datname = current_database()
+            and state in ('idle in transaction', 'idle in transaction (aborted)')
+        `);
+        openTransactions = (rows as unknown as Array<{ n: number }>)[0]?.n ?? -1;
+        return { text: BRIEF_JSON };
+      },
+    };
+
+    const result = await brief.designBriefFromArtifact(auth, sourceId, { provider: observing });
+
+    expect(openTransactions).toBe(0);
+    // The write still commits after the reorder: one memo, its version, its audit row.
+    const [memo] = await db.select().from(artifacts).where(eq(artifacts.id, result.briefArtifactId)).limit(1);
+    expect(memo?.currentVersionId).toBeTruthy();
+    const [audit] = await db.execute(sql`
+      select count(*)::int as n from audit_events
+      where workspace_id = ${workspaceId} and action = 'knowledge.design_brief.generated'
+    `) as unknown as Array<{ n: number }>;
+    expect(audit?.n).toBe(1);
   });
 });

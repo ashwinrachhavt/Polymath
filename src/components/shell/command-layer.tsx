@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { quickCapture, refreshInbox, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
 
@@ -99,7 +100,7 @@ export function CommandLayer() {
     setSaveError("");
     setSaveErrorId(null);
     // Matches the API route's deploy-supported cap; the message shows BEFORE submit.
-    if (file.size > 4 * 1024 * 1024) { setSaveError("Captures are limited to 4 MB - the largest upload this app accepts."); return; }
+    if (file.size > MAX_UPLOAD_BYTES) { setSaveError(`Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this app accepts.`); return; }
     setFilePending(true);
     const form = new FormData();
     form.set("file", file);
@@ -108,7 +109,7 @@ export function CommandLayer() {
         if (!res.ok) {
           // A platform-level 413 answers with an HTML error page, not a
           // problem body - name the limit either way, and never auto-retry.
-          if (res.status === 413) { setSaveError("That file is over the 4 MB limit."); return; }
+          if (res.status === 413) { setSaveError(`That file is over the ${MAX_UPLOAD_LABEL} limit.`); return; }
           const problem = (await res.json().catch(() => null)) as { title?: string } | null;
           setSaveError(problem?.title ?? "Could not capture the file. Try again.");
           return;
@@ -222,7 +223,7 @@ export function CommandLayer() {
               <Button type="button" variant={recording ? "secondary" : "outline"} size="sm" disabled={filePending || pending} aria-pressed={recording} onClick={toggleRecording}>
                 {recording ? <Square aria-hidden /> : <Mic aria-hidden />}{recording ? "Stop and save" : "Voice note"}
               </Button>
-              <span className="text-[11px] text-muted-foreground">Up to 4 MB. Files are stored as-is; audio transcribes when that ships.</span>
+              <span className="text-[11px] text-muted-foreground">Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.</span>
             </div>
           </form>
           <ImportDrop hint="Add pasted text or a URL. Files upload through Alfred Knowledge, where they are extracted." onImport={(result) => {

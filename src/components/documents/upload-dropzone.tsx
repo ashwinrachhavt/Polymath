@@ -7,6 +7,7 @@ import { Check, FileText, FileUp, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { requestJson, type RequestFailure } from "@/lib/client-request";
+import { MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 
 /*
  * The one upload affordance: drop one or many files, watch each store, then
@@ -324,7 +325,7 @@ export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHre
         </span>
         <div>
           <p className="text-[13px] font-medium">Choose files or drag &amp; drop them here</p>
-          <p className="text-muted-foreground mt-1 text-xs">PDF, PNG and JPEG, up to 25 MB each. Stored as originals, then read.</p>
+          <p className="text-muted-foreground mt-1 text-xs">PDF, PNG and JPEG, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.</p>
         </div>
         <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} aria-describedby={liveId} disabled={busy}>
           {busy ? "Working…" : "Browse files"}

@@ -31,7 +31,7 @@ Migrations: 85 files, highest `0258_capture_mode_and_identity`.
 
 ## Tests
 
-421 `.test.ts` and 43 `.spec.ts` files (unit: 243, integration: 178, e2e: 43).
+422 `.test.ts` and 43 `.spec.ts` files (unit: 244, integration: 178, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
