@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { artifacts, artifactVersions } from "./schema";
-import { withReceipt } from "@/domains/audit/receipt";
+import { requestReceipts } from "@/domains/audit/schema";
+import { IdempotencyConflictError, receiptRequestHash, withReceipt } from "@/domains/audit/receipt";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -184,57 +185,75 @@ export async function designBriefFromArtifact(
 
   /*
    * One brief per (source card, source revision): the receipt key carries the
-   * source's current version, so a repeat click replays the stored result -
-   * atomically, the advisory lock serializes concurrent first attempts and
-   * the loser replays - while an edit to the source is a new key and drafts
-   * a fresh brief instead of reusing a stale one.
+   * source's current version, so a repeat click replays the stored result
+   * while an edit to the source is a new key and drafts a fresh brief instead
+   * of reusing a stale one.
+   *
+   * The shape is reserve -> call -> settle, never a transaction around the
+   * model. A transaction held across a provider call pins a Neon connection
+   * for the length of the generation, and a handful of concurrent clicks
+   * exhausts the pool for unrelated requests. So: read the receipt first and
+   * replay without paying for generation (the /api/v1/files pre-check does the
+   * same), call the provider with no transaction open, then open one to write
+   * the artifact, the audit row, and the receipt together. The advisory lock
+   * inside withReceipt still serializes the settle, so two concurrent first
+   * clicks produce exactly one brief and the loser replays it - the only cost
+   * of the race is a second model call, never a second artifact.
    */
+  const key = `design-brief:${artifactId}:${row.versionId}`;
+  const receiptRequest = { op: "designBrief", sourceArtifactId: artifactId, sourceVersionId: row.versionId };
+  const requestHash = await receiptRequestHash(receiptRequest);
+  const [prior] = await db
+    .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
+    .from(requestReceipts)
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)))
+    .limit(1);
+  if (prior) {
+    if (prior.requestHash !== requestHash) throw new IdempotencyConflictError();
+    return { ...(prior.response as DesignBriefResult), existing: true };
+  }
+
+  const out = await provider.generate({
+    system: SYSTEM,
+    prompt: `Research card titled "${row.title}":\n\n${source.slice(0, BRIEF_MAX_INPUT_CHARS)}`,
+    json: true,
+  });
+  const brief = parseDesignBriefAnswer(out.text);
+  const markdown = renderBriefMarkdown(brief, row.title);
+  const title = `Design brief: ${brief.title}`.slice(0, 200);
+
   return withTransaction(async (tx) => {
-    const { value, replayed } = await withReceipt(
-      tx,
-      auth,
-      `design-brief:${artifactId}:${row.versionId}`,
-      { op: "designBrief", sourceArtifactId: artifactId, sourceVersionId: row.versionId },
-      async () => {
-        const out = await provider.generate({
-          system: SYSTEM,
-          prompt: `Research card titled "${row.title}":\n\n${source.slice(0, BRIEF_MAX_INPUT_CHARS)}`,
-          json: true,
-        });
-        const brief = parseDesignBriefAnswer(out.text);
-        const markdown = renderBriefMarkdown(brief, row.title);
-        const title = `Design brief: ${brief.title}`.slice(0, 200);
-        const [artifact] = await tx
-          .insert(artifacts)
-          .values({ workspaceId: auth.workspaceId, kind: "memo", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
-          .returning({ id: artifacts.id });
-        const [version] = await tx
-          .insert(artifactVersions)
-          .values({
-            workspaceId: auth.workspaceId,
-            artifactId: artifact.id,
-            versionNumber: 1,
-            content: { text: markdown, brief },
-            plainText: markdown,
-            reason: "generated",
-            createdBy: auth.userId,
-          })
-          .returning({ id: artifactVersions.id });
-        await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-        await recordAudit(
-          auth,
-          {
-            action: "knowledge.design_brief.generated",
-            subjectType: "artifact",
-            subjectId: artifact.id,
-            summary: `Drafted design brief "${brief.title}" from "${row.title}".`,
-            metadata: { sourceArtifactId: artifactId, sourceVersionId: row.versionId, format: brief.format, proposer: provider.name },
-          },
-          tx,
-        );
-        return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title };
-      },
-    );
+    const { value, replayed } = await withReceipt(tx, auth, key, receiptRequest, async () => {
+      const [artifact] = await tx
+        .insert(artifacts)
+        .values({ workspaceId: auth.workspaceId, kind: "memo", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
+        .returning({ id: artifacts.id });
+      const [version] = await tx
+        .insert(artifactVersions)
+        .values({
+          workspaceId: auth.workspaceId,
+          artifactId: artifact.id,
+          versionNumber: 1,
+          content: { text: markdown, brief },
+          plainText: markdown,
+          reason: "generated",
+          createdBy: auth.userId,
+        })
+        .returning({ id: artifactVersions.id });
+      await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+      await recordAudit(
+        auth,
+        {
+          action: "knowledge.design_brief.generated",
+          subjectType: "artifact",
+          subjectId: artifact.id,
+          summary: `Drafted design brief "${brief.title}" from "${row.title}".`,
+          metadata: { sourceArtifactId: artifactId, sourceVersionId: row.versionId, format: brief.format, proposer: provider.name },
+        },
+        tx,
+      );
+      return { sourceArtifactId: artifactId, briefArtifactId: artifact.id, title };
+    });
     return { ...value, existing: replayed };
   });
 }
