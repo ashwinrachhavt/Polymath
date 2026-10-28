@@ -48,6 +48,7 @@ export default function RichEditor({
   compact = false,
   mode: controlledMode,
   onModeChange,
+  onStructuredPasteDropped,
 }: {
   content: string;
   onChange: (content: string) => void;
@@ -58,6 +59,8 @@ export default function RichEditor({
   compact?: boolean;
   mode?: MarkdownEditorMode;
   onModeChange?: (mode: MarkdownEditorMode) => void;
+  /** A paste arrived with structure rich text cannot keep; it was inserted literally. */
+  onStructuredPasteDropped?: () => void;
 }) {
   const [internalPreferred, setInternalPreferred] = useState<MarkdownEditorMode>(() => markdownEditorMode(content));
   const preferred = controlledMode ?? internalPreferred;
@@ -100,7 +103,7 @@ export default function RichEditor({
           onKeyUp={(event) => readTextareaSelection(event.currentTarget)}
         />
       ) : (
-        <RichMarkdownEditor findLinkTargets={findLinkTargets} content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} compact={compact} onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined} floating={minimal} />
+        <RichMarkdownEditor findLinkTargets={findLinkTargets} content={content} onChange={onChange} onSelectionChange={ai ? setSelection : undefined} hidePlaceholderAI={!!ai} compact={compact} onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined} floating={minimal} onStructuredPasteDropped={onStructuredPasteDropped} />
       )}
     </div>
   );
@@ -142,7 +145,7 @@ function SlashMenu({ items, active, onPick }: { items: BlockCommand[]; active: n
   </div>;
 }
 
-function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI, onEmptySpace, findLinkTargets, floating, compact }: { compact?: boolean; findLinkTargets?: FindLinkTargets; content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean; onEmptySpace?: () => void; floating?: boolean }) {
+function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlaceholderAI, onEmptySpace, findLinkTargets, floating, compact, onStructuredPasteDropped }: { compact?: boolean; findLinkTargets?: FindLinkTargets; content: string; onChange: (content: string) => void; onSelectionChange?: (text: string) => void; hidePlaceholderAI?: boolean; onEmptySpace?: () => void; floating?: boolean; onStructuredPasteDropped?: () => void }) {
   const { state, notify } = useWorkspace();
   const [slash, setSlash] = useState<{ query: string; from: number; to: number } | null>(null);
   const [link, setLink] = useState<{ query: string; from: number; to: number } | null>(null);
@@ -207,7 +210,7 @@ function RichMarkdownEditor({ content, onChange, onSelectionChange, hidePlacehol
     if (event.key === "Enter") { event.preventDefault(); const command = matches[Math.min(slashActive, matches.length - 1)]; editor?.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run(); if (command) applyBlock(editor as Editor, command); setSlash(null); return true; }
     if (event.key === "Escape") { event.preventDefault(); setSlash(null); return true; }
     return false;
-  }, handlePaste: (_view, event) => { const pasted = event.clipboardData?.getData("text/plain") || ""; if (!markdownSourceReason(pasted)) return false; event.preventDefault(); notify("This paste contains unsupported Markdown. Switch to Markdown source and paste there to preserve it; nothing was inserted."); return true; }, handleDrop: (_view, event) => { if (!event.dataTransfer?.files.length) return false; event.preventDefault(); notify("File and image insertion is unavailable. Preserve image references through Markdown source instead."); return true; }, attributes: { role: "textbox", "aria-label": "Rich note content", "aria-multiline": "true", class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "min-h-[55vh] font-[family-name:var(--font-reading)] text-[16px] leading-[1.75] text-foreground" : "min-h-72 max-w-[75ch] p-4 text-sm leading-7"} writing-surface outline-none [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline` } }, onSelectionUpdate: ({ editor }) => {
+  }, handlePaste: (_view, event) => { const pasted = event.clipboardData?.getData("text/plain") || ""; const reason = markdownSourceReason(pasted); if (!reason) return false; event.preventDefault(); editor?.chain().focus().insertContent(pasted, { contentType: "markdown" }).run(); notify(`This paste contains ${reason}, which rich editing cannot preserve. It was inserted as plain text; switch to Markdown source to restore its structure.`); onStructuredPasteDropped?.(); return true; }, handleDrop: (_view, event) => { if (!event.dataTransfer?.files.length) return false; event.preventDefault(); notify("File and image insertion is unavailable. Preserve image references through Markdown source instead."); return true; }, attributes: { role: "textbox", "aria-label": "Rich note content", "aria-multiline": "true", class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "min-h-[55vh] font-[family-name:var(--font-reading)] text-[16px] leading-[1.75] text-foreground" : "min-h-72 max-w-[75ch] p-4 text-sm leading-7"} writing-surface outline-none [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline` } }, onSelectionUpdate: ({ editor }) => {
     const sel = editor.state.selection;
     onSelectionChange?.(sel.empty ? "" : editor.state.doc.textBetween(sel.from, sel.to, " "));
     if (!floating) return;
