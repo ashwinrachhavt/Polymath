@@ -20,6 +20,7 @@ import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
+import { NoteCommentError, addNoteComment, listNoteComments, resolveNoteComment } from "@/domains/knowledge/note-comments";
 import { LinearIssueNoteError, draftLinearIssueFromNote, type LinearIssueDraftResult } from "@/domains/capture/linear-issue-proposal";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
@@ -51,7 +52,7 @@ async function authorize(): Promise<AuthContext> {
 }
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError, LinearIssueNoteError];
+const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError, LinearIssueNoteError, NoteCommentError];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -288,6 +289,74 @@ const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword"
  * An empty query lists recent cards so the menu is useful the moment it opens.
  * A read: membership is enough, and nothing is revalidated.
  */
+/* ---------------------------------------------------------------------------
+ * Margin comments on a note (Notion-feel). Writes are member actions; the
+ * panel's initial comments arrive server-rendered with the note, and these
+ * actions return the freshly written row so the panel can append it without
+ * a refetch round trip.
+ * ------------------------------------------------------------------------- */
+
+const addCommentInput = z.object({
+  noteId: z.string().uuid(),
+  body: z.string().trim().min(1, "Write a comment first.").max(2000, "Comments hold up to 2000 characters."),
+  idempotencyKey: key,
+});
+
+export async function addNoteCommentAction(input: z.input<typeof addCommentInput>): Promise<Result<{ comment: { id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null } }>> {
+  const parsed = addCommentInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That comment is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    const comment = await addNoteComment(auth, parsed.data);
+    return {
+      comment: {
+        id: comment.id,
+        body: comment.body,
+        resolvedAt: comment.resolvedAt ? comment.resolvedAt.toISOString() : null,
+        createdAt: comment.createdAt.toISOString(),
+        authorName: comment.authorName,
+      },
+    };
+  });
+}
+
+const resolveCommentInput = z.object({
+  commentId: z.string().uuid(),
+  resolved: z.boolean(),
+  idempotencyKey: key,
+});
+
+export async function resolveNoteCommentAction(input: z.input<typeof resolveCommentInput>): Promise<Result<{ resolvedAt: string | null }>> {
+  const parsed = resolveCommentInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That comment reference is not valid." };
+  const auth = await authorize();
+  return guarded(async () => {
+    const { resolvedAt } = await resolveNoteComment(auth, parsed.data);
+    return { resolvedAt: resolvedAt ? resolvedAt.toISOString() : null };
+  });
+}
+
+/** The open note's comments for the margin panel, oldest first. A read. */
+export async function listNoteCommentsAction(input: { noteId: string }): Promise<{ id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null }[]> {
+  const parsed = z.object({ noteId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return [];
+  const auth = await getAuthContext();
+  try {
+    const rows = await listNoteComments(auth, parsed.data.noteId);
+    return rows.map((c) => ({
+      id: c.id,
+      body: c.body,
+      resolvedAt: c.resolvedAt ? c.resolvedAt.toISOString() : null,
+      createdAt: c.createdAt.toISOString(),
+      authorName: c.authorName,
+    }));
+  } catch {
+    // A bad or foreign note id is the empty panel, not an error surface;
+    // the note itself 404s elsewhere.
+    return [];
+  }
+}
+
 const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
 
 /**

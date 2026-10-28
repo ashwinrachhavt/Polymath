@@ -4,6 +4,7 @@ import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/workspace/ui";
 import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteTags, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
+import { listNoteComments } from "@/domains/knowledge/note-comments";
 import { listSearchAreaNames, resolveSearchArea } from "@/domains/knowledge/area-resolve";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
@@ -119,16 +120,17 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
     ...(areaResolution?.status === "unavailable" && requestedArea ? [{ value: requestedArea, label: "Unavailable area" }] : []),
   ];
   const selected = id ? await getNote(auth, id) : null;
-  // The inspector's versions, links and related notes all key off the same
-  // selected note and do not depend on each other.
-  const [versions, outlinks, backlinks, related] = selected
+  // The inspector's versions, links, related notes and margin comments all
+  // key off the same selected note and do not depend on each other.
+  const [versions, outlinks, backlinks, related, comments] = selected
     ? await Promise.all([
         listNoteVersions(auth, selected.id),
         listNoteOutlinks(auth, selected.id),
         listNoteBacklinks(auth, selected.id),
         relatedNotes(auth, selected.id),
+        listNoteComments(auth, selected.id).catch(() => []),
       ])
-    : [[], [], [], []];
+    : [[] as Awaited<ReturnType<typeof listNoteVersions>>, [] as Awaited<ReturnType<typeof listNoteOutlinks>>, [] as Awaited<ReturnType<typeof listNoteBacklinks>>, [] as Awaited<ReturnType<typeof relatedNotes>>, [] as Awaited<ReturnType<typeof listNoteComments>>];
 
   const noteList = (
     <div className="flex flex-col gap-3">
@@ -251,7 +253,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
       {/* No page header: the note's own top row carries the list toggle and
           its actions, and the empty states carry the one action they offer.
           A "Notes" title above the column would only repeat the list's. */}
-      <NotebookWorkspace list={noteList}>
+      <NotebookWorkspace list={noteList} narrow={!!selected}>
         {selected ? (
           <NoteEditor
             key={selected.id}
@@ -275,25 +277,32 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             outlinks={outlinks}
             backlinks={backlinks}
             related={related}
+            comments={comments.map((c) => ({
+              id: c.id,
+              body: c.body,
+              resolvedAt: c.resolvedAt ? c.resolvedAt.toISOString() : null,
+              createdAt: c.createdAt.toISOString(),
+              authorName: c.authorName,
+            }))}
           />
         ) : list.q && !kanban ? (
           // Same reading column as the editor and empty states: ranked
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
-          <div className="reading-page mx-auto w-full max-w-3xl px-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[708px] px-6 pb-24 pt-16 md:pt-28">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             <h1 className="sr-only">Search results</h1>
             {areaUnavailable ?? <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />}
           </div>
         ) : found.total === 0 ? (
-          <div className="reading-page mx-auto w-full max-w-3xl px-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[708px] px-6 pb-24 pt-16 md:pt-28">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h1>
             <p className="mt-2 text-[13px] text-muted-foreground">It autosaves as you type, and every checkpoint becomes an immutable version.</p>
             <div className="mt-5"><NewNoteButton /></div>
           </div>
         ) : (
-          <div className="reading-page mx-auto w-full max-w-3xl px-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[708px] px-6 pb-24 pt-16 md:pt-28">
             <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
             <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h1>
             <div className="mt-5"><NewNoteButton /></div>

@@ -596,6 +596,13 @@
       "when": 1793250000001,
       "tag": "0258_capture_mode_and_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1793250000002,
+      "tag": "0259_note_comments",
+      "breakpoints": true
     }
   ]
 }

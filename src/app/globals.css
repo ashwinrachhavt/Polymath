@@ -369,6 +369,23 @@ margin: 0 0 24px;
 .prose-reading table {
 margin: 0 0 24px;
 }
+/* Notes header chrome (Notion feel): the top-row actions and the quiet
+   action row fade in on pointer hover of the header zone and stay visible
+   on keyboard focus. Coarse pointers (touch) have no hover, so the actions
+   remain visible there. Opacity, not display: layout never shifts. */
+.header-actions {
+opacity: 1;
+}
+.header-zone:hover .header-actions,
+.header-zone:focus-within .header-actions {
+opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+.header-actions {
+opacity: 0;
+transition: opacity 150ms ease;
+}
+}
 .polymath-mark {
 display: flex;
 width: 28px;
