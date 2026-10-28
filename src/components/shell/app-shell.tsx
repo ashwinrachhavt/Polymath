@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { cn } from "cn";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
@@ -51,14 +52,27 @@ export function AppShell({
       <a href="#content" className="skip-link">Skip to content</a>
       {/* ASH-312: the interface language scopes from one attribute; every
           density, typography and contrast token keys off it in globals.css. */}
-      <div className="flex min-h-dvh flex-1" data-interface-mode={interfaceMode}>
+      {/* The conversation surface scrolls inside its transcript, never as a
+          page: the shell div is the definite-height anchor (see
+          .shell-conversation in globals.css), and everything below it is a
+          min-h-0 flex chain the transcript's own overflow container fills. */}
+      <div
+        className={cn(
+          "flex flex-1",
+          headerless ? "shell-conversation" : "min-h-dvh",
+        )}
+        data-interface-mode={interfaceMode}
+      >
         <SideNav />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} notifications={notifications} /> : null}
           <main
             id="content"
             tabIndex={-1}
-            className="flex min-w-0 flex-1 flex-col"
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              headerless && "min-h-0 overflow-hidden [flex-basis:0px]",
+            )}
             /* Sticky headers anchor below the top bar where one exists; /alfred routes
                render no top bar, so their anchor is the window's own top. */
             style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
@@ -67,7 +81,7 @@ export function AppShell({
             <PreviewStorageWarning />
             {waitingForStorage ? <PreviewSkeleton /> : null}
             {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
-            <div hidden={waitingForStorage} className="flex min-w-0 flex-1 flex-col">{children}</div>
+            <div hidden={waitingForStorage} className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
             <FocusDock />
           </main>
           <MobileNav />

@@ -690,3 +690,15 @@ padding-bottom: 16px;
 outline: 2px solid var(--foreground);
 outline-offset: 2px;
 }
+
+/* The conversation surface scrolls inside its transcript, never as a page.
+   The shell div is the definite-height anchor: min-h-dvh cannot hold it (the
+   chain grows with content and the page scrolls), and the h-dvh utility alone
+   proved unreliable in the generated utilities layer, so this is written as
+   plain CSS the browser cannot elide. min-height: 0 releases the flex item's
+   content minimum so the height actually holds. */
+.shell-conversation {
+height: 100dvh;
+min-height: 0;
+overflow: hidden;
+}

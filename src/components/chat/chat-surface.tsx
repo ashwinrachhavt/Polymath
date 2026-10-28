@@ -17,6 +17,8 @@ import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "./tool-labels";
 import { collectRecords } from "./record-links";
+import { fetchMentionContext } from "@/app/(workspace)/alfred/mention-actions";
+import { mentionedEntities, serializeMentionContext, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
 import { CitedText } from "./cited-text";
 import { inline } from "@/components/markdown-inline";
 
@@ -148,6 +150,9 @@ export function ChatSurface({
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Entities picked from the mention menu; the ones the sent message still
+  // name as @Name become the context block on the model's copy.
+  const [mentions, setMentions] = useState<MentionEntity[]>([]);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
   const [plusOpen, setPlusOpen] = useState(false);
   const [plusQuery, setPlusQuery] = useState("");
@@ -180,7 +185,11 @@ export function ChatSurface({
   // The transcript renders the conversation: questions, answers, and the
   // model's rationale as its own collapsed pill. `transcript` (user/assistant
   // only) still drives optimistic-match, scroll, and pending-message logic.
-  const transcript = chat.blocks.filter((block) => block.kind === "user" || block.kind === "assistant");
+  // Mention context is stripped before matching and rendering: the JSON the
+  // model reads is appended after the typed words, and never belongs on screen.
+  const transcript = chat.blocks
+    .filter((block) => block.kind === "user" || block.kind === "assistant")
+    .map((block) => (block.kind === "user" && hasMentionContext(block.text) ? { ...block, text: stripMentionContext(block.text) } : block));
   /*
    * The message the owner just sent but the stream has not echoed. Shown until
    * the server's own copy arrives, matched on text so the two never both render:
@@ -263,11 +272,23 @@ export function ChatSurface({
       // the surface would otherwise dead-end mid-thought. Without the handler
       // this is the plain follow-up the run endpoint serves.
       if (onContinue) {
-        const result = await onContinue(runId, message);
+        // Named entities load their context as JSON appended to the model's
+        // copy; the transcript renders only the typed words.
+        const named = mentionedEntities(mentions, message);
+        let payload = message;
+        if (named.length > 0) {
+          const contexts = await Promise.all(
+            named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
+          );
+          const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
+          if (resolved.length > 0) payload = `${message}${serializeMentionContext(resolved)}`;
+        }
+        const result = await onContinue(runId, payload);
         if (!result.ok) {
           restore(result.message);
           return;
         }
+        setMentions([]);
         if (result.runId !== runId) {
           // A new segment answered, so this transcript is no longer the head of
           // the conversation; the shell re-renders on the new run.
@@ -275,16 +296,26 @@ export function ChatSurface({
         }
         return;
       }
+      const named = mentionedEntities(mentions, message);
+      let payload = message;
+      if (named.length > 0) {
+        const contexts = await Promise.all(
+          named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
+        );
+        const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
+        if (resolved.length > 0) payload = `${message}${serializeMentionContext(resolved)}`;
+      }
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: payload }),
       });
       if (!response.ok) {
         const problem = (await response.json().catch(() => null)) as { detail?: string; title?: string } | null;
         restore(problem?.detail ?? problem?.title ?? "The message was not sent.");
         return;
       }
+      setMentions([]);
     } catch {
       restore("The message was not sent. Check the connection and try again.");
     } finally {
@@ -319,7 +350,7 @@ export function ChatSurface({
   }
 
   return (
-    <section className={`flex min-h-0 flex-col ${className ?? ""}`} aria-label={title ?? `Chat about this ${subject.type}`}>
+    <section className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`} aria-label={title ?? `Chat about this ${subject.type}`}>
       {showHeader ? (
         <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -358,7 +389,7 @@ export function ChatSurface({
             {chat.blocks.map((block) =>
               block.kind === "user" ? (
                 <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                  {inline(block.text)}
+                  {inline(stripMentionContext(block.text))}
                 </div>
               ) : block.kind === "reasoning" ? null : (
                 <div key={block.id} className="group/message prose-reading w-full font-[family-name:var(--font-reading)]">
@@ -521,12 +552,17 @@ export function ChatSurface({
               mention={mention}
               onMentionPick={(record) => {
                 if (!mention) return;
-                setDraft((current) => replaceMention(current, mention, `[${record.title}](${record.href})`));
+                if (record.kind === "person" || record.kind === "company") {
+                  const entity: MentionEntity = { id: record.id, kind: record.kind, title: record.title, href: record.href };
+                  setMentions((current) => {
+                    if (current.some((picked) => picked.id === entity.id)) return current;
+                    return [...current, entity];
+                  });
+                }
+                setDraft((current) => replaceMention(current, mention, `@${record.title}`));
               }}
             />
-            <span className="px-1 truncate text-[11px] text-muted-foreground">
-              {attachNote ?? "Enter to send · Shift+Enter for a new line"}
-            </span>
+            <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
           </div>
           <Button
             type="submit"

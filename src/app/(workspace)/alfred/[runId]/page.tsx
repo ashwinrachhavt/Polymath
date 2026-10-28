@@ -19,6 +19,7 @@ import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
 import { listThreads } from "@/domains/agents/thread";
 import { threadBlocks } from "@/domains/agents/stream-contract";
+import { stripMentionContext, hasMentionContext } from "@/components/chat/mention-context";
 import { draftsForRuns } from "@/domains/knowledge/studio";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { RunControls } from "../run-controls";
@@ -87,6 +88,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
   );
 
   const thread = threads.get(run.id) ?? [];
+  // A user entry may carry the mention context block the model reads; the
+  // stored snapshot renders only the words the person typed.
+  const visibleThread = thread.map((entry) => (entry.kind === "user" && hasMentionContext(entry.text) ? { ...entry, text: stripMentionContext(entry.text) } : entry));
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
@@ -152,7 +156,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <span>New chat</span>
           </Link>
           <h1 className="text-muted-foreground ml-auto min-w-0 truncate text-[12px] leading-snug font-normal">
-            {displayTitle(run.objective)}
+            {displayTitle(stripMentionContext(run.objective))}
           </h1>
           {/* One meta line, small enough to recede: when it started, how it ended, what it recorded. */}
           <p className="text-muted-foreground/80 hidden shrink-0 text-[11px] whitespace-nowrap sm:block">
@@ -183,7 +187,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
               initial={threadBlocks(
-                thread.flatMap((entry) =>
+                visibleThread.flatMap((entry) =>
                   entry.kind === "user" || entry.kind === "assistant"
                     ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
                     : [],
@@ -211,10 +215,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
             />
           ) : (
             <div className="w-full space-y-3">
-              {thread.length === 0 ? (
+              {visibleThread.length === 0 ? (
                 <p className="text-muted-foreground text-[13px]">This conversation has no messages yet.</p>
               ) : null}
-              {thread.map((entry) =>
+              {visibleThread.map((entry) =>
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
@@ -261,11 +265,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             ) : (
               <ChatCancel runId={run.id} />
             )}
-            <DraftControls
-              runId={run.id}
-              draft={drafts.get(run.id) ?? null}
-              canSave={(run.state === "succeeded" || run.state === "waiting_input") && thread.some((entry) => entry.kind === "assistant")}
-            />
+            <DraftControls draft={drafts.get(run.id) ?? null} />
           </div>
 
           {/* The run's review block: the agent's self-critique proposal and the

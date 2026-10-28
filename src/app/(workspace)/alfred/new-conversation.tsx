@@ -12,6 +12,8 @@ import {
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { SurfaceCardView } from "@/components/chat/surface-card";
+import { fetchMentionContext } from "./mention-actions";
+import { mentionedEntities, serializeMentionContext, type MentionEntity } from "@/components/chat/mention-context";
 import { navigateInConversation } from "./navigation-actions";
 import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
@@ -47,6 +49,9 @@ export function NewConversation({
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+  // Entities picked from the mention menu this conversation. A pick inserts
+  // @Name; the ones the sent message still name become the context block.
+  const [mentions, setMentions] = useState<MentionEntity[]>([]);
   // A navigation answer replaces the composer in place, exactly like a run.
   const [navigated, setNavigated] = useState<NavigationReply | null>(null);
 
@@ -146,11 +151,23 @@ export function NewConversation({
           return;
         }
       }
-      const result = await startChatRun({ objective, ...(skillId ? { skillId } : {}) });
+      // Named entities load their context as JSON appended to the model's
+      // copy of the message; the transcript renders only the typed words.
+      const named = mentionedEntities(mentions, objective);
+      let message = objective;
+      if (named.length > 0) {
+        const contexts = await Promise.all(
+          named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
+        );
+        const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
+        if (resolved.length > 0) message = `${objective}${serializeMentionContext(resolved)}`;
+      }
+      const result = await startChatRun({ objective: message, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);
         return;
       }
+      setMentions([]);
       // The conversation opens in the home's started state, not on another
       // route: the runId mounts the transcript in place, and the typed message
       // crosses as the optimistic message until the stream echoes it. No
@@ -240,7 +257,14 @@ export function NewConversation({
               mention={mention}
               onMentionPick={(record) => {
                 if (!mention) return;
-                setDraft((current) => replaceMention(current, mention, `[${record.title}](${record.href})`));
+                if (record.kind === "person" || record.kind === "company") {
+                  const entity: MentionEntity = { id: record.id, kind: record.kind, title: record.title, href: record.href };
+                  setMentions((current) => {
+                    if (current.some((picked) => picked.id === entity.id)) return current;
+                    return [...current, entity];
+                  });
+                }
+                setDraft((current) => replaceMention(current, mention, `@${record.title}`));
               }}
               onOpenChange={(open) => {
                 setPlusOpen(open);
@@ -274,9 +298,7 @@ export function NewConversation({
                 <X aria-hidden className="size-3" />
               </button>
             ) : (
-              <span className="px-1 truncate text-[11px] text-muted-foreground">
-                {attachNote ?? "Enter to send · Shift+Enter for a new line"}
-              </span>
+              <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
             )}
           </div>
           <Button

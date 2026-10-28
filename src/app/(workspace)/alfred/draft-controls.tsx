@@ -6,19 +6,14 @@ import { Button } from "@/components/ui/button";
 import { requestJson } from "@/lib/client-request";
 
 /*
- * The generated-draft control under a run. A run with output and no artifact
- * yet offers "Save as draft"; a draft offers Keep (reviewed) and Discard
- * (archived); after that the row only states what happened. Saving a draft
- * never publishes it.
+ * The generated-draft control under a run. A draft offers Keep (reviewed) and
+ * Discard (archived); after that the row only states what happened. Keeping a
+ * draft never publishes it.
  */
 export function DraftControls({
-  runId,
   draft,
-  canSave,
 }: {
-  runId: string;
   draft: { artifactId: string; status: string; version: number } | null;
-  canSave: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -36,22 +31,7 @@ export function DraftControls({
     router.refresh();
   }
 
-  if (!draft) {
-    if (!canSave) return null;
-    return (
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => call("/api/v1/drafts", { runId })}
-          className="text-muted-foreground hover:text-foreground w-fit rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-        >
-          Save the answer as a draft
-        </button>
-        {error ? <p role="alert" className="text-destructive text-xs">{error}</p> : null}
-      </div>
-    );
-  }
+  if (!draft) return null;
   if (draft.status === "reviewed")
     return (
       <p className="text-muted-foreground text-xs">
