@@ -25,14 +25,14 @@ const base: CaptureTriageAnswers = {
 
 describe("triageCapture truth table", () => {
   it("commitment >= 0.7 proposes a task with the gating probability as rationale", () => {
-    const t = triageCapture({ ...base, commitment: 0.86, domain: { choice: "finance", topProbability: 0.9 } });
+    const t = triageCapture({ ...base, commitment: 0.86, domain: { choice: "finance-admin", topProbability: 0.9 } });
     expect(t.proposals).toHaveLength(1);
     expect(t.proposals[0].kind).toBe("task");
     expect(t.proposals[0].confidence).toBe("0.86");
     expect(t.proposals[0].rationale).toContain("commitment 0.86");
-    expect(t.proposals[0].rationale).toContain("domain finance");
+    expect(t.proposals[0].rationale).toContain("domain finance-admin");
     expect(t.proposals[0].payload).toEqual({});
-    expect(t.domainSlug).toBe("finance");
+    expect(t.domainSlug).toBe("finance-admin");
   });
 
   it("commitment boundary: 0.69 does not propose a task, 0.70 does", () => {

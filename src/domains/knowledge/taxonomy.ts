@@ -5,13 +5,14 @@ import { taxonomyNodes } from "./schema";
 
 /*
  * The knowledge taxonomy catalog (ASH-272): the canonical labels the Jev
- * capture classifier may use, ported from the alfred donor's master ontology
- * (frozen, read-only). Three levels - domain (L1) -> subdomain (L2) ->
- * microtopic (L3). The donor's discipline is the contract: a classifier
- * matches canonical labels case-insensitively and preserves their casing,
- * returns null when nothing fits, and NEVER invents a label. Here that rule
- * is structural: resolveTaxonomyPath is the only write-side validation, so a
- * hallucinated slug is a rejected write, not a data bug.
+ * capture classifier may use - the old Neuralflow product's tag ontology
+ * (22 canonical topics, frozen, read-only). Three levels - domain (L1) ->
+ * subdomain (L2) -> microtopic (L3). The classifier discipline is the
+ * contract: a classifier matches canonical labels case-insensitively and
+ * preserves their casing, returns null when nothing fits, and NEVER invents
+ * a label. Here that rule is structural: resolveTaxonomyPath is the only
+ * write-side validation, so a hallucinated slug is a rejected write, not a
+ * data bug.
  *
  * The alfred taxonomy was user-grown at runtime; Polymath v1 ships the seed
  * only (SEED_TAXONOMY below). When a node-management surface arrives it
@@ -29,21 +30,34 @@ export const SEED_TAXONOMY: ReadonlyArray<{
   description: string;
   sortOrder: number;
 }> = [
-  // L1 domains (10).
-  { slug: "ai", displayName: "AI", level: 1, parentSlug: null, description: "Machine learning, models, and the industry around them.", sortOrder: 10 },
-  { slug: "system-design", displayName: "System design", level: 1, parentSlug: null, description: "Architecture, infrastructure, and how software systems are built.", sortOrder: 20 },
-  { slug: "finance", displayName: "Finance", level: 1, parentSlug: null, description: "Markets, money, accounting, and financial instruments.", sortOrder: 30 },
-  { slug: "startups", displayName: "Startups", level: 1, parentSlug: null, description: "Founding, funding, and operating early-stage companies.", sortOrder: 40 },
-  { slug: "investing", displayName: "Investing", level: 1, parentSlug: null, description: "Allocating capital: theses, portfolios, and deals.", sortOrder: 50 },
-  { slug: "writing", displayName: "Writing", level: 1, parentSlug: null, description: "The craft and practice of writing.", sortOrder: 60 },
-  { slug: "politics", displayName: "Politics", level: 1, parentSlug: null, description: "Government, policy, and political analysis.", sortOrder: 70 },
-  { slug: "movies-pop-culture", displayName: "Movies & pop culture", level: 1, parentSlug: null, description: "Film, TV, music, and internet culture.", sortOrder: 80 },
-  { slug: "philosophy", displayName: "Philosophy", level: 1, parentSlug: null, description: "Ideas, ethics, and schools of thought.", sortOrder: 90 },
-  { slug: "productivity-career", displayName: "Productivity & career", level: 1, parentSlug: null, description: "Work habits, career growth, and personal effectiveness.", sortOrder: 100 },
-  // L2 subdomains (3) with their L3 microtopics (9): the donor's documented example chains.
-  { slug: "llms", displayName: "LLMs", level: 2, parentSlug: "ai", description: "Large language models: architecture, training, inference.", sortOrder: 11 },
-  { slug: "databases", displayName: "Databases", level: 2, parentSlug: "system-design", description: "Storage engines, query processing, and data systems.", sortOrder: 21 },
-  { slug: "markets", displayName: "Markets", level: 2, parentSlug: "finance", description: "How securities and rates trade and are priced.", sortOrder: 31 },
+  // L1 domains (22): the Neuralflow product's tag ontology, ported wholesale.
+  { slug: "planning-strategy", displayName: "Planning & Strategy", level: 1, parentSlug: null, description: "Goals, roadmaps, prioritization, and how work is planned and sequenced.", sortOrder: 10 },
+  { slug: "product-management", displayName: "Product Management", level: 1, parentSlug: null, description: "Product decisions: requirements, features, user problems, and shipped scope.", sortOrder: 20 },
+  { slug: "coding-development", displayName: "Coding & Development", level: 1, parentSlug: null, description: "Writing, reviewing, or refactoring code and building software features.", sortOrder: 30 },
+  { slug: "devops-infra", displayName: "DevOps & Infra", level: 1, parentSlug: null, description: "Deployment, infrastructure, CI/CD, cloud resources, and environment setup.", sortOrder: 40 },
+  { slug: "bugfix-debugging", displayName: "Bugfix & Debugging", level: 1, parentSlug: null, description: "Diagnosing failures, errors, and unexpected behavior, and the fixes for them.", sortOrder: 50 },
+  { slug: "qa-testing", displayName: "QA & Testing", level: 1, parentSlug: null, description: "Test plans, suites, coverage, and verifying software behaves as specified.", sortOrder: 60 },
+  { slug: "design-ux", displayName: "Design & UX", level: 1, parentSlug: null, description: "Interfaces, visual design, usability, and how an experience feels to use.", sortOrder: 70 },
+  { slug: "writing-documentation", displayName: "Writing & Documentation", level: 1, parentSlug: null, description: "Prose artifacts: docs, guides, specs, and written communication of record.", sortOrder: 80 },
+  { slug: "data-analytics", displayName: "Data & Analytics", level: 1, parentSlug: null, description: "Queries, dashboards, metrics, and drawing conclusions from data.", sortOrder: 90 },
+  { slug: "research-learning", displayName: "Research & Learning", level: 1, parentSlug: null, description: "Open-ended investigation and study to understand a topic or answer a question.", sortOrder: 100 },
+  { slug: "communication-meetings", displayName: "Communication & Meetings", level: 1, parentSlug: null, description: "Emails, messages, meeting notes, and coordination between people.", sortOrder: 110 },
+  { slug: "customer-support", displayName: "Customer Support", level: 1, parentSlug: null, description: "User-reported issues, tickets, and helping customers use the product.", sortOrder: 120 },
+  { slug: "sales-outreach", displayName: "Sales & Outreach", level: 1, parentSlug: null, description: "Prospecting, pipelines, deals, and outreach to potential customers.", sortOrder: 130 },
+  { slug: "marketing-growth", displayName: "Marketing & Growth", level: 1, parentSlug: null, description: "Campaigns, positioning, acquisition channels, and audience growth.", sortOrder: 140 },
+  { slug: "finance-admin", displayName: "Finance & Admin", level: 1, parentSlug: null, description: "Budgets, invoices, accounting, payroll, and administrative paperwork.", sortOrder: 150 },
+  { slug: "legal-compliance", displayName: "Legal & Compliance", level: 1, parentSlug: null, description: "Contracts, terms, regulations, privacy policies, and legal review.", sortOrder: 160 },
+  { slug: "operations-maintenance", displayName: "Operations & Maintenance", level: 1, parentSlug: null, description: "Routine upkeep: maintenance schedules, vendors, and day-to-day operations.", sortOrder: 170 },
+  { slug: "security-privacy", displayName: "Security & Privacy", level: 1, parentSlug: null, description: "Vulnerabilities, access control, threat models, and handling of personal data.", sortOrder: 180 },
+  { slug: "personal-wellness", displayName: "Personal & Wellness", level: 1, parentSlug: null, description: "Health, fitness, habits, and personal life outside of work.", sortOrder: 190 },
+  { slug: "home-errands", displayName: "Home & Errands", level: 1, parentSlug: null, description: "Household tasks, errands, purchases, and appointments for daily life.", sortOrder: 200 },
+  { slug: "career-growth", displayName: "Career & Growth", level: 1, parentSlug: null, description: "Job hunting, promotions, skills development, and professional trajectory.", sortOrder: 210 },
+  { slug: "general", displayName: "General", level: 1, parentSlug: null, description: "Anything that fits none of the other domains; the fallback when no specific topic applies.", sortOrder: 220 },
+  // L2 subdomains (3) with their L3 microtopics (9): the documented example chains,
+  // re-parented to the Neuralflow domains they best classify under.
+  { slug: "llms", displayName: "LLMs", level: 2, parentSlug: "coding-development", description: "Large language models: architecture, training, inference.", sortOrder: 31 },
+  { slug: "databases", displayName: "Databases", level: 2, parentSlug: "coding-development", description: "Storage engines, query processing, and data systems.", sortOrder: 32 },
+  { slug: "markets", displayName: "Markets", level: 2, parentSlug: "finance-admin", description: "How securities and rates trade and are priced.", sortOrder: 151 },
   { slug: "self-attention", displayName: "Self-attention", level: 3, parentSlug: "llms", description: "The attention mechanism at the core of transformers.", sortOrder: 1 },
   { slug: "kv-cache", displayName: "KV cache", level: 3, parentSlug: "llms", description: "Inference-time caching of key/value tensors.", sortOrder: 2 },
   { slug: "quantization", displayName: "Quantization", level: 3, parentSlug: "llms", description: "Reducing model precision for cheaper inference.", sortOrder: 3 },

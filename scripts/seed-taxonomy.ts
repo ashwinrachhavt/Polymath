@@ -3,7 +3,7 @@ import { seedTaxonomyCatalog, SEED_TAXONOMY } from "@/domains/knowledge/taxonomy
 import { db } from "@/lib/db";
 
 /*
- * Seed the ASH-272 knowledge taxonomy (10 domains + 12 example
+ * Seed the ASH-272 knowledge taxonomy (22 Neuralflow domains + 12 example
  * subdomain/microtopic nodes) into every workspace, or one with
  * --workspace <id>. Idempotent: a re-run changes nothing.
  *

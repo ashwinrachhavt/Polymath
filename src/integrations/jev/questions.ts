@@ -14,7 +14,7 @@ import type { JevChoiceQuestion, JevNoulQuestion } from "./client";
  * truth table), never in the wording.
  */
 
-export const JEV_QUESTIONS_VERSION = "jev-q1";
+export const JEV_QUESTIONS_VERSION = "jev-q2";
 
 /* ---- Capture triage (enrichment Tier 2) ---- */
 

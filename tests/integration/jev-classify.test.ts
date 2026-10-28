@@ -64,7 +64,7 @@ const COMMITMENT_ANSWERS = {
   reference: { type: "noul", noul: 0.11 },
   worthless: { type: "noul", noul: 0.01 },
   project: { type: "noul", noul: 0.05 },
-  domain: { type: "choice", choice: "finance", confidence: 0.84, probabilities: { finance: 0.84 } },
+  domain: { type: "choice", choice: "finance-admin", confidence: 0.84, probabilities: { "finance-admin": 0.84 } },
 };
 
 function fakeJev(answers: Record<string, unknown>): JevClient & { calls: number } {
@@ -133,7 +133,7 @@ suite("jev capture triage (ASH-272)", () => {
 
     const [row] = await db.select().from(captures).where(eq(captures.id, captureId));
     expect(row.processingState).toBe("enriched");
-    expect(row.domain).toBe("finance");
+    expect(row.domain).toBe("finance-admin");
 
     // The ledger shows reserve + settle for the call (criterion 7).
     const ledger = await db.execute(
@@ -218,13 +218,13 @@ suite("jev capture triage (ASH-272)", () => {
     expect(row.domain).toBeNull();
   });
 
-  it("taxonomy seeding is idempotent and exact: 10 L1 + 12 L2/L3 nodes", async () => {
+  it("taxonomy seeding is idempotent and exact: 22 L1 + 12 L2/L3 nodes", async () => {
     const { workspaceId } = await seedWorkspace(db, `jev-${Date.now()}-d`);
     await seedTaxonomyCatalog(workspaceId, db as never);
     await seedTaxonomyCatalog(workspaceId, db as never);
     const rows = await db.select().from(taxonomyNodes).where(eq(taxonomyNodes.workspaceId, workspaceId));
-    expect(rows).toHaveLength(22);
-    expect(rows.filter((r) => r.level === 1)).toHaveLength(10);
+    expect(rows).toHaveLength(34);
+    expect(rows.filter((r) => r.level === 1)).toHaveLength(22);
     expect(rows.filter((r) => r.level === 2)).toHaveLength(3);
     expect(rows.filter((r) => r.level === 3)).toHaveLength(9);
   });
@@ -239,7 +239,7 @@ suite("jev capture triage (ASH-272)", () => {
         slug: "stolen-parent",
         displayName: "Stolen parent",
         level: 2,
-        parentSlug: "ai", // exists in wsA, not wsB
+        parentSlug: "coding-development", // exists in wsA, not wsB
       }),
     ).rejects.toThrow();
   });

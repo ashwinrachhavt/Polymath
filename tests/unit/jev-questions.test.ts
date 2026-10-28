@@ -11,7 +11,7 @@ import { captureQuestions, documentQuestions, JEV_QUESTIONS_VERSION } from "@/in
 
 describe("jev questions", () => {
   it("exports the provenance version", () => {
-    expect(JEV_QUESTIONS_VERSION).toBe("jev-q1");
+    expect(JEV_QUESTIONS_VERSION).toBe("jev-q2");
   });
 
   it("bundles exactly the six capture judgments", () => {
@@ -26,7 +26,7 @@ describe("jev questions", () => {
     expect(domain.type).toBe("choice");
     if (domain.type !== "choice") return;
     expect(Object.keys(domain.criteria)).toEqual(l1.map((n) => n.slug));
-    expect(l1).toHaveLength(10);
+    expect(l1).toHaveLength(22);
   });
 
   it("the document questions pair the type Choice with the null-case Noul", () => {
