@@ -71,6 +71,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # docs/generated/inventory.md is checked in and read as fact. If a schema,
+      # route, tool, or outbox topic changed without regenerating it, the doc is
+      # lying and this fails. Keep it next to `test`, before the slow build.
+      - run: pnpm inventory:check
       - run: pnpm build
       # Next 16 dropped per-route First Load JS from the build table; this
       # restores the spec's JS-budget measurement from the build manifest.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { io } from "next/cache";
+import { Suspense } from "react";
 import { Empty, Screen } from "@/components/workspace/ui";
 import { getWikiPageText } from "@/domains/knowledge/wiki";
 import { getAuthContext } from "@/lib/auth";
@@ -15,7 +16,7 @@ export const metadata = { title: "Wiki page · Polymath" };
  * non-wiki id renders the empty state, not an error.
  */
 
-export default async function WikiArtifactPage({ params }: { params: Promise<{ artifactId: string }> }) {
+async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: string }> }) {
   const { artifactId } = await params;
   await io();
   const auth = await getAuthContext();
@@ -45,5 +46,17 @@ export default async function WikiArtifactPage({ params }: { params: Promise<{ a
         </div>
       )}
     </Screen>
+  );
+}
+
+/*
+ * `io()` must sit inside a Suspense boundary under cacheComponents, or
+ * navigation here is treated as blocked on uncached data.
+ */
+export default function WikiArtifactPage({ params }: { params: Promise<{ artifactId: string }> }) {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading page…</p>}>
+      <WikiArtifactSurface params={params} />
+    </Suspense>
   );
 }

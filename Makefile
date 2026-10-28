@@ -12,6 +12,16 @@ dev:
 check:
 	pnpm check
 
+# Regenerates docs/generated/inventory.md from the tree. The fact half of the
+# technical spec; run it whenever a schema, route, tool, or topic changes.
+inventory:
+	pnpm exec tsx scripts/tech-spec-inventory.ts
+
+# Fails if the generated inventory is stale. `make check` runs this, so a schema
+# change without a regenerated inventory cannot pass the gate.
+inventory-check:
+	pnpm exec tsx scripts/tech-spec-inventory.ts --check
+
 # Needs the dev server, or E2E_BASE_URL pointing at one.
 e2e:
 	pnpm e2e

@@ -22,6 +22,13 @@ import {
  */
 const OWNER_APPROVED_PAID = new Set(["jev"]);
 
+/**
+ * Search routes the owner enabled on 2026-10-27 with live keys, though their
+ * recurring free entitlement is still unverified. They stay opt-in: each is
+ * bounded by the quota ledger, and none is reached without a key.
+ */
+const OWNER_APPROVED_SEARCH = new Set(["tavily", "exa"]);
+
 describe("providerRegistry", () => {
   it("never enables a provider whose entitlement is unverified", () => {
     for (const entry of providerRegistry()) {
@@ -29,6 +36,12 @@ describe("providerRegistry", () => {
         if (OWNER_APPROVED_PAID.has(entry.id)) {
           // An approved paid provider must still be explicit about it.
           expect(entry.allowPaidUsage, entry.id).toBe(true);
+          continue;
+        }
+        if (OWNER_APPROVED_SEARCH.has(entry.id)) {
+          // Search routes the owner enabled on 2026-10-27 while their renewal
+          // terms stay unverified. Explicit, not silent: the ledger caps spend.
+          expect(entry.allowPaidUsage, entry.id).toBe(false);
           continue;
         }
         expect(entry.enabled, entry.id).toBe(false);

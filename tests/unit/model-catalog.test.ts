@@ -34,4 +34,16 @@ describe("model catalog invariants", () => {
   it("maps a retired model id to the default, not a dead id", () => {
     expect(resolveModelId("claude-hive-gone")).toBe(resolveModelId(undefined));
   });
+
+  it("sends a DeepSeek id only to the base URL that serves it", () => {
+    // The same id is served by more than one gateway; an entry that pairs one
+    // gateway's id with another's base URL fails with "not a valid model ID".
+    for (const model of MODEL_CATALOG.filter((m) => m.id.startsWith("deepseek/"))) {
+      expect(model.baseUrl, model.id).toMatch(/^https:\/\//);
+      // DeepSeek ids differ per gateway; an id paired with the wrong base URL
+      // fails with "not a valid model ID", so the mapping is asserted, not assumed.
+      if (model.provider === "openrouter-free") expect(model.baseUrl, model.id).toBe("https://openrouter.ai/api/v1");
+      if (model.provider === "nvidia") expect(model.baseUrl, model.id).toBe("https://integrate.api.nvidia.com/v1");
+    }
+  });
 });

@@ -72,9 +72,13 @@ export function generationProvider(
       return openRouterProvider(env, fetchImpl);
     case undefined:
     case "":
-      // Status quo first: the workspace's existing paid key keeps its behavior.
-      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, fetchImpl);
+      // Free-first (ASH-187, owner decision 2026-10-27): the free allowance
+      // wins over a key that bills. OpenRouter was checked first here, so every
+      // debrief, prep brief and draft billed while the Gemini free tier sat
+      // configured and unused. OpenRouter remains the second choice, so a
+      // workspace that has only that key still generates.
       if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, fetchImpl);
+      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, fetchImpl);
       throw new GenerationUnconfiguredError();
     default:
       throw new GenerationUnconfiguredError();

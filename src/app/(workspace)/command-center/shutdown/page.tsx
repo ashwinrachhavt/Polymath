@@ -1,5 +1,6 @@
 import { io } from "next/cache";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Screen } from "@/components/workspace/ui";
 import { previewShutdown } from "@/domains/daybook/shutdown";
@@ -12,7 +13,7 @@ export const metadata = { title: "Shut down · Polymath" };
  * The end-of-day ritual (ASH-305): read what is still open, choose, confirm
  * once. A child of Today with no rail entry, like the day page.
  */
-export default async function ShutdownPage() {
+async function ShutdownSurface() {
   await io();
   const auth = await getAuthContext();
   const preview = await previewShutdown(auth);
@@ -32,5 +33,17 @@ export default async function ShutdownPage() {
     >
       <ShutdownForm preview={preview} key={preview.today} />
     </Screen>
+  );
+}
+
+/*
+ * `io()` must sit inside a Suspense boundary under cacheComponents, or every
+ * navigation here is treated as blocked on uncached data.
+ */
+export default function ShutdownPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading…</p>}>
+      <ShutdownSurface />
+    </Suspense>
   );
 }

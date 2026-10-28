@@ -1,5 +1,6 @@
 import { io } from "next/cache";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { getCompanyDetail } from "@/domains/crm/queries";
@@ -18,7 +19,7 @@ export const metadata = { title: "Company · Polymath" };
  * stays where it was: the companies panel on the Contacts screen.
  */
 
-export default async function CompanyProfilePage({ params }: { params: Promise<{ id: string }> }) {
+async function CompanyProfileSurface({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await io();
   const auth = await getAuthContext();
@@ -105,5 +106,17 @@ export default async function CompanyProfilePage({ params }: { params: Promise<{
         </div>
       </div>
     </Screen>
+  );
+}
+
+/*
+ * `io()` must sit inside a Suspense boundary under cacheComponents, or
+ * navigation here is treated as blocked on uncached data.
+ */
+export default function CompanyProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading company…</p>}>
+      <CompanyProfileSurface params={params} />
+    </Suspense>
   );
 }

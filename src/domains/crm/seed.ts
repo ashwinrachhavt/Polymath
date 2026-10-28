@@ -88,6 +88,12 @@ export const personalSeedSchema = z.object({
           "withdrawn",
         ]),
         primaryContactEmail: z.string().email().nullable().default(null),
+        /**
+         * Defaults to pending because a conversation is not an outcome. Set
+         * it only when the evidence states one — an explicit rejection, a
+         * role filled by someone else, a withdrawal.
+         */
+        outcome: z.enum(["pending", "accepted", "rejected", "declined", "expired"]).default("pending"),
       }),
     )
     .default([]),
@@ -523,8 +529,9 @@ async function upsertOpportunities(
       companyId,
       primaryContactId,
       stage: opportunity.stage,
-      // The evidence establishes a conversation, not a submission or outcome.
-      outcome: "pending",
+      // The evidence establishes the outcome the file asserts, else pending:
+      // a conversation is not a submission.
+      outcome: opportunity.outcome,
       sourceType: "personal_seed",
       tags: ["personal_seed"],
       createdBy: auth.userId,

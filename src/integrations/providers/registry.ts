@@ -163,7 +163,10 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "brave",
     capability: "search",
     freeClass: "card-backed",
-    enabled: false,
+    // Owner decision 2026-10-27: the card is accepted and the key is live, so
+    // this becomes usable. Overage still bills — the ledger, not this flag, is
+    // what stops spend.
+    enabled: true,
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: true,
@@ -179,7 +182,7 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "tavily",
     capability: "search",
     freeClass: "unverified",
-    enabled: false,
+    enabled: true,
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: true,
@@ -192,7 +195,7 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "exa",
     capability: "search",
     freeClass: "unverified",
-    enabled: false,
+    enabled: true,
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: true,
@@ -205,7 +208,10 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "parallel",
     capability: "search",
     freeClass: "card-backed",
-    enabled: false,
+    // Owner decision 2026-10-27: explicit opt-in, card consent given. It stays
+    // OUT of the automatic selection chain in search/provider.ts — reaching it
+    // takes SEARCH_PROVIDER=parallel, so it can never bill by surprise.
+    enabled: true,
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: true,

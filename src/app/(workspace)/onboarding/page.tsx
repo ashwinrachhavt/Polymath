@@ -1,5 +1,6 @@
 import { io } from "next/cache";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { getAuthContext } from "@/lib/auth";
 import {
   findLatestOnboardingRun,
@@ -26,7 +27,7 @@ export const metadata = { title: "Meet your agent · Polymath" };
  * a valid brief goes straight to the card, a finished run without one falls
  * to the pre-filled form — so no client state is ever load-bearing.
  */
-export default async function OnboardingPage() {
+async function OnboardingSurface() {
   await io();
   const auth = await getAuthContext();
   if (await isWorkspaceOnboarded(auth.workspaceId)) {
@@ -95,5 +96,17 @@ export default async function OnboardingPage() {
     <div className="page-content flex flex-1 items-center justify-center pt-16">
       <OnboardingConversation />
     </div>
+  );
+}
+
+/*
+ * `connection()` and the auth resolve must sit inside a Suspense boundary
+ * under cacheComponents, or navigation treats them as uncached data.
+ */
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading…</p>}>
+      <OnboardingSurface />
+    </Suspense>
   );
 }
