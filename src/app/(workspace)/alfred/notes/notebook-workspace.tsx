@@ -44,9 +44,11 @@ export function NotebookWorkspace({ list, children, narrow = false }: { list: Re
         {open && (
           <aside
             aria-label="Notes list"
-            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto transition-[width] duration-150 lg:block ${narrow ? "w-56" : "w-64"}`}
+            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto transition-[width] duration-150 lg:block ${narrow ? "w-64" : "w-72"}`}
           >
-            {list}
+            {/* The rail compacts the shared toolbar: search and the two
+               selects share rows instead of stacking full-width. */}
+            <div className="rail-compact">{list}</div>
           </aside>
         )}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

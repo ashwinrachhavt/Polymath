@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "@/components/markdown";
+import { displayTitle } from "@/lib/display-text";
+import { stripMentionContext } from "@/components/chat/mention-context";
 import { Unavailable } from "@/components/workspace/ui";
 import { ChatSurface } from "@/components/chat/chat-surface";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/alfred/artifact-views";
@@ -478,7 +480,7 @@ export default function NotebookSurface({
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 border-b border-border pb-2 last:border-0 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="min-w-0 line-clamp-1 text-[13px]">{run.objective}</p>
+                    <p className="min-w-0 line-clamp-1 text-[13px]">{displayTitle(stripMentionContext(run.objective)) || "Untitled run"}</p>
                     <Badge variant="secondary" className="shrink-0 font-normal">
                       {run.state === "waiting_input" ? "Answered" : run.state}
                     </Badge>

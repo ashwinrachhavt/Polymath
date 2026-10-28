@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader, Section } from "@/components/page-header";
 import { Readout } from "@/components/readout";
 import { getAuthContext } from "@/lib/auth";
+import { displayTitle } from "@/lib/display-text";
+import { stripMentionContext } from "@/components/chat/mention-context";
 import { getSkill } from "@/domains/skills/queries";
 import { listRunsForSkill } from "@/domains/agents/queries";
 import { RemoveSkillButton, SkillToggle, UseSkill } from "../skill-controls";
@@ -142,7 +144,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-[13px]">{run.objective}</p>
+                    <p className="text-[13px]">{displayTitle(stripMentionContext(run.objective)) || "Untitled run"}</p>
                     <Badge variant="secondary" className="font-normal">
                       {stateLabel[run.state] ?? run.state}
                     </Badge>

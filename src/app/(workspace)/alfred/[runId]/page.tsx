@@ -80,7 +80,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
     history.map(
       (row): HistoryRow => ({
         id: row.id,
-        title: displayTitle(row.objective) || "Untitled conversation",
+        title: displayTitle(stripMentionContext(row.objective)) || "Untitled conversation",
         href: `/alfred/${row.id}`,
         at: row.createdAt,
       }),
@@ -175,7 +175,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
        * page's gutters; the width is set here.
        */}
       <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
-        <section aria-label="Conversation" className="reading-page mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3">
+        <section aria-label="Conversation" className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 py-4">
           {/*
            * A live run streams; a finished one keeps the stored transcript.
            * Rendering the snapshot for a running run was the whole reason a new

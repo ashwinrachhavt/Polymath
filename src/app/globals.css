@@ -702,3 +702,25 @@ height: 100dvh;
 min-height: 0;
 overflow: hidden;
 }
+/* The notes rail compacts the shared ListToolbar (spacing-system pass): the
+   search field and selects share the rail's width instead of stacking, and
+   controls drop to the 8px-grid compact height. Scoped so the full-width
+   toolbar on every other surface is untouched. */
+.rail-compact [role="search"] {
+gap: 8px;
+}
+.rail-compact [role="search"] > div:first-child {
+min-width: 0;
+}
+.rail-compact [role="search"] select {
+width: calc(50% - 4px);
+flex: 1 1 auto;
+}
+.rail-compact [role="search"] input[type="search"] {
+height: 32px;
+}
+.rail-compact [role="search"] select {
+min-height: 32px;
+height: 32px;
+padding-block: 0;
+}

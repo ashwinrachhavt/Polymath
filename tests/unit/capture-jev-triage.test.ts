@@ -106,14 +106,14 @@ describe("triageCapture truth table", () => {
   });
 
   it("a domain Choice under 0.5 top probability leaves the domain null", () => {
-    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "ai", topProbability: 0.49 } });
+    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "coding-development", topProbability: 0.49 } });
     expect(t.domainSlug).toBeNull();
     expect(t.proposals[0].rationale).not.toContain("domain ai");
   });
 
   it("domain boundary: exactly 0.5 keeps the slug", () => {
-    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "ai", topProbability: 0.5 } });
-    expect(t.domainSlug).toBe("ai");
+    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "coding-development", topProbability: 0.5 } });
+    expect(t.domainSlug).toBe("coding-development");
   });
 });
 

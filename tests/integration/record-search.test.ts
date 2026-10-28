@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { artifacts } from "@/domains/knowledge/schema";
 import { agentProfiles, threads } from "@/domains/agents/schema";
+import { companies, contacts } from "@/domains/crm/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 const handle = makeTestDb();
@@ -84,6 +85,42 @@ suite("record search for attach", () => {
     expect(titles).not.toContain(`Exclusive phrase archived ${stamp}`);
     expect(titles).not.toContain(`Exclusive phrase foreign ${stamp}`);
     expect(titles).not.toContain("");
+  });
+
+  it("surfaces people and companies with CRM hrefs, skipping archived, foreign, and nameless rows", async () => {
+    // The @-mention picker reads this query, so a person or company row that
+    // drops out (or an archived one that leaks in) breaks mentions at the
+    // composer — the only place CRM rows enter a message's context.
+    const stamp = Date.now();
+    const [person] = await handle!.db
+      .insert(contacts)
+      .values({ workspaceId: auth.workspaceId, fullName: `Dana Mention ${stamp}`, primaryEmail: `dana-${stamp}@axiom.test` })
+      .returning({ id: contacts.id });
+    const [company] = await handle!.db
+      .insert(companies)
+      .values({ workspaceId: auth.workspaceId, name: `Mention ${stamp} Co` })
+      .returning({ id: companies.id });
+    await handle!.db.insert(contacts).values({ workspaceId: auth.workspaceId, fullName: `Archived Mention ${stamp}`, archivedAt: new Date() });
+    await handle!.db.insert(companies).values({ workspaceId: auth.workspaceId, name: `Archived Mention Co ${stamp}`, archivedAt: new Date() });
+    await handle!.db.insert(contacts).values({ workspaceId: otherWorkspace.workspaceId, fullName: `Foreign Mention ${stamp}` });
+    await handle!.db.insert(contacts).values({ workspaceId: auth.workspaceId, fullName: "" });
+
+    const results = await searchRecordsForAttach(auth, `mention ${stamp}`);
+    const byId = new Map(results.map((r) => [r.id, r]));
+    expect(byId.get(person.id)).toMatchObject({
+      kind: "person",
+      title: `Dana Mention ${stamp}`,
+      href: `/command-center/relationships/contacts?id=${person.id}`,
+    });
+    expect(byId.get(company.id)).toMatchObject({
+      kind: "company",
+      title: `Mention ${stamp} Co`,
+      href: `/command-center/relationships/companies/${company.id}`,
+    });
+    const titles = results.map((r) => r.title);
+    expect(titles).not.toContain(`Archived Mention ${stamp}`);
+    expect(titles).not.toContain(`Archived Mention Co ${stamp}`);
+    expect(titles).not.toContain(`Foreign Mention ${stamp}`);
   });
 
   it("surfaces conversations with a fallback title for untitled threads", async () => {
