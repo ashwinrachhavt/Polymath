@@ -179,6 +179,23 @@ export async function countPendingProposals(workspaceId: string): Promise<number
   return row?.total ?? 0;
 }
 
+/** Per-status totals for the queue's tab counts, "all" included. */
+export async function countProposalsByStatus(workspaceId: string): Promise<Record<ReviewQueueStatus | "all", number>> {
+  const rows = await db
+    .select({ status: actionProposals.status, total: count() })
+    .from(actionProposals)
+    .where(eq(actionProposals.workspaceId, workspaceId))
+    .groupBy(actionProposals.status);
+  const counts: Record<ReviewQueueStatus | "all", number> = { pending: 0, approved: 0, rejected: 0, all: 0 };
+  for (const row of rows) {
+    if (row.status === "pending" || row.status === "approved" || row.status === "rejected") {
+      counts[row.status] = row.total;
+      counts.all += row.total;
+    }
+  }
+  return counts;
+}
+
 /** The top of the judgment queue, for the Briefing panel. */
 export async function listTopPendingProposals(workspaceId: string, limit = 3) {
   return db

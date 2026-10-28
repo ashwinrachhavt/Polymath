@@ -1,4 +1,5 @@
 import { io } from "next/cache";
+import Link from "next/link";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { redirectPastEnd } from "@/components/list/clamp";
@@ -8,6 +9,7 @@ import { Pagination } from "@/components/list/pagination";
 import { Screen } from "@/components/workspace/ui";
 import {
   countPendingProposals,
+  countProposalsByStatus,
   latestAttemptOutcomes,
   listProposalReviews,
   pageReviewQueue,
@@ -74,7 +76,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     defaultPageSize: 10,
   });
   const status = (list.filters.status ?? "pending") as ReviewQueueStatus | "all";
-  const [found, pendingCount] = await Promise.all([
+  const [found, pendingCount, statusCounts] = await Promise.all([
     pageReviewQueue(auth.workspaceId, {
       query: list.q,
       status,
@@ -83,6 +85,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
       offset: offsetFor(list.page, list.pageSize),
     }),
     countPendingProposals(auth.workspaceId),
+    countProposalsByStatus(auth.workspaceId),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
 
@@ -135,10 +138,32 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
       title="Reviews"
       description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
     >
+      {/* The mockup's segmented tabs with counts: status is the page's primary
+          scope, so it reads as tabs; risk stays a filter in the toolbar. */}
+      <nav aria-label="Proposal status" className="flex flex-wrap items-center gap-1">
+        {STATUS_OPTIONS.map((option) => {
+          const active = status === option.value;
+          const tabCount = statusCounts[option.value as ReviewQueueStatus | "all"];
+          return (
+            <Link
+              key={option.value}
+              href={`/reviews?status=${option.value}`}
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring ${
+                active
+                  ? "bg-card text-foreground border border-border shadow-[var(--shadow)] font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
+              }`}
+            >
+              {option.label}
+              <span className="readout text-[11px] text-muted-foreground">{tabCount}</span>
+            </Link>
+          );
+        })}
+      </nav>
       <ListToolbar
         searchPlaceholder="Search proposals"
         filters={[
-          { key: "status", label: "Status", allLabel: "Pending", options: STATUS_OPTIONS },
           {
             key: "risk",
             label: "Risk",
