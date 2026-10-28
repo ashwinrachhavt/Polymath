@@ -87,7 +87,14 @@ export default clerkConfigured && !(devAuthBypass && process.env.NODE_ENV !== "p
             );
           }
         } else {
-          await auth.protect();
+          // Pages are session-only: a machine token never renders workspace UI.
+          // Unauthenticated visitors see the marketing landing, not a bare
+          // sign-in form — the funnel surface is the front door (owner
+          // direction 2026-10-28). Sign-in stays one click from it.
+          const session = await auth({ acceptsToken: ["session_token"] });
+          if (!session.isAuthenticated) {
+            return NextResponse.redirect(new URL("/landing", request.url));
+          }
         }
       }
     })

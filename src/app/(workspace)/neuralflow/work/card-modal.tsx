@@ -67,7 +67,7 @@ export function CardModal({
             </DialogHeader>
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
               <dt className="text-muted-foreground">Status</dt>
-              <dd>{STATUS_LABEL[card.status]}</dd>
+              <dd><span className={statusPill[card.status]}>{STATUS_LABEL[card.status]}</span></dd>
               <dt className="text-muted-foreground">Priority</dt>
               <dd>{card.priority === "none" ? "None" : card.priority}</dd>
               <dt className="text-muted-foreground">Due</dt>
@@ -134,4 +134,14 @@ const STATUS_LABEL: Record<BoardCardData["status"], string> = {
   waiting: "Waiting",
   done: "Done",
   cancelled: "Cancelled",
+};
+
+const statusPill: Record<BoardCardData["status"], string> = {
+  inbox: "pill pill-neutral",
+  backlog: "pill pill-neutral",
+  ready: "pill pill-success",
+  in_progress: "pill pill-info",
+  waiting: "pill pill-working",
+  done: "pill pill-neutral",
+  cancelled: "pill pill-neutral",
 };

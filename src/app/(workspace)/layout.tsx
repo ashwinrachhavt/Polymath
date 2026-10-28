@@ -67,7 +67,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   }
   if (clerkConfigured && !devAuthBypass) {
     const { userId } = await auth();
-    if (!userId) redirect("/sign-in");
+    if (!userId) redirect("/landing");
     storageScope = createHash("sha256").update(userId).digest("hex");
   }
   // clerkConfigured && devAuthBypass is a misconfiguration, not a mode: the

@@ -51,6 +51,18 @@ const statusLabel: Record<WorkListRow["status"], string> = {
   cancelled: "Cancelled",
 };
 
+/* The mockup's tinted pills: the state is a colour, not a label squeezed
+   between title and meta. Green ready, blue in-flight, amber waiting. */
+const statusPill: Record<WorkListRow["status"], string> = {
+  inbox: "pill pill-neutral",
+  backlog: "pill pill-neutral",
+  ready: "pill pill-success",
+  in_progress: "pill pill-info",
+  waiting: "pill pill-working",
+  done: "pill pill-neutral",
+  cancelled: "pill pill-neutral",
+};
+
 function apply(items: WorkListItem[], change: Change): WorkListItem[] {
   if (change.type === "complete") return items.filter((item) => item.row.id !== change.id);
   return [{ row: change.row, href: "#", selected: false }, ...items];
@@ -311,7 +323,7 @@ export function WorkList({
                         {row.title}
                       </Link>
                     )}
-                    <span className="text-[11px] text-muted-foreground">{statusLabel[row.status]}</span>
+                    <span className={statusPill[row.status]}>{statusLabel[row.status]}</span>
                     {row.priority !== "none" ? <span className="text-[11px] text-muted-foreground">{row.priority}</span> : null}
                     {due ? (
                       <span className={`readout text-[11px] ${due.today ? "text-primary" : "text-muted-foreground"}`}>{due.text}</span>

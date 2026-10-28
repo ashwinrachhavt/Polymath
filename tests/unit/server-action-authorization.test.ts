@@ -23,6 +23,7 @@ const VIEWER_READS: Record<string, string> = {
   loadOutcomeNarrativeAction: "read-only weekly narrative composed server-side from the caller's own sessions and stones (ASH-280)",
   loadPreferencesAction: "read-only load of the caller's own preference row; membership alone authorizes viewing",
   listNotionPagesAction: "read-only list of pages on the caller's connected Notion account, for the editor's page picker (ASH-283)",
+  listNoteCommentsAction: "read-only list of the caller's own workspace note comments, for the margin panel",
 };
 
 function actionFiles(dir: string): string[] {

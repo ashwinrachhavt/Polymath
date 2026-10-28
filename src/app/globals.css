@@ -5,52 +5,56 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Owner direction (2026-10-19): the "stronghold" design of the whole product
- * follows Dao (Opal-like): light, sparse, airy, calm. This supersedes the
- * 2026-10-18 "Notion AI and Linear" register below and the DESIGN.md target
- * register, both of which are denser and colder than this direction.
+ * Owner direction (2026-10-28, the mockups): the Notion-feel light register
+ * across the whole product. This supersedes the 2026-10-19 "stronghold" note:
+ * the ground is now a neutral near-white grey, cards are pure white, and the
+ * page title is a bold sans heading in the content column — not a serif on a
+ * sticky bar. The one accent stays a soft charcoal for primary actions.
  *
  * What that means in values:
- * 1. A warm, near-white ground with generous whitespace. Surfaces separate
+ * 1. A neutral, near-white ground with generous whitespace. Surfaces separate
  *    by the lightest hairline that still reads; nothing presses or glows.
- * 2. One quiet accent for the whole product: a soft warm charcoal, used the
- *    way Opal uses its dark button - primary actions, the focus ring, links.
- *    Apps no longer carry their own hue; --app-accent stays as an alias so
- *    components do not change.
- * 3. Flat panels. A card is a 1px border and a fill. Floating layers get one
- *    soft, warm-tinted shadow. Everything else is whitespace.
+ * 2. One quiet accent for the whole product: a soft warm charcoal, used for
+ *    primary actions, the focus ring, links. Statuses carry their own quiet
+ *    tints (green ready, blue in-flight, amber working, red failing) as pills.
+ * 3. Flat panels. A card is a 1px border and a white fill, 12px corners.
+ *    Floating layers get one soft, warm-tinted shadow. Everything else is
+ *    whitespace.
  */
 
 :root {
-  --radius: 0.5rem;
+  --radius: 0.75rem;
   --page-gutter: 16px;
   --page-width: 1200px;
 
-  --background: oklch(0.982 0.004 90);
-  --foreground: oklch(0.27 0.008 75);
+  --background: oklch(0.984 0.002 95);
+  --foreground: oklch(0.25 0.006 75);
 
-  --card: oklch(0.997 0.002 90);
-  --card-foreground: oklch(0.27 0.008 75);
-  --popover: oklch(0.997 0.002 90);
-  --popover-foreground: oklch(0.27 0.008 75);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.006 75);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0.006 75);
 
   /* The product's one accent: a soft warm charcoal, Opal-style. */
-  --primary: oklch(0.32 0.010 75);
-  --primary-foreground: oklch(0.982 0.004 90);
+  --primary: oklch(0.30 0.010 75);
+  --primary-foreground: oklch(0.985 0.002 95);
 
-  --secondary: oklch(0.955 0.004 85);
-  --secondary-foreground: oklch(0.27 0.008 75);
+  --secondary: oklch(0.958 0.003 95);
+  --secondary-foreground: oklch(0.25 0.006 75);
 
-  --muted: oklch(0.960 0.004 85);
-  --muted-foreground: oklch(0.52 0.008 78);
+  --muted: oklch(0.962 0.003 95);
+  --muted-foreground: oklch(0.50 0.007 80);
 
-  --accent: oklch(0.948 0.005 85);
-  --accent-foreground: oklch(0.27 0.008 75);
+  --accent: oklch(0.950 0.003 95);
+  --accent-foreground: oklch(0.25 0.006 75);
 
   --destructive: oklch(0.56 0.15 25);
 
-  --border: oklch(0.918 0.004 85);
-  --input: oklch(0.918 0.004 85);
+  --success: oklch(0.55 0.11 155);
+  --info: oklch(0.55 0.11 245);
+
+  --border: oklch(0.916 0.003 95);
+  --input: oklch(0.916 0.003 95);
   --ring: oklch(0.38 0.012 75);
 
   --chart-1: oklch(0.45 0.02 75);
@@ -59,13 +63,13 @@
   --chart-4: oklch(0.65 0.09 96);
   --chart-5: oklch(0.58 0.08 330);
 
-  --sidebar: oklch(0.978 0.004 90);
-  --sidebar-foreground: oklch(0.27 0.008 75);
-  --sidebar-primary: oklch(0.32 0.010 75);
-  --sidebar-primary-foreground: oklch(0.982 0.004 90);
-  --sidebar-accent: oklch(0.948 0.005 85);
-  --sidebar-accent-foreground: oklch(0.27 0.008 75);
-  --sidebar-border: oklch(0.918 0.004 85);
+  --sidebar: oklch(0.980 0.002 95);
+  --sidebar-foreground: oklch(0.25 0.006 75);
+  --sidebar-primary: oklch(0.30 0.010 75);
+  --sidebar-primary-foreground: oklch(0.985 0.002 95);
+  --sidebar-accent: oklch(0.944 0.003 95);
+  --sidebar-accent-foreground: oklch(0.25 0.006 75);
+  --sidebar-border: oklch(0.920 0.003 95);
   --sidebar-ring: oklch(0.38 0.012 75);
 
   /* Kept defined for any straggler referencing them; the flat panel no
@@ -99,6 +103,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -128,8 +134,9 @@
      answers. UI chrome (nav, composer, tables, pills) stays sans. A system
      serif stack: no download, no shift, renders instantly. */
   --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  /* Page headings only, never UI text. */
-  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  /* Page headings are bold sans in the mockups; the serif display retired.
+     The token stays so older references resolve. */
+  --font-display: var(--font-sans);
 
   --tracking-tight: -0.011em;
 
@@ -142,34 +149,37 @@
 }
 
 .dark {
-  /* The same calm register, inverted: a warm near-black ground, panels a
+  /* The same calm register, inverted: a neutral near-black ground, panels a
      breath lighter, hairlines at low alpha, the accent inverted to a soft
-     warm off-white so dark mode stays the same product. */
-  --background: oklch(0.190 0.004 80);
-  --foreground: oklch(0.930 0.004 85);
+     off-white so dark mode stays the same product. */
+  --background: oklch(0.185 0.002 80);
+  --foreground: oklch(0.930 0.003 85);
 
-  --card: oklch(0.225 0.005 80);
-  --card-foreground: oklch(0.930 0.004 85);
-  --popover: oklch(0.235 0.005 80);
-  --popover-foreground: oklch(0.930 0.004 85);
+  --card: oklch(0.220 0.003 80);
+  --card-foreground: oklch(0.930 0.003 85);
+  --popover: oklch(0.230 0.003 80);
+  --popover-foreground: oklch(0.930 0.003 85);
 
-  --primary: oklch(0.920 0.004 85);
-  --primary-foreground: oklch(0.240 0.006 78);
+  --primary: oklch(0.920 0.003 85);
+  --primary-foreground: oklch(0.235 0.004 78);
 
-  --secondary: oklch(0.255 0.005 80);
-  --secondary-foreground: oklch(0.930 0.004 85);
+  --secondary: oklch(0.255 0.003 80);
+  --secondary-foreground: oklch(0.930 0.003 85);
 
-  --muted: oklch(0.255 0.005 80);
-  --muted-foreground: oklch(0.680 0.008 82);
+  --muted: oklch(0.255 0.003 80);
+  --muted-foreground: oklch(0.680 0.006 82);
 
-  --accent: oklch(0.270 0.005 80);
-  --accent-foreground: oklch(0.930 0.004 85);
+  --accent: oklch(0.270 0.003 80);
+  --accent-foreground: oklch(0.930 0.003 85);
 
   --destructive: oklch(0.65 0.15 25);
 
-  --border: oklch(0.290 0.005 80);
-  --input: oklch(0.290 0.005 80);
-  --ring: oklch(0.820 0.006 85);
+  --success: oklch(0.70 0.11 155);
+  --info: oklch(0.70 0.11 245);
+
+  --border: oklch(0.290 0.003 80);
+  --input: oklch(0.290 0.003 80);
+  --ring: oklch(0.820 0.005 85);
 
   --chart-1: oklch(0.85 0.01 85);
   --chart-2: oklch(0.76 0.08 168);
@@ -177,14 +187,14 @@
   --chart-4: oklch(0.80 0.1 96);
   --chart-5: oklch(0.74 0.09 330);
 
-  --sidebar: oklch(0.205 0.004 80);
-  --sidebar-foreground: oklch(0.930 0.004 85);
-  --sidebar-primary: oklch(0.920 0.004 85);
-  --sidebar-primary-foreground: oklch(0.240 0.006 78);
-  --sidebar-accent: oklch(0.270 0.005 80);
-  --sidebar-accent-foreground: oklch(0.930 0.004 85);
-  --sidebar-border: oklch(0.290 0.005 80);
-  --sidebar-ring: oklch(0.820 0.006 85);
+  --sidebar: oklch(0.200 0.002 80);
+  --sidebar-foreground: oklch(0.930 0.003 85);
+  --sidebar-primary: oklch(0.920 0.003 85);
+  --sidebar-primary-foreground: oklch(0.235 0.004 78);
+  --sidebar-accent: oklch(0.270 0.003 80);
+  --sidebar-accent-foreground: oklch(0.930 0.003 85);
+  --sidebar-border: oklch(0.290 0.003 80);
+  --sidebar-ring: oklch(0.820 0.005 85);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);
@@ -215,6 +225,55 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
+  }
+
+  /* Status pills (the mockups' quiet tints): a soft tinted capsule naming a
+     state. One shape everywhere; the tint carries the meaning. */
+  .pill {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    border-radius: 6px;
+    padding-inline: 7px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .pill-neutral { background: var(--muted); color: var(--muted-foreground); }
+  .pill-success { background: color-mix(in oklab, var(--success) 14%, transparent); color: var(--success); }
+  .pill-info { background: color-mix(in oklab, var(--info) 12%, transparent); color: var(--info); }
+  .pill-working { background: color-mix(in oklab, oklch(0.72 0.12 80) 16%, transparent); color: oklch(0.52 0.10 70); }
+  .pill-danger { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+
+  /* Dotted section divider with a centered label (Artifacts "OCTOBER 2026",
+     home "YOUR CONVERSATIONS"). A hairline says "regions"; the dotted rule
+     with a small-caps label says "a named passage of the same list". */
+  .rule-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .rule-label::before,
+  .rule-label::after {
+    content: "";
+    flex: 1;
+    border-top: 1px dashed var(--border);
+  }
+
+  /* Caps-labelled stat strip (Day, Spending): label in small caps, the value
+     large beneath it, the gloss under that. */
+  .stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
   }
 }
 
@@ -248,9 +307,9 @@ flex-basis: 20rem;
 .screen-title {
 font-family: var(--font-display);
 font-size: 26px;
-font-weight: 400;
-line-height: 1.25;
-letter-spacing: normal;
+font-weight: 700;
+line-height: 1.2;
+letter-spacing: -0.015em;
 }
 .screen-description {
 margin-top: 6px;
@@ -595,9 +654,8 @@ transition-duration: 0.01ms !important;
    Action: the decision surface. Sans titles at a tighter track, denser
    rhythm, and focus rings a keyboard-first operator can track at speed. */
 [data-interface-mode="library"] .screen-title {
-font-family: var(--font-reading);
-font-weight: 450;
-letter-spacing: 0;
+font-weight: 700;
+letter-spacing: -0.015em;
 }
 [data-interface-mode="library"] .suite-screen {
 --page-width: 52rem;
@@ -618,10 +676,9 @@ background: var(--muted);
 }
 
 [data-interface-mode="action"] .screen-title {
-font-family: var(--font-sans);
 font-size: 22px;
-font-weight: 600;
-letter-spacing: var(--tracking-tight);
+font-weight: 700;
+letter-spacing: -0.015em;
 }
 [data-interface-mode="action"] .suite-screen {
 padding-block: 16px 28px;

@@ -41,13 +41,16 @@ describe("workspace page shells", () => {
   });
 
   it("the root sends the owner to the conversation", () => {
-    // Decisions held the front door (ASH-309); it left when the queue moved
-    // into the header's notifications panel. The root renders nothing itself
-    // and redirects, so there is no second surface listing the same proposals.
+    // The root is a static config redirect in next.config.ts ("/" → "/alfred"):
+    // a rendered redirect inside the dynamic layout made every never-cacheable
+    // prefetch of "/" hit a full dynamic render and looped the router (the
+    // GET / loop). So the workspace has no root page, and src/app/page.tsx
+    // must not exist either.
     expect(fs.existsSync(path.join(ROOT, "src/app/page.tsx"))).toBe(false);
-    const source = fs.readFileSync(path.join(ROOT, "src/app/(workspace)/page.tsx"), "utf8");
-    expect(source).toContain("redirect(\"/alfred\")");
-    expect(source).not.toContain("listHomeQueue");
+    expect(fs.existsSync(path.join(ROOT, "src/app/(workspace)/page.tsx"))).toBe(false);
+    const config = fs.readFileSync(path.join(ROOT, "next.config.ts"), "utf8");
+    expect(config).toContain('source: "/"');
+    expect(config).toContain('destination: "/alfred"');
   });
 
   it("page shells do not hardcode legacy /apps routes", () => {
