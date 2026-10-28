@@ -1,0 +1,68 @@
+{
+  "runner": "pnpm exec vitest run {files}",
+  "dependencies": {
+    ".claude/**": [],
+    ".serena/**": [],
+    ".mcp.json": [],
+    ".gitignore": [],
+    ".env.example": [],
+    "extensions/**": [],
+    "eslint.config.mjs": [],
+    "vercel.json": [],
+    ".github/workflows/ci.yml": [],
+    "src/db/migrations/meta/_journal.json": [],
+    "package.json": [],
+    "pnpm-lock.yaml": [],
+    "*-lock.json": [],
+    "skills-lock.json": [],
+    "scripts/pair-companion.ts": [
+      "tests/integration/companion-token.test.ts"
+    ],
+    ".github/scripts/eval-summary.mjs": [
+      "tests/unit/eval-summary.test.ts"
+    ],
+    "eve/alfred/agent/lib/gemini-openai.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
+    "eve/alfred/evals/axiom-policy.ts": [],
+    "eve/alfred/agent/agent.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
+    "eve/specialist/agent/agent.ts": [
+      "tests/unit/gemini-openai-shim.test.ts"
+    ],
+    "eve/alfred/evals/chat-grounding.eval.ts": [],
+    "eve/alfred/evals/evals.config.ts": [],
+    "src/domains/learning/**": [],
+    "src/domains/teaching/**": [],
+    "src/integrations/quiz/**": [],
+    "src/domains/learning/commands.ts": [],
+    "src/domains/learning/queries.ts": [],
+    "src/domains/learning/schema.ts": [],
+    "src/domains/learning/sm2.ts": [],
+    "src/domains/teaching/notebook-context.ts": [],
+    "src/domains/teaching/review-session.ts": [],
+    "src/integrations/quiz/generator.ts": [],
+    "tests/integration/learning.test.ts": [],
+    "tests/unit/teaching-contract.test.ts": [],
+    "tests/unit/sm2.test.ts": [],
+    "tests/unit/quiz-generator.test.ts": [],
+    "tests/unit/run-details.test.ts": [],
+    "src/db/migrations/0235_drop_learning.sql": [],
+    "src/db/migrations/0259_note_comments.sql": [],
+    "src/db/migrations/meta/0259_snapshot.json": [],
+    "docs/audits/**": [],
+    "services/sidecar/**": [],
+    "mockups/**": [],
+    "compose.yaml": [],
+    "scripts/seed-taxonomy.ts": []
+  },
+  "serial_patterns": [
+    "tests/integration/**",
+    "tests/db/**"
+  ],
+  "empty_lanes": [
+    ".env.example",
+    "skills-lock.json"
+  ]
+}
