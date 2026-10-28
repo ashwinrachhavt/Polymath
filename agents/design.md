@@ -126,6 +126,13 @@ done.
 - Body 13px, metadata 11px, page title 15px, section heading 13px, stat readout
   20px. Line length under 80 characters; line-height ≥1.5 for prose. Headings
   tighten tracking; body text keeps normal tracking.
+- **The Notion feel governs content-first surfaces** (owner direction
+  2026-10-28, canonical in the Notion Design System §5 "The Notion feel"):
+  reading and writing surfaces (capture, notes, briefings, documents) take
+  16px body at 1.6–1.7 line-height, one ~70ch measure, 24px block rhythm,
+  ≥96px page-edge breathing, and one treatment per element. The 13px cockpit
+  scale above applies to operational surfaces (tables, run timelines,
+  telemetry), not to prose.
 - Hierarchy comes from **weight and colour, not raw scale** (§9.B). No oversized
   H1s.
 - **Every number the owner reads as instrument output is `.readout`** — mono +

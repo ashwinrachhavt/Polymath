@@ -587,7 +587,7 @@ export function NoteEditor({
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-24 sm:px-6">
+        <div className="reading-page mx-auto flex w-full max-w-3xl flex-col px-4 pb-24 sm:px-6">
           <div className="mb-8 flex h-8 items-center justify-between">
             <NotebookListToggle />
             <div className="flex items-center gap-1">

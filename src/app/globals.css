@@ -294,8 +294,80 @@ min-width: 0;
 margin-inline: auto;
 padding: 24px var(--page-gutter);
 }
+/* Reading pages breathe: 96px clear above and below the text column on
+   desktop, 48px on small screens. Only full-page reading surfaces opt in;
+   operational pages keep .page-content's tighter padding. */
+.reading-page {
+padding-block: 48px;
+}
 @media (min-width: 768px) {
 :root { --page-gutter: 24px; }
+.reading-page { padding-block: 96px; }
+}
+/* The Notion feel (owner direction 2026-10-28; Notion Design System §5): the
+   shared reading typography for content-first surfaces — capture, notes,
+   conversations, documents. One ~70ch measure, 16px body at 1.65, 24px block
+   rhythm, one treatment per element. The 13px cockpit scale stays for
+   operational surfaces and never touches a .prose-reading subtree.
+   Unlayered so these rules beat the Tailwind utilities the shared markdown
+   renderer and the editors carry (my-1, gap-1.5, list-disc). */
+.prose-reading {
+max-width: 70ch;
+font-size: 16px;
+line-height: 1.65;
+}
+.prose-reading p {
+margin: 0 0 24px;
+}
+.prose-reading :is(h1, h2) {
+margin: 48px 0 12px;
+font-size: 24px;
+font-weight: 600;
+line-height: 1.3;
+}
+.prose-reading h3 {
+margin: 40px 0 8px;
+font-size: 18px;
+font-weight: 600;
+line-height: 1.35;
+}
+.prose-reading h4 {
+margin: 40px 0 8px;
+font-size: 16px;
+font-weight: 600;
+line-height: 1.4;
+}
+.prose-reading :is(ul, ol) {
+margin: 0 0 24px;
+padding-left: 24px;
+}
+.prose-reading ul { list-style: disc; }
+.prose-reading ol { list-style: decimal; }
+/* Inside a reading surface the list rhythm is the block rhythm, so the
+   renderer's my-1/gap-0.5 scale drops out. Outside one, the utilities win. */
+.prose-reading :is(ul, ol).prose-list {
+margin: 0 0 24px;
+gap: 4px;
+}
+.prose-reading li {
+margin: 0;
+}
+.prose-reading blockquote {
+margin: 0 0 24px;
+padding-left: 16px;
+border-left: 2px solid var(--border);
+color: var(--muted-foreground);
+}
+.prose-reading hr {
+margin: 24px 0;
+border: 0;
+border-top: 1px solid var(--border);
+}
+.prose-reading > pre {
+margin: 0 0 24px;
+}
+.prose-reading table {
+margin: 0 0 24px;
 }
 .polymath-mark {
 display: flex;

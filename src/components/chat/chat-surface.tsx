@@ -361,7 +361,7 @@ export function ChatSurface({
                   {inline(block.text)}
                 </div>
               ) : block.kind === "reasoning" ? null : (
-                <div key={block.id} className="group/message w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">
+                <div key={block.id} className="group/message prose-reading w-full font-[family-name:var(--font-reading)]">
                   {/* A run's citations apply to its answer, so the markers in
                       the prose and the list below resolve in one numbering. */}
                   <CitedText text={block.text} citations={chat.citations} />

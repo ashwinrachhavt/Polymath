@@ -341,7 +341,7 @@ export default function NotebookSurface({
                           {entry.text}
                         </div>
                       ) : (
-                        <div key={index} className="max-w-[72ch] font-[family-name:var(--font-reading)] text-[16px] leading-7">
+                        <div key={index} className="prose-reading max-w-[72ch] font-[family-name:var(--font-reading)]">
                           <Markdown text={entry.text} />
                         </div>
                       ),

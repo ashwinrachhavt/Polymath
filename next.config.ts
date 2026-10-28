@@ -21,7 +21,20 @@ const nextConfig: NextConfig = {
       knowledge: "/alfred/knowledge", dossiers: "/alfred/dossiers",
       relationships: "/apps/command-center/contacts", opportunities: "/apps/command-center/opportunities",
     };
-    return Object.entries(paths).map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }));
+    return Object.entries(paths).map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }))
+      .concat([
+        {
+          // Static root redirect. The former src/app/(workspace)/page.tsx
+          // rendered redirect("/alfred") inside the dynamic (workspace) layout,
+          // so every never-cacheable prefetch of it (side-nav wordmark) hit a
+          // full dynamic render returning a redirect flight — the router
+          // re-rendered and re-fetched "/" forever (the infinite GET / loop).
+          // A config redirect bypasses the layout entirely.
+          source: "/",
+          destination: "/alfred",
+          permanent: false,
+        },
+      ]);
   },
   cacheComponents: true,
   partialPrefetching: true,

@@ -171,7 +171,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
        * page's gutters; the width is set here.
        */}
       <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
-        <section aria-label="Conversation" className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3">
+        <section aria-label="Conversation" className="reading-page mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3">
           {/*
            * A live run streams; a finished one keeps the stored transcript.
            * Rendering the snapshot for a running run was the whole reason a new
@@ -222,7 +222,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
                     {inline(entry.text)}
                   </div>
                 ) : entry.kind === "assistant" ? (
-                  <div key={entry.sequence} className="w-full font-[family-name:var(--font-reading)] text-[16px] leading-7">
+                  <div key={entry.sequence} className="prose-reading w-full font-[family-name:var(--font-reading)]">
                     <Markdown text={entry.text} />
                     <MessageFeedback runId={run.id} sequence={entry.sequence} initial={entry.feedback ?? null} />
                   </div>

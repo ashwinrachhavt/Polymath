@@ -138,7 +138,7 @@ export function ReadingShell({ documentId, segments, canSave }: { documentId: st
   return (
     <article
       ref={articleRef}
-      className="relative max-w-[75ch] whitespace-pre-wrap text-sm leading-7"
+      className="prose-reading relative whitespace-pre-wrap"
       data-reading-article
       onMouseUp={onSelect}
       onKeyUp={onSelect}

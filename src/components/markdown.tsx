@@ -105,8 +105,11 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
         i++;
       }
       const ListTag = ordered ? "ol" : "ul";
+      // List styling comes from .prose-reading when it renders inside a
+      // reading surface; these bare utilities keep non-reading callers
+      // (notion-proposals blocks, surface cards) unchanged.
       blocks.push(
-        <ListTag key={key++} className={`my-1 flex flex-col gap-0.5 ${ordered ? "list-decimal pl-7 marker:text-muted-foreground marker:font-normal" : "list-disc pl-5"}`}>
+        <ListTag key={key++} className={`my-1 flex flex-col gap-0.5 prose-list ${ordered ? "list-decimal pl-7 marker:text-muted-foreground marker:font-normal" : "list-disc pl-5"}`}>
           {items.map((item, j) => <li key={j} className={ordered ? "pl-1" : undefined}>{renderInline(item)}</li>)}
         </ListTag>,
       );
@@ -120,18 +123,24 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
         quoted.push(lines[i].trimStart().replace(/^>\s?/, ""));
         i++;
       }
+      // Blockquote and hr carry their one treatment from .prose-reading;
+      // plain tags here so a quoted table or nested list keeps the ladder.
       blocks.push(
-        <blockquote key={key++} className="border-border text-muted-foreground my-1 border-l-2 pl-3">
+        <blockquote key={key++}>
           {markdown(quoted.join("\n"), renderInline)}
         </blockquote>,
       );
       continue;
     }
 
-    // Heading: keep the text, drop the #s.
-    const heading = lines[i].match(/^#{1,4}\s+(.*)$/);
+    // Heading: keep the text, drop the #s. Real h2-h4 so the reading ladder in
+    // .prose-reading governs weight and spacing; #1 maps to h2, the level the
+    // editors' own block commands use.
+    const heading = lines[i].match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
-      blocks.push(<p key={key++} className="mt-1 font-medium text-foreground">{renderInline(heading[1])}</p>);
+      const level = Math.min(heading[1].length + 1, 4) as 2 | 3 | 4;
+      const Tag = (`h${level}`) as "h2" | "h3" | "h4";
+      blocks.push(<Tag key={key++}>{renderInline(heading[2])}</Tag>);
       i++;
       continue;
     }
@@ -139,7 +148,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
     // Thematic break. A model uses `---` between sections; left as a
     // paragraph it renders the literal dashes into the answer.
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])) {
-      blocks.push(<hr key={key++} className="border-border my-1.5" />);
+      blocks.push(<hr key={key++} />);
       i++;
       continue;
     }
@@ -172,7 +181,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
  * the same typography instead of re-implementing it.
  */
 export const Markdown = memo(function Markdown({ text, renderInline }: { text: string; renderInline?: InlineRenderer }) {
-  return <div className="flex flex-col gap-1.5">{markdown(text, renderInline ?? inline)}</div>;
+  return <div className="prose-reading flex flex-col gap-1.5">{markdown(text, renderInline ?? inline)}</div>;
 });
 
 /** The block renderer on its own, for callers that already supply a wrapper. */
