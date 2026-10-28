@@ -202,18 +202,26 @@ mkdirSync(join(ROOT, "docs/generated"), { recursive: true });
 const rendered = lines.join("\n");
 const target = join(ROOT, OUT);
 const previous = existsSync(target) ? readFileSync(target, "utf8") : "";
-writeFileSync(target, rendered);
-console.log(`${OUT}: ${byDomain.size} domains, ${stateCount.versioned + stateCount["append-only"] + stateCount["mutable-unversioned"]} tables, ${routes.length} routes, ${tools.length} tools, ${unhandled.length} unhandled topics (${declaredOnly.length} declared audit-only), ${defects.length} defects`);
 
 /*
  * --check makes this a gate rather than a convenience. A generated document that
  * is only as current as the last time someone remembered to run it is the problem
- * the generator exists to solve, so `make check` runs this and fails on drift.
+ * the generator exists to solve.
+ *
+ * It must not write. An earlier version called writeFileSync before comparing, so
+ * a failing --check silently repaired the file and left the tree clean-looking —
+ * the drift you were being told about was gone by the time you went to look. Check
+ * compares and reports; only a plain run writes.
  */
-if (process.argv.includes("--check")) {
+const checking = process.argv.includes("--check");
+if (checking) {
   if (previous !== rendered) {
     console.error(`${OUT} is stale. Run \`make inventory\` and commit the result.`);
     process.exit(1);
   }
-  console.log(`${OUT} is current.`);
+  console.log(`${OUT} is current. (${byDomain.size} domains, ${routes.length} routes, ${tools.length} tools, ${defects.length} defects)`);
+  process.exit(0);
 }
+
+writeFileSync(target, rendered);
+console.log(`${OUT}: ${byDomain.size} domains, ${stateCount.versioned + stateCount["append-only"] + stateCount["mutable-unversioned"]} tables, ${routes.length} routes, ${tools.length} tools, ${unhandled.length} unhandled topics (${declaredOnly.length} declared audit-only), ${defects.length} defects`);
