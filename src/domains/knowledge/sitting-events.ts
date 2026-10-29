@@ -13,7 +13,7 @@
 export const SITTING_PROTOCOL_VERSION = 1 as const;
 
 /** The stages the creation pipeline runs (§3); the panel renders these by name. */
-export const CREATION_STAGES = ["embed", "links", "enrich"] as const;
+export const CREATION_STAGES = ["embed", "links", "enrich", "bloom"] as const;
 
 /**
  * §15.3 quota copy, verbatim — one shared string so the server event and the

@@ -290,6 +290,8 @@ export type ZettelCardItem = {
   updatedAt: Date;
   sourceDocumentId: string | null;
   sourceTitle: string | null;
+  /* §6/§14.12: the inert practice suggestion from metadata.bloom, when set. */
+  bloom: { level: number; levelName: string } | null;
 };
 
 /*
@@ -318,6 +320,7 @@ export async function pageZettelCards(
         excerpt: artifactVersions.plainText,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
+        metadata: artifacts.metadata,
         sourceDocumentId: artifactLinks.targetId,
         sourceTitle: artifactLinks.label,
       })
@@ -338,11 +341,20 @@ export async function pageZettelCards(
       .where(where);
     return {
       total: totalRow?.n ?? 0,
-      items: rows.map((row) => ({
-        ...row,
-        tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
-        excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
-      })),
+      items: rows.map((row) => {
+        const bloom = (row.metadata as { bloom?: { level?: unknown; levelName?: unknown } } | null)?.bloom;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- raw metadata stays server-side; only the bloom projection leaves
+        const { metadata: _metadata, ...rest } = row;
+        return {
+          ...rest,
+          tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+          excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
+          bloom:
+            typeof bloom?.level === "number" && typeof bloom?.levelName === "string"
+              ? { level: bloom.level, levelName: bloom.levelName }
+              : null,
+        };
+      }),
     };
   });
 }

@@ -8,6 +8,7 @@ import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, QuotaExhaustedError, withQuota } from "@/integrations/providers/quota";
 import { artifacts, artifactVersions } from "./schema";
 import { embedArtifact } from "./embedding";
+import { annotateBloom, classifyBloomLevel } from "./bloom";
 import { materializeSemanticEdges } from "./relations";
 import { artifactWorkspaceMismatch, getSitting } from "./sittings";
 import {
@@ -388,6 +389,30 @@ export async function executeCreationRun(
           summary: "enriched",
           payload: { event: "usage", model: u.model, kind: u.kind, inputTokens: u.inputTokens, outputTokens: u.outputTokens, durationMs: u.durationMs },
         })));
+      }
+
+      // Bloom stage (§6): a practice suggestion, never mastery. The
+      // annotation lands in metadata.bloom by namespace (§16.8) with the
+      // model, prompt version and artifact version analyzed; only the
+      // allowlisted "bloom:{level}" outcome persists as the event summary.
+      await durable(frame(ctx, "stage_started", { stage: "bloom" }), null);
+      try {
+        deadlineGuard();
+        const annotation = await classifyBloomLevel(
+          (i) => meteredProvider.generate({ ...i, json: true }),
+          { plainText: draft, model: provider.name, artifactVersionNumber: card.versionNumber ?? 0 },
+        );
+        await annotateBloom(auth, { artifactId: ctx.artifactId, annotation });
+        await durable(
+          frame(ctx, "bloom_suggested", { level: annotation.level, levelName: annotation.levelName, outcome: `bloom:${annotation.level}` }),
+          `bloom:${annotation.level}`,
+        );
+      } catch (cause) {
+        if (cause instanceof QuotaExhaustedError) {
+          await durable(frame(ctx, "stage_failed", { stage: "bloom", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE, operationId: ctx.runId }), "failed:bloom");
+        } else {
+          await durable(frame(ctx, "stage_failed", { stage: "bloom", code: "BLOOM_FAILED", message: "The practice suggestion failed - your card is saved.", operationId: ctx.runId }), "failed:bloom");
+        }
       }
     } catch (cause) {
       if (cause instanceof QuotaExhaustedError) {

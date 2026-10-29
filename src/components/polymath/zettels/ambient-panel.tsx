@@ -39,7 +39,13 @@ export function AmbientPanel({
           <div key={name} className="rounded border border-border px-3 py-2 text-sm">
             <span className="font-mono text-xs">{name}</span>{" "}
             {stage.status === "running" && <span className="text-muted-foreground">working…</span>}
-            {stage.status === "done" && <span className="text-muted-foreground">{stage.outcome}</span>}
+            {stage.status === "done" && (
+              <span className="text-muted-foreground">
+                {stage.outcome?.startsWith("bloom:")
+                  ? `Suggested practice: ${{ "1": "Recall", "2": "Apply", "3": "Analyze" }[stage.outcome.slice(6)] ?? stage.outcome}`
+                  : stage.outcome}
+              </span>
+            )}
             {stage.status === "failed" && (
               <span>
                 <span className="text-destructive">{stage.failure?.message}</span>{" "}

@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { agentRuns, agentSteps } from "@/domains/agents/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { createSitting } from "@/domains/knowledge/sittings";
+import { annotateBloom } from "@/domains/knowledge/bloom";
 import {
   durableEvents,
   executeCreationRun,
@@ -141,6 +142,8 @@ suite("sitting creation run", () => {
     const summaries = steps.map((s) => s.summary).filter((s): s is string => s !== null);
     expect(summaries).toContain("saved");
     expect(summaries).toContain("enriched");
+    // §6: the Bloom stage annotates and reports its allowlisted outcome.
+    expect(summaries).toContain("bloom:2");
     // §15.2: every persisted outcome is inside the allowlist.
     for (const summary of summaries) expect(isAllowedStageOutcome(summary), summary).toBe(true);
     // §3: tokens/thinking stream live but are NEVER persisted.
@@ -155,6 +158,17 @@ suite("sitting creation run", () => {
     expect(live.some((e) => e.event === "enrichment")).toBe(true);
     const suggestion = live.find((e) => e.event === "enrichment")?.payload as { suggestion?: string };
     expect(suggestion.suggestion).toContain("fixture suggestion");
+
+    // §6 + §16.8: the annotation landed in the bloom namespace with model,
+    // prompt version and artifact version - and it is never mastery.
+    const [annotated] = await handle!.db.select().from(artifacts).where(eq(artifacts.id, card.id));
+    const metadata = annotated.metadata as { bloom?: { level: number; levelName: string; model: string; promptVersion: string; artifactVersionNumber: number; source: string } } | null;
+    expect(metadata?.bloom?.level).toBe(2);
+    expect(metadata?.bloom?.levelName).toBe("Apply");
+    expect(metadata?.bloom?.model).toBe("fixture:e2e");
+    expect(metadata?.bloom?.promptVersion).toBe("bloom-practice-v1");
+    expect(metadata?.bloom?.artifactVersionNumber).toBe(1);
+    expect(metadata?.bloom?.source).toBe("creation-run");
   });
 
   it("stops execution when the owning connection aborts (§16.1, review A)", async () => {
@@ -180,6 +194,25 @@ suite("sitting creation run", () => {
     const events = steps.map((s) => (s.payload as { event?: string } | null)?.event);
     expect(events).toContain("card_saved");
     expect(events).not.toContain("done");
+  });
+
+  it("bloom annotation merges by namespace and never bumps updated_at (§16.8)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const card = await seedCard("namespace target");
+    // A neighboring namespace written first must survive the bloom write.
+    await handle!.db.update(artifacts).set({ metadata: { dismissedCandidates: ["x"] } }).where(eq(artifacts.id, card.id));
+    const [before] = await handle!.db.select().from(artifacts).where(eq(artifacts.id, card.id));
+    const annotation = {
+      level: 1 as const, levelName: "Recall", rationale: "test", source: "creation-run" as const,
+      model: "fixture:e2e", promptVersion: "bloom-practice-v1", artifactVersionNumber: 1,
+      annotatedAt: new Date().toISOString(),
+    };
+    await annotateBloom(auth, { artifactId: card.id, annotation });
+    const [after] = await handle!.db.select().from(artifacts).where(eq(artifacts.id, card.id));
+    const metadata = after.metadata as { bloom?: unknown; dismissedCandidates?: string[] } | null;
+    expect(metadata?.bloom).toMatchObject({ level: 1, levelName: "Recall" });
+    expect(metadata?.dismissedCandidates).toEqual(["x"]); // merge by namespace, not whole-object write
+    expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime()); // the drizzle trap: no human-edit bump
   });
 
   it("sweeps stranded running creation runs with a stage_failed outcome (§16.1)", async () => {

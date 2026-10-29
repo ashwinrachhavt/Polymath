@@ -35,6 +35,20 @@ function sortFor(view: View, items: ZettelCardItem[]): ZettelCardItem[] {
   return copy;
 }
 
+function BloomDot({ card }: { card: ZettelCardItem }) {
+  // §14.12: inert in v1 - a label, no tap action; never a mastery claim (§6).
+  if (!card.bloom) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"
+      title="A suggested practice from the creation run - not a measure of mastery."
+    >
+      <span aria-hidden className="inline-block size-1.5 rounded-full bg-muted-foreground/60" />
+      Suggested practice: {card.bloom.levelName}
+    </span>
+  );
+}
+
 function SourceLink({ card }: { card: ZettelCardItem }) {
   if (!card.sourceDocumentId) return null;
   return (
@@ -68,7 +82,10 @@ function CardsView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchPara
           {card.excerpt && <p className="line-clamp-3 text-xs text-muted-foreground">{card.excerpt}</p>}
           <span className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
             <TagBadges tags={card.tags} raw={raw} />
-            <SourceLink card={card} />
+            <span className="flex items-center gap-2">
+              <BloomDot card={card} />
+              <SourceLink card={card} />
+            </span>
           </span>
         </li>
       ))}
