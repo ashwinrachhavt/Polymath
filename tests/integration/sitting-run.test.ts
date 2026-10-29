@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { agentRuns, agentSteps } from "@/domains/agents/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
@@ -31,6 +32,15 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  */
 
 const handle = makeTestDb();
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
 const suite = handle ? describe : describe.skip;
 
 // Migration 0262 itself: the one-running-run-per-sitting guard (review F).
@@ -45,6 +55,7 @@ suite("sitting creation run", () => {
   const env = { GENERATION_PROVIDER: "fixture", NODE_ENV: "test" };
 
   beforeAll(async () => {
+    holder.db = handle?.db;
     if (!handle) return;
     // Re-runnable: drop the guard so the real file applies cleanly every run.
     await handle.client.unsafe('DROP INDEX IF EXISTS "agent_runs_one_running_creation_per_sitting";');

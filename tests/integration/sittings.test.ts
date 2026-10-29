@@ -1,6 +1,7 @@
+import { drizzle } from "drizzle-orm/postgres-js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { artifacts, zettelSittingCards } from "@/domains/knowledge/schema";
 import {
   addCardToSitting,
@@ -29,6 +30,15 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  */
 
 const handle = makeTestDb();
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
 const suite = handle ? describe : describe.skip;
 
 const MIGRATION = readFileSync(
@@ -41,6 +51,7 @@ suite("zettel sittings (migration 0261)", () => {
   let otherWs: { userId: string; workspaceId: string };
 
   beforeAll(async () => {
+    holder.db = handle?.db;
     if (!handle) return;
     // Re-runnable: drop 0261's objects so the real file applies cleanly on
     // every local run (the drizzle journal owns once-only application).

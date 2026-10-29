@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { artifactLinks } from "@/domains/knowledge/schema";
 import { commitDecomposition, findSimilarZettels, type DecompositionAnalysis } from "@/domains/knowledge/decomposition";
@@ -14,6 +15,15 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  */
 
 const handle = makeTestDb();
+const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
+vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db-transaction", () => ({
+  get withTransaction() {
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
+      (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
+  },
+}));
+
 const suite = handle ? describe : describe.skip;
 
 function analysisWith(candidate: { id: string; title: string; content: string }): DecompositionAnalysis {
@@ -39,6 +49,7 @@ suite("decomposition merge/link decisions (integration)", () => {
   let otherWs: { userId: string; workspaceId: string };
 
   beforeAll(async () => {
+    holder.db = handle?.db;
     ws = await seedWorkspace(handle!.db, `dml-a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     otherWs = await seedWorkspace(handle!.db, `dml-b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   });
