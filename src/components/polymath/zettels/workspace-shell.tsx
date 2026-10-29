@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { SessionRail } from "./session-rail";
 import { WritingSurface } from "./writing-surface";
 import { AmbientPanel } from "./ambient-panel";
+import { ActionTasksSidebar } from "./action-tasks-sidebar";
 import { initialStreamState, type StreamState } from "./creation-stream-reducer";
 
 /*
@@ -63,7 +64,13 @@ export function WorkspaceShell({
           onCardSaved={onCardSaved}
         />
       </div>
-      <AmbientPanel state={streamState} onRetryStage={retryStage} />
+      <div className="flex shrink-0 flex-col overflow-y-auto max-lg:border-t">
+        <AmbientPanel state={streamState} onRetryStage={retryStage} />
+        <ActionTasksSidebar
+          sittingId={sitting.id}
+          refreshKey={`${cards.length}-${streamState.stages["links"]?.status ?? "idle"}-${streamState.done}`}
+        />
+      </div>
     </div>
   );
 }

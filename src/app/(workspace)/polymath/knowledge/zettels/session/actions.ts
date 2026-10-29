@@ -15,7 +15,9 @@ import {
   addCardToSitting,
   createSitting,
   getSitting,
+  listSittingSuggestedLinks,
 } from "@/domains/knowledge/sittings";
+import { dismissSemanticLink, promoteSemanticLink } from "@/domains/knowledge/relations";
 import { commitNoteSnapshot, createNote, VersionConflictError } from "@/domains/knowledge/notes";
 import { db } from "@/lib/db";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
@@ -159,4 +161,44 @@ export async function commitDecompositionAction(raw: unknown): Promise<
     if (cause instanceof SittingError) return { error: cause.code, message: cause.message };
     return { error: "commit_failed", message: "Commit failed partway-safe: accepted cards keep their idempotency keys, so retrying never duplicates." };
   }
+}
+
+const SuggestedLink = z.object({ sittingId: z.string().uuid(), artifactId: z.string().uuid(), targetId: z.string().uuid() });
+
+/** §14.9: the sitting's suggested links for the ActionTasksSidebar batch review. */
+export async function listSittingSuggestedLinksAction(raw: unknown) {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = z.object({ sittingId: z.string().uuid() }).safeParse(raw);
+  if (!input.success) return { error: "invalid_input" as const };
+  try {
+    return { links: await listSittingSuggestedLinks(auth, input.data.sittingId) };
+  } catch (cause) {
+    if (cause instanceof SittingError) return { error: cause.code as string };
+    throw cause;
+  }
+}
+
+/** §14.9 accept: the suggestion becomes an explicit related edge, surviving re-embeds. */
+export async function acceptSuggestedLinkAction(raw: unknown) {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = SuggestedLink.safeParse(raw);
+  if (!input.success) return { error: "invalid_input" as const };
+  const sitting = await getSitting(auth, input.data.sittingId);
+  if (!sitting) return { error: "sitting_not_found" as const };
+  const ok = await promoteSemanticLink(auth, { artifactId: input.data.artifactId, targetId: input.data.targetId });
+  return ok ? { ok: true as const } : { error: "suggestion_not_found" as const };
+}
+
+/** §14.9 dismiss: the edge flips to "dismissed"; re-embeds never re-propose it (§11). */
+export async function dismissSuggestedLinkAction(raw: unknown) {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = SuggestedLink.safeParse(raw);
+  if (!input.success) return { error: "invalid_input" as const };
+  const sitting = await getSitting(auth, input.data.sittingId);
+  if (!sitting) return { error: "sitting_not_found" as const };
+  const ok = await dismissSemanticLink(auth, { artifactId: input.data.artifactId, targetId: input.data.targetId });
+  return ok ? { ok: true as const } : { error: "suggestion_not_found" as const };
 }

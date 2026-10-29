@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
-import { artifacts, zettelSittingCards, zettelSittings } from "./schema";
+import { artifactLinks, artifacts, zettelSittingCards, zettelSittings } from "./schema";
 
 /*
  * Sittings (plan 2026-10-29 §2, §14; Gate 2026-10-29): a writing context
@@ -138,4 +138,33 @@ export async function listSittingCards(auth: AuthContext, sittingId: string) {
     .from(zettelSittingCards)
     .where(eq(zettelSittingCards.sittingId, sitting.id))
     .orderBy(asc(zettelSittingCards.position), asc(zettelSittingCards.createdAt));
+}
+
+/*
+ * §14.9 suggested links, per sitting: the semantic edges Track B proposed on
+ * the sitting's cards. Accept promotes to an explicit "related" edge and
+ * dismiss flips the edge to "dismissed" - the canonical store (relations.ts),
+ * which re-embeds honor, so rejected suggestions never reappear (§11). This
+ * is the repo's existing store, used instead of a second
+ * metadata.dismissedCandidates list: one store, no read-modify-write mirror.
+ */
+export async function listSittingSuggestedLinks(
+  auth: AuthContext,
+  sittingId: string,
+): Promise<{ artifactId: string; artifactTitle: string; targetId: string; targetTitle: string | null; score: number | null }[]> {
+  const sitting = await getSitting(auth, sittingId);
+  if (!sitting) throw sittingNotFound();
+  return db
+    .select({
+      artifactId: artifactLinks.artifactId,
+      artifactTitle: artifacts.title,
+      targetId: artifactLinks.targetId,
+      targetTitle: artifactLinks.label,
+      score: artifactLinks.score,
+    })
+    .from(artifactLinks)
+    .innerJoin(zettelSittingCards, eq(zettelSittingCards.artifactId, artifactLinks.artifactId))
+    .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
+    .where(and(eq(zettelSittingCards.sittingId, sitting.id), eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.linkType, "semantic")))
+    .orderBy(desc(artifactLinks.score));
 }
