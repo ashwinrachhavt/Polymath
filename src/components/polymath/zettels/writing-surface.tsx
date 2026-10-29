@@ -195,7 +195,7 @@ export function WritingSurface({
 
   const commitDecisions = useCallback(async (analysis: DecompositionAnalysis, decisions: DecompositionDecision[]) => {
     setCommitting(true);
-    const result = await commitDecompositionAction({ analysis, decisions, idempotencyKey: `${idemKey.current}-decomp` });
+    const result = await commitDecompositionAction({ analysis, decisions, idempotencyKey: `${idemKey.current}-decomp`, sittingId });
     setCommitting(false);
     if ("error" in result) {
       setDecompNote(result.message);
@@ -208,7 +208,7 @@ export function WritingSurface({
     if (result.skipped.length) parts.push(`${result.skipped.length} skipped`);
     setDecomp(null);
     setDecompNote(parts.length ? `Committed: ${parts.join(", ")}.` : "Nothing committed.");
-  }, []);
+  }, [sittingId]);
 
   const schedulePause = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);

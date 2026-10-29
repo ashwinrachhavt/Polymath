@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { artifactLinks } from "@/domains/knowledge/schema";
 import { commitDecomposition, findSimilarZettels, type DecompositionAnalysis } from "@/domains/knowledge/decomposition";
 import { createNote, getNote } from "@/domains/knowledge/notes";
+import { createSitting, listSittingCards } from "@/domains/knowledge/sittings";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -38,8 +39,8 @@ suite("decomposition merge/link decisions (integration)", () => {
   let otherWs: { userId: string; workspaceId: string };
 
   beforeAll(async () => {
-    ws = await seedWorkspace(handle!.db, `dml-a-${Date.now()}`);
-    otherWs = await seedWorkspace(handle!.db, `dml-b-${Date.now()}`);
+    ws = await seedWorkspace(handle!.db, `dml-a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    otherWs = await seedWorkspace(handle!.db, `dml-b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   });
 
   afterAll(async () => {
@@ -137,5 +138,20 @@ suite("decomposition merge/link decisions (integration)", () => {
       .from(artifactLinks)
       .where(and(eq(artifactLinks.artifactId, first.created[0].id), eq(artifactLinks.linkType, "related")));
     expect(edgesAfter.length).toBe(1);
+  });
+
+
+  it("created zettels join the sitting created_here, once per retry", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "join" });
+    const analysis = analysisWith({ id: "cand-join", title: "Join me", content: "a card born in the sitting" });
+    const input = { analysis, decisions: [{ candidateId: "cand-join", action: "create" as const }], idempotencyKey: `dsj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sittingId: sitting.id };
+    const first = await commitDecomposition(auth, input);
+    const second = await commitDecomposition(auth, input);
+    expect(second.created[0].id).toBe(first.created[0].id);
+    const cards = await listSittingCards(auth, sitting.id);
+    expect(cards.length).toBe(1);
+    expect(cards[0].artifactId).toBe(first.created[0].id);
+    expect(cards[0].roleInSitting).toBe("created_here");
   });
 });

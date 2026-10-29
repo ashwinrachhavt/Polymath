@@ -121,6 +121,7 @@ const CommitDecomposition = z.object({
     ]),
   ),
   idempotencyKey: z.string().min(8).max(200),
+  sittingId: z.string().uuid().optional(),
 });
 
 /*
@@ -156,6 +157,7 @@ export async function commitDecompositionAction(raw: unknown): Promise<
       analysis: input.data.analysis as DecompositionAnalysis,
       decisions: input.data.decisions,
       idempotencyKey: input.data.idempotencyKey,
+      sittingId: input.data.sittingId,
     });
   } catch (cause) {
     if (cause instanceof SittingError) return { error: cause.code, message: cause.message };

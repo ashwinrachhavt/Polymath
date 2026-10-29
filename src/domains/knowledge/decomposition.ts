@@ -17,7 +17,7 @@ import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import { requestReceipts } from "@/domains/audit/schema";
-import { artifactLinks, artifacts } from "./schema";
+import { artifactLinks, artifacts, zettelSittingCards, zettelSittings } from "./schema";
 import { commitNoteSnapshot, createNote, getNote } from "./notes";
 import { DECOMPOSE_MAX_CHARS, SittingError } from "./sittings";
 
@@ -231,7 +231,7 @@ export type DecompositionDecision =
  */
 export async function commitDecomposition(
   auth: AuthContext,
-  input: { analysis: DecompositionAnalysis; decisions: DecompositionDecision[]; idempotencyKey: string },
+  input: { analysis: DecompositionAnalysis; decisions: DecompositionDecision[]; idempotencyKey: string; sittingId?: string },
 ): Promise<{
   created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[];
   merged: { candidateId: string; targetId: string; versionNumber: number }[];
@@ -318,6 +318,36 @@ export async function commitDecomposition(
         kind: "zettel",
       });
       created.push({ candidateId: candidate.id, destination: "zettel", id: note.id });
+      if (input.sittingId) {
+        /*
+         * The review runs inside the sitting's writing surface, so the new
+         * card was created here (plan §2 role model). The join is the whole
+         * association - cards never belong to a sitting - and the first
+         * write wins on a retried batch (UNIQUE(sitting, artifact)).
+         */
+        await withTransaction(async (tx: TxDrizzle) => {
+          const sitting = await tx
+            .select({ id: zettelSittings.id })
+            .from(zettelSittings)
+            .where(and(eq(zettelSittings.id, input.sittingId!), eq(zettelSittings.workspaceId, auth.workspaceId)))
+            .limit(1);
+          if (!sitting.length) throw new SittingError("SITTING_NOT_FOUND", "The sitting no longer exists.");
+          const existingJoin = await tx
+            .select({ id: zettelSittingCards.id })
+            .from(zettelSittingCards)
+            .where(and(eq(zettelSittingCards.sittingId, input.sittingId!), eq(zettelSittingCards.artifactId, note.id)))
+            .limit(1);
+          if (!existingJoin.length) {
+            await tx.insert(zettelSittingCards).values({
+              workspaceId: auth.workspaceId,
+              sittingId: input.sittingId!,
+              artifactId: note.id,
+              roleInSitting: "created_here",
+              position: 0,
+            });
+          }
+        });
+      }
       if (decision.action === "link") {
         // Same server-side guard as merge: the edge target must be a live
         // zettel here. onConflictDoNothing keeps a retried batch idempotent
