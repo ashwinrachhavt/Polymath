@@ -140,8 +140,8 @@ export const linearDraftFromPastedMaterial = defineEval({
  * listRecentlyCompletedTasks: id, title, status, priority, dueAt/completedAt),
  * with dates as ISO strings — `tasks_recent.ts` serializes `completedAt` to ISO
  * across eve's tool boundary. The model sees only stub data, so the stub's
- * literal date strings are "today" and "last week" by construction; nothing is
- * computed at runtime.
+ * literal date strings are "today" and "earlier today" by construction; nothing
+ * is computed at runtime.
  */
 const COMPLETED_TASKS = [
   {
