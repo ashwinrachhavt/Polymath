@@ -13,56 +13,47 @@ import type { ToolStubOutcome } from "eve/evals";
  */
 
 /*
- * Provider credentials beyond the model key must not be present while an eval
- * runs. With them set, a stub the model slips past (or one this file forgot)
- * becomes a real read of the owner's mail or a real Firecrawl/Composio call —
- * the incident recorded in chat-grounding.eval.ts. Failing at import time means
- * the eval never starts, which is the only outcome that cannot be mistaken for
- * a pass.
+ * The eval environment gate is a closed allowlist: an eval may run with only
+ * these keys set, and anything else present in the environment throws at import
+ * time — the eval never starts, which is the only outcome that cannot be
+ * mistaken for a pass. This is the same incident guard as before (a stub the
+ * model slips past reaching the owner's mail, recorded in chat-grounding.eval.ts);
+ * a closed allowlist covers provider keys this file has never heard of, which a
+ * denylist cannot.
  *
- * The model key is allowed since chat-grounding drives a live turn. The keys are
- * process-wide, though, and the agent runs in its own worker that inherits this
- * environment (`new Worker(entry, { env: process.env })`), so a provider key
- * left set is reachable from inside a tool, not just from the eval process. That
- * is why this is the guard that covers the worker and the network guard does not.
+ * OPENAI_API_KEY is allowed because routed strong-model eval turns need it. The
+ * agent worker inherits this exact environment (`new Worker(entry, { env:
+ * process.env })`), so any other provider key left set is reachable from inside
+ * a tool, not just the eval process — that is why this gate covers the worker
+ * where the network guard does not. `quietStubs()` is what keeps tools from
+ * reaching real providers; `tests/unit/eval-stub-coverage.test.ts` holds that
+ * line.
  */
-const FORBIDDEN_ENV = [
-  "COMPOSIO_API_KEY",
-  "FIRECRAWL_HOSTED_API_KEY",
-  "FIRECRAWL_API_KEY",
-  "LLAMAPARSE_API_KEY",
+export const ALLOWED_EVAL_ENV = [
+  "GEMINI_API_KEY",
+  "GEMINI_AGENT_MODEL",
   "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "GROQ_API_KEY",
-  "BLOB_READ_WRITE_TOKEN",
 ] as const;
-
-// A Composio auth-config id is not itself a secret, but it is all a real tool
-// needs to mint a link for a connected account, so it counts as provider access.
-const FORBIDDEN_PREFIXES = ["COMPOSIO_AUTH_CONFIG_"] as const;
 
 export class EvalEnvironmentViolation extends Error {
   constructor(key: string) {
     super(
-      `EvalEnvironmentViolation: ${key} is set. Evals run with only the model credential; ` +
-        `remove ${key} from the shell and from .env before running \`eve eval\`.`,
+      `EvalEnvironmentViolation: ${key} is set. ${key} is not on the eval allowlist; ` +
+        `unset it before running \`eve eval\`.`,
     );
     this.name = "EvalEnvironmentViolation";
   }
 }
 
 /**
- * Throw when any provider credential is present. Called at import time by every
- * eval module, so a misconfigured eval fails before a turn starts.
+ * Throw when any key outside `ALLOWED_EVAL_ENV` is present. Called at import
+ * time by every eval module, so a misconfigured eval fails before a turn starts.
  */
 export function assertEvalEnvironment(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): void {
-  for (const key of FORBIDDEN_ENV) {
-    if (isSet(env[key])) throw new EvalEnvironmentViolation(key);
-  }
   for (const key of Object.keys(env)) {
-    if (FORBIDDEN_PREFIXES.some((prefix) => key.startsWith(prefix)) && isSet(env[key])) {
+    if (!(ALLOWED_EVAL_ENV as readonly string[]).includes(key) && isSet(env[key])) {
       throw new EvalEnvironmentViolation(key);
     }
   }
