@@ -653,3 +653,86 @@ body {
 [hidden] {
   display: none !important;
 }
+
+/* ── Pairing (API key) ─────────────────────────────────────────────── */
+/* Lives in the extension document on purpose: the same input injected into
+   a web page would be readable by that page's scripts (PR #359 Critical). */
+
+#pairing-section {
+  margin: 0 12px 12px;
+  padding: 12px;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  background: #111827;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pairing-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9ca3af;
+}
+
+#pairing-token-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: #0b0f14;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-size: 13px;
+}
+
+#pairing-token-input:focus {
+  outline: none;
+  border-color: #7c5cff;
+}
+
+.pairing-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pairing-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pairing-btn:hover {
+  border-color: #7c5cff;
+}
+
+.pairing-btn.primary {
+  background: #7c5cff;
+  border-color: #7c5cff;
+  color: #fff;
+}
+
+.pairing-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.pairing-status {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+  min-height: 1em;
+}
+
+.pairing-status.pairing-ok {
+  color: #34d399;
+}
+
+.pairing-status.pairing-err {
+  color: #f87171;
+}

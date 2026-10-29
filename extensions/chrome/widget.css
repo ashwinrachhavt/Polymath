@@ -569,43 +569,9 @@
   transform: rotate(45deg);
 }
 
-/* ── API key panel (2026-10-29) ───────────────────────────────────── */
-
-#alfred-key-panel {
-  margin: 0 0 12px;
-  padding: 10px;
-  background: var(--alfred-bg);
-  border: 1px solid var(--alfred-border);
-  border-radius: var(--alfred-radius);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.alfred-key-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--alfred-text-muted);
-}
-
-#alfred-key-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  background: var(--alfred-surface);
-  border: 1px solid var(--alfred-border);
-  border-radius: 6px;
-  color: var(--alfred-text);
-  font-family: var(--alfred-font);
-  font-size: 13px;
-}
-
-#alfred-key-input:focus {
-  outline: none;
-  border-color: var(--alfred-accent);
-}
+/* ── API key panel (2026-10-29, removed 2026-10-30): pairing moved to the
+   extension side panel — an in-page input was readable by host-page scripts
+   (PR #359 Critical). The dock's 🔑 now opens the side panel instead. ── */
 
 .alfred-capture-item-parked {
   border-color: var(--alfred-warning);

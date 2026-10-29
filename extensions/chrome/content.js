@@ -140,64 +140,26 @@
   let dock = null;
   let dockBuilt = false;
 
-  function buildKeyPanel() {
-    const existing = qs("#alfred-key-panel");
-    if (existing) {
-      existing.remove();
-      const btn = qs("#alfred-key-toggle");
-      if (btn) btn.setAttribute("aria-expanded", "false");
+  /**
+   * The 🔑 opens pairing in the EXTENSION side panel, never in this page:
+   * an input injected into the page DOM is readable by host-page scripts
+   * while the user types, even with type="password" (PR #359 Critical).
+   * The worker sets a pairingRequested flag and opens the panel; the panel
+   * shows its pairing form on open and clears the flag.
+   */
+  async function openKeySettings() {
+    if (!contextAlive()) {
+      markStale();
+      showToast("The extension was updated — reload this tab first (⌘R).", "warning");
       return;
     }
-    const body = qs("#alfred-dock-body");
-    if (!body) return;
-    const panel = el("div", { id: "alfred-key-panel" }, [
-      el("label", { class: "alfred-key-label", for: "alfred-key-input" }, "Polymath API key"),
-      el("input", {
-        id: "alfred-key-input",
-        type: "password",
-        placeholder: "axm_… paste from Settings → Account",
-        autocomplete: "off",
-      }),
-      el("div", { class: "alfred-btn-row" }, [
-        el("button", {
-          class: "alfred-btn alfred-btn-primary",
-          onClick: async () => {
-            const input = qs("#alfred-key-input");
-            const value = input ? input.value.trim() : "";
-            if (!value) {
-              showToast("Paste a key first, or use the built-in key button.", "warning");
-              return;
-            }
-            await AlfredAPI.setToken(value);
-            panel.remove();
-            const btn = qs("#alfred-key-toggle");
-            if (btn) btn.setAttribute("aria-expanded", "false");
-            showToast("Key saved. Retrying parked captures…", "success");
-            await retryParkedCaptures();
-            refreshRecentCaptures();
-            checkConnection();
-          },
-        }, "Save key"),
-        el("button", {
-          class: "alfred-btn alfred-btn-secondary",
-          onClick: async () => {
-            // Clear the stored token so the first-run preload re-pairs.
-            await AlfredAPI.setToken(null);
-            await AlfredAPI.ensureTokenPreloaded();
-            panel.remove();
-            showToast("Re-paired with the built-in key. Retrying parked captures…", "success");
-            await retryParkedCaptures();
-            refreshRecentCaptures();
-            checkConnection();
-          },
-        }, "Use built-in key"),
-      ]),
-    ]);
-    body.prepend(panel);
-    const input = qs("#alfred-key-input");
-    if (input) input.focus();
-    const btn = qs("#alfred-key-toggle");
-    if (btn) btn.setAttribute("aria-expanded", "true");
+    try {
+      await chrome.runtime.sendMessage({ type: "OPEN_KEY_SETTINGS" });
+      showToast("Pairing opened in the Polymath side panel →", "info");
+    } catch {
+      // Race: context died between the check and the call — same recovery.
+      markStale();
+    }
   }
 
   function buildDock() {
@@ -217,8 +179,7 @@
             id: "alfred-key-toggle",
             class: "alfred-dock-btn-icon",
             title: "Set API key",
-            "aria-expanded": "false",
-            onClick: buildKeyPanel,
+            onClick: openKeySettings,
           }, "\U0001F511"),
           el("button", {
             class: "alfred-dock-btn-icon",
@@ -331,7 +292,7 @@
         li.classList.add("alfred-capture-item-parked");
         li.style.cursor = "pointer";
         li.title = "Click to set your API key and retry";
-        li.addEventListener("click", () => buildKeyPanel());
+        li.addEventListener("click", () => openKeySettings());
       }
       list.appendChild(li);
     }

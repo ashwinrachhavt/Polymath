@@ -16,6 +16,20 @@
     <button id="close-btn" class="icon-btn" aria-label="Close side panel" title="Close">&times;</button>
   </header>
 
+  <!-- Pairing (API key) — shown on demand; the input lives in this extension
+       document so host-page scripts can never read it (PR #359 Critical). -->
+  <div id="pairing-section" hidden>
+    <span class="context-label">PAIRING</span>
+    <p class="context-title">Connect this browser to Polymath</p>
+    <p class="pairing-hint">Paste the key from Polymath → Settings → Account, or re-pair with the built-in key.</p>
+    <input type="password" id="pairing-token-input" placeholder="axm_… from Polymath → Settings" autocomplete="off">
+    <div class="pairing-row">
+      <button id="btn-pairing-save" class="pairing-btn primary">Save key</button>
+      <button id="btn-pairing-builtin" class="pairing-btn">Use built-in key</button>
+    </div>
+    <p id="pairing-status" class="pairing-status" role="status"></p>
+  </div>
+
   <!-- Article context card -->
   <div id="article-context" hidden>
     <span class="context-label">READING</span>
@@ -65,6 +79,7 @@
   <!-- Toast container -->
   <div id="toast-container"></div>
 
+  <script src="api.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
