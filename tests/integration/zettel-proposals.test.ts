@@ -22,7 +22,7 @@ vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(asy
 
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { acceptZettel, listZettelProposals, proposeZettels, rejectZettel, zettelDedupeKey } from "@/domains/knowledge/zettels";
-import { claimEvidence, claims, concepts, sources, zettelProposals } from "@/domains/knowledge/schema";
+import { artifacts, claimEvidence, claims, concepts, sources, zettelProposals } from "@/domains/knowledge/schema";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
 
@@ -74,6 +74,22 @@ suite("proposeZettels (real Postgres)", () => {
       { title: "Real", claim: "real", quote: Q2 },
     ]) });
     expect(rows.map((r) => r.title)).toEqual(["Real"]);
+  });
+
+  it("a concurrent double-submit still creates exactly one artifact set (§11)", async () => {
+    const auth = await workspace();
+    const doc = await seed(auth);
+    const [p] = await proposeZettels(auth, { documentId: doc.id, extractor: extractor([{ title: "Rent", claim: "c", quote: Q1 }]) });
+    const results = await Promise.allSettled([
+      acceptZettel(auth, { proposalId: p.id }),
+      acceptZettel(auth, { proposalId: p.id }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    const db = holder.db!;
+    expect(await db.select({ id: artifacts.id }).from(artifacts).where(eq(artifacts.workspaceId, auth.workspaceId))).toHaveLength(1);
+    expect(await db.select({ id: claims.id }).from(claims).where(eq(claims.workspaceId, auth.workspaceId))).toHaveLength(1);
+    expect(await db.select().from(claimEvidence).where(eq(claimEvidence.workspaceId, auth.workspaceId))).toHaveLength(1);
   });
 
   it("keeps negation verbatim: a paraphrase that drops the 'not' never lands (§11)", async () => {

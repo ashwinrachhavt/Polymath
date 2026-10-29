@@ -19,6 +19,7 @@ import {
   type StreamState,
 } from "./creation-stream-reducer";
 import { createSittingStore, type SittingStore } from "./sitting-store";
+import { createIdleDebouncer } from "./idle-debounce";
 import { isFinalizeKey, suggestionKeyAction } from "./keyboard";
 
 /*
@@ -59,7 +60,6 @@ export function WritingSurface({
   // writer compares, keeps theirs, or takes the server's - never a clobber.
   const [conflict, setConflict] = useState<{ serverPlainText: string; serverVersion: number; serverUpdatedAt: string } | null>(null);
   const [comparing, setComparing] = useState(false);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestionRef = useRef<HTMLDivElement | null>(null);
   const [suggestionFocused, setSuggestionFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -210,16 +210,17 @@ export function WritingSurface({
     setDecompNote(parts.length ? `Committed: ${parts.join(", ")}.` : "Nothing committed.");
   }, [sittingId]);
 
-  const schedulePause = useCallback(() => {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    // §14.2: the debounce fires Track B exactly once per pause.
-    idleTimer.current = setTimeout(() => { void firePause(); }, CREATION_IDLE_MS);
-  }, [firePause]);
+  // §14.2: the debounce fires Track B exactly once per pause. The ref keeps
+  // every fire on the latest firePause without re-arming a pending pause.
+  const firePauseRef = useRef(firePause);
+  firePauseRef.current = firePause;
+  const pauseDebounce = useMemo(() => createIdleDebouncer(() => { void firePauseRef.current(); }, CREATION_IDLE_MS), []);
+  const schedulePause = pauseDebounce.signal;
 
   useEffect(() => () => {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
+    pauseDebounce.cancel();
     abortRef.current?.abort();
-  }, []);
+  }, [pauseDebounce]);
 
   // §14.3: Enter keeps the proposal (one new authored version), Escape drops it.
   const adopt = useCallback(async (keep: boolean) => {
@@ -255,7 +256,7 @@ export function WritingSurface({
       // §14.13: Cmd/Ctrl+Enter finalizes the card - the pause fires now.
       if (isFinalizeKey(e) && !streamState.proposal) {
         e.preventDefault();
-        if (idleTimer.current) clearTimeout(idleTimer.current);
+        pauseDebounce.cancel();
         void firePause();
         return;
       }
@@ -267,7 +268,7 @@ export function WritingSurface({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [streamState.proposal, suggestionFocused, adopt, firePause]);
+  }, [streamState.proposal, suggestionFocused, adopt, firePause, pauseDebounce]);
 
   // §14.4: keep mine = save my text as a new version on top of the server's;
   // take server = adopt the server's text and version as my base.
