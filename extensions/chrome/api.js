@@ -122,6 +122,21 @@ const AlfredAPI = {
     await this._setStorage("axiomToken", clean || null);
   },
 
+  /**
+   * First-run pairing: an empty token picks up the owner's companion key so
+   * the extension works before anyone opens Settings. Replace the constant
+   * when re-pairing; a stored value always wins, so the field stays editable.
+   */
+  async ensureTokenPreloaded() {
+    const CONFIGURED_TOKEN = "axm_0PV9s4CkRn_c.7O5TVMU3HAbPQwRxswZL3wKlsbnx4zMl5Aa5X5ST7O0";
+    try {
+      const stored = await this._getStorage("axiomToken");
+      if (!stored) await this.setToken(CONFIGURED_TOKEN);
+    } catch {
+      // Storage unavailable: nothing to preload.
+    }
+  },
+
   /** Generic fetch wrapper with JSON parsing and error handling. */
   async _fetch(path, options = {}) {
     const base = await this.base();
