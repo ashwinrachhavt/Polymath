@@ -4,7 +4,9 @@ import {
   GenerationUnconfiguredError,
   type GenerateInput,
   type GenerationProvider,
+  type StreamChunk,
 } from "./provider";
+import { sseLines } from "./sse";
 
 /*
  * The verified free-first generation route (ASH-187): the Gemini Developer
@@ -26,6 +28,7 @@ const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 type GeminiResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
 };
 
 export function geminiProvider(
@@ -56,7 +59,33 @@ export function geminiProvider(
       if (!response.ok) throw new GenerationRequestError("gemini", response.status);
       const body = (await response.json().catch(() => null)) as GeminiResponse | null;
       const text = (body?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-      return { text };
+      return {
+        text,
+        usage: { inputTokens: body?.usageMetadata?.promptTokenCount, outputTokens: body?.usageMetadata?.candidatesTokenCount },
+      };
+    },
+    async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
+      const response = await fetchImpl(`${ENDPOINT}/${model}:streamGenerateContent?alt=sse`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          ...(input.system ? { systemInstruction: { parts: [{ text: input.system }] } } : {}),
+          contents: [{ role: "user", parts: [{ text: input.prompt }] }],
+          generationConfig: { temperature: input.temperature ?? 0 },
+        }),
+        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new GenerationRequestError("gemini", response.status);
+      if (!response.body) return;
+      for await (const data of sseLines(response.body)) {
+        try {
+          const parsed = JSON.parse(data) as GeminiResponse;
+          const text = (parsed.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+          if (text) yield { type: "token", content: text };
+        } catch {
+          // A malformed SSE frame skips; the stream contract stays line-shaped.
+        }
+      }
     },
   };
 }

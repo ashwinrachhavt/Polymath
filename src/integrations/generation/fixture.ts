@@ -1,4 +1,4 @@
-import type { GenerationProvider, GenerateInput } from "./provider";
+import type { GenerationProvider, GenerateInput, StreamChunk } from "./provider";
 import { GenerationUnconfiguredError } from "./provider";
 
 /*
@@ -104,21 +104,33 @@ function designBriefAnswer(): string {
   });
 }
 
+function answerFor(system: string): string {
+  if (system.includes("debrief a meeting transcript")) return debriefAnswer();
+  if (system.includes("meeting prep report")) return prepAnswer();
+  if (system.includes("long-form writing")) return writingAnswer();
+  if (system.includes("learning goal")) return learningPathAnswer();
+  if (system.includes("company profile card set")) return companyProfileAnswer();
+  if (system.includes("person profile card set")) return personProfileAnswer();
+  if (system.includes("Linear issue proposal")) return linearIssueAnswer();
+  if (system.includes("research card into a design brief")) return designBriefAnswer();
+  // The sitting creation stream (plan §8) answers any prompt from a sitting:
+  // journeys type, pause and watch the suggestion arrive without a model key.
+  if (system.includes("zettel sitting")) return "A fixture suggestion: name the load-bearing idea and link it to its source.";
+  throw new GenerationUnconfiguredError();
+}
+
 export function fixtureProvider(): GenerationProvider {
   return {
     name: "fixture:e2e",
     registryId: "fixture",
     async generate(input: GenerateInput): Promise<{ text: string }> {
-      const system = input.system ?? "";
-      if (system.includes("debrief a meeting transcript")) return { text: debriefAnswer() };
-      if (system.includes("meeting prep report")) return { text: prepAnswer() };
-      if (system.includes("long-form writing")) return { text: writingAnswer() };
-      if (system.includes("learning goal")) return { text: learningPathAnswer() };
-      if (system.includes("company profile card set")) return { text: companyProfileAnswer() };
-      if (system.includes("person profile card set")) return { text: personProfileAnswer() };
-      if (system.includes("Linear issue proposal")) return { text: linearIssueAnswer() };
-      if (system.includes("research card into a design brief")) return { text: designBriefAnswer() };
-      throw new GenerationUnconfiguredError();
+      return { text: answerFor(input.system ?? "") };
+    },
+    async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
+      const text = answerFor(input.system ?? "");
+      yield { type: "thinking", content: "Reading your draft…" };
+      // Word-shaped chunks keep the stream contract honest for the reducer.
+      for (const word of text.split(" ")) yield { type: "token", content: `${word} ` };
     },
   };
 }

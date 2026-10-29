@@ -289,14 +289,17 @@ const REGISTRY: readonly ProviderEntry[] = [
     id: "cloudflare-workers-ai",
     capability: "generate",
     freeClass: "recurring",
-    enabled: false,
+    enabled: true,
     allowPaidUsage: false,
     allowPaidFallback: false,
     sensitiveDataAllowed: false,
     quota: { unit: "neurons", allowance: 10000, renewal: "daily" },
     verifiedAt: CHECKED,
     verificationSource: "https://developers.cloudflare.com/workers-ai/platform/pricing/",
-    notes: "10,000 neurons/day free confirmed (resets 00:00 UTC). Neurons are not tokens. No adapter yet.",
+    notes:
+      "10,000 neurons/day free confirmed (resets 00:00 UTC). Neurons are not tokens. " +
+      "Adapter: integrations/generation/cloudflare.ts — explicit opt-in via " +
+      "GENERATION_PROVIDER=cloudflare only; never auto-selected (plan 2026-10-29 §8).",
   },
   {
     id: "cerebras",
