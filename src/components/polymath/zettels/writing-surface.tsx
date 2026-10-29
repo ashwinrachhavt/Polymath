@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { CREATION_IDLE_MS } from "@/domains/knowledge/sittings";
+import { CREATION_IDLE_MS, DECOMPOSE_PASTE_CHARS } from "@/domains/knowledge/sittings";
+import type { DecompositionAnalysis, DecompositionDecision } from "@/domains/knowledge/decomposition";
+import {
+  analyzePasteAction,
+  commitDecompositionAction,
+  saveSittingCardAction,
+} from "@/app/(workspace)/polymath/knowledge/zettels/session/actions";
+import { DecompositionPanel } from "./decomposition-panel";
 import type { SittingEvent } from "@/domains/knowledge/sitting-events";
 import {
   initialStreamState,
@@ -12,7 +19,6 @@ import {
   type StreamState,
 } from "./creation-stream-reducer";
 import { createSittingStore, type SittingStore } from "./sitting-store";
-import { saveSittingCardAction } from "@/app/(workspace)/polymath/knowledge/zettels/session/actions";
 import { isFinalizeKey, suggestionKeyAction } from "./keyboard";
 
 /*
@@ -58,11 +64,36 @@ export function WritingSurface({
   const [suggestionFocused, setSuggestionFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const idemKey = useRef(`sitting-${sittingId}-${Date.now()}`);
+  /*
+   * §14.6 decomposition review: a large paste keeps its text in the editor
+   * (original untouched, §4) while analysis proposes extractions. Analysis
+   * writes nothing; canceling the banner just stops watching - there is
+   * nothing server-side to undo.
+   */
+  const [decomp, setDecomp] = useState<
+    | { status: "analyzing" }
+    | { status: "review"; analysis: DecompositionAnalysis }
+    | { status: "failed"; message: string; text: string }
+    | null
+  >(null);
+  const [committing, setCommitting] = useState(false);
+  const [decompNote, setDecompNote] = useState<string | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [StarterKit, Placeholder.configure({ placeholder: seededFromDocument ? "Extract proposals from this document" : "Write the idea as it comes…" })],
     content: initialDraft.current || undefined,
+    editorProps: {
+      handlePaste: (_view, event) => {
+        // Never preventDefault: the original paste always lands (§4). Over
+        // the threshold we additionally offer extraction review.
+        const pasted = event.clipboardData?.getData("text/plain");
+        if (pasted && pasted.length >= DECOMPOSE_PASTE_CHARS) {
+          setTimeout(() => void runAnalysis(pasted), 0);
+        }
+        return false;
+      },
+    },
     onUpdate: ({ editor }) => {
       store.getState().setDraft(editor.getText());
       schedulePause();
@@ -145,6 +176,39 @@ export function WritingSurface({
       setReading(false);
     }
   }, [apply, artifactId, artifactVersion, editor, sittingId, store]);
+
+  const runAnalysis = useCallback(async (text: string) => {
+    setDecomp({ status: "analyzing" });
+    setDecompNote(null);
+    const result = await analyzePasteAction({ text });
+    if ("error" in result) {
+      setDecomp({ status: "failed", message: result.message, text });
+      return;
+    }
+    if (result.analysis.candidates.length === 0 && result.analysis.omitted.length === 0) {
+      setDecomp(null);
+      setDecompNote("No extractable structure found - your text stays as-is.");
+      return;
+    }
+    setDecomp({ status: "review", analysis: result.analysis });
+  }, []);
+
+  const commitDecisions = useCallback(async (analysis: DecompositionAnalysis, decisions: DecompositionDecision[]) => {
+    setCommitting(true);
+    const result = await commitDecompositionAction({ analysis, decisions, idempotencyKey: `${idemKey.current}-decomp` });
+    setCommitting(false);
+    if ("error" in result) {
+      setDecompNote(result.message);
+      return;
+    }
+    const parts: string[] = [];
+    if (result.created.length) parts.push(`${result.created.length} created`);
+    if (result.merged.length) parts.push(`${result.merged.length} merged`);
+    if (result.linked.length) parts.push(`${result.linked.length} linked`);
+    if (result.skipped.length) parts.push(`${result.skipped.length} skipped`);
+    setDecomp(null);
+    setDecompNote(parts.length ? `Committed: ${parts.join(", ")}.` : "Nothing committed.");
+  }, []);
 
   const schedulePause = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);
@@ -260,8 +324,39 @@ export function WritingSurface({
           )}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 font-serif text-lg leading-relaxed">
-        <EditorContent editor={editor} />
+      {decomp?.status === "analyzing" && (
+        <div role="status" className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 text-sm">
+          <span>Analyzing paste - review proposed extractions</span>
+          <button className="min-h-11 px-2 underline" onClick={() => setDecomp(null)}>Cancel</button>
+        </div>
+      )}
+      {decomp?.status === "failed" && (
+        <div role="alert" className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2 text-sm">
+          <span className="text-destructive">{decomp.message}</span>
+          <span className="flex gap-2">
+            <button className="min-h-11 px-2 underline" onClick={() => void runAnalysis(decomp.text)}>Retry</button>
+            <button className="min-h-11 px-2 underline" onClick={() => setDecomp(null)}>Dismiss</button>
+          </span>
+        </div>
+      )}
+      {decompNote && !decomp && (
+        <div role="status" className="flex items-center justify-between border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+          <span>{decompNote}</span>
+          <button className="min-h-11 px-2 underline" onClick={() => setDecompNote(null)}>OK</button>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 font-serif text-lg leading-relaxed">
+          <EditorContent editor={editor} />
+        </div>
+        {decomp?.status === "review" && (
+          <DecompositionPanel
+            analysis={decomp.analysis}
+            committing={committing}
+            onCommit={(decisions) => void commitDecisions(decomp.analysis, decisions)}
+            onDismiss={() => setDecomp(null)}
+          />
+        )}
       </div>
       {reading && <p className="px-6 pb-2 text-sm text-muted-foreground">Reading your draft…</p>}
       {streamState.proposal && (

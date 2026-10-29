@@ -3,6 +3,13 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getAuthContext } from "@/lib/auth";
+import {
+  commitDecomposition,
+  decomposePaste,
+  PASTE_TOO_LONG,
+  type DecompositionAnalysis,
+} from "@/domains/knowledge/decomposition";
+import { DECOMPOSE_MAX_CHARS, SittingError } from "@/domains/knowledge/sittings";
 import { requireRole } from "@/lib/auth/guards";
 import {
   addCardToSitting,
@@ -98,4 +105,58 @@ export async function saveSittingCardAction(raw: unknown): Promise<SaveCardResul
   });
   await addCardToSitting(auth, { sittingId: sitting.id, artifactId: created.id, role: "created_here" });
   return { artifactId: created.id, versionNumber: 1 };
+}
+
+const AnalyzePaste = z.object({ text: z.string().min(1).max(DECOMPOSE_MAX_CHARS + 1) });
+const CommitDecomposition = z.object({
+  analysis: z.unknown(),
+  decisions: z.array(
+    z.discriminatedUnion("action", [
+      z.object({ candidateId: z.string(), action: z.literal("skip") }),
+      z.object({ candidateId: z.string(), action: z.literal("create") }),
+      z.object({ candidateId: z.string(), action: z.literal("merge"), targetArtifactId: z.string().uuid() }),
+      z.object({ candidateId: z.string(), action: z.literal("link"), targetArtifactId: z.string().uuid() }),
+    ]),
+  ),
+  idempotencyKey: z.string().min(8).max(200),
+});
+
+/*
+ * §14.6: a paste over DECOMPOSE_PASTE_CHARS offers extraction review. The
+ * analysis itself writes nothing (§4: proposal-generating compiler); the
+ * over-cap rejection is the exact §15.1 copy, never a silent truncation.
+ */
+export async function analyzePasteAction(raw: unknown): Promise<{ analysis: DecompositionAnalysis } | { error: string; message: string }> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = AnalyzePaste.safeParse(raw);
+  if (!input.success) return { error: "invalid_input", message: "Nothing to analyze." };
+  if (input.data.text.length > DECOMPOSE_MAX_CHARS) return { error: "too_long", message: PASTE_TOO_LONG };
+  try {
+    return { analysis: await decomposePaste(auth, input.data.text) };
+  } catch (cause) {
+    if (cause instanceof SittingError) return { error: cause.code, message: cause.message };
+    return { error: "decompose_failed", message: "Analysis failed - nothing was written. Retry when ready." };
+  }
+}
+
+/** §14.6 commit: the reviewer's decisions, batch-idempotent on the dedupe keys. */
+export async function commitDecompositionAction(raw: unknown): Promise<
+  | { created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[]; merged: { candidateId: string; targetId: string; versionNumber: number }[]; linked: { candidateId: string; id: string; targetId: string }[]; skipped: string[] }
+  | { error: string; message: string }
+> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const input = CommitDecomposition.safeParse(raw);
+  if (!input.success) return { error: "invalid_input", message: "The decisions could not be read." };
+  try {
+    return await commitDecomposition(auth, {
+      analysis: input.data.analysis as DecompositionAnalysis,
+      decisions: input.data.decisions,
+      idempotencyKey: input.data.idempotencyKey,
+    });
+  } catch (cause) {
+    if (cause instanceof SittingError) return { error: cause.code, message: cause.message };
+    return { error: "commit_failed", message: "Commit failed partway-safe: accepted cards keep their idempotency keys, so retrying never duplicates." };
+  }
 }
