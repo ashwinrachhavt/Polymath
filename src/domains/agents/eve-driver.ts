@@ -75,7 +75,7 @@ function eveTarget(): EveTarget | null {
     for (const file of ["dev-server-state.v1.json", "next-dev-server.json"]) {
       try {
         const parsed = JSON.parse(
-          fs.readFileSync(`${process.cwd()}/eve/alfred/.eve/${file}`, "utf8"),
+          fs.readFileSync(`${process.cwd()}/eve/polymath/.eve/${file}`, "utf8"),
         ) as { url?: string; origin?: string };
         const base = (parsed.url ?? parsed.origin)?.replace(/\/+$/, "");
         if (base && isEveAlive(base)) return { kind: "standalone", base };
@@ -120,7 +120,7 @@ export function eveSessionEndpoint(input: {
   /** When true the response stops at the durable tail instead of following. */
   follow?: boolean;
 }): { url: string; headers: Record<string, string> } {
-  const mount = eveMount(input.agentName ?? "alfred");
+  const mount = eveMount(input.agentName ?? "polymath");
   const params = new URLSearchParams();
   if (input.startIndex !== undefined) params.set("startIndex", String(input.startIndex));
   if (input.follow === false) params.set("follow", "false");
@@ -175,7 +175,7 @@ export class SessionNotActiveError extends Error {
   }
 }
 
-export function createEveDriver(agentName = "alfred"): SessionDriver {
+export function createEveDriver(agentName = "polymath"): SessionDriver {
   return {
     async start({ sessionId, objective, auth, instructions, policy }) {
       // The run id and the skill pin ride in the signed token rather than in a
@@ -275,13 +275,17 @@ export function createEveDriver(agentName = "alfred"): SessionDriver {
 }
 
 /*
- * Which eve agent serves a profile. Alfred keeps his own agent; every other
+ * Which eve agent serves a profile. Polymath keeps its own agent; every other
  * profile name (specialist:<slug>, specialist:custom:<name>) runs on the
  * shared specialist agent, which takes its role from the brief the driver
  * sends with the create call. This convention is the routing table — it needs
  * no column, and a profile cannot name itself onto the wrong agent because
- * "alfred" is only ever ensured by ensureProfile.
+ * "polymath" is only ever ensured by ensureProfile.
+ *
+ * Lineage (2026-10-29 rename): profiles minted before the rename may still be
+ * named "alfred"; they resolve to the renamed polymath mount so historical
+ * runs and sessions keep working (eve/alfred is now eve/polymath).
  */
 export function eveAgentForProfile(profileName: string): string {
-  return profileName === "alfred" ? "alfred" : "specialist";
+  return profileName === "polymath" || profileName === "alfred" ? "polymath" : "specialist";
 }

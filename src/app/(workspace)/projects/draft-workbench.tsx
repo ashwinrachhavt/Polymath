@@ -185,7 +185,7 @@ export function DraftWorkbench({
           <ul className="flex flex-col gap-1">
             {sources.map((source) => (
               <li key={source.documentId} className="flex items-baseline gap-2 text-[13px]">
-                <a href={`/alfred/knowledge?doc=${source.documentId}`} className="underline underline-offset-2 hover:text-foreground">
+                <a href={`/polymath/knowledge?doc=${source.documentId}`} className="underline underline-offset-2 hover:text-foreground">
                   {source.title}
                 </a>
                 {source.pinnedHash ? <span className="font-mono text-muted-foreground text-xs">pinned {source.pinnedHash.slice(0, 8)}</span> : null}

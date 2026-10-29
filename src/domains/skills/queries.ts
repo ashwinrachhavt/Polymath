@@ -5,7 +5,7 @@ import { skills, type Skill, type SkillFile } from "./schema";
 /*
  * Reads for the skills surface and for the Eve resolver.
  *
- * Deliberately free of Next-only imports: `eve/alfred` loads `loadPinnedSkill`
+ * Deliberately free of Next-only imports: `eve/polymath` loads `loadPinnedSkill`
  * through relative paths into this module, and a server action or `next/*`
  * import here would drag the request runtime into that bundle.
  */

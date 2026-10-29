@@ -1,0 +1,34 @@
+import { Suspense } from "react";
+import { notFound, redirect } from "next/navigation";
+import PolymathScreen from "@/components/products/polymath/polymath-screen";
+import { products } from "@/lib/products";
+
+type SearchParams = Promise<{ id?: string | string[] }>;
+
+/*
+ * Both params and searchParams are awaited inside the boundary: Next 16 warns
+ * when URL data is read outside Suspense because it blocks instant
+ * navigation. An unknown screen still renders the not-found boundary.
+ */
+async function SelectedScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
+  const { screen } = await params;
+  const product = products.find((item) => item.id === "polymath");
+  if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
+  const query = await searchParams;
+  const initialId = Array.isArray(query.id) ? query.id[0] : query.id;
+  // B04 (ASH-141): the notebook merged onto the canonical artifact rows, now
+  // at /polymath/notes; the preview screen hands off instead of holding a
+  // second, browser-local copy of the same notes.
+  if (screen === "notebook") redirect(initialId ? `/polymath/notes?id=${encodeURIComponent(initialId)}` : "/polymath/notes");
+  // D18 (ASH-144): the source library merged onto canonical documents at
+  // /polymath/library; the preview screen's browser-local sources hand off the
+  // same way the notebook's notes did.
+  if (screen === "library") redirect("/polymath/library");
+  // Files: the document engine as a file manager, a canonical route like the library.
+  if (screen === "files") redirect("/polymath/files");
+  return <PolymathScreen key={`${screen}-${initialId || ""}`} screen={screen} initialId={initialId}/>;
+}
+
+export default function PolymathProductPage({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
+  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening record selection…</p>}><SelectedScreen params={params} searchParams={searchParams}/></Suspense>;
+}

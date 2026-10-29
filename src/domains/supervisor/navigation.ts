@@ -45,11 +45,11 @@ export function parseNavigationIntent(message: string): NavigationIntent | null 
 /** Where the surface lives today; a card in the thread links out honestly. */
 export const SURFACE_HREF: Record<SurfaceKind, string> = {
   tasks: "/neuralflow/work",
-  notes: "/alfred/notes",
+  notes: "/polymath/notes",
   calendar: "/command-center/day",
   runs: "/activity",
   decisions: "/",
-  library: "/alfred/library",
+  library: "/polymath/library",
 };
 
 export const SURFACE_LABEL: Record<SurfaceKind, string> = {

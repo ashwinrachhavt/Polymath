@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { STUBBED_TOOLS } from "../../eve/alfred/evals/stubs";
+import { STUBBED_TOOLS } from "../../eve/polymath/evals/stubs";
 
 /*
  * Every authored tool must have a stub, because eve's stub layer runs the real
@@ -22,7 +22,7 @@ import { STUBBED_TOOLS } from "../../eve/alfred/evals/stubs";
  * `documents_search`; `tools/wiki/read.ts` would be `wiki-read`.
  */
 
-const TOOLS_DIR = fileURLToPath(new URL("../../eve/alfred/agent/tools", import.meta.url));
+const TOOLS_DIR = fileURLToPath(new URL("../../eve/polymath/agent/tools", import.meta.url));
 const TOOL_SUFFIX = ".ts";
 
 function toolFiles(dir: string): string[] {

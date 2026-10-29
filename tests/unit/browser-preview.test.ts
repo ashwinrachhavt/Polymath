@@ -70,6 +70,6 @@ describe("browser-only UI preview", () => {
   it("has unique product routes for every visible destination", () => {
     const routes = products.flatMap((p) => p.destinations.map((d) => productHref(p, d.slug)));
     expect(new Set(routes).size).toBe(routes.length);
-    expect(products.map((p) => p.id)).toEqual(["command-center", "neuralflow", "alfred"]);
+    expect(products.map((p) => p.id)).toEqual(["command-center", "neuralflow", "polymath"]);
   });
 });

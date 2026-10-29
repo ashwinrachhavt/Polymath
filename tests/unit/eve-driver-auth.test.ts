@@ -60,7 +60,7 @@ describe("verified workspace binding to Eve", () => {
 
   it("the Eve channel refuses spike headers, missing tokens and unverifiable members", async () => {
     vi.resetModules();
-    const { authenticators } = await import("../../eve/alfred/agent/channels/eve");
+    const { authenticators } = await import("../../eve/polymath/agent/channels/eve");
     const bridge = authenticators[0];
     const { verifyWorkspaceBinding: verify } = await import("@/domains/identity/resolve");
     expect(await bridge(new Request("https://eve.test/s", { headers: { "x-spike-clerk-user-id": "dev-user" } }))).toBeNull();
@@ -79,7 +79,7 @@ describe("verified workspace binding to Eve", () => {
   it("production never mounts localDev", async () => {
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "production");
-    const { authenticators } = await import("../../eve/alfred/agent/channels/eve");
+    const { authenticators } = await import("../../eve/polymath/agent/channels/eve");
     expect(authenticators).toHaveLength(1);
     expect(mocks.localDev).not.toHaveBeenCalled();
   });

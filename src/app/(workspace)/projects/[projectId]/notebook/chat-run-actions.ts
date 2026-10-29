@@ -40,11 +40,11 @@ export async function startNotebookRun(input: { projectId: string; title: string
   if (unavailable) return { ok: false, error: unavailable };
 
   try {
-    await ensureProfile(auth.workspaceId, "alfred");
-    const engine = createEngine(createEveDriver(eveAgentForProfile("alfred")));
+    await ensureProfile(auth.workspaceId, "polymath");
+    const engine = createEngine(createEveDriver(eveAgentForProfile("polymath")));
     const { runId } = await engine.start({
       auth,
-      profileName: "alfred",
+      profileName: "polymath",
       objective: notebookChatObjective(parsed.title),
       subjects: [{ type: "project", id: parsed.projectId }],
       estimateUsd: "0.25",

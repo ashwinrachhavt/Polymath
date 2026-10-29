@@ -71,7 +71,7 @@ artifact of kind `zettel` (ASH-174/ASH-184), so a note and a zettel are the
 same kind of thing — versioned, linkable, listed together in the notebook. The
 card carries a `source`-typed `artifact_links` edge back to its document with
 the quote as context. Reject writes only the decision. Controls live on the
-Knowledge screen (/alfred/knowledge).
+Knowledge screen (/polymath/knowledge).
 
 ## The note link graph
 
@@ -131,7 +131,7 @@ article version; re-ingesting unchanged text writes nothing. `lintWiki` is
 read-only: it reports archived-but-registered pages, articles whose source was
 archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
-capabilities; the surface is /alfred/wiki.
+capabilities; the surface is /polymath/wiki.
 
 ## Party resolution and assertions (ASH-128)
 

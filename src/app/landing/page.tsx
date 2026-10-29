@@ -59,7 +59,7 @@ export default async function LandingPage({
           <span className="text-[15px] font-semibold">Polymath</span>
         </span>
         <Link
-          href="/alfred"
+          href="/polymath"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           Open the app

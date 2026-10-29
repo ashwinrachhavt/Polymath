@@ -28,7 +28,7 @@ for (const vp of VIEWPORTS) {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
 
-    await page.goto("/alfred"); // provisions the dev owner before seeding
+    await page.goto("/polymath"); // provisions the dev owner before seeding
     await waitSettled(page);
 
     // Titles are unique per attempt: specs share the dev workspace with
@@ -94,5 +94,5 @@ for (const vp of VIEWPORTS) {
 test("the root sends the owner to the conversation", async ({ page }) => {
   await page.goto("/");
   await waitSettled(page);
-  await expect(page).toHaveURL(/\/alfred$/);
+  await expect(page).toHaveURL(/\/polymath$/);
 });

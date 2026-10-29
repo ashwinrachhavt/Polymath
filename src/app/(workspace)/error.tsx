@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 /*
- * Workspace-wide error boundary. apps/alfred and apps/command-center keep
+ * Workspace-wide error boundary. apps/polymath and apps/command-center keep
  * their more specific boundaries; this one catches every other destination so
  * a broken screen never falls through to the root error and loses the shell.
  */

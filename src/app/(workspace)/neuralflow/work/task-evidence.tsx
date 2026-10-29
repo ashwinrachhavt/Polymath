@@ -25,7 +25,7 @@ export function TaskEvidence({ items, taskId }: { items: Provenance; taskId: str
               {item.sourceUrl ? (
                 <span>{item.documentTitle}</span>
               ) : (
-                <Link href={`/alfred/files`} className="underline-offset-4 hover:underline">
+                <Link href={`/polymath/files`} className="underline-offset-4 hover:underline">
                   {item.documentTitle}
                 </Link>
               )}
@@ -52,7 +52,7 @@ export function TaskEvidence({ items, taskId }: { items: Provenance; taskId: str
         ))}
       </ul>
       <p className="mt-3 text-xs">
-        <Link href={`/alfred/files?task=${taskId}`} className="underline-offset-4 hover:underline">
+        <Link href={`/polymath/files?task=${taskId}`} className="underline-offset-4 hover:underline">
           See all documents linked to this task
         </Link>
       </p>

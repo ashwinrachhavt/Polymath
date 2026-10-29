@@ -16,7 +16,7 @@ import { capturesTag } from "@/lib/cache-tags";
  * "Generate zettels" from the inbox: one click over the open captures that
  * carry text. The action only queues the work - a model call never runs inside
  * the request - so the button returns as soon as the outbox rows commit, and
- * the proposals appear in the review queue at /alfred/knowledge/zettels.
+ * the proposals appear in the review queue at /polymath/knowledge/zettels.
  *
  * The client sends one idempotency key per click: a double-submit returns the
  * first answer and queues nothing new. Inside a request the outbox dispatch key
@@ -78,7 +78,7 @@ export async function generateZettelsAction(raw: {
 
   updateTag(capturesTag(auth));
   revalidatePath("/command-center/inbox");
-  revalidatePath("/alfred/knowledge/zettels");
+  revalidatePath("/polymath/knowledge/zettels");
 
   // A replay returns the first click's numbers; the sentence is the same either
   // way, so the person is not told their second click did something new.

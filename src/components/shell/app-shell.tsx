@@ -73,7 +73,7 @@ export function AppShell({
               "flex min-w-0 flex-1 flex-col",
               headerless && "min-h-0 overflow-hidden [flex-basis:0px]",
             )}
-            /* Sticky headers anchor below the top bar where one exists; /alfred routes
+            /* Sticky headers anchor below the top bar where one exists; /polymath routes
                render no top bar, so their anchor is the window's own top. */
             style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
           >

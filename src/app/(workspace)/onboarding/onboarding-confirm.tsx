@@ -40,7 +40,7 @@ export function OnboardingConfirm({
     try {
       const result = await confirmOnboardingBriefAction({
         brief: {
-          agentName: agentName.trim() || "Alfred",
+          agentName: agentName.trim() || "Polymath",
           role: role.trim(),
           tools: tools.split(/[,\n]/).map((tool) => tool.trim()).filter(Boolean),
           priorities: priorities.split(/[;\n]/).map((priority) => priority.trim()).filter(Boolean),
@@ -51,7 +51,7 @@ export function OnboardingConfirm({
         setError(result.message);
         return;
       }
-      router.replace("/alfred");
+      router.replace("/polymath");
     } catch {
       setError("Onboarding could not be saved. Check the connection and try again.");
     } finally {

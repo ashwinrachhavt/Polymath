@@ -94,7 +94,7 @@ async function startRun(
   const engine = engineModule.createEngine(stubDriver());
   return engine.start({
     auth: ownerAuth(userId, workspaceId),
-    profileName: "alfred",
+    profileName: "polymath",
     objective: "Use the pinned skill",
     subjects: [],
     estimateUsd: "0.0001",

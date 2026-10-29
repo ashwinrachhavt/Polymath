@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   EvalNetworkViolation,
   installNetworkGuard,
-} from "../../eve/alfred/evals/network-guard";
+} from "../../eve/polymath/evals/network-guard";
 import {
   assertEvalEnvironment,
   EvalEnvironmentViolation,
   quietStubs,
   STUBBED_TOOLS,
-} from "../../eve/alfred/evals/stubs";
+} from "../../eve/polymath/evals/stubs";
 
 /*
  * The two runtime guards, proven to fail closed. The static guard (coverage of

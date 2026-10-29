@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { StatementPanel } from "@/app/(workspace)/alfred/knowledge/statement-panel";
+import { StatementPanel } from "@/app/(workspace)/polymath/knowledge/statement-panel";
 
 /*
  * The panel's whole job is to make the verdict legible before the download, so

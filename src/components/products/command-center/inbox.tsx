@@ -31,7 +31,7 @@ export default function Inbox() {
     </Panel>
     <div className="flex flex-wrap items-end justify-between gap-3">
       <Field label="Triage status"><Select value={filter} onChange={(event) => setFilter(event.target.value as keyof typeof labels)} className="max-w-xs">{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
-      <Button variant="outline" asChild><Link href="/alfred/knowledge">Upload and extract documents</Link></Button>
+      <Button variant="outline" asChild><Link href="/polymath/knowledge">Upload and extract documents</Link></Button>
     </div>
     <Panel title={`${captures.length} ${captures.length === 1 ? "capture" : "captures"}`}>
       <div className="divide-y divide-border">{captures.map((capture) => <article key={capture.id} className="py-4 first:pt-0">
@@ -43,7 +43,7 @@ export default function Inbox() {
           <Button size="sm" variant="outline" onClick={() => { if (clarifyCapture(capture.id, "note")) notify("Note created in the library. Original material retained in the inbox."); }}>Make note</Button>
           <Button size="sm" variant="ghost" onClick={() => updateCapture(capture.id, { status: "ARCHIVED" })}>Archive</Button>
         </div>}
-        {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/alfred/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in Work" : "Open note in the assistant"}</Link></Button>}
+        {capture.derivedId && <Button size="sm" variant="outline" className="mt-3" asChild><Link href={capture.status === "TASK" ? `/neuralflow/work?task=${encodeURIComponent(capture.derivedId)}` : `/apps/polymath/notebook?id=${encodeURIComponent(capture.derivedId)}`}>{capture.status === "TASK" ? "Open task in Work" : "Open note in the assistant"}</Link></Button>}
         {capture.status === "ARCHIVED" && <Button className="mt-3" size="sm" variant="outline" onClick={() => updateCapture(capture.id, { status: "UNPROCESSED" })}>Restore capture</Button>}
       </article>)}</div>
       {!captures.length && <Empty title="Nothing in this view" description="Nothing in this view." />}

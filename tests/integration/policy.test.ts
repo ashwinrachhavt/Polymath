@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { actionProposals } from "@/domains/actions/schema";
 import { agentProfiles, agentQuestions, agentRuns, runEvents } from "@/domains/agents/schema";
 import { spendingPolicies, spendingReservations } from "@/domains/spending/schema";
-import { toolAllowed } from "../../eve/alfred/agent/lib/policy";
+import { toolAllowed } from "../../eve/polymath/agent/lib/policy";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*

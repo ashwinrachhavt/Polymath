@@ -20,7 +20,7 @@ import {
  * task body is Markdown edited through the same RichEditor island the Notes
  * surface uses (chrome "minimal"), so prose behaves identically in both
  * places without the task becoming a note. */
-const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), {
+const RichEditor = dynamic(() => import("@/components/products/polymath/rich-editor"), {
   ssr: false,
   loading: () => <div className="h-24 animate-pulse rounded-md border border-border bg-muted/40" />,
 });

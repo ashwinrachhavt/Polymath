@@ -5,7 +5,7 @@ import { escapeLike } from "@/lib/list-params";
 import { artifactVersions, artifacts, wikiPages } from "./schema";
 
 /*
- * The kept-outputs list behind /alfred/artifacts: everything the assistant
+ * The kept-outputs list behind /polymath/artifacts: everything the assistant
  * generated that this workspace kept. Kept means the artifact is live (never
  * archived) and carries a machine-authored status - a Studio draft or kept
  * draft, a wiki page, an accepted zettel. Human notes and raw saved answers

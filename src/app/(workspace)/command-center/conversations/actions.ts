@@ -12,5 +12,5 @@ export async function addConversationToKnowledgeAction(formData: FormData): Prom
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const { artifactId } = await syncThreadToGraph(auth, threadId);
-  redirect(`/alfred/notes?id=${artifactId}`);
+  redirect(`/polymath/notes?id=${artifactId}`);
 }

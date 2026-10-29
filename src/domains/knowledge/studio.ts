@@ -96,7 +96,7 @@ export async function startStudioGenerate(
 
   return engine.start({
     auth,
-    profileName: "alfred",
+    profileName: "polymath",
     objective,
     subjects: [{ type: "project", id: project.id }],
     estimateUsd: "0.50",

@@ -42,7 +42,7 @@ export function OnboardingInterview({
     setError(null);
     try {
       const result = await completeOnboardingAction({
-        agentName: agentName.trim() || "Alfred",
+        agentName: agentName.trim() || "Polymath",
         role: role.trim(),
         tools: tools
           .split(/[,\n]/)
@@ -57,7 +57,7 @@ export function OnboardingInterview({
         setError(result.message);
         return;
       }
-      router.replace("/alfred");
+      router.replace("/polymath");
     } catch {
       setError("Onboarding could not be saved. Check the connection and try again.");
     } finally {
@@ -93,7 +93,7 @@ export function OnboardingInterview({
           <Input
             value={agentName}
             onChange={(event) => setAgentName(event.target.value)}
-            placeholder="Alfred"
+            placeholder="Polymath"
             maxLength={60}
           />
         </label>

@@ -37,7 +37,7 @@ export async function startAutomationRun(input: { workspaceId: string; projectId
 
   const contextPrefix = buildProjectContextPrefix(project, memories);
 
-  await ensureProfile(input.workspaceId, "alfred");
+  await ensureProfile(input.workspaceId, "polymath");
   // The automation acts as the workspace's owner: the run is attributed to a
   // real user of this workspace, since engine.start needs a principal for the
   // policy snapshot and spend ceiling.
@@ -47,10 +47,10 @@ export async function startAutomationRun(input: { workspaceId: string; projectId
     .where(and(eq(memberships.workspaceId, input.workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")))
     .limit(1);
   if (!owner) throw new Error("The workspace has no owner to act as.");
-  const engine = createEngine(createEveDriver(eveAgentForProfile("alfred")));
+  const engine = createEngine(createEveDriver(eveAgentForProfile("polymath")));
   const { runId } = await engine.start({
     auth: { userId: owner.userId, workspaceId: input.workspaceId, role: "owner" },
-    profileName: "alfred",
+    profileName: "polymath",
     objective: `${contextPrefix}\n\nScheduled task:\n${input.prompt}`,
     subjects: [{ type: "project", id: project.id }],
     estimateUsd: "0.50",

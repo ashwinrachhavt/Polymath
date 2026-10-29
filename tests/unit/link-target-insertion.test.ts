@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linkTargetInsertion, sanitizeLinkText } from "@/components/products/alfred/link-target-insertion";
+import { linkTargetInsertion, sanitizeLinkText } from "@/components/products/polymath/link-target-insertion";
 
 /*
  * Row 36 follow-up: picker targets with a canonical href (captures, tasks)

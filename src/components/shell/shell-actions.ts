@@ -136,7 +136,7 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       id: row.id,
       label: row.title,
       context: "Document in Files",
-      href: `/alfred/files?doc=${row.id}`,
+      href: `/polymath/files?doc=${row.id}`,
     })),
     ...taskRows.map((row) => ({
       kind: "task" as const,
@@ -149,8 +149,8 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       kind: "note" as const,
       id: row.id,
       label: row.title,
-      context: "Note in Alfred",
-      href: `/alfred/notes?id=${row.id}`,
+      context: "Note in Polymath",
+      href: `/polymath/notes?id=${row.id}`,
     })),
     ...contactRows.map((row) => ({
       kind: "contact" as const,

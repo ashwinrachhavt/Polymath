@@ -88,7 +88,7 @@ describe("getVaultDocuments", () => {
       reviewKey: "needs_check",
       undecidedProposals: 2,
       docType: "agreement",
-      href: "/alfred/knowledge?doc=doc-1",
+      href: "/polymath/knowledge?doc=doc-1",
     });
     expect(doc).not.toHaveProperty("status");
   });

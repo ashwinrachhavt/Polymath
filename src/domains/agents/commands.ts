@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -133,12 +133,32 @@ export const DEFAULT_ALLOWED_TOOLS = [
     "instant.gleif.gleif_list_registration_agents", "instant.gleif.gleif_list_successor_entities", "instant.gleif.gleif_search_lei_records",
 ];
 
-export async function ensureProfile(workspaceId: string, name = "alfred") {
-  const [existing] = await db
+export async function ensureProfile(workspaceId: string, name = "polymath") {
+  // Resolution order (2026-10-29 rename): exact name first, then the
+  // polymath-lineage profile recorded by the rename migration
+  // (metadata.renamedFrom = "alfred") — after a collision rename to
+  // "polymath-2" an exact match would otherwise create a second profile.
+  // The final fallback (first profile in the workspace) preserves the
+  // pre-rename single-profile behavior.
+  let [existing] = await db
     .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
     .from(agentProfiles)
-    .where(eq(agentProfiles.workspaceId, workspaceId))
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
     .limit(1);
+  if (!existing && name === "polymath") {
+    [existing] = await db
+      .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, workspaceId), sql`${agentProfiles.metadata} ->> 'renamedFrom' = 'alfred'`))
+      .limit(1);
+  }
+  if (!existing) {
+    [existing] = await db
+      .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
+      .from(agentProfiles)
+      .where(eq(agentProfiles.workspaceId, workspaceId))
+      .limit(1);
+  }
   if (existing) {
     // A profile made before documents.search existed gains that read-only
     // capability. Nothing else is added, and runs already started keep their
@@ -383,7 +403,7 @@ export async function reconcileStaleRuns(
  * reads it back - retiring is real.
  *
  * The profile's `name` is NOT editable here: engine.start resolves profiles
- * by name and every caller passes the machine key ("alfred"), so renaming
+ * by name and every caller passes the machine key ("polymath"), so renaming
  * would break every future run start. A persona display name needs its own
  * column and display surfaces - recorded as a gap in ASH-220.
  *

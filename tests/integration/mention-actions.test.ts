@@ -26,7 +26,7 @@ const authHolder: { ctx: { userId: string; workspaceId: string; role: "owner" | 
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => authHolder.ctx) }));
 vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
 
-import { fetchMentionContext } from "@/app/(workspace)/alfred/mention-actions";
+import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
 
 beforeAll(async () => {
   holder.db = handle?.db;

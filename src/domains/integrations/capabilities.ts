@@ -5,7 +5,7 @@
  * Capability names exist in three vocabularies that must never drift:
  *  - the frozen policy snapshot and `DEFAULT_ALLOWED_TOOLS`, which spell the
  *    capability (`gmail.read`);
- *  - the risk table the evals read, `eve/alfred/evals/axiom-policy.ts`, which
+ *  - the risk table the evals read, `eve/polymath/evals/axiom-policy.ts`, which
  *    assigns it a class;
  *  - the MCP tool name a model calls (`gmail_search`).
  * This module is the single map between them. Everything downstream - the

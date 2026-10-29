@@ -61,7 +61,7 @@ suite("record search for attach", () => {
     // title actually contains.
     const results = await searchRecordsForAttach(auth, `analysis ${stamp}`);
     const kinds = new Map(results.map((r) => [r.id, r]));
-    expect(kinds.get(noteId)).toMatchObject({ kind: "note", href: `/alfred/notes?note=${noteId}` });
+    expect(kinds.get(noteId)).toMatchObject({ kind: "note", href: `/polymath/notes?note=${noteId}` });
     const zettelResults = await searchRecordsForAttach(auth, `supply ${stamp}`);
     expect(new Map(zettelResults.map((r) => [r.id, r])).get(zettelId)).toMatchObject({
       kind: "zettel",
@@ -70,7 +70,7 @@ suite("record search for attach", () => {
     const deckResults = await searchRecordsForAttach(auth, `pitch ${stamp}`);
     expect(new Map(deckResults.map((r) => [r.id, r])).get(deckId)).toMatchObject({
       kind: "artifact",
-      href: `/alfred/artifacts/${deckId}`,
+      href: `/polymath/artifacts/${deckId}`,
     });
   });
 

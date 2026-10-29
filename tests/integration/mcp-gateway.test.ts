@@ -761,7 +761,7 @@ async function seedGrant(
   scope: { operations: string[]; accounts?: string[] },
 ): Promise<string> {
   const owner = ownerAuth(auth.userId, auth.workspaceId);
-  const principal = await registerAgentPrincipal(owner, { key: "alfred", kind: "agent", label: "Alfred" });
+  const principal = await registerAgentPrincipal(owner, { key: "polymath", kind: "agent", label: "Alfred" });
   const grant = await issueDelegationGrant(owner, {
     agentPrincipalId: principal.principalId,
     scope,

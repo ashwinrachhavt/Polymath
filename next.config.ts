@@ -13,27 +13,31 @@ const nextConfig: NextConfig = {
     const paths: Record<string, string> = {
       briefing: "/apps/command-center/briefing", inbox: "/apps/command-center/inbox",
       work: "/apps/neuralflow/tasks", focus: "/apps/neuralflow/focus",
-      // /alfred keeps its workspace page: the run UI (start a run, recent
+      // /polymath keeps its workspace page: the run UI (start a run, recent
       // runs) is server-rendered there. The lens chat screen stays at
-      // /apps/alfred/chat for lens navigation.
+      // /apps/polymath/chat for lens navigation.
       // Knowledge and Dossiers have real Neon-backed workspace screens, so their
       // legacy bare paths go there, not to the sample lens preview.
-      knowledge: "/alfred/knowledge", dossiers: "/alfred/dossiers",
+      knowledge: "/polymath/knowledge", dossiers: "/polymath/dossiers",
       relationships: "/apps/command-center/contacts", opportunities: "/apps/command-center/opportunities",
     };
     return Object.entries(paths).map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }))
       .concat([
         {
           // Static root redirect. The former src/app/(workspace)/page.tsx
-          // rendered redirect("/alfred") inside the dynamic (workspace) layout,
+          // rendered redirect("/polymath") inside the dynamic (workspace) layout,
           // so every never-cacheable prefetch of it (side-nav wordmark) hit a
           // full dynamic render returning a redirect flight — the router
           // re-rendered and re-fetched "/" forever (the infinite GET / loop).
           // A config redirect bypasses the layout entirely.
           source: "/",
-          destination: "/alfred",
+          destination: "/polymath",
           permanent: false,
         },
+        // 2026-10-29 rename: every pre-rename bookmark lands on its renamed
+        // route. The app-switcher prefix moved at the same time.
+        { source: "/alfred/:path*", destination: "/polymath/:path*", permanent: false },
+        { source: "/apps/alfred/:path*", destination: "/apps/polymath/:path*", permanent: false },
       ]);
   },
   cacheComponents: true,
@@ -53,8 +57,8 @@ const nextConfig: NextConfig = {
 };
 
 // Verified API shape: withEve(config, { agents: { <name>: { root } } }).
-// alfred is the first-party chief-of-staff agent; specialist serves every
+// polymath is the first-party chief-of-staff agent; specialist serves every
 // hired specialist profile (the run's role brief arrives as client context).
 export default withEve(nextConfig, {
-  agents: { alfred: "./eve/alfred", specialist: "./eve/specialist" },
+  agents: { polymath: "./eve/polymath", specialist: "./eve/specialist" },
 });

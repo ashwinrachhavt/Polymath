@@ -106,12 +106,12 @@ suite("signed-in run start", () => {
     expect((await post({ objective: "Will fail" }, key)).status).toBe(201);
   });
 
-  it("without EVE_BASE_URL on Vercel, Eve is called on the deployment's own origin at /eve/alfred/v1", async () => {
+  it("without EVE_BASE_URL on Vercel, Eve is called on the deployment's own origin at /eve/polymath/v1", async () => {
     vi.stubEnv("EVE_BASE_URL", "");
     vi.stubEnv("VERCEL_BRANCH_URL", "axiom-git-feat-pr4.example.vercel.app");
     const res = await post({ objective: "Same origin" });
     expect(res.status).toBe(201);
-    expect(eveCalls[0].url).toBe("https://axiom-git-feat-pr4.example.vercel.app/eve/alfred/v1/session");
+    expect(eveCalls[0].url).toBe("https://axiom-git-feat-pr4.example.vercel.app/eve/polymath/v1/session");
     vi.stubEnv("VERCEL_BRANCH_URL", "");
   });
 });

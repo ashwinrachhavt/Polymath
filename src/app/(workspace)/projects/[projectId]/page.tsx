@@ -95,7 +95,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               <ul className="mt-3 flex flex-col">
                 {sessions.map((session) => (
                   <li key={session.id} className="flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
-                    <Link href={`/alfred/${session.id}`} className="min-w-0 flex-1 truncate text-[15px] hover:underline">
+                    <Link href={`/polymath/${session.id}`} className="min-w-0 flex-1 truncate text-[15px] hover:underline">
                       {session.title ?? "Untitled session"}
                     </Link>
                     <Lock aria-hidden className="size-3.5 text-muted-foreground" />

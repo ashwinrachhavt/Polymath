@@ -16,7 +16,7 @@ export default function MorePage() {
     { key: "preview" as const, label: "Preview tools", items: [
       ...additionalDestinationsIn("command-center"),
       ...additionalDestinationsIn("neuralflow"),
-      ...additionalDestinationsIn("alfred"),
+      ...additionalDestinationsIn("polymath"),
     ] },
   ];
 

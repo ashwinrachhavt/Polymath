@@ -1,6 +1,6 @@
 import { Activity, BookOpen, Brain, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, CircleDot, ClipboardList, FileCheck2, FileText, FolderKanban, Gem, Grid2X2, Inbox, Layers3, Library, Lightbulb, Link2, ListTodo, Map, MessageSquare, Network, NotebookPen, PanelTop, PenLine, ScanText, Search, Settings, ShieldCheck, Timer, Users, Wallet, Workflow, type LucideIcon } from "lucide-react";
 
-export type ProductId = "command-center" | "neuralflow" | "alfred";
+export type ProductId = "command-center" | "neuralflow" | "polymath";
 export type ProductDestination = { slug: string; label: string; icon: LucideIcon; group: string; description: string };
 export type Product = { id: ProductId; name: string; description: string; icon: LucideIcon; home: string; destinations: ProductDestination[] };
 export const products: Product[] = [
@@ -37,11 +37,11 @@ export const products: Product[] = [
     { slug: "notes", label: "Notes", icon: NotebookPen, group: "Workspace", description: "Canonical notes shared across the workspace" },
     { slug: "meetings", label: "Meetings", icon: Users, group: "Workspace", description: "Events, notes and action items" },
   ] },
-  { id: "alfred", name: "Alfred", description: "Read, connect and build understanding", icon: BookOpen, home: "dashboard", destinations: [
+  { id: "polymath", name: "Polymath", description: "Read, connect and build understanding", icon: BookOpen, home: "dashboard", destinations: [
     { slug: "dashboard", label: "Knowledge home", icon: CircleDot, group: "Knowledge", description: "Your connected thinking workspace" },
     { slug: "files", label: "Files", icon: FolderKanban, group: "Knowledge", description: "Browse, search and review every document" },
     { slug: "library", label: "Source library", icon: Library, group: "Knowledge", description: "Source reader, intake and evidence" },
-    { slug: "zettels", label: "Atomic zettels", icon: Layers3, group: "Knowledge", description: "One sourced idea per knowledge card" },
+    { slug: "zettels", label: "Ideas", icon: Layers3, group: "Knowledge", description: "One sourced idea per knowledge card" },
     { slug: "dossiers", label: "Dossiers", icon: FolderKanban, group: "Knowledge", description: "Bounded source-grounded workspaces" },
     { slug: "notebook", label: "Notebook", icon: NotebookPen, group: "Knowledge", description: "Rich notes, checkpoints and backlinks" },
     { slug: "graph", label: "Knowledge graph", icon: Network, group: "Knowledge", description: "Links across canonical artifacts" },

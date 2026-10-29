@@ -1,7 +1,7 @@
 import { createElement as h } from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DeckView, InfographicView } from "@/components/products/alfred/artifact-views";
+import { DeckView, InfographicView } from "@/components/products/polymath/artifact-views";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 
 /*

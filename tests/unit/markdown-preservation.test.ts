@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { markdownEditorMode, markdownSourceReason } from "@/components/products/alfred/markdown-preservation";
+import { markdownEditorMode, markdownSourceReason } from "@/components/products/polymath/markdown-preservation";
 
 /*
  * These cases pin the boundary that broke: angle brackets are ordinary prose,

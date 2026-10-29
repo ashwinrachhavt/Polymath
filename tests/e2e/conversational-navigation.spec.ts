@@ -27,7 +27,7 @@ test("asking for decisions answers in place with the real pending proposal", asy
   const seeded = await seedAgentProposal({ title, effect: "sends the invoice", riskClass: "prepare" });
   test.skip(!seeded, "No database configured for seeding.");
 
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   await page.getByLabel("Start a conversation").fill("show my decisions");
   await page.getByLabel("Start a conversation").press("Enter");
   await waitSettled(page);
@@ -46,7 +46,7 @@ test("asking for open tasks lists the seeded task with its deep link", async ({ 
   const seeded = await seedTask({ title });
   test.skip(!seeded, "No database configured for seeding.");
 
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   await page.getByLabel("Start a conversation").fill("show me my open tasks");
   await page.getByLabel("Start a conversation").press("Enter");
   await waitSettled(page);
@@ -59,7 +59,7 @@ test("asking for open tasks lists the seeded task with its deep link", async ({ 
 });
 
 test("ordinary conversation still takes the model path", async ({ page }) => {
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   const composer = page.getByLabel("Start a conversation");
   await composer.fill("what did I capture yesterday");
   await composer.press("Enter");

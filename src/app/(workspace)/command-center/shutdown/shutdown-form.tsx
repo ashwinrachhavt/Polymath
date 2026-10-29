@@ -22,7 +22,7 @@ function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId:
     <Panel title="Day closed" description={`The shutdown log for ${today} is already saved.`}>
       <p className="text-sm text-muted-foreground">This day is already closed. Reopen it only when something new needs closing.</p>
       <div className="mt-4 flex gap-2">
-        <Button size="sm" variant="outline" asChild><Link href={`/alfred/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link></Button>
+        <Button size="sm" variant="outline" asChild><Link href={`/polymath/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link></Button>
         {onReopen ? <Button size="sm" variant="ghost" onClick={onReopen}>Close the day again</Button> : null}
         <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
       </div>
@@ -96,7 +96,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
           {done.email.status === "skipped" ? <li>Email not proposed: {done.email.reason}</li> : null}
         </ul>
         <div className="mt-4 flex gap-2">
-          <Button size="sm" variant="outline" asChild><Link href={`/alfred/notes?id=${encodeURIComponent(done.logNoteId)}`}>Open the log</Link></Button>
+          <Button size="sm" variant="outline" asChild><Link href={`/polymath/notes?id=${encodeURIComponent(done.logNoteId)}`}>Open the log</Link></Button>
           <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
         </div>
       </Panel>

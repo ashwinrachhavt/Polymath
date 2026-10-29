@@ -28,12 +28,12 @@ vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => holder.auth) })
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 
 let extraction: typeof import("@/domains/knowledge/extraction");
-let actions: typeof import("@/app/(workspace)/alfred/knowledge/actions");
+let actions: typeof import("@/app/(workspace)/polymath/knowledge/actions");
 
 beforeAll(async () => {
   if (!handle) return;
   extraction = await import("@/domains/knowledge/extraction");
-  actions = await import("@/app/(workspace)/alfred/knowledge/actions");
+  actions = await import("@/app/(workspace)/polymath/knowledge/actions");
 });
 afterAll(async () => {
   await handle?.client.end();

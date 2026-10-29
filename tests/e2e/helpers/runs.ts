@@ -51,7 +51,7 @@ export async function seedRun(input: {
 
     const [profile] = await client<{ id: string }[]>`
       insert into agent_profiles (workspace_id, name, is_default)
-      values (${owner.workspace_id}, 'alfred', true)
+      values (${owner.workspace_id}, 'polymath', true)
       on conflict (workspace_id, name) do update set updated_at = now()
       returning id
     `;

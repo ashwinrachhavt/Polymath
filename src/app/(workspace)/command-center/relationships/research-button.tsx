@@ -38,7 +38,7 @@ export function ResearchCompanyButton({ companyId }: { companyId: string }) {
         <span className="text-muted-foreground text-xs">
           Draft ready from {done.manifestSize} {done.manifestSize === 1 ? "source" : "sources"}
           {done.gapSections > 0 ? ` (${done.gapSections} evidence gaps)` : ""}.{" "}
-          <a href={`/alfred/dossiers?draft=${done.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
+          <a href={`/polymath/dossiers?draft=${done.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
             Open the workbench
           </a>
         </span>

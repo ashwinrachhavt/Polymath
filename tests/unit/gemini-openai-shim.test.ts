@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { geminiFetch, withRememberedSignatures, withToolCallIndexes } from "../../eve/alfred/agent/lib/gemini-openai";
+import { geminiFetch, withRememberedSignatures, withToolCallIndexes } from "../../eve/polymath/agent/lib/gemini-openai";
 
 /*
  * The Gemini OpenAI-compatibility shim. It exists because a real eval failed:

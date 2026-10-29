@@ -24,7 +24,7 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
   const warmup = await request.get("/api/v1/files?documentId=x");
   expect(warmup.status()).toBeGreaterThanOrEqual(400);
 
-  await page.goto("/alfred/knowledge");
+  await page.goto("/polymath/knowledge");
   // The vault's file inputs are hydrated client islands: setting a file before
   // hydration reaches an input with no handler, and the upload silently never
   // starts.
@@ -83,7 +83,7 @@ test("an invoice goes from upload to corrected fields, linked parties, a follow-
 
   // The vault filters its own rows by name; the invoice is findable again
   // after the whole review round-trip.
-  await page.goto("/alfred/knowledge");
+  await page.goto("/polymath/knowledge");
   await page.getByRole("searchbox", { name: "Search files and folders" }).fill(`invoice-${run}`);
   await expect(page.locator("#content button").filter({ hasText: `invoice-${run}` }).first()).toBeVisible();
   expect(errors).toEqual([]);

@@ -29,8 +29,8 @@ export const metadata = { title: "Notebook · Polymath" };
 
 /*
  * A notebook is a project (NotebookLM parity). This route lives under
- * /projects/<id>/notebook rather than /alfred/notebook/<id> because
- * /alfred/notebook is the notes surface and one URL segment cannot mean two
+ * /projects/<id>/notebook rather than /polymath/notebook/<id> because
+ * /polymath/notebook is the notes surface and one URL segment cannot mean two
  * objects.
  *
  * The notebook is the project's home: sources, the grounded conversation, and

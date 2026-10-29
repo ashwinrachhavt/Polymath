@@ -22,7 +22,7 @@ vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
   return { ...actual, searchKnowledge, countMeaningUncoveredByState };
 });
 
-import { Ranked, SearchResults } from "@/app/(workspace)/alfred/notes/search-results";
+import { Ranked, SearchResults } from "@/app/(workspace)/polymath/notes/search-results";
 
 beforeEach(() => {
   searchKnowledge.mockClear();

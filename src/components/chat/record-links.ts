@@ -58,22 +58,22 @@ export function isRecordKind(value: unknown): value is RecordKind {
 
 const PATHS: Record<RecordKind, (id: string) => string> = {
   task: () => "/work",
-  note: () => "/alfred/notes",
-  document: (id) => `/alfred/library/${id}`,
-  source: () => "/alfred/sources",
+  note: () => "/polymath/notes",
+  document: (id) => `/polymath/library/${id}`,
+  source: () => "/polymath/sources",
   project: (id) => `/projects/${id}`,
   artifact: (id) => `/artifacts/${id}`,
-  run: (id) => `/alfred/${id}`,
+  run: (id) => `/polymath/${id}`,
   thread: (id) => `/command-center/conversations/${id}`,
-  zettel: () => "/alfred/knowledge/zettels",
-  card: () => "/alfred/knowledge/cards",
+  zettel: () => "/polymath/knowledge/zettels",
+  card: () => "/polymath/knowledge/cards",
   event: () => "/calendar",
   contact: () => "/command-center/relationships/contacts",
   company: () => "/command-center/relationships/companies",
   person: () => "/command-center/relationships/people",
   organization: () => "/command-center/relationships/companies",
   opportunity: () => "/command-center/opportunities",
-  space: () => "/alfred",
+  space: () => "/polymath",
 };
 
 /**

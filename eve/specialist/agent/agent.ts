@@ -1,6 +1,6 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
-import { geminiFetch } from "../../alfred/agent/lib/gemini-openai";
+import { geminiFetch } from "../../polymath/agent/lib/gemini-openai";
 
 /*
  * The specialist agent: one shared runtime for every hired profile
@@ -9,7 +9,7 @@ import { geminiFetch } from "../../alfred/agent/lib/gemini-openai";
  * src/domains/agents/eve-driver.ts for why the brief travels with the create
  * call rather than being resolved here from the database).
  *
- * The model resolver mirrors alfred's: Gemini through its OpenAI-compatible
+ * The model resolver mirrors polymath's: Gemini through its OpenAI-compatible
  * endpoint, credentials read per step (the deployed bundle's module-scope env
  * reads did not see Vercel's runtime env), and the same `geminiFetch` repair for
  * streaming tool calls. Two agents on two providers would mean two quota
@@ -19,7 +19,7 @@ const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/ope
 const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
 
 function specialistModel() {
-  // Same blank-key guard as alfred: a set-but-empty GEMINI_API_KEY must not
+  // Same blank-key guard as polymath: a set-but-empty GEMINI_API_KEY must not
   // shadow a populated fallback.
   const apiKey =
     [process.env.GEMINI_API_KEY, process.env.GOOGLE_GENERATIVE_AI_API_KEY].find((key) => key && key.length > 0) ?? "";
@@ -35,7 +35,7 @@ function specialistModel() {
 export default defineAgent({
   // No shell, filesystem, or glob/grep tools: a specialist reaches the world
   // through the authored, policy-gated tools in agent/tools/. Same reasoning as
-  // the alfred agent, and it keeps the request schema small on every step.
+  // the polymath agent, and it keeps the request schema small on every step.
   defaultTools: false,
   model: defineDynamic({
     events: {

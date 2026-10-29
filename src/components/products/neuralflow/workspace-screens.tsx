@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), { ssr: false, loading: () => <p role="status" className="text-xs text-muted-foreground">Loading rich editor…</p> });
+const RichEditor = dynamic(() => import("@/components/products/polymath/rich-editor"), { ssr: false, loading: () => <p role="status" className="text-xs text-muted-foreground">Loading rich editor…</p> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

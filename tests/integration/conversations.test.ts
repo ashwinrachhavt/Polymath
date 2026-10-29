@@ -49,7 +49,7 @@ suite("conversations surface", () => {
 
     const conversation = await queries.getConversation(auth, thread.id);
     expect(conversation).not.toBeNull();
-    expect(conversation!.thread.profileName).toBe("alfred");
+    expect(conversation!.thread.profileName).toBe("polymath");
     expect(conversation!.entries.map((e) => e.content)).toEqual([
       "First draft by Friday.",
       "Drafting now.",
@@ -61,7 +61,7 @@ suite("conversations surface", () => {
     const summary = list.find((c) => c.id === thread.id);
     expect(summary).toBeDefined();
     expect(summary!.messageCount).toBe(3);
-    expect(summary!.profileName).toBe("alfred");
+    expect(summary!.profileName).toBe("polymath");
   });
 
   it("starts a title-only thread with an empty timeline", async () => {

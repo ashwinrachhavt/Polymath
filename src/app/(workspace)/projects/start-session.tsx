@@ -5,7 +5,7 @@ import { Loader2, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { announceChatStarted } from "@/components/chat/chat-events";
 import { InPlaceChat } from "@/components/chat/in-place-chat";
-import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
+import { startChatRun } from "@/app/(workspace)/apps/polymath/chat-actions";
 
 /*
  * The session starter at the top of a project page (Perplexity parity): type

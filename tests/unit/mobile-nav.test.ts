@@ -5,7 +5,7 @@ import { destinations, destinationForPath } from "@/lib/navigation";
  * The phone bottom bar pins four destinations by href
  * (src/components/shell/mobile-nav.tsx). A rename that moves a pinned
  * destination's URL without updating barHrefs silently drops the tile from
- * every phone, which is how Notebook vanished when /alfred/dossiers became
+ * every phone, which is how Notebook vanished when /polymath/dossiers became
  * /projects. This test reads the bar's pinned list and fails when any pinned
  * href stops naming a destination.
  */

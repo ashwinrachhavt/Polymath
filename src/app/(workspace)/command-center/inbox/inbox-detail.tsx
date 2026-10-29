@@ -349,7 +349,7 @@ export function InboxDetail({
             {priorWriting.items.map((item) => (
               <li key={item.id} className="min-w-0">
                 <Link
-                  href={`/alfred/notes?id=${item.id}`}
+                  href={`/polymath/notes?id=${item.id}`}
                   className="text-[13px] font-medium underline-offset-2 hover:underline"
                 >
                   {item.title}
@@ -466,12 +466,12 @@ export function InboxDetail({
         ) : null}
         {state === "converted" && (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/alfred/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
+            <Link href={`/polymath/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "document" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/alfred/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open in Document Vault</Link>
+            <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open in Document Vault</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (

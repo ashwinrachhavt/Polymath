@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { looksLikeStatement } from "@/domains/knowledge/statement-parse";
 import { classifyDocument } from "@/domains/knowledge/vocabulary";
-import { StatementStripView, type StatementStripData } from "@/app/(workspace)/alfred/knowledge/statement-section";
+import { StatementStripView, type StatementStripData } from "@/app/(workspace)/polymath/knowledge/statement-section";
 
 /*
  * ASH-202: upload -> detect bank statement -> read transactions -> export CSV.
@@ -121,7 +121,7 @@ describe("StatementStripView", () => {
     );
     expect(html).not.toContain("Export transactions to CSV");
     expect(html).toContain("do not carry the running balance forward");
-    expect(html).toContain("/alfred/knowledge?doc=doc-1");
+    expect(html).toContain("/polymath/knowledge?doc=doc-1");
   });
 
   it("offers to read transactions when a statement has no ledger yet", () => {

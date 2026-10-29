@@ -21,18 +21,18 @@
     ".github/scripts/eval-summary.mjs": [
       "tests/unit/eval-summary.test.ts"
     ],
-    "eve/alfred/agent/lib/gemini-openai.ts": [
+    "eve/polymath/agent/lib/gemini-openai.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
-    "eve/alfred/evals/axiom-policy.ts": [],
-    "eve/alfred/agent/agent.ts": [
+    "eve/polymath/evals/axiom-policy.ts": [],
+    "eve/polymath/agent/agent.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
     "eve/specialist/agent/agent.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
-    "eve/alfred/evals/chat-grounding.eval.ts": [],
-    "eve/alfred/evals/evals.config.ts": [],
+    "eve/polymath/evals/chat-grounding.eval.ts": [],
+    "eve/polymath/evals/evals.config.ts": [],
     "src/domains/learning/**": [],
     "src/domains/teaching/**": [],
     "src/integrations/quiz/**": [],

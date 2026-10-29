@@ -31,7 +31,7 @@ async function OnboardingSurface() {
   await io();
   const auth = await getAuthContext();
   if (await isWorkspaceOnboarded(auth.workspaceId)) {
-    redirect("/alfred");
+    redirect("/polymath");
   }
 
   // A hard block, not a form: without the runtime there is no agent to

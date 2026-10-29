@@ -70,7 +70,7 @@ describe("notion proposal integrity", () => {
 
 describe("record cards", () => {
   it("maps a kind to its real route and refuses to invent one", () => {
-    expect(recordPath("document", "abc")).toBe("/alfred/library/abc");
+    expect(recordPath("document", "abc")).toBe("/polymath/library/abc");
     expect(recordPath("artifact", "abc")).toBe("/artifacts/abc");
     expect(recordPath("notathing" as never, "abc")).toBeNull();
   });
@@ -107,7 +107,7 @@ describe("record cards", () => {
 
 describe("markdown link safety", () => {
   it("allows same-origin and http(s) only", () => {
-    expect(safeHref("/alfred/notes")).toBe("/alfred/notes");
+    expect(safeHref("/polymath/notes")).toBe("/polymath/notes");
     expect(safeHref("https://example.com")).toBe("https://example.com");
     // A model-written answer is untrusted: these must never become anchors.
     expect(safeHref("javascript:alert(1)")).toBeNull();

@@ -49,7 +49,7 @@ import {
   inspectSkillAction,
   installSkillAction,
   removeSkillAction,
-} from "@/app/(workspace)/alfred/skills/actions";
+} from "@/app/(workspace)/polymath/skills/actions";
 
 let db: NonNullable<typeof handle>["db"];
 
@@ -202,7 +202,7 @@ suite("skills surface actions (integration)", () => {
     const engine = createEngine(stubDriver());
     const { runId } = await engine.start({
       auth: holder.auth!,
-      profileName: "alfred",
+      profileName: "polymath",
       objective: "Run the retiring skill",
       subjects: [],
       estimateUsd: "0.0001",

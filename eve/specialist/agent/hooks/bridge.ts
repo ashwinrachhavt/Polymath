@@ -242,7 +242,7 @@ export default defineHook({
           content: event.data.message,
         }),
       );
-      // The same reply, appended to the run's thread so /alfred reads it after a reload.
+      // The same reply, appended to the run's thread so /polymath reads it after a reload.
       await guarded("message.completed thread", () =>
         recordRoundEvent({
           runId,

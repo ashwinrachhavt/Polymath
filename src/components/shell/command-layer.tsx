@@ -63,7 +63,7 @@ export function CommandLayer() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const navigation = [...destinations, ...["command-center", "neuralflow", "alfred"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug))].map((destination) => ({
+  const navigation = [...destinations, ...["command-center", "neuralflow", "polymath"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug))].map((destination) => ({
     key: destination.href, label: destination.label,
     context: destination.href.startsWith("/apps/") ? "Preview tool" : destination.group === "shared" ? "Shared workspace" : "Polymath",
     icon: destination.icon, href: destination.href,
@@ -194,7 +194,7 @@ export function CommandLayer() {
     <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); if (returnTo.current === "capture") { captureTrigger.current?.focus(); return; } const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")); (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus(); }}>
         <DialogTitle>{mode === "search" ? "Search and commands" : "Capture"}</DialogTitle>
-        <DialogDescription>{mode === "search" ? "Navigate anywhere, or find saved tasks, notes, people and inbox items. Documents use the search in Alfred Knowledge." : "Everything lands in the inbox first. Polymath reads it and suggests what it becomes - you only ever capture."}</DialogDescription>
+        <DialogDescription>{mode === "search" ? "Navigate anywhere, or find saved tasks, notes, people and inbox items. Documents use the search in Polymath Knowledge." : "Everything lands in the inbox first. Polymath reads it and suggests what it becomes - you only ever capture."}</DialogDescription>
         {mode === "search" ? <>
           <Input key="search" autoFocus className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
             if (event.key === "ArrowDown") { event.preventDefault(); setSelected(Math.min(active + 1, results.length - 1)); }
@@ -226,8 +226,8 @@ export function CommandLayer() {
               <span className="text-[11px] text-muted-foreground">Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.</span>
             </div>
           </form>
-          <ImportDrop hint="Add pasted text or a URL. Files upload through Alfred Knowledge, where they are extracted." onImport={(result) => {
-            if (result.kind === "file") { setSaveError("Use Attach file to keep it as-is in the inbox, or Alfred Knowledge to extract it."); setSaveErrorId(null); return; }
+          <ImportDrop hint="Add pasted text or a URL. Files upload through Polymath Knowledge, where they are extracted." onImport={(result) => {
+            if (result.kind === "file") { setSaveError("Use Attach file to keep it as-is in the inbox, or Polymath Knowledge to extract it."); setSaveErrorId(null); return; }
             setText((current) => current ? `${current}\n${result.value}` : result.value);
           }} />
           {saveError ? (

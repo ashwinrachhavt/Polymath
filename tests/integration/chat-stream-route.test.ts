@@ -102,7 +102,7 @@ beforeAll(async () => {
   b = await seedWorkspace(handle!.db, `csr-${crypto.randomUUID()}`);
   const [profile] = await holder.db!
     .insert(agentProfiles)
-    .values({ workspaceId: a.workspaceId, name: "alfred" })
+    .values({ workspaceId: a.workspaceId, name: "polymath" })
     .returning({ id: agentProfiles.id });
   profileId = profile.id;
 });

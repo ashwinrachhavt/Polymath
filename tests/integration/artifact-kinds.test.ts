@@ -37,7 +37,7 @@ suite("generatable draft kinds (Neon)", () => {
   async function succeededRun(objective: string, content?: string): Promise<string> {
     const [profile] = await holder.db!
       .insert(agentProfiles)
-      .values({ workspaceId: auth.workspaceId, name: "alfred", createdBy: auth.userId, updatedBy: auth.userId })
+      .values({ workspaceId: auth.workspaceId, name: "polymath", createdBy: auth.userId, updatedBy: auth.userId })
       .onConflictDoNothing()
       .returning();
     const profileId = profile?.id ?? (await holder.db!.select({ id: agentProfiles.id }).from(agentProfiles).where(eq(agentProfiles.workspaceId, auth.workspaceId)).limit(1))[0].id;

@@ -129,17 +129,17 @@ export async function searchRecordsForAttach(
       title: row.title,
       href:
         row.kind === "note"
-          ? `/alfred/notes?note=${row.id}`
+          ? `/polymath/notes?note=${row.id}`
           : row.kind === "zettel"
-            ? `/alfred/knowledge/zettels?zettel=${row.id}`
-            : `/alfred/artifacts/${row.id}`,
+            ? `/polymath/knowledge/zettels?zettel=${row.id}`
+            : `/polymath/artifacts/${row.id}`,
     }));
   references.push(
     ...documentRows.map((row) => ({
       id: row.id,
       kind: "document" as const,
       title: row.title ?? "",
-      href: `/alfred/knowledge?doc=${row.id}`,
+      href: `/polymath/knowledge?doc=${row.id}`,
     })),
   );
   references.push(

@@ -33,10 +33,10 @@ vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
   return { ...actual, ...mocks };
 });
 
-import { Ranked } from "@/app/(workspace)/alfred/notes/search-results";
+import { Ranked } from "@/app/(workspace)/polymath/notes/search-results";
 
 const auth = { userId: "u1", workspaceId: "w1", role: "owner" as const };
-const hrefFor = (id: string) => `/alfred/notes?id=${id}`;
+const hrefFor = (id: string) => `/polymath/notes?id=${id}`;
 
 describe("Ranked connections wiring", () => {
   it("attaches the batched neighborhood and renders source, links, and citations", async () => {

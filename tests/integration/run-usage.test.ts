@@ -24,7 +24,7 @@ afterAll(async () => {
 
 async function seedRun(slug: string) {
   const { userId, workspaceId } = await seedWorkspace(handle!.db, `${slug}-${Date.now()}`);
-  const [profile] = await handle!.db.insert(agentProfiles).values({ workspaceId, name: "alfred" }).returning();
+  const [profile] = await handle!.db.insert(agentProfiles).values({ workspaceId, name: "polymath" }).returning();
   const [run] = await handle!.db
     .insert(agentRuns)
     .values({ workspaceId, agentProfileId: profile.id, objective: "Summarise the week", policySnapshot: {}, createdBy: userId, updatedBy: userId })

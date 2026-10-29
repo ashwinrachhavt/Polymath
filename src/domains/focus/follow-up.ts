@@ -185,7 +185,7 @@ export function followUpRequestedHandler(
 
     const { runId } = await createEngine(driver ?? createEveDriver()).start({
       auth,
-      profileName: "alfred",
+      profileName: "polymath",
       objective: followUpObjective({
         taskTitle,
         contactName: resolution.contactName,

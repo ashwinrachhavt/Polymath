@@ -63,7 +63,7 @@ suite("notebook AI (Neon)", () => {
 
     const [profile] = await handle.db
       .insert(agentProfiles)
-      .values({ workspaceId: seed.workspaceId, name: "alfred", createdBy: seed.userId, updatedBy: seed.userId })
+      .values({ workspaceId: seed.workspaceId, name: "polymath", createdBy: seed.userId, updatedBy: seed.userId })
       .returning();
     const [run] = await handle.db
       .insert(agentRuns)
@@ -93,7 +93,7 @@ suite("notebook AI (Neon)", () => {
     const { engine, calls } = stubEngine();
     await startNoteAIRun(auth, { artifactId: noteId, action: "improve" }, engine);
     expect(calls).toHaveLength(1);
-    expect(calls[0].profileName).toBe("alfred");
+    expect(calls[0].profileName).toBe("polymath");
     expect(calls[0].subjects).toEqual([{ type: "note", id: noteId }]);
     expect(calls[0].objective).toContain('"Launch checklist"');
     expect(calls[0].objective).toContain("Draft the announcement.");

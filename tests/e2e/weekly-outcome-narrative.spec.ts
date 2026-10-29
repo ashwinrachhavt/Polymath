@@ -128,7 +128,7 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/feature-pixels/weekly-narrative-kept-${vp.name}.png`, style: HIDE_DEV_CHROME });
     expect(await narrativeNoteCount()).toBe(before + 1);
     await panel.getByRole("link", { name: "Open note" }).click();
-    await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+    await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/);
   });
 }
 

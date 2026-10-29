@@ -250,7 +250,7 @@ jobs:
           path: test-results/feature-pixels/
           if-no-files-found: ignore
 
-  # Behavioral gate for the agent. The unit suite cannot see whether Alfred
+  # Behavioral gate for the agent. The unit suite cannot see whether Polymath
   # actually reaches for the corpus before answering; these evals drive a real
   # turn against Gemini and fail the build when grounding regresses.
   #
@@ -281,7 +281,7 @@ jobs:
       - name: Run agent evals
         id: evals
         if: steps.credential.outputs.present == 'true'
-        working-directory: eve/alfred
+        working-directory: eve/polymath
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_AGENT_MODEL: gemini-3.5-flash-lite
@@ -313,7 +313,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: eve-evals
-          path: eve/alfred/.eve/evals/
+          path: eve/polymath/.eve/evals/
           if-no-files-found: ignore
           retention-days: 7
 
