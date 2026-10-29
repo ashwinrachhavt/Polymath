@@ -41,7 +41,10 @@ export function WritingSurface({
   onCardSaved: (artifactId: string) => void;
 }) {
   const store: SittingStore = useMemo(() => createSittingStore(workspaceId, sittingId), [workspaceId, sittingId]);
-  const draft = store((s) => s.draft);
+  // The draft is read imperatively (store.getState()) everywhere except the
+  // initial editor content: subscribing to it would re-render the whole
+  // surface (and EditorContent) on every keystroke.
+  const initialDraft = useRef(store.getState().draft);
   const [streamState, setStreamState] = useState<StreamState>(() => initialStreamState(sittingId));
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [artifactVersion, setArtifactVersion] = useState<number | null>(null);
@@ -59,7 +62,7 @@ export function WritingSurface({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [StarterKit, Placeholder.configure({ placeholder: seededFromDocument ? "Extract proposals from this document" : "Write the idea as it comes…" })],
-    content: draft || undefined,
+    content: initialDraft.current || undefined,
     onUpdate: ({ editor }) => {
       store.getState().setDraft(editor.getText());
       schedulePause();

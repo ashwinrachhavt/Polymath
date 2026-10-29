@@ -1,6 +1,7 @@
 "use client";
 
 import type { StreamState } from "./creation-stream-reducer";
+import { CREATION_STAGES, QUOTA_UNAVAILABLE_MESSAGE } from "@/domains/knowledge/sitting-events";
 
 /*
  * The AmbientIntelligencePanel states (§14.4): resting hint, live stages,
@@ -14,7 +15,7 @@ export function AmbientPanel({
   state: StreamState;
   onRetryStage: (stage: string) => void;
 }) {
-  const stageNames = ["embed", "links", "enrich"];
+  const stageNames = CREATION_STAGES;
   const anyActivity = state.saved || Object.keys(state.stages).length > 0;
   const quotaFailed = Object.values(state.stages).some(
     (s) => s.status === "failed" && s.failure?.code === "QUOTA_UNAVAILABLE",
@@ -49,9 +50,7 @@ export function AmbientPanel({
         );
       })}
       {quotaFailed && (
-        <p className="text-sm text-muted-foreground">
-          Link discovery needs AI quota — your card is saved. Add credits or ask an admin to raise the quota, then retry indexing.
-        </p>
+        <p className="text-sm text-muted-foreground">{QUOTA_UNAVAILABLE_MESSAGE}</p>
       )}
       {state.linksFound !== null && state.linksFound > 0 && (
         <p className="text-sm">{state.linksFound} related card{state.linksFound === 1 ? "" : "s"} surfaced</p>

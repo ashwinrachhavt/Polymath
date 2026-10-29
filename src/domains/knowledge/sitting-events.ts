@@ -12,6 +12,17 @@
 
 export const SITTING_PROTOCOL_VERSION = 1 as const;
 
+/** The stages the creation pipeline runs (§3); the panel renders these by name. */
+export const CREATION_STAGES = ["embed", "links", "enrich"] as const;
+
+/**
+ * §15.3 quota copy, verbatim — one shared string so the server event and the
+ * ambient panel can never drift. Lives here (not sitting-run.ts) because the
+ * panel is a client component and this module must stay dependency-free.
+ */
+export const QUOTA_UNAVAILABLE_MESSAGE =
+  "Link discovery needs AI quota — your card is saved. Add credits or ask an admin to raise the quota, then retry indexing.";
+
 /** The event families a client may receive (§3). */
 export const SITTING_EVENTS = [
   "card_saved",

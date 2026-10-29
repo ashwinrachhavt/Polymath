@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { auditEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { recordAudit } from "@/domains/audit/record";
 import { artifacts, zettelSittingCards, zettelSittings } from "./schema";
 
 /*
@@ -88,10 +88,7 @@ export async function deleteSitting(auth: AuthContext, sittingId: string) {
   const sitting = await getSitting(auth, sittingId);
   if (!sitting) throw sittingNotFound();
   await db.delete(zettelSittings).where(eq(zettelSittings.id, sitting.id));
-  await db.insert(auditEvents).values({
-    workspaceId: auth.workspaceId,
-    actorId: auth.userId,
-    actorKind: "user",
+  await recordAudit(auth, {
     action: "sitting.deleted",
     subjectType: "zettel_sitting",
     subjectId: sitting.id,

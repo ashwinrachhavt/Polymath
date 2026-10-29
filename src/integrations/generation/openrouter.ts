@@ -2,6 +2,7 @@ import {
   GENERATION_TIMEOUT_MS,
   GenerationRequestError,
   GenerationUnconfiguredError,
+  chatMessages,
   type GenerateInput,
   type GenerationProvider,
   type StreamChunk,
@@ -43,10 +44,7 @@ export function openRouterProvider(
           model,
           ...(input.json ? { response_format: { type: "json_object" } } : {}),
           temperature: input.temperature ?? 0,
-          messages: [
-            ...(input.system ? [{ role: "system", content: input.system }] : []),
-            { role: "user", content: input.prompt },
-          ],
+          messages: chatMessages(input),
         }),
         signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
       });
@@ -69,10 +67,7 @@ export function openRouterProvider(
           // upstream reports stream token counts.
           stream_options: { include_usage: true },
           temperature: input.temperature ?? 0,
-          messages: [
-            ...(input.system ? [{ role: "system", content: input.system }] : []),
-            { role: "user", content: input.prompt },
-          ],
+          messages: chatMessages(input),
         }),
         signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
       });

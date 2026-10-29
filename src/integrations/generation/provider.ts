@@ -81,6 +81,14 @@ export class GenerationRequestError extends Error {
 /** One call never hangs a run. */
 export const GENERATION_TIMEOUT_MS = 30_000;
 
+/** The chat-shaped messages array every REST adapter builds from GenerateInput. */
+export function chatMessages(input: GenerateInput): { role: "system" | "user"; content: string }[] {
+  return [
+    ...(input.system ? [{ role: "system" as const, content: input.system }] : []),
+    { role: "user" as const, content: input.prompt },
+  ];
+}
+
 import { cloudflareProvider } from "./cloudflare";
 import { fixtureProvider } from "./fixture";
 import { geminiProvider } from "./gemini";

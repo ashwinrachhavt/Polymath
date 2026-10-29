@@ -105,7 +105,7 @@ suite("agent profile rename migration", () => {
   it("resolves polymath-lineage by metadata when no exact name matches", async () => {
     // Simulates a post-collision workspace whose user-chosen "polymath" row
     // was later retired: the renamedFrom lineage must still win over insert.
-    const ws = (await seedWorkspace(handle.db, `rename-lineage-${Date.now()}`)).workspaceId;
+    const ws = (await seedWorkspace(handle!.db, `rename-lineage-${Date.now()}`)).workspaceId;
     await handle!.db.insert(agentProfiles).values({
       workspaceId: ws,
       name: "polymath-2",

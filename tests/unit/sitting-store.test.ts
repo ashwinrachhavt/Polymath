@@ -47,10 +47,13 @@ describe("sitting draft store", () => {
     expect(store.getState().conflict).toBeNull();
   });
 
-  it("persists the draft under the scoped key", () => {
+  it("persists the draft under the scoped key", async () => {
     const key = sittingStorageKey("w", `s-${Date.now()}-d`);
     const store = createSittingStore("w", key.slice("polymath-sitting:w:".length));
     store.getState().setDraft("persisted");
+    // The storage wrapper debounces writes (500ms) to keep the synchronous
+    // serialize off the keystroke path; the flush is waited out here.
+    await new Promise((r) => setTimeout(r, 600));
     const raw = localStorage.getItem(key);
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw!).state.draft).toBe("persisted");

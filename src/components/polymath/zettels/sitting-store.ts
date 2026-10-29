@@ -61,7 +61,11 @@ export function createSittingStore(workspaceId: string, sittingId: string) {
       }),
       {
         name: sittingStorageKey(workspaceId, sittingId),
-        storage: createJSONStorage(() => localStorage),
+        // localStorage is best-effort recovery for unsaved text (§7), not a
+        // record: a debounced write keeps the synchronous serialize off the
+        // keystroke path. 500ms is well under the 1.2s pause, so a tab close
+        // mid-pause still recovers the draft.
+        storage: createJSONStorage(() => debouncedStorage(() => localStorage, 500)),
         // Only the draft + its clock persist; conflicts are recomputed on hydrate.
         partialize: (s) => ({ draft: s.draft, draftUpdatedAt: s.draftUpdatedAt, topic: s.topic }),
       },
@@ -69,4 +73,25 @@ export function createSittingStore(workspaceId: string, sittingId: string) {
   );
 }
 
+/** Wraps a StateStorage so setItem lands at most once per `ms` window. */
+function debouncedStorage(getStorage: () => Storage, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pendingValue: string | null = null;
+  return {
+    getItem: (name: string): string | null => getStorage().getItem(name),
+    setItem: (name: string, value: string): void => {
+      pendingValue = value;
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        if (pendingValue !== null) getStorage().setItem(name, pendingValue);
+        pendingValue = null;
+      }, ms);
+    },
+    removeItem: (name: string): void => {
+      if (timer) { clearTimeout(timer); timer = null; pendingValue = null; }
+      getStorage().removeItem(name);
+    },
+  };
+}
 export type SittingStore = ReturnType<typeof createSittingStore>;

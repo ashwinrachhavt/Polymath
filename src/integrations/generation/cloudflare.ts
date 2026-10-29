@@ -2,6 +2,7 @@ import {
   GENERATION_TIMEOUT_MS,
   GenerationConfigError,
   GenerationRequestError,
+  chatMessages,
   type GenerateInput,
   type GenerationProvider,
   type StreamChunk,
@@ -24,13 +25,6 @@ const ENDPOINT = (account: string, model: string) =>
 
 type CfUsage = { prompt_tokens?: number; completion_tokens?: number };
 type CfResponse = { result?: { response?: string; usage?: CfUsage }; success?: boolean };
-
-function messages(input: GenerateInput) {
-  return [
-    ...(input.system ? [{ role: "system", content: input.system }] : []),
-    { role: "user", content: input.prompt },
-  ];
-}
 
 export function cloudflareProvider(
   env: Record<string, string | undefined>,
@@ -58,7 +52,7 @@ export function cloudflareProvider(
         method: "POST",
         headers,
         body: JSON.stringify({
-          messages: messages(input),
+          messages: chatMessages(input),
           temperature: input.temperature ?? 0,
           ...(input.json ? { response_format: { type: "json_object" } } : {}),
         }),
@@ -77,7 +71,7 @@ export function cloudflareProvider(
         method: "POST",
         headers,
         body: JSON.stringify({
-          messages: messages(input),
+          messages: chatMessages(input),
           temperature: input.temperature ?? 0,
           stream: true,
         }),
