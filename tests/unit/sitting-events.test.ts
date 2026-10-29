@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   assertEventRedacted,
+  DECOMPOSE_MAX_CHARS,
+  DECOMPOSE_PASTE_CHARS,
   encodeSittingEvent,
   isAllowedStageOutcome,
+  pasteDisposition,
   SITTING_EVENTS,
   SITTING_PROTOCOL_VERSION,
   type SittingEvent,
@@ -65,5 +68,26 @@ describe("sitting event protocol (§15.9)", () => {
     for (const event of Object.values(EXAMPLES)) expect(() => assertEventRedacted(event)).not.toThrow();
     const leaky: SittingEvent = { protocolVersion: 1, operationId: RUN, event: "error", payload: { message: "CLOUDFLARE_API_KEY=abc failed" } };
     expect(() => assertEventRedacted(leaky)).toThrow(/credential marker/);
+  });
+});
+
+describe("§4/§15.1 pasteDisposition", () => {
+  it("rejects pastes over the cap - never truncate, never land", () => {
+    expect(pasteDisposition(DECOMPOSE_MAX_CHARS + 1)).toBe("reject");
+    expect(pasteDisposition(DECOMPOSE_MAX_CHARS * 2)).toBe("reject");
+  });
+
+  it("at the cap exactly still analyzes - the cap is exclusive", () => {
+    expect(pasteDisposition(DECOMPOSE_MAX_CHARS)).toBe("analyze");
+  });
+
+  it("at or above the analysis threshold offers extraction review", () => {
+    expect(pasteDisposition(DECOMPOSE_PASTE_CHARS)).toBe("analyze");
+    expect(pasteDisposition(DECOMPOSE_PASTE_CHARS + 1)).toBe("analyze");
+  });
+
+  it("below the threshold is a plain paste", () => {
+    expect(pasteDisposition(0)).toBe("plain");
+    expect(pasteDisposition(DECOMPOSE_PASTE_CHARS - 1)).toBe("plain");
   });
 });

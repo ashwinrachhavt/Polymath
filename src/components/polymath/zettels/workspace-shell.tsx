@@ -52,9 +52,9 @@ export function WorkspaceShell({
   }, []);
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 max-lg:flex-col max-lg:overflow-y-auto">
       <SessionRail topic={sitting.topic} cards={cards} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col max-lg:min-h-[70vh]">
         <header className="flex items-center justify-between border-b border-border px-6 py-2">
           <span className="flex items-center gap-2 text-sm text-muted-foreground">
             Sitting
@@ -74,7 +74,7 @@ export function WorkspaceShell({
           onCardSaved={onCardSaved}
         />
       </div>
-      <div className="flex shrink-0 flex-col overflow-y-auto max-lg:border-t">
+      <div className="flex shrink-0 flex-col overflow-y-auto bg-background max-lg:w-full max-lg:border-t">
         <AmbientPanel state={streamState} onRetryStage={retryStage} />
         <ActionTasksSidebar
           sittingId={sitting.id}

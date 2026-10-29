@@ -22,6 +22,23 @@ export const CREATION_IDLE_MS = 1200;
 export const DECOMPOSE_PASTE_CHARS = 2000;
 export const DECOMPOSE_MAX_CHARS = 20000;
 
+/** §15.1 rejection copy, verbatim - shown when a paste is over the cap. */
+export const PASTE_TOO_LONG_MESSAGE =
+  "Paste is too long to analyze at once - split it or select a section.";
+
+/*
+ * §4/§15.1 paste disposition, one predicate for client and server: over
+ * DECOMPOSE_MAX_CHARS the paste is REJECTED outright - never truncated,
+ * never landed in the editor, never saved as an oversized card; at or above
+ * DECOMPOSE_PASTE_CHARS it lands and extraction review is offered; anything
+ * smaller is a plain paste.
+ */
+export function pasteDisposition(length: number): "reject" | "analyze" | "plain" {
+  if (length > DECOMPOSE_MAX_CHARS) return "reject";
+  if (length >= DECOMPOSE_PASTE_CHARS) return "analyze";
+  return "plain";
+}
+
 /** The stages the creation pipeline runs (§3); the panel renders these by name. */
 export const CREATION_STAGES = ["embed", "links", "enrich", "bloom"] as const;
 

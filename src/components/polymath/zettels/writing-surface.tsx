@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { CREATION_IDLE_MS, DECOMPOSE_PASTE_CHARS } from "@/domains/knowledge/sitting-events";
+import { CREATION_IDLE_MS, pasteDisposition, PASTE_TOO_LONG_MESSAGE } from "@/domains/knowledge/sitting-events";
 import type { DecompositionAnalysis, DecompositionDecision } from "@/domains/knowledge/decomposition";
 import {
   analyzePasteAction,
@@ -99,16 +99,30 @@ export function WritingSurface({
     content: initialDraft.current || undefined,
     editorProps: {
       handlePaste: (_view, event) => {
-        // Never preventDefault: the original paste always lands (§4). Over
-        // the threshold we additionally offer extraction review.
         const pasted = event.clipboardData?.getData("text/plain");
-        if (pasted && pasted.length >= DECOMPOSE_PASTE_CHARS) {
+        const disposition = pasteDisposition(pasted?.length ?? 0);
+        if (disposition === "reject") {
+          // §15.1: over the cap the paste is REJECTED, never truncated - it
+          // must not land in the editor (a landed paste would autosave an
+          // oversized card) and the writer sees the rejection copy.
+          event.preventDefault();
+          apply({ protocolVersion: 1, operationId: "", event: "error", payload: { code: "paste_too_long", message: PASTE_TOO_LONG_MESSAGE } });
+          return true;
+        }
+        // Otherwise never preventDefault: the original paste always lands
+        // (§4). Over the threshold we additionally offer extraction review.
+        if (disposition === "analyze" && pasted) {
           setTimeout(() => void runAnalysis(pasted), 0);
         }
         return false;
       },
     },
     onUpdate: ({ editor }) => {
+      // Programmatic edits (the adopt insert, hydration setContent) carry
+      // their own save path; they must not re-arm the pause autosave, or the
+      // armed pause races them mid-edit (ISSUE-002) or fires a no-op save
+      // and run for an edit the writer never made (ISSUE-003).
+      if (suppressProgrammaticEditRef.current) return;
       store.getState().setDraft(editor.getText());
       schedulePause();
     },
@@ -127,6 +141,7 @@ export function WritingSurface({
   // saved card (updatedAt-wins; a both-moved state surfaces the conflict UI,
   // never a silent clobber). Runs once the editor exists.
   const hydratedRef = useRef(false);
+  const suppressProgrammaticEditRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current || !editor || !initialWritingCard) return;
     hydratedRef.current = true;
@@ -134,7 +149,11 @@ export function WritingSurface({
       content: initialWritingCard.plainText,
       updatedAt: new Date(initialWritingCard.updatedAt).getTime(),
     });
-    if (result === "adopted") editor.commands.setContent(initialWritingCard.content as never);
+    if (result === "adopted") {
+      suppressProgrammaticEditRef.current = true;
+      editor.commands.setContent(initialWritingCard.content as never);
+      suppressProgrammaticEditRef.current = false;
+    }
     if (result === "conflict") {
       // Deferred out of the effect body: the conflict UI re-renders on the
       // next tick instead of cascading inside hydration.
@@ -284,7 +303,15 @@ export function WritingSurface({
     if (!proposal) return;
     setStreamState((prev) => ({ ...prev, proposal: null }));
     if (!keep || !editor || !artifactId || !artifactVersion) return;
+    // ISSUE-002/001: an armed pause would fire mid-adopt and race this
+    // insert with its own save (interleaved mid-word mutations), then save
+    // the adopted text again as a byte-identical version. Cancel the pending
+    // pause and keep this programmatic edit from re-arming the debounce -
+    // the adopt saves through its own keyed call below.
+    pauseDebounce.cancel();
+    suppressProgrammaticEditRef.current = true;
     editor.commands.insertContent(`\n\n${proposal.suggestion}`);
+    suppressProgrammaticEditRef.current = false;
     const saved = await saveSittingCardAction({
       sittingId,
       artifactId,
@@ -299,7 +326,7 @@ export function WritingSurface({
     } else {
       setArtifactVersion(saved.versionNumber);
     }
-  }, [streamState.proposal, editor, artifactId, artifactVersion, sittingId, store]);
+  }, [streamState.proposal, editor, artifactId, artifactVersion, sittingId, store, pauseDebounce]);
 
   useEffect(() => {
     // Focus tracking itself comes from onFocus/onBlur; when the proposal
