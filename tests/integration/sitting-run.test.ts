@@ -4,10 +4,12 @@ import { agentRuns, agentSteps } from "@/domains/agents/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { createSitting } from "@/domains/knowledge/sittings";
 import {
+  durableEvents,
   executeCreationRun,
   startCreationRun,
   subscribeRun,
   sweepStrandedCreationRuns,
+  type CreationRunDeps,
 } from "@/domains/knowledge/sitting-run";
 import { isAllowedStageOutcome, type SittingEvent } from "@/domains/knowledge/sitting-events";
 import { SittingError } from "@/domains/knowledge/sittings";
@@ -146,5 +148,51 @@ suite("sitting creation run", () => {
     expect(await sweepStrandedCreationRuns()).toBe(0);
     const [freshRun] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, fresh.runId));
     expect(freshRun.state).toBe("running");
+  });
+
+  it("records skipped:edited when the card moved mid-run (edit-during-enrichment, §11)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, {});
+    const card = await seedCard("edited mid-run");
+    const { runId } = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
+    // The embed pass finds the artifact's version has moved since it started:
+    // the donor's version-guard semantics preserved (§15.10).
+    const deps: CreationRunDeps = {
+      embedArtifact: async () => ({ status: "skipped", reason: "edited" }),
+      materializeSemanticEdges: async () => 0,
+    };
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, quotaAdmitted: true }, env, deps);
+    const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId));
+    const summaries = steps.map((s) => s.summary);
+    expect(summaries).toContain("skipped:edited");
+    expect(summaries).not.toContain("failed:embed");
+    // Sibling stages still ran: one skip never blocks Track B (§14.4).
+    expect(summaries).toContain("enriched");
+  });
+
+  it("replays the durable record from a cursor after a drop (§16.1) and persists no credentials (§15.9)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, {});
+    const card = await seedCard("replay card");
+    const { runId } = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, quotaAdmitted: true }, env);
+
+    // Connection dropped after commit: the replay from 0 carries every
+    // durable event, in order; from a mid cursor only the tail.
+    const all = await durableEvents(auth, runId, 0);
+    expect(all.length).toBeGreaterThanOrEqual(3);
+    const seqs = all.map((s) => s.sequence);
+    expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
+    const mid = seqs[Math.floor(seqs.length / 2)]!;
+    const tail = await durableEvents(auth, runId, mid);
+    expect(tail.length).toBe(all.length - all.filter((s) => s.sequence <= mid).length);
+    expect(tail.every((s) => s.sequence > mid)).toBe(true);
+
+    // §15.9: no credential markers anywhere in the persisted record.
+    const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId));
+    const serialized = JSON.stringify(steps);
+    for (const marker of ["CLOUDFLARE_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "Bearer ", "authorization"]) {
+      expect(serialized.includes(marker), marker).toBe(false);
+    }
   });
 });

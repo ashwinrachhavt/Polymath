@@ -203,10 +203,18 @@ const frame = (ctx: RunContext, event: SittingEvent["event"], payload?: unknown,
  * connection owns this execution; when it drops, execution stops and only
  * durable events remain. A new connection attaches to the durable record.
  */
+export type CreationRunDeps = {
+  embedArtifact: typeof embedArtifact;
+  materializeSemanticEdges: typeof materializeSemanticEdges;
+};
+
+const defaultDeps: CreationRunDeps = { embedArtifact, materializeSemanticEdges };
+
 export async function executeCreationRun(
   auth: AuthContext,
   ctx: RunContext,
   env: Record<string, string | undefined> = process.env,
+  deps: CreationRunDeps = defaultDeps,
 ): Promise<void> {
   const [run] = await db.select({ lastEventSeq: agentRuns.lastEventSeq }).from(agentRuns).where(eq(agentRuns.id, ctx.runId)).limit(1);
   const seq = { next: (run?.lastEventSeq ?? 0) + 1 };
@@ -256,7 +264,7 @@ export async function executeCreationRun(
     await durable(frame(ctx, "stage_started", { stage: "embed" }), null);
     try {
       deadlineGuard();
-      const outcome = await embedArtifact(auth, { artifactId: ctx.artifactId });
+      const outcome = await deps.embedArtifact(auth, { artifactId: ctx.artifactId });
       if (outcome.status === "succeeded") {
         const [fresh] = await db
           .select({ versionNumber: artifactVersions.versionNumber })
@@ -265,11 +273,14 @@ export async function executeCreationRun(
           .where(eq(artifacts.id, ctx.artifactId)).limit(1);
         await durable(frame(ctx, "stage_completed", { stage: "embed", outcome: `embedded:v${fresh?.versionNumber ?? 0}` }), `embedded:v${fresh?.versionNumber ?? 0}`);
       } else if (outcome.status === "skipped" && (outcome.reason === "busy" || outcome.reason === "edited")) {
+        // The version guard itself: persisted as its allowlisted outcome.
         await durable(frame(ctx, "stage_completed", { stage: "embed", outcome: `skipped:${outcome.reason}` }), `skipped:${outcome.reason}`);
       } else if (outcome.status === "failed") {
         await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: "Indexing this version failed - retry indexing when the provider recovers.", operationId: ctx.runId }), "failed:embed");
       } else {
-        await durable(frame(ctx, "stage_completed", { stage: "embed", outcome: "skipped:edited" }), "skipped:edited");
+        // not_found / no_text: nothing to index and nothing mislabeled - a
+        // warning event, never a borrowed version-guard outcome.
+        await durable(frame(ctx, "warning", { stage: "embed", message: "Nothing to index on this version." }), null);
       }
     } catch {
       await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: "Indexing this version failed - retry indexing when the provider recovers.", operationId: ctx.runId }), "failed:embed");
@@ -279,7 +290,7 @@ export async function executeCreationRun(
     await durable(frame(ctx, "stage_started", { stage: "links" }), null);
     try {
       deadlineGuard();
-      const count = await materializeSemanticEdges(auth, ctx.artifactId);
+      const count = await deps.materializeSemanticEdges(auth, ctx.artifactId);
       await durable(frame(ctx, "links_found", { outcome: `links:${count}`, candidates: count }), `links:${count}`);
     } catch (cause) {
       if (cause instanceof QuotaExhaustedError) {
