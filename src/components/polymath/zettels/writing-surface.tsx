@@ -28,11 +28,14 @@ const MIN_DRAFT_CHARS = 8;
 export function WritingSurface({
   workspaceId,
   sittingId,
+  seededFromDocument = false,
   onStreamState,
   onCardSaved,
 }: {
   workspaceId: string;
   sittingId: string;
+  /** §14.10: seeded sittings open with the one-line extract prompt, not an empty editor. */
+  seededFromDocument?: boolean;
   onStreamState: (state: StreamState) => void;
   onCardSaved: (artifactId: string) => void;
 }) {
@@ -48,7 +51,7 @@ export function WritingSurface({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, Placeholder.configure({ placeholder: "Write the idea as it comes…" })],
+    extensions: [StarterKit, Placeholder.configure({ placeholder: seededFromDocument ? "Extract proposals from this document" : "Write the idea as it comes…" })],
     content: draft || undefined,
     onUpdate: ({ editor }) => {
       store.getState().setDraft(editor.getText());

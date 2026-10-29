@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
 import { withTransaction } from "@/lib/db-transaction";
@@ -13,6 +14,16 @@ import { documents } from "./schema";
  * the evidence still stands. The assertion rows stay, marked retracted;
  * reviewed records are never erased.
  */
+
+/** §14.10 inbox source chip: workspace-scoped title lookup for a seeded sitting's document. */
+export async function getDocumentTitle(auth: AuthContext, documentId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ title: documents.title })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.workspaceId, auth.workspaceId)))
+    .limit(1);
+  return row?.title ?? null;
+}
 
 export class DocumentLifecycleError extends Error {
   constructor(

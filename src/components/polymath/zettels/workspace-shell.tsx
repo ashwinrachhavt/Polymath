@@ -18,8 +18,11 @@ export function WorkspaceShell({
   workspaceId,
   sitting,
   initialCards,
+  source,
 }: {
   workspaceId: string;
+  /** §14.10: seeded sittings show a "From: {document}" chip, openable for reference. */
+  source: { title: string; href: string } | null;
   sitting: { id: string; topic: string | null; tags: string[]; startedAt: string; endedAt: string | null };
   initialCards: { artifactId: string; role: string; position: number }[];
 }) {
@@ -53,8 +56,13 @@ export function WorkspaceShell({
       <SessionRail topic={sitting.topic} cards={cards} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border px-6 py-2">
-          <span className="text-sm text-muted-foreground">
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
             {ended ? "Ended sitting (browse only)" : "Sitting in progress"}
+            {source && (
+              <a href={source.href} className="rounded-full border border-border px-2 py-0.5 text-xs underline-offset-2 hover:underline">
+                From: {source.title}
+              </a>
+            )}
           </span>
           {!ended && (
             confirmingEnd ? (
@@ -74,6 +82,7 @@ export function WorkspaceShell({
           <WritingSurface
             workspaceId={workspaceId}
             sittingId={sitting.id}
+            seededFromDocument={source !== null}
             onStreamState={setStreamState}
             onCardSaved={onCardSaved}
           />

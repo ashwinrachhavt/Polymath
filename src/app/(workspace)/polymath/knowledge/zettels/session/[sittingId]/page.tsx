@@ -3,6 +3,7 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { getSitting, listSittingCards } from "@/domains/knowledge/sittings";
 import { WorkspaceShell } from "@/components/polymath/zettels/workspace-shell";
+import { getDocumentTitle } from "@/domains/knowledge/documents";
 
 export const metadata = { title: "Sitting · Ideas" };
 
@@ -22,9 +23,18 @@ export default async function SittingPage({
   const sitting = await getSitting(auth, sittingId);
   if (!sitting) notFound();
   const cards = await listSittingCards(auth, sitting.id);
+  // §14.10: a sitting seeded from the inbox carries sourceContext
+  // "document:<id>"; the header shows a "From: {title}" chip linking back.
+  let source: { title: string; href: string } | null = null;
+  if (sitting.sourceContext?.startsWith("document:")) {
+    const documentId = sitting.sourceContext.slice("document:".length);
+    const title = await getDocumentTitle(auth, documentId);
+    if (title) source = { title, href: `/polymath/knowledge?doc=${encodeURIComponent(documentId)}` };
+  }
   return (
     <WorkspaceShell
       workspaceId={auth.workspaceId}
+      source={source}
       sitting={{
         id: sitting.id,
         topic: sitting.topic,

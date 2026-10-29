@@ -12,7 +12,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 
-export const metadata = { title: "Zettels · Polymath" };
+export const metadata = { title: "Ideas · Polymath" };
 
 /*
  * The accepted zettel collection (ASH-184): the same card rows the notebook
@@ -166,11 +166,17 @@ export async function ZettelsSurface({ searchParams }: { searchParams: Promise<R
 
   return (
     <Screen
-      title="Zettels"
-      actions={<Link href="/polymath/knowledge" className="text-[13px] text-muted-foreground underline-offset-2 hover:underline">Back to Knowledge</Link>}
+      title="Ideas"
+      actions={
+        <span className="flex items-center gap-3">
+          <Link href="/polymath/knowledge/ideas/new" className="rounded-md border border-border px-2.5 py-1 text-[13px] hover:bg-muted/40">New idea</Link>
+          <Link href="/polymath/knowledge/zettels/session/new" className="rounded-md bg-primary px-2.5 py-1 text-[13px] text-primary-foreground">New sitting</Link>
+          <Link href="/polymath/knowledge" className="text-[13px] text-muted-foreground underline-offset-2 hover:underline">Back to Knowledge</Link>
+        </span>
+      }
     >
       <Panel>
-        <div className="mb-3 flex flex-wrap items-center gap-2" role="tablist" aria-label="Zettel views">
+        <div className="mb-3 flex flex-wrap items-center gap-2" role="tablist" aria-label="Idea views">
           {VIEWS.map((v) => (
             <Link
               key={v}

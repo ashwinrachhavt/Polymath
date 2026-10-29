@@ -474,6 +474,11 @@ export function InboxDetail({
             <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open in Document Vault</Link>
           </Button>
         ) : null}
+        {state === "converted" && capture.convertedType === "document" && capture.convertedId ? (
+          <Button asChild size="sm" variant="outline" title="Start a sitting seeded from this document">
+            <Link href={`/polymath/knowledge/zettels/session/new?source=${encodeURIComponent(capture.convertedId)}`}>New sitting from this document</Link>
+          </Button>
+        ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
             <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in Work</Link>
