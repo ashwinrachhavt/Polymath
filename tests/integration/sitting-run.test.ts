@@ -96,7 +96,7 @@ suite("sitting creation run", () => {
 
     const live: SittingEvent[] = [];
     const unsubscribe = subscribeRun(runId, (e) => live.push(e));
-    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, quotaAdmitted: true }, env);
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id }, env);
     unsubscribe();
 
     const [run] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, runId));
@@ -120,6 +120,31 @@ suite("sitting creation run", () => {
     expect(live.some((e) => e.event === "enrichment")).toBe(true);
     const suggestion = live.find((e) => e.event === "enrichment")?.payload as { suggestion?: string };
     expect(suggestion.suggestion).toContain("fixture suggestion");
+  });
+
+  it("stops execution when the owning connection aborts (§16.1, review A)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "dropped" });
+    const card = await seedCard("connection drops mid-run");
+    const { runId } = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
+
+    // Abort as soon as the first durable event lands (card_saved): every
+    // later stage boundary must observe the abort and stop.
+    const controller = new AbortController();
+    const unsubscribe = subscribeRun(runId, (e) => {
+      if (e.event === "card_saved") controller.abort();
+    });
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, signal: controller.signal }, env);
+    unsubscribe();
+
+    const [run] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, runId));
+    // Interrupted, never succeeded: the sweep contract stays honest.
+    expect(run.state).toBe("failed");
+    expect(run.error).toContain("interrupted");
+    const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId)).orderBy(agentSteps.sequence);
+    const events = steps.map((s) => (s.payload as { event?: string } | null)?.event);
+    expect(events).toContain("card_saved");
+    expect(events).not.toContain("done");
   });
 
   it("sweeps stranded running creation runs with a stage_failed outcome (§16.1)", async () => {
@@ -161,7 +186,7 @@ suite("sitting creation run", () => {
       embedArtifact: async () => ({ status: "skipped", reason: "edited" }),
       materializeSemanticEdges: async () => 0,
     };
-    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, quotaAdmitted: true }, env, deps);
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id }, env, deps);
     const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId));
     const summaries = steps.map((s) => s.summary);
     expect(summaries).toContain("skipped:edited");
@@ -175,7 +200,7 @@ suite("sitting creation run", () => {
     const sitting = await createSitting(auth, {});
     const card = await seedCard("replay card");
     const { runId } = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
-    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id, quotaAdmitted: true }, env);
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id }, env);
 
     // Connection dropped after commit: the replay from 0 carries every
     // durable event, in order; from a mid cursor only the tail.

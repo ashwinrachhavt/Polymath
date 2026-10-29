@@ -112,7 +112,7 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
           runId,
           sittingId,
           artifactId: body.data.artifactId,
-          quotaAdmitted: true,
+          signal: request.signal,
         }).catch(() => undefined).finally(() => {
           unsubscribe();
           if (!gone) {

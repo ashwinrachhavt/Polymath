@@ -85,8 +85,12 @@ export async function startCreationRun(
   // exhausted allowance does not block the run: writing is preserved and the
   // generation stages report QUOTA_UNAVAILABLE (§15.3) while Track A runs.
   let quota: { admitted: boolean; provider?: string } = { admitted: false };
+  // Frozen-model contract: the resolved provider's "registry:model" name is
+  // pinned on the run row at start, not only inside the quota snapshot.
+  let model: string | null = null;
   try {
     const provider = generationProvider(env);
+    model = provider.name;
     const entry = providerEntry(provider.registryId);
     if (entry?.quota && entry.enabled) {
       // One operation admission per run in the provider's own unit; the
@@ -114,6 +118,7 @@ export async function startCreationRun(
       subjects: [{ sittingId: input.sittingId, artifactId: input.artifactId }],
       state: "running",
       startedAt: new Date(),
+      model,
       policySnapshot: { source: "zettel-sitting-creation", quota },
     })
     .returning({ id: agentRuns.id });
@@ -124,7 +129,8 @@ type RunContext = {
   runId: string;
   sittingId: string;
   artifactId: string;
-  quotaAdmitted: boolean;
+  /** The owning connection's lifetime (§16.1): when it aborts, execution stops. */
+  signal?: AbortSignal;
 };
 
 /*
@@ -224,6 +230,10 @@ export async function executeCreationRun(
     await persistEvent(auth, ctx, seq, event, outcome);
     lastDurableAt = Date.now();
   };
+  // §16.1: the connection owns execution for its lifetime. An aborted
+  // request stops the pipeline at the next stage boundary; the run row is
+  // marked interrupted, never succeeded, so the sweep contract stays honest.
+  const aborted = () => ctx.signal?.aborted ?? false;
 
   // Stage 0: save-first (§3). The card is already committed by the caller;
   // the run's first durable event names the saved version.
@@ -261,6 +271,7 @@ export async function executeCreationRun(
   const trackA = async () => {
     // Stage A1: embed. embedArtifact owns the version guard; its skip reasons
     // map onto the §15.2 outcomes verbatim.
+    if (aborted()) return;
     await durable(frame(ctx, "stage_started", { stage: "embed" }), null);
     try {
       deadlineGuard();
@@ -287,6 +298,7 @@ export async function executeCreationRun(
     }
 
     // Stage A2: link discovery (§5: candidates surfaced, never asserted).
+    if (aborted()) return;
     await durable(frame(ctx, "stage_started", { stage: "links" }), null);
     try {
       deadlineGuard();
@@ -302,6 +314,7 @@ export async function executeCreationRun(
   };
 
   const trackB = async () => {
+    if (aborted()) return;
     if (!provider) {
       await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "PROVIDER_UNCONFIGURED", message: "No generation provider is configured, so suggestions did not run - your card is saved.", operationId: ctx.runId }), "failed:enrich");
       return;
@@ -325,6 +338,7 @@ export async function executeCreationRun(
         // Live-only events: thinking/tokens fan out but are never persisted.
         let suggestion = "";
         for await (const chunk of meteredProvider.stream(input)) {
+          if (aborted()) return;
           deadlineGuard();
           if (chunk.type === "thinking") emitLive(ctx, frame(ctx, "thinking", { content: chunk.content }));
           else { suggestion += chunk.content; emitLive(ctx, frame(ctx, "token", { content: chunk.content })); }
@@ -355,6 +369,12 @@ export async function executeCreationRun(
   // Two concurrent tracks after save (§3); one stage's failure never blocks
   // a sibling (allSettled).
   await Promise.allSettled([trackA(), trackB()]);
+  if (aborted()) {
+    // The owning connection dropped: the run is interrupted, not done, and a
+    // later attach replays the durable record up to the last committed event.
+    await finishRun(ctx.runId, "failed", "Run interrupted - retry to finish enrichment.");
+    return;
+  }
   await durable(frame(ctx, "done", {}), null);
   await finishRun(ctx.runId, "succeeded", null);
 }
