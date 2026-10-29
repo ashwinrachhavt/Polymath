@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { CREATION_IDLE_MS, DECOMPOSE_PASTE_CHARS } from "@/domains/knowledge/sittings";
+import { CREATION_IDLE_MS, DECOMPOSE_PASTE_CHARS } from "@/domains/knowledge/sitting-events";
 import type { DecompositionAnalysis, DecompositionDecision } from "@/domains/knowledge/decomposition";
 import {
   analyzePasteAction,

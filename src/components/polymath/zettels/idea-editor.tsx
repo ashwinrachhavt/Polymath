@@ -6,7 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { createSittingStore } from "./sitting-store";
 import { createIdleDebouncer } from "./idle-debounce";
-import { CREATION_IDLE_MS } from "@/domains/knowledge/sittings";
+import { CREATION_IDLE_MS } from "@/domains/knowledge/sitting-events";
 import { saveIdeaAction } from "@/app/(workspace)/polymath/knowledge/ideas/actions";
 
 /*

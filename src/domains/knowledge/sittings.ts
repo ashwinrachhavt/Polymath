@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
 import { artifactLinks, artifactVersions, artifacts, zettelSittingCards, zettelSittings } from "./schema";
+import { CREATION_IDLE_MS, DECOMPOSE_MAX_CHARS, DECOMPOSE_PASTE_CHARS } from "./sitting-events";
 
 /*
  * Sittings (plan 2026-10-29 §2, §14; Gate 2026-10-29): a writing context
@@ -12,16 +13,11 @@ import { artifactLinks, artifactVersions, artifacts, zettelSittingCards, zettelS
  * collection surface and "Sittings" the nav destination; "zettel" stays
  * internal-only (§0, §16).
  *
- * The two creation constants live here as the single named source (§15.1):
- * CREATION_IDLE_MS is the editor-idle debounce that fires Track B (§14.2 -
- * the donor's 350ms felt twitchy for prose; 1.2s reads as intentional);
- * the DECOMPOSE_* pair bounds paste decomposition - at/above PASTE the
- * review opens, above MAX the input is rejected, never truncated (§4's
- * surfaced-omissions invariant).
+ * The §15.1 creation constants live in sitting-events.ts (the dependency-free
+ * module client components can import) and are re-exported here for server
+ * call sites.
  */
-export const CREATION_IDLE_MS = 1200;
-export const DECOMPOSE_PASTE_CHARS = 2000;
-export const DECOMPOSE_MAX_CHARS = 20000;
+export { CREATION_IDLE_MS, DECOMPOSE_MAX_CHARS, DECOMPOSE_PASTE_CHARS };
 
 /** Typed sitting errors: a stable code + one human sentence (§15.2 shape). */
 export class SittingError extends Error {

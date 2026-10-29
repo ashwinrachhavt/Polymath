@@ -12,6 +12,16 @@
 
 export const SITTING_PROTOCOL_VERSION = 1 as const;
 
+/*
+ * The §15.1 creation constants, single named source. They live HERE, not in
+ * sittings.ts, because client components (idea-editor, writing-surface) import
+ * them and sittings.ts pulls in the db — a client import of it bundles the
+ * Postgres driver into the browser ("Can't resolve 'fs'").
+ */
+export const CREATION_IDLE_MS = 1200;
+export const DECOMPOSE_PASTE_CHARS = 2000;
+export const DECOMPOSE_MAX_CHARS = 20000;
+
 /** The stages the creation pipeline runs (§3); the panel renders these by name. */
 export const CREATION_STAGES = ["embed", "links", "enrich", "bloom"] as const;
 
