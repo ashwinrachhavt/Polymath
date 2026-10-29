@@ -12,6 +12,7 @@ import {
   durableEvents,
   executeCreationRun,
   getCreationRun,
+  latestCreationRun,
   startCreationRun,
   subscribeRun,
 } from "@/domains/knowledge/sitting-run";
@@ -51,23 +52,38 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
   const parsed = rawCursor === null ? 0 : Number(rawCursor);
   const cursor = Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 
-  let started: Awaited<ReturnType<typeof startCreationRun>>;
-  try {
-    started = await startCreationRun(auth, { sittingId, artifactId: body.data.artifactId });
-  } catch (cause) {
-    // §15.4: typed domain errors render as the standard error surface,
-    // never as SSE events (the join never happened).
-    if (cause instanceof SittingError) {
-      return problemResponse(
-        cause.code === "ARTIFACT_WORKSPACE_MISMATCH" ? 403 : 404,
-        cause.code.toLowerCase(),
-        cause.message,
-      );
+  /*
+   * A request carrying a cursor is a RECONNECT (review): it resolves the
+   * sitting's existing creation run - running or finished - and replays it.
+   * Starting a new run for a cursor request would apply the cursor to the
+   * wrong history and re-run generation/quota. Only a cursor-less request
+   * starts (or reuses) a run.
+   */
+  let runId: string;
+  let driveExecution = false;
+  if (cursor > 0) {
+    const existing = await latestCreationRun(auth, sittingId);
+    if (!existing) return problemResponse(404, "not_found", "No creation run to resume.");
+    runId = existing.id;
+  } else {
+    let started: Awaited<ReturnType<typeof startCreationRun>>;
+    try {
+      started = await startCreationRun(auth, { sittingId, artifactId: body.data.artifactId });
+    } catch (cause) {
+      // §15.4: typed domain errors render as the standard error surface,
+      // never as SSE events (the join never happened).
+      if (cause instanceof SittingError) {
+        return problemResponse(
+          cause.code === "ARTIFACT_WORKSPACE_MISMATCH" ? 403 : 404,
+          cause.code.toLowerCase(),
+          cause.message,
+        );
+      }
+      throw cause;
     }
-    throw cause;
+    runId = started.runId;
+    driveExecution = !started.reused;
   }
-
-  const runId = started.runId;
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -80,55 +96,79 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
           gone = true;
         }
       };
+      /*
+       * Subscribe-before-replay (review): the listener registers BEFORE the
+       * durable snapshot is read, buffering live frames; the replay then
+       * covers everything up to the snapshot, and the buffer flushes with
+       * sequence dedupe - an event committed between snapshot and subscribe
+       * can no longer vanish, and one fanned out after its commit never
+       * arrives twice. Live-only frames (null seq) are unrecoverable by
+       * design (§16.1) and pass through.
+       */
+      let replayedThrough = cursor;
+      let liveReady = false;
+      const buffer: { event: SittingEvent; seq: number | null }[] = [];
+      let onDone: (() => void) | null = null;
+      const deliver = (event: SittingEvent, seq: number | null) => {
+        if (seq !== null) {
+          if (seq <= replayedThrough) return;
+          replayedThrough = seq;
+        }
+        push(event);
+        if (event.event === "done") onDone?.();
+      };
+      const unsubscribe = subscribeRun(runId, (event, seq) => {
+        if (liveReady) deliver(event, seq);
+        else buffer.push({ event, seq });
+      });
       try {
         // 1. Durable replay from the cursor (§16.1: allowlisted events only).
         for (const step of await durableEvents(auth, runId, cursor)) {
           const payload = (step.payload ?? {}) as Record<string, unknown>;
-          push({
+          deliver({
             protocolVersion: SITTING_PROTOCOL_VERSION,
             operationId: runId,
             ...(typeof payload.artifactId === "string" ? { artifactId: payload.artifactId } : {}),
             ...(typeof payload.artifactVersionId === "string" ? { artifactVersionId: payload.artifactVersionId } : {}),
             event: (payload.event as SittingEvent["event"]) ?? "warning",
             payload,
-          });
+          }, step.sequence);
         }
+        liveReady = true;
+        for (const pending of buffer) deliver(pending.event, pending.seq);
+        buffer.length = 0;
+
         const run = await getCreationRun(auth, runId);
         if (!run || run.state !== "running") {
           push({ protocolVersion: SITTING_PROTOCOL_VERSION, operationId: runId, event: "done" });
           return;
         }
-        // 2. Attach live; only the connection that STARTED the run drives
-        // execution, in-process, for this connection's lifetime (§16.1).
-        const unsubscribe = subscribeRun(runId, push);
-        if (started.reused) {
-          // Another connection owns execution, or the originator dropped and
-          // the run is stranded-until-swept: durable replay above is the
-          // contract; live attach delivers anything still arriving.
-          request.signal.addEventListener("abort", () => { gone = true; unsubscribe(); });
+        if (!driveExecution) {
+          // Attach (review): a reused or reconnected run stays OPEN - live
+          // frames flow until the run's done event or the client aborts; the
+          // old early return ran the finally and closed the stream instantly.
+          await new Promise<void>((resolve) => {
+            onDone = resolve;
+            request.signal.addEventListener("abort", () => resolve());
+          });
           return;
         }
+        // 2. Only the connection that STARTED the run drives execution,
+        // in-process, for this connection's lifetime (§16.1).
         const executing = executeCreationRun(auth, {
           runId,
           sittingId,
           artifactId: body.data.artifactId,
           signal: request.signal,
-        }).catch(() => undefined).finally(() => {
-          unsubscribe();
-          if (!gone) {
-            try { controller.close(); } catch { /* already closed */ }
-          }
-        });
-        request.signal.addEventListener("abort", () => {
-          gone = true;
-          unsubscribe();
-        });
+        }).catch(() => undefined);
+        request.signal.addEventListener("abort", () => { gone = true; });
         await executing;
       } catch {
         // A client disconnect or execution fault ends the stream; the durable
         // record keeps every committed event for the reconnect's cursor.
       } finally {
         gone = true;
+        unsubscribe();
         try { controller.close(); } catch { /* already closed */ }
       }
     },

@@ -148,6 +148,10 @@ suite("sitting creation run", () => {
 
     const [run] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, runId));
     expect(run.state).toBe("succeeded");
+    // Review: the replay cursor tracks the highest committed step exactly -
+    // never below it for the sweep to reuse a sequence.
+    const [maxStep] = await handle!.db.select({ max: sql<number>`max(${agentSteps.sequence})` }).from(agentSteps).where(eq(agentSteps.runId, runId));
+    expect(run.lastEventSeq).toBe(maxStep.max);
 
     const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId)).orderBy(agentSteps.sequence);
     const summaries = steps.map((s) => s.summary).filter((s): s is string => s !== null);
@@ -224,6 +228,90 @@ suite("sitting creation run", () => {
     expect(metadata?.bloom).toMatchObject({ level: 1, levelName: "Recall" });
     expect(metadata?.dismissedCandidates).toEqual(["x"]); // merge by namespace, not whole-object write
     expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime()); // the drizzle trap: no human-edit bump
+  });
+
+  it("a quota-refused run never calls the provider: enrich reports QUOTA_UNAVAILABLE (§16.4, review)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "quota" });
+    const card = await seedCard("quota-gated idea");
+    // Admission refused (exhausted allowance) is recorded on the run row at
+    // insert (policy snapshots are update-frozen by migration 0150).
+    const { ensureProfile } = await import("@/domains/agents/commands");
+    const profileId = await ensureProfile(auth.workspaceId, "polymath");
+    const [runRow] = await handle!.db.insert(agentRuns).values({
+      workspaceId: auth.workspaceId,
+      agentProfileId: profileId,
+      objective: "zettel-sitting-creation",
+      subjects: [{ sittingId: sitting.id, artifactId: card.id }],
+      state: "running",
+      startedAt: new Date(),
+      policySnapshot: { source: "zettel-sitting-creation", quota: { admitted: false, provider: "gemini" } },
+    }).returning({ id: agentRuns.id });
+    const runId = runRow.id;
+
+    let embedCalled = 0;
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id }, env, {
+      embedArtifact: (async () => { embedCalled += 1; return { status: "failed" as const, error: "x" }; }) as never,
+      materializeSemanticEdges: (async () => 0) as never,
+    });
+
+    const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId)).orderBy(agentSteps.sequence);
+    const events = steps.map((s) => (s.payload as { event?: string } | null)?.event);
+    // Track A still ran; generation did not.
+    expect(embedCalled).toBe(1);
+    expect(events).not.toContain("enrichment");
+    expect(events).not.toContain("bloom_suggested");
+    const quotaFailure = steps.find((s) => (s.payload as { stage?: string; code?: string } | null)?.code === "QUOTA_UNAVAILABLE");
+    expect((quotaFailure?.payload as { stage?: string })?.stage).toBe("enrich");
+    expect(quotaFailure?.summary).toBe("failed:enrich");
+  });
+
+  it("a hung stage trips the watchdog: the run fails stalled instead of succeeding silently (§16.9, review)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "stall" });
+    const card = await seedCard("stalled idea");
+    const { runId } = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
+
+    await executeCreationRun(auth, { runId, sittingId: sitting.id, artifactId: card.id }, env, {
+      // Never resolves: without the watchdog this run would hang, then
+      // "succeed" with no durable event for the whole window.
+      embedArtifact: (() => new Promise(() => {})) as never,
+      materializeSemanticEdges: (async () => 0) as never,
+      deadlineMs: 50,
+    });
+
+    const [run] = await handle!.db.select().from(agentRuns).where(eq(agentRuns.id, runId));
+    expect(run.state).toBe("failed");
+    const steps = await handle!.db.select().from(agentSteps).where(eq(agentSteps.runId, runId)).orderBy(agentSteps.sequence);
+    const stall = steps.find((s) => (s.payload as { code?: string } | null)?.code === "RUN_STALLED");
+    expect((stall?.payload as { stage?: string })?.stage).toBe("run");
+    expect(stall?.summary).toBe("failed:stalled");
+    expect(isAllowedStageOutcome(stall!.summary!)).toBe(true);
+  });
+
+  it("concurrent starts admit quota exactly once - the loser attaches without paying (§16.4, review)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "one admission" });
+    const card = await seedCard("admission idea");
+    const geminiEnv = { GENERATION_PROVIDER: "gemini", GEMINI_API_KEY: "g", NODE_ENV: "test" };
+    const [a, b] = await Promise.all([
+      startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, geminiEnv),
+      startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, geminiEnv),
+    ]);
+    expect(a.runId).toBe(b.runId);
+    expect([a.reused, b.reused].sort()).toEqual([false, true]);
+    // The winner's unit settles (consumed); the loser's reservation is
+    // released untouched - one run's work costs one unit, never two.
+    const buckets = await handle!.client.unsafe(
+      "select coalesce(sum(consumed), 0)::int as consumed from provider_quota_buckets where workspace_id = $1 and provider = 'gemini'",
+      [ws.workspaceId],
+    );
+    expect(buckets[0].consumed).toBe(1);
+    const settled = await handle!.client.unsafe(
+      "select count(*)::int as n from provider_usage_ledger where workspace_id = $1 and kind = 'settle'",
+      [ws.workspaceId],
+    );
+    expect(settled[0].n).toBe(1);
   });
 
   it("sweeps stranded running creation runs with a stage_failed outcome (§16.1)", async () => {

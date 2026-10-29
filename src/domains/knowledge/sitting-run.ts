@@ -81,36 +81,32 @@ export async function startCreationRun(
 
   const profileId = await ensureProfile(auth.workspaceId, "polymath");
 
-  // §16.4: one operation admission per run, cached on the run row's policy
-  // snapshot; a reconnect attaches to durable events and never re-admits. An
-  // exhausted allowance does not block the run: writing is preserved and the
-  // generation stages report QUOTA_UNAVAILABLE (§15.3) while Track A runs.
-  let quota: { admitted: boolean; provider?: string } = { admitted: false };
-  // Frozen-model contract: the resolved provider's "registry:model" name is
-  // pinned on the run row at start, not only inside the quota snapshot.
+  // Provider resolution spends nothing, so it happens before the insert; the
+  // frozen model name pins on the run row at start. Quota ADMISSION spends a
+  // unit, so it happens only after this request WINS the insert race
+  // (review): a loser that attaches to the winner's run never pays for work
+  // it does not execute.
   let model: string | null = null;
+  let quotaEntry: ReturnType<typeof providerEntry> | null = null;
+  let providerRegistryId: string | null = null;
   try {
     const provider = generationProvider(env);
     model = provider.name;
-    const entry = providerEntry(provider.registryId);
-    if (entry?.quota && entry.enabled) {
-      // One operation admission per run in the provider's own unit; the
-      // no-op settles the reservation immediately (per-call usage accounting
-      // rides metered() during execution).
-      await withQuota(drizzleQuotaStore(), entry, auth.workspaceId, 1, async () => null);
-    }
-    quota = { admitted: true, provider: provider.registryId };
+    providerRegistryId = provider.registryId;
+    quotaEntry = providerEntry(provider.registryId) ?? null;
   } catch (cause) {
-    if (cause instanceof QuotaExhaustedError) {
-      quota = { admitted: false, provider: cause.provider };
-    } else if (cause instanceof GenerationUnconfiguredError) {
-      quota = { admitted: false };
-    } else {
-      throw cause;
-    }
+    if (!(cause instanceof GenerationUnconfiguredError)) throw cause;
   }
 
-  try {
+  // §16.4: one operation admission per run, recorded on the run row's policy
+  // snapshot (immutable at admission, migration 0150); a reconnect attaches
+  // to durable events and never re-admits. The reservation RIDES the insert
+  // (review): the winner's unit settles with the committed row, while a
+  // concurrent loser - unique-violation inside withQuota - RELEASES its unit
+  // and attaches to the winner instead of paying for work it never executes.
+  // An exhausted allowance does not block the run: writing is preserved and
+  // the generation stages report QUOTA_UNAVAILABLE (§15.3) while Track A runs.
+  const insertRun = async (quota: { admitted: boolean; provider?: string }) => {
     const [run] = await db
       .insert(agentRuns)
       .values({
@@ -124,11 +120,27 @@ export async function startCreationRun(
         policySnapshot: { source: "zettel-sitting-creation", quota },
       })
       .returning({ id: agentRuns.id });
-    return { runId: run.id, reused: false };
+    return run.id;
+  };
+
+  try {
+    if (quotaEntry?.quota && quotaEntry.enabled && providerRegistryId) {
+      try {
+        const runId = await withQuota(drizzleQuotaStore(), quotaEntry, auth.workspaceId, 1, () =>
+          insertRun({ admitted: true, provider: providerRegistryId }));
+        return { runId, reused: false };
+      } catch (cause) {
+        if (!(cause instanceof QuotaExhaustedError)) throw cause;
+        const runId = await insertRun({ admitted: false, provider: cause.provider });
+        return { runId, reused: false };
+      }
+    }
+    const runId = await insertRun(providerRegistryId ? { admitted: true, provider: providerRegistryId } : { admitted: false });
+    return { runId, reused: false };
   } catch (cause) {
-    // Review F: the pre-check above is the fast path; migration 0262's
-    // partial unique index is the guard. A concurrent POST that loses the
-    // race attaches to the winner's run - never a second execution.
+    // Review F: migration 0262's partial unique index is the guard. A
+    // concurrent POST that loses the race attaches to the winner's run -
+    // never a second execution, and (above) never a second admission.
     if (isUniqueViolation(cause)) {
       const [winner] = await db
         .select({ id: agentRuns.id })
@@ -146,9 +158,12 @@ export async function startCreationRun(
   }
 }
 
-/** Postgres 23505, through either the postgres.js error or a drizzle wrapper. */
+/** Postgres 23505, on the postgres.js error or inside drizzle's "Failed query" wrapper. */
 function isUniqueViolation(cause: unknown): boolean {
-  return typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "23505";
+  if (typeof cause !== "object" || cause === null) return false;
+  const direct = (cause as { code?: string }).code;
+  const wrapped = (cause as { cause?: { code?: string } }).cause?.code;
+  return direct === "23505" || wrapped === "23505";
 }
 
 type RunContext = {
@@ -165,9 +180,15 @@ type RunContext = {
  * connected client never sees an event the record lacks (§3: durable success
  * events emitted after commit).
  */
-const liveSubscribers = new Map<string, Set<(event: SittingEvent) => void>>();
+/*
+ * Subscribers receive the durable sequence with each committed event (null
+ * for live-only token/thinking frames) so a reconnecting stream can
+ * subscribe BEFORE reading the durable snapshot and dedupe the overlap
+ * (review: subscribe-before-replay).
+ */
+const liveSubscribers = new Map<string, Set<(event: SittingEvent, seq: number | null) => void>>();
 
-export function subscribeRun(runId: string, subscriber: (event: SittingEvent) => void): () => void {
+export function subscribeRun(runId: string, subscriber: (event: SittingEvent, seq: number | null) => void): () => void {
   let set = liveSubscribers.get(runId);
   if (!set) liveSubscribers.set(runId, (set = new Set()));
   set.add(subscriber);
@@ -212,13 +233,16 @@ async function persistEvent(
       ...(typeof event.payload === "object" && event.payload !== null ? event.payload as Record<string, unknown> : {}),
     },
   });
-  await db.update(agentRuns).set({ lastEventSeq: sequence }).where(eq(agentRuns.id, ctx.runId));
-  for (const sub of liveSubscribers.get(ctx.runId) ?? []) sub(event);
+  // Monotonic (review): concurrent tracks commit out of order, so the
+  // cursor only ever advances - it never rewinds below a committed sequence
+  // for the sweep to reuse and hit the (runId, sequence) uniqueness guard.
+  await db.update(agentRuns).set({ lastEventSeq: sql`greatest(${agentRuns.lastEventSeq}, ${sequence})` }).where(eq(agentRuns.id, ctx.runId));
+  for (const sub of liveSubscribers.get(ctx.runId) ?? []) sub(event, sequence);
 }
 
 function emitLive(ctx: RunContext, event: SittingEvent): void {
   assertEventRedacted(event);
-  for (const sub of liveSubscribers.get(ctx.runId) ?? []) sub(event);
+  for (const sub of liveSubscribers.get(ctx.runId) ?? []) sub(event, null);
 }
 
 const frame = (
@@ -245,6 +269,8 @@ const frame = (
 export type CreationRunDeps = {
   embedArtifact: typeof embedArtifact;
   materializeSemanticEdges: typeof materializeSemanticEdges;
+  /** Test seam: the inactivity deadline, defaulting to §16.9's 30s. */
+  deadlineMs?: number;
 };
 
 const defaultDeps: CreationRunDeps = { embedArtifact, materializeSemanticEdges };
@@ -255,14 +281,38 @@ export async function executeCreationRun(
   env: Record<string, string | undefined> = process.env,
   deps: CreationRunDeps = defaultDeps,
 ): Promise<void> {
-  const [run] = await db.select({ lastEventSeq: agentRuns.lastEventSeq }).from(agentRuns).where(eq(agentRuns.id, ctx.runId)).limit(1);
+  const [run] = await db.select({ lastEventSeq: agentRuns.lastEventSeq, policySnapshot: agentRuns.policySnapshot }).from(agentRuns).where(eq(agentRuns.id, ctx.runId)).limit(1);
   const seq = { next: (run?.lastEventSeq ?? 0) + 1 };
+  // §16.4: the run start's admission decides whether generation may run.
+  const quotaAdmitted = (run?.policySnapshot as { quota?: { admitted?: boolean } } | null)?.quota?.admitted === true;
   // §16.9: 30s without a durable event ends the stream with stage_failed.
+  const deadlineMs = deps.deadlineMs ?? NO_DURABLE_EVENT_DEADLINE_MS;
+  const STALLED = "creation run produced no durable event within the deadline";
   let lastDurableAt = Date.now();
+  let stopping = false;
   const durable = async (event: SittingEvent, outcome: string | null) => {
+    // After the watchdog trips, an orphaned track must not commit further
+    // events onto the failed run's record.
+    if (stopping) throw new Error(STALLED);
     await persistEvent(auth, ctx, seq, event, outcome);
     lastDurableAt = Date.now();
   };
+  // The watchdog (review): deadlineGuard() below only bounds work BETWEEN
+  // awaits; this race bounds a single slow await (a hung embed batch) so the
+  // run can never report success after a silent-deadline breach.
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+  const deadline = new Promise<never>((_, reject) => {
+    const tick = () => {
+      const remaining = deadlineMs - (Date.now() - lastDurableAt);
+      if (remaining <= 0) {
+        stopping = true;
+        reject(new Error(STALLED));
+        return;
+      }
+      watchdog = setTimeout(tick, remaining);
+    };
+    watchdog = setTimeout(tick, deadlineMs);
+  });
   // §16.1: the connection owns execution for its lifetime. An aborted
   // request stops the pipeline at the next stage boundary; the run row is
   // marked interrupted, never succeeded, so the sweep contract stays honest.
@@ -296,8 +346,8 @@ export async function executeCreationRun(
   }
 
   const deadlineGuard = () => {
-    if (Date.now() - lastDurableAt > NO_DURABLE_EVENT_DEADLINE_MS) {
-      throw new Error("creation run produced no durable event within the deadline");
+    if (Date.now() - lastDurableAt > deadlineMs) {
+      throw new Error(STALLED);
     }
   };
 
@@ -352,6 +402,12 @@ export async function executeCreationRun(
       await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "PROVIDER_UNCONFIGURED", message: "No generation provider is configured, so suggestions did not run - your card is saved." }), "failed:enrich");
       return;
     }
+    // §16.4 (review): a run admitted as quota-less never calls the provider -
+    // the persisted admission result is honored, not just recorded.
+    if (!quotaAdmitted) {
+      await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE }), "failed:enrich");
+      return;
+    }
     // §16.4: per-call usage rides metered() to the run row; admission already
     // happened once at run start.
     const usage: { model: string; kind: string; inputTokens?: number; outputTokens?: number; durationMs: number }[] = [];
@@ -383,12 +439,16 @@ export async function executeCreationRun(
         const { text } = await meteredProvider.generate(input);
         await durable(frame(ctx, "enrichment", { outcome: "enriched", suggestion: text }), "enriched");
       }
+      // The stage closes (review): without stage_completed the panel leaves
+      // enrich "running" forever, including on replay.
+      await durable(frame(ctx, "stage_completed", { stage: "enrich", outcome: "enriched" }), "enriched");
       if (usage.length > 0) {
         await db.insert(agentSteps).values(usage.map((u) => ({
           workspaceId: auth.workspaceId, runId: ctx.runId, sequence: seq.next++, kind: "model" as const,
           summary: "enriched",
           payload: { event: "usage", model: u.model, kind: u.kind, inputTokens: u.inputTokens, outputTokens: u.outputTokens, durationMs: u.durationMs },
         })));
+        await db.update(agentRuns).set({ lastEventSeq: sql`greatest(${agentRuns.lastEventSeq}, ${seq.next - 1})` }).where(eq(agentRuns.id, ctx.runId));
       }
 
       // Bloom stage (§6): a practice suggestion, never mastery. The
@@ -424,8 +484,25 @@ export async function executeCreationRun(
   };
 
   // Two concurrent tracks after save (§3); one stage's failure never blocks
-  // a sibling (allSettled).
-  await Promise.allSettled([trackA(), trackB()]);
+  // a sibling (allSettled). Each track races the inactivity watchdog: a hung
+  // await loses, the run fails honestly, and the orphaned track's later
+  // durable writes are refused (stopping).
+  await Promise.allSettled([
+    Promise.race([trackA().catch(() => undefined), deadline]),
+    Promise.race([trackB().catch(() => undefined), deadline]),
+  ]);
+  if (watchdog) clearTimeout(watchdog);
+  if (stopping) {
+    await persistEvent(
+      auth,
+      ctx,
+      seq,
+      frame(ctx, "stage_failed", { stage: "run", code: "RUN_STALLED", message: "The run stalled without progress - your card is saved. Retry to finish enrichment." }),
+      "failed:stalled",
+    );
+    await finishRun(ctx.runId, "failed", "Run stalled - retry to finish enrichment.");
+    return;
+  }
   if (aborted()) {
     // The owning connection dropped: the run is interrupted, not done, and a
     // later attach replays the durable record up to the last committed event.
