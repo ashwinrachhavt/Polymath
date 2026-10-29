@@ -46,6 +46,10 @@ export function WritingSurface({
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [artifactVersion, setArtifactVersion] = useState<number | null>(null);
   const [reading, setReading] = useState(false);
+  // §14.4 conflict: the server saved a newer version than our base. The
+  // writer compares, keeps theirs, or takes the server's - never a clobber.
+  const [conflict, setConflict] = useState<{ serverPlainText: string; serverVersion: number; serverUpdatedAt: string } | null>(null);
+  const [comparing, setComparing] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestionRef = useRef<HTMLDivElement | null>(null);
   const [suggestionFocused, setSuggestionFocused] = useState(false);
@@ -87,6 +91,10 @@ export function WritingSurface({
     });
     if ("error" in saved) {
       setReading(false);
+      if (saved.error === "version_conflict") {
+        setConflict({ serverPlainText: saved.server.plainText, serverVersion: saved.server.version, serverUpdatedAt: saved.server.updatedAt });
+        return;
+      }
       apply({ protocolVersion: 1, operationId: "", event: "error", payload: { code: saved.error, message: "The card could not be saved - your draft is still here." } });
       return;
     }
@@ -162,7 +170,11 @@ export function WritingSurface({
       content: editor.getJSON(),
       plainText: editor.getText(),
     });
-    if (!("error" in saved)) setArtifactVersion(saved.versionNumber);
+    if ("error" in saved) {
+      if (saved.error === "version_conflict") setConflict({ serverPlainText: saved.server.plainText, serverVersion: saved.server.version, serverUpdatedAt: saved.server.updatedAt });
+    } else {
+      setArtifactVersion(saved.versionNumber);
+    }
   }, [streamState.proposal, editor, artifactId, artifactVersion, sittingId, store]);
 
   useEffect(() => {
@@ -190,13 +202,59 @@ export function WritingSurface({
     return () => window.removeEventListener("keydown", onKey);
   }, [streamState.proposal, suggestionFocused, adopt, firePause]);
 
-  const conflict = store((s) => s.conflict);
+  // §14.4: keep mine = save my text as a new version on top of the server's;
+  // take server = adopt the server's text and version as my base.
+  const keepMine = useCallback(async () => {
+    if (!conflict || !artifactId || !editor) return;
+    const saved = await saveSittingCardAction({
+      sittingId,
+      artifactId,
+      expectedVersion: conflict.serverVersion,
+      idempotencyKey: `${idemKey.current}-keep-mine`,
+      title: store.getState().draft.split("\n")[0]?.slice(0, 80) || "Untitled",
+      content: editor.getJSON(),
+      plainText: editor.getText(),
+    });
+    if ("error" in saved) {
+      if (saved.error === "version_conflict") setConflict({ serverPlainText: saved.server.plainText, serverVersion: saved.server.version, serverUpdatedAt: saved.server.updatedAt }); // moved again: compare against the newer base
+      return;
+    }
+    setArtifactVersion(saved.versionNumber);
+    setConflict(null);
+    setComparing(false);
+  }, [conflict, artifactId, editor, sittingId, store]);
+
+  const takeServer = useCallback(() => {
+    if (!conflict || !editor) return;
+    editor.commands.setContent(conflict.serverPlainText);
+    store.getState().setDraft(conflict.serverPlainText);
+    setArtifactVersion(conflict.serverVersion);
+    setConflict(null);
+    setComparing(false);
+  }, [conflict, editor, store]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {conflict && (
         <div role="alert" className="border-b border-border bg-muted/40 px-4 py-2 text-sm">
-          Server has a newer saved version — compare / keep mine / take server.
-          <button className="ml-3 underline" onClick={() => store.getState().resolveConflict("keep-mine")}>Keep mine</button>
+          <span className="flex flex-wrap items-center gap-2">
+            The server has a newer saved version of this card.
+            <button className="min-h-11 px-2 underline" onClick={() => setComparing((c) => !c)}>{comparing ? "Hide comparison" : "Compare"}</button>
+            <button className="min-h-11 px-2 underline" onClick={() => void keepMine()}>Keep mine</button>
+            <button className="min-h-11 px-2 underline" onClick={takeServer}>Take server</button>
+          </span>
+          {comparing && (
+            <span className="mt-2 grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+              <span className="block rounded border border-border p-2">
+                <span className="mb-1 block font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Saved on the server (v{conflict.serverVersion})</span>
+                <span className="block whitespace-pre-wrap">{conflict.serverPlainText}</span>
+              </span>
+              <span className="block rounded border border-border p-2">
+                <span className="mb-1 block font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Your draft</span>
+                <span className="block whitespace-pre-wrap">{store.getState().draft}</span>
+              </span>
+            </span>
+          )}
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 font-serif text-lg leading-relaxed">
