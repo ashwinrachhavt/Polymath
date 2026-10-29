@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { sql } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import {
   GenerationRequestError,
@@ -10,8 +11,14 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { createTask } from "@/domains/work/commands";
-import { createNote } from "./notes";
+import { db } from "@/lib/db";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { IdempotencyConflictError } from "@/domains/audit/receipt";
+import { requestReceipts } from "@/domains/audit/schema";
+import { artifactLinks, artifacts } from "./schema";
+import { commitNoteSnapshot, createNote, getNote } from "./notes";
 import { DECOMPOSE_MAX_CHARS, SittingError } from "./sittings";
 
 /*
@@ -40,6 +47,12 @@ export type DecompositionCandidate = {
   title: string;
   content: string;
   spans: DecompositionSpan[];
+  /*
+   * Existing zettels that look related (§4: "similarity candidates shown,
+   * not asserted"). A title-overlap hint for the review UI's merge/link
+   * choices; never an auto-decision.
+   */
+  similar: { id: string; title: string }[];
 };
 export type DecompositionAnalysis = {
   candidates: DecompositionCandidate[];
@@ -148,7 +161,7 @@ export function analyzePaste(text: string, raw: z.infer<typeof responseSchema>):
     if (spans.length === 0) continue; // no verbatim support: no proposal
     const first = spans[0];
     const id = createHash("sha256").update(`${hash}:${first.start}:${first.end}:${candidate.title}`).digest("hex").slice(0, 24);
-    candidates.push({ id, role: candidate.role, kind: candidate.kind, title: candidate.title, content: candidate.content, spans });
+    candidates.push({ id, role: candidate.role, kind: candidate.kind, title: candidate.title, content: candidate.content, spans, similar: [] });
   }
   const omitted = raw.omitted
     .map((o) => ({ ...o, span: locateSpan(text, o.quote) }))
@@ -157,29 +170,77 @@ export function analyzePaste(text: string, raw: z.infer<typeof responseSchema>):
   return { candidates, omitted, sourceHash: hash };
 }
 
+/*
+ * Title-overlap similarity (§4): whole distinctive words from the candidate
+ * title against existing zettel titles, best-effort. Shown to the reviewer,
+ * never asserted - the merge/link decision stays the user's.
+ */
+export async function findSimilarZettels(
+  auth: AuthContext,
+  title: string,
+  limit = 3,
+): Promise<{ id: string; title: string }[]> {
+  const words = title
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 4);
+  if (words.length === 0) return [];
+  const rows = await db
+    .select({ id: artifacts.id, title: artifacts.title })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        eq(artifacts.kind, "zettel"),
+        isNull(artifacts.archivedAt),
+        or(...words.map((w) => sql`position(${w} in lower(${artifacts.title})) > 0`))!,
+      ),
+    )
+    .limit(limit);
+  return rows;
+}
+
 /** Full analysis through the decomposer: validates the cap, then the schema, then the verbatim locate. */
 export async function decomposePaste(auth: AuthContext, text: string, decomposer?: PasteDecomposer): Promise<DecompositionAnalysis> {
   if (text.length > DECOMPOSE_MAX_CHARS) throw pasteTooLong();
   const raw = await (decomposer ?? defaultPasteDecomposer(auth.workspaceId)).decompose(text);
-  return analyzePaste(text, raw);
+  const analysis = analyzePaste(text, raw);
+  for (const candidate of analysis.candidates) {
+    if (candidate.role === "principle") candidate.similar = await findSimilarZettels(auth, candidate.title);
+  }
+  return analysis;
 }
 
 export type DecompositionDecision =
   | { candidateId: string; action: "skip" }
-  | { candidateId: string; action: "create" };
+  | { candidateId: string; action: "create" }
+  /** Fold the candidate into an existing zettel as a new version (§4 merge). */
+  | { candidateId: string; action: "merge"; targetArtifactId: string }
+  /** Create the candidate's card and record an explicit related edge (§4 link). */
+  | { candidateId: string; action: "link"; targetArtifactId: string };
 
 /*
  * The batch commit (§4): each accepted candidate becomes its routed
  * destination, and the idempotency key rides the dedupe id (document/source
- * + span) so a retried batch creates one card per span, never two. Merging
- * into an existing card and link-only decisions are the review UI's next
- * slice; only create and skip are committed here.
+ * + span) so a retried batch creates one card per span, never two. Merge
+ * folds the candidate into an existing zettel through the canonical version
+ * machinery (commitNoteSnapshot - kind untouched, expectedVersion claimed,
+ * receipt-keyed); link creates the card and records an explicit "related"
+ * edge the semantic pass will not overwrite.
  */
 export async function commitDecomposition(
   auth: AuthContext,
   input: { analysis: DecompositionAnalysis; decisions: DecompositionDecision[]; idempotencyKey: string },
-): Promise<{ created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[]; skipped: string[] }> {
+): Promise<{
+  created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[];
+  merged: { candidateId: string; targetId: string; versionNumber: number }[];
+  linked: { candidateId: string; id: string; targetId: string }[];
+  skipped: string[];
+}> {
   const created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[] = [];
+  const merged: { candidateId: string; targetId: string; versionNumber: number }[] = [];
+  const linked: { candidateId: string; id: string; targetId: string }[] = [];
   const skipped: string[] = [];
   for (const decision of input.decisions) {
     const candidate = input.analysis.candidates.find((c) => c.id === decision.candidateId);
@@ -190,6 +251,52 @@ export async function commitDecomposition(
     }
     const key = `${input.idempotencyKey}:${candidate.id}`;
     const body = `${candidate.content}\n\n> ${candidate.spans.map((s) => s.quote).join("\n>\n> ")}`;
+    if (decision.action === "merge") {
+      /*
+       * Merge targets only ever come from the review UI's similarity list,
+       * but the guard is server-side regardless: the target must be a live
+       * zettel in this workspace (getNote enforces kind + workspace), so a
+       * merge can never convert a foreign or non-card artifact.
+       */
+      const target = await getNote(auth, decision.targetArtifactId);
+      if (!target || target.kind !== "zettel") throw new SittingError("MERGE_TARGET_NOT_FOUND", "The card to merge into no longer exists.");
+      const existing = (target.content as { content?: unknown[] } | null)?.content ?? [];
+      try {
+        const snapshot = await commitNoteSnapshot(auth, {
+          idempotencyKey: `${key}:merge`,
+          artifactId: target.id,
+          expectedVersion: target.version,
+          content: {
+            type: "doc",
+            content: [
+              ...existing,
+              { type: "paragraph", content: [{ type: "text", text: candidate.content }] },
+              { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: candidate.spans.map((sp) => sp.quote).join("\n") }]}] },
+            ],
+          },
+          note: `Merged decomposition candidate: ${candidate.title}`,
+        });
+        merged.push({ candidateId: candidate.id, targetId: target.id, versionNumber: snapshot.versionNumber });
+      } catch (error) {
+        /*
+         * A retried batch re-derives expectedVersion from the moved head, so
+         * the snapshot receipt's request hash differs from the first merge's
+         * even though the decision is identical. The receipt for this exact
+         * candidate key is the proof the merge already landed: replay its
+         * recorded version instead of folding the content in twice.
+         */
+        if (!(error instanceof IdempotencyConflictError)) throw error;
+        const [receipt] = await db
+          .select({ response: requestReceipts.response })
+          .from(requestReceipts)
+          .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, `${key}:merge`)))
+          .limit(1);
+        if (!receipt) throw error;
+        const prior = receipt.response as { versionNumber: number };
+        merged.push({ candidateId: candidate.id, targetId: target.id, versionNumber: prior.versionNumber });
+      }
+      continue;
+    }
     if (candidate.role === "checklist") {
       const task = await createTask(auth, { title: candidate.title, description: body, tags: ["decomposed"] });
       created.push({ candidateId: candidate.id, destination: "task", id: task.id });
@@ -211,7 +318,29 @@ export async function commitDecomposition(
         kind: "zettel",
       });
       created.push({ candidateId: candidate.id, destination: "zettel", id: note.id });
+      if (decision.action === "link") {
+        // Same server-side guard as merge: the edge target must be a live
+        // zettel here. onConflictDoNothing keeps a retried batch idempotent
+        // against the (artifact, target) unique edge key.
+        const target = await getNote(auth, decision.targetArtifactId);
+        if (!target || target.kind !== "zettel") throw new SittingError("LINK_TARGET_NOT_FOUND", "The card to link to no longer exists.");
+        await withTransaction(async (tx: TxDrizzle) => {
+          await tx
+            .insert(artifactLinks)
+            .values({
+              workspaceId: auth.workspaceId,
+              artifactId: note.id,
+              targetType: "note",
+              targetId: target.id,
+              linkType: "related",
+              label: target.title,
+              context: `Linked from decomposition of pasted material: ${candidate.title}`,
+            })
+            .onConflictDoNothing();
+        });
+        linked.push({ candidateId: candidate.id, id: note.id, targetId: target.id });
+      }
     }
   }
-  return { created, skipped };
+  return { created, merged, linked, skipped };
 }
