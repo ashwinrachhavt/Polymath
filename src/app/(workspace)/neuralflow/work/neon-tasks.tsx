@@ -165,11 +165,7 @@ export async function NeonTasks({
       <StatStrip
         className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
         inline
-        cellClassName={(index) =>
-          index > 0
-            ? "p-4 border-l max-sm:[&:nth-child(odd)]:border-l-0 max-sm:[&:nth-child(n+3)]:border-t sm:max-lg:[&:nth-child(3n+1)]:border-l-0 sm:max-lg:[&:nth-child(n+4)]:border-t lg:[&:nth-child(n+2)]:border-t-0"
-            : "p-4"
-        }
+        variant="pipeline"
         items={[
           { label: "Capture", value: counts.inbox, hint: "Anything that arrives lands in one inbox." },
           { label: "Clarify", value: counts.backlog, hint: "Turn each into a task, a note, or let it go." },

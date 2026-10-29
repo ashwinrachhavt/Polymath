@@ -119,7 +119,10 @@ export default function ApiKeysPanel() {
         className="grid gap-4 border-t pt-4"
         onSubmit={(event) => {
           event.preventDefault();
-          const data = new FormData(event.currentTarget);
+          // React nulls currentTarget once this sync handler returns, so the
+          // async continuation cannot touch it; keep the element instead.
+          const form = event.currentTarget;
+          const data = new FormData(form);
           const scopes = data.getAll("scope").map(String);
           setCreating(true);
           void createApiKeyAction({
@@ -132,7 +135,7 @@ export default function ApiKeysPanel() {
             setShownToken(result.token);
             setCopied(false);
             reload();
-            event.currentTarget.reset();
+            form.reset();
           });
         }}
       >

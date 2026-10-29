@@ -76,7 +76,7 @@ export async function addNoteComment(
   input: Keyed & { noteId: string; body: string },
 ): Promise<NoteCommentItem> {
   return withTransaction(async (tx) => {
-    return (await withReceipt(tx, auth, input.idempotencyKey, { op: "addNoteComment", ...input }, async () => {
+    const receipt = await withReceipt(tx, auth, input.idempotencyKey, { op: "addNoteComment", ...input }, async () => {
       const [note] = await tx
         .select({ id: artifacts.id })
         .from(artifacts)
@@ -111,7 +111,15 @@ export async function addNoteComment(
         tx,
       );
       return { ...comment, authorName: author?.displayName ?? null };
-    })).value;
+    });
+    const { value } = receipt;
+    return {
+      ...value,
+      // A replayed receipt comes back from a JSONB column, so Date fields
+      // arrive as strings; revive them or the action's .toISOString() throws.
+      resolvedAt: value.resolvedAt ? new Date(value.resolvedAt) : null,
+      createdAt: new Date(value.createdAt),
+    };
   });
 }
 
@@ -120,11 +128,11 @@ export async function resolveNoteComment(
   input: Keyed & { commentId: string; resolved: boolean },
 ): Promise<{ id: string; resolvedAt: Date | null }> {
   return withTransaction(async (tx) => {
-    return (await withReceipt(tx, auth, input.idempotencyKey, { op: "resolveNoteComment", ...input }, async () => {
+    const receipt = await withReceipt(tx, auth, input.idempotencyKey, { op: "resolveNoteComment", ...input }, async () => {
       // Ownership joins the comment to this workspace's notes, so a
       // cross-workspace commentId is indistinguishable from a wrong one.
       const [row] = await tx
-        .select({ id: noteComments.id, resolvedAt: noteComments.resolvedAt })
+        .select({ id: noteComments.id, resolvedAt: noteComments.resolvedAt, noteId: noteComments.noteId })
         .from(noteComments)
         .innerJoin(artifacts, eq(artifacts.id, noteComments.noteId))
         .where(and(eq(noteComments.id, input.commentId), eq(noteComments.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
@@ -140,13 +148,21 @@ export async function resolveNoteComment(
         {
           action: input.resolved ? "note.comment_resolved" : "note.comment_reopened",
           subjectType: "artifact",
-          subjectId: input.commentId,
+          // The audit subject is the note the comment lives on; the comment
+          // id rides in metadata where day pages can still find it.
+          subjectId: row.noteId,
           summary: input.resolved ? "Resolved a note comment" : "Reopened a note comment",
-          metadata: {},
+          metadata: { commentId: row.id },
         },
         tx,
       );
       return { id: row.id, resolvedAt };
-    })).value;
+    });
+    const { value } = receipt;
+    return {
+      ...value,
+      // Same JSONB-replay revival as addNoteComment.
+      resolvedAt: value.resolvedAt ? new Date(value.resolvedAt) : null,
+    };
   });
 }

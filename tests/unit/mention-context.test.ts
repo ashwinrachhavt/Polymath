@@ -188,6 +188,14 @@ describe("exact mention matching", () => {
     expect(mentionedEntities([ann, annSmith], "Ping @Ann Smith please")).toEqual([annSmith]);
     expect(mentionedEntities([ann, annSmith], "Ping @Ann please")).toEqual([ann]);
   });
+
+  // Regression: mention-suppression was global, so a draft naming both the
+  // short and the long title kept only the long one.
+  // Found by Macroscope review on PR #358, fixed 2026-10-28.
+  it("keeps both entities when the draft names Ann and Ann Smith separately", () => {
+    expect(mentionedEntities([ann, annSmith], "Ask @Ann and @Ann Smith")).toEqual([ann, annSmith]);
+    expect(mentionedEntities([ann, annSmith], "@Ann Smith and @Ann")).toEqual([ann, annSmith]);
+  });
 });
 
 describe("resolveMentionPayload", () => {

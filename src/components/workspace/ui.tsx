@@ -20,19 +20,27 @@ export function Stat({ label, value, hint }: { label: string; value: ReactNode; 
  * The mockup's stat strip: one bordered panel of label/value/hint cells.
  * The default cell stacks the label, a large value, and an optional hint
  * (day, spending). `inline` puts the value on the label's baseline row for
- * the dense pipeline variant, and `cellClassName` supplies the per-index
- * border classes those cells need; the wrapper grid comes from `className`.
- * Extracted from the day, spending, and pipeline surfaces, which had drifted
- * into three copies.
+ * the dense pipeline variant. Server components cannot pass function props
+ * across the client boundary, so the pipeline's per-index border classes live
+ * here as a `variant` string instead of a `cellClassName` callback; the
+ * wrapper grid comes from `className`. Extracted from the day, spending, and
+ * pipeline surfaces, which had drifted into three copies.
  */
-export function StatStrip({ items, className, inline, cellClassName }: {
+export function StatStrip({ items, className, inline, variant }: {
   items: Array<{ label: string; value: ReactNode; hint?: ReactNode }>;
   className?: string;
   /** Value rides the label's baseline row (the pipeline strip's layout). */
   inline?: boolean;
-  /** Per-index cell classes, e.g. the pipeline strip's responsive borders. */
-  cellClassName?: (index: number) => string;
+  /** The six-stage pipeline strip: tight padding and responsive borders. */
+  variant?: "pipeline";
 }) {
+  const cellClassName =
+    variant === "pipeline"
+      ? (index: number) =>
+          index > 0
+            ? "p-4 border-l max-sm:[&:nth-child(odd)]:border-l-0 max-sm:[&:nth-child(n+3)]:border-t sm:max-lg:[&:nth-child(3n+1)]:border-l-0 sm:max-lg:[&:nth-child(n+4)]:border-t lg:[&:nth-child(n+2)]:border-t-0"
+            : "p-4"
+      : undefined;
   return (
     <div className={cn("panel mb-6 grid overflow-hidden rounded-xl", className)}>
       {items.map((item, index) => (

@@ -13,7 +13,7 @@ import Link from "next/link";
  * here — it must start with a single slash (never "//"), or it is dropped.
  */
 export const metadata: Metadata = {
-  title: "Polymath — Understand is the bottleneck",
+  title: "Polymath — Understanding is the bottleneck",
   description:
     "Polymath turns everything entering your world — mail, files, pages, ideas — into an ordered, trustworthy plan.",
 };
@@ -70,7 +70,7 @@ export default async function LandingPage({
         <section className="flex flex-1 flex-col justify-center py-20">
           <h1 className="max-w-3xl text-[clamp(2.75rem,7vw,4.25rem)] font-bold leading-[1.05] tracking-[-0.02em]">
             <span className="inline-flex items-center rounded-[0.6em] bg-[oklch(0.93_0.05_150)] px-[0.32em] py-[0.04em] text-[oklch(0.27_0.008_75)]">
-              Understand
+              Understanding
             </span>{" "}
             is the bottleneck.
           </h1>

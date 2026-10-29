@@ -25,12 +25,19 @@ export type PanelComment = {
 function CommentRow({ comment }: { comment: PanelComment }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const resolved = comment.resolvedAt !== null;
+  // Local mirror of resolvedAt: router.refresh() re-renders the server tree
+  // but does not remount this row, so without it the panel would keep
+  // showing the old state and the next click would send the same toggle.
+  const [resolvedOverride, setResolvedOverride] = useState<boolean | null>(null);
+  const resolved = resolvedOverride ?? (comment.resolvedAt !== null);
   const toggle = async () => {
     setBusy(true);
-    const result = await resolveNoteCommentAction({ commentId: comment.id, resolved: !resolved, idempotencyKey: crypto.randomUUID() });
+    const next = !resolved;
+    const result = await resolveNoteCommentAction({ commentId: comment.id, resolved: next, idempotencyKey: crypto.randomUUID() });
     setBusy(false);
-    if (result.ok) router.refresh();
+    if (!result.ok) return;
+    setResolvedOverride(result.resolvedAt !== null);
+    router.refresh();
   };
   return (
     <li className={`rounded-md border px-3 py-2.5 ${resolved ? "border-transparent bg-muted/30" : "border-border"}`}>
@@ -65,7 +72,9 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
     const result = await addNoteCommentAction({ noteId, body, idempotencyKey: crypto.randomUUID() });
     setPending(false);
     if (!result.ok) return setError(result.error);
-    setDraft("");
+    // Only clear what was submitted: text typed while the request was in
+    // flight belongs to the next comment.
+    setDraft((current) => (current === body ? "" : current));
     setComments((current) => [...current, result.comment]);
     router.refresh();
   };

@@ -82,7 +82,7 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
         className="grid-cols-1 sm:grid-cols-3"
         items={[
           { label: "Captured", value: day.captured.length, hint: "What arrived this day." },
-          { label: "Finished", value: day.workedOn.length, hint: "What changed, from your own saves." },
+          { label: "Changes", value: day.workedOn.length, hint: "What changed, from your own saves." },
           { label: "Focus", value: day.sessions.length, hint: "Sessions touching this day." },
         ]}
       />

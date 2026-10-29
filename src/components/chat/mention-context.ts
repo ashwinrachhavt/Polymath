@@ -60,21 +60,30 @@ function clampContext<T>(value: T): T {
 /** The `@Name` mention markers a draft carries for the given entities. */
 export function mentionedEntities(entities: MentionEntity[], text: string): MentionEntity[] {
   // Boundary-aware: the mention must open at start/whitespace and close at
-  // end/whitespace/punctuation, so "@Ann" no longer matches inside "@Ann
-  // Smith" or "email@Ann". A close followed by another capitalized word
-  // means the typed token continues past this title ("@Ann Smith" names Ann
-  // Smith, not Ann), so a bare "@Ann" does not fire there; ordinary
-  // lowercase prose after the name still matches.
-  const matches = (title: string) =>
-    new RegExp(`(^|\\s)@${escapeRegExp(title)}(?=$|[\\s,.:;!?])(?!\\s+[A-Z])`).test(text);
+  // end/whitespace/punctuation, so "@Ann" never matches inside "email@Ann".
+  // A close followed by another capitalized word means the typed token
+  // continues past this title ("@Ann Smith" names Ann Smith, not Ann);
+  // ordinary lowercase prose after the name still matches.
+  //
+  // Suppression is per occurrence, not per text: "@Ann and @Ann Smith" names
+  // both, because the two @Ann occurrences sit at different positions and
+  // only the one the longer title also starts at collapses into it.
+  const occurrenceStarts = (title: string): number[] => {
+    const re = new RegExp(`(^|\\s)@${escapeRegExp(title)}(?=$|[\\s,.:;!?])(?!\\s+[A-Z])`, "g");
+    return Array.from(text.matchAll(re), (m) => m.index + m[1].length);
+  };
+  const startsFor = new Map(entities.map((entity) => [entity.title, occurrenceStarts(entity.title)]));
   return entities.filter((entity) => {
-    if (!matches(entity.title)) return false;
-    return !entities.some(
-      (other) =>
-        other !== entity &&
-        other.title.length > entity.title.length &&
-        other.title.startsWith(`${entity.title} `) &&
-        matches(other.title),
+    const starts = startsFor.get(entity.title) ?? [];
+    if (starts.length === 0) return false;
+    return starts.some(
+      (start) =>
+        !entities.some((other) =>
+          other !== entity &&
+          other.title.length > entity.title.length &&
+          other.title.startsWith(`${entity.title} `) &&
+          (startsFor.get(other.title) ?? []).includes(start),
+        ),
     );
   });
 }
