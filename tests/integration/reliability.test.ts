@@ -8,16 +8,12 @@ import { users, workspaces } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
 
 /*
- * The invariants agents/engineering.md says run against real Postgres, because
- * a mock proves the mock works. These are the ones a later caller can break
+ * The invariants the engineering guidelines says run against real Postgres, because * a mock proves the mock works. These are the ones a later caller can break
  * without noticing: idempotency must dedupe, tenancy must cascade and isolate,
- * and a stale write must be rejected rather than silently won.
- *
- * Skipped unless TEST_DATABASE_URL points at a database with the migrations
- * applied — CI has no Postgres service yet, and a skipped test beats a test
+ * and a stale write must be rejected rather than silently won. *
+ * Skipped unless TEST_DATABASE_URL points at a database with the migrations * applied — CI has no Postgres service yet, and a skipped test beats a test
  * that quietly passes against nothing. That skip is a real coverage hole: read
- * green CI as covering the schema, not these four.
- */
+ * green CI as covering the schema, not these four. */
 
 const url = process.env.TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -139,10 +135,8 @@ suite("reliability primitives", () => {
   });
 
   /*
-   * The focus table documents "at most one live session per workspace; two tabs
-   * cannot both own the clock". That is only true because the index is unique —
-   * as a plain index it enforced nothing while the comment claimed it did.
-   */
+   * The focus table documents "at most one live session per workspace; two tabs * cannot both own the clock". That is only true because the index is unique —
+   * as a plain index it enforced nothing while the comment claimed it did. */
   it("a workspace cannot hold two live focus sessions", async () => {
     const { workspace } = await seedWorkspace("focus");
     await db.insert(focusSessions).values({ workspaceId: workspace.id, state: "running" });
@@ -158,10 +152,8 @@ suite("reliability primitives", () => {
   });
 
   /*
-   * `target_id` carries no foreign key, so the check constraint is the only
-   * thing standing between a typo and an unqueryable link row. Without this
-   * test the constraint is a comment again the moment someone edits it out.
-   */
+   * `target_id` carries no foreign key, so the check constraint is the only * thing standing between a typo and an unqueryable link row. Without this
+   * test the constraint is a comment again the moment someone edits it out. */
   it("a link row rejects a target kind that is not on the shared list", async () => {
     const { workspace } = await seedWorkspace("link-kinds");
     const [task] = await db

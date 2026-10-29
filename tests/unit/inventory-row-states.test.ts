@@ -5,7 +5,7 @@ import { GUARDED_WITHOUT_VERSION, VERSIONED_WITH_TRIGGER_INVARIANT, readTables }
 import type { Guard } from "../../scripts/lib/row-state";
 
 /*
- * D-3 / D-9: the row rule (docs/tech-spec-v2.md §3).
+ * D-3 / D-9: the row rule (the generated inventory contract).
  *
  * A mutable row either carries `version` and is written through a guarded update,
  * or it is append-only, or its concurrency is handled by mechanisms declared with

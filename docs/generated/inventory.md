@@ -2,8 +2,8 @@
 
 <!-- DO NOT EDIT. Emitted by `scripts/tech-spec-inventory.ts` (`make inventory`). -->
 
-Facts about the tree, read at generation time. The authored half of the
-technical specification is `docs/tech-spec-v2.md`; it does not restate any of this.
+Facts about the tree, read at generation time. This file is the whole of the
+inventory; it does not restate prose from any authored spec.
 
 Generated from the working tree. The output contains nothing environment-
 dependent, so `inventory:check` behaves the same on a laptop and in CI.
@@ -31,7 +31,7 @@ Migrations: 86 files, highest `0259_note_comments`.
 
 ## Tests
 
-425 `.test.ts` and 43 `.spec.ts` files (unit: 246, integration: 179, e2e: 43).
+427 `.test.ts` and 43 `.spec.ts` files (unit: 246, integration: 181, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.

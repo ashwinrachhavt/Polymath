@@ -4,7 +4,7 @@ Owns: artifacts, versions, drafts, files, documents, extractions, sources, claim
 
 Tables are in `schema.ts` and nowhere else — a domain owns its tables, and UI
 code reads them through this domain's queries rather than joining across
-(agents/engineering.md). Enum values are the contract: add a value, never
+. Enum values are the contract: add a value, never
 repurpose one.
 
 Document extraction reads authorized private Blob objects through the server-side
@@ -95,29 +95,26 @@ distance over those vectors (same workspace, same model), computed at read
 time so nothing drifts, each with a score and a first-line excerpt. Explicit
 edges are flagged `alreadyLinked` so a UI can keep the two halves distinct.
 
-## Dossiers
+## Projects (formerly dossiers)
 
-A dossier is a name plus a set of documents in this workspace
-(`createDossier`, `attachDocuments`). A foreign or unknown document id fails the
+A project is a name plus a set of documents in this workspace
+(`createProject`, `attachDocuments`). A foreign or unknown document id fails the
 whole command. Each attachment pins the document's latest succeeded extraction
-hash on `dossier_sources`. `documents.search` takes an optional `dossierId`, and
-a run started with a dossier (`POST /api/v1/runs` with `dossierId`, set from the
-Ask Alfred form) stays inside it; an empty dossier returns nothing and an
-unknown dossier is an error.
-
-Not in this PR: Studio Generate (a run saved as a draft artifact linked to the
-pinned versions). The brief says not to start Studio until PR 5 and PR 8 merge.
+hash on `notebook_sources`. `documents.search` takes an optional `projectId`, and
+a run started with a project (`POST /api/v1/runs` with `projectId`, set from the
+Ask Alfred form) stays inside it; an empty project returns nothing and an
+unknown project is an error.
 
 ## Studio Generate
 
-`startStudioGenerate` starts a run whose objective names the dossier and whose
-subjects bind it to that dossier. `saveGeneratedDraft` turns the run's last
+`startStudioGenerate` starts a run whose objective names the project and whose
+subjects bind it to that project. `saveGeneratedDraft` turns the run's last
 assistant message into a `draft` artifact (version 1, reason `generated`), linked
 to each pinned document (`pinned:<content hash>`) and to the run, once per run.
 The owner then calls `saveDraft` (status `reviewed`) or `discardDraft`
 (`archived`); a decided draft is never rewritten. No code path sets `published`.
 API: POST /api/v1/projects/:projectId/generate, GET /api/v1/drafts, POST
-/api/v1/drafts/:artifactId/save|discard.
+/api/v1/drafts/:artifactId/:decision.
 
 ## Wiki (second brain)
 

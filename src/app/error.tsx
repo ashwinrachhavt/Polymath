@@ -3,15 +3,11 @@
 import { Button } from "@/components/ui/button";
 
 /*
- * Boundary behaviour is explicit (agents/engineering.md): a failure states what
- * happened and offers the way out. It never apologises, and it never renders an
- * empty screen that looks like success.
- *
- * The copy never asserts what was or was not saved: a render failure says
- * nothing about the outcome of any earlier write, which may have committed.
- *
- * `error.digest` is the only handle that ties this screen to the server log, so
- * it is shown rather than swallowed.
+ * Boundary behaviour is explicit : a failure states what
+ * happened and offers the way out. It never apologises, and it never renders an * empty screen that looks like success.
+ * * The copy never asserts what was or was not saved: a render failure says
+ * nothing about the outcome of any earlier write, which may have committed. *
+ * `error.digest` is the only handle that ties this screen to the server log, so * it is shown rather than swallowed.
  */
 export default function Error({
   error,

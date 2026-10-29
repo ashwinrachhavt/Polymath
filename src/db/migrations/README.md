@@ -2,7 +2,7 @@
 
 Forward-only SQL, one file per change, applied in glob order (CI applies them
 with `psql`; Vercel does not apply them on deploy). The convention lives in
-agents/engineering.md; this note covers the snapshot chain under `meta/`.
+the engineering guidelines; this note covers the snapshot chain under `meta/`.
 
 ## The 2026-10-25 chain repair (ASH-316)
 
