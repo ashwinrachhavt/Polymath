@@ -14,11 +14,19 @@ export { RELATIONSHIP_STATUSES };
 export type { RelationshipStatus };
 
 /*
- * Read queries for the relationships surface. The page composes exactly these * — it never joins CRM tables itself . Company names
- * and open follow-up counts ride along as subqueries so the list stays one * round trip instead of one per row.
- */ /* Qualified table names are written literally inside the correlated
+ * Read queries for the relationships surface. The page composes exactly these
+ * — it never joins CRM tables itself. Company names
+ * and open follow-up counts ride along as subqueries so the list stays one
+ * round trip instead of one per row.
+ */
+
+/*
+ * Qualified table names are written literally inside the correlated
  * subqueries: drizzle renders ${table.column} there as an unqualified "id",
- * which binds to the subquery's own table instead of the outer one. */ /** LIKE metacharacters in a search box are literal text, not patterns. */
+ * which binds to the subquery's own table instead of the outer one.
+ */
+
+/** LIKE metacharacters in a search box are literal text, not patterns. */
 function escapeLike(value: string) {
   return value.replace(/[%_\\]/g, (match) => `\\${match}`);
 }

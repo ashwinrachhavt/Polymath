@@ -7,11 +7,14 @@ import { requestReceipts } from "./schema";
 /*
  * Idempotency for first-party mutations (the engineering guidelines: every mutation
  * takes an idempotency UUID). Inside the caller's transaction:
- * *   - a key never seen runs `run`, stores its JSON result, and returns it;
- *   - the same key with the same request returns the stored result and runs *     nothing (`replayed: true`);
- *   - the same key with a different request throws IdempotencyConflictError. *
- * A transaction-scoped advisory lock on (workspace, key) serializes two * concurrent first attempts, so the loser waits, then replays; the unique
- * index on request_receipts stays the backstop, not the mechanism. *
+ *   - a key never seen runs `run`, stores its JSON result, and returns it;
+ *   - the same key with the same request returns the stored result and runs
+ *     nothing (`replayed: true`);
+ *   - the same key with a different request throws IdempotencyConflictError.
+ *
+ * A transaction-scoped advisory lock on (workspace, key) serializes two
+ * concurrent first attempts, so the loser waits, then replays; the unique
+ * index on request_receipts stays the backstop, not the mechanism.
  * `run` must return JSON-serializable data: it is what a replay hands back.
  * No key means no receipt (internal callers, agents with their own run ids). */
 

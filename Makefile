@@ -1,4 +1,4 @@
-# `make check` is the gate agents/engineering.md names. It calls the same
+# `make check` is the project's gate. It calls the same
 # script CI runs, so "passing" has exactly one definition.
 
 .PHONY: install dev check e2e search-up search-down search-logs queue-up queue-down queue-logs seed-taxonomy

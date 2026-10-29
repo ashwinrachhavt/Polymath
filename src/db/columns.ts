@@ -3,11 +3,14 @@ import { check, integer, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { workspaces } from "../domains/identity/tables";
 
 /*
- * The shape every mutable tenant record shares :
- * a uuid primary key, an integer `version` for optimistic concurrency, and * timestamptz bookkeeping. Spread these into a table's column map rather than
- * retyping them; a column declared here and nowhere else cannot drift. *
- * `createdBy`/`updatedBy` carry no foreign key on purpose — identity already * points at work, capture, and audit through real FKs, and adding the reverse
- * would make every domain schema importable from identity. */
+ * The shape every mutable tenant record shares:
+ * a uuid primary key, an integer `version` for optimistic concurrency, and
+ * timestamptz bookkeeping. Spread these into a table's column map rather than
+ * retyping them; a column declared here and nowhere else cannot drift.
+ * `createdBy`/`updatedBy` carry no foreign key on purpose — identity already
+ * points at work, capture, and audit through real FKs, and adding the reverse
+ * would make every domain schema importable from identity.
+ */
 
 export const primaryId = () => uuid("id").primaryKey().defaultRandom();
 
