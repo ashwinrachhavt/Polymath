@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Empty, Panel } from "@/components/workspace/ui";
+import { Empty, Panel, StatStrip } from "@/components/workspace/ui";
+import { displayTitle } from "@/lib/display-text";
+import { stripMentionContext } from "@/components/chat/mention-context";
 import { getUsageLedger } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
 
@@ -27,29 +29,49 @@ export async function SpendingPanel() {
   const ledger = await getUsageLedger(auth.workspaceId, WINDOW_DAYS);
 
   return (
-    <Panel
-      title="Spending"
-      description={`Recorded agent usage for the last ${WINDOW_DAYS} days. A step can report usage without a price, so unpriced work is named, and these are recorded figures, not a guaranteed complete bill.`}
-    >
-      {ledger.rows.length === 0 ? (
-        <Empty
-          title="No recorded usage"
-          description={`No agent runs recorded usage in the last ${WINDOW_DAYS} days.`}
-        />
-      ) : (
-        <>
-          <p className="text-[13px] text-muted-foreground">
-            {ledger.totalUsd !== null ? `$${ledger.totalUsd} recorded` : "Nothing priced"}
-            {ledger.unpricedRuns > 0
-              ? ` · ${ledger.unpricedRuns} ${ledger.unpricedRuns === 1 ? "run" : "runs"} with usage but no recorded price`
-              : ""}
-          </p>
-          <div className="mt-3 divide-y divide-border">
+    <>
+      {/* The mockup's stat strip: the week in three numbers, unpriced named
+          not zeroed. */}
+      <StatStrip
+        className="grid-cols-1 sm:grid-cols-3"
+        items={[
+          {
+            label: "This week",
+            value: ledger.totalUsd !== null ? `$${ledger.totalUsd}` : "—",
+            hint: "Derived from the ledger rows below.",
+          },
+          {
+            label: "Runs recorded",
+            value: ledger.rows.length,
+            hint:
+              ledger.unpricedRuns > 0
+                ? `${ledger.unpricedRuns} with usage but no recorded price.`
+                : "Every priced usage event.",
+          },
+          {
+            label: "Unpriced",
+            value: ledger.unpricedRuns > 0 ? ledger.unpricedRuns : "—",
+            hint: "Unpriced work shows as unpriced, never as zero.",
+          },
+        ]}
+      />
+
+      <Panel
+        title="Ledger"
+        description={`Recorded agent usage for the last ${WINDOW_DAYS} days. A step can report usage without a price, so unpriced work is named, and these are recorded figures, not a guaranteed complete bill.`}
+      >
+        {ledger.rows.length === 0 ? (
+          <Empty
+            title="No recorded usage"
+            description={`No agent runs recorded usage in the last ${WINDOW_DAYS} days.`}
+          />
+        ) : (
+          <div className="divide-y divide-border">
             {ledger.rows.map((row) => (
               <div key={row.runId} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0">
                 <div className="min-w-0">
                   <Link href={`/alfred/${row.runId}`} className="block truncate text-[13px] font-medium hover:underline">
-                    {row.objective}
+                    {displayTitle(stripMentionContext(row.objective)) || "Untitled run"}
                   </Link>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {row.state.replaceAll("_", " ")}
@@ -62,8 +84,8 @@ export async function SpendingPanel() {
               </div>
             ))}
           </div>
-        </>
-      )}
-    </Panel>
+        )}
+      </Panel>
+    </>
   );
 }

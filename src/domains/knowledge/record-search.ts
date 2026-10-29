@@ -1,16 +1,18 @@
-import { and, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 import { artifacts, documents, type artifactKind } from "@/domains/knowledge/schema";
 import { threads } from "@/domains/agents/schema";
+import { companies, contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
- * Cross-record lookup for the composer's plus menu: when the owner attaches
- * context to a message, they search everything the message could name —
- * notes, zettels, generated artifacts, and past conversations. One query,
- * grouped by kind client-side. Read-only; the reference travels in the
- * message text, so this module never writes anything.
+ * Cross-record lookup for the composer's plus menu and @-mentions: when the
+ * owner attaches context to a message, they search everything the message
+ * could name — notes, zettels, generated artifacts, past conversations, and
+ * the CRM's people and companies. One query set, grouped by kind client-side.
+ * Read-only; references travel in the message text, so this module never
+ * writes anything.
  *
  * LIMIT is fixed rather than caller-supplied: the menu shows a handful per
  * group, and an unbounded typeahead against the workspace's own tables is a
@@ -21,7 +23,7 @@ const PER_GROUP_LIMIT = 5;
 
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation" | "document";
+  kind: "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
   title: string;
   /** Where the picker sends a click: the record's own screen. */
   href: string;
@@ -42,9 +44,9 @@ export async function searchRecordsForAttach(
     "document", "memo", "diagram", "transcript", "other",
   ];
 
-  // Order matters: the queries below run artifacts, threads, documents, and the
-  // destructure must name them in that order.
-  const [artifactRows, threadRows, documentRows] = await Promise.all([
+  // Order matters: the queries below run artifacts, threads, documents, CRM
+  // people, and CRM companies, and the destructure must name them in that order.
+  const [artifactRows, threadRows, documentRows, contactRows, companyRows] = await Promise.all([
     db
       .select({ id: artifacts.id, kind: artifacts.kind, title: artifacts.title, updatedAt: artifacts.updatedAt })
       .from(artifacts)
@@ -86,6 +88,35 @@ export async function searchRecordsForAttach(
       )
       .orderBy(desc(documents.updatedAt))
       .limit(PER_GROUP_LIMIT),
+    // People and companies, so a message can carry a person's or company's
+    // context with it. A mention is a name the model reads; the href opens
+    // the CRM profile.
+    db
+      .select({ id: contacts.id, fullName: contacts.fullName, primaryEmail: contacts.primaryEmail })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.workspaceId, auth.workspaceId),
+          isNull(contacts.archivedAt),
+          sql`${contacts.fullName} <> ''`,
+          trimmed ? ilike(contacts.fullName, like) : sql`true`,
+        ),
+      )
+      .orderBy(asc(contacts.fullName))
+      .limit(PER_GROUP_LIMIT),
+    db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(
+        and(
+          eq(companies.workspaceId, auth.workspaceId),
+          isNull(companies.archivedAt),
+          sql`${companies.name} <> ''`,
+          trimmed ? ilike(companies.name, like) : sql`true`,
+        ),
+      )
+      .orderBy(asc(companies.name))
+      .limit(PER_GROUP_LIMIT),
   ]);
 
   const references: RecordReference[] = artifactRows
@@ -117,6 +148,22 @@ export async function searchRecordsForAttach(
       kind: "conversation" as const,
       title: row.title || "Untitled conversation",
       href: `/command-center/conversations/${row.id}`,
+    })),
+  );
+  references.push(
+    ...contactRows.map((row) => ({
+      id: row.id,
+      kind: "person" as const,
+      title: row.fullName,
+      href: `/command-center/relationships/contacts?id=${row.id}`,
+    })),
+  );
+  references.push(
+    ...companyRows.map((row) => ({
+      id: row.id,
+      kind: "company" as const,
+      title: row.name,
+      href: `/command-center/relationships/companies/${row.id}`,
     })),
   );
   return references;

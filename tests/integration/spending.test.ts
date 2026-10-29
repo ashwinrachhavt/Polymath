@@ -8,23 +8,14 @@ import {
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * The spending invariants agents/engineering.md says run against real Postgres,
- * because a mock proves the mock works. The ceiling has to hold when claims run
- * at once, settle has to be idempotent, and the per-run ceiling has to fire —
- * none of which a mock can show.
- *
- * Skipped unless TEST_DATABASE_URL points at a database with the migrations
- * applied. The commands and the transaction wrapper are imported lazily and
- * only after DATABASE_URL is pointed at that same database: src/lib/db-transaction.ts
- * reads DATABASE_URL at module load, so a static import would resolve against
- * the wrong database (or throw without one) and fail this file instead of
- * skipping it.
- *
- * The seed scaffolding lives in tests/helpers/test-workspace.ts; this file
- * inserts fresh unique slugs and truncates nothing.
- */
-
-const handle = makeTestDb();
+ * The spending invariants the engineering guidelines says run against real Postgres, * because a mock proves the mock works. The ceiling has to hold when claims run
+ * at once, settle has to be idempotent, and the per-run ceiling has to fire — * none of which a mock can show.
+ * * Skipped unless TEST_DATABASE_URL points at a database with the migrations
+ * applied. The commands and the transaction wrapper are imported lazily and * only after DATABASE_URL is pointed at that same database: src/lib/db-transaction.ts
+ * reads DATABASE_URL at module load, so a static import would resolve against * the wrong database (or throw without one) and fail this file instead of
+ * skipping it. *
+ * The seed scaffolding lives in tests/helpers/test-workspace.ts; this file * inserts fresh unique slugs and truncates nothing.
+ */ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let commands: typeof import("@/domains/spending/commands");
@@ -44,12 +35,9 @@ afterAll(async () => {
 const TINY = "0.000001";
 
 /*
- * `dailyCeilingUsd` and `perRunCeilingUsd` are numeric(12,4) — four decimal
- * places. The brief's "0.000003" rounds to 0.0000 on the way in, so every claim
- * is rejected and a test that only counts results passes without proving
- * anything. These values survive a round trip, and the ceiling is one estimate
- * wide so exactly one of four contenders can win.
- */
+ * `dailyCeilingUsd` and `perRunCeilingUsd` are numeric(12,4) — four decimal * places. The brief's "0.000003" rounds to 0.0000 on the way in, so every claim
+ * is rejected and a test that only counts results passes without proving * anything. These values survive a round trip, and the ceiling is one estimate
+ * wide so exactly one of four contenders can win. */
 const DAILY = "0.0001";
 const PER_RUN = "0.0001";
 const ESTIMATE = "0.0001";

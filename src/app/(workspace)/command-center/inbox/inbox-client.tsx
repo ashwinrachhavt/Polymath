@@ -59,7 +59,9 @@ export function CaptureForm() {
         submit();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        // One submit path: the form owns Cmd+Enter for the whole tree, so the
+        // textarea never doubles the fire (two rows per submission).
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.defaultPrevented) {
           event.preventDefault();
           submit();
         }
@@ -134,12 +136,6 @@ export function CaptureForm() {
             onChange={(event) => setText(event.target.value)}
             onBlur={(event) => {
               if (!event.target.value.trim()) setExpanded(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                submit();
-              }
             }}
             placeholder="Paste a thought, source excerpt, or URL"
             aria-label="Capture a thought, excerpt, or URL"

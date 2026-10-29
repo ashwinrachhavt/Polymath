@@ -1421,6 +1421,31 @@ export const cards = pgTable(
 );
 
 /*
+ * Margin comments on a note (Notion-feel, owner direction 2026-10-28). A
+ * comment belongs to the note as a whole; resolved is a visible state, not a
+ * deletion. The note is an artifact row (kind note/zettel), so the FK points
+ * at artifacts and the comment dies with its note.
+ */
+export const noteComments = pgTable(
+  "note_comments",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    /** Null while open; set when someone resolves the thread. */
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    index("note_comments_note_idx").on(t.workspaceId, t.noteId, t.createdAt),
+    check("note_comments_body_check", sql`length(btrim(body)) between 1 and 2000`),
+  ],
+);
+
+/*
  * Append-only attempt history. The card row is the projection; this is the
  * record "twelve cards in four minutes" is counted from, and the evidence
  * behind any per-topic weakness readout.

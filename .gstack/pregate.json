@@ -48,7 +48,14 @@
     "tests/unit/sm2.test.ts": [],
     "tests/unit/quiz-generator.test.ts": [],
     "tests/unit/run-details.test.ts": [],
-    "src/db/migrations/0235_drop_learning.sql": []
+    "src/db/migrations/0235_drop_learning.sql": [],
+    "src/db/migrations/0259_note_comments.sql": [],
+    "src/db/migrations/meta/0259_snapshot.json": [],
+    "docs/audits/**": [],
+    "services/sidecar/**": [],
+    "mockups/**": [],
+    "compose.yaml": [],
+    "scripts/seed-taxonomy.ts": []
   },
   "serial_patterns": [
     "tests/integration/**",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { updateTaskAction } from "./actions";
+import { STATUS_LABEL, STATUS_PILL as statusPill } from "./status-meta";
 import type { BoardCardData, BoardStatus } from "./work-board";
 
 /*
@@ -67,7 +68,7 @@ export function CardModal({
             </DialogHeader>
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
               <dt className="text-muted-foreground">Status</dt>
-              <dd>{STATUS_LABEL[card.status]}</dd>
+              <dd><span className={statusPill[card.status]}>{STATUS_LABEL[card.status]}</span></dd>
               <dt className="text-muted-foreground">Priority</dt>
               <dd>{card.priority === "none" ? "None" : card.priority}</dd>
               <dt className="text-muted-foreground">Due</dt>
@@ -89,7 +90,7 @@ export function CardModal({
                 disabled={pending}
                 onChange={(event) => changeStatus(event.target.value as BoardStatus)}
               >
-                {STATUSES.map(([value, label]) => (
+                {STATUS_OPTIONS.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -116,22 +117,4 @@ export function CardModal({
   );
 }
 
-const STATUSES: Array<[BoardStatus, string]> = [
-  ["inbox", "Inbox"],
-  ["backlog", "Backlog"],
-  ["ready", "Ready"],
-  ["in_progress", "In progress"],
-  ["waiting", "Waiting"],
-  ["done", "Done"],
-  ["cancelled", "Cancelled"],
-];
-
-const STATUS_LABEL: Record<BoardCardData["status"], string> = {
-  inbox: "Inbox",
-  backlog: "Backlog",
-  ready: "Ready",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
-  cancelled: "Cancelled",
-};
+const STATUS_OPTIONS: Array<[BoardStatus, string]> = Object.entries(STATUS_LABEL) as Array<[BoardStatus, string]>;

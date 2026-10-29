@@ -25,14 +25,14 @@ const base: CaptureTriageAnswers = {
 
 describe("triageCapture truth table", () => {
   it("commitment >= 0.7 proposes a task with the gating probability as rationale", () => {
-    const t = triageCapture({ ...base, commitment: 0.86, domain: { choice: "finance", topProbability: 0.9 } });
+    const t = triageCapture({ ...base, commitment: 0.86, domain: { choice: "finance-admin", topProbability: 0.9 } });
     expect(t.proposals).toHaveLength(1);
     expect(t.proposals[0].kind).toBe("task");
     expect(t.proposals[0].confidence).toBe("0.86");
     expect(t.proposals[0].rationale).toContain("commitment 0.86");
-    expect(t.proposals[0].rationale).toContain("domain finance");
+    expect(t.proposals[0].rationale).toContain("domain finance-admin");
     expect(t.proposals[0].payload).toEqual({});
-    expect(t.domainSlug).toBe("finance");
+    expect(t.domainSlug).toBe("finance-admin");
   });
 
   it("commitment boundary: 0.69 does not propose a task, 0.70 does", () => {
@@ -106,14 +106,14 @@ describe("triageCapture truth table", () => {
   });
 
   it("a domain Choice under 0.5 top probability leaves the domain null", () => {
-    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "ai", topProbability: 0.49 } });
+    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "coding-development", topProbability: 0.49 } });
     expect(t.domainSlug).toBeNull();
     expect(t.proposals[0].rationale).not.toContain("domain ai");
   });
 
   it("domain boundary: exactly 0.5 keeps the slug", () => {
-    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "ai", topProbability: 0.5 } });
-    expect(t.domainSlug).toBe("ai");
+    const t = triageCapture({ ...base, commitment: 0.9, domain: { choice: "coding-development", topProbability: 0.5 } });
+    expect(t.domainSlug).toBe("coding-development");
   });
 });
 

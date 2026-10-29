@@ -3,11 +3,10 @@ import { check, integer, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { workspaces } from "../domains/identity/tables";
 
 /*
- * The shape every mutable tenant record shares (agents/engineering.md):
+ * The shape every mutable tenant record shares:
  * a uuid primary key, an integer `version` for optimistic concurrency, and
  * timestamptz bookkeeping. Spread these into a table's column map rather than
  * retyping them; a column declared here and nowhere else cannot drift.
- *
  * `createdBy`/`updatedBy` carry no foreign key on purpose — identity already
  * points at work, capture, and audit through real FKs, and adding the reverse
  * would make every domain schema importable from identity.
@@ -42,12 +41,9 @@ export const recordedBy = {
 };
 
 /*
- * The record kinds a link row may point at. `targetId` carries no foreign key
- * (a polymorphic FK is not expressible), so this list plus a check constraint
- * on each link table is what stops a typo from inventing a new kind. One list,
- * because two link tables disagreeing about what a "document" is called is the
- * bug the constraint exists to prevent.
- */
+ * The record kinds a link row may point at. `targetId` carries no foreign key * (a polymorphic FK is not expressible), so this list plus a check constraint
+ * on each link table is what stops a typo from inventing a new kind. One list, * because two link tables disagreeing about what a "document" is called is the
+ * bug the constraint exists to prevent. */
 export const linkTargetKinds = [
   "task",
   "project",
@@ -71,10 +67,8 @@ export const linkTargetKind = () => text("target_type").notNull();
 
 /*
  * The `check` predicate paired with `linkTargetKind()`. `sql.raw` on purpose:
- * a bound parameter renders as `$1` in the generated migration, and a `.sql`
- * file has no bind step, so the literal list has to be written out. Safe
- * because `linkTargetKinds` is a compile-time constant, not input.
- */
+ * a bound parameter renders as `$1` in the generated migration, and a `.sql` * file has no bind step, so the literal list has to be written out. Safe
+ * because `linkTargetKinds` is a compile-time constant, not input. */
 export const linkTargetKindCheck = (name: string) =>
   check(
     name,
@@ -82,12 +76,9 @@ export const linkTargetKindCheck = (name: string) =>
   );
 
 /*
- * Why a link row exists. `reference` is an explicit [[Title]] or a manually
- * created edge; `source` is provenance (a zettel points at the document it
- * was decomposed from); `semantic` is a machine-proposed similarity edge and
- * always carries `score`; `related`, `supports` and `contradicts` are the
- * human-curated relation types. One vocabulary, because a free-text type
- * column is how link graphs rot.
+ * Why a link row exists. `reference` is an explicit [[Title]] or a manually * created edge; `source` is provenance (a zettel points at the document it
+ * was decomposed from); `semantic` is a machine-proposed similarity edge and * always carries `score`; `related`, `supports` and `contradicts` are the
+ * human-curated relation types. One vocabulary, because a free-text type * column is how link graphs rot.
  */
 export const artifactLinkTypes = [
   "reference",

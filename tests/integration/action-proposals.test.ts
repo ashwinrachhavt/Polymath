@@ -143,4 +143,36 @@ suite("createProposal", () => {
     // Expiry adjustment is a later concern; the column round-trips now.
     expect(row.expiresAt?.getTime()).toBe(past.getTime());
   });
+
+  it("countProposalsByStatus returns per-status totals and an all sum, scoped to the workspace", async () => {
+    // The Reviews tabs' live counts: a dropped status or a wrong `all` sum
+    // shows the owner a wrong queue size, and a foreign workspace's rows
+    // inflating the counts would leak another tenant's queue volume.
+    const queries = await import("@/domains/actions/queries");
+    const workspaceId = await seed("proposal-status-counts");
+    const other = await seed("proposal-status-counts-other");
+    const mk = (ws: string, key: string) =>
+      propose(ws, { capability: "gmail.send", riskClass: "external_write" as const, title: "t", expectedEffect: "e", dedupeKey: key, runId: null });
+
+    const [p1, p2, p3] = await Promise.all([
+      mk(workspaceId, `pending:${workspaceId}`),
+      mk(workspaceId, `approved:${workspaceId}`),
+      mk(workspaceId, `rejected:${workspaceId}`),
+    ]);
+    await Promise.all([mk(other, `pending:${other}`), mk(other, `foreign-should-not-count:${other}`)]);
+    await db
+      .update(actionProposals)
+      .set({ status: "approved", decidedAt: new Date() })
+      .where(eq(actionProposals.id, p2.proposalId));
+    await db
+      .update(actionProposals)
+      .set({ status: "rejected", decidedAt: new Date() })
+      .where(eq(actionProposals.id, p3.proposalId));
+
+    const counts = await queries.countProposalsByStatus(workspaceId);
+    expect(counts.pending).toBe(1);
+    expect(counts.approved).toBe(1);
+    expect(counts.rejected).toBe(1);
+    expect(counts.all).toBe(3);
+  });
 });

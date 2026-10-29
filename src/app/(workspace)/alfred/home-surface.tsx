@@ -113,6 +113,7 @@ export function HomeSurface({
 
       {history.length > 0 ? (
         <section aria-label="Your conversations" className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+          <div className="rule-label">Your conversations</div>
           {history.map((group) => (
             <section key={group.key} aria-label={group.label}>
               <p className="text-muted-foreground px-2 pb-1 text-[11px] font-medium">{group.label}</p>

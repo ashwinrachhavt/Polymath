@@ -12,9 +12,10 @@ import { Status } from "@/components/workspace/ui";
 import type { NoteAIRequest } from "@/components/products/alfred/note-ai-menu";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "@/components/products/alfred/markdown-preservation";
 import { applyNoteAIResultAction, autosaveNoteAction, commitNoteAction, createNoteAction, findLinkTargetsAction, getNoteAIRunOutputAction, linkRelatedNoteAction, proposeLinearIssueAction, removeLinkAction, renameNoteAction, retryNoteEmbeddingAction, setLinkRelationAction, setNoteTagsAction, startNoteAIAction } from "./actions";
-import { X, History, Info, Link2, Plus } from "lucide-react";
+import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
 import { NotebookListToggle } from "./notebook-workspace";
 import { NotionAppendAction } from "./notion-append";
+import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -270,6 +271,7 @@ export function NoteEditor({
   outlinks,
   backlinks,
   related,
+  comments,
 }: {
   noteId: string;
   /** Null while the current version is meaning-searchable or nothing is committed. */
@@ -287,6 +289,7 @@ export function NoteEditor({
   outlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   backlinks: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null }[];
   related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
+  comments: PanelComment[];
 }) {
   const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
@@ -530,6 +533,8 @@ export function NoteEditor({
   };
 
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Open when the note already carries a thread; a quiet note stays quiet.
+  const [commentsOpen, setCommentsOpen] = useState(comments.length > 0);
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>(() => markdownEditorMode(initialMarkdown));
   const sourceReason = markdownSourceReason(markdown);
   /*
@@ -577,20 +582,23 @@ export function NoteEditor({
   }, []);
 
   /*
-   * The page is the note: one centered reading column, title as display type,
-   * a hairline-thin row of quiet actions, the writing surface, and the
-   * backlinks at the foot. Everything else - properties, checkpoints, history,
-   * references, related, the editing mode - lives behind the details
-   * inspector. Chrome appears on demand: the formatting toolbar floats up on a
-   * selection, "/" opens blocks, "[[" links a note.
+   * The page is the note, Notion-style: the document column is the screen,
+   * the list shrinks to a quiet left rail, and everything else recedes. The
+   * top row of actions is chrome, not content - it shows on hover/focus of
+   * the header zone on fine pointers and stays visible on coarse pointers
+   * (touch has no hover). Prose never leaves the reading measure; on wide
+   * screens the margin panel sits in the right margin, below it on narrow.
    */
+  const openCommentCount = comments.filter((c) => c.resolvedAt === null).length;
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-24 sm:px-6">
-          <div className="mb-8 flex h-8 items-center justify-between">
+        <div className="mx-auto flex w-full max-w-[708px] flex-col px-6 pb-24 pt-16 md:pt-28">
+          {/* The header zone: chrome fades in on pointer hover, always on for
+              keyboard focus and coarse pointers. */}
+          <div className="header-zone -mx-6 flex h-8 items-center justify-between px-6">
             <NotebookListToggle />
-            <div className="flex items-center gap-1">
+            <div className="header-actions flex items-center gap-1">
               <NewNoteButton icon />
               <Dialog>
                 <DialogTrigger asChild>
@@ -671,51 +679,28 @@ export function NoteEditor({
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
-                className="w-full min-w-0 bg-transparent text-[32px] font-medium leading-tight tracking-tight outline-none placeholder:text-muted-foreground/50"
+                className="w-full min-w-0 bg-transparent text-[38px] font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
               />
               {outlinks.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setDetailsOpen(true)}
                   aria-label={`${outlinks.length} ${outlinks.length === 1 ? "reference" : "references"} in this note`}
-                  className="mt-2 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+                  className="mt-3 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
                 >
                   <Link2 aria-hidden className="size-3" />
                   {outlinks.length} {outlinks.length === 1 ? "reference" : "references"}
                 </button>
               )}
             </div>
-            <div className="mt-2 flex min-h-5 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {/* Metadata is small and muted; the actions it used to carry are
+                the header zone's problem now. */}
+            <div className="mt-3 flex min-h-5 flex-wrap items-center gap-2 text-[11px] text-muted-foreground/80">
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
               {saveState === "error" && <span role="status" className="text-destructive">Not saved</span>}
               <span>Updated {stamp(updatedAt)}</span>
-              <span className="flex-1" />
-              <NotionAppendAction noteId={noteId} title={title} markdown={markdown} disabled={pending || saveState === "saving"} />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={issuePending}
-                onClick={async () => {
-                  setIssuePending(true);
-                  setIssueError("");
-                  const result = await proposeLinearIssueAction({ artifactId: noteId });
-                  setIssuePending(false);
-                  if (!result.ok) {
-                    setIssueError(result.error);
-                    return;
-                  }
-                  router.push(`/alfred/notes?id=${result.artifactId}`);
-                }}
-              >
-                {issuePending ? "Drafting issue…" : "Draft Linear issue"}
-              </Button>
-              <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
-                {pending ? "Saving…" : "Save checkpoint"}
-              </Button>
-              {issueError && <span role="alert" className="text-xs text-destructive">{issueError}</span>}
             </div>
             {indexNotice && (
               <div className="mt-1.5 text-xs text-muted-foreground">
@@ -723,7 +708,47 @@ export function NoteEditor({
               </div>
             )}
           </div>
-          <div className="mt-6">
+          {/* The one quiet action row, hover-revealed like the header chrome. */}
+          <div className="header-actions mt-4 flex flex-wrap items-center gap-2">
+            <NotionAppendAction noteId={noteId} title={title} markdown={markdown} disabled={pending || saveState === "saving"} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
+              disabled={issuePending}
+              onClick={async () => {
+                setIssuePending(true);
+                setIssueError("");
+                const result = await proposeLinearIssueAction({ artifactId: noteId });
+                setIssuePending(false);
+                if (!result.ok) {
+                  setIssueError(result.error);
+                  return;
+                }
+                router.push(`/alfred/notes?id=${result.artifactId}`);
+              }}
+            >
+              {issuePending ? "Drafting issue…" : "Draft Linear issue"}
+            </Button>
+            <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" onClick={checkpoint} disabled={pending || saveState === "saving"}>
+              {pending ? "Saving…" : "Save checkpoint"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
+              aria-expanded={commentsOpen}
+              aria-controls="note-comments"
+              onClick={() => setCommentsOpen((open) => !open)}
+            >
+              <MessageSquare aria-hidden className="size-3" />
+              {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
+            </Button>
+            {issueError && <span role="alert" className="text-xs text-destructive">{issueError}</span>}
+          </div>
+          <div className="mt-8">
             <RichEditor chrome="minimal" mode={editorMode} onModeChange={setEditorMode} findLinkTargets={findLinkTargets} content={markdown} onChange={updateMarkdown} ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }} onStructuredPasteDropped={() => setSourceHint(true)} />
             {sourceHint && editorMode === "rich" && (
               <div role="status" className="mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
@@ -791,8 +816,22 @@ export function NoteEditor({
               </ul>
             )}
           </section>
+          {/* Comments below the column on narrow screens; the margin column
+              on wide screens renders the same panel. One state, one composer. */}
+          <div id="note-comments" className={`mt-10 ${commentsOpen ? "2xl:hidden" : "xl:hidden"}`}>
+            <NoteCommentsPanel noteId={noteId} initialComments={comments} />
+          </div>
         </div>
       </div>
+      {/* The right margin (Notion's margin comments): ≥1280px only, where it
+          costs the prose column nothing. The toggle controls both placements. */}
+      {commentsOpen && (
+        <aside aria-label="Comments margin" className="sticky top-0 hidden w-72 shrink-0 xl:block">
+          <div className="pt-28">
+            <NoteCommentsPanel noteId={noteId} initialComments={comments} />
+          </div>
+        </aside>
+      )}
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent id="note-details" className="overflow-y-auto p-5 pt-12">
           <SheetTitle>Note details</SheetTitle>

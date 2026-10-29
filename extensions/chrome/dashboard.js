@@ -35,9 +35,14 @@
 
   // ── Load settings ──────────────────────────────────────────────────
 
-  const res = await chrome.storage.local.get("alfredBaseUrl");
+  await AlfredAPI.ensureTokenPreloaded();
+  const res = await chrome.storage.local.get(["alfredBaseUrl", "axiomToken"]);
   if (res.alfredBaseUrl) {
     $("#setting-api-url").value = res.alfredBaseUrl;
+  }
+  const dashboardToken = $("#setting-api-token");
+  if (dashboardToken && res.axiomToken) {
+    dashboardToken.value = res.axiomToken;
   }
 
   // ── Helpers ────────────────────────────────────────────────────────

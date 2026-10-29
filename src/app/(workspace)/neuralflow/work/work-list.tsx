@@ -9,6 +9,7 @@ import { parseQuickAdd } from "@/domains/work/quick-add";
 import { StoneCeremony } from "@/components/products/neuralflow/stone-ceremony";
 import { commitTaskAction, completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
+import { STATUS_LABEL as statusLabel, STATUS_PILL as statusPill } from "./status-meta";
 
 /*
  * The Work list: rows, not cards. Adding from a list that means "today" writes
@@ -40,16 +41,6 @@ export type WorkListItem = {
 };
 
 type Change = { type: "add"; row: WorkListRow } | { type: "complete"; id: string };
-
-const statusLabel: Record<WorkListRow["status"], string> = {
-  inbox: "Inbox",
-  backlog: "Backlog",
-  ready: "Ready",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
-  cancelled: "Cancelled",
-};
 
 function apply(items: WorkListItem[], change: Change): WorkListItem[] {
   if (change.type === "complete") return items.filter((item) => item.row.id !== change.id);
@@ -311,7 +302,7 @@ export function WorkList({
                         {row.title}
                       </Link>
                     )}
-                    <span className="text-[11px] text-muted-foreground">{statusLabel[row.status]}</span>
+                    <span className={statusPill[row.status]}>{statusLabel[row.status]}</span>
                     {row.priority !== "none" ? <span className="text-[11px] text-muted-foreground">{row.priority}</span> : null}
                     {due ? (
                       <span className={`readout text-[11px] ${due.today ? "text-primary" : "text-muted-foreground"}`}>{due.text}</span>

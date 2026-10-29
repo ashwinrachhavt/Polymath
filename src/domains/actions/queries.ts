@@ -170,13 +170,23 @@ export async function listProposalReviews(workspaceId: string, proposalIds: stri
   return grouped;
 }
 
-/** The Briefing's headline number: proposals waiting on a human decision. */
-export async function countPendingProposals(workspaceId: string): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
+/** Per-status totals for the queue's tab counts, "all" included. */
+export async function countProposalsByStatus(workspaceId: string): Promise<Record<ReviewQueueStatus | "all", number>> {
+  const rows = await db
+    .select({ status: actionProposals.status, total: count() })
     .from(actionProposals)
-    .where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.status, "pending")));
-  return row?.total ?? 0;
+    .where(eq(actionProposals.workspaceId, workspaceId))
+    .groupBy(actionProposals.status);
+  const counts: Record<ReviewQueueStatus | "all", number> = { pending: 0, approved: 0, rejected: 0, all: 0 };
+  for (const row of rows) {
+    // Every grouped status counts toward "all", whatever value it carries —
+    // the tab is the whole queue, not the union of the named tabs.
+    counts.all += row.total;
+    if (row.status === "pending" || row.status === "approved" || row.status === "rejected") {
+      counts[row.status] = row.total;
+    }
+  }
+  return counts;
 }
 
 /** The top of the judgment queue, for the Briefing panel. */

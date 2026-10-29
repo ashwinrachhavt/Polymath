@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { io } from "next/cache";
-import { Empty, Panel, Screen } from "@/components/workspace/ui";
+import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { WORK_OPEN_STATUSES, WORK_PRIORITIES, countWorkByStatus, type WorkRow } from "@/domains/work/queries";
 import { getTaskDetailForPage, getActiveFocusSessionForPage, getLastTaskHandoffForPage, listFocusHistoryForPage, listWorkPageForPage, listWorkRowsForPage } from "./data";
@@ -159,6 +159,22 @@ export async function NeonTasks({
           />
         </Panel>
       ) : null}
+
+      {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
+          a count of real rows. Where the work is in its life, at a glance. */}
+      <StatStrip
+        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+        inline
+        variant="pipeline"
+        items={[
+          { label: "Capture", value: counts.inbox, hint: "Anything that arrives lands in one inbox." },
+          { label: "Clarify", value: counts.backlog, hint: "Turn each into a task, a note, or let it go." },
+          { label: "Commit", value: counts.ready, hint: "Work you have taken on for today." },
+          { label: "Focus", value: activeSession ? 1 : 0, hint: "Pick one, start an interval, earn a stone." },
+          { label: "Review", value: counts.waiting, hint: "Nothing leaves Polymath until you approve it." },
+          { label: "Learn", value: counts.done, hint: "Notes and ideas you can think with." },
+        ]}
+      />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="min-w-0">

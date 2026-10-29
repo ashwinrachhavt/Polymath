@@ -9,6 +9,7 @@ import { getProfileModelPolicy, listRecentRuns } from "@/domains/agents/queries"
 import { availableModels, resolveModelId } from "@/domains/agents/models";
 import { listSkills } from "@/domains/skills/queries";
 import { displayTitle } from "@/lib/display-text";
+import { stripMentionContext } from "@/components/chat/mention-context";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 import { groupHistory, type HistoryRow } from "./history";
@@ -76,7 +77,7 @@ export async function AlfredSurface() {
 
   const rows: HistoryRow[] = runs.map((run) => ({
     id: run.id,
-    title: displayTitle(run.objective) || "Untitled conversation",
+    title: displayTitle(stripMentionContext(run.objective)) || "Untitled conversation",
     href: `/alfred/${run.id}`,
     at: run.createdAt,
   }));

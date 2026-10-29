@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { Empty, Panel, Screen } from "@/components/workspace/ui";
+import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getDayPage } from "@/domains/daybook/queries";
 import { getAuthContext } from "@/lib/auth";
 import { PinControls, UnpinButton } from "./pin-controls";
@@ -76,6 +76,17 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
       title={label}
       actions={<Button asChild variant="outline" size="sm"><Link href="/command-center/inbox">Back to Inbox</Link></Button>}
     >
+      {/* The day in three numbers (mockup 2026-10-28): what arrived, what
+          changed, how much of the record has a source behind it. */}
+      <StatStrip
+        className="grid-cols-1 sm:grid-cols-3"
+        items={[
+          { label: "Captured", value: day.captured.length, hint: "What arrived this day." },
+          { label: "Changes", value: day.workedOn.length, hint: "What changed, from your own saves." },
+          { label: "Focus", value: day.sessions.length, hint: "Sessions touching this day." },
+        ]}
+      />
+
       {day.created.length ? (
         <Panel title="Created" description="What came into being this day.">
           <ItemRows items={day.created} />

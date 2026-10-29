@@ -70,6 +70,7 @@
 
   // ── Load saved settings ────────────────────────────────────────────
 
+  await AlfredAPI.ensureTokenPreloaded();
   const res = await chrome.storage.local.get(["alfredBaseUrl", "axiomToken"]);
   if (res.alfredBaseUrl) {
     $("#api-url-input").value = res.alfredBaseUrl;

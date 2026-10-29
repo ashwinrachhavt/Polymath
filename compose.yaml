@@ -43,21 +43,6 @@ services:
   # no account, query leaves this machine only as the individual engines it
   # fans out to. JSON results are what the adapter and Firecrawl read.
 
-  # Python capability sidecar (ADR 0008). Same Postgres as the app; its own
-  # state lives in the `sidecar` schema. Bearer-authed server-to-server API on
-  # 127.0.0.1:8000; the browser never talks to it.
-  sidecar:
-    build: ./services/sidecar
-    ports:
-      - "127.0.0.1:8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://axiom:axiom@db:5432/axiom
-      SIDECAR_TOKEN: ${SIDECAR_TOKEN:-dev-sidecar-token}
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
   searxng:
     image: searxng/searxng:latest
     container_name: axiom-searxng

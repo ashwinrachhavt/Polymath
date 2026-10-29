@@ -1276,7 +1276,7 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Reading the extracted text…
             </div>
           ) : textState === "ready" ? (
-            <div className="p-4">
+            <div className="prose-reading p-4">
               <Markdown text={text ?? ""} />
             </div>
           ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
+  Building2,
   FileText,
   Layers,
   Loader2,
@@ -10,6 +11,7 @@ import {
   Paperclip,
   Plus,
   Search,
+  User,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
@@ -63,17 +65,31 @@ export function replaceMention(draft: string, mention: MentionState, markdown: s
 
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation" | "document";
+  kind: "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
   title: string;
   href: string;
 };
 
+/** The plural a group header uses; people and companies are already plural. */
 const KIND_LABELS: Record<RecordReference["kind"], string> = {
+  note: "Notes",
+  zettel: "Zettels",
+  artifact: "Artifacts",
+  conversation: "Conversations",
+  document: "Documents",
+  person: "People",
+  company: "Companies",
+};
+
+/** The singular a reference link prefix uses. */
+const KIND_SINGULAR: Record<RecordReference["kind"], string> = {
   note: "Note",
   zettel: "Zettel",
   artifact: "Artifact",
   conversation: "Conversation",
   document: "Document",
+  person: "Person",
+  company: "Company",
 };
 
 /** One glyph per record kind, so a document reads apart from a note at a glance. */
@@ -83,6 +99,8 @@ const KIND_GLYPHS: Record<RecordReference["kind"], typeof FileText> = {
   artifact: Layers,
   conversation: MessageSquare,
   document: FileText,
+  person: User,
+  company: Building2,
 };
 
 function KindGlyph({ kind, className }: { kind: RecordReference["kind"]; className?: string }) {
@@ -91,7 +109,7 @@ function KindGlyph({ kind, className }: { kind: RecordReference["kind"]; classNa
 }
 
 function referenceLink(record: RecordReference): string {
-  return `[${KIND_LABELS[record.kind]}: ${record.title}](${record.href})`;
+  return `[${KIND_SINGULAR[record.kind]}: ${record.title}](${record.href})`;
 }
 
 export function ComposerPlus({
@@ -291,7 +309,7 @@ export function ComposerPlus({
               {grouped.map((group) => (
                 <li key={group.kind} role="presentation">
                   <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide uppercase">
-                    {KIND_LABELS[group.kind]}s
+                    {KIND_LABELS[group.kind]}
                   </p>
                   <ul role="presentation">
                     {group.rows.map((record) => {

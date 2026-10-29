@@ -15,14 +15,16 @@ export type { RelationshipStatus };
 
 /*
  * Read queries for the relationships surface. The page composes exactly these
- * — it never joins CRM tables itself (agents/engineering.md). Company names
+ * — it never joins CRM tables itself. Company names
  * and open follow-up counts ride along as subqueries so the list stays one
  * round trip instead of one per row.
  */
 
-/* Qualified table names are written literally inside the correlated
+/*
+ * Qualified table names are written literally inside the correlated
  * subqueries: drizzle renders ${table.column} there as an unqualified "id",
- * which binds to the subquery's own table instead of the outer one. */
+ * which binds to the subquery's own table instead of the outer one.
+ */
 
 /** LIKE metacharacters in a search box are literal text, not patterns. */
 function escapeLike(value: string) {
@@ -279,10 +281,8 @@ export async function getCompanyDetail(
 
 /*
  * Read-side seam for other domains: the relationship status a CRM contact
- * carries, keyed by the contact's primary email. The People surface joins on
- * this — email is the one key both domains already agree on (ASH-135 owns the
- * eventual merge). Returns only what the caller needs; nothing here writes.
- */
+ * carries, keyed by the contact's primary email. The People surface joins on * this — email is the one key both domains already agree on (ASH-135 owns the
+ * eventual merge). Returns only what the caller needs; nothing here writes. */
 export async function listContactStatusesByEmail(
   auth: AuthContext,
   emails: string[],

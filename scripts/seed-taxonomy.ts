@@ -3,9 +3,15 @@ import { seedTaxonomyCatalog, SEED_TAXONOMY } from "@/domains/knowledge/taxonomy
 import { db } from "@/lib/db";
 
 /*
- * Seed the ASH-272 knowledge taxonomy (10 domains + 12 example
+ * Seed the ASH-272 knowledge taxonomy (22 Neuralflow domains + 12 example
  * subdomain/microtopic nodes) into every workspace, or one with
  * --workspace <id>. Idempotent: a re-run changes nothing.
+ *
+ * Retirement contract: seedTaxonomyCatalog also deletes any node whose slug
+ * is not in the seed, so a re-run after the seed shrinks retires the removed
+ * labels (children first, see taxonomy.ts). Captures store domain slugs as
+ * text with no FK, so retired labels in old captures are unresolvable, not
+ * broken.
  *
  *   pnpm seed:taxonomy                          dry run, prints the plan
  *   pnpm seed:taxonomy -- --apply               writes

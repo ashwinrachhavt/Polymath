@@ -5,21 +5,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { memberships, workspaces } from "@/domains/identity/schema";
 
 /*
- * The auth invariants agents/engineering.md says run against real Postgres.
- * Skipped unless TEST_DATABASE_URL points at a database with the migrations
- * applied.
- *
- * `@/lib/db` (the Neon HTTP driver resolve.ts reads through) opens fetch
- * connections a localhost test database cannot serve, so it is mocked to the
- * same postgres-js client the assertions use — the policy suite's transport
- * swap. The swap must happen before the resolver is lazy-imported.
- *
- * This file inserts fresh unique clerk ids and truncates nothing, so pointing
- * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no
- * equality guard against DATABASE_URL is needed here.
- */
-
-const handle = (function () {
+ * The auth invariants the engineering guidelines says run against real Postgres. * Skipped unless TEST_DATABASE_URL points at a database with the migrations
+ * applied. *
+ * `@/lib/db` (the Neon HTTP driver resolve.ts reads through) opens fetch * connections a localhost test database cannot serve, so it is mocked to the
+ * same postgres-js client the assertions use — the policy suite's transport * swap. The swap must happen before the resolver is lazy-imported.
+ * * This file inserts fresh unique clerk ids and truncates nothing, so pointing
+ * TEST_DATABASE_URL at a scratch database or a Neon branch is enough; no * equality guard against DATABASE_URL is needed here.
+ */ const handle = (function () {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) return null;
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here

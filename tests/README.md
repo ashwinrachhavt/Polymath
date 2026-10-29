@@ -1,7 +1,7 @@
 # tests/
 
 Organised by what a test proves, not by which file it covers
-(agents/engineering.md). Only `e2e/` exists so far — the rest fill in as the
+. Only `e2e/` exists so far — the rest fill in as the
 code they test arrives, rather than sitting here empty.
 
 | Folder | Holds | Runs on |

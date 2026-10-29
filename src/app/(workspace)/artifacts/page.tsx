@@ -58,9 +58,9 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
         ) : (
           [...groups.entries()].map(([label, group]) => (
             <section key={label} aria-label={label} className="mb-10">
-              <div className="mb-4 flex items-center justify-between rounded-md bg-muted/40 px-4 py-2.5">
-                <span className="text-[13px] text-muted-foreground">{label}</span>
-              </div>
+              {/* The mockup's dotted passage rule: the month names the passage,
+                  not a toolbar row. */}
+              <div className="rule-label mb-5">{label}</div>
               <div className={view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6" : "flex flex-col gap-3"}>
                 {group.map((item) => (
                   <ArtifactCard key={item.id} artifact={item} view={view} />

@@ -2,8 +2,8 @@
 
 <!-- DO NOT EDIT. Emitted by `scripts/tech-spec-inventory.ts` (`make inventory`). -->
 
-Facts about the tree, read at generation time. The authored half of the
-technical specification is `docs/tech-spec-v2.md`; it does not restate any of this.
+Facts about the tree, read at generation time. This file is the whole of the
+inventory; it does not restate prose from any authored spec.
 
 Generated from the working tree. The output contains nothing environment-
 dependent, so `inventory:check` behaves the same on a laptop and in CI.
@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 85 files, highest `0258_capture_mode_and_identity`.
+Migrations: 86 files, highest `0259_note_comments`.
 
 ## Tests
 
-422 `.test.ts` and 43 `.spec.ts` files (unit: 244, integration: 178, e2e: 43).
+427 `.test.ts` and 43 `.spec.ts` files (unit: 246, integration: 181, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
@@ -50,7 +50,7 @@ Migrations: 85 files, highest `0258_capture_mode_and_identity`.
 | `gamification` | 4 |
 | `identity` | 18 |
 | `integrations` | 7 |
-| `knowledge` | 48 |
+| `knowledge` | 49 |
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
@@ -190,6 +190,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `knowledge` | `document_classification_proposals` | versioned |
 | `knowledge` | `document_rename_events` | append-only |
 | `knowledge` | `cards` | versioned |
+| `knowledge` | `note_comments` | versioned |
 | `knowledge` | `card_reviews` | append-only |
 | `knowledge` | `areas` | versioned |
 | `knowledge` | `taxonomy_nodes` | versioned |
@@ -217,7 +218,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 91 versioned, 59 append-only, 4 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 92 versioned, 59 append-only, 4 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 

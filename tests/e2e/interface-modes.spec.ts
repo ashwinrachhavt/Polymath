@@ -62,8 +62,15 @@ test("interface mode is an account preference with two visual languages", async 
     expect(await resolvedMode(page)).toBe("library");
     const title = page.locator("#content h1");
     await expect(title).toHaveText("Work");
-    const libraryFont = await title.evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(libraryFont).toMatch(/Iowan|Palatino|Georgia/);
+    // The 2026-10-28 mockup pass retired the serif display face: both modes
+    // speak sans, and the register now differs in weight, tracking, and the
+    // page's measure (library 52rem) rather than typeface.
+    const libraryWeight = await title.evaluate((el) => getComputedStyle(el).fontWeight);
+    expect(Number(libraryWeight)).toBeGreaterThanOrEqual(700);
+    const libraryWidth = await page
+      .locator(".suite-screen")
+      .evaluate((el) => getComputedStyle(el).getPropertyValue("--page-width").trim());
+    expect(libraryWidth).toBe("52rem");
 
     await page.addStyleTag({ content: HIDE_DEV_CHROME });
     await page.screenshot({ path: `test-results/feature-pixels/interface-library-${vp.name}.png` });
@@ -71,8 +78,10 @@ test("interface mode is an account preference with two visual languages", async 
     // One tap in the header pins Action; the register tightens.
     await page.getByRole("button", { name: "Switch to Action mode" }).click();
     await expect.poll(() => resolvedMode(page)).toBe("action");
-    const actionFont = await title.evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(actionFont).not.toMatch(/Iowan|Palatino|Georgia/);
+    const actionWidth = await page
+      .locator(".suite-screen")
+      .evaluate((el) => getComputedStyle(el).getPropertyValue("--page-width").trim());
+    expect(actionWidth).not.toBe("52rem");
     await page.screenshot({ path: `test-results/feature-pixels/interface-action-${vp.name}.png` });
 
     // The account, not the browser, holds the choice: a reload stays Action.

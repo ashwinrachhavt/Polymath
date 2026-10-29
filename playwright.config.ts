@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /*
- * Journeys, not pages (agents/engineering.md). The suite is deliberately small:
+ * Journeys, not pages. The suite is deliberately small:
  * one smoke test that catches "the app does not boot, and it boots accessibly",
  * which is the class of failure a green `pnpm check` cannot see.
  *

@@ -5,6 +5,7 @@ import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from 
 import { ensureProfile } from "@/domains/agents/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { fitMentionContext } from "@/components/chat/mention-context";
 
 /*
  * Starting a chat run from a surface.
@@ -13,6 +14,12 @@ import { requireRole } from "@/lib/auth/guards";
  * AuthContext plus a spend reservation, so the run must be created server-side.
  * This action is the one path every chat surface uses to get a runId; the
  * surface then streams from /api/v1/runs/:runId/stream.
+ *
+ * The objective bound matches the smallest documented cap in
+ * src/app/api/v1/runs: the POST route validates `objective` at 2000
+ * (continueConversation allows 8000, the follow-up message route 4000). The
+ * bound is enforced by shedding context blocks, never the typed text — see
+ * fitMentionContext.
  *
  * Idempotency is NOT implemented here. `engine.start` takes no key, and this
  * action claims no receipt, so two invocations start two runs. The surface
@@ -25,6 +32,9 @@ import { requireRole } from "@/lib/auth/guards";
  * throwing a stack into the boundary: "the agent is not configured" is a state,
  * not a crash.
  */
+
+/** The smallest documented objective cap in src/app/api/v1/runs (POST route). */
+const MAX_OBJECTIVE_CHARS = 2000;
 
 export type StartChatResult = { ok: true; runId: string } | { ok: false; message: string };
 
@@ -41,6 +51,8 @@ export async function startChatRun(input: {
 }): Promise<StartChatResult> {
   const objective = input.objective?.trim();
   if (!objective) return { ok: false, message: "Write a message first." };
+  // Shed context blocks over the cap; the typed words are never cut.
+  const bounded = fitMentionContext(objective, MAX_OBJECTIVE_CHARS);
   // A malformed id would reach Postgres's uuid cast and put raw database
   // error text in the composer; the API route validates the same shape.
   if (input.skillId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.skillId)) {
@@ -66,7 +78,7 @@ export async function startChatRun(input: {
     const { runId } = await engine.start({
       auth,
       profileName,
-      objective,
+      objective: bounded,
       subjects: input.subject ? [{ type: input.subject.type, id: input.subject.id }] : [],
       ...(input.skillId ? { skillId: input.skillId } : {}),
       estimateUsd: "0.50",

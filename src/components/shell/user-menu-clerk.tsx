@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
-import { Activity, IdCard, LogOut, Settings } from "lucide-react";
+import { Activity, IdCard, LogOut, Settings, Sparkles } from "lucide-react";
 import { AnonymousMenu, MenuItem } from "./user-menu-shared";
 import { UserProfilePanel } from "./user-profile-panel";
 
@@ -66,6 +66,7 @@ export default function SignedInMenu() {
             </button>
             <MenuItem href="/settings" icon={Settings}>Settings</MenuItem>
             <MenuItem href="/activity" icon={Activity}>Activity</MenuItem>
+            <MenuItem href="/landing" icon={Sparkles}>Landing page</MenuItem>
             <div aria-hidden className="bg-border my-1 h-px" />
             <SignOutButton redirectUrl="/">
               <button

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { z } from "zod";
 import { OutboxParkError, type ClaimedOutboxEvent, type OutboxHandler } from "@/domains/audit/outbox";
@@ -333,15 +333,18 @@ async function tryJevTriage(
   if (!injectedJudger && !providerEntry("jev")?.enabled) return { outcome: "fallback", skipped: null };
   const judger = injectedJudger ?? jevClassifier(workspaceId);
 
-  // The domain Choice's options come from the workspace's seeded taxonomy; an
-  // unseeded workspace simply asks no domain question (domain stays null).
+  // The domain Choice's options come from the workspace's seeded taxonomy;
+  // an unseeded workspace simply asks no domain question (domain stays null).
+  // Only level-1 domains are offered: the write side (resolveTaxonomyPath)
+  // resolves single slugs at level 1, so offering subdomains or microtopics
+  // would present choices the classifier cannot persist.
   const domains = await db
     .select({
       slug: taxonomyNodes.slug,
       description: taxonomyNodes.description,
     })
     .from(taxonomyNodes)
-    .where(eq(taxonomyNodes.workspaceId, workspaceId));
+    .where(and(eq(taxonomyNodes.workspaceId, workspaceId), eq(taxonomyNodes.level, 1), isNull(taxonomyNodes.archivedAt)));
 
   const state = JSON.stringify({
     title: capture.title ?? undefined,

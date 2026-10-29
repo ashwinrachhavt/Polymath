@@ -3,24 +3,72 @@
     "model": "jev-1.14.0",
     "state": "{\"title\":\"Invoice from Acme\",\"cleanText\":\"Please send me the updated invoice by Friday so accounting can close the month.\",\"structure\":\"prose\",\"source\":\"text\"}",
     "questions": {
-      "commitment": { "type": "noul", "instructions": "Does this capture record a commitment the person owes someone - something with an implied done-by?" },
-      "contact": { "type": "noul", "instructions": "Is this capture's subject a specific person the owner might want to reach?" },
-      "reference": { "type": "noul", "instructions": "Is this a reference worth filing to read later - not a commitment, not a person?" },
-      "worthless": { "type": "noul", "instructions": "Is this capture worthless - spam, duplicate noise, or an accident?" },
-      "project": { "type": "noul", "instructions": "Does anything in this capture name a specific existing project of the owner's?" },
-      "domain": { "type": "choice", "instructions": "Which knowledge domain does this capture belong to? Answer only when one option clearly fits.", "criteria": { "ai": "Machine learning, models, and the industry around them.", "finance": "Markets, money, accounting, and financial instruments." } }
+      "commitment": {
+        "type": "noul",
+        "instructions": "Does this capture record a commitment the person owes someone - something with an implied done-by?"
+      },
+      "contact": {
+        "type": "noul",
+        "instructions": "Is this capture's subject a specific person the owner might want to reach?"
+      },
+      "reference": {
+        "type": "noul",
+        "instructions": "Is this a reference worth filing to read later - not a commitment, not a person?"
+      },
+      "worthless": {
+        "type": "noul",
+        "instructions": "Is this capture worthless - spam, duplicate noise, or an accident?"
+      },
+      "project": {
+        "type": "noul",
+        "instructions": "Does anything in this capture name a specific existing project of the owner's?"
+      },
+      "domain": {
+        "type": "choice",
+        "instructions": "Which knowledge domain does this capture belong to? Answer only when one option clearly fits.",
+        "criteria": {
+          "planning-strategy": "Goals, roadmaps, prioritization, and how work is planned and sequenced.",
+          "finance-admin": "Budgets, invoices, accounting, payroll, and administrative paperwork."
+        }
+      }
     }
   },
   "response": {
     "model": "jev-1.14.0",
     "answers": {
-      "commitment": { "type": "noul", "noul": 0.9 },
-      "contact": { "type": "noul", "noul": 0.02 },
-      "reference": { "type": "noul", "noul": 0.11 },
-      "worthless": { "type": "noul", "noul": 0.01 },
-      "project": { "type": "noul", "noul": 0.05 },
-      "domain": { "type": "choice", "choice": "finance", "confidence": 0.84, "probabilities": { "ai": 0.16, "finance": 0.84 } }
+      "commitment": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "contact": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "reference": {
+        "type": "noul",
+        "noul": 0.11
+      },
+      "worthless": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "project": {
+        "type": "noul",
+        "noul": 0.05
+      },
+      "domain": {
+        "type": "choice",
+        "choice": "finance-admin",
+        "confidence": 0.84,
+        "probabilities": {
+          "planning-strategy": 0.16,
+          "finance-admin": 0.84
+        }
+      }
     },
-    "usage": { "input_tokens": 812, "output_tokens": 64 }
+    "usage": {
+      "input_tokens": 812,
+      "output_tokens": 64
+    }
   }
 }

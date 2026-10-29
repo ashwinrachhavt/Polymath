@@ -35,13 +35,22 @@ export function NotebookListToggle() {
   );
 }
 
-export function NotebookWorkspace({ list, children }: { list: ReactNode; children: ReactNode }) {
+export function NotebookWorkspace({ list, children, narrow = false }: { list: ReactNode; children: ReactNode; /** A note is open: the list rail shrinks to a quiet index instead of competing with the document. */ narrow?: boolean }) {
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <NotebookListContext.Provider value={{ open, toggle: () => setOpen((current) => !current), openOnMobile: () => setMobileOpen(true) }}>
       <div className="flex min-h-[60vh] flex-1 items-start gap-6">
-        {open && <aside aria-label="Notes list" className="sticky top-0 hidden max-h-[100dvh] w-64 shrink-0 overflow-y-auto lg:block">{list}</aside>}
+        {open && (
+          <aside
+            aria-label="Notes list"
+            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto transition-[width] duration-150 lg:block ${narrow ? "w-64" : "w-72"}`}
+          >
+            {/* The rail compacts the shared toolbar: search and the two
+               selects share rows instead of stacking full-width. */}
+            <div className="rail-compact">{list}</div>
+          </aside>
+        )}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="overflow-y-auto p-4 pt-12">
             <SheetTitle>Notes</SheetTitle>

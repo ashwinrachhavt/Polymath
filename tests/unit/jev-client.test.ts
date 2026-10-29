@@ -37,8 +37,8 @@ describe("httpJevClient", () => {
     const domain = out.answers.domain;
     expect(domain.type).toBe("choice");
     if (domain.type === "choice") {
-      expect(domain.choice).toBe("finance");
-      expect(domain.probabilities.finance).toBe(0.84);
+      expect(domain.choice).toBe("finance-admin");
+      expect(domain.probabilities["finance-admin"]).toBe(0.84);
     }
     expect(out.usage.input_tokens).toBe(812);
   });
