@@ -610,6 +610,13 @@
       "when": 1793600400000,
       "tag": "0260_agent_profile_polymath_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1793307971288,
+      "tag": "0261_zettel_sittings",
+      "breakpoints": true
     }
   ]
 }
