@@ -249,14 +249,6 @@ jobs:
           name: feature-pixels
           path: test-results/feature-pixels/
           if-no-files-found: ignore
-      # Playwright's failure page-snapshots. Upload sits on the job that
-      # produces test-results/, so failures have downloadable evidence.
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: e2e-error-context
-          path: test-results/**/error-context.md
-          if-no-files-found: ignore
 
   # Behavioral gate for the agent. The unit suite cannot see whether Alfred
   # actually reaches for the corpus before answering; these evals drive a real
