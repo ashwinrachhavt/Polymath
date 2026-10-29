@@ -214,3 +214,70 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
 }
 
 export { DAYBOOK_ACTIONS, DAYBOOK_ACTION_LIST };
+
+/**
+ * Per-day activity counts for the week containing `localDate` (Mon–Sun, the
+ * owner's timezone), plus the day of week the owner's week starts on. The
+ * day page's week strip reads these; each cell links the day and shows a bar
+ * weighted to the busiest day. One grouped query over the same sources the
+ * day page derives from — artifacts, captures, audit — so a quiet record and
+ * a busy one render the same strip honestly.
+ */
+export async function getWeekActivity(
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
+  localDate: string,
+): Promise<Array<{ date: string; events: number }>> {
+  const rows = (await db.execute(sql`
+    with ws as (
+      select coalesce(
+        (select timezone from user_preferences
+          where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}),
+        'UTC'
+      ) as tz
+    ),
+    week as (
+      select
+        ((${localDate}::date - ((extract(isodow from ${localDate}::date)::int) - 1))::text) as week_start,
+        tz
+      from ws
+    ),
+    days as (
+      select generate_series(
+        (select week_start::date from week),
+        (select week_start::date from week) + interval '6 days',
+        interval '1 day'
+      )::date as day
+    ),
+    local_bounds as (
+      select day, (day::text)::timestamp at time zone (select tz from week) as day_start
+      from days
+    )
+    select to_char(d.day, 'YYYY-MM-DD') as date,
+      (
+        (select count(*) from artifacts a
+          where a.workspace_id = ${auth.workspaceId}
+            and a.created_at >= lb.day_start
+            and a.created_at < lb.day_start + interval '1 day'
+            and a.archived_at is null)
+      + (select count(*) from captures c
+          where c.workspace_id = ${auth.workspaceId}
+            and c.created_at >= lb.day_start
+            and c.created_at < lb.day_start + interval '1 day'
+            and c.processing_state <> 'discarded')
+      + (select count(*) from audit_events ev
+          where ev.workspace_id = ${auth.workspaceId}
+            and ev.actor_kind = 'user'
+            and ev.action in ${DAYBOOK_ACTION_LIST}
+            and ev.created_at >= lb.day_start
+            and ev.created_at < lb.day_start + interval '1 day')
+      + (select count(*) from focus_sessions fs
+          where fs.workspace_id = ${auth.workspaceId}
+            and fs.started_at >= lb.day_start
+            and fs.started_at < lb.day_start + interval '1 day')
+      )::int as events
+    from days d
+    left join local_bounds lb on lb.day = d.day
+    order by d.day
+  `)) as unknown as Array<{ date: string; events: number }>;
+  return rows.map((r) => ({ date: r.date, events: Number(r.events) }));
+}

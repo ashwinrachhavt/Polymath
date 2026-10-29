@@ -30,6 +30,13 @@ function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId:
   );
 }
 
+/*
+ * The ritual (ASH-305), reconciled to the 2026-10-28 mockup: "Still open"
+ * reads as a list of rows — the open session (choose once, on the row) and
+ * the open captures (Park toggles on the row) — then the summary-email
+ * proposal, then the one confirm. Text and roles stay verbatim: the e2e
+ * journey drives radiogroup/radio/checkbox names and the confirmation copy.
+ */
 export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   const [pending, startTransition] = useTransition();
   // One key per ritual attempt: a retry after a dropped response replays, never repeats.
@@ -108,48 +115,62 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   }
 
   return (
-    <div className="space-y-6">
-      <Panel title="Focus session" description="A live session is never closed for you. Choose what happens to it.">
-        {live ? (
-          <div className="space-y-3 text-sm">
-            <p>{live.subject ?? "Untitled session"} ({live.state}, {Math.round(live.elapsedSeconds / 60)} min)</p>
-            <div role="radiogroup" aria-label="What happens to the open session" className="flex flex-wrap gap-2">
-              {(["finish", "abandon", "leave"] as const).map((value) => (
-                <Button key={value} size="sm" variant={choice === value ? "default" : "outline"} role="radio" aria-checked={choice === value} onClick={() => setChoice(value)}>
-                  {value === "finish" ? "Finish it" : value === "abandon" ? "Abandon it" : "Leave it running"}
-                </Button>
-              ))}
-            </div>
-            {choice === "finish" ? (
-              <div className="space-y-2">
-                <Textarea value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Outcome, in your own words (optional)" aria-label="Outcome" />
-                <Input value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="Next step (optional)" aria-label="Next step" />
+    <div className="space-y-6 max-w-2xl">
+      <Panel title="Still open" description="Read what is open, choose, confirm once. Tomorrow gets seeded from this.">
+        <div className="space-y-3">
+          {live ? (
+            <div className="rounded-lg border border-border p-4" role="radiogroup" aria-label="What happens to the open session">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium">{live.subject ?? "Untitled session"}</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    Open session · {live.state} · {Math.round(live.elapsedSeconds / 60)} min — never closed for you; you choose.
+                  </p>
+                </div>
               </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No session is open.</p>
-        )}
-        {preview.plannedSessionCount > 0 ? (
-          <p className="mt-3 text-xs text-muted-foreground">{preview.plannedSessionCount} planned session{preview.plannedSessionCount === 1 ? "" : "s"} stay as they are.</p>
-        ) : null}
-      </Panel>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(["finish", "abandon", "leave"] as const).map((value) => (
+                  <Button key={value} size="sm" variant={choice === value ? "default" : "outline"} role="radio" aria-checked={choice === value} onClick={() => setChoice(value)}>
+                    {value === "finish" ? "Finish it" : value === "abandon" ? "Abandon it" : "Leave it running"}
+                  </Button>
+                ))}
+              </div>
+              {choice === "finish" ? (
+                <div className="mt-3 space-y-2">
+                  <Textarea value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Outcome, in your own words (optional)" aria-label="Outcome" />
+                  <Input value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="Next step (optional)" aria-label="Next step" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
-      <Panel title="Park captures" description="Set aside until you want them. Work already running may still finish while parked; unparking puts each one back in the queue.">
-        {preview.captures.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing open in the inbox.</p>
-        ) : (
-          <ul className="space-y-1.5 text-sm">
-            {preview.captures.map((c) => (
-              <li key={c.id}>
-                <label className="flex items-start gap-2">
-                  <input type="checkbox" className="mt-1" checked={park.has(c.id)} onChange={() => toggle(park, c.id, setPark)} />
-                  <span className="min-w-0 break-words">{c.label}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
+          {preview.captures.length ? (
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {preview.captures.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 p-3 first:rounded-t-lg last:rounded-b-lg">
+                  <label className="flex min-w-0 items-start gap-2">
+                    <input type="checkbox" className="mt-1" checked={park.has(c.id)} onChange={() => toggle(park, c.id, setPark)} />
+                    <span className="min-w-0 break-words text-[13px]">{c.label}</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => toggle(park, c.id, setPark)}
+                    aria-pressed={park.has(c.id)}
+                    className={`shrink-0 text-[13px] ${park.has(c.id) ? "text-muted-foreground line-through" : "text-foreground hover:underline"}`}
+                  >
+                    {park.has(c.id) ? "Parked" : "Park"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nothing open in the inbox.</p>
+          )}
+
+          {preview.plannedSessionCount > 0 ? (
+            <p className="text-xs text-muted-foreground">{preview.plannedSessionCount} planned session{preview.plannedSessionCount === 1 ? "" : "s"} stay as they are.</p>
+          ) : null}
+        </div>
       </Panel>
 
       <Panel title={`Lead ${preview.tomorrow} with`} description="A suggestion for tomorrow's list, not a commitment. You still accept outcomes yourself.">
@@ -169,7 +190,7 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
         )}
       </Panel>
 
-      <Panel title="Summary email" description="Optional. This only files a proposal for you to approve; nothing is sent from here.">
+      <Panel title="Summary email" description="A proposal, sent nowhere until you approve it in Reviews.">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={wantEmail} onChange={(e) => setWantEmail(e.target.checked)} />
           Propose a summary email
@@ -183,11 +204,11 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
       </Panel>
 
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-end gap-3">
+        {needsChoice ? <span className="text-xs text-muted-foreground">Choose what happens to the open session first.</span> : null}
         <Button onClick={submit} disabled={pending || needsChoice || (wantEmail && !to.trim())}>
           {pending ? "Closing the day..." : "Close the day"}
         </Button>
-        {needsChoice ? <span className="text-xs text-muted-foreground">Choose what happens to the open session first.</span> : null}
       </div>
     </div>
   );
