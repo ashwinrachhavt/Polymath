@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
-import { artifactLinks, artifacts, zettelSittingCards, zettelSittings } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, zettelSittingCards, zettelSittings } from "./schema";
 
 /*
  * Sittings (plan 2026-10-29 §2, §14; Gate 2026-10-29): a writing context
@@ -137,6 +137,39 @@ export async function listSittingCards(auth: AuthContext, sittingId: string) {
     .from(zettelSittingCards)
     .where(eq(zettelSittingCards.sittingId, sitting.id))
     .orderBy(asc(zettelSittingCards.position), asc(zettelSittingCards.createdAt));
+}
+
+/*
+ * The sitting's working card for reopen hydration (§7): the first
+ * created_here card joined to its CURRENT version, so a reopened surface can
+ * bind saves to the right artifact/version and reconcile the draft instead
+ * of starting blank and creating a duplicate card.
+ */
+export async function getSittingWritingCard(auth: AuthContext, sittingId: string) {
+  const sitting = await getSitting(auth, sittingId);
+  if (!sitting) throw sittingNotFound();
+  const [row] = await db
+    .select({
+      artifactId: zettelSittingCards.artifactId,
+      versionNumber: artifactVersions.versionNumber,
+      plainText: artifactVersions.plainText,
+      content: artifactVersions.content,
+      updatedAt: artifacts.updatedAt,
+    })
+    .from(zettelSittingCards)
+    .innerJoin(
+      artifacts,
+      and(
+        eq(artifacts.id, zettelSittingCards.artifactId),
+        eq(artifacts.workspaceId, auth.workspaceId),
+        isNull(artifacts.archivedAt),
+      ),
+    )
+    .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(eq(zettelSittingCards.sittingId, sitting.id), eq(zettelSittingCards.roleInSitting, "created_here")))
+    .orderBy(asc(zettelSittingCards.position), asc(zettelSittingCards.createdAt))
+    .limit(1);
+  return row ?? null;
 }
 
 /*

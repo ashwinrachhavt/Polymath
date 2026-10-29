@@ -8,9 +8,11 @@ import {
   createSitting,
   deleteSitting,
   getSitting,
+  getSittingWritingCard,
   listSittingCards,
   SittingError,
 } from "@/domains/knowledge/sittings";
+import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
 import { auditEvents } from "@/domains/audit/schema";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -161,5 +163,39 @@ suite("zettel sittings (migration 0261)", () => {
       .from(auditEvents)
       .where(and(eq(auditEvents.subjectId, sitting.id), eq(auditEvents.action, "sitting.deleted")));
     expect(audit.actorKind).toBe("user");
+  });
+
+  it("getSittingWritingCard hydrates the created_here card at its current version", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "Reopen me", tags: [] });
+    const note = await createNote(auth, {
+      idempotencyKey: `swc-${Date.now()}`,
+      title: "Working card",
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "v1 body" }] }] },
+      plainText: "v1 body",
+      kind: "zettel",
+    });
+    await addCardToSitting(auth, { sittingId: sitting.id, artifactId: note.id, role: "created_here" });
+
+    const first = await getSittingWritingCard(auth, sitting.id);
+    expect(first?.artifactId).toBe(note.id);
+    expect(first?.versionNumber).toBe(1);
+    expect(first?.plainText).toBe("v1 body");
+
+    // A later version must be what a reopen binds to - not the stale v1.
+    await commitNoteSnapshot(auth, {
+      idempotencyKey: `swc-v2-${Date.now()}`,
+      artifactId: note.id,
+      expectedVersion: 1,
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "v2 body" }] }] },
+      plainText: "v2 body",
+    });
+    const reopened = await getSittingWritingCard(auth, sitting.id);
+    expect(reopened?.versionNumber).toBe(2);
+    expect(reopened?.plainText).toBe("v2 body");
+
+    // A sitting with no working card hydrates as absent, never an error.
+    const empty = await createSitting(auth, { topic: "Empty", tags: [] });
+    expect(await getSittingWritingCard(auth, empty.id)).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { getSitting, listSittingCards } from "@/domains/knowledge/sittings";
+import { getSitting, getSittingWritingCard, listSittingCards } from "@/domains/knowledge/sittings";
 import { WorkspaceShell } from "@/components/polymath/zettels/workspace-shell";
 import { getDocumentTitle } from "@/domains/knowledge/documents";
 
@@ -24,6 +24,9 @@ export default async function SittingPage({
   const sitting = await getSitting(auth, sittingId);
   if (!sitting) notFound();
   const cards = await listSittingCards(auth, sitting.id);
+  // Reopen hydration: the surface binds to the sitting's saved card instead
+  // of opening blank and duplicating it.
+  const writingCard = await getSittingWritingCard(auth, sitting.id);
   // §14.10: a sitting seeded from the inbox carries sourceContext
   // "document:<id>"; the header shows a "From: {title}" chip linking back.
   let source: { title: string; href: string } | null = null;
@@ -43,6 +46,17 @@ export default async function SittingPage({
         startedAt: sitting.startedAt.toISOString(),
       }}
       initialCards={cards.map((c) => ({ artifactId: c.artifactId, role: c.roleInSitting, position: c.position }))}
+      initialWritingCard={
+        writingCard
+          ? {
+              artifactId: writingCard.artifactId,
+              versionNumber: writingCard.versionNumber,
+              plainText: writingCard.plainText ?? "",
+              content: writingCard.content,
+              updatedAt: writingCard.updatedAt.toISOString(),
+            }
+          : null
+      }
     />
   );
 }

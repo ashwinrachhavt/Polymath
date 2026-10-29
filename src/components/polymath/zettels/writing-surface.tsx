@@ -37,11 +37,20 @@ export function WritingSurface({
   workspaceId,
   sittingId,
   seededFromDocument = false,
+  initialWritingCard = null,
   onStreamState,
   onCardSaved,
 }: {
   workspaceId: string;
   sittingId: string;
+  /** Reopen hydration (§7): the sitting's saved working card. */
+  initialWritingCard?: {
+    artifactId: string;
+    versionNumber: number;
+    plainText: string;
+    content: unknown;
+    updatedAt: string;
+  } | null;
   /** §14.10: seeded sittings open with the one-line extract prompt, not an empty editor. */
   seededFromDocument?: boolean;
   onStreamState: (state: StreamState) => void;
@@ -53,8 +62,8 @@ export function WritingSurface({
   // surface (and EditorContent) on every keystroke.
   const initialDraft = useRef(store.getState().draft);
   const [streamState, setStreamState] = useState<StreamState>(() => initialStreamState(sittingId));
-  const [artifactId, setArtifactId] = useState<string | null>(null);
-  const [artifactVersion, setArtifactVersion] = useState<number | null>(null);
+  const [artifactId, setArtifactId] = useState<string | null>(initialWritingCard?.artifactId ?? null);
+  const [artifactVersion, setArtifactVersion] = useState<number | null>(initialWritingCard?.versionNumber ?? null);
   const [reading, setReading] = useState(false);
   // §14.4 conflict: the server saved a newer version than our base. The
   // writer compares, keeps theirs, or takes the server's - never a clobber.
@@ -64,6 +73,11 @@ export function WritingSurface({
   const [suggestionFocused, setSuggestionFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const idemKey = useRef(`sitting-${sittingId}-${Date.now()}`);
+  // Every save/adopt intent gets its own idempotency key: a shared key makes
+  // a later pause conflict with the earlier one's receipt and silently drops
+  // the draft's save.
+  const saveSeq = useRef(0);
+  const adoptSeq = useRef(0);
   /*
    * §14.6 decomposition review: a large paste keeps its text in the editor
    * (original untouched, §4) while analysis proposes extractions. Analysis
@@ -109,20 +123,62 @@ export function WritingSurface({
     });
   }, [onStreamState, onCardSaved]);
 
+  // §7/§14.4 reopen hydration: reconcile the local draft with the sitting's
+  // saved card (updatedAt-wins; a both-moved state surfaces the conflict UI,
+  // never a silent clobber). Runs once the editor exists.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || !editor || !initialWritingCard) return;
+    hydratedRef.current = true;
+    const result = store.getState().reconcileWithServer({
+      content: initialWritingCard.plainText,
+      updatedAt: new Date(initialWritingCard.updatedAt).getTime(),
+    });
+    if (result === "adopted") editor.commands.setContent(initialWritingCard.content as never);
+    if (result === "conflict") {
+      // Deferred out of the effect body: the conflict UI re-renders on the
+      // next tick instead of cascading inside hydration.
+      const card = initialWritingCard;
+      queueMicrotask(() =>
+        setConflict({
+          serverPlainText: card.plainText,
+          serverVersion: card.versionNumber,
+          serverUpdatedAt: card.updatedAt,
+        }),
+      );
+    }
+  }, [editor, initialWritingCard, store]);
+
   const firePause = useCallback(async () => {
     const text = store.getState().draft;
     if (text.trim().length < MIN_DRAFT_CHARS) return;
+    // A new pause supersedes a stream still attached to the previous one:
+    // abort it first so the reducer's operation guard drops its late events,
+    // then reset the stream identity - a stale operationId would make the
+    // reducer discard the NEW run's events.
+    abortRef.current?.abort();
+    setStreamState(initialStreamState(sittingId));
     setReading(true);
-    setStreamState((prev) => ({ ...prev, done: false, live: { thinking: "", tokens: "" } }));
-    const saved = await saveSittingCardAction({
-      sittingId,
-      artifactId: artifactId ?? undefined,
-      expectedVersion: artifactVersion ?? undefined,
-      idempotencyKey: idemKey.current,
-      title: text.split("\n")[0]?.slice(0, 80) || "Untitled",
-      content: editor?.getJSON() ?? { type: "doc", content: [] },
-      plainText: text,
-    });
+    saveSeq.current += 1;
+    let saved: Awaited<ReturnType<typeof saveSittingCardAction>>;
+    try {
+      saved = await saveSittingCardAction({
+        sittingId,
+        artifactId: artifactId ?? undefined,
+        expectedVersion: artifactVersion ?? undefined,
+        idempotencyKey: `${idemKey.current}-save-${saveSeq.current}`,
+        title: text.split("\n")[0]?.slice(0, 80) || "Untitled",
+        content: editor?.getJSON() ?? { type: "doc", content: [] },
+        plainText: text,
+      });
+    } catch {
+      // A thrown save (network, server failure) must not wedge the surface
+      // in the reading state: surface it as an error and let the next pause
+      // retry with a fresh intent key.
+      setReading(false);
+      apply({ protocolVersion: 1, operationId: "", event: "error", payload: { code: "save_failed", message: "The card could not be saved - your draft is still here." } });
+      return;
+    }
     if ("error" in saved) {
       setReading(false);
       if (saved.error === "version_conflict") {
@@ -233,7 +289,7 @@ export function WritingSurface({
       sittingId,
       artifactId,
       expectedVersion: artifactVersion,
-      idempotencyKey: `${idemKey.current}-adopt`,
+      idempotencyKey: `${idemKey.current}-adopt-${(adoptSeq.current += 1)}`,
       title: store.getState().draft.split("\n")[0]?.slice(0, 80) || "Untitled",
       content: editor.getJSON(),
       plainText: editor.getText(),

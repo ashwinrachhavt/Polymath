@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { artifactLinks } from "@/domains/knowledge/schema";
+import { tasks } from "@/domains/work/schema";
 import { commitDecomposition, findSimilarZettels, type DecompositionAnalysis } from "@/domains/knowledge/decomposition";
 import { createNote, getNote } from "@/domains/knowledge/notes";
 import { createSitting, listSittingCards } from "@/domains/knowledge/sittings";
@@ -164,5 +165,30 @@ suite("decomposition merge/link decisions (integration)", () => {
     expect(cards.length).toBe(1);
     expect(cards[0].artifactId).toBe(first.created[0].id);
     expect(cards[0].roleInSitting).toBe("created_here");
+  });
+
+  it("checklist accept creates the task in a transaction, replay-stable on retry", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const analysis = analysisWith({ id: "cand-task", title: "Do the smoke thing", content: "step one, step two" });
+    analysis.candidates[0]!.role = "checklist";
+    const input = {
+      analysis,
+      decisions: [{ candidateId: "cand-task", action: "create" as const }],
+      idempotencyKey: `dtask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    };
+    const first = await commitDecomposition(auth, input);
+    expect(first.created).toHaveLength(1);
+    expect(first.created[0]!.destination).toBe("task");
+
+    // A UI retry with the same key must replay the receipt, not insert again
+    // (and must not throw the rank-assignment transaction guard).
+    const second = await commitDecomposition(auth, input);
+    expect(second.created[0]!.id).toBe(first.created[0]!.id);
+
+    const rows = await handle!.db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, ws.workspaceId), eq(tasks.title, "Do the smoke thing")));
+    expect(rows).toHaveLength(1);
   });
 });

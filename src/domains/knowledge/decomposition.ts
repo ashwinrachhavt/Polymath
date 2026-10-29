@@ -15,7 +15,7 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { createTask } from "@/domains/work/commands";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import { IdempotencyConflictError } from "@/domains/audit/receipt";
+import { IdempotencyConflictError, withReceipt } from "@/domains/audit/receipt";
 import { requestReceipts } from "@/domains/audit/schema";
 import { artifactLinks, artifacts, zettelSittingCards, zettelSittings } from "./schema";
 import { commitNoteSnapshot, createNote, getNote } from "./notes";
@@ -298,8 +298,27 @@ export async function commitDecomposition(
       continue;
     }
     if (candidate.role === "checklist") {
-      const task = await createTask(auth, { title: candidate.title, description: body, tags: ["decomposed"] });
-      created.push({ candidateId: candidate.id, destination: "task", id: task.id });
+      // createTask refuses the global pool (rank assignment needs a
+      // transaction), and a UI retry of this commit must replay the same
+      // task instead of inserting a duplicate: receipt the create inside
+      // one transaction, keyed off the commit's idempotency key.
+      const { value: taskReceipt } = await withTransaction((tx) =>
+        withReceipt<{ taskId: string }>(
+          tx,
+          auth,
+          `${key}:task`,
+          { op: "createDecompositionTask", title: candidate.title },
+          async () => {
+            const task = await createTask(
+              auth,
+              { title: candidate.title, description: body, tags: ["decomposed"] },
+              tx,
+            );
+            return { taskId: task.id };
+          },
+        ),
+      );
+      created.push({ candidateId: candidate.id, destination: "task", id: taskReceipt.taskId });
     } else if (candidate.role === "decision") {
       const note = await createNote(auth, {
         idempotencyKey: key,

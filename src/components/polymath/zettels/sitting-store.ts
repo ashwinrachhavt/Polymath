@@ -21,10 +21,14 @@ export type SittingDraftState = {
   /** Epoch ms of the last local edit; the merge clock. */
   draftUpdatedAt: number;
   topic: string;
+  /** Server-side card this draft belongs to, once saved (§14.11 idea flow). */
+  savedArtifactId: string | null;
+  savedVersion: number | null;
   /** §14.4: server hydration found a newer saved version than our base. */
   conflict: { serverUpdatedAt: number } | null;
   setDraft: (draft: string) => void;
   setTopic: (topic: string) => void;
+  setSavedCard: (artifactId: string, version: number) => void;
   /** Server hydrate: adopt server content only when it is strictly newer AND no local unsaved edits exist. */
   reconcileWithServer: (input: { content: string; updatedAt: number }) => "adopted" | "kept-local" | "conflict";
   resolveConflict: (choice: "keep-mine" | "take-server", serverContent?: string) => void;
@@ -39,7 +43,10 @@ export function createSittingStore(workspaceId: string, sittingId: string) {
         topic: "",
         conflict: null,
         setDraft: (draft) => set({ draft, draftUpdatedAt: Date.now() }),
+        savedArtifactId: null,
+        savedVersion: null,
         setTopic: (topic) => set({ topic }),
+        setSavedCard: (artifactId, version) => set({ savedArtifactId: artifactId, savedVersion: version }),
         reconcileWithServer: ({ content, updatedAt }) => {
           const { draft, draftUpdatedAt } = get();
           if (updatedAt <= draftUpdatedAt) return "kept-local";
@@ -67,7 +74,13 @@ export function createSittingStore(workspaceId: string, sittingId: string) {
         // mid-pause still recovers the draft.
         storage: createJSONStorage(() => debouncedStorage(() => localStorage, 500)),
         // Only the draft + its clock persist; conflicts are recomputed on hydrate.
-        partialize: (s) => ({ draft: s.draft, draftUpdatedAt: s.draftUpdatedAt, topic: s.topic }),
+        partialize: (s) => ({
+          draft: s.draft,
+          draftUpdatedAt: s.draftUpdatedAt,
+          topic: s.topic,
+          savedArtifactId: s.savedArtifactId,
+          savedVersion: s.savedVersion,
+        }),
       },
     ),
   );

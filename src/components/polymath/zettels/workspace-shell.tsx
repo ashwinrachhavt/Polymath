@@ -18,6 +18,7 @@ export function WorkspaceShell({
   workspaceId,
   sitting,
   initialCards,
+  initialWritingCard,
   source,
 }: {
   workspaceId: string;
@@ -25,6 +26,14 @@ export function WorkspaceShell({
   source: { title: string; href: string } | null;
   sitting: { id: string; topic: string | null; tags: string[]; startedAt: string };
   initialCards: { artifactId: string; role: string; position: number }[];
+  /** The sitting's saved working card, for reopen hydration (§7). */
+  initialWritingCard?: {
+    artifactId: string;
+    versionNumber: number;
+    plainText: string;
+    content: unknown;
+    updatedAt: string;
+  } | null;
 }) {
   const [cards, setCards] = useState(initialCards);
   const [streamState, setStreamState] = useState<StreamState>(() => initialStreamState(sitting.id));
@@ -57,6 +66,7 @@ export function WorkspaceShell({
           </span>
         </header>
         <WritingSurface
+          initialWritingCard={initialWritingCard}
           workspaceId={workspaceId}
           sittingId={sitting.id}
           seededFromDocument={source !== null}
