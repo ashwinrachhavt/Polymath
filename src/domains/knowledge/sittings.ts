@@ -93,7 +93,6 @@ export async function deleteSitting(auth: AuthContext, sittingId: string) {
     subjectType: "zettel_sitting",
     subjectId: sitting.id,
     summary: `Deleted sitting${sitting.topic ? ` "${sitting.topic}"` : ""}`,
-    metadata: { endedAt: sitting.endedAt },
   });
 }
 
