@@ -29,6 +29,9 @@ vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(asy
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { createNote, setNoteTags } from "@/domains/knowledge/notes";
 import { acceptZettel, pageZettelCards, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
+import { dismissSemanticLink } from "@/domains/knowledge/relations";
+import { artifactLinks } from "@/domains/knowledge/schema";
+import { db } from "@/lib/db";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
 const TEXT = "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
@@ -111,5 +114,25 @@ suite("zettel card views (real Postgres)", () => {
 
     const all = await pageZettelCards(auth, { limit: 10, offset: 0 });
     expect(all.total).toBe(2);
+  });
+
+  it("carries pending suggested links in the metadata projection, excluding dismissed", async () => {
+    const auth = await workspace();
+    const doc = await seedDoc(auth);
+    const [proposal] = await proposeZettels(auth, {
+      documentId: doc.id,
+      extractor: extractor([{ title: "Linked card", claim: "Cards relate.", quote: Q1 }]),
+    });
+    const accepted = await acceptZettel(auth, { proposalId: proposal.id });
+    const other = await createNote(auth, { title: "Other card", idempotencyKey: crypto.randomUUID(), kind: "zettel" });
+    await db.insert(artifactLinks).values([
+      { workspaceId: auth.workspaceId, artifactId: accepted.artifactId, targetType: "note", targetId: other.id, linkType: "semantic", label: "Other card" },
+    ]);
+    const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
+    const card = page.items.find((c) => c.id === accepted.artifactId);
+    expect(card?.suggestedLinks).toEqual([{ targetId: other.id, targetTitle: "Other card" }]);
+    await dismissSemanticLink(auth, { artifactId: accepted.artifactId, targetId: other.id });
+    const after = await pageZettelCards(auth, { limit: 10, offset: 0 });
+    expect(after.items.find((c) => c.id === accepted.artifactId)?.suggestedLinks).toEqual([]);
   });
 });

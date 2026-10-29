@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { listNoteTags } from "@/domains/knowledge/notes";
 import { pageZettelCards, type ZettelCardItem } from "@/domains/knowledge/zettels";
+import { SuggestedLinksStrip } from "@/components/polymath/zettels/suggested-links-strip";
 import { getAuthContext } from "@/lib/auth";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
@@ -82,7 +83,8 @@ function CardsView({ cards, raw }: { cards: ZettelCardItem[]; raw: RawSearchPara
           {card.excerpt && <p className="line-clamp-3 text-xs text-muted-foreground">{card.excerpt}</p>}
           <span className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
             <TagBadges tags={card.tags} raw={raw} />
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center gap-2">
+              <SuggestedLinksStrip artifactId={card.id} suggestions={card.suggestedLinks} />
               <BloomDot card={card} />
               <SourceLink card={card} />
             </span>
