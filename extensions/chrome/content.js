@@ -76,10 +76,80 @@
     }
   }
 
+  /** Requeue every parked (failed / needs-auth) outbox entry via the worker. */
+  async function retryParkedCaptures() {
+    try {
+      await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_RETRY" });
+    } catch {
+      // Extension context invalidated (reload mid-flight) — next flush retries anyway.
+    }
+  }
+  window.AlfredRetryParked = retryParkedCaptures;
+
   // ── Build the dock ──────────────────────────────────────────────────
 
   let dock = null;
   let dockBuilt = false;
+
+  function buildKeyPanel() {
+    const existing = qs("#alfred-key-panel");
+    if (existing) {
+      existing.remove();
+      const btn = qs("#alfred-key-toggle");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      return;
+    }
+    const body = qs("#alfred-dock-body");
+    if (!body) return;
+    const panel = el("div", { id: "alfred-key-panel" }, [
+      el("label", { class: "alfred-key-label", for: "alfred-key-input" }, "Polymath API key"),
+      el("input", {
+        id: "alfred-key-input",
+        type: "password",
+        placeholder: "axm_… paste from Settings → Account",
+        autocomplete: "off",
+      }),
+      el("div", { class: "alfred-btn-row" }, [
+        el("button", {
+          class: "alfred-btn alfred-btn-primary",
+          onClick: async () => {
+            const input = qs("#alfred-key-input");
+            const value = input ? input.value.trim() : "";
+            if (!value) {
+              showToast("Paste a key first, or use the built-in key button.", "warning");
+              return;
+            }
+            await AlfredAPI.setToken(value);
+            panel.remove();
+            const btn = qs("#alfred-key-toggle");
+            if (btn) btn.setAttribute("aria-expanded", "false");
+            showToast("Key saved. Retrying parked captures…", "success");
+            await retryParkedCaptures();
+            refreshRecentCaptures();
+            checkConnection();
+          },
+        }, "Save key"),
+        el("button", {
+          class: "alfred-btn alfred-btn-secondary",
+          onClick: async () => {
+            // Clear the stored token so the first-run preload re-pairs.
+            await AlfredAPI.setToken(null);
+            await AlfredAPI.ensureTokenPreloaded();
+            panel.remove();
+            showToast("Re-paired with the built-in key. Retrying parked captures…", "success");
+            await retryParkedCaptures();
+            refreshRecentCaptures();
+            checkConnection();
+          },
+        }, "Use built-in key"),
+      ]),
+    ]);
+    body.prepend(panel);
+    const input = qs("#alfred-key-input");
+    if (input) input.focus();
+    const btn = qs("#alfred-key-toggle");
+    if (btn) btn.setAttribute("aria-expanded", "true");
+  }
 
   function buildDock() {
     if (dockBuilt) return;
@@ -94,6 +164,13 @@
           el("div", { id: "alfred-dock-status", title: "Checking..." }),
         ]),
         el("div", { class: "alfred-dock-actions" }, [
+          el("button", {
+            id: "alfred-key-toggle",
+            class: "alfred-dock-btn-icon",
+            title: "Set API key",
+            "aria-expanded": "false",
+            onClick: buildKeyPanel,
+          }, "\U0001F511"),
           el("button", {
             class: "alfred-dock-btn-icon",
             title: "Move to other side",
@@ -191,17 +268,23 @@
     }
     for (const item of recent) {
       const ago = timeAgo(item.timestamp);
+      const parked = item.delivery === "needs-auth" || item.delivery === "failed";
       const sync =
         item.delivery === "pending" ? " — pending sync"
-        : item.delivery === "failed" ? " — sync failed"
-        : item.delivery === "needs-auth" ? " — needs new API key"
+        : item.delivery === "failed" ? " — sync failed — click to fix"
+        : item.delivery === "needs-auth" ? " — needs new API key — click to fix"
         : "";
-      list.appendChild(
-        el("li", { class: "alfred-capture-item" }, [
-          el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),
-          el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}${sync}`),
-        ])
-      );
+      const li = el("li", { class: "alfred-capture-item" }, [
+        el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),
+        el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}${sync}`),
+      ]);
+      if (parked) {
+        li.classList.add("alfred-capture-item-parked");
+        li.style.cursor = "pointer";
+        li.title = "Click to set your API key and retry";
+        li.addEventListener("click", () => buildKeyPanel());
+      }
+      list.appendChild(li);
     }
   }
 
