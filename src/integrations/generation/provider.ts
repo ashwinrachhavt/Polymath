@@ -21,10 +21,15 @@ export type GenerateInput = {
   temperature?: number;
 };
 
-export type StreamChunk = { type: "thinking" | "token"; content: string };
-
 /** Token counts when the provider reports them; absent when it does not. */
 export type GenerationUsage = { inputTokens?: number; outputTokens?: number };
+
+export type StreamChunk =
+  | { type: "thinking" | "token"; content: string }
+  /* Terminal usage frame when the provider reports stream token counts
+   * (review G): adapters emit it when the upstream carries usage; metered()
+   * consumes it for the call record and never forwards it downstream. */
+  | { type: "usage"; usage: GenerationUsage };
 
 export interface GenerationProvider {
   /** Recorded as the proposer, e.g. "gemini:gemini-3.5-flash-lite". */
@@ -160,11 +165,19 @@ export function metered(
     const inner = provider.stream.bind(provider);
     wrapped.stream = async function* (input: GenerateInput) {
       const startedAt = new Date();
-      for await (const chunk of inner(input)) yield chunk;
+      // Provider-reported stream usage is captured for the record, never
+      // forwarded: the chunk contract downstream stays thinking | token.
+      let usage: GenerationUsage | undefined;
+      for await (const chunk of inner(input)) {
+        if (chunk.type === "usage") { usage = chunk.usage; continue; }
+        yield chunk;
+      }
       await record({
         provider: provider.registryId,
         model: provider.name,
         kind: "stream",
+        inputTokens: usage?.inputTokens,
+        outputTokens: usage?.outputTokens,
         startedAt: startedAt.toISOString(),
         durationMs: Date.now() - startedAt.getTime(),
       });

@@ -80,6 +80,9 @@ export function geminiProvider(
       for await (const data of sseLines(response.body)) {
         try {
           const parsed = JSON.parse(data) as GeminiResponse;
+          if (parsed.usageMetadata) {
+            yield { type: "usage", usage: { inputTokens: parsed.usageMetadata.promptTokenCount, outputTokens: parsed.usageMetadata.candidatesTokenCount } };
+          }
           const text = (parsed.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
           if (text) yield { type: "token", content: text };
         } catch {

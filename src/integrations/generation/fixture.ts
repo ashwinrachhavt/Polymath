@@ -131,6 +131,8 @@ export function fixtureProvider(): GenerationProvider {
       yield { type: "thinking", content: "Reading your draft…" };
       // Word-shaped chunks keep the stream contract honest for the reducer.
       for (const word of text.split(" ")) yield { type: "token", content: `${word} ` };
+      // Terminal usage frame: the metering path is testable end to end.
+      yield { type: "usage", usage: { inputTokens: 12, outputTokens: text.split(" ").length } };
     },
   };
 }

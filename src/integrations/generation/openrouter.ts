@@ -65,6 +65,9 @@ export function openRouterProvider(
         body: JSON.stringify({
           model,
           stream: true,
+          // Ask for the terminal usage frame; OpenRouter sends it when the
+          // upstream reports stream token counts.
+          stream_options: { include_usage: true },
           temperature: input.temperature ?? 0,
           messages: [
             ...(input.system ? [{ role: "system", content: input.system }] : []),
@@ -78,6 +81,10 @@ export function openRouterProvider(
       for await (const data of sseLines(response.body)) {
         try {
           const parsed = JSON.parse(data) as OpenRouterResponse;
+          if (parsed.usage) {
+            yield { type: "usage", usage: { inputTokens: parsed.usage.prompt_tokens, outputTokens: parsed.usage.completion_tokens } };
+            continue;
+          }
           const delta = parsed.choices?.[0]?.delta;
           // Reasoning surfaces as thinking, answer text as tokens (§3 protocol).
           if (delta?.reasoning) yield { type: "thinking", content: delta.reasoning };

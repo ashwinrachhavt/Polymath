@@ -109,20 +109,45 @@ export async function startCreationRun(
     }
   }
 
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      workspaceId: auth.workspaceId,
-      agentProfileId: profileId,
-      objective: CREATION_OBJECTIVE,
-      subjects: [{ sittingId: input.sittingId, artifactId: input.artifactId }],
-      state: "running",
-      startedAt: new Date(),
-      model,
-      policySnapshot: { source: "zettel-sitting-creation", quota },
-    })
-    .returning({ id: agentRuns.id });
-  return { runId: run.id, reused: false };
+  try {
+    const [run] = await db
+      .insert(agentRuns)
+      .values({
+        workspaceId: auth.workspaceId,
+        agentProfileId: profileId,
+        objective: CREATION_OBJECTIVE,
+        subjects: [{ sittingId: input.sittingId, artifactId: input.artifactId }],
+        state: "running",
+        startedAt: new Date(),
+        model,
+        policySnapshot: { source: "zettel-sitting-creation", quota },
+      })
+      .returning({ id: agentRuns.id });
+    return { runId: run.id, reused: false };
+  } catch (cause) {
+    // Review F: the pre-check above is the fast path; migration 0262's
+    // partial unique index is the guard. A concurrent POST that loses the
+    // race attaches to the winner's run - never a second execution.
+    if (isUniqueViolation(cause)) {
+      const [winner] = await db
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(and(
+          eq(agentRuns.workspaceId, auth.workspaceId),
+          eq(agentRuns.objective, CREATION_OBJECTIVE),
+          eq(agentRuns.state, "running"),
+          sql`${agentRuns.subjects} @> ${JSON.stringify([{ sittingId: input.sittingId }])}::jsonb`,
+        ))
+        .limit(1);
+      if (winner) return { runId: winner.id, reused: true };
+    }
+    throw cause;
+  }
+}
+
+/** Postgres 23505, through either the postgres.js error or a drizzle wrapper. */
+function isUniqueViolation(cause: unknown): boolean {
+  return typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "23505";
 }
 
 type RunContext = {
@@ -341,7 +366,7 @@ export async function executeCreationRun(
           if (aborted()) return;
           deadlineGuard();
           if (chunk.type === "thinking") emitLive(ctx, frame(ctx, "thinking", { content: chunk.content }));
-          else { suggestion += chunk.content; emitLive(ctx, frame(ctx, "token", { content: chunk.content })); }
+          else if (chunk.type === "token") { suggestion += chunk.content; emitLive(ctx, frame(ctx, "token", { content: chunk.content })); }
         }
         await durable(frame(ctx, "enrichment", { outcome: "enriched", suggestion }), "enriched");
       } else {

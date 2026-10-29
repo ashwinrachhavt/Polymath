@@ -3,6 +3,8 @@ import {
   GenerationConfigError,
   GenerationUnconfiguredError,
   generationProvider,
+  metered,
+  type GenerationCallRecord,
   type StreamChunk,
 } from "@/integrations/generation/provider";
 import { cloudflareProvider } from "@/integrations/generation/cloudflare";
@@ -220,8 +222,24 @@ describe("adapter streams", () => {
     const { text } = await provider.generate(input);
     const chunks = await collect(provider.stream!(input));
     expect(chunks[0].type).toBe("thinking");
-    const tokens = chunks.filter((c) => c.type === "token").map((c) => c.content).join("");
+    const tokens = chunks.filter((c) => c.type === "token").map((c) => (c as { content: string }).content).join("");
     expect(tokens.trimEnd()).toBe(text);
     expect(chunks.length).toBeGreaterThan(3);
+    // The fixture ends its stream with a provider-reported usage frame (review G).
+    const usage = chunks.find((c) => c.type === "usage");
+    expect(usage && usage.type === "usage" ? usage.usage.outputTokens : 0).toBeGreaterThan(0);
+  });
+
+  it("metered() records provider-reported stream usage; unknown stays absent (review G)", async () => {
+    const records: GenerationCallRecord[] = [];
+    const provider = metered(fixtureProvider(), (r) => { records.push(r); });
+    const chunks = await collect(provider.stream!({ system: "zettel sitting", prompt: "hi" }));
+    // Usage frames are consumed by metering, never forwarded downstream.
+    expect(chunks.every((c) => c.type === "thinking" || c.type === "token")).toBe(true);
+    expect(records).toHaveLength(1);
+    expect(records[0].kind).toBe("stream");
+    expect(records[0].inputTokens).toBe(12);
+    expect(records[0].outputTokens).toBeGreaterThan(0);
+    expect(records[0].durationMs).toBeGreaterThanOrEqual(0);
   });
 });

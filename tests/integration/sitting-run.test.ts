@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { agentRuns, agentSteps } from "@/domains/agents/schema";
 import { artifacts, artifactVersions } from "@/domains/knowledge/schema";
 import { createSitting } from "@/domains/knowledge/sittings";
@@ -13,6 +13,8 @@ import {
 } from "@/domains/knowledge/sitting-run";
 import { isAllowedStageOutcome, type SittingEvent } from "@/domains/knowledge/sitting-events";
 import { SittingError } from "@/domains/knowledge/sittings";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -30,6 +32,12 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 
+// Migration 0262 itself: the one-running-run-per-sitting guard (review F).
+const MIGRATION_0262 = readFileSync(
+  join(process.cwd(), "src/db/migrations/0262_one_running_creation_run.sql"),
+  "utf8",
+);
+
 suite("sitting creation run", () => {
   let ws: { userId: string; workspaceId: string };
   let otherWs: { userId: string; workspaceId: string };
@@ -37,6 +45,12 @@ suite("sitting creation run", () => {
 
   beforeAll(async () => {
     if (!handle) return;
+    // Re-runnable: drop the guard so the real file applies cleanly every run.
+    await handle.client.unsafe('DROP INDEX IF EXISTS "agent_runs_one_running_creation_per_sitting";');
+    for (const stmt of MIGRATION_0262.split("--> statement-breakpoint")) {
+      const sql = stmt.trim();
+      if (sql) await handle.client.unsafe(sql);
+    }
     const stamp = Date.now();
     ws = await seedWorkspace(handle.db, `sitrun-a-${stamp}`);
     otherWs = await seedWorkspace(handle.db, `sitrun-b-${stamp}`);
@@ -66,6 +80,27 @@ suite("sitting creation run", () => {
     const second = await startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env);
     expect(second.reused).toBe(true);
     expect(second.runId).toBe(first.runId);
+  });
+
+  it("two concurrent pauses start exactly one run - the unique index is the guard (review F)", async () => {
+    const auth = ownerAuth(ws.userId, ws.workspaceId);
+    const sitting = await createSitting(auth, { topic: "race" });
+    const card = await seedCard("raced idea");
+    const [a, b] = await Promise.all([
+      startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env),
+      startCreationRun(auth, { sittingId: sitting.id, artifactId: card.id }, env),
+    ]);
+    expect(a.runId).toBe(b.runId);
+    expect(a.reused || b.reused).toBe(true);
+    const runs = await handle!.db
+      .select()
+      .from(agentRuns)
+      .where(and(
+        eq(agentRuns.workspaceId, ws.workspaceId),
+        eq(agentRuns.state, "running"),
+        sql`${agentRuns.subjects} @> ${JSON.stringify([{ sittingId: sitting.id }])}::jsonb`,
+      ));
+    expect(runs).toHaveLength(1);
   });
 
   it("rejects a foreign-workspace sitting or artifact with the typed error", async () => {
