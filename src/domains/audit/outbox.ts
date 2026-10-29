@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { outboxEvents } from "./schema";
+import { AUDIT_ONLY_TOPICS } from "./outbox-topics";
 
 /*
  * The outbox dispatcher (ASH-134 Q03). Producers already write outbox rows in
@@ -37,6 +38,8 @@ export class OutboxStaleWriteError extends Error {
 export const OUTBOX_MAX_ATTEMPTS = 5;
 const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_BATCH = 10;
+
+const AUDIT_ONLY = new Set<string>(AUDIT_ONLY_TOPICS);
 
 /** Full-jitter exponential backoff, capped. `random` injectable for tests. */
 export function backoffMs(attempt: number, random: () => number = Math.random): number {
@@ -260,6 +263,14 @@ export async function dispatchPendingOutbox(
   let dead = 0;
   let parked = 0;
   for (const event of batch) {
+    if (AUDIT_ONLY.has(event.topic)) {
+      // The event's content lives in audit_events; the outbox row is the
+      // delivery attempt, and delivery here is "acknowledged". Complete, not
+      // release: a release would re-claim the same rows every tick forever.
+      await completeOutbox(rawClient, { id: event.id, leaseToken: event.leaseToken });
+      dispatched += 1;
+      continue;
+    }
     const handler = handlers[event.topic];
     if (!handler) {
       // No consumer for this topic yet: release the lease without spending an
