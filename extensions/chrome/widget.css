@@ -614,3 +614,14 @@
 .alfred-capture-item-parked:hover {
   border-color: var(--alfred-accent);
 }
+
+.alfred-stale-hint {
+  margin: 0 0 12px;
+  padding: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--alfred-warning);
+  border-radius: var(--alfred-radius);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--alfred-text);
+}
