@@ -85,13 +85,17 @@ suite("agent profile rename migration", () => {
     expect(rows[0].summary).toContain("polymath-2");
   });
 
-  it("ensureProfile resolves an existing profile after the collision path and never creates a second row", async () => {
+  it("ensureProfile binds the lineage profile over a user-chosen name on the collision path", async () => {
     const { ensureProfile } = await import("@/domains/agents/commands");
     const before = await handle!.db.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, collisionWs));
     const id = await ensureProfile(collisionWs, "polymath");
     const after = await handle!.db.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, collisionWs));
     expect(after).toHaveLength(before.length);
-    expect(before.map((p) => p.id)).toContain(id);
+    // Lineage first (plan §16.3): the renamed alfred profile ("polymath-2")
+    // is the chief-of-staff profile, not the user-chosen "polymath" row.
+    const lineage = after.find((p) => (p.metadata as Record<string, unknown>).renamedFrom === "alfred");
+    expect(lineage).toBeDefined();
+    expect(id).toBe(lineage!.id);
 
     const lineageId = await ensureProfile(plainWs, "polymath");
     const plain = await handle!.db.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, plainWs));

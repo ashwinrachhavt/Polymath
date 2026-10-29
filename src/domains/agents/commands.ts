@@ -134,22 +134,28 @@ export const DEFAULT_ALLOWED_TOOLS = [
 ];
 
 export async function ensureProfile(workspaceId: string, name = "polymath") {
-  // Resolution order (2026-10-29 rename): exact name first, then the
-  // polymath-lineage profile recorded by the rename migration
-  // (metadata.renamedFrom = "alfred") — after a collision rename to
-  // "polymath-2" an exact match would otherwise create a second profile.
-  // The final fallback (first profile in the workspace) preserves the
-  // pre-rename single-profile behavior.
-  let [existing] = await db
-    .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
-    .from(agentProfiles)
-    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
-    .limit(1);
-  if (!existing && name === "polymath") {
+  // Resolution order (2026-10-29 rename, plan §16.3): polymath lineage
+  // (metadata.renamedFrom = "alfred", recorded by migration 0260) FIRST,
+  // exact name SECOND. On the collision path the alfred profile becomes
+  // "polymath-2" while a user-chosen "polymath" profile exists — the
+  // chief-of-staff profile is the renamed one, so lineage must win over the
+  // exact name, and an exact-name-first lookup would bind runs to the wrong
+  // profile (or, without the lineage row, create a second profile). The
+  // final fallback (first profile in the workspace) preserves the pre-rename
+  // single-profile behavior.
+  let existing: { id: string; allowedTools: unknown } | undefined;
+  if (name === "polymath") {
     [existing] = await db
       .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
       .from(agentProfiles)
       .where(and(eq(agentProfiles.workspaceId, workspaceId), sql`${agentProfiles.metadata} ->> 'renamedFrom' = 'alfred'`))
+      .limit(1);
+  }
+  if (!existing) {
+    [existing] = await db
+      .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, name)))
       .limit(1);
   }
   if (!existing) {
