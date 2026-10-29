@@ -6,6 +6,11 @@ import Link from "next/link";
  * unauthenticated visitor lands on. Left-aligned hero after the mockup: the
  * highlighted word carries the claim, the features row answers "what is it"
  * in three cards, and every CTA is an app entry.
+ *
+ * returnTo: the proxy hands the page the visitor was headed for through
+ * /landing?returnTo=...; the Sign in link forwards it to
+ * /sign-in?redirect_url=... so sign-in can complete the trip. Validated again
+ * here — it must start with a single slash (never "//"), or it is dropped.
  */
 export const metadata: Metadata = {
   title: "Polymath — Understand is the bottleneck",
@@ -31,7 +36,19 @@ const features = [
   },
 ];
 
-export default function LandingPage() {
+/** A returnTo is usable only as a same-origin path: one leading slash, no protocol-relative "//". */
+function safeReturnTo(value: string | undefined): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
+  const returnTo = safeReturnTo((await searchParams).returnTo);
+  const signInHref = returnTo ? `/sign-in?redirect_url=${encodeURIComponent(returnTo)}` : "/sign-in";
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
@@ -71,7 +88,7 @@ export default function LandingPage() {
               Get early access
             </Link>
             <Link
-              href="/sign-in"
+              href={signInHref}
               className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
             >
               Sign in

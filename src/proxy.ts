@@ -90,10 +90,17 @@ export default clerkConfigured && !(devAuthBypass && process.env.NODE_ENV !== "p
           // Pages are session-only: a machine token never renders workspace UI.
           // Unauthenticated visitors see the marketing landing, not a bare
           // sign-in form — the funnel surface is the front door (owner
-          // direction 2026-10-28). Sign-in stays one click from it.
+          // direction 2026-10-28). Sign-in stays one click from it, and the
+          // destination survives the hop: returnTo carries the path so landing
+          // can hand it to sign-in. Only safe same-origin paths qualify — it
+          // must start with a single slash, never "//" (protocol-relative).
           const session = await auth({ acceptsToken: ["session_token"] });
           if (!session.isAuthenticated) {
-            return NextResponse.redirect(new URL("/landing", request.url));
+            const url = new URL(request.url);
+            const destination = pathname + url.search;
+            const returnTo =
+              pathname.startsWith("/") && !pathname.startsWith("//") ? `?returnTo=${encodeURIComponent(destination)}` : "";
+            return NextResponse.redirect(new URL(`/landing${returnTo}`, request.url));
           }
         }
       }

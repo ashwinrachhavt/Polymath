@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { Empty, Panel, Screen } from "@/components/workspace/ui";
+import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getDayPage } from "@/domains/daybook/queries";
 import { getAuthContext } from "@/lib/auth";
 import { PinControls, UnpinButton } from "./pin-controls";
@@ -78,23 +78,14 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
     >
       {/* The day in three numbers (mockup 2026-10-28): what arrived, what
           changed, how much of the record has a source behind it. */}
-      <div className="panel mb-6 grid grid-cols-1 overflow-hidden rounded-xl sm:grid-cols-3">
-        <div className="flex flex-col gap-1 border-border p-5 max-sm:border-b sm:not-last:border-r">
-          <span className="stat-label">Captured</span>
-          <span className="text-2xl font-semibold tabular-nums">{day.captured.length}</span>
-          <span className="text-[12px] text-muted-foreground">What arrived this day.</span>
-        </div>
-        <div className="flex flex-col gap-1 border-border p-5 max-sm:border-b sm:not-last:border-r">
-          <span className="stat-label">Finished</span>
-          <span className="text-2xl font-semibold tabular-nums">{day.workedOn.length}</span>
-          <span className="text-[12px] text-muted-foreground">What changed, from your own saves.</span>
-        </div>
-        <div className="flex flex-col gap-1 border-border p-5">
-          <span className="stat-label">Focus</span>
-          <span className="text-2xl font-semibold tabular-nums">{day.sessions.length}</span>
-          <span className="text-[12px] text-muted-foreground">Sessions touching this day.</span>
-        </div>
-      </div>
+      <StatStrip
+        className="grid-cols-1 sm:grid-cols-3"
+        items={[
+          { label: "Captured", value: day.captured.length, hint: "What arrived this day." },
+          { label: "Finished", value: day.workedOn.length, hint: "What changed, from your own saves." },
+          { label: "Focus", value: day.sessions.length, hint: "Sessions touching this day." },
+        ]}
+      />
 
       {day.created.length ? (
         <Panel title="Created" description="What came into being this day.">

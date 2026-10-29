@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { updateTaskAction } from "./actions";
+import { STATUS_LABEL, STATUS_PILL as statusPill } from "./status-meta";
 import type { BoardCardData, BoardStatus } from "./work-board";
 
 /*
@@ -89,7 +90,7 @@ export function CardModal({
                 disabled={pending}
                 onChange={(event) => changeStatus(event.target.value as BoardStatus)}
               >
-                {STATUSES.map(([value, label]) => (
+                {STATUS_OPTIONS.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -116,32 +117,4 @@ export function CardModal({
   );
 }
 
-const STATUSES: Array<[BoardStatus, string]> = [
-  ["inbox", "Inbox"],
-  ["backlog", "Backlog"],
-  ["ready", "Ready"],
-  ["in_progress", "In progress"],
-  ["waiting", "Waiting"],
-  ["done", "Done"],
-  ["cancelled", "Cancelled"],
-];
-
-const STATUS_LABEL: Record<BoardCardData["status"], string> = {
-  inbox: "Inbox",
-  backlog: "Backlog",
-  ready: "Ready",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
-  cancelled: "Cancelled",
-};
-
-const statusPill: Record<BoardCardData["status"], string> = {
-  inbox: "pill pill-neutral",
-  backlog: "pill pill-neutral",
-  ready: "pill pill-success",
-  in_progress: "pill pill-info",
-  waiting: "pill pill-working",
-  done: "pill pill-neutral",
-  cancelled: "pill pill-neutral",
-};
+const STATUS_OPTIONS: Array<[BoardStatus, string]> = Object.entries(STATUS_LABEL) as Array<[BoardStatus, string]>;

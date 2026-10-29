@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db as defaultDb } from "@/lib/db";
 import { taxonomyNodes } from "./schema";
@@ -73,11 +73,32 @@ export const SEED_TAXONOMY: ReadonlyArray<{
  * Idempotently seed the catalog for one workspace. Called at workspace
  * provisioning and by scripts/seed-taxonomy.ts; a re-run changes nothing
  * (upsert keyed on the workspace+slug unique constraint, content stable).
+ *
+ * Retirement contract: any taxonomy node in this workspace whose slug is NOT
+ * in SEED_TAXONOMY is deleted before the upsert, children (L3) before parents
+ * (L2 then L1) so no dangling parentSlug survives. Safe because
+ * captures.domain and the classification proposals store slugs as text with
+ * no foreign key into taxonomy_nodes - a retired slug in an old capture
+ * degrades to an unresolvable label, not a broken reference.
  */
 export async function seedTaxonomyCatalog(
   workspaceId: string,
   database: typeof defaultDb = defaultDb,
 ): Promise<void> {
+  const seedSlugs = SEED_TAXONOMY.map((node) => node.slug);
+  // Children before parents: reverse level order keeps every delete free of
+  // child rows still pointing at the parent being removed.
+  for (const level of [3, 2, 1] as const) {
+    await database
+      .delete(taxonomyNodes)
+      .where(
+        and(
+          eq(taxonomyNodes.workspaceId, workspaceId),
+          eq(taxonomyNodes.level, level),
+          notInArray(taxonomyNodes.slug, seedSlugs),
+        ),
+      );
+  }
   await database
     .insert(taxonomyNodes)
     .values(SEED_TAXONOMY.map((node) => ({ workspaceId, ...node })))

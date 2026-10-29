@@ -116,7 +116,7 @@ assistant message into a `draft` artifact (version 1, reason `generated`), linke
 to each pinned document (`pinned:<content hash>`) and to the run, once per run.
 The owner then calls `saveDraft` (status `reviewed`) or `discardDraft`
 (`archived`); a decided draft is never rewritten. No code path sets `published`.
-API: POST /api/v1/dossiers/:id/generate, POST /api/v1/drafts, POST
+API: POST /api/v1/projects/:projectId/generate, GET /api/v1/drafts, POST
 /api/v1/drafts/:artifactId/save|discard.
 
 ## Wiki (second brain)

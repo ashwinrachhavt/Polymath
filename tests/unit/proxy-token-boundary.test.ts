@@ -72,6 +72,15 @@ describe("Clerk proxy token boundary", () => {
     const check = vi.fn().mockResolvedValue({ isAuthenticated: false });
     const response = await runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
     expect(response?.status).toBe(307);
+    // The destination survives the hop: returnTo carries the path so landing
+    // can hand it to sign-in.
+    expect(response?.headers.get("location")).toBe(`https://axiom.test/landing?returnTo=${encodeURIComponent(path)}`);
+  });
+
+  it.each(["//evil.test", "/\\evil.test"])("drops a non-same-origin path from the landing returnTo (%s)", async (path) => {
+    const check = vi.fn().mockResolvedValue({ isAuthenticated: false });
+    const response = await runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
+    expect(response?.status).toBe(307);
     expect(response?.headers.get("location")).toBe("https://axiom.test/landing");
   });
 

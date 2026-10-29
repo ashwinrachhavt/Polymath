@@ -18,7 +18,7 @@ import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "./tool-labels";
 import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/alfred/mention-actions";
-import { mentionedEntities, serializeMentionContext, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
+import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
 import { CitedText } from "./cited-text";
 import { inline } from "@/components/markdown-inline";
 
@@ -274,15 +274,7 @@ export function ChatSurface({
       if (onContinue) {
         // Named entities load their context as JSON appended to the model's
         // copy; the transcript renders only the typed words.
-        const named = mentionedEntities(mentions, message);
-        let payload = message;
-        if (named.length > 0) {
-          const contexts = await Promise.all(
-            named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
-          );
-          const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
-          if (resolved.length > 0) payload = `${message}${serializeMentionContext(resolved)}`;
-        }
+        const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
         const result = await onContinue(runId, payload);
         if (!result.ok) {
           restore(result.message);
@@ -296,15 +288,7 @@ export function ChatSurface({
         }
         return;
       }
-      const named = mentionedEntities(mentions, message);
-      let payload = message;
-      if (named.length > 0) {
-        const contexts = await Promise.all(
-          named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
-        );
-        const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
-        if (resolved.length > 0) payload = `${message}${serializeMentionContext(resolved)}`;
-      }
+      const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },

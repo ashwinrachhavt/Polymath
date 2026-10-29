@@ -13,7 +13,7 @@ import {
 import { startChatRun } from "@/app/(workspace)/apps/alfred/chat-actions";
 import { SurfaceCardView } from "@/components/chat/surface-card";
 import { fetchMentionContext } from "./mention-actions";
-import { mentionedEntities, serializeMentionContext, type MentionEntity } from "@/components/chat/mention-context";
+import { resolveMentionPayload, type MentionEntity } from "@/components/chat/mention-context";
 import { navigateInConversation } from "./navigation-actions";
 import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
@@ -153,15 +153,7 @@ export function NewConversation({
       }
       // Named entities load their context as JSON appended to the model's
       // copy of the message; the transcript renders only the typed words.
-      const named = mentionedEntities(mentions, objective);
-      let message = objective;
-      if (named.length > 0) {
-        const contexts = await Promise.all(
-          named.map(async (entity) => ({ entity, context: (await fetchMentionContext({ kind: entity.kind, id: entity.id })) ?? null })),
-        );
-        const resolved = contexts.filter((entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null);
-        if (resolved.length > 0) message = `${objective}${serializeMentionContext(resolved)}`;
-      }
+      const message = await resolveMentionPayload(mentions, objective, fetchMentionContext);
       const result = await startChatRun({ objective: message, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);

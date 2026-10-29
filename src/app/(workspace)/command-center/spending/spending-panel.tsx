@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Empty, Panel } from "@/components/workspace/ui";
+import { Empty, Panel, StatStrip } from "@/components/workspace/ui";
 import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
 import { getUsageLedger } from "@/domains/agents/queries";
@@ -32,31 +32,29 @@ export async function SpendingPanel() {
     <>
       {/* The mockup's stat strip: the week in three numbers, unpriced named
           not zeroed. */}
-      <div className="panel mb-6 grid grid-cols-1 overflow-hidden rounded-xl sm:grid-cols-3">
-        <div className="flex flex-col gap-1 border-border p-5 max-sm:border-b sm:not-last:border-r">
-          <span className="stat-label">This week</span>
-          <span className="text-2xl font-semibold tabular-nums">
-            {ledger.totalUsd !== null ? `$${ledger.totalUsd}` : "—"}
-          </span>
-          <span className="text-[12px] text-muted-foreground">Derived from the ledger rows below.</span>
-        </div>
-        <div className="flex flex-col gap-1 border-border p-5 max-sm:border-b sm:not-last:border-r">
-          <span className="stat-label">Runs recorded</span>
-          <span className="text-2xl font-semibold tabular-nums">{ledger.rows.length}</span>
-          <span className="text-[12px] text-muted-foreground">
-            {ledger.unpricedRuns > 0
-              ? `${ledger.unpricedRuns} with usage but no recorded price.`
-              : "Every priced usage event."}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1 border-border p-5">
-          <span className="stat-label">Unpriced</span>
-          <span className="text-2xl font-semibold tabular-nums">
-            {ledger.unpricedRuns > 0 ? ledger.unpricedRuns : "—"}
-          </span>
-          <span className="text-[12px] text-muted-foreground">Unpriced work shows as unpriced, never as zero.</span>
-        </div>
-      </div>
+      <StatStrip
+        className="grid-cols-1 sm:grid-cols-3"
+        items={[
+          {
+            label: "This week",
+            value: ledger.totalUsd !== null ? `$${ledger.totalUsd}` : "—",
+            hint: "Derived from the ledger rows below.",
+          },
+          {
+            label: "Runs recorded",
+            value: ledger.rows.length,
+            hint:
+              ledger.unpricedRuns > 0
+                ? `${ledger.unpricedRuns} with usage but no recorded price.`
+                : "Every priced usage event.",
+          },
+          {
+            label: "Unpriced",
+            value: ledger.unpricedRuns > 0 ? ledger.unpricedRuns : "—",
+            hint: "Unpriced work shows as unpriced, never as zero.",
+          },
+        ]}
+      />
 
       <Panel
         title="Ledger"

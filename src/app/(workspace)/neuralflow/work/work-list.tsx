@@ -9,6 +9,7 @@ import { parseQuickAdd } from "@/domains/work/quick-add";
 import { StoneCeremony } from "@/components/products/neuralflow/stone-ceremony";
 import { commitTaskAction, completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
+import { STATUS_LABEL as statusLabel, STATUS_PILL as statusPill } from "./status-meta";
 
 /*
  * The Work list: rows, not cards. Adding from a list that means "today" writes
@@ -40,28 +41,6 @@ export type WorkListItem = {
 };
 
 type Change = { type: "add"; row: WorkListRow } | { type: "complete"; id: string };
-
-const statusLabel: Record<WorkListRow["status"], string> = {
-  inbox: "Inbox",
-  backlog: "Backlog",
-  ready: "Ready",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
-  cancelled: "Cancelled",
-};
-
-/* The mockup's tinted pills: the state is a colour, not a label squeezed
-   between title and meta. Green ready, blue in-flight, amber waiting. */
-const statusPill: Record<WorkListRow["status"], string> = {
-  inbox: "pill pill-neutral",
-  backlog: "pill pill-neutral",
-  ready: "pill pill-success",
-  in_progress: "pill pill-info",
-  waiting: "pill pill-working",
-  done: "pill pill-neutral",
-  cancelled: "pill pill-neutral",
-};
 
 function apply(items: WorkListItem[], change: Change): WorkListItem[] {
   if (change.type === "complete") return items.filter((item) => item.row.id !== change.id);

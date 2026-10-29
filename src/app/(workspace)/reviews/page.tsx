@@ -8,7 +8,6 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { Screen } from "@/components/workspace/ui";
 import {
-  countPendingProposals,
   countProposalsByStatus,
   latestAttemptOutcomes,
   listProposalReviews,
@@ -76,7 +75,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     defaultPageSize: 10,
   });
   const status = (list.filters.status ?? "pending") as ReviewQueueStatus | "all";
-  const [found, pendingCount, statusCounts] = await Promise.all([
+  const [found, statusCounts] = await Promise.all([
     pageReviewQueue(auth.workspaceId, {
       query: list.q,
       status,
@@ -84,7 +83,6 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
       limit: list.pageSize,
       offset: offsetFor(list.page, list.pageSize),
     }),
-    countPendingProposals(auth.workspaceId),
     countProposalsByStatus(auth.workspaceId),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
@@ -136,7 +134,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   return (
     <Screen
       title="Reviews"
-      description={`${pendingCount} ${pendingCount === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
+      description={`${statusCounts.pending} ${statusCounts.pending === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
     >
       {/* The mockup's segmented tabs with counts: status is the page's primary
           scope, so it reads as tabs; risk stays a filter in the toolbar. */}

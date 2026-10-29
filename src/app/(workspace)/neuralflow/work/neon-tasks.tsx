@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { io } from "next/cache";
-import { Empty, Panel, Screen } from "@/components/workspace/ui";
+import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
 import { WORK_OPEN_STATUSES, WORK_PRIORITIES, countWorkByStatus, type WorkRow } from "@/domains/work/queries";
 import { getTaskDetailForPage, getActiveFocusSessionForPage, getLastTaskHandoffForPage, listFocusHistoryForPage, listWorkPageForPage, listWorkRowsForPage } from "./data";
@@ -162,27 +162,23 @@ export async function NeonTasks({
 
       {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
           a count of real rows. Where the work is in its life, at a glance. */}
-      <div className="panel mb-6 grid grid-cols-2 overflow-hidden rounded-xl sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { label: "Capture", count: counts.inbox, hint: "Anything that arrives lands in one inbox." },
-          { label: "Clarify", count: counts.backlog, hint: "Turn each into a task, a note, or let it go." },
-          { label: "Commit", count: counts.ready, hint: "Work you have taken on for today." },
-          { label: "Focus", count: activeSession ? 1 : 0, hint: "Pick one, start an interval, earn a stone." },
-          { label: "Review", count: counts.waiting, hint: "Nothing leaves Polymath until you approve it." },
-          { label: "Learn", count: counts.done, hint: "Notes and ideas you can think with." },
-        ].map((stage, i) => (
-          <div
-            key={stage.label}
-            className={`flex flex-col gap-1 border-border p-4 ${i > 0 ? "border-l max-sm:[&:nth-child(odd)]:border-l-0 max-sm:[&:nth-child(n+3)]:border-t sm:max-lg:[&:nth-child(3n+1)]:border-l-0 sm:max-lg:[&:nth-child(n+4)]:border-t lg:[&:nth-child(n+2)]:border-t-0" : ""}`}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="stat-label">{stage.label}</span>
-              <span className="readout text-[12px] text-muted-foreground">{stage.count}</span>
-            </div>
-            <p className="text-[11px] leading-snug text-muted-foreground">{stage.hint}</p>
-          </div>
-        ))}
-      </div>
+      <StatStrip
+        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+        inline
+        cellClassName={(index) =>
+          index > 0
+            ? "p-4 border-l max-sm:[&:nth-child(odd)]:border-l-0 max-sm:[&:nth-child(n+3)]:border-t sm:max-lg:[&:nth-child(3n+1)]:border-l-0 sm:max-lg:[&:nth-child(n+4)]:border-t lg:[&:nth-child(n+2)]:border-t-0"
+            : "p-4"
+        }
+        items={[
+          { label: "Capture", value: counts.inbox, hint: "Anything that arrives lands in one inbox." },
+          { label: "Clarify", value: counts.backlog, hint: "Turn each into a task, a note, or let it go." },
+          { label: "Commit", value: counts.ready, hint: "Work you have taken on for today." },
+          { label: "Focus", value: activeSession ? 1 : 0, hint: "Pick one, start an interval, earn a stone." },
+          { label: "Review", value: counts.waiting, hint: "Nothing leaves Polymath until you approve it." },
+          { label: "Learn", value: counts.done, hint: "Notes and ideas you can think with." },
+        ]}
+      />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="min-w-0">
