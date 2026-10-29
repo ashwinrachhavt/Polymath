@@ -4,9 +4,9 @@ import {
   CREATION_IDLE_MS,
   DECOMPOSE_MAX_CHARS,
   DECOMPOSE_PASTE_CHARS,
-  sittingEnded,
   SittingError,
 } from "@/domains/knowledge/sittings";
+import * as sittingsModule from "@/domains/knowledge/sittings";
 
 /*
  * §15.1: both constants live as named module exports with the exact settled
@@ -31,9 +31,11 @@ describe("sitting typed errors", () => {
     expect(err.code).toBe("ARTIFACT_WORKSPACE_MISMATCH");
     expect(err.message).toBe("That card belongs to another workspace.");
   });
-  it("carries the §15.8 ended-sitting deletion copy", () => {
-    const err = sittingEnded();
-    expect(err.code).toBe("SITTING_ENDED");
-    expect(err.message).toBe("Ended sittings are records.");
+});
+
+describe("no sitting lifecycle (Gate 2026-10-29)", () => {
+  it("exposes no end action and no SITTING_ENDED error", () => {
+    expect("endSitting" in sittingsModule).toBe(false);
+    expect("sittingEnded" in sittingsModule).toBe(false);
   });
 });

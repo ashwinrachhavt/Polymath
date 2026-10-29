@@ -11,6 +11,7 @@ export const metadata = { title: "Sitting · Ideas" };
  * The sitting workspace (§14): server-hydrated sitting + its cards, then the
  * client shell owns the writing surface, the ambient panel and the rail.
  * A sitting in another workspace is the same 404 as a missing one (§16.9).
+ * No lifecycle (Gate 2026-10-29): the workspace is always writable.
  */
 export default async function SittingPage({
   params,
@@ -40,7 +41,6 @@ export default async function SittingPage({
         topic: sitting.topic,
         tags: (sitting.tags as string[]) ?? [],
         startedAt: sitting.startedAt.toISOString(),
-        endedAt: sitting.endedAt?.toISOString() ?? null,
       }}
       initialCards={cards.map((c) => ({ artifactId: c.artifactId, role: c.roleInSitting, position: c.position }))}
     />

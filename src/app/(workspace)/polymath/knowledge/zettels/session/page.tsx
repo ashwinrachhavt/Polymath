@@ -7,29 +7,15 @@ import { Screen, Panel } from "@/components/workspace/ui";
 export const metadata = { title: "Sittings · Ideas" };
 
 /*
- * The "Sittings" destination (T8): open sittings first (one active at a
- * time, §14.8), then history. Multiple open sittings are allowed; each row
- * links into its shell.
+ * The "Sittings" destination (T8): a plain history of writing contexts
+ * (Gate 2026-10-29: no lifecycle - no open/closed split, no status badges).
+ * Each row links into its workspace, which is always writable.
  */
 export default async function SittingsPage() {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const sittings = await listSittings(auth);
-  const open = sittings.filter((s) => !s.endedAt);
-  const past = sittings.filter((s) => s.endedAt);
   const stamp = (d: Date) => d.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-
-  const Row = ({ sitting }: { sitting: (typeof sittings)[number] }) => (
-    <li className="flex items-center justify-between gap-3 border-b border-border/60 py-2 last:border-0">
-      <Link href={`/polymath/knowledge/zettels/session/${sitting.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
-        {sitting.topic?.trim() || "Untitled sitting"}
-      </Link>
-      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className={sitting.endedAt ? "" : "font-medium text-foreground"}>{sitting.endedAt ? "ended" : "open"}</span>
-        <span>{stamp(sitting.startedAt)}</span>
-      </span>
-    </li>
-  );
 
   return (
     <Screen
@@ -42,15 +28,21 @@ export default async function SittingsPage() {
       }
     >
       <Panel>
-        <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Open</h2>
-        {open.length === 0 ? <p className="py-2 text-[13px] text-muted-foreground">No open sittings. Start one and the cards you write land here.</p> : <ul>{open.map((s) => <Row key={s.id} sitting={s} />)}</ul>}
+        {sittings.length === 0 ? (
+          <p className="py-2 text-[13px] text-muted-foreground">No sittings yet. Start one and the cards you write land here.</p>
+        ) : (
+          <ul>
+            {sittings.map((sitting) => (
+              <li key={sitting.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-2 last:border-0">
+                <Link href={`/polymath/knowledge/zettels/session/${sitting.id}`} className="text-[13px] font-medium underline-offset-2 hover:underline">
+                  {sitting.topic?.trim() || "Untitled sitting"}
+                </Link>
+                <span className="text-xs text-muted-foreground">{stamp(sitting.startedAt)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Panel>
-      {past.length > 0 && (
-        <Panel>
-          <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">History</h2>
-          <ul>{past.map((s) => <Row key={s.id} sitting={s} />)}</ul>
-        </Panel>
-      )}
     </Screen>
   );
 }

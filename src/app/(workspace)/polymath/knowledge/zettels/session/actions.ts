@@ -7,7 +7,6 @@ import { requireRole } from "@/lib/auth/guards";
 import {
   addCardToSitting,
   createSitting,
-  endSitting,
   getSitting,
 } from "@/domains/knowledge/sittings";
 import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
@@ -28,12 +27,6 @@ export async function createSittingAction(input: { topic?: string; sourceDocumen
     sourceContext: input.sourceDocumentId ? `document:${input.sourceDocumentId}` : undefined,
   });
   redirect(`/polymath/knowledge/zettels/session/${sitting.id}`);
-}
-
-export async function endSittingAction(input: { sittingId: string; closingReflection?: string }) {
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
-  await endSitting(auth, input.sittingId, input.closingReflection?.trim() || undefined);
 }
 
 const SaveCard = z.object({

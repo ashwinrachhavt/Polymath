@@ -5,9 +5,12 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { artifacts, zettelSittingCards, zettelSittings } from "./schema";
 
 /*
- * Sittings (plan 2026-10-29 §2, §14): a timed writing session whose cards
- * join with a role. "Ideas" is the user-facing collection surface and
- * "Sittings" the nav destination; "zettel" stays internal-only (§0, §16).
+ * Sittings (plan 2026-10-29 §2, §14; Gate 2026-10-29): a writing context
+ * whose cards join with a role. There is no lifecycle: no end action, no
+ * ended_at writes, no open/closed states - the workspace is always there,
+ * revisitable and writable at any time. "Ideas" is the user-facing
+ * collection surface and "Sittings" the nav destination; "zettel" stays
+ * internal-only (§0, §16).
  *
  * The two creation constants live here as the single named source (§15.1):
  * CREATION_IDLE_MS is the editor-idle debounce that fires Track B (§14.2 -
@@ -35,9 +38,6 @@ export class SittingError extends Error {
 export const artifactWorkspaceMismatch = () =>
   new SittingError("ARTIFACT_WORKSPACE_MISMATCH", "That card belongs to another workspace.");
 
-/** §15.8: ended sittings are records; the delete action refuses. */
-export const sittingEnded = () => new SittingError("SITTING_ENDED", "Ended sittings are records.");
-
 export const sittingNotFound = () => new SittingError("SITTING_NOT_FOUND", "No such sitting.");
 
 export type SittingRole = "created_here" | "referenced_here" | "revised_here";
@@ -60,13 +60,13 @@ export async function createSitting(
   return sitting;
 }
 
-/** Open sittings first (NULL ends sort first under DESC), then history, newest activity first. */
+/* The sittings list is plain history (Gate 2026-10-29: no lifecycle) - newest activity first. */
 export async function listSittings(auth: AuthContext) {
   return db
     .select()
     .from(zettelSittings)
     .where(and(eq(zettelSittings.workspaceId, auth.workspaceId), isNull(zettelSittings.archivedAt)))
-    .orderBy(desc(zettelSittings.endedAt), desc(zettelSittings.updatedAt));
+    .orderBy(desc(zettelSittings.updatedAt));
 }
 
 /** A sitting in another workspace answers the same not-found as a missing one. */
@@ -79,27 +79,14 @@ export async function getSitting(auth: AuthContext, sittingId: string) {
   return sitting ?? null;
 }
 
-export async function endSitting(auth: AuthContext, sittingId: string, closingReflection?: string) {
-  const sitting = await getSitting(auth, sittingId);
-  if (!sitting) throw sittingNotFound();
-  if (sitting.endedAt) return sitting; // Ending twice is a no-op, never an error.
-  const [ended] = await db
-    .update(zettelSittings)
-    .set({ endedAt: new Date(), closingReflection: closingReflection ?? null, updatedBy: auth.userId })
-    .where(eq(zettelSittings.id, sitting.id))
-    .returning();
-  return ended;
-}
-
 /*
- * §15.8 + plan §2: a member deletes an OPEN sitting; join rows cascade, the
- * artifacts survive, and the deletion is audit-evented. Ended sittings are
- * records and refuse deletion.
+ * Plan §2: a member deletes a sitting; join rows cascade, the artifacts
+ * survive, and the deletion is audit-evented. There is no lifecycle (Gate
+ * 2026-10-29): nothing distinguishes a deletable sitting from a record.
  */
 export async function deleteSitting(auth: AuthContext, sittingId: string) {
   const sitting = await getSitting(auth, sittingId);
   if (!sitting) throw sittingNotFound();
-  if (sitting.endedAt) throw sittingEnded();
   await db.delete(zettelSittings).where(eq(zettelSittings.id, sitting.id));
   await db.insert(auditEvents).values({
     workspaceId: auth.workspaceId,

@@ -6,7 +6,6 @@ import {
   addCardToSitting,
   createSitting,
   deleteSitting,
-  endSitting,
   getSitting,
   listSittingCards,
   SittingError,
@@ -16,15 +15,17 @@ import { and, eq } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * Zettel sittings (plan 2026-10-29 §2, §15.4, §15.8) against real Postgres,
- * through migration 0261 itself: a sitting is created open, joins cards with
- * roles, rejects foreign-workspace artifacts with the typed error, refuses to
- * delete an ended sitting, and deleting an open sitting cascades only the
- * join rows - the artifacts survive and the deletion is audit-evented.
+ * Zettel sittings (plan 2026-10-29 §2, §15.4; Gate 2026-10-29) against real
+ * Postgres, through migration 0261 itself: a sitting is created, joins cards
+ * with roles, rejects foreign-workspace artifacts with the typed error, and
+ * deleting a sitting cascades only the join rows - the artifacts survive and
+ * the deletion is audit-evented. There is no lifecycle: ended_at is never
+ * written and no end action exists.
  *
- * Value: protects=the sitting data model's tenancy and lifecycle invariants;
- * fails_when=the migration shape drifts from the schema, a foreign artifact
- * joins, an ended sitting deletes, or a sitting delete removes cards.
+ * Value: protects=the sitting data model's tenancy invariants and the
+ * no-lifecycle gate; fails_when=the migration shape drifts from the schema,
+ * a foreign artifact joins, a code path writes ended_at, or a sitting
+ * delete removes cards.
  */
 
 const handle = makeTestDb();
@@ -67,16 +68,15 @@ suite("zettel sittings (migration 0261)", () => {
     return row;
   }
 
-  it("creates an open sitting and lists it before ended history", async () => {
+  it("creates a sitting as a durable work context - ended_at is never written (Gate 2026-10-29)", async () => {
     const auth = ownerAuth(ws.userId, ws.workspaceId);
     const sitting = await createSitting(auth, { topic: "Idea garden", tags: ["a"] });
     expect(sitting.endedAt).toBeNull();
+    expect(sitting.closingReflection).toBeNull();
     expect(sitting.topic).toBe("Idea garden");
-    const ended = await endSitting(auth, (await createSitting(auth, { topic: "done" })).id);
-    expect(ended.endedAt).not.toBeNull();
-    // Ending twice is a no-op (idempotent), never an error.
-    const again = await endSitting(auth, ended.id);
-    expect(again.endedAt?.getTime()).toBe(ended.endedAt?.getTime());
+    // The workspace is always there: revisiting later reads the same writable context.
+    const revisited = await getSitting(auth, sitting.id);
+    expect(revisited?.endedAt).toBeNull();
   });
 
   it("joins cards with roles and enforces one role per card per sitting", async () => {
@@ -118,17 +118,17 @@ suite("zettel sittings (migration 0261)", () => {
     expect(foreign).toBeNull();
   });
 
-  it("refuses to delete an ended sitting (§15.8)", async () => {
+  it("no domain path writes ended_at or closing_reflection (Gate 2026-10-29)", async () => {
     const auth = ownerAuth(ws.userId, ws.workspaceId);
     const sitting = await createSitting(auth, {});
-    await endSitting(auth, sitting.id);
-    try {
-      await deleteSitting(auth, sitting.id);
-      expect.unreachable();
-    } catch (err) {
-      expect((err as SittingError).code).toBe("SITTING_ENDED");
-      expect((err as Error).message).toBe("Ended sittings are records.");
-    }
+    const card = await seedArtifact(ws.workspaceId, "context card");
+    await addCardToSitting(auth, { sittingId: sitting.id, artifactId: card.id, role: "created_here" });
+    const after = await getSitting(auth, sitting.id);
+    expect(after?.endedAt).toBeNull();
+    expect(after?.closingReflection).toBeNull();
+    // Deleting a sitting is always allowed for a member - no ended records exist to protect.
+    await deleteSitting(auth, sitting.id);
+    expect(await getSitting(auth, sitting.id)).toBeNull();
   });
 
   it("deleting an open sitting cascades only join rows - artifacts survive, audit-evented", async () => {
