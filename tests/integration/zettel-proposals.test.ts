@@ -76,6 +76,17 @@ suite("proposeZettels (real Postgres)", () => {
     expect(rows.map((r) => r.title)).toEqual(["Real"]);
   });
 
+  it("keeps negation verbatim: a paraphrase that drops the 'not' never lands (§11)", async () => {
+    const auth = await workspace();
+    const doc = await seed(auth);
+    const rows = await proposeZettels(auth, { documentId: doc.id, extractor: extractor([
+      { title: "Pets allowed", claim: "Pets are allowed.", quote: "Pets are allowed without written consent." },
+      { title: "No pets", claim: "Pets need written consent.", quote: "Pets are not allowed without written consent." },
+    ]) });
+    expect(rows.map((r) => r.title)).toEqual(["No pets"]);
+    expect(TEXT.slice(rows[0].spanStart, rows[0].spanEnd)).toBe("Pets are not allowed without written consent.");
+  });
+
   it("re-running lands on the same rows (dedupe key) and does not revive a decision", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
