@@ -104,11 +104,20 @@ suite("note comments", () => {
     listed = await domain.listNoteComments(auth, noteId);
     expect(listed[0].resolvedAt).toBeNull();
 
+    // Resolve/reopen audits point at the note (the artifact a day page can
+    // attribute); the comment id rides in metadata.
     const actions = await db
-      .select({ action: auditEvents.action })
+      .select({ action: auditEvents.action, metadata: auditEvents.metadata })
       .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.subjectId, comment.id)));
-    expect(actions.map((a) => a.action)).toEqual(["note.comment_resolved", "note.comment_reopened"]);
+      .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.subjectId, noteId)));
+    expect(
+      actions
+        .filter((a) => a.action === "note.comment_resolved" || a.action === "note.comment_reopened")
+        .map((a) => ({ action: a.action, commentId: (a.metadata as { commentId?: string })?.commentId })),
+    ).toEqual([
+      { action: "note.comment_resolved", commentId: comment.id },
+      { action: "note.comment_reopened", commentId: comment.id },
+    ]);
 
     // A wrong comment id is the domain error, not a 500.
     await expect(
