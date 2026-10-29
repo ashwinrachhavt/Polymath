@@ -13,6 +13,7 @@ import { artifactWorkspaceMismatch, getSitting } from "./sittings";
 import {
   assertEventRedacted,
   isAllowedStageOutcome,
+  QUOTA_UNAVAILABLE_MESSAGE,
   SITTING_PROTOCOL_VERSION,
   type SittingEvent,
 } from "./sitting-events";
@@ -41,9 +42,8 @@ const CREATION_OBJECTIVE = "zettel-sitting-creation";
 const SITTING_SYSTEM_PROMPT =
   "You are assisting a zettel sitting: the writer pauses and you suggest one connection or sharpening for their draft, briefly.";
 
-/** Quota-unavailable copy is the §15.3 contract, verbatim. */
-export const QUOTA_UNAVAILABLE_MESSAGE =
-  "Link discovery needs AI quota — your card is saved. Add credits or ask an admin to raise the quota, then retry indexing.";
+/** One shared embed-failure sentence (try-else and catch branches agree). */
+const EMBED_FAILED_MESSAGE = "Indexing this version failed - retry indexing when the provider recovers.";
 
 export type SittingRun = { runId: string; reused: boolean };
 
@@ -220,13 +220,20 @@ function emitLive(ctx: RunContext, event: SittingEvent): void {
   for (const sub of liveSubscribers.get(ctx.runId) ?? []) sub(event);
 }
 
-const frame = (ctx: RunContext, event: SittingEvent["event"], payload?: unknown, ids?: { artifactVersionId?: string }): SittingEvent => ({
+const frame = (
+  ctx: RunContext,
+  event: SittingEvent["event"],
+  payload?: Record<string, unknown>,
+  ids?: { artifactVersionId?: string },
+): SittingEvent => ({
   protocolVersion: SITTING_PROTOCOL_VERSION,
   operationId: ctx.runId,
   artifactId: ctx.artifactId,
   ...(ids?.artifactVersionId ? { artifactVersionId: ids.artifactVersionId } : {}),
   event,
-  payload,
+  // §15.2: every stage_failed carries operationId; defaulting it here keeps
+  // call sites from repeating ctx.runId nine times.
+  payload: event === "stage_failed" ? { operationId: ctx.runId, ...payload } : payload,
 });
 
 /**
@@ -269,7 +276,7 @@ export async function executeCreationRun(
     .where(and(eq(artifacts.id, ctx.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!card) {
-    await durable(frame(ctx, "stage_failed", { stage: "save", code: "NOT_FOUND", message: "The card is gone; the sitting's writing was not found.", operationId: ctx.runId }), "failed:save");
+    await durable(frame(ctx, "stage_failed", { stage: "save", code: "NOT_FOUND", message: "The card is gone; the sitting's writing was not found." }), "failed:save");
     await finishRun(ctx.runId, "failed", "card not found");
     return;
   }
@@ -312,14 +319,14 @@ export async function executeCreationRun(
         // The version guard itself: persisted as its allowlisted outcome.
         await durable(frame(ctx, "stage_completed", { stage: "embed", outcome: `skipped:${outcome.reason}` }), `skipped:${outcome.reason}`);
       } else if (outcome.status === "failed") {
-        await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: "Indexing this version failed - retry indexing when the provider recovers.", operationId: ctx.runId }), "failed:embed");
+        await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: EMBED_FAILED_MESSAGE }), "failed:embed");
       } else {
         // not_found / no_text: nothing to index and nothing mislabeled - a
         // warning event, never a borrowed version-guard outcome.
         await durable(frame(ctx, "warning", { stage: "embed", message: "Nothing to index on this version." }), null);
       }
     } catch {
-      await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: "Indexing this version failed - retry indexing when the provider recovers.", operationId: ctx.runId }), "failed:embed");
+      await durable(frame(ctx, "stage_failed", { stage: "embed", code: "EMBED_FAILED", message: EMBED_FAILED_MESSAGE }), "failed:embed");
     }
 
     // Stage A2: link discovery (§5: candidates surfaced, never asserted).
@@ -331,9 +338,9 @@ export async function executeCreationRun(
       await durable(frame(ctx, "links_found", { outcome: `links:${count}`, candidates: count }), `links:${count}`);
     } catch (cause) {
       if (cause instanceof QuotaExhaustedError) {
-        await durable(frame(ctx, "stage_failed", { stage: "links", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE, operationId: ctx.runId }), "failed:links");
+        await durable(frame(ctx, "stage_failed", { stage: "links", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE }), "failed:links");
       } else {
-        await durable(frame(ctx, "stage_failed", { stage: "links", code: "LINKS_FAILED", message: "Link discovery failed - your card is saved; retry indexing.", operationId: ctx.runId }), "failed:links");
+        await durable(frame(ctx, "stage_failed", { stage: "links", code: "LINKS_FAILED", message: "Link discovery failed - your card is saved; retry indexing." }), "failed:links");
       }
     }
   };
@@ -341,7 +348,7 @@ export async function executeCreationRun(
   const trackB = async () => {
     if (aborted()) return;
     if (!provider) {
-      await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "PROVIDER_UNCONFIGURED", message: "No generation provider is configured, so suggestions did not run - your card is saved.", operationId: ctx.runId }), "failed:enrich");
+      await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "PROVIDER_UNCONFIGURED", message: "No generation provider is configured, so suggestions did not run - your card is saved." }), "failed:enrich");
       return;
     }
     // §16.4: per-call usage rides metered() to the run row; admission already
@@ -375,18 +382,18 @@ export async function executeCreationRun(
         const { text } = await meteredProvider.generate(input);
         await durable(frame(ctx, "enrichment", { outcome: "enriched", suggestion: text }), "enriched");
       }
-      for (const u of usage) {
-        await db.insert(agentSteps).values({
-          workspaceId: auth.workspaceId, runId: ctx.runId, sequence: seq.next++, kind: "model",
+      if (usage.length > 0) {
+        await db.insert(agentSteps).values(usage.map((u) => ({
+          workspaceId: auth.workspaceId, runId: ctx.runId, sequence: seq.next++, kind: "model" as const,
           summary: "enriched",
           payload: { event: "usage", model: u.model, kind: u.kind, inputTokens: u.inputTokens, outputTokens: u.outputTokens, durationMs: u.durationMs },
-        });
+        })));
       }
     } catch (cause) {
       if (cause instanceof QuotaExhaustedError) {
-        await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE, operationId: ctx.runId }), "failed:enrich");
+        await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "QUOTA_UNAVAILABLE", message: QUOTA_UNAVAILABLE_MESSAGE }), "failed:enrich");
       } else {
-        await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "ENRICH_FAILED", message: "The suggestion pass failed - your card is saved; retry from the rail.", operationId: ctx.runId }), "failed:enrich");
+        await durable(frame(ctx, "stage_failed", { stage: "enrich", code: "ENRICH_FAILED", message: "The suggestion pass failed - your card is saved; retry from the rail." }), "failed:enrich");
       }
     }
   };
