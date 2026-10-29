@@ -21,4 +21,14 @@ describe("assertEvalEnvironment", () => {
     const env = { COMPOSIO_API_KEY: "   " };
     expect(() => assertEvalEnvironment(env)).not.toThrow();
   });
+
+  it("lets structural variables through", () => {
+    const env = { PATH: "/usr/bin", HOME: "/home/x", __CF_USER_TEXT_ENCODING: "0x1f8:0x0" };
+    expect(() => assertEvalEnvironment(env)).not.toThrow();
+  });
+
+  it("throws for an unknown credential-shaped key", () => {
+    const env = { GEMINI_API_KEY: "k", XAI_API_KEY: "k" };
+    expect(() => assertEvalEnvironment(env)).toThrow(EvalEnvironmentViolation);
+  });
 });
