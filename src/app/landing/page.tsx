@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -42,13 +43,28 @@ function safeReturnTo(value: string | undefined): string | null {
   return value;
 }
 
-export default async function LandingPage({
+async function SignInLink({
   searchParams,
 }: {
   searchParams: Promise<{ returnTo?: string }>;
 }) {
   const returnTo = safeReturnTo((await searchParams).returnTo);
   const signInHref = returnTo ? `/sign-in?redirect_url=${encodeURIComponent(returnTo)}` : "/sign-in";
+  return (
+    <Link
+      href={signInHref}
+      className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
+    >
+      Sign in
+    </Link>
+  );
+}
+
+export default function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
@@ -87,12 +103,16 @@ export default async function LandingPage({
             >
               Get early access
             </Link>
-            <Link
-              href={signInHref}
-              className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
-            >
-              Sign in
-            </Link>
+            <Suspense fallback={
+              <Link
+                href="/sign-in"
+                className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
+              >
+                Sign in
+              </Link>
+            }>
+              <SignInLink searchParams={searchParams} />
+            </Suspense>
           </div>
         </section>
 
