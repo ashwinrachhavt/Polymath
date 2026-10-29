@@ -167,11 +167,8 @@ if [ "${#IDS[@]}" -gt 0 ]; then
   for id in "${IDS[@]}"; do
     # A nonzero eve exit can still carry full JSON results (failing
     # assertions), so JSON extraction is attempted either way.
-    if run_one "$id"; then
-      printf '%s\n' "$OUT" > "$RAW"
-    else
-      printf '%s\n' "$OUT" > "$RAW"
-    fi
+    run_one "$id" || true
+    printf '%s\n' "$OUT" > "$RAW"
     if json_part "$RAW" > "$JSONF" && jq -e . "$JSONF" >/dev/null 2>&1; then
       jq '.results' "$JSONF" > "$ENTF"
       record "$id" "$ENTF" "$RAW"
@@ -182,11 +179,8 @@ if [ "${#IDS[@]}" -gt 0 ]; then
 else
   # No ids given: one invocation runs every discovered eval; each entry in
   # the results array gets its own row. Nonzero exits still carry JSON.
-  if run_one "<all>"; then
-    printf '%s\n' "$OUT" > "$RAW"
-  else
-    printf '%s\n' "$OUT" > "$RAW"
-  fi
+  run_one "<all>" || true
+  printf '%s\n' "$OUT" > "$RAW"
   if json_part "$RAW" > "$JSONF" && jq -e . "$JSONF" >/dev/null 2>&1; then
     n="$(jq '.results | length' "$JSONF")"
     i=0
