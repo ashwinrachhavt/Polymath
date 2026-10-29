@@ -13,6 +13,7 @@ import {
 } from "./creation-stream-reducer";
 import { createSittingStore, type SittingStore } from "./sitting-store";
 import { saveSittingCardAction } from "@/app/(workspace)/polymath/knowledge/zettels/session/actions";
+import { isFinalizeKey, suggestionKeyAction } from "./keyboard";
 
 /*
  * The WritingSurface (§14.1-14.3): the writer types; CREATION_IDLE_MS after
@@ -46,6 +47,8 @@ export function WritingSurface({
   const [artifactVersion, setArtifactVersion] = useState<number | null>(null);
   const [reading, setReading] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestionRef = useRef<HTMLDivElement | null>(null);
+  const [suggestionFocused, setSuggestionFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const idemKey = useRef(`sitting-${sittingId}-${Date.now()}`);
 
@@ -163,14 +166,29 @@ export function WritingSurface({
   }, [streamState.proposal, editor, artifactId, artifactVersion, sittingId, store]);
 
   useEffect(() => {
+    // Focus tracking itself comes from onFocus/onBlur; when the proposal
+    // clears, the key handler short-circuits on its absence anyway.
+    if (streamState.proposal) suggestionRef.current?.focus();
+  }, [streamState.proposal]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // §14.13: Cmd/Ctrl+Enter finalizes the card - the pause fires now.
+      if (isFinalizeKey(e) && !streamState.proposal) {
+        e.preventDefault();
+        if (idleTimer.current) clearTimeout(idleTimer.current);
+        void firePause();
+        return;
+      }
       if (!streamState.proposal) return;
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void adopt(true); }
-      if (e.key === "Escape") { e.preventDefault(); void adopt(false); }
+      // §14.3: plain Enter keeps, Escape discards - while the suggestion is focused.
+      const action = suggestionKeyAction(e.key, suggestionFocused);
+      if (action === "keep") { e.preventDefault(); void adopt(true); }
+      if (action === "discard") { e.preventDefault(); void adopt(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [streamState.proposal, adopt]);
+  }, [streamState.proposal, suggestionFocused, adopt, firePause]);
 
   const conflict = store((s) => s.conflict);
   return (
@@ -186,9 +204,22 @@ export function WritingSurface({
       </div>
       {reading && <p className="px-6 pb-2 text-sm text-muted-foreground">Reading your draft…</p>}
       {streamState.proposal && (
-        <div className="mx-6 mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm" role="region" aria-label="AI suggestion">
+        <div
+          ref={suggestionRef}
+          tabIndex={0}
+          role="group"
+          aria-label="AI suggestion"
+          onFocus={() => setSuggestionFocused(true)}
+          onBlur={() => setSuggestionFocused(false)}
+          className="mx-6 mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm italic text-muted-foreground outline-none ring-primary focus:ring-1"
+        >
+          <span className="mb-1 block font-mono text-[10px] uppercase tracking-wide">AI suggestion</span>
           <p className="whitespace-pre-wrap">{streamState.proposal.suggestion}</p>
-          <p className="mt-2 text-xs text-muted-foreground">⌘Enter to keep · Esc to discard</p>
+          <span className="mt-2 flex items-center gap-2 not-italic">
+            <button className="min-h-11 min-w-11 rounded-md bg-primary px-3 text-primary-foreground" onClick={() => void adopt(true)}>Keep</button>
+            <button className="min-h-11 min-w-11 rounded-md border border-border px-3" onClick={() => void adopt(false)}>Discard</button>
+            <span className="text-xs text-muted-foreground">Enter keeps · Esc discards</span>
+          </span>
         </div>
       )}
     </div>

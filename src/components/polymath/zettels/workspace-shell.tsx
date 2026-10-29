@@ -68,11 +68,11 @@ export function WorkspaceShell({
             confirmingEnd ? (
               <span className="flex items-center gap-2 text-sm">
                 End this sitting?
-                <button className="rounded bg-primary px-2 py-1 text-primary-foreground" onClick={() => void endSitting()}>End sitting</button>
-                <button className="underline" onClick={() => setConfirmingEnd(false)}>Keep writing</button>
+                <button className="min-h-11 rounded bg-primary px-3 text-primary-foreground" onClick={() => void endSitting()}>End sitting</button>
+                <button className="min-h-11 px-2 underline" onClick={() => setConfirmingEnd(false)}>Keep writing</button>
               </span>
             ) : (
-              <button className="text-sm underline" onClick={() => setConfirmingEnd(true)}>End sitting</button>
+              <button className="min-h-11 px-2 text-sm underline" onClick={() => setConfirmingEnd(true)}>End sitting</button>
             )
           )}
         </header>

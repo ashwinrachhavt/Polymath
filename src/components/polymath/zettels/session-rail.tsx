@@ -22,7 +22,7 @@ export function SessionRail({
         <ul className="flex flex-col gap-1">
           {cards.map((card) => (
             <li key={card.artifactId} className="rounded border border-border px-2 py-1 text-sm">
-              <a href={`/polymath/knowledge/cards?id=${card.artifactId}`} className="underline-offset-2 hover:underline">
+              <a href={`/polymath/knowledge/cards?id=${card.artifactId}`} className="flex min-h-11 items-center underline-offset-2 hover:underline">
                 Card
               </a>{" "}
               <span className="font-mono text-[10px] text-muted-foreground">{card.role}</span>

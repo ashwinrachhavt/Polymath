@@ -42,7 +42,7 @@ export function AmbientPanel({
             {stage.status === "failed" && (
               <span>
                 <span className="text-destructive">{stage.failure?.message}</span>{" "}
-                <button className="underline" onClick={() => onRetryStage(name)}>Retry</button>
+                <button className="min-h-11 px-2 underline" onClick={() => onRetryStage(name)}>Retry</button>
               </span>
             )}
           </div>
