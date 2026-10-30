@@ -3,7 +3,7 @@ import { checkDataset, costsClose, hasUnredactedKey, redactedText, reconcileData
 const scope = { runId: "run", workspaceId: "workspace", objective: "Hello" };
 function dataset(): TraceDataset {
   return {
-    headers: [{ id: "run", workspaceId: "workspace", objective: "Hello", state: "succeeded", model: "model", startedAt: "2026-10-29T00:00:00Z", endedAt: "2026-10-29T00:00:01Z", lastEventSeq: 3, error: null }],
+    headers: [{ id: "run", workspaceId: "workspace", objective: "Hello", state: "succeeded", model: "model", startedAt: "2026-10-29T00:00:00Z", endedAt: "2026-10-29T00:00:01Z", lastEventSeq: 3, sessionRef: "wrun_session", error: null }],
     events: [{ sequence: 1, type: "message", data: { role: "user", content: "Hello" } }, { sequence: 2, type: "usage", data: { costUsd: "0.1" } }, { sequence: 3, type: "run.succeeded", data: {} }],
     tools: [{ ok: true, durationMs: 1, errorCode: null, arguments: { secret: "[redacted]" }, result: {} }], settledUsd: "0.100000", critiqueRequested: true,
   };

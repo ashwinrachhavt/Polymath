@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { caseRegistry } from "../../evals-langgraph/src/cases/registry";
+import { ConfigurationError } from "../../evals-langgraph/src/env-gate";
 import { createCaseGraph } from "../../evals-langgraph/src/graph/case-graph";
 import { driveFixture, resolveRoute, expectedOutcome } from "../../evals-langgraph/src/drive/fixtures";
 import { scoreAssertions } from "../../evals-langgraph/src/scoring/matchers";
@@ -49,3 +50,21 @@ it("refuses unknown cases and missing live credentials", async () => {
   await expect(createCaseGraph({ env: {} }).invoke({ caseId: "missing" })).rejects.toThrow(/Unknown caseId/);
   await expect(createCaseGraph({ env: {} }).invoke({ caseId: "chat-grounding/groundedAnswer" })).rejects.toThrow(/GEMINI_API_KEY/);
 });
+it("reports verification configuration errors as pending, not failed", async () => {
+  const runId = "00000000-0000-4000-8000-000000000002";
+  const client = { start: vi.fn(async () => runId), follow: vi.fn(async () => ({ runId, state: "succeeded" as const, observation: transcripts["chat-grounding/groundedAnswer"], diagnostics: [] })) };
+  const verify = vi.fn(async () => { throw new ConfigurationError("LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are required"); });
+  const state = await createCaseGraph({ env: { GEMINI_API_KEY: "test" }, client, verify, captureStdout: async () => "dev-server window" }).invoke({ caseId: "chat-grounding/groundedAnswer" });
+  expect(state.verdict).toBe("passed");
+  expect(state.reconciliation.status).toBe("pending");
+  expect(reportExitCode([state], true)).toBe(2);
+});
+it("requires a captured stdout window before reconciliation passes", async () => {
+  const runId = "00000000-0000-4000-8000-000000000003";
+  const client = { start: vi.fn(async () => runId), follow: vi.fn(async () => ({ runId, state: "succeeded" as const, observation: transcripts["chat-grounding/groundedAnswer"], diagnostics: [] })) };
+  const verify = vi.fn(async () => ({ status: "passed" as const, checks: [] }));
+  const state = await createCaseGraph({ env: { GEMINI_API_KEY: "test" }, client, verify }).invoke({ caseId: "chat-grounding/groundedAnswer" });
+  expect(state.reconciliation.status).toBe("pending");
+  expect(reportExitCode([state], true)).toBe(2);
+});
+

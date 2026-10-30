@@ -63,6 +63,10 @@ function buildGraph(dependencies: GraphDependencies) {
       const result = await dependencies.verify({ runId, objective: state.item.objective, startedAt: state.startedAt, endedAt: state.endedAt });
       return { reconciliation: requireStdout(result, state.stdout) };
     } catch (error) {
+      // Missing verification credentials/setup block promotion (exit 2, pending)
+      // rather than failing the eval (exit 1) — a red eval and missing setup
+      // must stay distinguishable.
+      if (error instanceof ConfigurationError) return { reconciliation: { status: "pending", reason: `Verification configuration: ${String(error)}` } };
       return { reconciliation: { status: "failed", checks: [{ group: "langfuse", passed: false, detail: `Reconciliation adapter failed: ${String(error)}` }] } };
     }
   }
