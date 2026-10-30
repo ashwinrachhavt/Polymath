@@ -66,5 +66,3 @@ export function loadCases(values: readonly unknown[]): EvalCase[] {
   }
   return cases;
 }
-
-
