@@ -118,15 +118,24 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Dev-server cache, exact-SHA restores only: the lockfile-keyed
-      # restore-keys let a branch run resurrect another branch's compiled
-      # modules (the lock hash is identical across branches), and the e2e
-      # server then rendered the WRONG branch's routes - a smoke run once
-      # read main's rail order from a stacked branch's own checkout.
+      # Dev-server cache, ref-scoped restores only. The lockfile-keyed
+      # restore-keys once let a branch run resurrect another branch's
+      # compiled modules (the lock hash is identical across branches), and
+      # the e2e server then rendered the WRONG branch's routes - a smoke
+      # run read main's rail order from a stacked branch's own checkout.
+      # The ref_name inside the KEY is what makes the restore-keys safe:
+      # they prefix-match saved cache keys, and with the ref in every key
+      # they can only ever match caches saved by this same ref (for PRs,
+      # that PR's own merge ref; for pushes, the branch). Cross-branch
+      # resurrection stays structurally impossible, while a fresh SHA on
+      # an active branch restores instead of cold-compiling.
       - uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-next-${{ github.ref_name }}-
       # The chromium download is ~20s of every run; the OS deps step below is
       # a fast no-op once the image has them, and install skips what is cached.
       - uses: actions/cache@v4
