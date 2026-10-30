@@ -39,9 +39,13 @@ describe("assertEvalEnvironment", () => {
       ACTIONS_CACHE_SERVICE_TOKEN: "ct",
       GITHUB_TOKEN: "gt",
       GH_TOKEN: "gh",
-      RUNNER_TRACKING_ID: "track",
     };
     expect(() => assertEvalEnvironment(env)).not.toThrow();
+  });
+
+  it("still throws for an operator credential named under a harness prefix", () => {
+    const env = { ACTIONS_DEPLOY_KEY: "k" };
+    expect(() => assertEvalEnvironment(env)).toThrow(EvalEnvironmentViolation);
   });
 
   it("still throws for an operator credential outside the harness namespaces", () => {

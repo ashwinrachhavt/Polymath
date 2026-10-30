@@ -51,21 +51,25 @@ function isCredentialShaped(key: string): boolean {
 
 /*
  * CI-harness credentials are injected by the runner itself, not by the
- * operator: GitHub Actions exports ACTIONS_RUNTIME_TOKEN (artifact upload
+ * operator. These are the exact credential-shaped names the harness
+ * injects: GitHub Actions exports ACTIONS_RUNTIME_TOKEN (artifact upload
  * auth) and ACTIONS_CACHE_SERVICE_TOKEN into every step, and gh CLI
- * authenticates with GH_TOKEN/GITHUB_TOKEN. They are credential-shaped, but
- * they are not provider credentials a tool could spend — and the evals CI
- * job's token is scoped to contents:read + pull-requests:write. Exempting
- * these harness names keeps the gate closed for operator keys while letting
- * the evals CI job and gh-authenticated local runs work at all.
+ * authenticates with GH_TOKEN/GITHUB_TOKEN. They are not provider
+ * credentials a tool could spend — the evals CI job's token is scoped to
+ * contents:read + pull-requests:write. An enumerated set, not a wildcard:
+ * a wildcard namespace exemption (ACTIONS_*) would let an operator key
+ * named under it sail through the closed gate.
  */
-const HARNESS_ENV_PREFIXES = ["ACTIONS_", "GITHUB_", "RUNNER_"] as const;
-const HARNESS_ENV_NAMES = new Set(["GH_TOKEN", "GITHUB_TOKEN"]);
+const HARNESS_ENV_NAMES = new Set([
+  "ACTIONS_RUNTIME_TOKEN",
+  "ACTIONS_CACHE_SERVICE_TOKEN",
+  "ACTIONS_CACHE_SERVICE_V2_TOKEN",
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+]);
 
 function isHarnessInjected(key: string): boolean {
-  return (
-    HARNESS_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) || HARNESS_ENV_NAMES.has(key)
-  );
+  return HARNESS_ENV_NAMES.has(key);
 }
 
 export class EvalEnvironmentViolation extends Error {

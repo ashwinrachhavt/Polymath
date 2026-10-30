@@ -226,15 +226,27 @@ fi
 if $POST; then
   pr="$(gh pr view --json number -q .number 2>/dev/null || true)"
   if [ -n "$pr" ]; then
-    # Replace-not-stack: drop every earlier marker comment, then post fresh.
-    old_ids="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" \
-      --jq ".[] | select(.body | startswith(\"$COMMENT_MARKER\")) | .id" 2>/dev/null || true)"
-    while IFS= read -r cid; do
-      [ -n "$cid" ] || continue
-      gh api -X DELETE "repos/{owner}/{repo}/issues/comments/$cid" >/dev/null
-    done <<<"$old_ids"
-    gh pr comment "$pr" --body-file "$BODY" >/dev/null
-    echo "Posted eval results to PR #$pr"
+    # Replace-not-stack, post-first: a failed post must leave the previous
+    # results in place, so the new comment lands before any deletion.
+    new_url="$(gh pr comment "$pr" --body-file "$BODY" 2>/dev/null)" || new_url=""
+    if [ -n "$new_url" ]; then
+      # Collect stale marker comments across all pages (issues API is
+      # oldest-first; a marker beyond page 1 must still be replaced).
+      page=1
+      while :; do
+        batch="$(gh api "repos/{owner}/{repo}/issues/$pr/comments?per_page=100&page=$page" \
+          --jq ".[] | select(.body | startswith(\"$COMMENT_MARKER\")) | .id" 2>/dev/null || true)"
+        while IFS= read -r cid; do
+          [ -n "$cid" ] || continue
+          gh api -X DELETE "repos/{owner}/{repo}/issues/comments/$cid" >/dev/null || true
+        done <<<"$batch"
+        [ ${#batch} -gt 0 ] || break
+        page=$((page + 1))
+      done
+      echo "Posted eval results to PR #$pr"
+    else
+      echo "warning: posting the results comment failed; previous comment left intact" >&2
+    fi
   else
     echo "No open PR for this branch; eval results comment body:"
     cat "$BODY"
