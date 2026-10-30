@@ -216,7 +216,7 @@ suite("skill run pinning", () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({
       code: "invalid_input",
-      title: "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+      title: "Skills only run on the polymath agent. Start the run with profileName polymath, or drop skillId.",
     });
     expect(await countRuns(seeded.workspaceId)).toBe(before);
   });
