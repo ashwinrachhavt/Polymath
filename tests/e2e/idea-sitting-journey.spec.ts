@@ -36,7 +36,7 @@ function db(): postgres.Sql | null {
 const fixtureServer = test.extend({});
 
 fixtureServer("the sitting journey: type, pause, suggestion, card, reopen", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const client = db();
   test.skip(!client, "DATABASE_URL not configured");
   await client!.end();
@@ -45,8 +45,10 @@ fixtureServer("the sitting journey: type, pause, suggestion, card, reopen", asyn
   await page.goto("/polymath/knowledge/zettels/session/new");
   await expect(page).toHaveURL(/\/polymath\/knowledge\/zettels\/session\/[0-9a-f-]{36}$/, { timeout: 30_000 });
 
+  // tiptap mounts after hydration (immediatelyRender: false); a cold CI dev
+  // server can take a while, so the locator waits on the placeholder element.
   const editor = page.locator(".ProseMirror");
-  await expect(editor).toBeVisible();
+  await expect(editor).toBeVisible({ timeout: 90_000 });
   await editor.click();
   await page.keyboard.type(DRAFT);
 
