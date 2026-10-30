@@ -72,7 +72,7 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(
       422,
       "invalid_input",
-      "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+      "Skills only run on the polymath agent. Start the run with profileName polymath, or drop skillId.",
     );
   }
   const key = request.headers.get("idempotency-key");
