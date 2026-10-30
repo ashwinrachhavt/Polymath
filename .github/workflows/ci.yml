@@ -9,6 +9,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: every job gets a read-only token unless it grants more.
+# The evals job declares its own scoped permissions (pull-requests: write
+# for the eval-results PR comment), which fully overrides this block.
+permissions:
+  contents: read
+
 env:
   # The build reads .node-version too; this keeps the runner honest if that
   # file is ever renamed.
