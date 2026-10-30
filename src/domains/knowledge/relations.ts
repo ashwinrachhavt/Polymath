@@ -178,6 +178,40 @@ export async function relatedNotes(
 }
 
 /**
+ * The cards this one is explicitly linked to — the edges a person accepted.
+ *
+ * `relatedNotes` only reads materialized `semantic` edges, and accepting a
+ * suggestion promotes the edge out of `semantic` into `related`, so an
+ * accepted link disappeared from every surface that used that read alone.
+ * This is the other half: both directions, newest edge first.
+ */
+export async function linkedNotes(auth: AuthContext, artifactId: string): Promise<RelatedNote[]> {
+  const result = await db.execute(sql`
+    select a.id, a.title, a.kind,
+           1::float as score,
+           (select v.plain_text from artifact_versions v where v.id = a.current_version_id) as excerpt,
+           true as already_linked
+    from artifact_links l
+    join artifacts a
+      on a.id = case when l.artifact_id = ${artifactId} then l.target_id else l.artifact_id end
+    where l.workspace_id = ${auth.workspaceId}
+      and l.link_type <> 'semantic'
+      and (l.artifact_id = ${artifactId} or l.target_id = ${artifactId})
+      and a.workspace_id = ${auth.workspaceId}
+      and a.archived_at is null
+    order by a.title asc
+  `);
+  return (result as unknown as RawRow[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    kind: row.kind,
+    score: Number(row.score),
+    excerpt: firstLine(row.excerpt),
+    alreadyLinked: true,
+  }));
+}
+
+/**
  * Confirm a suggestion: flip the semantic edge into an explicit 'related'
  * edge, direction normalized to viewer -> target, score kept as provenance.
  * Returns false when there is no suggestion to promote.

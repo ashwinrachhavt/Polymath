@@ -53,6 +53,7 @@ vi.mock("@/domains/knowledge/notes", async (importOriginal) => ({
 vi.mock("@/domains/knowledge/relations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/knowledge/relations")>()),
   relatedNotes: vi.fn(async () => []),
+  linkedNotes: vi.fn(async () => []),
 }));
 // The editor is a client component with a rich-text surface; this test is
 // about the page's read, so it stands in as a marker.

@@ -45,7 +45,7 @@ export function IdeaEditor({
   const idemBase = useRef<string | null>(null);
   const saveSeq = useRef(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [conflict, setConflict] = useState<{ plainText: string; updatedAt: string } | null>(null);
+  const [conflict, setConflict] = useState<{ plainText: string; updatedAt: string; version: number } | null>(null);
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
   const save = useCallback(async () => {
@@ -73,7 +73,7 @@ export function IdeaEditor({
     if ("error" in result) {
       if (result.error === "version_conflict" && result.server) {
         // §14.4: never a silent clobber - surface it and let the writer pick.
-        setConflict({ plainText: result.server.plainText, updatedAt: result.server.updatedAt });
+        setConflict({ plainText: result.server.plainText, updatedAt: result.server.updatedAt, version: result.server.version });
         setSaveState("idle");
         return;
       }
@@ -131,6 +131,10 @@ export function IdeaEditor({
             <button
               className="rounded border px-2 py-1"
               onClick={() => {
+                // Keep mine: the server's version is the base this retry must
+                // claim. Leaving the stored (stale) version in place would
+                // re-conflict forever, so the idea could never be saved again.
+                store.getState().setSavedCard(artifactId ?? store.getState().savedArtifactId ?? "", conflict.version);
                 setConflict(null);
                 void saveRef.current();
               }}
@@ -140,8 +144,11 @@ export function IdeaEditor({
             <button
               className="rounded border px-2 py-1"
               onClick={() => {
+                // Take saved copy: adopt the server's text AND its version, or
+                // the next save claims a version the server has already passed.
                 editorRef.current?.commands.setContent(conflict.plainText);
                 store.getState().setDraft(conflict.plainText);
+                store.getState().setSavedCard(artifactId ?? store.getState().savedArtifactId ?? "", conflict.version);
                 setConflict(null);
               }}
             >

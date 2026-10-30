@@ -4,7 +4,7 @@ import { io } from "next/cache";
 import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getNote, type NoteContent } from "@/domains/knowledge/notes";
-import { relatedNotes } from "@/domains/knowledge/relations";
+import { linkedNotes, relatedNotes } from "@/domains/knowledge/relations";
 import { IdeaEditor } from "@/components/polymath/zettels/idea-editor";
 import { SuggestedLinksStrip } from "@/components/polymath/ideas/suggested-links-strip";
 import { getAuthContext } from "@/lib/auth";
@@ -87,7 +87,7 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
   const idea = await getNote(auth, id);
   if (!idea) return <MissingIdea />;
 
-  const related = await relatedNotes(auth, idea.id);
+  const [related, linked] = await Promise.all([relatedNotes(auth, idea.id), linkedNotes(auth, idea.id)]);
   const suggestions = related.filter((card) => !card.alreadyLinked).map((card) => ({ targetId: card.id, targetTitle: card.title }));
   // Blocks render in document order: the claim reads first, the evidence quote
   // sits under it, and a body someone wrote longer than one paragraph keeps
@@ -120,6 +120,23 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
             ),
           )}
           <Tags tags={idea.tags} />
+          {/* Accepted links first: these are the connections a person saved,
+              and they are the point of the surface. Pending suggestions
+              follow, since they still need a decision. */}
+          {linked.length > 0 ? (
+            <section className="flex flex-col gap-1">
+              <h2 className="text-[13px] font-medium">Linked ideas</h2>
+              <ul className="flex flex-col gap-1">
+                {linked.map((card) => (
+                  <li key={card.id}>
+                    <Link href={`${BASE}/${card.id}`} className="text-[13px] underline-offset-2 hover:underline">
+                      {card.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <SuggestedLinksStrip artifactId={idea.id} suggestions={suggestions} />
           <p className="text-xs text-muted-foreground">
             Added {stamp(idea.createdAt)} · updated {stamp(idea.updatedAt)}
