@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Review dependency changes for vulnerabilities and licenses
         # The action moved from github/ to actions/ (the old path 404s);
         # only full version tags exist there - v4.9.0 is the newest v4.
