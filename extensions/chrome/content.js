@@ -63,7 +63,24 @@
 
   let isOnline = false;
 
+  /** True while this content script's extension context is still alive.
+   * False after the extension is reloaded/updated: the old script keeps
+   * running in open tabs, but every chrome.* call then throws
+   * "Extension context invalidated". */
+  function contextAlive() {
+    try {
+      return typeof chrome !== "undefined" && !!chrome.runtime && !!chrome.runtime.id;
+    } catch {
+      return false;
+    }
+  }
+
   async function checkConnection() {
+    if (!contextAlive()) {
+      stopStaleTimers();
+      markStale();
+      return;
+    }
     try {
       isOnline = await AlfredAPI.health();
     } catch {
@@ -76,10 +93,74 @@
     }
   }
 
+  let staleTimers = [];
+  function stopStaleTimers() {
+    for (const id of staleTimers) clearInterval(id);
+    staleTimers = [];
+  }
+
+  /** Repaint the dock for a dead extension context: dot red, actions inert,
+   * body carries the one instruction that fixes it. */
+  function markStale() {
+    const dot = qs("#alfred-dock-status");
+    if (dot) {
+      dot.classList.remove("alfred-status-online");
+      dot.title = "Extension reloaded — reload this tab to reconnect";
+    }
+    const body = qs("#alfred-dock-body");
+    if (body && !qs("#alfred-stale-hint", body.parentElement || document)) {
+      const hint = el("div", {
+        id: "alfred-stale-hint",
+        class: "alfred-stale-hint",
+      }, "The extension was updated. Reload this tab (⌘R) to keep capturing.");
+      body.prepend(hint);
+    }
+    const keyBtn = qs("#alfred-key-toggle");
+    if (keyBtn) keyBtn.disabled = true;
+  }
+
+  /** Requeue every parked (failed / needs-auth) outbox entry via the worker. */
+  async function retryParkedCaptures() {
+    if (!contextAlive()) {
+      markStale();
+      showToast("The extension was updated — reload this tab first (⌘R).", "warning");
+      return;
+    }
+    try {
+      await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_RETRY" });
+    } catch {
+      // Race: context died between the check and the call — same recovery.
+      markStale();
+    }
+  }
+  window.AlfredRetryParked = retryParkedCaptures;
+
   // ── Build the dock ──────────────────────────────────────────────────
 
   let dock = null;
   let dockBuilt = false;
+
+  /**
+   * The 🔑 opens pairing in the EXTENSION side panel, never in this page:
+   * an input injected into the page DOM is readable by host-page scripts
+   * while the user types, even with type="password" (PR #359 Critical).
+   * The worker sets a pairingRequested flag and opens the panel; the panel
+   * shows its pairing form on open and clears the flag.
+   */
+  async function openKeySettings() {
+    if (!contextAlive()) {
+      markStale();
+      showToast("The extension was updated — reload this tab first (⌘R).", "warning");
+      return;
+    }
+    try {
+      await chrome.runtime.sendMessage({ type: "OPEN_KEY_SETTINGS" });
+      showToast("Pairing opened in the Polymath side panel →", "info");
+    } catch {
+      // Race: context died between the check and the call — same recovery.
+      markStale();
+    }
+  }
 
   function buildDock() {
     if (dockBuilt) return;
@@ -94,6 +175,12 @@
           el("div", { id: "alfred-dock-status", title: "Checking..." }),
         ]),
         el("div", { class: "alfred-dock-actions" }, [
+          el("button", {
+            id: "alfred-key-toggle",
+            class: "alfred-dock-btn-icon",
+            title: "Set API key",
+            onClick: openKeySettings,
+          }, "\U0001F511"),
           el("button", {
             class: "alfred-dock-btn-icon",
             title: "Move to other side",
@@ -162,7 +249,7 @@
 
     // Restore dock side
     try {
-      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      if (contextAlive() && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get("alfredDockSide", (res) => {
           if (res && res.alfredDockSide === "left") dock.classList.add("alfred-dock-left");
         });
@@ -171,7 +258,7 @@
 
     // Initial connection check
     checkConnection();
-    setInterval(checkConnection, 30000);
+    staleTimers.push(setInterval(checkConnection, 30000));
 
     // Load recent captures
     refreshRecentCaptures();
@@ -191,17 +278,23 @@
     }
     for (const item of recent) {
       const ago = timeAgo(item.timestamp);
+      const parked = item.delivery === "needs-auth" || item.delivery === "failed";
       const sync =
         item.delivery === "pending" ? " — pending sync"
-        : item.delivery === "failed" ? " — sync failed"
-        : item.delivery === "needs-auth" ? " — needs new API key"
+        : item.delivery === "failed" ? " — sync failed — click to fix"
+        : item.delivery === "needs-auth" ? " — needs new API key — click to fix"
         : "";
-      list.appendChild(
-        el("li", { class: "alfred-capture-item" }, [
-          el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),
-          el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}${sync}`),
-        ])
-      );
+      const li = el("li", { class: "alfred-capture-item" }, [
+        el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),
+        el("span", { class: "alfred-capture-item-meta" }, `${ago} — ${item.type || "note"}${sync}`),
+      ]);
+      if (parked) {
+        li.classList.add("alfred-capture-item-parked");
+        li.style.cursor = "pointer";
+        li.title = "Click to set your API key and retry";
+        li.addEventListener("click", () => openKeySettings());
+      }
+      list.appendChild(li);
     }
   }
 
@@ -229,7 +322,7 @@
     dock.classList.toggle("alfred-dock-left");
     const isLeft = dock.classList.contains("alfred-dock-left");
     try {
-      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      if (contextAlive() && chrome.storage && chrome.storage.local) {
         chrome.storage.local.set({ alfredDockSide: isLeft ? "left" : "right" });
       }
     } catch {}
@@ -294,7 +387,7 @@
           ? (isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!")
           : result.unconfirmed
             ? "On this device. This browser could not confirm Polymath received it yet."
-            : "Queued on this device. It syncs when Polymath is reachable.",
+            : (isFullPage ? "Page captured - syncing to Polymath" : "Saved - syncing to Polymath"),
         "success",
       );
       refreshRecentCaptures();
@@ -326,7 +419,7 @@
           ? `Page captured to Polymath! (${qualityLabel})`
           : result.unconfirmed
             ? "On this device. This browser could not confirm Polymath received it yet."
-            : "Queued on this device. It syncs when Polymath is reachable.",
+            : `Page captured (${qualityLabel}) - syncing to Polymath`,
         "success",
       );
       refreshRecentCaptures();

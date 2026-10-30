@@ -18,7 +18,7 @@ for (const width of [390, 1440, 1920]) {
       ["/settings", "Settings"],
       ["/reviews", "Reviews"],
       ["/command-center/relationships/people", "People"],
-      ["/alfred/knowledge", "Knowledge"],
+      ["/polymath/knowledge", "Knowledge"],
       ["/projects", "Notebook"],
       ["/more", "More"],
     ] as const) {

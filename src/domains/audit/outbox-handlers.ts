@@ -320,19 +320,4 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
  * decision, not a convenience: if a security cache or a user-visible state depends
  * on the event, it needs a handler instead.
  */
-export const AUDIT_ONLY_TOPICS: readonly string[] = [
-  "agent_principal.registered",
-  "agent_principal.status_changed",
-  "delegation_grant.issued",
-  "delegation_grant.revoked",
-  "grant.created",
-  "grant.revoked",
-  "note.snapshot",
-  "research.company.completed",
-  "research.profile.completed",
-  "role.archived",
-  "role.assigned",
-  "role.defined",
-  "role.revised",
-  "role.unassigned",
-] as const;
+export { AUDIT_ONLY_TOPICS } from "./outbox-topics";

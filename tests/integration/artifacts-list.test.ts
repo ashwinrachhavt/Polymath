@@ -12,7 +12,7 @@ import { pageArtifacts } from "@/domains/knowledge/artifacts";
 import { getWikiPageText } from "@/domains/knowledge/wiki";
 
 /*
- * The /alfred/artifacts boundary (plan §5): the list holds kept outputs only.
+ * The /polymath/artifacts boundary (plan §5): the list holds kept outputs only.
  * Studio drafts and kept drafts, wiki pages and accepted zettels appear; a
  * person's plain note and a raw saved answer (both artifacts of kind "note"
  * with no wiki registry row) never do. The wiki kind filter reads the

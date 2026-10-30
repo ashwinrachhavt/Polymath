@@ -77,11 +77,11 @@ export async function completeOnboarding(
   ].join("\n");
 
   return withTransaction(async (tx) => {
-    await ensureProfile(auth.workspaceId, "alfred");
+    await ensureProfile(auth.workspaceId, "polymath");
     const [profile] = await tx
       .select({ id: agentProfiles.id, version: agentProfiles.version })
       .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "alfred")))
+      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "polymath")))
       .limit(1);
     if (!profile) throw new Error("supervisor profile did not persist");
     if (expectedVersion != null && profile.version !== expectedVersion) {
@@ -192,7 +192,7 @@ export const ONBOARDING_OBJECTIVE = [
   ONBOARDING_BRIEF_FENCE,
   '{"role":"...","tools":["..."],"priorities":["..."],"agentName":"..."}',
   "```",
-  'The fence must contain only valid JSON with exactly those keys, and no text follows it. If they did not pick a name, use "Alfred".',
+  'The fence must contain only valid JSON with exactly those keys, and no text follows it. If they did not pick a name, use "Polymath".',
 ].join("\n");
 
 const LIVE_RUN_STATES = ["queued", "running", "waiting_input", "waiting_approval"] as const;
@@ -256,11 +256,11 @@ export async function startOnboardingRun(
     }
   }
 
-  await ensureProfile(auth.workspaceId, "alfred");
-  const engine = createEngine(driver ?? createEveDriver(eveAgentForProfile("alfred")));
+  await ensureProfile(auth.workspaceId, "polymath");
+  const engine = createEngine(driver ?? createEveDriver(eveAgentForProfile("polymath")));
   const { runId } = await engine.start({
     auth,
-    profileName: "alfred",
+    profileName: "polymath",
     objective: ONBOARDING_OBJECTIVE,
     subjects: [],
     // The interview is conversation only: no tools, and a dime of headroom.
@@ -298,7 +298,7 @@ export async function readOnboardingRun(auth: AuthContext, runId: string): Promi
     db
       .select({ version: agentProfiles.version })
       .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "alfred")))
+      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "polymath")))
       .limit(1),
   ]);
   const thread = threads.get(runId) ?? [];

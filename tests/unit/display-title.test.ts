@@ -8,11 +8,11 @@ import { displayTitle, markdownToPlainText } from "@/lib/display-text";
  *
  * The home list, history menu, run header and briefing all render the stored
  * objective verbatim; a first message that pasted a note link showed literal
- * `[Note: …](/alfred/notes?note=…)` on every surface.
+ * `[Note: …](/polymath/notes?note=…)` on every surface.
  */
 describe("displayTitle", () => {
   it("reduces a markdown note link to its label", () => {
-    const raw = "[Note: Logical Fallacies](/alfred/notes?note=e03a2c4a) Summarize this";
+    const raw = "[Note: Logical Fallacies](/polymath/notes?note=e03a2c4a) Summarize this";
     expect(displayTitle(raw)).toBe("Note: Logical Fallacies Summarize this");
   });
 

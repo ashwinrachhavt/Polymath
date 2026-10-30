@@ -3,7 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 
-const RichEditor = dynamic(() => import("@/components/products/alfred/rich-editor"), { loading: () => <p role="status" className="text-xs text-muted-foreground">Loading rich editor…</p> });
+const RichEditor = dynamic(() => import("@/components/products/polymath/rich-editor"), { loading: () => <p role="status" className="text-xs text-muted-foreground">Loading rich editor…</p> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

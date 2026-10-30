@@ -118,7 +118,7 @@ describe("the Writer's capability ceiling", () => {
     expect(PROVIDER_TOOLS.writer_draft_reply).toBe("gmail.send");
     // The gateway's first gate is the frozen snapshot; a snapshot that does
     // not name gmail.send denies the draft tool before any account resolves.
-    const { toolAllowed } = await import("../../eve/alfred/agent/lib/policy");
+    const { toolAllowed } = await import("../../eve/polymath/agent/lib/policy");
     const capability = PROVIDER_TOOLS.writer_draft_reply;
     expect(toolAllowed({ allowedTools: ["gmail.send"] }, capability)).toBe(true);
     expect(toolAllowed({ allowedTools: ["gmail.read"] }, capability)).toBe(false);

@@ -58,7 +58,7 @@ suite("delegation grants", () => {
   it("issue, list, revoke one-way - with receipt replay and a pinned content hash", async () => {
     const seeded = await seedWorkspace(db, `dlg-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
-    const principalId = await seedPrincipal(auth, "alfred");
+    const principalId = await seedPrincipal(auth, "polymath");
 
     const key = crypto.randomUUID();
     const input = {
@@ -138,7 +138,7 @@ suite("delegation grants", () => {
   it("GA07: child grants attenuate strictly, depth-capped, and die with the parent", async () => {
     const seeded = await seedWorkspace(db, `dlg4-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
-    const parent = await seedPrincipal(auth, "alfred");
+    const parent = await seedPrincipal(auth, "polymath");
     const child = await seedPrincipal(auth, "ops");
 
     const root = await delegation.issueDelegationGrant(auth, {
@@ -209,7 +209,7 @@ suite("delegation grants", () => {
     const b = await seedWorkspace(db, `dlgB-${Date.now()}`);
     const authA = ownerAuth(a.userId, a.workspaceId);
     const authB = ownerAuth(b.userId, b.workspaceId);
-    const principalId = await seedPrincipal(authA, "alfred");
+    const principalId = await seedPrincipal(authA, "polymath");
 
     const issued = await delegation.issueDelegationGrant(authA, {
       agentPrincipalId: principalId,

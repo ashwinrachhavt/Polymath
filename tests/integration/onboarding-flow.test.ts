@@ -178,7 +178,7 @@ suite("onboarding interview flow", () => {
     const [profile] = await db
       .select()
       .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "alfred")))
+      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "polymath")))
       .limit(1);
     expect(profile.description).toBe(brief);
     expect(profile.instructions).toBe(brief);
@@ -260,7 +260,7 @@ suite("onboarding interview journey (action layer)", () => {
     const [profile] = await db
       .select()
       .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "alfred")))
+      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "polymath")))
       .limit(1);
     expect(profile.description).toContain("Software engineer");
     expect(profile.description).toContain("Notion, Gmail");

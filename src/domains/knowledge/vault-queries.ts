@@ -59,8 +59,8 @@ export async function getVaultDocuments(auth: AuthContext, folderId: string | nu
       pageCount: source.pageCount,
       docType: source.docType,
       href: folderId
-        ? `/alfred/knowledge?folder=${folderId}&doc=${row.id}`
-        : `/alfred/knowledge?doc=${row.id}`,
+        ? `/polymath/knowledge?folder=${folderId}&doc=${row.id}`
+        : `/polymath/knowledge?doc=${row.id}`,
     };
   });
 }

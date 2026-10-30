@@ -119,7 +119,7 @@ export async function listNotifications(
     title: runLabel(run.objective),
     detail: run.error ?? run.summary ?? null,
     at: run.createdAt,
-    href: `/alfred/${run.id}`,
+    href: `/polymath/${run.id}`,
     needsAction: RUN_ACTION_STATES.has(run.state),
     state: RUN_STATE_LABEL[run.state] ?? run.state,
   }));

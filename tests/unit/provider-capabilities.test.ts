@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ALLOWED_TOOLS } from "@/domains/agents/commands";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
-import { CAPABILITY_RISK } from "../../eve/alfred/evals/axiom-policy";
+import { CAPABILITY_RISK } from "../../eve/polymath/evals/axiom-policy";
 import { deriveInstantCapability, resolveInstantCapability } from "@/domains/integrations/instant-tools";
 import catalogJsonRaw from "@/domains/integrations/instant-catalog.generated.json";
 

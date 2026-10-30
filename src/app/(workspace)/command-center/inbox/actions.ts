@@ -87,7 +87,7 @@ export async function makeDraftAction(input: { captureId: string; expectedVersio
   } catch (error) {
     return fail(error);
   }
-  revalidatePath("/alfred/notes");
+  revalidatePath("/polymath/notes");
   revalidate(auth);
   return { ok: true };
 }
@@ -100,7 +100,7 @@ export async function makeDocumentAction(input: { captureId: string; expectedVer
   } catch (error) {
     return fail(error);
   }
-  revalidatePath("/alfred/knowledge");
+  revalidatePath("/polymath/knowledge");
   revalidate(auth);
   return { ok: true };
 }
@@ -112,7 +112,7 @@ export async function makeNoteAction(input: { captureId: string; expectedVersion
   } catch (error) {
     return fail(error);
   }
-  revalidatePath("/alfred/notes");
+  revalidatePath("/polymath/notes");
   revalidate(auth);
   return { ok: true };
 }

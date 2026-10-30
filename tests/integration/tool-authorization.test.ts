@@ -36,7 +36,7 @@ suite("tool authorization decisions", () => {
   it("records allow and deny verdicts against the cited grant - denials cause no other effect", async () => {
     const seeded = await seedWorkspace(db, `gw-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
-    const { principalId } = await principals.registerAgentPrincipal(auth, { key: "alfred", kind: "agent", label: "Alfred" });
+    const { principalId } = await principals.registerAgentPrincipal(auth, { key: "polymath", kind: "agent", label: "Alfred" });
     const issued = await delegation.issueDelegationGrant(auth, {
       agentPrincipalId: principalId,
       scope: { operations: ["document.read", "integration.use", "action.execute"], accounts: ["work-gmail"], destinations: ["ashwinr@vt.edu"] },

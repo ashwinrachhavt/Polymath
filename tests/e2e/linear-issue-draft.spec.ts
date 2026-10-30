@@ -30,7 +30,7 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
   await waitSettled(page);
 
   await detail.getByRole("link", { name: "Open draft", exact: true }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/);
   await waitSettled(page);
 
   // The fixture proposal, fully formed and reviewable - and honest about scope.
@@ -40,11 +40,11 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
 });
 
 test("a note drafts a Linear issue proposal that links back to its source", async ({ page }) => {
-  await page.goto("/alfred/notes");
+  await page.goto("/polymath/notes");
   await waitSettled(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/);
   await waitSettled(page);
 
   const editor = page.locator(".tiptap").first();
@@ -56,7 +56,7 @@ test("a note drafts a Linear issue proposal that links back to its source", asyn
 
   const sourceUrl = page.url();
   await page.getByRole("button", { name: "Draft Linear issue", exact: true }).click();
-  await expect(page).toHaveURL(/\/alfred\/notes\?id=[0-9a-f-]{36}/);
+  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/);
   await waitSettled(page);
 
   await expect(page.getByRole("main")).toContainText("Send the Q3 roadmap to Priya by Friday");

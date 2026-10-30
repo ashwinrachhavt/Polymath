@@ -119,6 +119,13 @@ export const artifacts = pgTable(
      * text. Null after a successful pass.
      */
     embedError: text("embed_error"),
+    /**
+     * Namespaced annotations (plan §16.8): bloom suggestion, dismissed link
+     * candidates, sitting lineage. Never user mastery. Annotation writes
+     * merge by namespace and never touch updated_at. Nullable: most cards
+     * carry no annotations.
+     */
+    metadata: jsonb("metadata"),
     ...mutable,
   },
   (t) => [index("artifacts_workspace_kind_idx").on(t.workspaceId, t.kind, t.updatedAt)],
@@ -144,6 +151,66 @@ export const artifactVersions = pgTable(
   (t) => [
     uniqueIndex("artifact_versions_number_key").on(t.artifactId, t.versionNumber),
     index("artifact_versions_artifact_idx").on(t.artifactId, t.createdAt),
+  ],
+);
+
+export const sittingCardRole = pgEnum("sitting_card_role", [
+  "created_here",
+  "referenced_here",
+  "revised_here",
+]);
+
+/*
+ * A sitting is a timed writing session (plan 2026-10-29 §2). ended_at NULL =
+ * open; multiple open sittings per workspace are allowed (§14.8). Ended
+ * sittings reopen browse-only and are records: the domain refuses to delete
+ * them (§15.8).
+ */
+export const zettelSittings = pgTable(
+  "zettel_sittings",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Optional at creation (§14.1): "Untitled sitting — name it later". */
+    topic: text("topic"),
+    tags: jsonb("tags").notNull().default([]),
+    sourceContext: text("source_context"),
+    closingReflection: text("closing_reflection"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    index("zettel_sittings_workspace_idx").on(t.workspaceId, t.updatedAt),
+    // Partial index: the "which sittings are open" read never scans history.
+    index("zettel_sittings_open_idx").on(t.workspaceId).where(sql`ended_at is null`),
+  ],
+);
+
+/*
+ * Join row: a card in a sitting with its role. Deleting a sitting cascades
+ * only these rows - the artifacts survive. UNIQUE(sitting_id, artifact_id):
+ * one card holds one role per sitting.
+ */
+export const zettelSittingCards = pgTable(
+  "zettel_sitting_cards",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    sittingId: uuid("sitting_id")
+      .notNull()
+      .references(() => zettelSittings.id, { onDelete: "cascade" }),
+    artifactId: uuid("artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    roleInSitting: sittingCardRole("role_in_sitting").notNull(),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("zettel_sitting_cards_sitting_artifact_key").on(t.sittingId, t.artifactId),
+    index("zettel_sitting_cards_sitting_idx").on(t.sittingId, t.position),
+    index("zettel_sitting_cards_artifact_idx").on(t.artifactId),
   ],
 );
 

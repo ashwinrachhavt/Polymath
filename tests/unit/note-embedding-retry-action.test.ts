@@ -28,7 +28,7 @@ vi.mock("@/domains/knowledge/notes", async (importOriginal) => {
   return { ...original, retryNoteEmbedding };
 });
 
-import { retryNoteEmbeddingAction } from "@/app/(workspace)/alfred/notes/actions";
+import { retryNoteEmbeddingAction } from "@/app/(workspace)/polymath/notes/actions";
 import { NoteNotFoundError } from "@/domains/knowledge/notes";
 
 const memberAuth = { userId: "u1", workspaceId: "w1", role: "member" as const };
@@ -46,7 +46,7 @@ describe("retryNoteEmbeddingAction", () => {
     expect(requireRole).toHaveBeenCalledWith(memberAuth, "member");
     expect(retryNoteEmbedding).toHaveBeenCalledWith(memberAuth, { artifactId: noteId });
     expect(result).toEqual({ ok: true, message: "Indexed for meaning search." });
-    expect(cache.revalidatePath).toHaveBeenCalledWith("/alfred/notes");
+    expect(cache.revalidatePath).toHaveBeenCalledWith("/polymath/notes");
   });
 
   it("rejects a malformed id before touching the domain", async () => {

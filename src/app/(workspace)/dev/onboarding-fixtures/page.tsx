@@ -27,7 +27,7 @@ export const metadata = {
  */
 
 const FIXTURE_BRIEF: OnboardingBrief = {
-  agentName: "Alfred",
+  agentName: "Polymath",
   role: "Chief of staff for a solo founder",
   tools: ["Gmail", "Linear", "Google Calendar"],
   priorities: ["Keep the inbox at zero", "Never let a renewal surprise me"],
@@ -86,7 +86,7 @@ async function Fixture({
     case "form-salvage":
       return wrapper(
         <OnboardingInterview
-          initial={{ agentName: "Alfred", role: "Chief of staff for a solo founder" }}
+          initial={{ agentName: "Polymath", role: "Chief of staff for a solo founder" }}
           notice={SALVAGE_NOTICE}
         />,
       );

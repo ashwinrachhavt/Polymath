@@ -1,5 +1,5 @@
 {
-  "runner": "pnpm exec vitest run {files}",
+  "runner": "bash -c \"set -a; source .env; set +a; unset CI; pnpm exec vitest run {files}\"",
   "dependencies": {
     ".claude/**": [],
     ".serena/**": [],
@@ -21,18 +21,18 @@
     ".github/scripts/eval-summary.mjs": [
       "tests/unit/eval-summary.test.ts"
     ],
-    "eve/alfred/agent/lib/gemini-openai.ts": [
+    "eve/polymath/agent/lib/gemini-openai.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
-    "eve/alfred/evals/axiom-policy.ts": [],
-    "eve/alfred/agent/agent.ts": [
+    "eve/polymath/evals/axiom-policy.ts": [],
+    "eve/polymath/agent/agent.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
     "eve/specialist/agent/agent.ts": [
       "tests/unit/gemini-openai-shim.test.ts"
     ],
-    "eve/alfred/evals/chat-grounding.eval.ts": [],
-    "eve/alfred/evals/evals.config.ts": [],
+    "eve/polymath/evals/chat-grounding.eval.ts": [],
+    "eve/polymath/evals/evals.config.ts": [],
     "src/domains/learning/**": [],
     "src/domains/teaching/**": [],
     "src/integrations/quiz/**": [],
@@ -55,7 +55,9 @@
     "services/sidecar/**": [],
     "mockups/**": [],
     "compose.yaml": [],
-    "scripts/seed-taxonomy.ts": []
+    "scripts/seed-taxonomy.ts": [],
+    "src/domains/knowledge/automation-runs.ts": [],
+    "src/instrumentation.ts": []
   },
   "serial_patterns": [
     "tests/integration/**",
@@ -72,5 +74,40 @@
   "empty_lanes": [
     ".env.example",
     "skills-lock.json"
+  ],
+  "allowlist": [
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tests/integration/agent-principals.test.ts"
+      ],
+      "pattern": "polymath",
+      "reason": "test fixture names an agent principal 'polymath' (alfred->polymath rename sweep); not a credential"
+    },
+    {
+      "finding": "pii.phone.e164",
+      "paths": [
+        "src/db/migrations/meta/_journal.json"
+      ],
+      "pattern": "\\d{13}",
+      "reason": "drizzle migration journal timestamps (epoch ms), not phone numbers"
+    },
+    {
+      "finding": "pii.cc",
+      "paths": [
+        "src/db/migrations/meta/_journal.json"
+      ],
+      "pattern": "\\d{13}",
+      "reason": "drizzle migration journal timestamps (epoch ms), not card numbers"
+    },
+    {
+      "finding": "internal.hostname",
+      "paths": [
+        "extensions/chrome/**",
+        ".gstack/**"
+      ],
+      "pattern": "storage\\.local",
+      "reason": "chrome.storage.local API namespace (and the allowlist entry itself mentioning it); the scanner misreads .local as an internal hostname"
+    }
   ]
 }

@@ -21,7 +21,7 @@ const auth: AuthContext = { userId: "u1", workspaceId: WS, role: "owner" };
 const profileRow = {
   id: "prof_1",
   workspaceId: WS,
-  name: "alfred",
+  name: "polymath",
   instructions: "Be brief.",
   modelPolicy: { primary: "claude-sonnet-4-6" },
   allowedTools: [],
@@ -119,7 +119,7 @@ const runningRun = () => ({ id: RUN.id, workspaceId: WS, state: "running" as con
 
 const startInput = {
   auth,
-  profileName: "alfred",
+  profileName: "polymath",
   objective: "Summarize the inbox",
   subjects: [],
   estimateUsd: "0.50",

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRunBySessionRef } from "@/domains/agents/queries";
 import { listOpenTasks } from "@/domains/work/queries";
-import tasksDefinition from "../../eve/alfred/agent/tools/tasks_read";
-import linearDefinition from "../../eve/alfred/agent/tools/linear_issue_propose";
-import triageDefinition from "../../eve/alfred/agent/tools/github_triage_propose";
+import tasksDefinition from "../../eve/polymath/agent/tools/tasks_read";
+import linearDefinition from "../../eve/polymath/agent/tools/linear_issue_propose";
+import triageDefinition from "../../eve/polymath/agent/tools/github_triage_propose";
 import { draftLinearIssueFromText } from "@/domains/capture/linear-issue-proposal";
 import { proposeGitHubTriage } from "@/domains/integrations/github-triage";
 

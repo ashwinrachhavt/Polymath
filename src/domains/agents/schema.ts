@@ -89,6 +89,13 @@ export const agentProfiles = pgTable(
     contextPolicy: jsonb("context_policy").notNull().default({}),
     budgetPolicy: jsonb("budget_policy").notNull().default({}),
     memoryPolicy: jsonb("memory_policy").notNull().default({}),
+    /**
+     * Namespaced annotations written by migrations, never by users. The
+     * 2026-10-29 rename records { renamedFrom: "alfred" } here so
+     * ensureProfile can resolve polymath-lineage profiles after the name
+     * change, including the collision path that renames to "polymath-2".
+     */
+    metadata: jsonb("metadata").notNull().default({}),
     isDefault: boolean("is_default").notNull().default(false),
     ...mutable,
   },
@@ -124,7 +131,7 @@ export const agentPrincipals = pgTable(
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    /** Stable machine key, e.g. "alfred" or "nightly_briefing". Immutable once created. */
+    /** Stable machine key, e.g. "polymath" or "nightly_briefing". Immutable once created. */
     key: text("key").notNull(),
     kind: agentPrincipalKind("kind").notNull(),
     label: text("label").notNull(),

@@ -33,7 +33,7 @@ const startRun = z.object({
     .string()
     .regex(/^\d+(\.\d{1,4})?$/)
     .default("0.50"),
-  profileName: z.string().default("alfred"),
+  profileName: z.string().default("polymath"),
   /** Keep this run inside one project: documents.search then only reads its documents. */
   projectId: z.string().uuid().optional(),
   /** Pin the run to one installed skill; the pin is frozen into the run's policy snapshot. */
@@ -68,11 +68,11 @@ export const POST = authedHandler(async (auth, request) => {
   }
   // Only alfred's agent declares the skill resolver, so a pin on any other
   // profile would be accepted and then silently ignored.
-  if (parsed.data.skillId && parsed.data.profileName !== "alfred") {
+  if (parsed.data.skillId && parsed.data.profileName !== "polymath") {
     return problemResponse(
       422,
       "invalid_input",
-      "Skills only run on the alfred agent. Start the run with profileName alfred, or drop skillId.",
+      "Skills only run on the polymath agent. Start the run with profileName polymath, or drop skillId.",
     );
   }
   const key = request.headers.get("idempotency-key");
@@ -122,7 +122,7 @@ export const POST = authedHandler(async (auth, request) => {
     // ever CREATES the alfred default - a specialist profile must already
     // exist (installed from the roster or defined by the owner), or the hire
     // is a 404 rather than a silently mis-scoped run.
-    if (parsed.data.profileName === "alfred") {
+    if (parsed.data.profileName === "polymath") {
       await ensureProfile(auth.workspaceId, parsed.data.profileName);
     } else if ((await getProfileByName(auth.workspaceId, parsed.data.profileName)) === null) {
       return problemResponse(404, "not_found", "No such agent profile. Install the specialist first.");

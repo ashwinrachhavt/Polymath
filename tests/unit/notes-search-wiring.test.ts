@@ -47,8 +47,8 @@ vi.mock("@/components/list/list-toolbar", () => ({
   },
 }));
 vi.mock("@/components/list/clamp", () => ({ redirectPastEnd: vi.fn() }));
-vi.mock("@/app/(workspace)/alfred/notes/note-editor", () => ({ NewNoteButton: () => null, NoteEditor: () => null }));
-vi.mock("@/app/(workspace)/alfred/notes/notebook-workspace", () => ({
+vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({ NewNoteButton: () => null, NoteEditor: () => null }));
+vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
   NotebookListToggle: () => null,
   NotebookWorkspace: (props: { list: unknown; children: unknown }) =>
     h("div", null,
@@ -57,14 +57,14 @@ vi.mock("@/app/(workspace)/alfred/notes/notebook-workspace", () => ({
 }));
 
 const resultsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
-vi.mock("@/app/(workspace)/alfred/notes/search-results", () => ({
+vi.mock("@/app/(workspace)/polymath/notes/search-results", () => ({
   SearchResults: (props: unknown) => {
     resultsProps.fn(props);
     return h("div", { "data-testid": "search-results" });
   },
 }));
 
-import { NotesSurface } from "@/app/(workspace)/alfred/notes/page";
+import { NotesSurface } from "@/app/(workspace)/polymath/notes/page";
 import { getNote } from "@/domains/knowledge/notes";
 
 const params = (raw: Record<string, string>) => Promise.resolve(raw);

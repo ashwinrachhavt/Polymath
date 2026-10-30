@@ -12,7 +12,7 @@ import { CopyArtifactButton } from "../copy-artifact-button";
 import { DesignBriefButton } from "../design-brief-button";
 import { CanvaImportButton } from "../canva-import-button";
 import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
-import { DeckView, InfographicView } from "@/components/products/alfred/artifact-views";
+import { DeckView, InfographicView } from "@/components/products/polymath/artifact-views";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 
 export const metadata = { title: "Artifact · Polymath" };
@@ -110,7 +110,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
               <ul className="mt-3 flex flex-col gap-2">
                 {artifact.sources.map((source) => (
                   <li key={source.documentId} className="text-[13px]">
-                    <Link href={`/alfred/knowledge?doc=${source.documentId}`} className="underline underline-offset-2 hover:text-foreground">
+                    <Link href={`/polymath/knowledge?doc=${source.documentId}`} className="underline underline-offset-2 hover:text-foreground">
                       {source.title}
                     </Link>
                   </li>

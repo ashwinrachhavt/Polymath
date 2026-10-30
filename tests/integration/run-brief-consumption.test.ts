@@ -62,13 +62,13 @@ suite("run brief consumption (real Postgres)", () => {
     await commands.updateDefaultProfileBrief(auth, { description: "d1", instructions: "Brief alpha.", expectedVersion: v0.version });
     const calls = { starts: [] as StartCall[], signals: [] as string[] };
     const engine = engineModule.createEngine(capturingDriver(calls));
-    const run1 = await engine.start({ auth, profileName: "alfred", objective: "First", subjects: [], estimateUsd: "0.0001" });
+    const run1 = await engine.start({ auth, profileName: "polymath", objective: "First", subjects: [], estimateUsd: "0.0001" });
     expect(calls.starts[0]).toMatchObject({ instructions: "Brief alpha." });
 
     // Editing the brief changes what the NEXT run gets...
     const v1 = (await profile(auth))!;
     await commands.updateDefaultProfileBrief(auth, { description: "d1", instructions: "Brief beta.", expectedVersion: v1.version });
-    await engine.start({ auth, profileName: "alfred", objective: "Second", subjects: [], estimateUsd: "0.0001" });
+    await engine.start({ auth, profileName: "polymath", objective: "Second", subjects: [], estimateUsd: "0.0001" });
     expect(calls.starts[1]).toMatchObject({ instructions: "Brief beta." });
 
     // ...while the already-running first run is never re-fed: a signal
@@ -81,7 +81,7 @@ suite("run brief consumption (real Postgres)", () => {
     const v2 = (await profile(auth))!;
     const retired = await commands.updateDefaultProfileBrief(auth, { description: "", instructions: "", expectedVersion: v2.version });
     expect(retired).toMatchObject({ ok: true, profile: { description: null, instructions: null } });
-    const run3 = await engine.start({ auth, profileName: "alfred", objective: "Third", subjects: [], estimateUsd: "0.0001" });
+    const run3 = await engine.start({ auth, profileName: "polymath", objective: "Third", subjects: [], estimateUsd: "0.0001" });
     expect(calls.starts[2]).toMatchObject({ sessionId: run3.runId, instructions: null });
   });
 });

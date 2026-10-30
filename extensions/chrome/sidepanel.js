@@ -70,6 +70,19 @@
     bindTabs();
     bindChat();
     bindClose();
+    bindPairing();
+
+    // Deep link: the dock's 🔑 (or a parked-capture "fix") opens the panel
+    // straight into pairing. The flag is one-shot: show it once, then clear.
+    try {
+      const { pairingRequested } = await chrome.storage.local.get('pairingRequested');
+      if (pairingRequested) {
+        showPairing(true);
+        await chrome.storage.local.remove('pairingRequested');
+      }
+    } catch {
+      // Storage unavailable: pairing reachable by manual reopen.
+    }
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -92,8 +105,77 @@
       renderArticleContext();
       loadConnections();
     } catch (err) {
-      console.error('Alfred side panel init error:', err);
-      showError('Could not read page content. Try refreshing the page.');
+      // No article (e.g. opened for pairing on a chrome:// or non-article page):
+      // pairing still works, so the hard error only fires when pairing is absent.
+      const pairing = $('#pairing-section');
+      if (pairing && !pairing.hidden) {
+        console.warn('Alfred side panel: no article text (pairing mode), skipping.', err);
+      } else {
+        console.error('Alfred side panel init error:', err);
+        showError('Could not read page content. Try refreshing the page.');
+      }
+    }
+  }
+
+  // ── Pairing (API key) ────────────────────────────────────────────────
+
+  /**
+   * The API key is collected HERE, in this extension document — never in a
+   * page-injected input, where host-page scripts could read the value while
+   * the user types (PR #359 Critical). Saves go through AlfredAPI.setToken,
+   * the same storage the worker's AXIOM_FETCH relay reads.
+   */
+  function showPairing(force) {
+    const section = $('#pairing-section');
+    if (!section) return;
+    section.hidden = !force && !section.hidden;
+    if (!section.hidden) {
+      const input = $('#pairing-token-input');
+      if (input) input.focus();
+    }
+  }
+
+  function pairingStatus(message, kind) {
+    const el = $('#pairing-status');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('pairing-ok', kind === 'ok');
+    el.classList.toggle('pairing-err', kind === 'err');
+  }
+
+  function bindPairing() {
+    const saveBtn = $('#btn-pairing-save');
+    const builtinBtn = $('#btn-pairing-builtin');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const value = ($('#pairing-token-input') || {}).value?.trim() || '';
+        if (!value) {
+          pairingStatus('Paste a key first, or use the built-in key button.', 'err');
+          return;
+        }
+        await AlfredAPI.setToken(value);
+        pairingStatus('Key saved. Retrying parked captures…', 'ok');
+        await retryParkedFromPanel();
+        $('#pairing-section').hidden = true;
+      });
+    }
+    if (builtinBtn) {
+      builtinBtn.addEventListener('click', async () => {
+        await AlfredAPI.setToken(null);
+        await AlfredAPI.ensureTokenPreloaded();
+        pairingStatus('Re-paired with the built-in key. Retrying parked captures…', 'ok');
+        await retryParkedFromPanel();
+        $('#pairing-section').hidden = true;
+      });
+    }
+  }
+
+  /** Parked captures queue in the worker's outbox; the dock picks the retry up. */
+  async function retryParkedFromPanel() {
+    try {
+      await chrome.runtime.sendMessage({ type: 'AXIOM_OUTBOX_RETRY' });
+    } catch {
+      // The dock listens on its own tabs; a miss just means the next visit retries.
     }
   }
 

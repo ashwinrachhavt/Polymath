@@ -10,7 +10,7 @@ import { expect, type Page } from "@playwright/test";
  */
 export async function waitSettled(page: Page, landmarks: { capture?: boolean; heading?: string } = {}) {
   // Hydration: the header search is disabled until the client store hydrates.
-  // The /alfred/* destinations render headerless (b5b1d26: the conversation is
+  // The /polymath/* destinations render headerless (b5b1d26: the conversation is
   // home), so their shell holds no search trigger at all — a trigger that
   // never appears would hang this wait forever there. Wait only when one is
   // actually in the DOM; the rail's copy sits in a `hidden md:block` nav, so

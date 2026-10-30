@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, like, sql } from "drizzle-orm";
-import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
+import { toolAllowed } from "../../../eve/polymath/agent/lib/policy";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import {
   AttemptAlreadyClaimedError,

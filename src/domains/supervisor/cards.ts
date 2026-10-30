@@ -44,10 +44,10 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
     return {
       surface: "note_search",
       title: `Notes matching "${intent.query}"`,
-      href: `/alfred/notes?q=${encodeURIComponent(intent.query)}`,
+      href: `/polymath/notes?q=${encodeURIComponent(intent.query)}`,
       items: items.map((note) => ({
         label: note.title || "Untitled note",
-        href: `/alfred/notes?id=${note.id}`,
+        href: `/polymath/notes?id=${note.id}`,
         meta: `v${note.version} · ${fmtDay(note.updatedAt)}`,
       })),
       emptyText: `No notes match "${intent.query}" yet.`,
@@ -77,7 +77,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
         href: SURFACE_HREF.notes,
         items: items.map((note) => ({
           label: note.title || "Untitled note",
-          href: `/alfred/notes?id=${note.id}`,
+          href: `/polymath/notes?id=${note.id}`,
           meta: fmtDay(note.updatedAt),
         })),
         emptyText: "No notes yet.",
@@ -105,7 +105,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
         href: SURFACE_HREF.runs,
         items: runs.map((run) => ({
           label: run.objective?.slice(0, 80) || run.summary?.slice(0, 80) || "Untitled run",
-          href: `/alfred/${run.id}`,
+          href: `/polymath/${run.id}`,
           meta: run.state,
         })),
         emptyText: "No runs yet.",
@@ -137,7 +137,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
         href: SURFACE_HREF.library,
         items: docs.map((doc) => ({
           label: doc.title,
-          href: `/alfred/library/${doc.id}`,
+          href: `/polymath/library/${doc.id}`,
         })),
         emptyText: "The library is empty.",
       };

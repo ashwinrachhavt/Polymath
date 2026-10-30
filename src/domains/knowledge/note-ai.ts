@@ -103,7 +103,7 @@ export async function startNoteAIRun(
   const objective = buildNoteAIObjective({ action: input.action, noteTitle: note.title, noteMarkdown: note.markdown, selection: input.selection, question: input.question, language: input.language });
   return engine.start({
     auth,
-    profileName: "alfred",
+    profileName: "polymath",
     objective,
     subjects: [{ type: "note", id: note.id }],
     estimateUsd: "0.25",

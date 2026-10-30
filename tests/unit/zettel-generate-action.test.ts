@@ -73,7 +73,7 @@ describe("generateZettelsAction", () => {
       expect.objectContaining({ workspaceId: "w1" }),
       { idempotencyKey: KEY },
     );
-    expect(revalidatePath).toHaveBeenCalledWith("/alfred/knowledge/zettels");
+    expect(revalidatePath).toHaveBeenCalledWith("/polymath/knowledge/zettels");
     expect(updateTag).toHaveBeenCalledWith("captures:w1");
   });
 

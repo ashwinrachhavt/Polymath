@@ -17,7 +17,7 @@ afterAll(async () => { await handle?.client.end(); });
 async function seedRun() {
   const db = holder.db!;
   const auth = await seedWorkspace(db, `session-${crypto.randomUUID()}`);
-  const [profile] = await db.insert(agentProfiles).values({ workspaceId: auth.workspaceId, name: "alfred" }).returning();
+  const [profile] = await db.insert(agentProfiles).values({ workspaceId: auth.workspaceId, name: "polymath" }).returning();
   const policySnapshot = { allowedTools: ["tasks.read"], allowedAccounts: [], budgetUsd: { perRunCeilingUsd: "0.50" }, auth };
   const sessionRef = `wrun_${crypto.randomUUID()}`;
   const [run] = await db.insert(agentRuns).values({

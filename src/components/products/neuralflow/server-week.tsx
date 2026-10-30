@@ -116,7 +116,7 @@ export function OutcomeNarrativePanel() {
       <div className="space-y-2 text-[13px] leading-relaxed">
         {narrative.markdown.split("\n").filter(Boolean).map((line, i) => <p key={i} className={line.startsWith("- ") ? "pl-4" : undefined}>{line}</p>)}
       </div>
-      {savedId && <p role="status" className="mt-3 text-[13px]">Saved as a note. <Link className="underline underline-offset-2" href={`/alfred/notes?id=${encodeURIComponent(savedId)}`}>Open note</Link></p>}
+      {savedId && <p role="status" className="mt-3 text-[13px]">Saved as a note. <Link className="underline underline-offset-2" href={`/polymath/notes?id=${encodeURIComponent(savedId)}`}>Open note</Link></p>}
       {error && <p role="alert" className="mt-3 text-[13px] text-destructive">{error}</p>}
     </Panel>
   );

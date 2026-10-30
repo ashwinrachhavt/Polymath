@@ -75,7 +75,7 @@ export function deriveContinuationFromArtifacts(rows: ContinuationRow[], limit =
         updatedAt: row.updatedAt,
         pendingRevisions,
         suggestedNextStep: artifactNextStep(row.status, pendingRevisions) as string,
-        href: pendingRevisions > 0 ? "/reviews" : `/alfred/dossiers?draft=${row.id}`,
+        href: pendingRevisions > 0 ? "/reviews" : `/polymath/dossiers?draft=${row.id}`,
       };
     });
 }

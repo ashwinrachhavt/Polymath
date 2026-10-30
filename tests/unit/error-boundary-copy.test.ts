@@ -14,7 +14,7 @@ const ROOT = path.resolve(__dirname, "../..");
 
 const GLOBAL = "src/app/global-error.tsx";
 const WORKSPACE = "src/app/(workspace)/error.tsx";
-const ALFRED = "src/app/(workspace)/apps/alfred/error.tsx";
+const ALFRED = "src/app/(workspace)/apps/polymath/error.tsx";
 const COMMAND_CENTER = "src/app/(workspace)/apps/command-center/error.tsx";
 
 // Every boundary, whatever its route.

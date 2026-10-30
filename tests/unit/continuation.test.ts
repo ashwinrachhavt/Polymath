@@ -47,7 +47,7 @@ describe("deriveContinuationFromArtifacts", () => {
     expect(items[0]).toMatchObject({
       artifactId: "a9",
       status: "draft",
-      href: "/alfred/dossiers?draft=a9",
+      href: "/polymath/dossiers?draft=a9",
       suggestedNextStep: "Review it: keep the draft or discard it.",
     });
   });
@@ -63,7 +63,7 @@ describe("deriveContinuationFromArtifacts", () => {
       href: "/reviews",
       suggestedNextStep: "Review the proposed revision in Reviews.",
     });
-    expect(items[1]).toMatchObject({ artifactId: "a1", href: "/alfred/dossiers?draft=a1", pendingRevisions: 0 });
+    expect(items[1]).toMatchObject({ artifactId: "a1", href: "/polymath/dossiers?draft=a1", pendingRevisions: 0 });
   });
 
   it("honours the limit", () => {

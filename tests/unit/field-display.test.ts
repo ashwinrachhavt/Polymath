@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldLabel, fieldValueText } from "@/app/(workspace)/alfred/knowledge/field-display";
+import { fieldLabel, fieldValueText } from "@/app/(workspace)/polymath/knowledge/field-display";
 
 describe("field display", () => {
   it("shows money as money, not JSON", () => {

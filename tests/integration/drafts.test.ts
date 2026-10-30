@@ -29,7 +29,7 @@ suite("generated drafts (Neon)", () => {
     auth = ownerAuth(seed.userId, seed.workspaceId);
     const [profile] = await handle.db
       .insert(agentProfiles)
-      .values({ workspaceId: seed.workspaceId, name: "alfred", createdBy: seed.userId, updatedBy: seed.userId })
+      .values({ workspaceId: seed.workspaceId, name: "polymath", createdBy: seed.userId, updatedBy: seed.userId })
       .returning();
     const [run] = await handle.db
       .insert(agentRuns)

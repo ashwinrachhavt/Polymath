@@ -54,7 +54,7 @@ async function seed(slug: string) {
 async function seedAlfred(auth: AuthContext) {
   await db
     .insert(agentProfiles)
-    .values({ workspaceId: auth.workspaceId, name: "alfred", createdBy: auth.userId, updatedBy: auth.userId });
+    .values({ workspaceId: auth.workspaceId, name: "polymath", createdBy: auth.userId, updatedBy: auth.userId });
 }
 
 async function linkContact(auth: AuthContext, taskId: string, name: string, email: string | null) {
@@ -271,7 +271,7 @@ suite("the Writer pass files the pair", () => {
   async function seedRunRow(auth: AuthContext) {
     const [profile] = await db
       .insert(agentProfiles)
-      .values({ workspaceId: auth.workspaceId, name: "alfred", createdBy: auth.userId, updatedBy: auth.userId })
+      .values({ workspaceId: auth.workspaceId, name: "polymath", createdBy: auth.userId, updatedBy: auth.userId })
       .returning();
     const [run] = await db
       .insert(agentRuns)

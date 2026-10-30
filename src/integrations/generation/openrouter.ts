@@ -2,9 +2,12 @@ import {
   GENERATION_TIMEOUT_MS,
   GenerationRequestError,
   GenerationUnconfiguredError,
+  chatMessages,
   type GenerateInput,
   type GenerationProvider,
+  type StreamChunk,
 } from "./provider";
+import { sseLines } from "./sse";
 
 /*
  * The status-quo generation route: the workspace's own OpenRouter key. This
@@ -17,7 +20,10 @@ import {
 const URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
-type OpenRouterResponse = { choices?: Array<{ message?: { content?: string } }> };
+type OpenRouterResponse = {
+  choices?: Array<{ message?: { content?: string }; delta?: { content?: string; reasoning?: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
 
 export function openRouterProvider(
   env: Record<string, string | undefined>,
@@ -38,17 +44,50 @@ export function openRouterProvider(
           model,
           ...(input.json ? { response_format: { type: "json_object" } } : {}),
           temperature: input.temperature ?? 0,
-          messages: [
-            ...(input.system ? [{ role: "system", content: input.system }] : []),
-            { role: "user", content: input.prompt },
-          ],
+          messages: chatMessages(input),
         }),
         signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
       });
       // Provider error text is not kept: status only.
       if (!response.ok) throw new GenerationRequestError("openrouter", response.status);
       const body = (await response.json().catch(() => null)) as OpenRouterResponse | null;
-      return { text: body?.choices?.[0]?.message?.content ?? "" };
+      return {
+        text: body?.choices?.[0]?.message?.content ?? "",
+        usage: { inputTokens: body?.usage?.prompt_tokens, outputTokens: body?.usage?.completion_tokens },
+      };
+    },
+    async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
+      const response = await fetchImpl(URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          stream: true,
+          // Ask for the terminal usage frame; OpenRouter sends it when the
+          // upstream reports stream token counts.
+          stream_options: { include_usage: true },
+          temperature: input.temperature ?? 0,
+          messages: chatMessages(input),
+        }),
+        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new GenerationRequestError("openrouter", response.status);
+      if (!response.body) return;
+      for await (const data of sseLines(response.body)) {
+        try {
+          const parsed = JSON.parse(data) as OpenRouterResponse;
+          if (parsed.usage) {
+            yield { type: "usage", usage: { inputTokens: parsed.usage.prompt_tokens, outputTokens: parsed.usage.completion_tokens } };
+            continue;
+          }
+          const delta = parsed.choices?.[0]?.delta;
+          // Reasoning surfaces as thinking, answer text as tokens (§3 protocol).
+          if (delta?.reasoning) yield { type: "thinking", content: delta.reasoning };
+          if (delta?.content) yield { type: "token", content: delta.content };
+        } catch {
+          // A malformed SSE frame skips; the stream contract stays line-shaped.
+        }
+      }
     },
   };
 }

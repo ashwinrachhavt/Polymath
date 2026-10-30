@@ -30,7 +30,7 @@ for (const vp of VIEWPORTS) {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
 
-    await page.goto("/alfred"); // provisions the dev owner before seeding
+    await page.goto("/polymath"); // provisions the dev owner before seeding
     await waitSettled(page);
 
     // Unique namespace per attempt: the inbox is a shared dev workspace, so

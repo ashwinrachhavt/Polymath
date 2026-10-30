@@ -158,8 +158,8 @@ test("a capture outside the current filter still renders in the detail pane and 
 
 test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
   // The representative preview route: notebook handed off to the canonical
-  // /alfred/notes surface (B04), so this leg uses the dictionary preview.
-  await page.goto("/apps/alfred/dictionary");
+  // /polymath/notes surface (B04), so this leg uses the dictionary preview.
+  await page.goto("/apps/polymath/dictionary");
   // No notebook-toolbar landmark here: the breadcrumb assertion retries
   // until the dynamic screen mounts, and this test runs no axe sweep.
   await waitSettled(page);

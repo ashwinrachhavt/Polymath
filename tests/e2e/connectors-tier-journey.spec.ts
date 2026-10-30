@@ -83,7 +83,7 @@ test.beforeAll(async () => {
 
   const [profile] = await client<{ id: string }[]>`
     insert into agent_profiles (workspace_id, name, is_default, allowed_tools)
-    values (${owner.workspace_id}, 'alfred', true, '["gmail.send","gmail.read","gmail.thread.read"]'::jsonb)
+    values (${owner.workspace_id}, 'polymath', true, '["gmail.send","gmail.read","gmail.thread.read"]'::jsonb)
     on conflict (workspace_id, name) do update set updated_at = now()
     returning id
   `;

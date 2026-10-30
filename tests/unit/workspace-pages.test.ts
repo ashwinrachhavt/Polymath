@@ -15,11 +15,11 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../..");
 
 const PAGE_SHELLS = [
-  "src/app/(workspace)/alfred/page.tsx",
-  "src/app/(workspace)/alfred/[runId]/page.tsx",
+  "src/app/(workspace)/polymath/page.tsx",
+  "src/app/(workspace)/polymath/[runId]/page.tsx",
   "src/app/(workspace)/projects/page.tsx",
   "src/app/(workspace)/artifacts/page.tsx",
-  "src/app/(workspace)/alfred/knowledge/page.tsx",
+  "src/app/(workspace)/polymath/knowledge/page.tsx",
   "src/app/(workspace)/command-center/spending/page.tsx",
   "src/app/(workspace)/command-center/inbox/page.tsx",
   "src/app/(workspace)/command-center/opportunities/page.tsx",
@@ -41,7 +41,7 @@ describe("workspace page shells", () => {
   });
 
   it("the root sends the owner to the conversation", () => {
-    // The root is a static config redirect in next.config.ts ("/" → "/alfred"):
+    // The root is a static config redirect in next.config.ts ("/" → "/polymath"):
     // a rendered redirect inside the dynamic layout made every never-cacheable
     // prefetch of "/" hit a full dynamic render and looped the router (the
     // GET / loop). So the workspace has no root page, and src/app/page.tsx
@@ -50,7 +50,7 @@ describe("workspace page shells", () => {
     expect(fs.existsSync(path.join(ROOT, "src/app/(workspace)/page.tsx"))).toBe(false);
     const config = fs.readFileSync(path.join(ROOT, "next.config.ts"), "utf8");
     expect(config).toContain('source: "/"');
-    expect(config).toContain('destination: "/alfred"');
+    expect(config).toContain('destination: "/polymath"');
   });
 
   it("page shells do not hardcode legacy /apps routes", () => {

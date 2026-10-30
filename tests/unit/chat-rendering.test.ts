@@ -80,7 +80,7 @@ describe("cited answers", () => {
 describe("record cards", () => {
   it("links a document card to its library route", () => {
     const html = renderToStaticMarkup(createElement(RecordCards, { records: [{ kind: "document", id: "doc-1", title: "Renewal terms" }] }));
-    expect(html).toContain('href="/alfred/library/doc-1"');
+    expect(html).toContain('href="/polymath/library/doc-1"');
     expect(html).toContain("Renewal terms");
     expect(html).toContain("Document");
   });
@@ -100,8 +100,8 @@ describe("record cards", () => {
 
 describe("markdown links", () => {
   it("turns [text](href) into an anchor instead of literal brackets", () => {
-    const html = renderToStaticMarkup(createElement("div", null, inline("Open [Q3 planning](/alfred/notes) now")));
-    expect(html).toContain('href="/alfred/notes"');
+    const html = renderToStaticMarkup(createElement("div", null, inline("Open [Q3 planning](/polymath/notes) now")));
+    expect(html).toContain('href="/polymath/notes"');
     expect(html).toContain("Q3 planning");
     expect(html).not.toContain("[Q3 planning]");
   });

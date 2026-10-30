@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 86 files, highest `0259_note_comments`.
+Migrations: 89 files, highest `0262_one_running_creation_run`.
 
 ## Tests
 
-428 `.test.ts` and 43 `.spec.ts` files (unit: 247, integration: 181, e2e: 43).
+442 `.test.ts` and 45 `.spec.ts` files (unit: 256, integration: 186, e2e: 45).
 ## Domains
 
 22 folders; 17 own tables.
@@ -50,7 +50,7 @@ Migrations: 86 files, highest `0259_note_comments`.
 | `gamification` | 4 |
 | `identity` | 18 |
 | `integrations` | 7 |
-| `knowledge` | 49 |
+| `knowledge` | 51 |
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
@@ -150,6 +150,8 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `integrations` | `provider_usage_ledger` | append-only |
 | `knowledge` | `artifacts` | versioned |
 | `knowledge` | `artifact_versions` | append-only |
+| `knowledge` | `zettel_sittings` | versioned |
+| `knowledge` | `zettel_sitting_cards` | append-only |
 | `knowledge` | `working_drafts` | versioned |
 | `knowledge` | `recovery_copies` | append-only |
 | `knowledge` | `files` | versioned |
@@ -218,7 +220,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 92 versioned, 59 append-only, 4 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 93 versioned, 60 append-only, 4 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -242,6 +244,7 @@ Totals: 92 versioned, 59 append-only, 4 versionless but guarded (each declared w
 - `/api/v1/exports/packets/[packetId]`
 - `/api/v1/files`
 - `/api/v1/focus/live`
+- `/api/v1/polymath/sittings/[sittingId]/create-stream`
 - `/api/v1/projects`
 - `/api/v1/projects/[projectId]/generate`
 - `/api/v1/records/search`
@@ -300,13 +303,9 @@ Totals: 92 versioned, 59 append-only, 4 versionless but guarded (each declared w
 
 ## Outbox
 
-Emitted topics: 24. Registered handlers: 10. Declared audit-only: 14.
+Emitted topics: 24. Registered handlers: 10. Declared audit-only: 0.
 
 Topics with no handler and no declaration (a defect if non-empty):
-
-- none
-
-Declared audit-only (observation events; no consumer by design):
 
 - `agent_principal.registered`
 - `agent_principal.status_changed`
@@ -322,3 +321,7 @@ Declared audit-only (observation events; no consumer by design):
 - `role.defined`
 - `role.revised`
 - `role.unassigned`
+
+Declared audit-only (observation events; no consumer by design):
+
+- none

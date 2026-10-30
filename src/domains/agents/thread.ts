@@ -138,7 +138,7 @@ export async function retryRun(auth: AuthContext, runId: string): Promise<RetryR
   const pinnedSkillId = (run.policySnapshot as { skill?: { id?: unknown } } | null)?.skill?.id;
   const { runId: next } = await createEngine(createEveDriver()).start({
     auth,
-    profileName: "alfred",
+    profileName: "polymath",
     objective: run.objective,
     subjects: Array.isArray(run.subjects) ? run.subjects : [],
     estimateUsd: "0.50",

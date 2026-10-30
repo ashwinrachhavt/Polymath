@@ -155,7 +155,7 @@ export function failureCopy(entries: { phase: FilePhase }[]): string {
   return failure?.kind === "error" ? `, failed: ${failure.message}` : "";
 }
 
-export function UploadDropzone({ libraryHref = "/alfred/library" }: { libraryHref?: string }) {
+export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryHref?: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const xhrs = useRef(new Map<string, XMLHttpRequest>());

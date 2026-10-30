@@ -46,7 +46,7 @@ for (const vp of VIEWPORTS) {
     test.skip(!client, "DATABASE_URL not configured");
     await client!.end();
 
-    await page.goto("/alfred/knowledge/cards");
+    await page.goto("/polymath/knowledge/cards");
     await expect(page.getByRole("heading", { name: "Learning path", exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-form-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
@@ -61,7 +61,7 @@ for (const vp of VIEWPORTS) {
     ).toBeVisible();
     await page.screenshot({ path: `test-results/feature-pixels/learning-path-note-${vp.name}.png`, style: HIDE_DEV_CHROME });
 
-    await page.goto("/alfred/knowledge/cards");
+    await page.goto("/polymath/knowledge/cards");
     // The sibling viewport's path proposes an identical card; .first() is the
     // honest scope, matching the Reviews assertions below.
     await expect(page.getByText("What does a quorum prevent?").first()).toBeVisible({ timeout: 30_000 });

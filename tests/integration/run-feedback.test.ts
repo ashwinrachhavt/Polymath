@@ -28,7 +28,7 @@ beforeAll(async () => {
   auth = ownerAuth(seeded.userId, workspaceId);
   const [profile] = await db
     .insert(agentProfiles)
-    .values({ workspaceId, name: "alfred", createdBy: seeded.userId, updatedBy: seeded.userId })
+    .values({ workspaceId, name: "polymath", createdBy: seeded.userId, updatedBy: seeded.userId })
     .onConflictDoNothing()
     .returning();
   const profileId = profile?.id ?? (await db.select({ id: agentProfiles.id }).from(agentProfiles).where(eq(agentProfiles.workspaceId, workspaceId)).limit(1))[0].id;

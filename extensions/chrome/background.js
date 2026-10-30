@@ -271,11 +271,13 @@ async function enqueueCapture(msg) {
     };
   }
   await recordHistoryPending(entry);
-  // Try to deliver immediately so a healthy backend still feels instant.
-  await pump();
-  var after = await readOutbox();
-  var still = after.find(function (candidate) { return candidate.id === entry.id; });
-  return { ok: true, id: entry.id, delivered: !still };
+  // Kick delivery without awaiting it: the outbox write above is the
+  // durability contract, so the caller can answer "saved" the moment the
+  // entry is durable. The pump updates history status (pending → synced)
+  // and the widget's status poll shows it land. Awaiting the network here
+  // made every save feel as slow as the round-trip.
+  void pump().catch(function () {});
+  return { ok: true, id: entry.id, delivered: false };
 }
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -470,6 +472,29 @@ chrome.runtime.onMessage.addListener(function (msg, sender) {
   if (sender && sender.tab && sender.tab.id) {
     chrome.sidePanel.open({ tabId: sender.tab.id }).catch(function () {});
   }
+});
+
+// The dock's 🔑 asks for pairing. The key input lives in the side panel — an
+// extension document — never in a page-injected input, where host-page scripts
+// could read the value while the user types (PR #359 Critical). The flag is
+// read and cleared by the panel on open.
+chrome.runtime.onMessage.addListener(function (msg, sender) {
+  if (!msg || msg.type !== "OPEN_KEY_SETTINGS") return;
+
+  (async function () {
+    try {
+      await chrome.storage.local.set({ pairingRequested: true });
+      if (sender && sender.tab && sender.tab.id) {
+        await chrome.sidePanel.open({ tabId: sender.tab.id });
+      } else {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tabs && tabs[0]) await chrome.sidePanel.open({ tabId: tabs[0].id });
+      }
+    } catch (err) {
+      // Side panel unavailable (e.g. no active tab): the flag persists and the
+      // panel surfaces pairing on its next open. The dock also tells the user.
+    }
+  })();
 });
 
 chrome.commands.onCommand.addListener(function (command) {

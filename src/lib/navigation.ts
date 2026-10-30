@@ -33,7 +33,7 @@ import {
  * URLs keep their historic prefixes; nothing else cares.
  */
 
-export type AppSlug = "command-center" | "neuralflow" | "alfred";
+export type AppSlug = "command-center" | "neuralflow" | "polymath";
 
 export type Destination = {
   href: string;
@@ -51,11 +51,11 @@ export type Destination = {
  */
 export const destinations: Destination[] = [
   {
-    href: "/alfred",
+    href: "/polymath",
     label: "Polymath",
     purpose: "Start or continue a conversation.",
     icon: Sparkles,
-    group: "alfred",
+    group: "polymath",
   },
   {
     href: "/command-center/inbox",
@@ -72,39 +72,39 @@ export const destinations: Destination[] = [
     group: "neuralflow",
   },
   {
-    href: "/alfred/notes",
+    href: "/polymath/notes",
     label: "Notes",
     purpose: "Write and keep your own pages.",
     icon: NotebookPen,
-    group: "alfred",
+    group: "polymath",
   },
   {
-    href: "/alfred/knowledge",
+    href: "/polymath/knowledge",
     label: "Document Vault",
     purpose: "Your uploaded documents, retrievable and connected.",
     icon: BookOpen,
-    group: "alfred",
+    group: "polymath",
   },
   {
     href: "/projects",
     label: "Notebook",
     purpose: "Long-lived homes for a body of work, each with its own sources.",
     icon: Library,
-    group: "alfred",
+    group: "polymath",
   },
   {
     href: "/artifacts",
     label: "Artifacts",
     purpose: "Everything the assistant made that you kept.",
     icon: Layers,
-    group: "alfred",
+    group: "polymath",
   },
   {
-    href: "/alfred/skills",
+    href: "/polymath/skills",
     label: "Skills",
     purpose: "Give the assistant a procedure to follow.",
     icon: Puzzle,
-    group: "alfred",
+    group: "polymath",
   },
   {
     href: "/command-center/relationships/people",
@@ -172,10 +172,10 @@ export const destinations: Destination[] = [
 ];
 
 const featureRoutes: Record<string, string> = {
-  // The notes surface moved to /alfred/notes (IA simplification); the old
-  // /alfred/notebook URL stays as a redirect bridge, so the prefix resolves
+  // The notes surface moved to /polymath/notes (IA simplification); the old
+  // /polymath/notebook URL stays as a redirect bridge, so the prefix resolves
   // to the Notes destination for as long as that bridge exists.
-  "/alfred/notebook": "/alfred/notes",
+  "/polymath/notebook": "/polymath/notes",
   "/apps/command-center/briefing": "/neuralflow/work?view=today",
   "/apps/command-center/inbox": "/command-center/inbox",
   "/apps/command-center/contacts": "/command-center/relationships/people",
@@ -186,9 +186,9 @@ const featureRoutes: Record<string, string> = {
   "/apps/command-center/activity": "/activity",
   "/apps/command-center/settings": "/settings",
   "/apps/neuralflow/tasks": "/neuralflow/work",
-  "/apps/alfred/dossiers": "/projects",
-  "/alfred/dossiers": "/projects",
-  "/alfred/artifacts": "/artifacts",
+  "/apps/polymath/dossiers": "/projects",
+  "/polymath/dossiers": "/projects",
+  "/polymath/artifacts": "/artifacts",
 };
 
 export const featureDestinations: Destination[] = products.flatMap((product) =>
@@ -219,7 +219,7 @@ export function destinationForPath(pathname: string): Destination | undefined {
 export function isBrowserPreviewPath(pathname: string) {
   // The browser preview lives under /apps/ plus the shared screens still
   // rendered from the preview store. Everything under a historic prefix
-  // (/command-center, /neuralflow, /alfred), /reviews and /activity read
+  // (/command-center, /neuralflow, /polymath), /reviews and /activity read
   // canonical records, so they never carry the preview banner (ASH-165).
   return pathname.startsWith("/apps/")
     || pathname === "/settings";
@@ -231,7 +231,7 @@ export function isBrowserPreviewPath(pathname: string) {
  * so app-shell's headerless and side-nav's auto-collapse cannot drift.
  */
 export function isConversationSurface(pathname: string) {
-  return pathname === "/alfred" || pathname.startsWith("/alfred/");
+  return pathname === "/polymath" || pathname.startsWith("/polymath/");
 }
 
 export const moreDestination = {

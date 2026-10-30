@@ -13,7 +13,7 @@ describe("loop story", () => {
   it("tells the six beats in order with each owning app", () => {
     expect(loopBeats(state({}), today).map((beat) => [beat.key, beat.app])).toEqual([
       ["capture", "command-center"], ["clarify", "command-center"], ["commit", "command-center"],
-      ["focus", "neuralflow"], ["review", "command-center"], ["learn", "alfred"],
+      ["focus", "neuralflow"], ["review", "command-center"], ["learn", "polymath"],
     ]);
   });
 

@@ -43,14 +43,14 @@ suite("agent principals", () => {
 
     const key = crypto.randomUUID();
     const registered = await principals.registerAgentPrincipal(auth, {
-      key: "alfred",
+      key: "polymath",
       kind: "agent",
       label: "Alfred",
       idempotencyKey: key,
     });
     expect(registered.replayed).toBe(false);
     const replay = await principals.registerAgentPrincipal(auth, {
-      key: "alfred",
+      key: "polymath",
       kind: "agent",
       label: "Alfred",
       idempotencyKey: key,
@@ -63,7 +63,7 @@ suite("agent principals", () => {
     expect(row.status).toBe("active");
 
     const listed = await principals.listAgentPrincipals(auth);
-    expect(listed.map((p) => p.key)).toContain("alfred");
+    expect(listed.map((p) => p.key)).toContain("polymath");
 
     const suspended = await principals.setAgentPrincipalStatus(auth, {
       principalId: registered.principalId,
@@ -159,14 +159,14 @@ suite("agent principals", () => {
     const authA = ownerAuth(a.userId, a.workspaceId);
     const authB = ownerAuth(b.userId, b.workspaceId);
 
-    const registered = await principals.registerAgentPrincipal(authA, { key: "alfred", kind: "agent", label: "Alfred" });
+    const registered = await principals.registerAgentPrincipal(authA, { key: "polymath", kind: "agent", label: "Alfred" });
     // The same key is free in the other workspace (uniqueness is per-tenant).
-    await principals.registerAgentPrincipal(authB, { key: "alfred", kind: "agent", label: "Alfred B" });
+    await principals.registerAgentPrincipal(authB, { key: "polymath", kind: "agent", label: "Alfred B" });
 
     // A foreign id is "not found", never fetched-and-rejected.
     await expect(
       principals.setAgentPrincipalStatus(authB, { principalId: registered.principalId, status: "suspended", expectedVersion: 1 }),
     ).rejects.toMatchObject({ code: "principal_not_found" });
-    expect((await principals.listAgentPrincipals(authB)).map((p) => p.key)).toEqual(["alfred"]);
+    expect((await principals.listAgentPrincipals(authB)).map((p) => p.key)).toEqual(["polymath"]);
   });
 });

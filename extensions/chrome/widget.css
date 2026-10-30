@@ -568,3 +568,26 @@
   border-bottom: 1px solid rgba(232, 89, 12, 0.3);
   transform: rotate(45deg);
 }
+
+/* ── API key panel (2026-10-29, removed 2026-10-30): pairing moved to the
+   extension side panel — an in-page input was readable by host-page scripts
+   (PR #359 Critical). The dock's 🔑 now opens the side panel instead. ── */
+
+.alfred-capture-item-parked {
+  border-color: var(--alfred-warning);
+}
+
+.alfred-capture-item-parked:hover {
+  border-color: var(--alfred-accent);
+}
+
+.alfred-stale-hint {
+  margin: 0 0 12px;
+  padding: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--alfred-warning);
+  border-radius: var(--alfred-radius);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--alfred-text);
+}

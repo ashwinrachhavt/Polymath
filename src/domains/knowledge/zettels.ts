@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
@@ -290,6 +290,10 @@ export type ZettelCardItem = {
   updatedAt: Date;
   sourceDocumentId: string | null;
   sourceTitle: string | null;
+  /* §6/§14.12: the inert practice suggestion from metadata.bloom, when set. */
+  bloom: { level: number; levelName: string } | null;
+  /* §14.9: pending semantic suggestions for the in-strip accept/dismiss. */
+  suggestedLinks: { targetId: string; targetTitle: string }[];
 };
 
 /*
@@ -318,6 +322,7 @@ export async function pageZettelCards(
         excerpt: artifactVersions.plainText,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
+        metadata: artifacts.metadata,
         sourceDocumentId: artifactLinks.targetId,
         sourceTitle: artifactLinks.label,
       })
@@ -336,13 +341,43 @@ export async function pageZettelCards(
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .where(where);
+    // §14.9: the semantic suggestions still awaiting a decision on these
+    // cards, for the metadata-strip accept/dismiss. Bounded per card.
+    const suggestionRows = rows.length
+      ? await tx
+          .select({ artifactId: artifactLinks.artifactId, targetId: artifactLinks.targetId, label: artifactLinks.label })
+          .from(artifactLinks)
+          .where(
+            and(
+              eq(artifactLinks.workspaceId, auth.workspaceId),
+              eq(artifactLinks.linkType, "semantic"),
+              inArray(artifactLinks.artifactId, rows.map((r) => r.id)),
+            ),
+          )
+      : [];
+    const suggestionsByCard = new Map<string, { targetId: string; targetTitle: string }[]>();
+    for (const suggestion of suggestionRows) {
+      const list = suggestionsByCard.get(suggestion.artifactId) ?? [];
+      if (list.length < 3) list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
+      suggestionsByCard.set(suggestion.artifactId, list);
+    }
     return {
       total: totalRow?.n ?? 0,
-      items: rows.map((row) => ({
-        ...row,
-        tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
-        excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
-      })),
+      items: rows.map((row) => {
+        const bloom = (row.metadata as { bloom?: { level?: unknown; levelName?: unknown } } | null)?.bloom;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- raw metadata stays server-side; only the bloom projection leaves
+        const { metadata: _metadata, ...rest } = row;
+        return {
+          ...rest,
+          tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+          excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
+          bloom:
+            typeof bloom?.level === "number" && typeof bloom?.levelName === "string"
+              ? { level: bloom.level, levelName: bloom.levelName }
+              : null,
+          suggestedLinks: suggestionsByCard.get(row.id) ?? [],
+        };
+      }),
     };
   });
 }

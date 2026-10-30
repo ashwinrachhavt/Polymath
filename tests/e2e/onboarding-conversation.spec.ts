@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 /*
  * The onboarding gate from the outside.
  *
- * The full journey (conversation -> confirm card -> /alfred) needs a live Eve
+ * The full journey (conversation -> confirm card -> /polymath) needs a live Eve
  * runtime, which the e2e harness does not have; the run/spend/session
  * semantics live in tests/integration/onboarding-flow.test.ts and the
  * extraction contract in tests/unit/onboarding-brief.test.ts. What this suite
@@ -18,7 +18,7 @@ import { expect, test } from "@playwright/test";
 
 test("an onboarded workspace is sent home from /onboarding", async ({ page }) => {
   await page.goto("/onboarding");
-  await expect(page).toHaveURL(/\/alfred$/);
+  await expect(page).toHaveURL(/\/polymath$/);
   // Home, not an error boundary.
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
 });

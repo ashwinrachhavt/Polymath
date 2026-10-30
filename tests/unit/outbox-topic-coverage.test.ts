@@ -34,6 +34,8 @@ function emittedTopics(): Set<string> {
     for (const m of text.matchAll(/const\s+[A-Z0-9_]*TOPIC\s*(?::[^=]+)?=\s*"([a-z0-9_.]+)"/g)) {
       topics.add(m[1]);
     }
+    // Positional emit: `emit(tx, auth, "a.b", {...})` (notes.ts, commands.ts).
+    for (const m of text.matchAll(/emit\(\s*\w+\s*,\s*\w+\s*,\s*"([a-z0-9_.:]+)"/g)) topics.add(m[1]);
   }
   return topics;
 }

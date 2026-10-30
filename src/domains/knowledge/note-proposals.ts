@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
+import { toolAllowed } from "../../../eve/polymath/agent/lib/policy";
 import { actionAttempts, actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { createProposal, decideProposal, ProposalConflictError } from "@/domains/actions/commands";
 import { NON_TERMINAL_RUN_STATES } from "@/domains/actions/executor";

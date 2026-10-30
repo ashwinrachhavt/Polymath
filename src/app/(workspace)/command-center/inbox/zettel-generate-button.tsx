@@ -88,8 +88,8 @@ export function GenerateZettelsButton({
         >
           {outcome.message}{" "}
           {!outcome.failed ? (
-            <Link href="/alfred/knowledge/zettels" className="font-medium text-foreground underline underline-offset-4">
-              Review zettels
+            <Link href="/polymath/knowledge/zettels" className="font-medium text-foreground underline underline-offset-4">
+              Review ideas
             </Link>
           ) : null}
         </p>

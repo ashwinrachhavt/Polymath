@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ loadPinnedSkill: vi.fn() }));
 
 vi.mock("@/domains/skills/queries", () => ({ loadPinnedSkill: mocks.loadPinnedSkill }));
 
-const { default: resolver } = await import("../../eve/alfred/agent/skills/polymath_skill");
+const { default: resolver } = await import("../../eve/polymath/agent/skills/polymath_skill");
 
 type Attributes = Record<string, string>;
 /** The resolver's only handler, plus a context shaped the way eve hands it over. */

@@ -17,7 +17,7 @@ import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "./tool-labels";
 import { collectRecords } from "./record-links";
-import { fetchMentionContext } from "@/app/(workspace)/alfred/mention-actions";
+import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
 import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
 import { CitedText } from "./cited-text";
 import { inline } from "@/components/markdown-inline";
@@ -423,7 +423,7 @@ export function ChatSurface({
                   {/* The title opens the document at its library route, so a
                       citation is a way into the source rather than a label. */}
                   <Link
-                    href={`/alfred/library/${citation.documentId}`}
+                    href={`/polymath/library/${citation.documentId}`}
                     className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
                   >
                     {citation.title}

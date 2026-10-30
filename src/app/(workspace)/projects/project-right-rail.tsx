@@ -92,7 +92,7 @@ export function ProjectRightRail({
           <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center">
             <p className="text-[13px] text-muted-foreground">Add files or other resources to reference in this project.</p>
             <Button size="sm" variant="outline" className="mt-3" asChild>
-              <Link href="/alfred/sources">Browse sources</Link>
+              <Link href="/polymath/sources">Browse sources</Link>
             </Button>
           </div>
         ) : (

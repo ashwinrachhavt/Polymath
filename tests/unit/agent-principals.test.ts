@@ -8,7 +8,7 @@ import { AgentPrincipalError, validatePrincipalKey } from "@/domains/agents/prin
  */
 describe("validatePrincipalKey", () => {
   it("accepts lowercase machine keys and trims whitespace", () => {
-    expect(validatePrincipalKey("alfred")).toBe("alfred");
+    expect(validatePrincipalKey("polymath")).toBe("polymath");
     expect(validatePrincipalKey("  nightly_briefing_2 ")).toBe("nightly_briefing_2");
   });
   it("rejects empty, uppercase-led, symbol and overlong keys", () => {

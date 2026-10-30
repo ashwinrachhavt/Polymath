@@ -71,7 +71,7 @@ artifact of kind `zettel` (ASH-174/ASH-184), so a note and a zettel are the
 same kind of thing — versioned, linkable, listed together in the notebook. The
 card carries a `source`-typed `artifact_links` edge back to its document with
 the quote as context. Reject writes only the decision. Controls live on the
-Knowledge screen (/alfred/knowledge).
+Knowledge screen (/polymath/knowledge).
 
 ## The note link graph
 
@@ -102,7 +102,7 @@ A project is a name plus a set of documents in this workspace
 whole command. Each attachment pins the document's latest succeeded extraction
 hash on `notebook_sources`. `documents.search` takes an optional `projectId`, and
 a run started with a project (`POST /api/v1/runs` with `projectId`, set from the
-Ask Alfred form) stays inside it; an empty project returns nothing and an
+Ask Polymath form) stays inside it; an empty project returns nothing and an
 unknown project is an error.
 
 ## Studio Generate
@@ -129,9 +129,9 @@ from the summarizer (`src/integrations/wiki/summarizer.ts`, default OpenRouter,
 is the one write path: re-ingesting after a re-extraction appends a new
 article version; re-ingesting unchanged text writes nothing. `lintWiki` is
 read-only: it reports archived-but-registered pages, articles whose source was
-archived, empty topics and a missing skeleton; it never auto-fixes. Alfred
+archived, empty topics and a missing skeleton; it never auto-fixes. Polymath
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
-capabilities; the surface is /alfred/wiki.
+capabilities; the surface is /polymath/wiki.
 
 ## Party resolution and assertions (ASH-128)
 

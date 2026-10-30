@@ -119,7 +119,7 @@ export function ProjectSettingsForm({
           <h2 className="text-lg font-medium">Sources</h2>
           {sources.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">
-              No sources yet. Add them from <Link href="/alfred/sources" className="underline">Sources</Link> and attach them to this project.
+              No sources yet. Add them from <Link href="/polymath/sources" className="underline">Sources</Link> and attach them to this project.
             </p>
           ) : (
             <ul className="flex flex-col gap-1">

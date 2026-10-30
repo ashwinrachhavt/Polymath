@@ -57,7 +57,7 @@ describe("Clerk proxy token boundary", () => {
     expect(response).toBeUndefined();
   });
 
-  it.each(["/alfred", "/alfred/knowledge", "/reviews", "/api/v10/runs", "/api/runs/id/events"])(
+  it.each(["/polymath", "/polymath/knowledge", "/reviews", "/api/v10/runs", "/api/runs/id/events"])(
     "keeps %s session-only rather than allowing a machine token to render workspace UI", async (path) => {
       // Page requests no longer call protect(); they accept only session
       // tokens through auth({ acceptsToken }) and the route's own layout is
@@ -68,7 +68,7 @@ describe("Clerk proxy token boundary", () => {
     },
   );
 
-  it.each(["/alfred", "/reviews"])("redirects a signed-out page visitor to the landing page on %s", async (path) => {
+  it.each(["/polymath", "/reviews"])("redirects a signed-out page visitor to the landing page on %s", async (path) => {
     const check = vi.fn().mockResolvedValue({ isAuthenticated: false });
     const response = await runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
     expect(response?.status).toBe(307);

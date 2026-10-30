@@ -14,7 +14,7 @@ test("the root opens the conversation", async ({ page }) => {
   // The conversation is home. The decision queue that used to hold this route
   // lives in the header's notifications panel now, so "/" redirects rather
   // than rendering a queue nobody reaches by typing the root.
-  await expect(page).toHaveURL(/\/alfred$/);
+  await expect(page).toHaveURL(/\/polymath$/);
   await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
   // The Assistant reads canonical runs; the preview banner must not claim otherwise.
   await expect(page.getByText("Interactive preview", { exact: true })).toHaveCount(0);
@@ -27,7 +27,7 @@ test("the root opens the conversation", async ({ page }) => {
  * conditional would still ship it.
  */
 test("the Assistant home carries only the new conversation copy", async ({ page }) => {
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   await expect(page.locator("#content h1")).toHaveText("What would you like to work on?");
   const composer = page.getByRole("textbox", { name: "Start a conversation" });
   await expect(composer).toHaveAttribute("placeholder", "Ask anything or describe a task…");
@@ -47,7 +47,7 @@ test("the Assistant home carries only the new conversation copy", async ({ page 
 
 test("the rail leads with the conversation, then Inbox", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   // The home streams: the shell hydrates and the Suspense boundary swaps its
   // content in. Reading the DOM before that settles throws "Execution context
   // was destroyed, most likely because of a navigation" — the page was still
@@ -80,11 +80,11 @@ test("canonical routes render", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page).toHaveURL(/\/alfred$/);
+  await expect(page).toHaveURL(/\/polymath$/);
 
   for (const [path, heading] of [
     ["/neuralflow/work", "Work"],
-    ["/alfred/knowledge", "Knowledge"],
+    ["/polymath/knowledge", "Knowledge"],
     ["/more", "More"],
   ] as const) {
     const response = await page.goto(path);
@@ -153,10 +153,10 @@ test("a run row on home names the objective, and nothing else", async ({ page })
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Seeding a waiting run needs DATABASE_URL.");
 
-  await page.goto("/alfred");
+  await page.goto("/polymath");
   const row = page.getByRole("link", { name: new RegExp(objective) });
   await expect(row).toBeVisible();
-  await expect(row).toHaveAttribute("href", `/alfred/${run!.id}`);
+  await expect(row).toHaveAttribute("href", `/polymath/${run!.id}`);
   // No status vocabulary on the row: Reviews owns "needs you", and internal
   // state names are never the words of the screen.
   for (const status of ["Needs your reply", "Running", "In progress", "Queued", "Succeeded", "waiting_approval"]) {
@@ -179,7 +179,7 @@ test("a run opens its conversation, with controls under the transcript", async (
   const run = await seedRun({ objective, state: "waiting_approval" });
   test.skip(!run, "Opening a conversation needs DATABASE_URL.");
 
-  await page.goto(`/alfred/${run!.id}`);
+  await page.goto(`/polymath/${run!.id}`);
   // The streaming shell can leave the streamed subtree mounted twice in dev;
   // every locator below is scoped to the first content main so strict mode
   // sees one page.
@@ -205,7 +205,7 @@ test("a finished run shows its retry and draft controls instead of a composer", 
   const run = await seedRun({ objective, state: "succeeded" });
   test.skip(!run, "Opening a conversation needs DATABASE_URL.");
 
-  await page.goto(`/alfred/${run!.id}`);
+  await page.goto(`/polymath/${run!.id}`);
   const content = page.locator("#content").first();
   await expect(content.locator("h1")).toHaveText(objective);
   const conversation = content.getByRole("region", { name: "Conversation" });
@@ -220,18 +220,18 @@ test("a finished run shows its retry and draft controls instead of a composer", 
 });
 
 test("a conversation that does not exist says so, without a 404 page", async ({ page }) => {
-  await page.goto("/alfred/00000000-0000-4000-8000-000000000000");
+  await page.goto("/polymath/00000000-0000-4000-8000-000000000000");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
   // A malformed id takes the same path as a missing one, never a uuid cast error.
-  await page.goto("/alfred/not-a-uuid");
+  await page.goto("/polymath/not-a-uuid");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
 });
 
 test("old Polymath paths redirect and unknown screens render a noindex not-found state", async ({ page }) => {
   await page.goto("/work");
   await expect(page).toHaveURL("/apps/neuralflow/tasks");
-  const response = await page.goto("/apps/alfred/not-a-screen");
+  const response = await page.goto("/apps/polymath/not-a-screen");
   expect([200, 404]).toContain(response?.status());
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
@@ -246,9 +246,9 @@ test("old Polymath paths redirect and unknown screens render a noindex not-found
  */
 test("removed IA destinations redirect to their new homes, or 404 when the route is gone", async ({ page }) => {
   for (const [from, to] of [
-    ["/alfred/sources", "/projects"],
-    ["/alfred/dossiers", "/projects"],
-    ["/alfred/wiki", "/alfred/knowledge"],
+    ["/polymath/sources", "/projects"],
+    ["/polymath/dossiers", "/projects"],
+    ["/polymath/wiki", "/polymath/knowledge"],
     ["/command-center/briefing", "/neuralflow/work?view=today"],
     ["/command-center/opportunities", "/command-center/relationships/people"],
     ["/neuralflow/focus", "/neuralflow/work"],
@@ -264,9 +264,9 @@ test("removed IA destinations redirect to their new homes, or 404 when the route
     }
   }
   // The old notebook address keeps the note deep link it once owned.
-  await page.goto("/alfred/notebook?id=00000000-0000-4000-8000-000000000001");
-  await expect(page).toHaveURL("/alfred/notes?id=00000000-0000-4000-8000-000000000001");
-  await page.goto("/alfred/learning");
+  await page.goto("/polymath/notebook?id=00000000-0000-4000-8000-000000000001");
+  await expect(page).toHaveURL("/polymath/notes?id=00000000-0000-4000-8000-000000000001");
+  await page.goto("/polymath/learning");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
   await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
 });
@@ -299,7 +299,7 @@ test("representative product screens meet WCAG 2.2 AA", async ({ page }) => {
           })})`;
       }
     }
-    for (const path of ["/command-center/inbox", "/reviews", "/settings", "/neuralflow/work", "/alfred/knowledge", "/alfred/notes", "/alfred/artifacts"]) {
+    for (const path of ["/command-center/inbox", "/reviews", "/settings", "/neuralflow/work", "/polymath/knowledge", "/polymath/notes", "/polymath/artifacts"]) {
       await page.goto(path);
       // Axe must evaluate the settled page: the topbar buttons sit at
       // disabled:opacity-50 until hydration and transition to full opacity,

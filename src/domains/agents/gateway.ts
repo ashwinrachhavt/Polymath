@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, isNotNull, like, sql } from "drizzle-orm";
 import { z } from "zod";
-import { toolAllowed } from "../../../eve/alfred/agent/lib/policy";
+import { toolAllowed } from "../../../eve/polymath/agent/lib/policy";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { createProposal, withSenderAccountPin } from "@/domains/actions/commands";
