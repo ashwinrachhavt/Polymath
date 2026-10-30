@@ -13,56 +13,90 @@ import type { ToolStubOutcome } from "eve/evals";
  */
 
 /*
- * Provider credentials beyond the model key must not be present while an eval
- * runs. With them set, a stub the model slips past (or one this file forgot)
- * becomes a real read of the owner's mail or a real Firecrawl/Composio call —
- * the incident recorded in chat-grounding.eval.ts. Failing at import time means
- * the eval never starts, which is the only outcome that cannot be mistaken for
- * a pass.
+ * The eval environment gate is a closed allowlist over credential-shaped keys:
+ * an eval may run with only these credentials set, and any other credential in
+ * the environment throws at import time — the eval never starts, which is the
+ * only outcome that cannot be mistaken for a pass. A key is credential-shaped
+ * when it ends with `_KEY`, `_TOKEN`, or `_SECRET`, contains `API_KEY`, or
+ * starts with `COMPOSIO_AUTH_CONFIG_` (an auth-config id is all a real tool
+ * needs to mint a link for a connected account). Structural variables (PATH,
+ * HOME, locale and harness vars) are not credentials and pass; a provider key
+ * this file has never heard of (a future `XAI_API_KEY`) still fails, which a
+ * denylist cannot do. This is the same incident guard as before (a stub the
+ * model slips past reaching the owner's mail, recorded in chat-grounding.eval.ts).
  *
- * The model key is allowed since chat-grounding drives a live turn. The keys are
- * process-wide, though, and the agent runs in its own worker that inherits this
- * environment (`new Worker(entry, { env: process.env })`), so a provider key
- * left set is reachable from inside a tool, not just from the eval process. That
- * is why this is the guard that covers the worker and the network guard does not.
+ * OPENAI_API_KEY is allowed because routed strong-model eval turns need it. The
+ * agent worker inherits this exact environment (`new Worker(entry, { env:
+ * process.env })`), so any other provider credential left set is reachable from
+ * inside a tool, not just the eval process — the worker-inherits-env hazard is
+ * about credentials, and this gate covers the worker where the network guard
+ * does not. `quietStubs()` is what keeps tools from reaching real providers;
+ * `tests/unit/eval-stub-coverage.test.ts` holds that line.
  */
-const FORBIDDEN_ENV = [
-  "COMPOSIO_API_KEY",
-  "FIRECRAWL_HOSTED_API_KEY",
-  "FIRECRAWL_API_KEY",
-  "LLAMAPARSE_API_KEY",
+export const ALLOWED_EVAL_ENV = [
+  "GEMINI_API_KEY",
+  "GEMINI_AGENT_MODEL",
   "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "GROQ_API_KEY",
-  "BLOB_READ_WRITE_TOKEN",
 ] as const;
 
-// A Composio auth-config id is not itself a secret, but it is all a real tool
-// needs to mint a link for a connected account, so it counts as provider access.
-const FORBIDDEN_PREFIXES = ["COMPOSIO_AUTH_CONFIG_"] as const;
+function isCredentialShaped(key: string): boolean {
+  return (
+    key.endsWith("_KEY") ||
+    key.endsWith("_TOKEN") ||
+    key.endsWith("_SECRET") ||
+    key.includes("API_KEY") ||
+    key.startsWith("COMPOSIO_AUTH_CONFIG_")
+  );
+}
+
+/*
+ * CI-harness credentials are injected by the runner itself, not by the
+ * operator. These are the exact credential-shaped names the harness
+ * injects: GitHub Actions exports ACTIONS_RUNTIME_TOKEN (artifact upload
+ * auth) and ACTIONS_CACHE_SERVICE_TOKEN into every step, and gh CLI
+ * authenticates with GH_TOKEN/GITHUB_TOKEN. They are not provider
+ * credentials a tool could spend — the evals CI job's token is scoped to
+ * contents:read + pull-requests:write. An enumerated set, not a wildcard:
+ * a wildcard namespace exemption (ACTIONS_*) would let an operator key
+ * named under it sail through the closed gate.
+ */
+const HARNESS_ENV_NAMES = new Set([
+  "ACTIONS_RUNTIME_TOKEN",
+  "ACTIONS_CACHE_SERVICE_TOKEN",
+  "ACTIONS_CACHE_SERVICE_V2_TOKEN",
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+]);
+
+function isHarnessInjected(key: string): boolean {
+  return HARNESS_ENV_NAMES.has(key);
+}
 
 export class EvalEnvironmentViolation extends Error {
   constructor(key: string) {
     super(
-      `EvalEnvironmentViolation: ${key} is set. Evals run with only the model credential; ` +
-        `remove ${key} from the shell and from .env before running \`eve eval\`.`,
+      `EvalEnvironmentViolation: ${key} is set. ${key} is not on the eval allowlist; ` +
+        `unset it before running \`eve eval\`.`,
     );
     this.name = "EvalEnvironmentViolation";
   }
 }
 
 /**
- * Throw when any provider credential is present. Called at import time by every
- * eval module, so a misconfigured eval fails before a turn starts.
+ * Throw when any credential outside `ALLOWED_EVAL_ENV` is present. Structural
+ * variables (PATH, HOME, ...) are not credentials and pass. Called at import
+ * time by every eval module, so a misconfigured eval fails before a turn starts.
  */
 export function assertEvalEnvironment(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): void {
-  for (const key of FORBIDDEN_ENV) {
-    if (isSet(env[key])) throw new EvalEnvironmentViolation(key);
-  }
   for (const key of Object.keys(env)) {
-    if (FORBIDDEN_PREFIXES.some((prefix) => key.startsWith(prefix)) && isSet(env[key])) {
+    if (
+      !(ALLOWED_EVAL_ENV as readonly string[]).includes(key) &&
+      isCredentialShaped(key) &&
+      !isHarnessInjected(key) &&
+      isSet(env[key])
+    ) {
       throw new EvalEnvironmentViolation(key);
     }
   }

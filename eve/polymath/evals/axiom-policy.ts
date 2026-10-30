@@ -106,15 +106,11 @@ export function approvalForCapability(capability: string): PolymathApproval {
   return risk === undefined ? "denied" : approvalForRisk(risk);
 }
 
-/*
- * The model allowlist `auto()` routes over. Keys are the values the decider
- * sees; a routed model outside this set is the failure mode the routing eval
- * exists to catch, so nothing else in the eval invents a model id.
- */
+/** Keys must be real `MODEL_CATALOG` ids so a routed answer is always a runnable model. */
 export const MODEL_ROUTING_OPTIONS: Readonly<Record<string, string>> = {
-  "anthropic/claude-sonnet-5": "Routine conversation, drafting, tool loops, and summaries",
-  "anthropic/claude-opus-5.5": "Difficult reasoning: multi-step research, planning, and ambiguous policy questions",
+  "gemini-3.5-flash-lite": "Routine conversation, drafting, tool loops, and summaries — free tier",
+  "gpt-6.1-terra": "Difficult reasoning: multi-step research, planning, synthesis, and ambiguous policy questions — paid strong model",
 };
 
 /** The model used when the decider is unavailable, so routing fails safe rather than stalling. */
-export const ROUTING_FALLBACK = "anthropic/claude-sonnet-5";
+export const ROUTING_FALLBACK = "gemini-3.5-flash-lite";

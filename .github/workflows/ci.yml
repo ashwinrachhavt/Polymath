@@ -259,6 +259,11 @@ jobs:
   evals:
     runs-on: ubuntu-latest
     needs: check
+    # The PR-comment step posts with the workflow token; everything else in
+    # this job is read-only. Minimum grant, scoped to the job.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -316,6 +321,25 @@ jobs:
           path: eve/polymath/.eve/evals/
           if-no-files-found: ignore
           retention-days: 7
+      # Post the same table as a PR comment, replacing the previous one. The
+      # marker lets the comment be found and deleted before the fresh post, so
+      # a PR carries one live results thread instead of a stack per run. The
+      # report file is re-rendered (not copied) because the job summary adds
+      # GITHUB_STEP_SUMMARY noise the comment should not carry. Job summaries
+      # still get the table; the comment is the PR-visible copy.
+      - name: Post eval results as PR comment
+        if: always() && steps.credential.outputs.present == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR number comes from the event context expression — there is no
+          # default GITHUB_EVENT_PULL_REQUEST_NUMBER env var; an empty value
+          # would make the poster exit 2 on every PR.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          node .github/scripts/eval-comment.mjs \
+            "$RUNNER_TEMP/eval-report.json" \
+            "$GITHUB_REPOSITORY" \
+            "$PR_NUMBER"
 
   # Vercel deploys `main` through its own GitHub integration; every other branch
   # is disabled in vercel.json, so a merged PR is the only thing that ships.

@@ -22,6 +22,7 @@ export type ModelProviderId =
   | "groq"
   | "ai-gateway"
   | "nvidia"
+  | "openai"
   | "cohere"
   | "mistral"
   | "ovh"
@@ -206,6 +207,24 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
     probe: "live 2026-10-27 (arithmetic check returned 51, not an echo)",
+  },
+  {
+    id: "gpt-6.1-terra",
+    provider: "openai",
+    label: "GPT-6.1 Terra (OpenAI)",
+    note: "Paid strong model for hard synthesis and drafting; routed by task difficulty.",
+    baseUrl: "https://api.openai.com/v1",
+    keyEnv: "OPENAI_API_KEY",
+    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+  },
+  {
+    id: "gpt-5.4-mini",
+    provider: "openai",
+    label: "GPT-5.4 Mini (OpenAI)",
+    note: "Cheaper paid route for routine paid work",
+    baseUrl: "https://api.openai.com/v1",
+    keyEnv: "OPENAI_API_KEY",
+    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
 ];
 

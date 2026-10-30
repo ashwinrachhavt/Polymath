@@ -77,21 +77,21 @@ export default defineEval({
     );
 
     const routine = await decide({
-      model: fixtureDecider(() => "anthropic/claude-sonnet-5"),
+      model: fixtureDecider(() => "gemini-3.5-flash-lite"),
       state: { messages: [{ role: "user", text: "Draft a short reply to Sam about Thursday." }] },
       questions: ROUTING_QUESTION,
     });
     const routineRoute = resolveRoute(routine.answers.route.choice);
-    t.check(routineRoute.model, includes("claude-sonnet-5")).label("routine task routes to the routine model");
+    t.check(routineRoute.model, includes("gemini-3.5-flash-lite")).label("routine task routes to the routine model");
     t.check(routineRoute.fellBack, satisfies((v: unknown) => v === false, "routine choice was allowlisted"));
 
     const hard = await decide({
-      model: fixtureDecider(() => "anthropic/claude-opus-5.5"),
+      model: fixtureDecider(() => "gpt-6.1-terra"),
       state: { messages: [{ role: "user", text: "Reconcile the three proposals and pick a winner." }] },
       questions: ROUTING_QUESTION,
     });
     const hardRoute = resolveRoute(hard.answers.route.choice);
-    t.check(hardRoute.model, includes("claude-opus-5.5")).label("difficult task routes to the reasoning model");
+    t.check(hardRoute.model, includes("gpt-6.1-terra")).label("difficult task routes to the reasoning model");
 
     // An off-allowlist answer never becomes a model. The decision pipeline
     // rejects the choice outright; pin the rejection message so the gate cannot
