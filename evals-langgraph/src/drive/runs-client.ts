@@ -4,13 +4,17 @@ import { z } from "zod";
 import type { EvalCase, Observation } from "../cases/types";
 import type { HarnessConfig } from "../config";
 import { ConfigurationError } from "../env-gate";
-import { readRunStream, type TerminalState } from "./stream";
+import { createStreamState, observationOf, readRunStream, type TerminalState } from "./stream";
 export class RunApiError extends Error {
   constructor(readonly status: number, readonly code: string) { super(`Run API ${status}: ${code}`); }
 }
 export type LiveRun = { runId: string; state: TerminalState; observation: Observation; diagnostics: string[] };
 export type ClientDependencies = { fetch: typeof fetch; uuid: () => string; sleep: (ms: number) => Promise<void> };
 const runSchema = z.object({ run: z.object({ id: z.string().uuid(), state: z.enum(["queued", "running", "waiting_input", "waiting_approval", "succeeded", "failed", "cancelled"]), summary: z.string().nullable().optional() }) });
+// The proxy closes a stream under backpressure (bounded queue) or a network reset
+// before the terminal frame; its durable stream replays from the client's cursor,
+// so reconnecting recovers the tail instead of returning a truncated observation.
+const MAX_STREAM_ATTEMPTS = 3;
 export function createRunsClient(config: HarnessConfig, dependencies: Partial<ClientDependencies> = {}) {
   const io: ClientDependencies = { fetch: globalThis.fetch, uuid: randomUUID, sleep: async (ms) => { await delay(ms); }, ...dependencies };
   async function request(path: string, signal: AbortSignal, init?: RequestInit): Promise<Response> {
@@ -42,14 +46,27 @@ export function createRunsClient(config: HarnessConfig, dependencies: Partial<Cl
   }
   async function follow(runId: string): Promise<LiveRun> {
     const signal = AbortSignal.timeout(config.timeoutMs);
-    let observation: Observation = { reply: "", toolCalls: [], fixture: {} };
+    const stream = createStreamState();
     const diagnostics: string[] = [];
     try {
-      const response = await request(`/api/v1/runs/${runId}/stream`, signal, { headers: { Accept: "application/x-ndjson, text/event-stream" } });
-      if (!response.ok) throw await apiError(response);
-      const streamed = await readRunStream(response, runId);
-      observation = streamed.observation;
-      diagnostics.push(...streamed.diagnostics);
+      let closed: unknown;
+      for (let attempt = 0; attempt < MAX_STREAM_ATTEMPTS; attempt++) {
+        // Resume from the highest applied cursor (the route's x-chat-cursor): a
+        // premature close replays the durable stream instead of truncating the tail.
+        const response = await request(`/api/v1/runs/${runId}/stream`, signal, { headers: { Accept: "application/x-ndjson, text/event-stream", "x-chat-cursor": String(stream.cursor) } });
+        if (!response.ok) throw await apiError(response);
+        try {
+          const streamed = await readRunStream(response, runId, stream);
+          diagnostics.push(...streamed.diagnostics);
+          if (streamed.terminal) return { runId, state: streamed.terminal, observation: streamed.observation, diagnostics };
+          closed = new Error(`Stream closed after cursor ${streamed.cursor} without a terminal frame`);
+        } catch (error) {
+          // Protocol skew is deterministic: surface it through polling, don't retry it.
+          if (error instanceof Error && /Malformed ChatFrame|runId mismatch/.test(error.message)) throw error;
+          closed = error;
+        }
+      }
+      diagnostics.push(`Stream closed before terminal after ${MAX_STREAM_ATTEMPTS} attempts; using polling: ${String(closed)}`);
     } catch (error) {
       if (error instanceof ConfigurationError) throw error;
       diagnostics.push(`Stream unavailable; using polling: ${String(error)}`);
@@ -60,8 +77,9 @@ export function createRunsClient(config: HarnessConfig, dependencies: Partial<Cl
       const { run } = runSchema.parse(await response.json());
       if (run.id !== runId) throw new Error("Polling runId mismatch");
       if (["succeeded", "failed", "cancelled"].includes(run.state)) {
-        const state = z.enum(["succeeded", "failed", "cancelled"]).parse(run.state);
-        return { runId, state, observation: { ...observation, reply: observation.reply || run.summary || "" }, diagnostics };
+        const terminalState = z.enum(["succeeded", "failed", "cancelled"]).parse(run.state);
+        const observation = observationOf(stream);
+        return { runId, state: terminalState, observation: { ...observation, reply: observation.reply || run.summary || "" }, diagnostics };
       }
       await io.sleep(config.pollMs);
     }

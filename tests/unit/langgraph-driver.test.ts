@@ -11,8 +11,9 @@ const created = () => Response.json({ runId }, { status: 201 });
 const terminal = () => Response.json({ run: { id: runId, state: "succeeded", summary: "poll reply" } });
 const problem = (status: number, code: string) => Response.json({ code }, { status });
 it("starts with route body and per-attempt UUID then follows NDJSON", async () => {
-  const stream = new Response(JSON.stringify({ type: "block", runId, cursor: 0, blockId: "a", text: "Hello", finishReason: "stop" }) + "\n");
-  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(created()).mockResolvedValueOnce(stream).mockResolvedValueOnce(terminal());
+  const stream = new Response(JSON.stringify({ type: "block", runId, cursor: 0, blockId: "a", text: "Hello", finishReason: "stop" }) + "\n"
+    + JSON.stringify({ type: "end", runId, cursor: 1, state: "succeeded" }) + "\n");
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(created()).mockResolvedValueOnce(stream);
   const client = createRunsClient(readConfig({}), { fetch: fetcher, uuid: () => key1 });
   expect(await client.start(item)).toBe(runId);
   expect((await client.follow(runId)).observation.reply).toBe("Hello");
@@ -62,4 +63,34 @@ it("reconstructs UTF8 chunk boundaries, replay deltas, tool input and SSE tail",
 it("rejects malformed or foreign frames", async () => {
   expect(() => decodeStreamLine('{"type":"block"}')).toThrow(/Malformed ChatFrame/);
   await expect(readRunStream(new Response(JSON.stringify({ type: "end", runId: key1, cursor: 0, state: "succeeded" })), runId)).rejects.toThrow(/runId mismatch/);
+});
+it("replays the stream from the applied cursor after a premature close", async () => {
+  const line = (frame: Record<string, unknown>) => `data: ${JSON.stringify(frame)}\n`;
+  // Connection 1: a partial reply and a running tool call, then a hard cut mid-frame —
+  // no terminal frame ever arrives.
+  const cut = new Response(line({ type: "delta", runId, cursor: 0, blockId: "a", text: "Partial " })
+    + line({ type: "tool", runId, cursor: 1, callId: "t", label: "documents_search", status: "running", input: { q: "rent" } })
+    + `data: {"type":"delta","runId":"${runId}","blockId":"a","cursor":2,"text":"trunca`);
+  // Connection 2: the proxy's overlap replay (cursor 1 again), the reply tail, the settled
+  // tool call, and the terminal frame.
+  const resumed = new Response(line({ type: "tool", runId, cursor: 1, callId: "t", label: "documents_search", status: "running", input: { q: "rent" } })
+    + line({ type: "delta", runId, cursor: 2, blockId: "a", text: "continued" })
+    + line({ type: "tool", runId, cursor: 3, callId: "t", label: "documents_search", status: "ok", input: { result: "settled" } })
+    + line({ type: "end", runId, cursor: 4, state: "succeeded" }));
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(created()).mockResolvedValueOnce(cut).mockResolvedValueOnce(resumed);
+  const result = await createRunsClient(readConfig({}), { fetch: fetcher }).follow(runId);
+  expect(result.state).toBe("succeeded");
+  expect(result.observation.reply).toBe("Partial continued");
+  expect(result.observation.toolCalls).toEqual([{ name: "documents_search", input: { q: "rent" } }]);
+  expect(new Headers(fetcher.mock.calls[2][1]?.headers).get("x-chat-cursor")).toBe("1");
+});
+it("falls back to polling once the reconnect bound is exhausted", async () => {
+  const truncated = () => new Response(`data: {"type":"delta","runId":"${runId}","blockId":"a","cursor":0,"text":"cut`);
+  // follow() starts at the stream: three truncated connections, then the poll.
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(truncated()).mockResolvedValueOnce(truncated()).mockResolvedValueOnce(truncated()).mockResolvedValueOnce(terminal());
+  const result = await createRunsClient(readConfig({}), { fetch: fetcher, sleep: async () => undefined }).follow(runId);
+  expect(result.state).toBe("succeeded");
+  expect(result.observation.reply).toBe("poll reply");
+  expect(result.diagnostics.join(" ")).toMatch(/using polling/);
+  expect(fetcher).toHaveBeenCalledTimes(4);
 });
