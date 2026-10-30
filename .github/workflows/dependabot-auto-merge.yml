@@ -22,7 +22,10 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  # Both are the documented pair for enabling auto-merge: `gh pr merge --auto`
+  # fails with 403 on contents: read because the enabler performs the eventual
+  # merge commit. Exactly these two scopes, nothing more.
+  contents: write
   pull-requests: write
 
 jobs:
@@ -47,8 +50,9 @@ jobs:
           # classify_bump "Bump <pkg> from <old> to <new>" → major|minor|patch|unknown.
           # Compares the leading numeric version components (missing trailing
           # components count as 0; base-10 so leading zeros never read as octal).
-          # Non-numeric versions, downgrades, and titles without the
-          # from/to shape all read "unknown". Tolerates the conventional-commit
+          # Non-numeric versions (prerelease suffixes included), downgrades,
+          # and titles without the from/to shape all read "unknown". Tolerates
+          # the conventional-commit
           # prefix Dependabot stamps on ("chore(deps): bump ...") and the plain
           # "Bump ..." shape, plus ^, ~, = and a v/V tag on either version.
           classify_bump() {
@@ -67,13 +71,19 @@ jobs:
             local -a old_parts new_parts
             IFS='.' read -r -a old_parts <<< "$old"
             IFS='.' read -r -a new_parts <<< "$new"
-            for i in 0 1 2; do
-              ov="${old_parts[$i]-0}"
-              nv="${new_parts[$i]-0}"
-              if ! [[ "$ov" =~ ^[0-9]+$ ]] || ! [[ "$nv" =~ ^[0-9]+$ ]]; then
+            # Validate every component of both tokens BEFORE comparing: the
+            # comparison short-circuits at the first differing component, so a
+            # prerelease like 1.3.0-beta.1 would otherwise classify as minor.
+            local component
+            for component in "${old_parts[@]}" "${new_parts[@]}"; do
+              if ! [[ "$component" =~ ^[0-9]+$ ]]; then
                 echo "unknown"
                 return 0
               fi
+            done
+            for i in 0 1 2; do
+              ov="${old_parts[$i]-0}"
+              nv="${new_parts[$i]-0}"
               if (( 10#$nv > 10#$ov )); then
                 case "$i" in
                   0) echo "major" ;;
