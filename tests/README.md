@@ -1,8 +1,8 @@
 # tests/
 
-Organised by what a test proves, not by which file it covers
-. Only `e2e/` exists so far — the rest fill in as the
-code they test arrives, rather than sitting here empty.
+Organised by what a test proves, not by which file it covers.
+`unit/`, `integration/`, `contract/`, `migration/` and `e2e/` all exist;
+the table below says what each holds.
 
 | Folder | Holds | Runs on |
 |---|---|---|
