@@ -121,6 +121,8 @@ async function gh(pathname, init = {}) {
     const detail = await response.text().catch(() => "");
     throw new Error(`GitHub API ${response.status} on ${pathname}: ${detail.slice(0, 300)}`);
   }
+  // DELETE returns 204 No Content; parsing an empty body as JSON would throw.
+  if (response.status === 204 || init.method === "DELETE") return null;
   return response.json();
 }
 

@@ -107,8 +107,13 @@ OUT="" # global: last eve invocation's combined stdout+stderr
 # still print a complete JSON results document).
 run_one() {
   local attempt=1
+  # $1 is the single eval id ("<all>" means no ids were given, so eve runs
+  # every discovered eval). Passing the id through keeps one invocation per
+  # eval: expanding the whole IDS array here would multiply every run N×.
+  local target=()
+  if [ "$1" != "<all>" ]; then target=("$1"); fi
   while :; do
-    if OUT="$("$EVE_BIN" eval ${IDS[@]+"${IDS[@]}"} --json 2>&1)"; then
+    if OUT="$("$EVE_BIN" eval ${target[@]+"${target[@]}"} --json 2>&1)"; then
       return 0
     fi
     # Quota errors: Gemini's per-minute window surfaces as "Too Many
@@ -244,6 +249,9 @@ if $POST; then
           [ -n "$cid" ] || continue
           gh api -X DELETE "repos/{owner}/{repo}/issues/comments/$cid" >/dev/null || true
         done <<<"$batch"
+        # Stop on an empty PAGE, not an empty match set: GitHub returns an
+        # empty array only past the last page, and a page shorter than 100
+        # is also the last one.
         [ ${#batch} -gt 0 ] || break
         page=$((page + 1))
       done
