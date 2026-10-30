@@ -21,6 +21,7 @@ const breaks: { group: string; break: (data: TraceDataset) => void }[] = [
   { group: "tools", break: (data) => { data.tools[0].errorCode = "provider_failed"; } },
   { group: "redaction", break: (data) => { data.tools[0].result = { nested: [{ api_key: "leak" }] }; } },
   { group: "redaction", break: (data) => { data.headers[0].error = "Bearer raw-token"; } },
+  { group: "redaction", break: (data) => { data.headers[0].error = 'password: "[redacted] hunter"'; } },
   { group: "cost", break: (data) => { data.settledUsd = "0.2"; } },
   { group: "cost", break: (data) => { data.critiqueRequested = false; } },
 ];
@@ -37,4 +38,10 @@ it("handles exact decimals and redaction idempotence", () => {
   const text = redactedText("Authorization: Bearer raw-token api_key=secret");
   expect(text).not.toContain("raw-token");
   expect(redactedText(text)).toBe(text);
+});
+it("masks a quoted secret in full and double-redaction is a no-op", () => {
+  const masked = redactedText(`password: "hunter hunter", token='abc def' api_key=xyz`);
+  expect(masked).toBe(`password: "[redacted]", token='[redacted]' api_key=[redacted]`);
+  expect(redactedText(masked)).toBe(masked);
+  expect(redactedText(`password: "oops trailing`)).toBe(`password: "[redacted]`);
 });

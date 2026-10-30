@@ -18,9 +18,23 @@ export function hasUnredactedKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasUnredactedKey);
   return Object.entries(value).some(([key, entry]) => SECRET_KEY.test(key) ? entry !== "[redacted]" : hasUnredactedKey(entry));
 }
+// The value alternation consumes the complete quoted value (spaces included) so a
+// quoted secret never leaks past its first token; an unterminated quote masks to
+// the end of the text. Quoted values keep their quote marks after masking, matching
+// the app's own redactText output shape (event-bridge.ts SECRET_PAIR), so text the
+// app already redacted stays a fixed point of a second pass.
+const SECRET_PAIR =
+  /((?:token|secret|password|authorization|api[-_]?key|credential)[a-z0-9_-]*["']?\s*[:=]\s*)("[^"]*"|'[^']*'|"[^"]*$|'[^']*$|[^\s"',}]+)/gi;
+
+function maskValue(value: string): string {
+  const open = value[0];
+  if (open !== '"' && open !== "'") return "[redacted]";
+  return `${open}[redacted]${value.endsWith(open) ? open : ""}`;
+}
+
 export function redactedText(text: string): string {
   return text.replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
-    .replace(/((?:token|secret|password|authorization|api[-_]?key|credential)[a-z0-9_-]*["']?\s*[:=]\s*["']?)([^\s"',}]+)/gi, "$1[redacted]");
+    .replace(SECRET_PAIR, (_match, key: string, value: string) => `${key}${maskValue(value)}`);
 }
 function decimalParts(value: string): { units: bigint; scale: number } {
   if (!/^\d+(\.\d+)?$/.test(value)) throw new Error(`Invalid nonnegative cost: ${value}`);
