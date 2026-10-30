@@ -307,7 +307,7 @@ describe("adapter streams", () => {
   it("metered() records provider-reported stream usage; unknown stays absent (review G)", async () => {
     const records: GenerationCallRecord[] = [];
     const provider = metered(fixtureProvider(), (r) => { records.push(r); });
-    const chunks = await collect(provider.stream!({ system: "zettel sitting", prompt: "hi" }));
+    const chunks = await collect(provider.stream!({ system: "You draft long-form writing from research", prompt: "hi" }));
     // Usage frames are consumed by metering, never forwarded downstream.
     expect(chunks.every((c) => c.type === "thinking" || c.type === "token")).toBe(true);
     expect(records).toHaveLength(1);

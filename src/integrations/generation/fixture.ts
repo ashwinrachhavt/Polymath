@@ -102,9 +102,6 @@ function answerFor(system: string): string {
   if (system.includes("person profile card set")) return personProfileAnswer();
   if (system.includes("Linear issue proposal")) return linearIssueAnswer();
   if (system.includes("research card into a design brief")) return designBriefAnswer();
-  // The sitting creation stream (plan §8) answers any prompt from a sitting:
-  // journeys type, pause and watch the suggestion arrive without a model key.
-  if (system.includes("zettel sitting")) return "A fixture suggestion: name the load-bearing idea and link it to its source.";
   // The Bloom practice classification (plan §6): deterministic JSON.
   if (system.includes("practice a note most invites")) return JSON.stringify({ level: 2, rationale: "The note states a usable claim." });
   throw new GenerationUnconfiguredError();

@@ -1,6 +1,6 @@
 # knowledge
 
-Owns: artifacts, versions, drafts, files, documents, extractions, sources, claims, evidence, embeddings, projects (notebooks), notebook sources, concepts, canvases, cards, card reviews
+Owns: artifacts, versions, drafts, files, documents, extractions, sources, claims, evidence, embeddings, projects (notebooks), notebook sources, concepts, canvases
 
 Tables are in `schema.ts` and nowhere else — a domain owns its tables, and UI
 code reads them through this domain's queries rather than joining across domains
