@@ -1,5 +1,5 @@
 import { execFile, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -109,25 +109,45 @@ const redisServerAvailable = spawnSync("redis-server", ["--version"], { stdio: "
 describe("langfuse-redis healthcheck (real redis-server; skipped where the binary is unavailable)", () => {
   const PORT = 6390;
   let server: ReturnType<typeof spawn> | undefined;
+  let serverLogFile = "";
   let ready = false;
 
   beforeAll(async () => {
     if (!redisServerAvailable) return;
-    server = spawn(
-      "redis-server",
-      ["--port", String(PORT), "--requirepass", "langfuse", "--save", "", "--appendonly", "no"],
-      { stdio: "ignore" },
-    );
-    for (let attempt = 0; attempt < 25 && !ready; attempt += 1) {
-      ready = await new Promise<boolean>((resolve) => {
-        execFile(
-          "sh",
-          ["-c", `REDISCLI_AUTH=langfuse redis-cli -p ${PORT} ping | grep -qx PONG`],
-          (err) => resolve(!err),
-        );
-      });
+    // Capture the server's stderr so a startup failure (port already in use,
+    // config error) is named in the assertion instead of surfacing as an
+    // opaque connection failure in the first test.
+    serverLogFile = join(tmpdir(), `langfuse-redis-server-${process.pid}.log`);
+    const log = openSync(serverLogFile, "a");
+    try {
+      server = spawn(
+        "redis-server",
+        ["--port", String(PORT), "--requirepass", "langfuse", "--save", "", "--appendonly", "no"],
+        { stdio: ["ignore", "ignore", log] },
+      );
+      // A PONG here requires an established, correctly authenticated
+      // connection; delay between probes instead of tight-spinning.
+      for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+        if (server.exitCode !== null) break;
+        ready =
+          (await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "langfuse" }))
+            .code === 0;
+        if (!ready) await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      const serverStderr = readFileSync(serverLogFile, "utf8").trim();
+      const versions = [
+        spawnSync("redis-server", ["--version"]).stdout?.toString().trim(),
+        spawnSync("redis-cli", ["--version"]).stdout?.toString().trim(),
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      expect(
+        ready,
+        `scratch redis-server became ready (alive=${server && server.exitCode === null}; ${versions}; server stderr: ${serverStderr || "none"})`,
+      ).toBe(true);
+    } finally {
+      closeSync(log);
     }
-    expect(ready, "scratch redis-server became ready").toBe(true);
   });
 
   afterAll(() => {
@@ -135,32 +155,35 @@ describe("langfuse-redis healthcheck (real redis-server; skipped where the binar
   });
 
   it("passes with the correct password", async () => {
-    const exit = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "langfuse" });
-    expect(exit).toBe(0);
+    const result = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "langfuse" });
+    expect(result.code, `redis-cli output: ${result.output}`).toBe(0);
   });
 
   it("fails on a wrong password", async () => {
-    const exit = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "wrongpass" });
-    expect(exit).toBe(1);
+    const result = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "wrongpass" });
+    expect(result.code, `redis-cli output: ${result.output}`).toBe(1);
   });
 
   it("fails when no credentials are provided (NOAUTH)", async () => {
     const env = { ...process.env };
     delete env.REDISCLI_AUTH;
-    const exit = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, env);
-    expect(exit).toBe(1);
+    const result = await run(`redis-cli -p ${PORT} ping | grep -qx PONG`, env);
+    expect(result.code, `redis-cli output: ${result.output}`).toBe(1);
   });
 
   it("fails on a connection failure", async () => {
-    const exit = await run(`redis-cli -p 6399 ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "langfuse" });
-    expect(exit).toBe(1);
+    const result = await run(`redis-cli -p 6399 ping | grep -qx PONG`, { ...process.env, REDISCLI_AUTH: "langfuse" });
+    expect(result.code, `redis-cli output: ${result.output}`).toBe(1);
   });
 
-  function run(line: string, env: NodeJS.ProcessEnv): Promise<number> {
+  function run(line: string, env: NodeJS.ProcessEnv): Promise<{ code: number; output: string }> {
     return new Promise((resolve) => {
-      execFile("sh", ["-c", line], { env: { ...env, PATH: process.env.PATH } }, (err) =>
+      execFile("sh", ["-c", line], { env: { ...env, PATH: process.env.PATH } }, (err, stdout, stderr) =>
         // ExecFileException.code is string | number; any spawn/exec failure is nonzero.
-        resolve(err ? (typeof err.code === "number" ? err.code : 1) : 0),
+        resolve({
+          code: err ? (typeof err.code === "number" ? err.code : 1) : 0,
+          output: `${stdout}${stderr}`.trim(),
+        }),
       );
     });
   }
