@@ -76,9 +76,12 @@ fixtureServer("the sitting journey: type, pause, suggestion, card, reopen", asyn
 
   // Reopen: the sitting is always writable (Gate: no lifecycle), and the
   // durable record replays - the run's stages are visible history, not a
-  // blank panel.
-  await page.goto("/polymath/knowledge/zettels/session");
+  // blank panel. The Ideas collection lists card titles; the Sittings list
+  // lists sitting topics ("Untitled sitting" — no topic was set), so the
+  // reopen goes through the card's notes surface id, not a sitting link.
+  await page.goto("/polymath/knowledge/zettels");
   await page.getByRole("link", { name: /Retention compounds/ }).click();
+  await page.getByRole("link", { name: "Card" }).click();
   await expect(page).toHaveURL(/\/polymath\/knowledge\/zettels\/session\/[0-9a-f-]{36}$/);
   await expect(editor).toBeVisible();
   await expect(editor).toContainText("Retention compounds");
