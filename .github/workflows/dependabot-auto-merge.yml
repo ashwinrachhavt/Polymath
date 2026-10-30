@@ -1,0 +1,142 @@
+name: Dependabot auto-merge
+
+# First-party automation: enables auto-merge on Dependabot PRs whose bump stays
+# within the same major.minor line. Majors stay manual on purpose — the
+# "Faster tests and trustworthy CI" spec forbids a major-upgrade wave and
+# requires Node types to track the Node 24 runtime, so e.g. types/node
+# 20 → 26 must never merge on its own. Titles the parser cannot classify
+# (grouped updates, digest updates, non-numeric versions) also stay manual:
+# the workflow fails closed, never open.
+#
+# Activation: `gh pr merge --auto` is gated by the repository-level
+# "Allow auto-merge" setting (Settings → General → Pull Requests). While that
+# setting is off, this job reports a notice and exits cleanly; flipping it on
+# activates the workflow with no code change.
+#
+# Supply chain: no actions and no checkout — everything comes from the event
+# payload and the GitHub API, so there is nothing to pin and nothing to trust
+# beyond `gh`, which the runner image already provides.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Inert for every non-Dependabot PR. A human editing a Dependabot PR does
+    # not match this actor either: automation follows Dependabot's own events.
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Auto-merge compatible bumps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Routed through env, never interpolated into the script: the title
+          # is attacker-controllable through package names.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # classify_bump "Bump <pkg> from <old> to <new>" → major|minor|patch|unknown.
+          # Compares the leading numeric version components (missing trailing
+          # components count as 0; base-10 so leading zeros never read as octal).
+          # Non-numeric versions, downgrades, and titles without the
+          # from/to shape all read "unknown". Tolerates the conventional-commit
+          # prefix Dependabot stamps on ("chore(deps): bump ...") and the plain
+          # "Bump ..." shape, plus ^, ~, = and a v/V tag on either version.
+          classify_bump() {
+            local title="$1" old new i ov nv
+            # Held in a quoted variable: an unquoted pattern with parens is a
+            # bash parse error inside [[ =~ ]], not just a matching problem.
+            local pattern='^([A-Za-z][A-Za-z0-9_-]*\([^)]*\):[[:space:]]*)?[Bb]ump[[:space:]].+[[:space:]]from[[:space:]]([^[:space:]]+)[[:space:]]to[[:space:]]([^[:space:]]+)$'
+            if ! [[ "$title" =~ $pattern ]]; then
+              echo "unknown"
+              return 0
+            fi
+            old="${BASH_REMATCH[2]}"
+            new="${BASH_REMATCH[3]}"
+            old="${old#^}"; old="${old#\~}"; old="${old#=}"; old="${old#v}"; old="${old#V}"
+            new="${new#^}"; new="${new#\~}"; new="${new#=}"; new="${new#v}"; new="${new#V}"
+            local -a old_parts new_parts
+            IFS='.' read -r -a old_parts <<< "$old"
+            IFS='.' read -r -a new_parts <<< "$new"
+            for i in 0 1 2; do
+              ov="${old_parts[$i]-0}"
+              nv="${new_parts[$i]-0}"
+              if ! [[ "$ov" =~ ^[0-9]+$ ]] || ! [[ "$nv" =~ ^[0-9]+$ ]]; then
+                echo "unknown"
+                return 0
+              fi
+              if (( 10#$nv > 10#$ov )); then
+                case "$i" in
+                  0) echo "major" ;;
+                  1) echo "minor" ;;
+                  *) echo "patch" ;;
+                esac
+                return 0
+              fi
+              if (( 10#$nv < 10#$ov )); then
+                echo "unknown" # not an upgrade — never auto-merge
+                return 0
+              fi
+            done
+            echo "unknown" # identical through the patch component
+          }
+
+          verdict="$(classify_bump "$PR_TITLE")"
+
+          case "$verdict" in
+            major)
+              echo "::notice::Major bump — leaving manual per the CI spec. Title: ${PR_TITLE}"
+              exit 0
+              ;;
+            unknown)
+              echo "::warning::Could not classify bump (grouped/digest update or non-numeric version) — leaving manual. Title: ${PR_TITLE}"
+              exit 0
+              ;;
+            minor|patch)
+              echo "Classified ${verdict} bump: ${PR_TITLE}"
+              ;;
+            *)
+              echo "::error::Unexpected verdict: ${verdict}"
+              exit 1
+              ;;
+          esac
+
+          # Read the repository auto-merge setting strictly: an explicit "false"
+          # skips quietly (the toggle is not on yet), anything unexpected fails
+          # loudly rather than silently never merging.
+          allow="$(gh api "repos/${GH_REPO}" --jq '.allow_auto_merge')"
+          case "$allow" in
+            true) ;;
+            false)
+              echo "::notice::Repository 'Allow auto-merge' is off — this workflow activates once it is enabled (Settings → General → Pull Requests)."
+              exit 0
+              ;;
+            *)
+              echo "::error::Unexpected allow_auto_merge value: ${allow}"
+              exit 1
+              ;;
+          esac
+
+          pr_state="$(gh pr view "${PR_NUMBER}" --json state,autoMergeRequest --jq '"\(.state)|\(.autoMergeRequest != null)"')"
+          IFS='|' read -r state already_enabled <<< "$pr_state"
+
+          if [[ "$state" != "OPEN" ]]; then
+            echo "::notice::Pull request is ${state} — nothing to do."
+            exit 0
+          fi
+          if [[ "$already_enabled" == "true" ]]; then
+            echo "Auto-merge already enabled on #${PR_NUMBER} — idempotent no-op."
+            exit 0
+          fi
+
+          echo "Enabling auto-merge for ${verdict} bump: ${PR_TITLE}"
+          gh pr merge "${PR_NUMBER}" --auto --squash
