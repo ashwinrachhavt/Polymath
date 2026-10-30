@@ -31,7 +31,7 @@ Migrations: 89 files, highest `0262_one_running_creation_run`.
 
 ## Tests
 
-440 `.test.ts` and 45 `.spec.ts` files (unit: 254, integration: 186, e2e: 45).
+441 `.test.ts` and 45 `.spec.ts` files (unit: 255, integration: 186, e2e: 45).
 ## Domains
 
 22 folders; 17 own tables.
