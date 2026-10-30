@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getNote, type NoteContent } from "@/domains/knowledge/notes";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { IdeaEditor } from "@/components/polymath/zettels/idea-editor";
-import { SuggestedLinksStrip } from "@/components/polymath/zettels/suggested-links-strip";
+import { SuggestedLinksStrip } from "@/components/polymath/ideas/suggested-links-strip";
 import { getAuthContext } from "@/lib/auth";
 
 export const metadata = { title: "Idea · Polymath" };

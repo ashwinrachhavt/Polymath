@@ -4,24 +4,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor, type Content } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { createSittingStore } from "./sitting-store";
-import { createIdleDebouncer } from "./idle-debounce";
-import { CREATION_IDLE_MS } from "@/domains/knowledge/sitting-events";
-import { saveIdeaAction } from "@/app/(workspace)/polymath/knowledge/ideas/actions";
+import { createIdeaDraftStore } from "../ideas/draft-store";
+import { createIdleDebouncer } from "../ideas/idle-debounce";
+import { saveIdeaAction } from "@/app/(workspace)/polymath/ideas/actions";
 
 /*
- * §14.11: the "New idea" direct flow - a single authored card with no
- * sitting. The draft persists under the workspace+`idea:new` key as HTML so
- * a multi-paragraph note round-trips; every pause saves through the same
- * receipt-keyed, version-claimed machinery a sitting's Keep uses, and the
- * saved card id persists in the store so a reopen keeps editing that card
- * instead of creating a duplicate.
+ * The idea editor: a single authored card. The draft persists under the
+ * workspace+idea key as HTML so a multi-paragraph note round-trips; every
+ * pause saves through the same receipt-keyed, version-claimed machinery the
+ * rest of the app uses, and the saved card id persists in the store so a
+ * reopen keeps editing that card instead of creating a duplicate.
  *
  * The same component edits an idea that already exists: passing `artifactId`
  * and `version` opens that card under its own draft key and primes the store
  * with its saved id, so the first pause claims the version it was given
  * rather than creating a second card.
  */
+
+/** How long a pause must last before the draft is written to the server. */
+const IDEA_IDLE_MS = 800;
 export function IdeaEditor({
   workspaceId,
   artifactId,
@@ -40,7 +41,7 @@ export function IdeaEditor({
   label?: string | null;
 }) {
   const storeKey = artifactId ?? "idea:new";
-  const store = useMemo(() => createSittingStore(workspaceId, storeKey), [workspaceId, storeKey]);
+  const store = useMemo(() => createIdeaDraftStore(workspaceId, storeKey), [workspaceId, storeKey]);
   const idemBase = useRef<string | null>(null);
   const saveSeq = useRef(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -88,7 +89,7 @@ export function IdeaEditor({
   }, [save]);
   const debouncerRef = useRef<ReturnType<typeof createIdleDebouncer> | null>(null);
   useEffect(() => {
-    const debouncer = createIdleDebouncer(() => { void saveRef.current(); }, CREATION_IDLE_MS);
+    const debouncer = createIdleDebouncer(() => { void saveRef.current(); }, IDEA_IDLE_MS);
     debouncerRef.current = debouncer;
     return () => debouncer.cancel();
   }, []);
