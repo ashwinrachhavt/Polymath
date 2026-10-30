@@ -1,0 +1,6 @@
+{
+  "node_version": "24",
+  "dependencies": [".."],
+  "graphs": { "eval-case": "./src/graph/case-graph.ts:graph" },
+  "env": "../.env"
+}
