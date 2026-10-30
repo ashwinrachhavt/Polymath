@@ -19,13 +19,13 @@ export const STATUS_LABEL: Record<WorkStatus, string> = {
   cancelled: "Cancelled",
 };
 
-/** The mockup's tinted pills: the state is a colour, not a label squeezed between title and meta. Green ready, blue in-flight, amber waiting. */
+/** The mockup's tinted pills: the state is a colour, not a label squeezed between title and meta. Amber in-flight, blue ready, violet waiting, green done. */
 export const STATUS_PILL: Record<WorkStatus, string> = {
   inbox: "pill pill-neutral",
   backlog: "pill pill-neutral",
-  ready: "pill pill-success",
-  in_progress: "pill pill-info",
-  waiting: "pill pill-working",
-  done: "pill pill-neutral",
+  ready: "pill pill-info",
+  in_progress: "pill pill-working",
+  waiting: "pill pill-violet",
+  done: "pill pill-success",
   cancelled: "pill pill-neutral",
 };

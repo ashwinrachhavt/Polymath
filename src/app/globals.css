@@ -245,6 +245,15 @@
   .pill-info { background: color-mix(in oklab, var(--info) 12%, transparent); color: var(--info); }
   .pill-working { background: color-mix(in oklab, oklch(0.72 0.12 80) 16%, transparent); color: oklch(0.52 0.10 70); }
   .pill-danger { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+  /* The full wheel, completed (owner direction 2026-10-29): every hue the
+     product names gets one quiet tint at the same low chroma, so the rainbow
+     lives in the system, not on the page. Violet for deferred/waiting states
+     (the mockup's Waiting pill); teal as the wheel's remaining stop. Dark
+     mode lifts the lightness so the tints read on the near-black ground. */
+  .pill-violet { background: color-mix(in oklab, oklch(0.62 0.11 300) 13%, transparent); color: oklch(0.52 0.11 300); }
+  .pill-teal { background: color-mix(in oklab, oklch(0.72 0.10 195) 13%, transparent); color: oklch(0.55 0.09 195); }
+  .dark .pill-violet { background: color-mix(in oklab, oklch(0.72 0.10 300) 16%, transparent); color: oklch(0.80 0.09 300); }
+  .dark .pill-teal { background: color-mix(in oklab, oklch(0.76 0.09 195) 16%, transparent); color: oklch(0.80 0.08 195); }
 
   /* Dotted section divider with a centered label (Artifacts "OCTOBER 2026",
      home "YOUR CONVERSATIONS"). A hairline says "regions"; the dotted rule
@@ -724,3 +733,4 @@ min-height: 32px;
 height: 32px;
 padding-block: 0;
 }
+

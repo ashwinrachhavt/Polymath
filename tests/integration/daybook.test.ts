@@ -231,4 +231,136 @@ suite("daybook (Neon)", () => {
     expect(second.created).toBe(false);
     expect(second.id).toBe(first.id);
   });
+
+  // Value: protects=getWeekActivity derives Mon-Sun bounds in the owner's
+  // timezone and counts the same five sources getDayPage does, excluding
+  // archived artifacts, discarded captures and agent-actor events;
+  // fails_when=the CTE computes bounds in UTC instead of user_preferences tz,
+  // starts the week on Sunday, counts archived/discarded rows, or leaks
+  // agent-actor audit events into the strip; why_new=the query is new
+  // hand-written SQL whose bound math duplicates getDayPage's and any drift
+  // silently lies on the week strip - the suite already has the tz fixtures;
+  // seam=queries.getWeekActivity against real Postgres via makeTestDb;
+  // no_claim=none beyond protects.
+  it("counts the week's activity per day in the owner's timezone", async () => {
+    if (!handle) return;
+    // 2026-10-22 (Thu) sits in the Mon Oct 19 - Sun Oct 25 LA week.
+    // 2026-10-22 20:00 LA = 2026-10-23 03:00 UTC: belongs to LA's Thursday.
+    await noteWithVersion(ws.workspaceId, ws.userId, "week note", new Date("2026-10-23T03:00:00Z"));
+    // A Sunday-late event (2026-10-25 23:00 LA = 2026-10-26 06:00 UTC) must
+    // land in Sunday's cell, not spill into the next week's Monday.
+    await noteWithVersion(ws.workspaceId, ws.userId, "sunday-night note", new Date("2026-10-26T06:00:00Z"));
+    const week = await queries.getWeekActivity(auth, "2026-10-22");
+    expect(week).toHaveLength(7);
+    expect(week[0].date).toBe("2026-10-19"); // Monday
+    expect(week[6].date).toBe("2026-10-25"); // Sunday
+    const byDate = new Map(week.map((d) => [d.date, d.events]));
+    expect(byDate.get("2026-10-22")).toBeGreaterThanOrEqual(1); // Thursday note
+    expect(byDate.get("2026-10-25")).toBeGreaterThanOrEqual(1); // Sunday note
+    expect(byDate.get("2026-10-26")).toBeUndefined(); // outside the week
+  });
+
+  it("does not count archived artifacts or discarded captures in the week", async () => {
+    if (!handle) return;
+    // A fresh workspace gives the count exactness: nothing else contributes.
+    const iso = await seedWorkspace(handle.db, `daybook-week-${Date.now()}`);
+    const isoAuth = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'America/Los_Angeles')`,
+    );
+    const live = await noteWithVersion(iso.workspaceId, iso.userId, "live note", new Date("2026-10-22T18:00:00Z"));
+    const archived = await noteWithVersion(iso.workspaceId, iso.userId, "archived note", new Date("2026-10-22T18:05:00Z"));
+    await holder.db!.update(artifacts).set({ archivedAt: new Date() }).where(eq(artifacts.id, archived.artifactId));
+    await holder.db!.insert(captures).values({
+      workspaceId: iso.workspaceId,
+      kind: "text",
+      captureMode: "authored",
+      rawPayload: { text: "discarded" },
+      text: "discarded",
+      processingState: "discarded",
+      createdAt: new Date("2026-10-22T18:10:00Z"),
+      createdBy: iso.userId,
+      updatedBy: iso.userId,
+    });
+    // A user-actor audit event the CTE must not count twice (note.created +
+    // live note = 1 event + 1 artifact; if the strip double-counted the
+    // note.created action behind the artifact, the total would be 2+).
+    await holder.db!.insert(auditEvents).values({
+      workspaceId: iso.workspaceId,
+      actorId: iso.userId,
+      actorKind: "user",
+      action: "note.snapshot",
+      subjectType: "artifact",
+      subjectId: live.artifactId,
+      summary: "human edit",
+      createdAt: new Date("2026-10-22T18:15:00Z"),
+    });
+    // An agent-actor event must stay out.
+    await holder.db!.insert(auditEvents).values({
+      workspaceId: iso.workspaceId,
+      actorId: iso.userId,
+      actorKind: "agent",
+      action: "note.snapshot",
+      subjectType: "artifact",
+      subjectId: live.artifactId,
+      summary: "agent edit",
+      createdAt: new Date("2026-10-22T18:20:00Z"),
+    });
+    const week = await queries.getWeekActivity(isoAuth, "2026-10-22");
+    const thursday = week.find((d) => d.date === "2026-10-22")!.events;
+    // 1 live artifact + 1 user-actor audit event. The archived note, the
+    // discarded capture and the agent event contribute nothing.
+    expect(thursday).toBe(2);
+  });
+
+  // Value: protects=each week cell is bounded by the NEXT day's tz-derived
+  // start, so a 25-hour fall-back day counts its last local hour and a
+  // 23-hour spring-forward day never double-counts; fails_when=the cell uses
+  // day_start + interval '1 day', which drops the fall-back edge hour into no
+  // cell and overlaps the spring-forward repeat hour into two; why_new=the
+  // strip's bounds were hand-rolled next to getDayPage's proven ones and no
+  // test exercised a DST boundary week; seam=queries.getWeekActivity against
+  // real Postgres; no_claim=none beyond protects.
+  it("counts events in the 25-hour fall-back day exactly once", async () => {
+    if (!handle) return;
+    const iso = await seedWorkspace(handle.db, `daybook-dst-${Date.now()}`);
+    const a = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'America/Los_Angeles')`,
+    );
+    // 2026-11-01 is a 25-hour day in LA (fall back at 09:00Z). 07:30Z on Nov 2
+    // is 23:30 PST on Nov 1 — inside the long day, outside a naive +24h bound.
+    await noteWithVersion(iso.workspaceId, iso.userId, "dst note", new Date("2026-11-02T07:30:00Z"));
+    const week = await queries.getWeekActivity(a, "2026-11-01");
+    expect(week.find((d) => d.date === "2026-11-01")!.events).toBe(1);
+    // 2026-11-01 is a Sunday: its week is Mon Oct 26 - Sun Nov 1, so the
+    // spill-into-Monday case is asserted on the prior boundary instead — no
+    // cell carries the event twice and Monday's cell is absent from this week.
+    expect(week.find((d) => d.date === "2026-10-26")!.events).toBe(0);
+  });
+
+  // Value: protects=the day record renders each creation exactly once - the
+  // worked-on lateral must exclude creation actions, which the created and
+  // captured laterals already cover; fails_when=the worked-on filter reverts
+  // to the full DAYBOOK_ACTION_LIST, so a note shows as both a Created row and
+  // a 'Created note ...' Changed row; why_new=the adversarial review caught the
+  // day-page twin of the double-count fixed for the week strip and no test
+  // asserted the single-render invariant; seam=queries.getDayPage against real
+  // Postgres; no_claim=none beyond protects.
+  it("renders a creation once, never as both Created and Changed", async () => {
+    if (!handle) return;
+    const iso = await seedWorkspace(handle.db, `daybook-single-${Date.now()}`);
+    const a = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'UTC')`,
+    );
+    await noteWithVersion(iso.workspaceId, iso.userId, "once only", new Date("2026-10-22T18:00:00Z"));
+    const day = await queries.getDayPage(a, "2026-10-22");
+    expect(day.created.map((r) => r.title)).toContain("once only");
+    // The worked-on slice excludes creation actions: no 'Created note ...' row.
+    expect(day.workedOn.map((r) => r.title)).not.toContain('Created note "once only"');
+    // And the week strip counts the note once (artifact only, no audit event).
+    const week = await queries.getWeekActivity(a, "2026-10-22");
+    expect(week.find((d) => d.date === "2026-10-22")!.events).toBe(1);
+  });
 });
