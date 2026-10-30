@@ -72,7 +72,14 @@ function polymathModel(runModel?: string | null) {
     // A model whose key vanished from the deployment must not silently fall back
     // to a different provider: the run's frozen model is a spend and behaviour
     // contract, and quietly running another one makes the run row a lie.
-    throw new Error(`${entry.keyEnv} is not set, so ${entry.label} cannot run. Choose another model or set the key.`);
+    //
+    // The message names the restart case explicitly. A dev server inherits its
+    // environment at boot, so a key added to .env while eve is already running
+    // is invisible here and reads exactly like a missing key - which sent one
+    // person hunting for a credential that was already in place.
+    throw new Error(
+      `${entry.keyEnv} is not set, so ${entry.label} cannot run. Set ${entry.keyEnv} and restart the agent process (a dev server only sees .env as it was at boot), or choose another model.`,
+    );
   }
 
   // Gemini's OpenAI-compatible surface needs the streaming repair; the other
