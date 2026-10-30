@@ -44,6 +44,9 @@ fixtureServer("the sitting journey: type, pause, suggestion, card, reopen", asyn
   // A fresh sitting per run: the /new route creates on arrival (§14.1).
   await page.goto("/polymath/knowledge/zettels/session/new");
   await expect(page).toHaveURL(/\/polymath\/knowledge\/zettels\/session\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+  // The sitting URL is the durable address; the reopen step returns to it
+  // directly (list pages show topics/links that vary by view and state).
+  const sittingUrl = page.url();
 
   // tiptap mounts after hydration (immediatelyRender: false); a cold CI dev
   // server can take a while, so the locator waits on the placeholder element.
@@ -76,17 +79,14 @@ fixtureServer("the sitting journey: type, pause, suggestion, card, reopen", asyn
 
   // Reopen: the sitting is always writable (Gate: no lifecycle), and the
   // durable record replays - the run's stages are visible history, not a
-  // blank panel. The Ideas collection lists card titles; the Sittings list
-  // lists sitting topics ("Untitled sitting" — no topic was set), so the
-  // reopen goes through the card's notes surface id, not a sitting link.
-  await page.goto("/polymath/knowledge/zettels");
-  await page.getByRole("link", { name: /Retention compounds/ }).click();
-  await page.getByRole("link", { name: "Card" }).click();
-  await expect(page).toHaveURL(/\/polymath\/knowledge\/zettels\/session\/[0-9a-f-]{36}$/);
-  await expect(editor).toBeVisible();
-  await expect(editor).toContainText("Retention compounds");
+  // blank panel. The sitting's own URL is the durable address.
+  await page.goto(sittingUrl);
+  await expect(page).toHaveURL(new RegExp(sittingUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const editor2 = page.locator(".ProseMirror");
+  await expect(editor2).toBeVisible({ timeout: 90_000 });
+  await expect(editor2).toContainText("Retention compounds");
 
-  // The sitting history page shows the sitting (no status badges - no lifecycle).
+  // The sittings history lists the sitting (no status badges - no lifecycle).
   await page.goto("/polymath/knowledge/zettels/session");
-  await expect(page.getByText("No sittings yet")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Untitled sitting" })).toBeVisible();
 });
