@@ -178,14 +178,24 @@ export type StoredMessage = { sequence: number; role: "user" | "assistant"; text
  * so a replay of the same turn replaces the stored block, exactly as a `block`
  * frame replaces deltas, instead of appearing twice. A message stored without a
  * turnId has no future replay to collide with and is keyed by its sequence.
+ *
+ * A turn can hold more than one assistant message (a resumed turn answers
+ * again), and the stream id carries no step number, so only the FIRST assistant
+ * message of a turn may claim it. Later ones key by sequence: without that they
+ * all become `assistant:<turnId>:0` and React renders duplicate keys, dropping
+ * or duplicating messages.
  */
 export function threadBlocks(messages: StoredMessage[]): ChatBlock[] {
   const blocks: ChatBlock[] = [];
+  const claimedTurns = new Set<string>();
   for (const message of messages) {
     if (message.text.length === 0) continue;
     if (message.role === "assistant") {
+      const turnId = message.turnId ?? null;
+      const claimable = turnId !== null && !claimedTurns.has(turnId);
+      if (claimable) claimedTurns.add(turnId);
       blocks.push({
-        id: message.turnId ? `assistant:${message.turnId}:0` : `assistant:stored:${message.sequence}`,
+        id: claimable ? `assistant:${turnId}:0` : `assistant:stored:${message.sequence}`,
         kind: "assistant",
         text: message.text,
         done: true,

@@ -39,8 +39,8 @@ export type ProviderQuota = {
   unit: QuotaUnit;
   /** Default allowance per renewal period, from the provider's public page. */
   allowance: number;
-  /** How often the allowance resets. */
-  renewal: "daily" | "monthly";
+  /** How often the allowance resets. "lifetime" never does — a one-time grant. */
+  renewal: "daily" | "monthly" | "lifetime";
   /** Env var that overrides `allowance` when the account's real number differs. */
   allowanceEnv?: string;
 };
@@ -317,10 +317,10 @@ const REGISTRY: readonly ProviderEntry[] = [
     quota: {
       unit: "tokens",
       allowance: 100_000_000,
-      // Not a renewal: the ledger period buckets the grant's lifetime spend.
-      // CurrentPeriod only knows daily|monthly, so the grant is tracked per
-      // UTC month until an explicit expiry matters.
-      renewal: "monthly",
+      // A one-time grant, not a monthly allowance: "lifetime" keeps the ledger
+      // in a single bucket that never rolls over, so an exhausted grant stays
+      // exhausted instead of re-admitting 100M tokens on the first of a month.
+      renewal: "lifetime",
       allowanceEnv: "MERCURY_TOTAL_TOKENS",
     },
     verifiedAt: "2026-10-29",

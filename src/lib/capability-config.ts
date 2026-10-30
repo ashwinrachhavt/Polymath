@@ -67,65 +67,82 @@ const has = (env: Record<string, string | undefined>, key: string) => set(env, k
  * The selector, when set, decides the adapter outright — so only the variables
  * that selector needs can make it ready. Without a selector the adapter falls
  * back to the first configured key, which is the "any of" case.
+ *
+ * A choice's value lists alternatives, and an alternative's keys are ALL
+ * required: `[[A, B], [C]]` means "A and B together, or C alone". A provider
+ * reachable under two names (Mercury answers to MERCURY_API_KEY or
+ * INCEPTION_API_KEY) must not read as missing one of them.
  */
+type Alternatives = readonly (readonly string[])[];
+const single = (key: string): Alternatives => [[key]];
+
 function selectorResolution(
   env: Record<string, string | undefined>,
   selectorKey: string,
-  perChoice: Record<string, readonly string[]>,
-  fallback: readonly string[],
+  perChoice: Record<string, Alternatives>,
+  fallback: Alternatives,
+  /** The names the "set one of these" message uses, when it differs from the alternatives. */
+  fallbackLabels?: readonly string[],
 ): { ready: boolean; missing: string[] } {
   const selector = set(env, selectorKey)?.toLowerCase();
+  const missingOf = (alternative: readonly string[]) => alternative.filter((key) => !has(env, key));
   if (selector) {
-    const needed = perChoice[selector];
+    const alternatives = perChoice[selector];
     // An unknown selector makes the resolver throw; it is never ready.
-    if (!needed) return { ready: false, missing: [`${selectorKey}=${selector} is not a known choice`] };
-    const missing = needed.filter((key) => !has(env, key));
-    return { ready: missing.length === 0, missing };
+    if (!alternatives) return { ready: false, missing: [`${selectorKey}=${selector} is not a known choice`] };
+    const tried = alternatives.map(missingOf);
+    const closest = tried.find((missing) => missing.length === 0);
+    if (closest) return { ready: true, missing: [] };
+    // Name the alternative the account is closest to satisfying.
+    const nearest = tried.reduce((best, current) => (current.length < best.length ? current : best));
+    return { ready: false, missing: nearest };
   }
-  const missing = fallback.filter((key) => !has(env, key));
-  // Without a selector, any one configured key is enough.
-  return { ready: missing.length < fallback.length, missing: missing.length < fallback.length ? [] : [...fallback] };
+  if (fallback.some((alternative) => missingOf(alternative).length === 0)) return { ready: true, missing: [] };
+  const labels = fallbackLabels ?? fallback.flatMap((alternative) => alternative);
+  return { ready: false, missing: [...labels] };
 }
 
-const SEARCH_CHOICES: Record<string, readonly string[]> = {
-  firecrawl: ["FIRECRAWL_HOSTED_API_KEY"],
-  searxng: ["SEARXNG_URL"],
-  brave: ["BRAVE_SEARCH_API_KEY"],
-  tavily: ["TAVILY_API_KEY"],
-  exa: ["EXA_API_KEY"],
-  parallel: ["PARALLEL_API_KEY"],
-  "ai-gateway-exa": ["AI_GATEWAY_API_KEY"],
-  "ai-gateway-tako": ["AI_GATEWAY_API_KEY"],
-  "ai-gateway-parallel": ["AI_GATEWAY_API_KEY"],
-  "ai-gateway-perplexity": ["AI_GATEWAY_API_KEY"],
+const SEARCH_CHOICES: Record<string, Alternatives> = {
+  firecrawl: [["FIRECRAWL_HOSTED_API_KEY"]],
+  searxng: [["SEARXNG_URL"]],
+  brave: [["BRAVE_SEARCH_API_KEY"]],
+  tavily: [["TAVILY_API_KEY"]],
+  exa: [["EXA_API_KEY"]],
+  parallel: [["PARALLEL_API_KEY"]],
+  "ai-gateway-exa": [["AI_GATEWAY_API_KEY"]],
+  "ai-gateway-tako": [["AI_GATEWAY_API_KEY"]],
+  "ai-gateway-parallel": [["AI_GATEWAY_API_KEY"]],
+  "ai-gateway-perplexity": [["AI_GATEWAY_API_KEY"]],
   duckduckgo: [],
 };
 // Mirrors webSearchProvider()'s auto-chain restricted to what the provider
 // registry has enabled: a key whose registry entry is disabled (brave,
 // tavily, exa, parallel — card-backed or unverified) does not make search
 // ready, because the call would fail closed at the gate.
-const SEARCH_FALLBACK: readonly string[] = ["SEARXNG_URL", "FIRECRAWL_HOSTED_API_KEY"];
+const SEARCH_FALLBACK: Alternatives = [["SEARXNG_URL"], ["FIRECRAWL_HOSTED_API_KEY"]];
 const search = (env: Record<string, string | undefined>) =>
   selectorResolution(env, "SEARCH_PROVIDER", SEARCH_CHOICES, SEARCH_FALLBACK);
 
-const GENERATION_CHOICES: Record<string, readonly string[]> = {
-  gemini: ["GEMINI_API_KEY"],
-  mercury: ["MERCURY_API_KEY", "INCEPTION_API_KEY"],
-  openrouter: ["OPENROUTER_API_KEY"],
+const GENERATION_CHOICES: Record<string, Alternatives> = {
+  gemini: [["GEMINI_API_KEY"]],
+  // Either credential serves Mercury; one alone is enough.
+  mercury: [["MERCURY_API_KEY"], ["INCEPTION_API_KEY"]],
+  openrouter: [["OPENROUTER_API_KEY"]],
 };
 const generation = (env: Record<string, string | undefined>) =>
   selectorResolution(env, "GENERATION_PROVIDER", GENERATION_CHOICES, [
-    "MERCURY_API_KEY",
-    "GEMINI_API_KEY",
-    "OPENROUTER_API_KEY",
+    ["MERCURY_API_KEY"],
+    ["INCEPTION_API_KEY"],
+    ["GEMINI_API_KEY"],
+    ["OPENROUTER_API_KEY"],
   ]);
 
-const EMBEDDING_CHOICES: Record<string, readonly string[]> = {
-  openrouter: ["OPENROUTER_API_KEY"],
-  openai: ["OPENAI_API_KEY"],
+const EMBEDDING_CHOICES: Record<string, Alternatives> = {
+  openrouter: [["OPENROUTER_API_KEY"]],
+  openai: [["OPENAI_API_KEY"]],
 };
 const embeddings = (env: Record<string, string | undefined>) =>
-  selectorResolution(env, "EMBEDDING_PROVIDER", EMBEDDING_CHOICES, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]);
+  selectorResolution(env, "EMBEDDING_PROVIDER", EMBEDDING_CHOICES, [["OPENROUTER_API_KEY"], ["OPENAI_API_KEY"]]);
 
 const DEFINITIONS: readonly Definition[] = [
   {
@@ -164,7 +181,7 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "web-search-keyed",
     label: "Keyed web search",
-    watches: ["SEARCH_PROVIDER", ...SEARCH_FALLBACK],
+    watches: ["SEARCH_PROVIDER", ...SEARCH_FALLBACK.flatMap((alternative) => alternative)],
     // Mirrors webSearchProvider(). DuckDuckGo needs no key, so search itself works
     // unconfigured; this entry reports whether a keyed provider is in use, which is
     // what quota accounting depends on.
@@ -176,14 +193,16 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "generation",
     label: "Model generation",
-    watches: ["GENERATION_PROVIDER", "MERCURY_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY"],
+    // Mercury answers to either credential; INCEPTION_API_KEY is the same
+    // provider under its vendor name.
+    watches: ["GENERATION_PROVIDER", "MERCURY_API_KEY", "INCEPTION_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY"],
     // Mirrors generationProvider(): the selector wins outright; the fallback
     // prefers the Mercury trial grant, then the free Gemini key, then the paid
     // OpenRouter key.
     ready: (env) => generation(env).ready,
     missing: (env) => generation(env).missing,
     subject: "Drafting and classification that call a model are unavailable",
-    action: "set MERCURY_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY",
+    action: "set MERCURY_API_KEY (or INCEPTION_API_KEY), GEMINI_API_KEY or OPENROUTER_API_KEY",
   },
   {
     id: "embeddings",
