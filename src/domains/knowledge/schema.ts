@@ -154,66 +154,6 @@ export const artifactVersions = pgTable(
   ],
 );
 
-export const sittingCardRole = pgEnum("sitting_card_role", [
-  "created_here",
-  "referenced_here",
-  "revised_here",
-]);
-
-/*
- * A sitting is a timed writing session (plan 2026-10-29 §2). ended_at NULL =
- * open; multiple open sittings per workspace are allowed (§14.8). Ended
- * sittings reopen browse-only and are records: the domain refuses to delete
- * them (§15.8).
- */
-export const zettelSittings = pgTable(
-  "zettel_sittings",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    /** Optional at creation (§14.1): "Untitled sitting — name it later". */
-    topic: text("topic"),
-    tags: jsonb("tags").notNull().default([]),
-    sourceContext: text("source_context"),
-    closingReflection: text("closing_reflection"),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-    ...mutable,
-  },
-  (t) => [
-    index("zettel_sittings_workspace_idx").on(t.workspaceId, t.updatedAt),
-    // Partial index: the "which sittings are open" read never scans history.
-    index("zettel_sittings_open_idx").on(t.workspaceId).where(sql`ended_at is null`),
-  ],
-);
-
-/*
- * Join row: a card in a sitting with its role. Deleting a sitting cascades
- * only these rows - the artifacts survive. UNIQUE(sitting_id, artifact_id):
- * one card holds one role per sitting.
- */
-export const zettelSittingCards = pgTable(
-  "zettel_sitting_cards",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    sittingId: uuid("sitting_id")
-      .notNull()
-      .references(() => zettelSittings.id, { onDelete: "cascade" }),
-    artifactId: uuid("artifact_id")
-      .notNull()
-      .references(() => artifacts.id, { onDelete: "cascade" }),
-    position: integer("position").notNull().default(0),
-    roleInSitting: sittingCardRole("role_in_sitting").notNull(),
-    ...recorded,
-  },
-  (t) => [
-    uniqueIndex("zettel_sitting_cards_sitting_artifact_key").on(t.sittingId, t.artifactId),
-    index("zettel_sitting_cards_sitting_idx").on(t.sittingId, t.position),
-    index("zettel_sitting_cards_artifact_idx").on(t.artifactId),
-  ],
-);
-
 export const workingDrafts = pgTable(
   "working_drafts",
   {
@@ -1422,71 +1362,6 @@ export const documentRenameEvents = pgTable(
 );
 
 /*
- * Zettel cards and recall (Product Spec, "Zettel Cards and recall"). A card
- * is generated from a note or a claim, is reviewed before it circulates, and
- * always cites its source: artifactId is the note or zettel it came from, so
- * deleting the source cascades the card - an unsourced card must not survive
- * its source, the same honesty rule as claim_evidence.
- *
- * Review is retrieval, not recognition: a prompt and an answer, no options.
- * The spec's state list (proposed, scheduled, due, answered-correctly,
- * answered-wrong, suspended, retired) maps onto columns rather than one
- * enum: `state` holds proposed/scheduled/suspended/retired, "due" is
- * scheduled with dueAt <= now (derived, never stored), and
- * answered-correctly/answered-wrong is lastOutcome on a scheduled card.
- *
- * Scheduling was owned by a module that no longer exists: dueAt is the queue
- * key, and nothing in the app writes these tables any more.
- */
-export const cardState = pgEnum("card_state", ["proposed", "scheduled", "suspended", "retired"]);
-export const cardReviewOutcome = pgEnum("card_review_outcome", ["correct", "wrong"]);
-
-export const cards = pgTable(
-  "cards",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    prompt: text("prompt").notNull(),
-    answer: text("answer").notNull(),
-    /**
-     * The note or zettel this card cites. Nullable + set-null on source
-     * deletion: a card and its review history survive the source going away;
-     * the citation lives on in sourceTitle. An archived source is handled in
-     * the queries (out of the queue, still listed, marked) - not by unlinking.
-     */
-    artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "set null" }),
-    /**
-     * Denormalized snapshot of the source's title, taken when the card is
-     * proposed. This is what "a card always shows me where it came from"
-     * degrades to when the source is deleted: the title survives the note.
-     * Retention tradeoff, named: deleting a note leaves its title (not its
-     * content) on cards that cited it; retiring the card removes the copy.
-     */
-    sourceTitle: text("source_title").notNull(),
-    /** The claim inside the source, when the card tests one claim specifically. */
-    // A card outlives the claim it was generated from: deleting the claim
-    // must not silently cascade the card and its review history away.
-    claimId: uuid("claim_id").references(() => claims.id, { onDelete: "set null" }),
-    state: cardState("state").notNull().default("proposed"),
-    lastOutcome: cardReviewOutcome("last_outcome"),
-    /** Null while proposed or suspended: the card is outside the queue. */
-    dueAt: timestamp("due_at", { withTimezone: true }),
-    intervalDays: integer("interval_days").notNull().default(0),
-    easeFactor: real("ease_factor").notNull().default(2.5),
-    reviewCount: integer("review_count").notNull().default(0),
-    correctCount: integer("correct_count").notNull().default(0),
-    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
-    ...mutable,
-  },
-  (t) => [
-    // The review queue: what is due in this workspace right now.
-    index("cards_due_idx").on(t.workspaceId, t.dueAt).where(sql`state = 'scheduled'`),
-    index("cards_workspace_state_idx").on(t.workspaceId, t.state),
-    index("cards_artifact_idx").on(t.artifactId),
-  ],
-);
-
-/*
  * Margin comments on a note (Notion-feel, owner direction 2026-10-28). A
  * comment belongs to the note as a whole; resolved is a visible state, not a
  * deletion. The note is an artifact row (kind note/zettel), so the FK points
@@ -1508,61 +1383,6 @@ export const noteComments = pgTable(
   (t) => [
     index("note_comments_note_idx").on(t.workspaceId, t.noteId, t.createdAt),
     check("note_comments_body_check", sql`length(btrim(body)) between 1 and 2000`),
-  ],
-);
-
-/*
- * Append-only attempt history. The card row is the projection; this is the
- * record "twelve cards in four minutes" is counted from, and the evidence
- * behind any per-topic weakness readout.
- */
-export const cardReviews = pgTable(
-  "card_reviews",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    cardId: uuid("card_id")
-      .notNull()
-      .references(() => cards.id, { onDelete: "cascade" }),
-    outcome: cardReviewOutcome("outcome").notNull(),
-    /** What the person said before the reveal, when they typed it. */
-    responseText: text("response_text"),
-    durationMs: integer("duration_ms"),
-    ...recorded,
-  },
-  (t) => [
-    index("card_reviews_card_idx").on(t.cardId, t.createdAt),
-    index("card_reviews_workspace_idx").on(t.workspaceId, t.createdAt),
-  ],
-);
-/*
- * Areas (Product Spec, "Areas and progress"): declared by the person, never
- * inferred. An area is a name plus the note tags it covers; effort and
- * knowledge confidence are computed from live content at read time, so the
- * table stores no counters to drift. Spec rules honored by construction:
- * areas are declared, not discovered; nothing here averages effort and
- * confidence into a single score.
- */
-export const areas = pgTable(
-  "areas",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    name: text("name").notNull(),
-    /** The note tags this area covers (normalized like artifacts.tags). */
-    tags: jsonb("tags").$type<string[]>().notNull().default([]),
-    createdBy: uuid("created_by"),
-    updatedBy: uuid("updated_by"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    version: integer("version").notNull().default(1),
-  },
-  (t) => [
-    // Live names are unique per workspace, case-insensitively; archiving
-    // releases the name.
-    uniqueIndex("areas_workspace_name_key").on(t.workspaceId, sql`lower(${t.name})`).where(sql`archived_at is null`),
-    index("areas_workspace_idx").on(t.workspaceId, t.archivedAt),
   ],
 );
 
