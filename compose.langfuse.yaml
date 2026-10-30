@@ -188,12 +188,20 @@ services:
     command: >
       --requirepass langfuse
       --maxmemory-policy noeviction
+    environment:
+      # redis-cli reads the password from the environment, keeping it out of
+      # ps-visible healthcheck process arguments.
+      REDISCLI_AUTH: langfuse
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - langfuse_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # redis-cli exits 0 even on server error replies, so exit status alone
+      # cannot detect an auth mismatch — the reply itself must be exactly
+      # PONG. grep -qx fails on NOAUTH/WRONGPASS text, empty output, and
+      # partial matches (false-healthy pitfall: langgenius/dify#24806).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
