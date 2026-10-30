@@ -212,9 +212,12 @@ for (const vp of VIEWPORTS) {
   expect(settled?.provider_object_id).toMatch(/^fixture-design-/);
 
   // Soft-nav refresh pin: the queue is still mounted from the import_started
-  // reload above. Switching the filter re-renders from the server, and the
+  // reload above. Switching the status tab re-renders from the server, and the
   // reconciled terminal truth must replace the stale pre-settle state.
-  await page.getByLabel("Filter by status").selectOption("all");
+  // (PR #358 replaced the status select with segmented tabs; the tab link is
+  // the filter now.)
+  await page.getByRole("link", { name: /^All statuses/ }).click();
+  await expect(page).toHaveURL(/status=all/);
   const settledCard = page.locator("section").filter({ hasText: accountAlias! });
   await expect(settledCard.getByText(`Import design brief "${briefTitle}"`)).toBeVisible({ timeout: 30_000 });
   await expect(settledCard.getByText("Imported to Canva.")).toBeVisible({ timeout: 30_000 });
