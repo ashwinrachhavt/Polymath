@@ -70,7 +70,8 @@ ones (`id`, `baseUrl`, `keyEnv`, `label`). Interim entry: direct OpenAI
 (`baseUrl: https://api.openai.com/v1`, `keyEnv: OPENAI_API_KEY`) — a
 GPT-class synthesis model. When the LiteLLM/Hive proxy is hosted, entries
 point at its base URL with the proxy key instead; swapping is a catalog-row
-edit. The frozen model guard (`modelById` throwing on an uncatalogued id)
+edit. The frozen model guard (`modelById` returns null for an uncatalogued
+id; the `alfredModel` call site throws rather than substitute)
 applies unchanged: a run's frozen model is never silently substituted.
 
 ### 1c. Routing: `auto()` allowlist and spend cap
@@ -78,12 +79,15 @@ applies unchanged: a run's frozen model is never silently substituted.
 `MODEL_ROUTING_OPTIONS` (evals/axiom-policy.ts) gains the strong-model
 entries with descriptions the decider can judge ("routine drafting" vs
 "multi-step synthesis"). `ROUTING_FALLBACK` stays a free-tier model. A
-per-run spend cap (million-token budget on the run row, enforced where the
-run's spend is already recorded) bounds strong-model cost; exceeding it
-fails the run loudly rather than downgrading silently — the same contract
-as the frozen model guard. When the LiteLLM proxy arrives, its own budget
-tracking becomes the enforcement point and the app-side cap becomes a
-second line of defense.
+per-run spend cap — the USD-denominated `perRunCeilingUsd` ceiling already
+enforced by `reserveSpend` and settled on the run row — bounds strong-model
+cost; exceeding it fails the run loudly ("Spend ceiling exceeded",
+engine.ts:236) rather than downgrading silently — the same contract as the
+frozen-model guard (the throw lives in `alfredModel`, eve/alfred/agent/agent.ts:67;
+`modelById` returns null for an uncatalogued id and the call site refuses
+the run rather than substituting). When the LiteLLM proxy arrives, its own
+budget tracking becomes the enforcement point and the app-side cap becomes
+a second line of defense.
 
 ## Phase 2 — Eval script and first expansion (this PR)
 

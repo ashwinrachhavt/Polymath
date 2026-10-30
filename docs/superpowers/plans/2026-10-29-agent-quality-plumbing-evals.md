@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Eval runs are **serial**: `maxConcurrency: 1` in `eve/alfred/evals/evals.config.ts`. Never raise it; free-tier Gemini 429s under burst.
-- The frozen-model contract: a run's frozen model is never silently substituted (`modelById` throws on an uncatalogued id).
+- The frozen-model contract: a run's frozen model is never silently substituted (`modelById` returns null on an uncatalogued id; the `alfredModel` call site throws).
 - Evals must never touch production data: every authored tool stays stubbed via `quietStubs()`; the network guard (`installEvalGuard`) is installed per test and restored in `finally`.
 - Catalog entries without a live probe are marked `"listing <date> …"` in `probe` and only surface when their key is set (repo convention, `models.ts:14-17`).
 - A failing spend reservation fails the run loudly — `"Spend ceiling exceeded"` (`engine.ts:233-237`); no silent downgrade.
