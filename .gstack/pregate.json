@@ -63,6 +63,14 @@
     "tests/integration/**",
     "tests/db/**"
   ],
+  "allowlist": [
+    {
+      "finding": "env.kv",
+      "paths": ["src/app/(workspace)/command-center/day/**/page.tsx", "src/domains/daybook/queries.ts"],
+      "pattern": "(`(created|captured|changed|session|meeting)-\\$\\{[a-z.]+\\}`,?|\\{row\\.key\\}|Pick<AuthContext, \"workspaceId\" \\| \"userId\">,)",
+      "reason": "React list-key props, a row.key render and a typed function signature: the env.kv heuristic matches the words key/userId plus entropy, not credentials. No secret-shaped values exist in these files."
+    }
+  ],
   "empty_lanes": [
     ".env.example",
     "skills-lock.json"

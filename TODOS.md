@@ -18,7 +18,6 @@
 ## Ideas / Sittings (zettels)
 
 **Priority:** P1
-**Priority:** P1
 - [ ] commitDecompositionAction trusts the client's analysis payload (z.unknown cast) — re-validate server-side (cap, verbatim spans, bounded decisions array) or an attacker mints unbounded tasks. *(from adversarial review, 2026-10-30)*
 - [ ] HTTP-level test for the create-stream route: reconnect cursor semantics, foreign-workspace 404 parity, payload→event replay filtering. *(from /ship coverage + plan audits, 2026-10-30)*
 - [ ] Ambient panel Retry is state-reset only — wire it to re-fire the failed stage (§15.3 recovery contract), plus its test. *(from plan audit, 2026-10-30)*

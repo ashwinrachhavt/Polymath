@@ -7,6 +7,9 @@ import { pinArtifactAction, unpinArtifactAction } from "./actions";
  * Pin controls for one day page. The daybook has one write, so the island
  * stays this small: pin an artifact to the day, or remove a pin. Refused
  * writes say so — never a fake saved state (agents/frontend.md).
+ *
+ * With one candidate the dropdown collapses to the mockup's inline "Keep"
+ * button: one click, one target. With several it stays a picker.
  */
 export function PinControls({
   localDate,
@@ -20,6 +23,32 @@ export function PinControls({
   const [artifactId, setArtifactId] = useState("");
 
   if (!candidates.length) return null;
+  const single = candidates.length === 1 ? candidates[0] : null;
+
+  function pin(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await pinArtifactAction({ localDate, artifactId: id });
+      if (!result.ok) setError(result.error);
+      else setArtifactId("");
+    });
+  }
+
+  if (single) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => pin(single.id)}
+          className="-my-1 inline-flex items-center px-1.5 py-1 text-xs text-muted-foreground hover:underline disabled:opacity-50"
+        >
+          {pending ? "Pinning…" : "Keep"}
+        </button>
+        {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      </span>
+    );
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -41,12 +70,7 @@ export function PinControls({
         disabled={!artifactId || pending}
         onClick={() => {
           if (!artifactId) return;
-          setError(null);
-          startTransition(async () => {
-            const result = await pinArtifactAction({ localDate, artifactId });
-            if (!result.ok) setError(result.error);
-            else setArtifactId("");
-          });
+          pin(artifactId);
         }}
         className="text-[13px] rounded-md border border-border px-2 py-1 disabled:opacity-50"
       >
