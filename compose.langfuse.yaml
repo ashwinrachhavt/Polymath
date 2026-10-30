@@ -1,0 +1,269 @@
+# Self-hosted Langfuse — the trace store for the LangGraph eval loop. This is
+# a companion stack, never loaded by `docker compose up` defaults: it has its
+# own compose project ("polymath-langfuse") and its own Postgres, so the app
+# stack in compose.yaml and the app database are untouched — the same
+# isolation the Firecrawl stack got. Load it explicitly:
+#
+#   make langfuse-up      # = docker compose -f compose.langfuse.yaml up -d
+#   make langfuse-logs
+#   make langfuse-down
+#
+# Service set, image tags, and env names follow the official self-hosting
+# reference (langfuse.com/self-hosting/docker-compose and docker-compose.yml
+# on langfuse/langfuse @ main, retrieved 2026-10-30): langfuse-web and
+# langfuse-worker over their own Postgres, ClickHouse, MinIO, and Redis.
+# Health endpoints per langfuse.com/self-hosting/configuration/
+# health-readiness-endpoints (the images ship wget, not curl — probe
+# 127.0.0.1, not localhost).
+#
+# Local-only stance, same as the app db's axiom/axiom: the credentials below
+# are placeholders for a loopback-only stack, not secrets — regenerate with
+# `openssl rand -hex 32` before exposing anything beyond 127.0.0.1. Outbound
+# telemetry is off; every published port is loopback-only. Keys and boot
+# order: docs/langfuse-local.md.
+
+name: polymath-langfuse
+
+services:
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 2
+    depends_on: &langfuse-depends-on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3030:3030"
+    environment: &langfuse-env
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      # Headless initialization (langfuse.com/self-hosting/administration/
+      # headless-initialization): the first boot they exist, then it is a no-op.
+      # Without it `make langfuse-up` would hand out a stack you have to sign up
+      # to in a browser before the harness can read a single trace. These are
+      # fixed loopback-only placeholders, like SALT above — regenerate before
+      # exposing the stack, and do not double-quote (langfuse#3398).
+      LANGFUSE_INIT_ORG_ID: polymath-local
+      LANGFUSE_INIT_ORG_NAME: Polymath local
+      LANGFUSE_INIT_PROJECT_ID: polymath-evals
+      LANGFUSE_INIT_PROJECT_NAME: Polymath evals
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-polymath-local
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-polymath-local
+      LANGFUSE_INIT_USER_EMAIL: polymath@example.com
+      LANGFUSE_INIT_USER_NAME: Polymath local
+      LANGFUSE_INIT_USER_PASSWORD: polymath-local
+      SALT: local-only-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000" # local-only; regenerate: openssl rand -hex 32
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
+      # Server-side media fetch (worker ingestion) resolves through the compose
+      # network; the web service overrides the browser-facing endpoint below.
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      # Batch export stays off; the block remains so flipping it on just works.
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: langfuse
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: exports/
+      LANGFUSE_S3_BATCH_EXPORT_REGION: auto
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: http://127.0.0.1:9090
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: langfuse
+      REDIS_TLS_ENABLED: "false"
+      NEXTAUTH_URL: http://localhost:3100
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    networks:
+      - langfuse
+
+  # A 1g limit made Node derive a 512 MB heap and the boot itself OOM'd
+  # (`Reached heap limit` at ~500 MB), so the heap is stated explicitly: the
+  # point of the cap is to stop unbounded growth, not to squeeze the boot.
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    restart: unless-stopped
+    mem_limit: 1536m
+    cpus: 2
+    depends_on: *langfuse-depends-on
+    ports:
+      - "127.0.0.1:3100:3000" # 3000 is next dev's; the UI is 127.0.0.1:3100
+    environment:
+      <<: *langfuse-env
+      NODE_OPTIONS: --max-old-space-size=1024
+      NEXTAUTH_SECRET: local-only-nextauth-secret # local-only; regenerate: openssl rand -hex 32
+      # The browser uploads media through the published host port; the server
+      # reaches MinIO directly over the compose network.
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://127.0.0.1:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://langfuse-minio:9000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/public/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    networks:
+      - langfuse
+
+  # Langfuse's own Postgres — never the app database. Host port 5433; the app
+  # db in compose.yaml owns 5432.
+  langfuse-postgres:
+    image: docker.io/postgres:17
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - langfuse
+
+  # ClickHouse is the whole stack's cost driver: it sizes its thread pool from
+  # the host CPU count (15 here on a 16-core Mac) while the vm only has ~8 GiB,
+  # so a single trace query forks enough threads to starve the box and time out.
+  # These settings are the difference between a usable local trace store and a
+  # stack that answers in 24ms but cannot run a query. `max_threads` and
+  # `max_server_memory_usage` are startup settings (env var form); the rest are
+  # per-query ceilings, which the server exports to new connections.
+  langfuse-clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    mem_limit: 1g
+    cpus: 2
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse
+      # 15 cores' worth of parallel forks is more memory than the vm has.
+      MAX_THREADS: 4
+      MAX_SERVER_MEMORY_USAGE: 1000000000
+      # One trace query was hitting the 35s public-API ceiling; the answer is
+      # smaller working sets (above), but the ceiling should leave room for them.
+      MAX_EXECUTION_TIME: 60
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - "127.0.0.1:8123:8123"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    networks:
+      - langfuse
+
+  # MinIO seeds the `langfuse` bucket before the server starts.
+  langfuse-minio:
+    image: cgr.dev/chainguard/minio
+    restart: unless-stopped
+    mem_limit: 384m
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      # Upstream's own defaults (docker-compose.yml @ main, retrieved
+      # 2026-10-30); MinIO requires the root password to be at least 8 chars.
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret # CHANGEME
+    ports:
+      - "127.0.0.1:9090:9000"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - langfuse
+
+  langfuse-redis:
+    image: docker.io/redis:7
+    restart: unless-stopped
+    mem_limit: 256m
+    # 128m is far more than the queue needs; saving to disk on every write is
+    # the default for a local cache that never needs to survive a restart.
+    command: >
+      --requirepass langfuse
+      --maxmemory 128mb
+      --maxmemory-policy noeviction
+      --save ""
+      --appendonly no
+    environment:
+      # redis-cli reads the password from the environment, keeping it out of
+      # ps-visible healthcheck process arguments.
+      REDISCLI_AUTH: langfuse
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      # redis-cli exits 0 even on server error replies, so exit status alone
+      # cannot detect an auth mismatch — the reply itself must be exactly
+      # PONG. grep -qx fails on NOAUTH/WRONGPASS text, empty output, and
+      # partial matches (false-healthy pitfall: langgenius/dify#24806).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - langfuse
+
+networks:
+  langfuse:
+    driver: bridge
+
+volumes:
+  langfuse_postgres_data:
+    driver: local
+  langfuse_clickhouse_data:
+    driver: local
+  langfuse_clickhouse_logs:
+    driver: local
+  langfuse_minio_data:
+    driver: local
+  langfuse_redis_data:
+    driver: local
