@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EvalEnvironmentViolation, assertEvalEnvironment } from "../../eve/alfred/evals/stubs";
+import { EvalEnvironmentViolation, assertEvalEnvironment } from "../../eve/polymath/evals/stubs";
 
 describe("assertEvalEnvironment", () => {
   it("allows exactly the declared eval keys", () => {

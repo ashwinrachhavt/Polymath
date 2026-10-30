@@ -11,10 +11,10 @@
 # stack). Exit 0 iff every eval passed after retries, 1 otherwise.
 #
 # Environment: before invoking eve, every credential-shaped variable (same
-# predicate as the eval gate in eve/alfred/evals/stubs.ts — name ends with
+# predicate as the eval gate in eve/polymath/evals/stubs.ts — name ends with
 # _KEY/_TOKEN/_SECRET, contains API_KEY, or starts with COMPOSIO_AUTH_CONFIG_)
 # that is not on ALLOWED_EVAL_ENV is exported as empty, from both the
-# inherited shell and the keys defined in eve/alfred/.env.local. eve's runner
+# inherited shell and the keys defined in eve/polymath/.env.local. eve's runner
 # auto-loads .env.local into process.env, so clearing the parent shell is not
 # enough; empty string counts as unset for the gate's isSet(). The allowlisted
 # keys (GEMINI_API_KEY, GEMINI_AGENT_MODEL, OPENAI_API_KEY) are re-exported
@@ -27,7 +27,7 @@ set -euo pipefail
 RETRY_SLEEP="${RETRY_SLEEP:-60}" # seconds between 429 retries (tests use 0)
 MAX_ATTEMPTS=3                   # 1 initial try + 2 retries
 
-cd "$(dirname "$0")/../eve/alfred"
+cd "$(dirname "$0")/../eve/polymath"
 
 COMMENT_MARKER="<polymath-eval-results>"
 ALLOWED=" GEMINI_API_KEY GEMINI_AGENT_MODEL OPENAI_API_KEY "
