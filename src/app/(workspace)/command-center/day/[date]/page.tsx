@@ -38,9 +38,23 @@ function kindPill(kind: string): string {
   }
 }
 
-function formatTime(at: Date | null): string {
+/*
+ * Row times read in the owner's timezone — the same clock the day's bounds
+ * are derived in. toISOString would print UTC, so a 23:00 local event shows
+ * as the wrong half of the record for anyone west of Greenwich.
+ */
+function formatTime(at: Date | null, timezone: string): string {
   if (!at) return "";
-  return at.toISOString().slice(11, 16);
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: timezone,
+    }).format(at);
+  } catch {
+    return at.toISOString().slice(11, 16);
+  }
 }
 
 /*
@@ -68,9 +82,9 @@ function WeekStrip({ date, days }: { date: string; days: Array<{ date: string; e
               key={d.date}
               href={`/command-center/day/${d.date}`}
               aria-current={active ? "date" : undefined}
-              className={`flex flex-col items-center gap-1 border-border px-2 py-4 text-center transition-colors outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent max-sm:[&:nth-child(n+2)]:border-l [&:nth-child(n+2)]:border-l ${active ? "bg-sidebar-accent" : ""}`}
+              className={`flex flex-col items-center gap-1 border-border px-2 py-4 text-center transition-colors outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent [&:nth-child(n+2)]:border-l ${active ? "bg-sidebar-accent" : ""}`}
             >
-              <span className={`text-[11px] font-medium uppercase tracking-wide ${active ? "" : future ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+              <span className={`text-[11px] font-medium uppercase tracking-wide ${active ? "" : future ? "text-muted-foreground/80" : "text-muted-foreground"}`}>
                 {weekday(d.date)}
               </span>
               <span className={`text-[15px] font-semibold tabular-nums ${future ? "text-muted-foreground" : ""}`}>
@@ -111,7 +125,7 @@ function WeekStrip({ date, days }: { date: string; days: Array<{ date: string; e
  * title, detail. The "Keep" pin control rides inline on rows that can pin
  * (the mockup's Keep on the record), replacing the old keep-something panel.
  */
-function Timeline({ rows, localDate }: { rows: TimelineRow[]; localDate: string }) {
+function Timeline({ rows, localDate, timezone }: { rows: TimelineRow[]; localDate: string; timezone: string }) {
   if (!rows.length) return null;
   return (
     <section aria-label="The record" className="panel rounded-xl px-5 py-4">
@@ -130,7 +144,7 @@ function Timeline({ rows, localDate }: { rows: TimelineRow[]; localDate: string 
             <span aria-hidden className={`relative z-10 mt-1.5 size-[11px] shrink-0 rounded-full border-2 border-background ${row.kind === "Captured" ? "bg-info" : row.kind === "Created" ? "bg-success" : row.kind === "Session" ? "bg-foreground/70" : "bg-muted-foreground/70"}`} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="w-10 shrink-0 text-[12px] tabular-nums text-muted-foreground">{formatTime(row.at)}</span>
+                <span className="w-10 shrink-0 text-[12px] tabular-nums text-muted-foreground">{formatTime(row.at, timezone)}</span>
                 <span className={`pill ${kindPill(row.kind)}`}>{row.kind}</span>
                 {row.kind !== "Captured" ? (
                   <span className="min-w-0 flex-1 break-words text-[13px] font-medium">{row.title}</span>
@@ -219,7 +233,7 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           {timeline.length ? (
-            <Timeline rows={timeline} localDate={date} />
+            <Timeline rows={timeline} localDate={date} timezone={day.timezone} />
           ) : (
             <Empty
               title={`Nothing recorded on ${label}`}
@@ -229,7 +243,7 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
 
           {day.meetings.length ? (
             <Panel title="Meetings" description="Scheduled time this day.">
-              <DayItemRows items={day.meetings} />
+              <DayItemRows items={day.meetings} timezone={day.timezone} />
             </Panel>
           ) : null}
         </div>
@@ -313,13 +327,13 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
   );
 }
 
-function DayItemRows({ items }: { items: Array<{ id: string; title: string; at: Date | null }> }) {
+function DayItemRows({ items, timezone }: { items: Array<{ id: string; title: string; at: Date | null }>; timezone: string }) {
   return (
     <div className="divide-y divide-border">
       {items.map((item) => (
         <div key={item.id} className="flex items-baseline justify-between gap-3 py-2 first:pt-0">
           <span className="text-[13px]">{item.title}</span>
-          <span className="text-xs text-muted-foreground">{item.at?.toISOString().slice(11, 16)}</span>
+          <span className="text-xs text-muted-foreground">{formatTime(item.at, timezone)}</span>
         </div>
       ))}
     </div>

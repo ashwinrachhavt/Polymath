@@ -32,7 +32,9 @@ export function buildTimeline(day: DayPage): TimelineRow[] {
       kind: "Created",
       title: item.title,
       detail: item.kind ? item.kind.charAt(0).toUpperCase() + item.kind.slice(1) : undefined,
-      artifactId: item.kind === "artifact" || item.kind === "note" ? item.id : undefined,
+      // artifacts.kind is a pgEnum (note/zettel/document/...); every value is
+      // pinnable — the day pin binds any artifact row.
+      artifactId: PINNABLE_KINDS.has(item.kind) ? item.id : undefined,
     });
   }
   for (const item of day.workedOn) {
@@ -52,3 +54,6 @@ export function buildTimeline(day: DayPage): TimelineRow[] {
   }
   return rows.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
 }
+
+/** Created rows the timeline offers a Keep pin for: the kinds a pin can bind. */
+const PINNABLE_KINDS = new Set(["note", "document", "zettel", "memo", "report", "diagram", "transcript", "deck", "infographic", "other"]);

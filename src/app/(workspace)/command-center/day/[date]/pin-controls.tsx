@@ -41,7 +41,7 @@ export function PinControls({
           type="button"
           disabled={pending}
           onClick={() => pin(single.id)}
-          className="text-xs text-muted-foreground hover:underline disabled:opacity-50"
+          className="-my-1 inline-flex items-center px-1.5 py-1 text-xs text-muted-foreground hover:underline disabled:opacity-50"
         >
           {pending ? "Pinning…" : "Keep"}
         </button>

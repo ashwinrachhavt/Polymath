@@ -55,20 +55,22 @@ describe("buildTimeline", () => {
     expect(rows[1].key).toBe("created-n1");
   });
 
-  it("marks only artifact and note created rows as pinnable", () => {
+  it("marks every real artifact kind as pinnable", () => {
     const rows = buildTimeline(
       day({
         created: [
-          { id: "a1", kind: "artifact", title: "an artifact", at: at("2026-10-29T09:00:00Z") },
           { id: "n1", kind: "note", title: "a note", at: at("2026-10-29T09:01:00Z") },
-          { id: "o1", kind: "task", title: "a task", at: at("2026-10-29T09:02:00Z") },
+          { id: "d1", kind: "document", title: "a document", at: at("2026-10-29T09:02:00Z") },
+          { id: "z1", kind: "zettel", title: "a zettel", at: at("2026-10-29T09:03:00Z") },
         ],
-        captured: [{ id: "c1", kind: "text", title: "a capture", at: at("2026-10-29T09:03:00Z") }],
-        workedOn: [{ id: "w1", kind: "note.snapshot", title: "a change", at: at("2026-10-29T09:04:00Z") }],
+        captured: [{ id: "c1", kind: "text", title: "a capture", at: at("2026-10-29T09:04:00Z") }],
+        workedOn: [{ id: "w1", kind: "note.snapshot", title: "a change", at: at("2026-10-29T09:05:00Z") }],
       }),
     );
     const pinned = rows.filter((r) => r.artifactId).map((r) => r.key);
-    expect(pinned).toEqual(["created-a1", "created-n1"]);
+    // Captures and worked-on audit rows are not artifacts; every created
+    // artifact kind is.
+    expect(pinned).toEqual(["created-n1", "created-d1", "created-z1"]);
   });
 
   it("falls back to a generic session title when the subject is null", () => {
@@ -80,5 +82,38 @@ describe("buildTimeline", () => {
     expect(rows[0].kind).toBe("Session");
     expect(rows[0].title).toBe("Focus session");
     expect(rows[0].detail).toBe("30 min");
+  });
+
+  // Value: protects=the timeline's keys stay unique when two audit events hit
+  // the same subject in one day; fails_when=the worked-on row id ever reverts
+  // to the audit event's subject_id, colliding two Changed rows in one React
+  // list; why_new=the red-team review caught the collision the merge made
+  // load-bearing and no test exercised two same-subject events; seam=none;
+  // no_claim=none beyond protects.
+  it("keeps worked-on rows distinct for two events on the same subject", () => {
+    const rows = buildTimeline(
+      day({
+        workedOn: [
+          { id: "ev-1", kind: "note.renamed", title: "renamed", at: at("2026-10-29T10:00:00Z") },
+          { id: "ev-2", kind: "note.snapshot", title: "snapshotted", at: at("2026-10-29T10:05:00Z") },
+        ],
+      }),
+    );
+    const keys = rows.map((r) => r.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // Value: protects=the documented tie contract — a capture sorts ahead of a
+  // same-instant change via sort stability; fails_when=the push order or the
+  // comparator reshuffles equal keys; why_new=the merge comment promises this
+  // order and nothing pinned it; seam=none; no_claim=none beyond protects.
+  it("keeps a capture ahead of a change recorded at the same second", () => {
+    const rows = buildTimeline(
+      day({
+        captured: [{ id: "c1", kind: "text", title: "cap", at: at("2026-10-29T10:00:00Z") }],
+        workedOn: [{ id: "w1", kind: "capture.converted", title: "conv", at: at("2026-10-29T10:00:00Z") }],
+      }),
+    );
+    expect(rows.map((r) => r.key)).toEqual(["captured-c1", "changed-w1"]);
   });
 });

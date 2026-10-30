@@ -38,6 +38,8 @@ export type DayItem = {
   kind: string;
   title: string;
   at: Date | null;
+  /** Worked-on rows only: the audit event's subject, for record links. */
+  subjectId?: string;
 };
 
 export type DayPage = {
@@ -102,7 +104,8 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
     ) created on true
     left join lateral (
       select json_agg(json_build_object(
-        'id', ev.subject_id, 'kind', ev.subject_type, 'title', ev.summary, 'at', ev.created_at
+        'id', ev.id, 'kind', ev.subject_type, 'title', ev.summary, 'at', ev.created_at,
+        'subjectId', ev.subject_id
       ) order by ev.created_at desc) as items
       from audit_events ev
       where ev.workspace_id = ${auth.workspaceId}
@@ -190,6 +193,7 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
           kind: (r.kind as string) ?? "",
           title: (r.title as string) ?? "",
           at: r.at ? new Date(r.at as string) : null,
+          ...(r.subjectId ? { subjectId: r.subjectId as string } : {}),
         }))
       : [];
 
@@ -219,14 +223,24 @@ export { DAYBOOK_ACTIONS, DAYBOOK_ACTION_LIST };
  * Per-day activity counts for the week containing `localDate` (Mon–Sun, the
  * owner's timezone), plus the day of week the owner's week starts on. The
  * day page's week strip reads these; each cell links the day and shows a bar
- * weighted to the busiest day. One grouped query over the same sources the
- * day page derives from — artifacts, captures, audit — so a quiet record and
- * a busy one render the same strip honestly.
+ * weighted to the busiest day. One grouped query over the same four sources the
+ * day page derives from — artifacts, captures, audit events, focus sessions —
+ * so a quiet record and a busy one render the same strip honestly.
  */
 export async function getWeekActivity(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
   localDate: string,
 ): Promise<Array<{ date: string; events: number }>> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+    throw new Error(`Invalid local date: ${localDate}`);
+  }
+
+  // The week-strip action slice: the registry's workedOn + decided groups.
+  // Built in TypeScript from DAYBOOK_ACTIONS (never a literal here), so a
+  // registry rename moves this query in the same compile; only creations
+  // stay out — artifacts and captures already count those.
+  const workedActions = [...DAYBOOK_ACTIONS.workedOn, ...DAYBOOK_ACTIONS.decided];
+
   const rows = (await db.execute(sql`
     with ws as (
       select coalesce(
@@ -248,8 +262,15 @@ export async function getWeekActivity(
         interval '1 day'
       )::date as day
     ),
+    -- Each cell is bounded by the NEXT day's tz-derived start, the same
+    -- derivation getDayPage uses, so a 23-hour or 25-hour DST day counts
+    -- every local event exactly once; day_start + interval '1 day' would
+    -- drop (fall-back) or double-count (spring-forward) the edge hour.
     local_bounds as (
-      select day, (day::text)::timestamp at time zone (select tz from week) as day_start
+      select
+        day,
+        (day::text)::timestamp at time zone (select tz from week) as day_start,
+        (((day + interval '1 day')::date)::text)::timestamp at time zone (select tz from week) as day_end
       from days
     )
     select to_char(d.day, 'YYYY-MM-DD') as date,
@@ -262,23 +283,23 @@ export async function getWeekActivity(
         (select count(*) from artifacts a
           where a.workspace_id = ${auth.workspaceId}
             and a.created_at >= lb.day_start
-            and a.created_at < lb.day_start + interval '1 day'
+            and a.created_at < lb.day_end
             and a.archived_at is null)
       + (select count(*) from captures c
           where c.workspace_id = ${auth.workspaceId}
             and c.created_at >= lb.day_start
-            and c.created_at < lb.day_start + interval '1 day'
+            and c.created_at < lb.day_end
             and c.processing_state <> 'discarded')
       + (select count(*) from audit_events ev
           where ev.workspace_id = ${auth.workspaceId}
             and ev.actor_kind = 'user'
-            and ev.action in ('note.snapshot', 'note.ai.applied', 'note.tags_changed', 'note.renamed', 'task.completed', 'capture.converted', 'document.version_restored', 'opportunity.stage_changed', 'daybook.pin_added')
+            and ev.action in ${workedActions}
             and ev.created_at >= lb.day_start
-            and ev.created_at < lb.day_start + interval '1 day')
+            and ev.created_at < lb.day_end)
       + (select count(*) from focus_sessions fs
           where fs.workspace_id = ${auth.workspaceId}
             and fs.started_at >= lb.day_start
-            and fs.started_at < lb.day_start + interval '1 day')
+            and fs.started_at < lb.day_end)
       )::int as events
     from days d
     left join local_bounds lb on lb.day = d.day

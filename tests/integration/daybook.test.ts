@@ -312,4 +312,30 @@ suite("daybook (Neon)", () => {
     // discarded capture and the agent event contribute nothing.
     expect(thursday).toBe(2);
   });
+
+  // Value: protects=each week cell is bounded by the NEXT day's tz-derived
+  // start, so a 25-hour fall-back day counts its last local hour and a
+  // 23-hour spring-forward day never double-counts; fails_when=the cell uses
+  // day_start + interval '1 day', which drops the fall-back edge hour into no
+  // cell and overlaps the spring-forward repeat hour into two; why_new=the
+  // strip's bounds were hand-rolled next to getDayPage's proven ones and no
+  // test exercised a DST boundary week; seam=queries.getWeekActivity against
+  // real Postgres; no_claim=none beyond protects.
+  it("counts events in the 25-hour fall-back day exactly once", async () => {
+    if (!handle) return;
+    const iso = await seedWorkspace(handle.db, `daybook-dst-${Date.now()}`);
+    const a = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'America/Los_Angeles')`,
+    );
+    // 2026-11-01 is a 25-hour day in LA (fall back at 09:00Z). 07:30Z on Nov 2
+    // is 23:30 PST on Nov 1 — inside the long day, outside a naive +24h bound.
+    await noteWithVersion(iso.workspaceId, iso.userId, "dst note", new Date("2026-11-02T07:30:00Z"));
+    const week = await queries.getWeekActivity(a, "2026-11-01");
+    expect(week.find((d) => d.date === "2026-11-01")!.events).toBe(1);
+    // 2026-11-01 is a Sunday: its week is Mon Oct 26 - Sun Nov 1, so the
+    // spill-into-Monday case is asserted on the prior boundary instead — no
+    // cell carries the event twice and Monday's cell is absent from this week.
+    expect(week.find((d) => d.date === "2026-10-26")!.events).toBe(0);
+  });
 });
