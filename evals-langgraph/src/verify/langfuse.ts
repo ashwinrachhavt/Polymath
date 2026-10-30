@@ -43,8 +43,16 @@ type ObservationsPage = { data: ObservationRow[]; meta: { cursor?: string } };
 export type ObservationsApi = {
   api: { observations: { getMany: (request?: { sessionId?: string; fromStartTime?: string; toStartTime?: string; fields?: string; limit?: number; cursor?: string }) => Promise<ObservationsPage> } };
 };
-/** Builds the observations source from the local Langfuse credentials; throws before any run is driven when they are missing. */
+/** Builds the observations source from the local Langfuse credentials. The credential check is deferred to the first call so it surfaces from inside the graph's reconcile node (pending, exit 2) instead of aborting the CLI before cases score. */
 export function createLangfuseObservationSource(env: Readonly<Record<string, string | undefined>>, client?: ObservationsApi): ObservationSource {
+  let source: ObservationSource | undefined;
+  return async (query) => {
+    source ??= observationSourceWithCredentials(env, client);
+    return source(query);
+  };
+}
+
+function observationSourceWithCredentials(env: Readonly<Record<string, string | undefined>>, client?: ObservationsApi): ObservationSource {
   const publicKey = env.LANGFUSE_PUBLIC_KEY;
   const secretKey = env.LANGFUSE_SECRET_KEY;
   if (!publicKey || !secretKey) {

@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { loadTraceDataset, toEvents, toHeader, toTools, type TraceFetchers } from "../../evals-langgraph/src/verify/db";
 import { createLangfuseObservationSource, langfuseCheck, type ObservationsApi, type ObservationRow } from "../../evals-langgraph/src/verify/langfuse";
+import { lazyPostgresFetchers } from "../../evals-langgraph/src/cli";
 import { reportJson, renderConsoleTable } from "../../evals-langgraph/src/verify/report";
 import { createStdoutBuffer, sliceWindow } from "../../evals-langgraph/src/verify/stdout";
 import { createVerifyRun } from "../../evals-langgraph/src/verify/verify";
@@ -62,7 +63,7 @@ it("paginates observations-v2 by cursor and refuses to run without local keys", 
   expect(rows.map((row) => row.id)).toEqual(["a", "b"]);
   expect(requests[0]).toMatchObject({ sessionId: "wrun_session", fields: "core,basic,model,usage,trace_context" });
   expect(requests[1]).toMatchObject({ cursor: "next" });
-  expect(() => createLangfuseObservationSource({})).toThrow(ConfigurationError);
+  await expect(createLangfuseObservationSource({})({ sessionId: "wrun_session", fromStartTime: t0, toStartTime: t1 })).rejects.toThrow(ConfigurationError);
 });
 it("drives the six-group verification end to end and honors the workspace override", async () => {
   const fetchObservations = vi.fn(async () => [generation()]);
@@ -99,4 +100,13 @@ it("slices stdout windows inclusively and drops lines beyond the buffer limit", 
   buffer.record(t0, "kept-1");
   buffer.record(t1, "kept-2");
   expect(await buffer.capture(t0, t1)).toBe("kept-1\nkept-2");
+});
+
+it("defers Langfuse credential errors to the first observation fetch", async () => {
+  expect(() => createLangfuseObservationSource({})).not.toThrow();
+  await expect(createLangfuseObservationSource({})({ sessionId: "wrun_x", fromStartTime: t0, toStartTime: t1 })).rejects.toThrow(ConfigurationError);
+});
+it("defers the DATABASE_URL check to the first dataset load", async () => {
+  const lazy = lazyPostgresFetchers({});
+  await expect(lazy.loadDataset("run")).rejects.toThrow(/DATABASE_URL/);
 });
