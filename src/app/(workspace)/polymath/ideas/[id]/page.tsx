@@ -44,8 +44,22 @@ function blocksOf(content: NoteContent | null): Block[] {
       .filter(Boolean)
       .map((part) => ({ text: part.replace(/^>\s?/gm, ""), quote: part.startsWith(">") }));
   }
+  // A paragraph can hold more than one logical block: ideas created by
+  // commitDecomposition store the claim and its evidence in one node, with the
+  // evidence as a `> quote` line. Splitting on blank lines and reading a
+  // leading `>` keeps the evidence a quote instead of rendering the marker as
+  // part of the claim.
   return nodes
-    .map((node) => ({ text: textOf(node).trim(), quote: node.type === "blockquote" }))
+    .flatMap((node) =>
+      textOf(node)
+        .split(/\n{2,}/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const quote = node.type === "blockquote" || part.startsWith(">");
+          return { text: quote ? part.replace(/^>\s?/gm, "") : part, quote };
+        }),
+    )
     .filter((block) => block.text.length > 0);
 }
 

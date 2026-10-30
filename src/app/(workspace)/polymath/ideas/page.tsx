@@ -78,6 +78,9 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
     tag,
     limit: list.pageSize,
     offset: offsetFor(list.page, list.pageSize),
+    // The dictionary view reads alphabetically and the others newest-first;
+    // the ordering has to be the query's, or page 2 starts the alphabet again.
+    sort: view === "dictionary" ? "title" : "recent",
   });
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const allTags = await listNoteTags(auth);

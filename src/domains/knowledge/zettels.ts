@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
@@ -300,11 +300,16 @@ export type ZettelCardItem = {
  * The accepted zettel collection (ASH-184 views): cards read straight off the
  * artifact rows with their `source` edge joined in, so every view (cards,
  * table, timeline, dictionary) is a projection of the same store, never a
- * second one. Sorting belongs to the view; this read is newest-first.
+ * second one. Sorting belongs to the view — and belongs in the QUERY, not in
+ * the component: the read is paginated, so sorting the returned page puts an
+ * alphabetically earlier title on a later page and the list stops being in
+ * the order it claims.
  */
+export type ZettelSort = "recent" | "title";
+
 export async function pageZettelCards(
   auth: AuthContext,
-  input: { query?: string; tag?: string; limit: number; offset: number },
+  input: { query?: string; tag?: string; limit: number; offset: number; sort?: ZettelSort },
 ): Promise<{ items: ZettelCardItem[]; total: number }> {
   return withTransaction(async (tx) => {
     const filters = [eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel"), isNull(artifacts.archivedAt)];
@@ -333,7 +338,7 @@ export async function pageZettelCards(
         and(eq(artifactLinks.artifactId, artifacts.id), eq(artifactLinks.linkType, "source"), eq(artifactLinks.targetType, "document")),
       )
       .where(where)
-      .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+      .orderBy(...(input.sort === "title" ? [asc(artifacts.title), desc(artifacts.id)] : [desc(artifacts.updatedAt), desc(artifacts.id)]))
       .limit(input.limit)
       .offset(input.offset);
     const [totalRow] = await tx
