@@ -1435,9 +1435,8 @@ export const documentRenameEvents = pgTable(
  * scheduled with dueAt <= now (derived, never stored), and
  * answered-correctly/answered-wrong is lastOutcome on a scheduled card.
  *
- * Scheduling lives in recall-scheduler.ts, the only place intervals are
- * computed. dueAt is the queue key; a wrong answer comes back within the
- * sitting, a correct one grows the interval.
+ * Scheduling was owned by a module that no longer exists: dueAt is the queue
+ * key, and nothing in the app writes these tables any more.
  */
 export const cardState = pgEnum("card_state", ["proposed", "scheduled", "suspended", "retired"]);
 export const cardReviewOutcome = pgEnum("card_review_outcome", ["correct", "wrong"]);

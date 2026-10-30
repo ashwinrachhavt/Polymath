@@ -38,9 +38,6 @@ async function AreasSurface() {
         <Link href="/polymath/knowledge/zettels" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
           Zettels
         </Link>
-        <Link href="/polymath/knowledge/cards" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
-          Cards
-        </Link>
         <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">
           Areas
         </span>

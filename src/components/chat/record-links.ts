@@ -17,7 +17,6 @@ export const RECORD_KINDS = [
   "run",
   "thread",
   "zettel",
-  "card",
   "event",
   "contact",
   "company",
@@ -40,7 +39,6 @@ const LABELS: Partial<Record<RecordKind, string>> = {
   run: "Run",
   thread: "Thread",
   zettel: "Zettel",
-  card: "Card",
   event: "Event",
   contact: "Contact",
   company: "Company",
@@ -66,7 +64,6 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
   run: (id) => `/polymath/${id}`,
   thread: (id) => `/command-center/conversations/${id}`,
   zettel: () => "/polymath/knowledge/zettels",
-  card: () => "/polymath/knowledge/cards",
   event: () => "/calendar",
   contact: () => "/command-center/relationships/contacts",
   company: () => "/command-center/relationships/companies",
@@ -107,13 +104,11 @@ const KEY_KINDS: Record<string, RecordKind> = {
   runs: "run",
   threads: "thread",
   zettels: "zettel",
-  cards: "card",
   events: "event",
   contacts: "contact",
   companies: "company",
   people: "person",
   opportunities: "opportunity",
-  links: "card",
 };
 
 export function asRecordReference(entry: unknown, fallbackKind?: RecordKind): RecordReference | null {

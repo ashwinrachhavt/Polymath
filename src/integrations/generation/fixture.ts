@@ -43,16 +43,6 @@ function writingAnswer(): string {
   });
 }
 
-function learningPathAnswer(): string {
-  return JSON.stringify({
-    pathTitle: "Understanding distributed consensus",
-    overview: "Start with why agreement is hard, learn Raft's shape, then drill the terms.",
-    notes: [{ title: "Why consensus is hard", markdown: "Networks drop and delay messages; nodes crash. Agreement must survive both." }],
-    practiceTasks: [{ title: "Sketch Raft's election on paper", description: "No notes, ten minutes." }],
-    cards: [{ prompt: "What does a quorum prevent?", answer: "Two leaders deciding differently at the same time." }],
-  });
-}
-
 
 function companyProfileAnswer(): string {
   return JSON.stringify({
@@ -108,7 +98,6 @@ function answerFor(system: string): string {
   if (system.includes("debrief a meeting transcript")) return debriefAnswer();
   if (system.includes("meeting prep report")) return prepAnswer();
   if (system.includes("long-form writing")) return writingAnswer();
-  if (system.includes("learning goal")) return learningPathAnswer();
   if (system.includes("company profile card set")) return companyProfileAnswer();
   if (system.includes("person profile card set")) return personProfileAnswer();
   if (system.includes("Linear issue proposal")) return linearIssueAnswer();
