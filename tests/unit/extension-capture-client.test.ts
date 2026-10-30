@@ -264,7 +264,7 @@ async function loadWorker(options: {
 
 describe("capture worker delivery", () => {
   it("delivers the mode the message carried", async () => {
-    const { message, fetchMock } = await loadWorker({
+    const { message, fetchMock, pumpByAlarm } = await loadWorker({
       api: { base: async () => "http://localhost:3000", token: async () => SAVED_TOKEN },
       fetchImpl: async () => new Response("{}", { status: 201 }),
     });
@@ -277,7 +277,11 @@ describe("capture worker delivery", () => {
       mode: "selection",
     });
 
-    expect(reply).toMatchObject({ ok: true, delivered: true });
+    // The enqueue reply no longer awaits delivery: the outbox write is the
+    // durability contract and the pump runs unawaited. The entry delivers on
+    // the next alarm/pump tick, so assert the async contract.
+    expect(reply).toMatchObject({ ok: true, delivered: false });
+    await pumpByAlarm();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({
