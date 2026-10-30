@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Content } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { createSittingStore } from "./sitting-store";
@@ -16,9 +16,31 @@ import { saveIdeaAction } from "@/app/(workspace)/polymath/knowledge/ideas/actio
  * receipt-keyed, version-claimed machinery a sitting's Keep uses, and the
  * saved card id persists in the store so a reopen keeps editing that card
  * instead of creating a duplicate.
+ *
+ * The same component edits an idea that already exists: passing `artifactId`
+ * and `version` opens that card under its own draft key and primes the store
+ * with its saved id, so the first pause claims the version it was given
+ * rather than creating a second card.
  */
-export function IdeaEditor({ workspaceId }: { workspaceId: string }) {
-  const store = useMemo(() => createSittingStore(workspaceId, "idea:new"), [workspaceId]);
+export function IdeaEditor({
+  workspaceId,
+  artifactId,
+  version,
+  initialContent,
+  label = "New idea",
+}: {
+  workspaceId: string;
+  /** The idea being edited; omitted in the new-idea flow. */
+  artifactId?: string;
+  /** The version the editor was opened at - the base for its first claim. */
+  version?: number;
+  /** Existing body to open with; the local draft still wins when one is newer. */
+  initialContent?: unknown;
+  /** Heading text, or null when the surrounding page already says it. */
+  label?: string | null;
+}) {
+  const storeKey = artifactId ?? "idea:new";
+  const store = useMemo(() => createSittingStore(workspaceId, storeKey), [workspaceId, storeKey]);
   const idemBase = useRef<string | null>(null);
   const saveSeq = useRef(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -38,8 +60,11 @@ export function IdeaEditor({ workspaceId }: { workspaceId: string }) {
     const title = plainText.split("\n").find((line) => line.trim())?.trim().slice(0, 80) ?? "";
     const result = await saveIdeaAction({
       idempotencyKey: key,
-      artifactId: savedArtifactId ?? undefined,
-      expectedVersion: savedVersion ?? undefined,
+      artifactId: savedArtifactId ?? artifactId,
+      // The opened version is the base until a save returns a newer one; a
+      // store with an id but no version still claims the page's version
+      // rather than falling through to a create.
+      expectedVersion: (savedArtifactId ? savedVersion : undefined) ?? version,
       title,
       content: editor.getJSON(),
       plainText,
@@ -56,7 +81,7 @@ export function IdeaEditor({ workspaceId }: { workspaceId: string }) {
     }
     store.getState().setSavedCard(result.artifactId, result.versionNumber);
     setSaveState("saved");
-  }, [store]);
+  }, [store, artifactId, version]);
   const saveRef = useRef(save);
   useEffect(() => {
     saveRef.current = save;
@@ -68,10 +93,19 @@ export function IdeaEditor({ workspaceId }: { workspaceId: string }) {
     return () => debouncer.cancel();
   }, []);
 
+  // Editing an existing idea: the store carries the id and version this card
+  // was opened at, so the first pause saves a new version of it rather than
+  // creating a second card. A local draft, if one was persisted, still wins.
+  useEffect(() => {
+    if (!artifactId || !version) return;
+    const { savedArtifactId } = store.getState();
+    if (!savedArtifactId) store.getState().setSavedCard(artifactId, version);
+  }, [store, artifactId, version]);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [StarterKit, Placeholder.configure({ placeholder: "One idea, in your own words…" })],
-    content: store.getState().draft || undefined,
+    content: (store.getState().draft || initialContent || undefined) as Content | undefined,
     onUpdate: ({ editor }) => {
       store.getState().setDraft(editor.getHTML());
       debouncerRef.current?.signal();
@@ -84,7 +118,7 @@ export function IdeaEditor({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="mx-auto max-w-2xl px-6 py-8 font-serif text-lg leading-relaxed">
       <div className="mb-4 flex items-baseline justify-between">
-        <h1 className="font-sans text-sm font-medium text-muted-foreground">New idea</h1>
+        {label ? <h1 className="font-sans text-sm font-medium text-muted-foreground">{label}</h1> : <span />}
         <span className="font-sans text-xs text-muted-foreground">
           {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed - keeps retrying on edit" : ""}
         </span>
