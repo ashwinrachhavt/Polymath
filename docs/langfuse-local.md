@@ -26,27 +26,40 @@ endpoints per langfuse.com/self-hosting/configuration/health-readiness-endpoints
 
 ## Boot order (fresh machine)
 
-1. Base app: `docker compose up -d` → `pnpm db:migrate` → `pnpm dev` and
-   `eve dev` (dev-user auth; see `.env.example` for the base env).
+1. Base app: `docker compose up -d` → `pnpm db:migrate` → `pnpm dev`
+   (dev-user auth; see `.env.example` for the base env). `pnpm dev` mounts
+   the agents through `withEve`, so eve starts with it; `make eve` is only for
+   an agent-only loop with Next stopped.
 2. Tracing: `make langfuse-up` — the first boot pulls images and runs
-   migrations; the UI is ready when <http://127.0.0.1:3100> answers.
-3. Keys: sign up once in the UI, create an organization and a project, then
-   Settings → API Keys → create new keys. You get `pk-lf-…` and `sk-lf-…`.
-4. Export the harness credentials:
+   migrations; `--wait` returns once the web container is healthy.
+3. Keys: no signup step. The compose file headless-initializes one org, one
+   project and a fixed key pair on first boot, so the keys are already known.
+   Export them in the app shell, the eve shell and the harness shell:
 
    ```bash
-   export LANGFUSE_PUBLIC_KEY=pk-lf-…
-   export LANGFUSE_SECRET_KEY=sk-lf-…
+   export LANGFUSE_PUBLIC_KEY=pk-lf-polymath-local
+   export LANGFUSE_SECRET_KEY=sk-lf-polymath-local
    export LANGFUSE_BASE_URL=http://127.0.0.1:3100
    ```
 
-5. Run evals: `make evals` — the LangGraph harness; fixture-only by default, live suites need `GEMINI_API_KEY` (see `evals-langgraph/README.md`).
+   They are loopback-only placeholders like the db's `axiom`/`axiom`; mint real
+   keys in the UI if you want per-person attribution, or rotate the
+   `LANGFUSE_INIT_*` values in the compose file (they only apply on a first
+   boot — wipe the volumes with `docker compose -f compose.langfuse.yaml down -v`
+   to re-initialize).
+
+4. Run evals: `make evals` — the LangGraph harness; fixture-only by default, live suites need `GEMINI_API_KEY` (see `evals-langgraph/README.md`).
+
+`make local-stack-up` does steps 1–3's long-running halves in one command
+(app dependencies + the Langfuse stack; `make dev` still starts Next and eve)
+and prints the three exports; `make local-stack-down` stops them and keeps the
+volumes.
 
 ## Makefile targets
 
 | Target | Does |
 |---|---|
-| `make langfuse-up` | `docker compose -f compose.langfuse.yaml up -d` |
+| `make langfuse-up` | start the stack and wait for health; prints the key placeholders |
 | `make langfuse-logs` | follow `langfuse-web` + `langfuse-worker` logs |
 | `make langfuse-down` | stop and remove the stack (volumes survive; add `-v` by hand to wipe) |
 

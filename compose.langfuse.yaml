@@ -41,6 +41,21 @@ services:
       - "127.0.0.1:3030:3030"
     environment: &langfuse-env
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      # Headless initialization (langfuse.com/self-hosting/administration/
+      # headless-initialization): the first boot they exist, then it is a no-op.
+      # Without it `make langfuse-up` would hand out a stack you have to sign up
+      # to in a browser before the harness can read a single trace. These are
+      # fixed loopback-only placeholders, like SALT above — regenerate before
+      # exposing the stack, and do not double-quote (langfuse#3398).
+      LANGFUSE_INIT_ORG_ID: polymath-local
+      LANGFUSE_INIT_ORG_NAME: Polymath local
+      LANGFUSE_INIT_PROJECT_ID: polymath-evals
+      LANGFUSE_INIT_PROJECT_NAME: Polymath evals
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-polymath-local
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-polymath-local
+      LANGFUSE_INIT_USER_EMAIL: polymath@example.com
+      LANGFUSE_INIT_USER_NAME: Polymath local
+      LANGFUSE_INIT_USER_PASSWORD: polymath-local
       SALT: local-only-salt
       ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000" # local-only; regenerate: openssl rand -hex 32
       TELEMETRY_ENABLED: "false"
