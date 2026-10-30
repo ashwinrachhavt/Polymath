@@ -233,7 +233,7 @@ suite("daybook (Neon)", () => {
   });
 
   // Value: protects=getWeekActivity derives Mon-Sun bounds in the owner's
-  // timezone and counts the same four sources getDayPage does, excluding
+  // timezone and counts the same five sources getDayPage does, excluding
   // archived artifacts, discarded captures and agent-actor events;
   // fails_when=the CTE computes bounds in UTC instead of user_preferences tz,
   // starts the week on Sunday, counts archived/discarded rows, or leaks
