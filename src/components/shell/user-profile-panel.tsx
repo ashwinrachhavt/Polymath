@@ -1,7 +1,7 @@
 "use client";
 
 import { UserProfile } from "@clerk/nextjs";
-import type { Appearance } from "@clerk/types";
+import type { ClerkAppearanceTheme } from "@clerk/nextjs/types";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 /*
@@ -23,7 +23,7 @@ const panelAppearance = {
     cardBox: "h-full w-full border-0 shadow-none",
     card: "h-full w-full max-w-none rounded-none border-0 bg-transparent shadow-none",
   },
-} satisfies Appearance;
+} satisfies ClerkAppearanceTheme;
 
 export function UserProfilePanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   function handleOpenChange(next: boolean) {

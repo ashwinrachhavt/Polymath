@@ -108,8 +108,9 @@ export const externalAccounts = pgTable(
      * `PROVIDER_TIERS[provider]` tier id. Unset is a valid state (the column
      * predates tiers on some rows) and reads as the narrowest offer; the
      * capability lists in PROVIDER_TIERS are the enforcement source.
+     * Defaults to 'read_only', the applied column default.
      */
-    accessTier: text("access_tier"),
+    accessTier: text("access_tier").default("read_only"),
     /**
      * Fine-grained per-account switches (migration 0237): capabilities from
      * the account's tier the owner turned off for this one account. The tier

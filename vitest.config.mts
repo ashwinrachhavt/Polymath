@@ -10,13 +10,16 @@ export default defineConfig({
     // the root of the repo; see tests/README.md for what each one proves. The
     // unit project runs under the pinned clock in tests/unit/setup.clock.ts;
     // the db project keeps the real clock because it compares against
-    // Postgres timestamps from the service container.
+    // Postgres timestamps from the service container. Every project installs
+    // the default-deny fetch guard in tests/setup.fetch-guard.ts, so a
+    // regression that reaches for the network fails loudly instead of
+    // shipping as "works locally".
     projects: [
       {
         test: {
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
-          setupFiles: ["tests/unit/setup.clock.ts"],
+          setupFiles: ["tests/unit/setup.clock.ts", "tests/setup.fetch-guard.ts"],
           // Unit files are pure: no database, no shared filesystem state, so
           // their per-file startup (import + transform, the bulk of the serial
           // wall) can overlap safely. The root false below stays in force for
@@ -28,6 +31,10 @@ export default defineConfig({
         test: {
           name: "db",
           include: ["tests/{integration,contract,migration}/**/*.test.ts"],
+          // Loopback-only rather than deny-all: integration tests drive real
+          // production code (the outbox dispatchers) against local mock HTTP
+          // servers. See tests/setup.fetch-guard.loopback.ts.
+          setupFiles: ["tests/setup.fetch-guard.loopback.ts"],
         },
       },
       // Component tests render React, so they need a DOM and a `.tsx` include
@@ -39,7 +46,7 @@ export default defineConfig({
           name: "ui",
           include: ["tests/unit/**/*.test.tsx"],
           environment: "jsdom",
-          setupFiles: ["tests/unit/setup.clock.ts", "tests/unit/setup.ui.ts"],
+          setupFiles: ["tests/unit/setup.clock.ts", "tests/unit/setup.ui.ts", "tests/setup.fetch-guard.ts"],
         },
       },
     ],

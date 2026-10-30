@@ -31,7 +31,7 @@ Migrations: 91 files, highest `0264_sticky_richard_fisk`.
 
 ## Tests
 
-437 `.test.ts` and 43 `.spec.ts` files (unit: 258, integration: 179, e2e: 43).
+439 `.test.ts` and 43 `.spec.ts` files (unit: 259, integration: 180, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
@@ -174,7 +174,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `knowledge` | `notebook_questions` | versioned |
 | `knowledge` | `notebook_automations` | versioned |
 | `knowledge` | `notebook_memories` | versioned |
-| `knowledge` | `notebook_accounts` | append-only |
+| `knowledge` | `notebook_accounts` | app-cas |
 | `knowledge` | `concepts` | versioned |
 | `knowledge` | `canvases` | versioned |
 | `knowledge` | `canvas_versions` | append-only |
@@ -215,7 +215,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 90 versioned, 58 append-only, 4 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 90 versioned, 57 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
