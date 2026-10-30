@@ -104,16 +104,18 @@ describe("langfuse-redis healthcheck exit codes (controlled redis-cli stub — c
   }
 });
 
-const redisServerAvailable = spawnSync("redis-server", ["--version"], { stdio: "ignore" }).status === 0;
+// Ground truth requires BOTH binaries: the scratch server and the client
+// whose exit-code semantics are under test.
+const hasBinary = (name: string) => spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0;
+const realRedisAvailable = hasBinary("redis-server") && hasBinary("redis-cli");
 
-describe("langfuse-redis healthcheck (real redis-server; skipped where the binary is unavailable)", () => {
+describe.skipIf(!realRedisAvailable)("langfuse-redis healthcheck (real redis-server; skipped where the binary is unavailable)", () => {
   const PORT = 6390;
   let server: ReturnType<typeof spawn> | undefined;
   let serverLogFile = "";
   let ready = false;
 
   beforeAll(async () => {
-    if (!redisServerAvailable) return;
     // Capture the server's stderr so a startup failure (port already in use,
     // config error) is named in the assertion instead of surfacing as an
     // opaque connection failure in the first test.
