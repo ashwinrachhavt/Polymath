@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "bench:search": "tsx scripts/bench-search.ts",
     "backfill:semantic-edges": "tsx --env-file=.env scripts/backfill-semantic-edges.ts",
     "test:watch": "vitest",
