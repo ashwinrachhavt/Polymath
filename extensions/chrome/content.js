@@ -387,7 +387,7 @@
           ? (isFullPage ? "Page captured to Polymath!" : "Note saved to Polymath!")
           : result.unconfirmed
             ? "On this device. This browser could not confirm Polymath received it yet."
-            : "Queued on this device. It syncs when Polymath is reachable.",
+            : (isFullPage ? "Page captured - syncing to Polymath" : "Saved - syncing to Polymath"),
         "success",
       );
       refreshRecentCaptures();
@@ -419,7 +419,7 @@
           ? `Page captured to Polymath! (${qualityLabel})`
           : result.unconfirmed
             ? "On this device. This browser could not confirm Polymath received it yet."
-            : "Queued on this device. It syncs when Polymath is reachable.",
+            : `Page captured (${qualityLabel}) - syncing to Polymath`,
         "success",
       );
       refreshRecentCaptures();
