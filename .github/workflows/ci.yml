@@ -88,6 +88,16 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # 2-way shard of the main suite (Playwright splits the test files
+      # across the legs). Legs are isolated runners - each gets its own
+      # postgres service below and boots its own dev server - so a shard
+      # shares nothing mutable with its sibling. fail-fast: false: a red
+      # shard must not orphan the other's in-flight evidence; the artifact
+      # uploads are always() for the same reason.
+      matrix:
+        shard: [1, 2]
     services:
       # The canonical routes read Postgres (identity resolution, run rows);
       # without a database the server renders error boundaries and the
@@ -114,15 +124,24 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Dev-server cache, exact-SHA restores only: the lockfile-keyed
-      # restore-keys let a branch run resurrect another branch's compiled
-      # modules (the lock hash is identical across branches), and the e2e
-      # server then rendered the WRONG branch's routes - a smoke run once
-      # read main's rail order from a stacked branch's own checkout.
+      # Dev-server cache, ref-scoped restores only. The lockfile-keyed
+      # restore-keys once let a branch run resurrect another branch's
+      # compiled modules (the lock hash is identical across branches), and
+      # the e2e server then rendered the WRONG branch's routes - a smoke
+      # run read main's rail order from a stacked branch's own checkout.
+      # The ref_name inside the KEY is what makes the restore-keys safe:
+      # they prefix-match saved cache keys, and with the ref in every key
+      # they can only ever match caches saved by this same ref (for PRs,
+      # that PR's own merge ref; for pushes, the branch). Cross-branch
+      # resurrection stays structurally impossible, while a fresh SHA on
+      # an active branch restores instead of cold-compiling.
       - uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-next-${{ github.ref_name }}-
       # The chromium download is ~20s of every run; the OS deps step below is
       # a fast no-op once the image has them, and install skips what is cached.
       - uses: actions/cache@v4
@@ -139,11 +158,13 @@ jobs:
           done
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
-      # playwright.config.ts builds and starts the server itself.
+      # playwright.config.ts builds and starts the server itself. Each matrix
+      # leg boots its own server and runs its shard of the suite; the fixture
+      # env is unchanged from the pre-shard invocation.
       # PERF_BUDGET_ENFORCE turns the hero-route navigation budget from
       # reporting into a tripwire; the dev ceilings stay deliberately generous
       # (compile noise) and only catastrophic regressions fail.
-      - run: pnpm e2e
+      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/2
         env:
           PERF_BUDGET_ENFORCE: "1"
           # The generation journeys (meeting prep, write from library,
@@ -171,7 +192,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-report
+          name: "e2e-report-${{ matrix.shard }}"
           path: e2e-report.json
           if-no-files-found: warn
       # The Canva handoff's async journey (approve -> import_started -> sweep
@@ -190,7 +211,13 @@ jobs:
       # already). Their own failure still fails the job on its merits.
       # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
       # overwriting the main run's e2e-report.json in cwd.
-      - if: always()
+      # De-serialized: pinned to shard 2's tail so it overlaps shard 1
+      # instead of following the whole pool. The ASH-305 finding was about
+      # the shutdown ritual's workspace writes, not canva's - and the legs
+      # are isolated runners (own dev server, own postgres), so overlapped
+      # canva journeys cannot touch shard 1's workspace at all. The
+      # invocation's own failure still fails the job on its merits.
+      - if: always() && matrix.shard == 2
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
       # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
       # applies a real shutdown - parking captures, finishing sessions,
@@ -200,14 +227,18 @@ jobs:
       # every run that carried it, green on every run before it). It also
       # skips itself without SHUTDOWN_RITUAL_E2E, so the main run never
       # picks it up. Own --output dir: Playwright wipes it per invocation.
-      - if: always()
+      # Un-sharded: pinned to shard 1 so it runs exactly once per workflow
+      # run, still serial and alone on the workspace it writes to - each
+      # leg owns its dev server and database, so the ritual cannot touch
+      # the sibling leg's journeys.
+      - if: always() && matrix.shard == 1
         run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
       # ASH-305 integration gate: real-route shutdown pixels (desktop form,
       # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.shard == 1
         with:
-          name: shutdown-real-route-pixels
+          name: "shutdown-real-route-pixels-${{ matrix.shard }}"
           path: test-results-shutdown/**/shutdown-real-*.png
           if-no-files-found: warn
       # Failure forensics: Playwright's per-failure page snapshots and retry
@@ -217,7 +248,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-error-context
+          name: "e2e-error-context-${{ matrix.shard }}"
           path: |
             test-results/**/error-context.md
             test-results-fixture/**/error-context.md
@@ -228,11 +259,12 @@ jobs:
           if-no-files-found: ignore
       # The fixture invocation's own structured record: its journey results
       # (including skips) are evidence too, and the default report filename
-      # would overwrite the main run's uploaded above.
+      # would overwrite the main run's uploaded above. Only shard 2 runs
+      # the fixture invocation, so only shard 2 has this report.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.shard == 2
         with:
-          name: e2e-report-fixture
+          name: "e2e-report-fixture-${{ matrix.shard }}"
           path: e2e-report-fixture.json
           if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
@@ -240,19 +272,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bulk-complete-pixels
+          name: "bulk-complete-pixels-${{ matrix.shard }}"
           path: test-results/bulk-pixels/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: onboarding-pixels
+          name: "onboarding-pixels-${{ matrix.shard }}"
           path: test-results/onboarding-pixels/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: feature-pixels
+          name: "feature-pixels-${{ matrix.shard }}"
           path: test-results/feature-pixels/
           if-no-files-found: ignore
 
