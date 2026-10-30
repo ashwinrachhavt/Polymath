@@ -1,0 +1,26 @@
+# Dependency review on every PR: a diff-aware pass over what the change
+# adds to the lockfile, reported where the change itself is reviewed.
+# Informational by design at first - only critical advisories fail the
+# check; tighten fail-on-severity once the baseline is known clean.
+name: Security
+
+on:
+  pull_request:
+
+permissions:
+  # The action posts its review summary as a PR comment; that is the only
+  # write and it needs pull-requests. Everything else is read-only.
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Review dependency changes for vulnerabilities and licenses
+        uses: github/dependency-review-action@v4
+        with:
+          comment-summary-in-pr: always
+          fail-on-severity: critical
