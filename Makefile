@@ -1,7 +1,7 @@
 # `make check` is the project's gate. It calls the same
 # script CI runs, so "passing" has exactly one definition.
 
-.PHONY: install dev check e2e search-up search-down search-logs langfuse-up langfuse-down langfuse-logs queue-up queue-down queue-logs seed-taxonomy
+.PHONY: install dev check e2e search-up search-down search-logs langfuse-up langfuse-down langfuse-logs evals queue-up queue-down queue-logs seed-taxonomy
 
 install:
 	pnpm install
@@ -71,6 +71,13 @@ langfuse-down:
 
 langfuse-logs:
 	docker compose -f compose.langfuse.yaml logs -f langfuse-web langfuse-worker
+
+# LangGraph eval harness (evals-langgraph/). Fixture-only by default: routing
+# and approval-classifier run deterministically with no model keys and no app
+# records. Live suites (chat-grounding, desirable-outputs) additionally need
+# GEMINI_API_KEY and a running app; see evals-langgraph/README.md.
+evals:
+	cd evals-langgraph && pnpm eval
 
 # ASH-272: seed the knowledge taxonomy catalog. Dry run; -- --apply writes.
 seed-taxonomy:
