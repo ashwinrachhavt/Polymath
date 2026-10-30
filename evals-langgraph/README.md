@@ -8,7 +8,7 @@ The user-run **credentialed live verification is the promotion gate for release 
 
 1. **Prerequisites:** Node ≥ 24 (`.node-version`), pnpm 12.x (`corepack enable`), Docker.
 2. **Install:** `pnpm install` from the repo root.
-3. **Configure:** `cp .env.example .env`, then set `DATABASE_URL` (compose default `postgresql://axiom:axiom@127.0.0.1:5432/axiom`), `EVE_BRIDGE_SECRET` (`openssl rand -hex 32`), and `GEMINI_API_KEY`. Leave Clerk vars unset — dev-user auth needs none. No `LANGFUSE_*` yet; step 6 mints them.
+3. **Configure:** `cp .env.example .env`, then set `DATABASE_URL` (compose default `postgresql://axiom:axiom@127.0.0.1:5432/axiom`), `EVE_BRIDGE_SECRET` (`openssl rand -hex 32`), a separate 32+ character `EVE_GATEWAY_SECRET` in both the app and Eve environments, and `GEMINI_API_KEY`. Leave Clerk vars unset — dev-user auth needs none. No `LANGFUSE_*` yet; step 6 mints them.
 4. **App stack:** `docker compose up -d` → `pnpm db:migrate` → start `eve dev` in `eve/polymath` (the agent runtime; the app discovers it via `.eve/` state files). Leave `next dev` to step 7 — the harness supervises its own copy, and a stale manual `pnpm dev` on port 3000 would satisfy readiness without its stdout being captured.
 5. **Fixture check (no keys needed):** `make evals` — routing + approval-classifier run deterministically, reconciliation reports `not_applicable`, exit 0.
 6. **Tracing stack:** `make langfuse-up`, then mint keys per `docs/langfuse-local.md` (sign up at `http://127.0.0.1:3100`, create project, create API keys) and export `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL=http://127.0.0.1:3100` in both shells (app/eve and harness).
