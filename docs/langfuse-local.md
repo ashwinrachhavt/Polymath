@@ -22,7 +22,7 @@ endpoints per langfuse.com/self-hosting/configuration/health-readiness-endpoints
 | `langfuse-postgres` | 5433 | Langfuse's own Postgres (5432 is the app db) |
 | `langfuse-clickhouse` | 8123, 9000 | trace storage (HTTP, native) |
 | `langfuse-minio` | 9090, 9091 | blob storage API, console |
-| `langfuse-redis` | 6379 | queue backend |
+| `langfuse-redis` | 6379 | queue backend (healthcheck: authenticated `PING`, reply must be exactly `PONG`) |
 
 ## Boot order (fresh machine)
 
