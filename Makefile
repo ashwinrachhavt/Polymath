@@ -1,7 +1,7 @@
 # `make check` is the project's gate. It calls the same
 # script CI runs, so "passing" has exactly one definition.
 
-.PHONY: install dev check e2e search-up search-down search-logs queue-up queue-down queue-logs seed-taxonomy
+.PHONY: install dev check e2e search-up search-down search-logs langfuse-up langfuse-down langfuse-logs queue-up queue-down queue-logs seed-taxonomy
 
 install:
 	pnpm install
@@ -57,6 +57,20 @@ queue-down:
 
 queue-logs:
 	@tail -f .run/outbox-worker.log
+
+# Self-hosted Langfuse (compose.langfuse.yaml) — the eval loop's trace store.
+# Own compose project and own Postgres; the app stack in compose.yaml is
+# never touched. Loopback-only; UI on 3100 because 3000 is next dev's.
+# Keys and the boot order: docs/langfuse-local.md.
+langfuse-up:
+	docker compose -f compose.langfuse.yaml up -d
+	@echo "langfuse  http://127.0.0.1:3100"
+
+langfuse-down:
+	docker compose -f compose.langfuse.yaml down
+
+langfuse-logs:
+	docker compose -f compose.langfuse.yaml logs -f langfuse-web langfuse-worker
 
 # ASH-272: seed the knowledge taxonomy catalog. Dry run; -- --apply writes.
 seed-taxonomy:
