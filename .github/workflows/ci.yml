@@ -114,6 +114,71 @@ jobs:
             git clean -fdq src/db/migrations
             exit 1
           fi
+      # Production boot smoke: e2e runs the dev server (the keyless dev-auth
+      # design stands down under NODE_ENV=production), so the just-built
+      # production app is booted nowhere. Start it here, wait for readiness,
+      # and assert the public routes that exist render: /landing (the one
+      # public marketing route) and /polymath (the anonymous-shell render of
+      # the workspace front door, where / redirects). /sign-in and /sign-up
+      # 404 by design until Clerk keys exist — a keyless CI boot cannot expect
+      # 200 from them. Catches the "builds but doesn't boot" class before
+      # Vercel does.
+      - name: Production boot smoke (next start + real public routes)
+        env:
+          # The routes under test render without a database (the anonymous
+          # shell path reads none); the URL keeps the server in the same env
+          # shape the e2e job boots with, against this job's own service.
+          DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
+        run: |
+          base="http://127.0.0.1:3000"
+          log="$(mktemp)"
+          # next start owns its process group via setsid, so the group kill
+          # reaps pnpm, the sh wrapper, and the next-server child alike — no
+          # orphaned listener for later steps.
+          setsid pnpm start >"$log" 2>&1 &
+          server_pid=$!
+          cleanup() { kill -- -"$server_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=""
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "::error::production server exited before becoming ready; log tail:"
+              tail -40 "$log"
+              exit 1
+            fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/landing" || true)
+            if [ "$code" = "200" ]; then ready=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "::error::production server did not serve a 200 within 60s; log tail:"
+            tail -40 "$log"
+            exit 1
+          fi
+          fail=0
+          for route in /landing /polymath; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base${route}" || true)
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${route} returned ${code}, expected 200 — the production build does not boot clean."
+              fail=1
+            else
+              echo "GET ${route} -> 200"
+            fi
+          done
+          # The root entry is a config redirect to the workspace front door;
+          # a broken redirect fails the boot as surely as a 500.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/" || true)
+          if [ "$code" != "307" ]; then
+            echo "::error::GET / returned ${code}, expected the 307 redirect to /polymath."
+            fail=1
+          else
+            echo "GET / -> 307 (redirects to /polymath)"
+          fi
+          if [ "$fail" != "0" ]; then
+            tail -40 "$log"
+            exit 1
+          fi
+          echo "Production boot smoke passed."
 
   e2e:
     runs-on: ubuntu-latest
