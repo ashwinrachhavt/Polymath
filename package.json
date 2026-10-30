@@ -46,7 +46,7 @@
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "drizzle-orm": "0.45.4",
-    "eve": "^0.76.3",
+    "eve": "^0.84.1",
     "lucide-react": "^1.63.0",    "modern-tar": "0.7.7",
     "motion": "^14.7.1",
     "next": "16.4.3",
