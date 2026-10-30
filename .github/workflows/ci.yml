@@ -16,9 +16,7 @@ permissions:
   contents: read
 
 env:
-  # The build reads .node-version too; this keeps the runner honest if that
-  # file is ever renamed.
-  NODE_VERSION: "24"
+  NEXT_TELEMETRY_DISABLED: "1"
   # Date math in tests and builds resolves against one zone everywhere, not
   # whichever zone a runner image happens to ship with.
   TZ: "UTC"
@@ -26,6 +24,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       # The integration suites hold the invariants a mock cannot: idempotency,
       # tenancy, version conflicts, the import's identity rules. Without a
@@ -55,14 +54,14 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Incremental Next build state; the full build below and the one inside
-      # the e2e job both reuse it, so CI stops paying for two cold builds.
+      # Incremental production-build state; scope both exact and fallback
+      # restores to this ref to avoid another branch's compiled modules.
       - uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-next-${{ github.ref }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-next-${{ github.ref }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm install --frozen-lockfile
       - name: Guard append-only migration checkpoints
         env:
@@ -188,6 +187,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # 2-way shard of the main suite (Playwright splits the test files
@@ -224,24 +224,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Dev-server cache, ref-scoped restores only. The lockfile-keyed
-      # restore-keys once let a branch run resurrect another branch's
-      # compiled modules (the lock hash is identical across branches), and
-      # the e2e server then rendered the WRONG branch's routes - a smoke
-      # run read main's rail order from a stacked branch's own checkout.
-      # The ref_name inside the KEY is what makes the restore-keys safe:
-      # they prefix-match saved cache keys, and with the ref in every key
-      # they can only ever match caches saved by this same ref (for PRs,
-      # that PR's own merge ref; for pushes, the branch). Cross-branch
-      # resurrection stays structurally impossible, while a fresh SHA on
-      # an active branch restores instead of cold-compiling.
-      - uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-next-${{ github.ref_name }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-next-${{ github.ref_name }}-
+      # Next's dev server does not populate the production .next/cache path.
       # The chromium download is ~20s of every run; the OS deps step below is
       # a fast no-op once the image has them, and install skips what is cached.
       - uses: actions/cache@v4
@@ -293,6 +276,7 @@ jobs:
         if: always()
         with:
           name: "e2e-report-${{ matrix.shard }}"
+          retention-days: 14
           path: e2e-report.json
           if-no-files-found: warn
       # The Canva handoff's async journey (approve -> import_started -> sweep
@@ -333,12 +317,20 @@ jobs:
       # the sibling leg's journeys.
       - if: always() && matrix.shard == 1
         run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.shard == 1
+        with:
+          name: "e2e-report-shutdown-${{ matrix.shard }}"
+          path: e2e-report-shutdown.json
+          if-no-files-found: warn
+          retention-days: 14
       # ASH-305 integration gate: real-route shutdown pixels (desktop form,
       # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
       - uses: actions/upload-artifact@v4
         if: always() && matrix.shard == 1
         with:
           name: "shutdown-real-route-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results-shutdown/**/shutdown-real-*.png
           if-no-files-found: warn
       # Failure forensics: Playwright's per-failure page snapshots and retry
@@ -349,6 +341,7 @@ jobs:
         if: always()
         with:
           name: "e2e-error-context-${{ matrix.shard }}"
+          retention-days: 14
           path: |
             test-results/**/error-context.md
             test-results-fixture/**/error-context.md
@@ -365,6 +358,7 @@ jobs:
         if: always() && matrix.shard == 2
         with:
           name: "e2e-report-fixture-${{ matrix.shard }}"
+          retention-days: 14
           path: e2e-report-fixture.json
           if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
@@ -373,18 +367,21 @@ jobs:
         if: always()
         with:
           name: "bulk-complete-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/bulk-pixels/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: "onboarding-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/onboarding-pixels/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: "feature-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/feature-pixels/
           if-no-files-found: ignore
 
@@ -396,6 +393,7 @@ jobs:
   # present, the strict eval run remains a required CI check and regressions fail.
   evals:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: check
     # The PR-comment step posts with the workflow token; everything else in
     # this job is read-only. Minimum grant, scoped to the job.
@@ -458,7 +456,7 @@ jobs:
           name: eve-evals
           path: eve/polymath/.eve/evals/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
       # Post the same table as a PR comment, replacing the previous one. The
       # marker lets the comment be found and deleted before the fresh post, so
       # a PR carries one live results thread instead of a stack per run. The
