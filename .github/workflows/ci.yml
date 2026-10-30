@@ -205,7 +205,13 @@ jobs:
       # already). Their own failure still fails the job on its merits.
       # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
       # overwriting the main run's e2e-report.json in cwd.
-      - if: always()
+      # De-serialized: pinned to shard 2's tail so it overlaps shard 1
+      # instead of following the whole pool. The ASH-305 finding was about
+      # the shutdown ritual's workspace writes, not canva's - and the legs
+      # are isolated runners (own dev server, own postgres), so overlapped
+      # canva journeys cannot touch shard 1's workspace at all. The
+      # invocation's own failure still fails the job on its merits.
+      - if: always() && matrix.shard == 2
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
       # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
       # applies a real shutdown - parking captures, finishing sessions,
@@ -247,9 +253,10 @@ jobs:
           if-no-files-found: ignore
       # The fixture invocation's own structured record: its journey results
       # (including skips) are evidence too, and the default report filename
-      # would overwrite the main run's uploaded above.
+      # would overwrite the main run's uploaded above. Only shard 2 runs
+      # the fixture invocation, so only shard 2 has this report.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.shard == 2
         with:
           name: "e2e-report-fixture-${{ matrix.shard }}"
           path: e2e-report-fixture.json
