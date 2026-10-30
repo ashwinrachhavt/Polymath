@@ -1,0 +1,51 @@
+# CodeQL scans the code GitHub's own queries know how to read, on the one
+# ref that ships: pushes to main and a weekly sweep. Deliberately not
+# PR-triggered for now - PR walls stay untouched while the scan matures;
+# promoting it to a required check is a branch-settings decision, not a
+# workflow one.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly sweep, Monday 04:23 UTC - off the hour so a fleet of
+    # on-the-hour scheduled workflows doesn't stampede the queue.
+    - cron: "23 4 * * 1"
+  # Manual runs exercise the workflow from a branch before its first main
+  # push - the proof-of-life path this PR used.
+  workflow_dispatch:
+
+permissions:
+  # SARIF upload is the only write. actions: read is CodeQL's own
+  # requirement for reading workflow run metadata (its cache/telemetry
+  # path); contents stays read-only.
+  security-events: write
+  actions: read
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      # Install before extraction: the JS/TS extractor resolves types and
+      # entry points through node_modules, so a bare tree yields noisier
+      # results than an installed one.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
