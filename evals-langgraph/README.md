@@ -2,6 +2,19 @@
 
 This loose directory package complements eve; it does not replace it or modify application behavior. Install from the repository root with `pnpm install` (Node 24+). Dependencies resolve from the root, just like `eve/polymath`; there are no workspace-glob changes.
 
+## Fresh-machine runbook (the whole loop)
+
+The user-run **credentialed live verification is the promotion gate for release PR #365** — this page is the one place that describes it end to end.
+
+1. **Prerequisites:** Node ≥ 24 (`.node-version`), pnpm 12.x (`corepack enable`), Docker.
+2. **Install:** `pnpm install` from the repo root.
+3. **Configure:** `cp .env.example .env`, then set `DATABASE_URL` (compose default `postgresql://axiom:axiom@127.0.0.1:5432/axiom`), `EVE_BRIDGE_SECRET` (`openssl rand -hex 32`), and `GEMINI_API_KEY`. Leave Clerk vars unset — dev-user auth needs none. No `LANGFUSE_*` yet; step 6 mints them.
+4. **App stack:** `docker compose up -d` → `pnpm db:migrate` → `pnpm dev` (next dev, required for the auth bypass) and `eve dev` in `eve/polymath` (app discovers it via `.eve/` state files).
+5. **Fixture check (no keys needed):** `make evals` — routing + approval-classifier run deterministically, reconciliation reports `not_applicable`, exit 0.
+6. **Tracing stack:** `make langfuse-up`, then mint keys per `docs/langfuse-local.md` (sign up at `http://127.0.0.1:3100`, create project, create API keys) and export `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL=http://127.0.0.1:3100` in both shells (app/eve and harness).
+7. **Live verification (promotion gate):** `cd evals-langgraph && pnpm eval --live --strict` — drives real runs through `POST /api/v1/runs`, waits for terminal state, and runs all six reconciliation groups against real Postgres rows, Langfuse observations and the captured `next dev` stdout window. Promotion requires exit 0 (or exit 2 while required credentials are missing — that blocks promotion, it does not waive the gate); keep the JSON report as evidence.
+8. **A red eval vs broken reconciliation:** the graph scores first and reconciles separately — a failing eval (exit 1) and a reconciliation failure are reported independently; `--skip-reconcile` reports `skipped` and never counts as passing.
+
 ## Run deterministic cases
 
 ```sh
@@ -30,7 +43,7 @@ The primary stream is NDJSON ChatFrame; SSE `data:` lines are accepted for compa
 
 The graph is `prepare → drive → observe → score → reconcile`. Scoring and verification outcomes are independent, including red evals. `createCaseGraph` accepts `verify` and `captureStdout` adapters for the verification runner; these are intentionally not defaulted to fabricated evidence. Without the verification adapter live reconciliation is `pending`; `--skip-reconcile` is explicit `skipped`, not passed. A successful adapter result without captured app stdout is downgraded to pending.
 
-`verify/reconcile.ts` supplies pure fixture-testable header, event-ordering, tool-lifecycle, redaction and cost checks plus a typed sixth Langfuse check seam. The subsequent verification runner owns read-only workspace-scoped Postgres queries, Langfuse correlation by `session_ref`, supervised stdout capture, reports and credentialed live evidence. Release promotion remains blocked until a real live HTTP run passes all six groups with the stdout window on the integrated release head. Missing credentials do not waive that gate.
+`src/verify/` ships the runner in five small modules: `reconcile.ts` holds the pure, fixture-testable header, event-ordering, tool-lifecycle, redaction and cost checks plus the typed sixth Langfuse check; `db.ts` owns read-only workspace-scoped Postgres fetchers over `agent_runs`/`run_events`/`tool_calls` (plus settled spend and the critique outbox event — never the unwired runtime tables); `langfuse.ts` pages observations v2 by cursor and refuses to run without local keys; `verify.ts` composes them into the graph's verify adapter; `stdout.ts` supervises and window-slices the `next dev` capture; `report.ts` renders the console table and JSON report. The CLI wires them with `DATABASE_URL` (read-only), the `LANGFUSE_*` keys, and an optional `POLYMATH_EVAL_WORKSPACE_ID` override that fails any run row from a different workspace. Release promotion remains blocked until a real live HTTP run passes all six groups with the stdout window on the integrated release head. Missing credentials do not waive that gate.
 
 CLI exit codes: 0 for passing gates (or soft-only results without `--strict`), 1 for failed gates/reconciliation or strict scored verdicts, 2 for configuration errors or pending live verification. `--skip-reconcile` does not imply promotion readiness.
 
