@@ -60,3 +60,8 @@ npm-debug.log*
 .playwright-mcp/
 .gstack/
 mockups/
+
+# Agent scratch: the SDD workspace (ledger, briefs, review packages) and the
+# isolated worktrees spawned for parallel task execution. Neither is source.
+.superpowers/
+.claude/worktrees/
