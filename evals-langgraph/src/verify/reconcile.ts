@@ -3,8 +3,9 @@ export type VerificationCheck = { group: VerificationGroup; passed: boolean; det
 export type Reconciliation =
   | { status: "not_applicable" | "skipped" | "pending"; reason: string }
   | { status: "passed" | "failed"; checks: VerificationCheck[] };
+export type TraceHeader = { id: string; workspaceId: string; objective: string; state: string; model: string | null; startedAt: string | null; endedAt: string | null; lastEventSeq: number; sessionRef: string | null; error: string | null };
 export type TraceDataset = {
-  headers: { id: string; workspaceId: string; objective: string; state: string; model: string | null; startedAt: string | null; endedAt: string | null; lastEventSeq: number; error: string | null }[];
+  headers: TraceHeader[];
   events: { sequence: number; type: string; data: Record<string, unknown> }[];
   tools: { ok: boolean | null; durationMs: number | null; errorCode: string | null; arguments: unknown; result: unknown }[];
   settledUsd: string | null;
@@ -55,16 +56,30 @@ export function costsClose(values: string[], settled: string | null): boolean {
 export function checkDataset(scope: VerificationScope, data: TraceDataset): VerificationCheck[] {
   const header = data.headers[0];
   const check = (group: VerificationGroup, passed: boolean, detail: string): VerificationCheck => ({ group, passed, detail });
-  const headersOk = data.headers.length === 1 && header.id === scope.runId && header.workspaceId === scope.workspaceId
-    && header.objective === scope.objective && ["succeeded", "failed", "cancelled"].includes(header.state)
-    && Boolean(header.model) && header.startedAt !== null && header.endedAt !== null
-    && Number.isFinite(Date.parse(header.startedAt)) && Date.parse(header.startedAt) <= Date.parse(header.endedAt);
+  // Compound checks report WHICH condition broke: a reconciliation report that
+  // only says "header failed" sends the operator grepping for nothing.
+  const headerProblems: string[] = [];
+  if (data.headers.length !== 1) headerProblems.push(`expected exactly one agent_runs row, found ${data.headers.length}`);
+  if (header) {
+    if (header.id !== scope.runId) headerProblems.push(`row id ${header.id} ≠ run ${scope.runId}`);
+    if (header.workspaceId !== scope.workspaceId) headerProblems.push(`row workspace ${header.workspaceId} ≠ expected ${scope.workspaceId}`);
+    if (header.objective !== scope.objective) headerProblems.push("row objective ≠ case objective");
+    if (!["succeeded", "failed", "cancelled"].includes(header.state)) headerProblems.push(`non-terminal state ${header.state}`);
+    if (!header.model) headerProblems.push("model is null");
+    if (header.startedAt === null || header.endedAt === null || !Number.isFinite(Date.parse(header.startedAt)) || !Number.isFinite(Date.parse(header.endedAt)) || Date.parse(header.startedAt) > Date.parse(header.endedAt)) headerProblems.push("invalid [started_at, ended_at] window");
+  }
+  const headersOk = headerProblems.length === 0;
   const events = data.events;
   const first = events[0];
   const terminal = `run.${header?.state}`;
-  const orderingOk = events.length > 0 && events.every((event, index) => event.sequence === index + 1)
-    && header?.lastEventSeq === events.length && first.type === "message" && first.data.role === "user" && first.data.content === scope.objective
-    && events.at(-1)?.type === terminal && events.filter((event) => /^run\.(succeeded|failed|cancelled)$/.test(event.type)).length === 1;
+  const orderingProblems: string[] = [];
+  if (events.length === 0) orderingProblems.push("no run_events rows");
+  if (events.some((event, index) => event.sequence !== index + 1)) orderingProblems.push("sequence is not exactly 1..N");
+  if (header && header.lastEventSeq !== events.length) orderingProblems.push(`last_event_seq ${header.lastEventSeq} ≠ ${events.length}`);
+  if (!first || first.type !== "message" || first.data.role !== "user" || first.data.content !== scope.objective) orderingProblems.push("first event is not the user objective message");
+  if (events.at(-1)?.type !== terminal) orderingProblems.push(`last event is not ${terminal}`);
+  if (events.filter((event) => /^run\.(succeeded|failed|cancelled)$/.test(event.type)).length !== 1) orderingProblems.push("terminal close event is not unique");
+  const orderingOk = orderingProblems.length === 0;
   let costOk = false;
   let costError = "Usage matches settled spend and succeeded run has critique outbox event";
   try {
@@ -72,8 +87,8 @@ export function checkDataset(scope: VerificationScope, data: TraceDataset): Veri
     costOk = costsClose(values, data.settledUsd) && (header?.state !== "succeeded" || data.critiqueRequested);
   } catch (error) { costError = String(error); }
   return [
-    check("header", headersOk, "One scoped terminal run, valid timestamps, objective and model"),
-    check("ordering", orderingOk, "Sequence 1..N, objective first, terminal last, high-water N"),
+    check("header", headersOk, headersOk ? "One scoped terminal run, valid timestamps, objective and model" : headerProblems.join("; ")),
+    check("ordering", orderingOk, orderingOk ? "Sequence 1..N, objective first, terminal last, high-water N" : orderingProblems.join("; ")),
     check("tools", data.tools.every((tool) => tool.ok !== null && tool.durationMs !== null && tool.durationMs >= 0 && (tool.errorCode === null || tool.ok === false)), "All reserved tool calls settled"),
     check("redaction", data.tools.every((tool) => !hasUnredactedKey(tool.arguments) && !hasUnredactedKey(tool.result)) && (!header?.error || redactedText(header.error) === header.error), "Structured secrets masked and error redaction idempotent"),
     check("cost", costOk, costError),

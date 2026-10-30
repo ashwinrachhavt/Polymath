@@ -40,7 +40,7 @@ endpoints per langfuse.com/self-hosting/configuration/health-readiness-endpoints
    export LANGFUSE_BASE_URL=http://127.0.0.1:3100
    ```
 
-5. Run evals: `make evals` (lands with the `evals-langgraph` harness package).
+5. Run evals: `make evals` — the LangGraph harness; fixture-only by default, live suites need `GEMINI_API_KEY` (see `evals-langgraph/README.md`).
 
 ## Makefile targets
 
