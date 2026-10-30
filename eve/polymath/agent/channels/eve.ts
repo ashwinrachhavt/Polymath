@@ -29,6 +29,8 @@ const bridgeAuth: AuthFn<Request> = async (request) => {
       workspaceId: auth.workspaceId,
       ...(claims.runId !== undefined ? { runId: claims.runId } : {}),
       ...(claims.skillId !== undefined ? { skillId: claims.skillId } : {}),
+      // The run's frozen model, so the agent runs the one the run row prices.
+      ...(claims.model !== undefined ? { model: claims.model } : {}),
     },
     authenticator: "axiom-bridge",
     principalId: auth.userId,

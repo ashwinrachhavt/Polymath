@@ -101,13 +101,18 @@ export default defineAgent({
   // (session/turn selections must be serializable gateway id strings).
   model: defineDynamic({
     events: {
-      // The driver prepends the run's frozen model as session context in the
-      // first user message; eve has no per-run config channel. The env var is
-      // the fallback for evals and the TUI, which have no run row.
-      "step.started": () => ({
-        model: polymathModel(process.env.AXIOM_RUN_MODEL),
-        modelContextWindowTokens: 128_000,
-      }),
+      // The run's frozen model rides in the signed bridge token, which the
+      // channel publishes as a session attribute; eve has no per-run config
+      // channel before the first step. The env var is the fallback for evals
+      // and the TUI, which have no run row.
+      "step.started": (_event, ctx) => {
+        const fromSession = ctx.session.auth.current?.attributes?.model;
+        const runModel = typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL;
+        return {
+          model: polymathModel(runModel),
+          modelContextWindowTokens: 128_000,
+        };
+      },
     },
   }),
 });

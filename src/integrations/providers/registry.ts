@@ -302,6 +302,37 @@ const REGISTRY: readonly ProviderEntry[] = [
       "GENERATION_PROVIDER=cloudflare only; never auto-selected (plan 2026-10-29 §8).",
   },
   {
+    id: "mercury",
+    capability: "generate",
+    // One-time 100M-token grant for new accounts, no payment card on file —
+    // consumed once, never baseline capacity. Owner decision 2026-10-29 puts
+    // it first in the free-first chain while the grant lasts.
+    freeClass: "trial",
+    enabled: true,
+    allowPaidUsage: false,
+    allowPaidFallback: false,
+    // Inception's training/retention terms for API content are not verified,
+    // so the same caution as the Gemini free route applies.
+    sensitiveDataAllowed: false,
+    quota: {
+      unit: "tokens",
+      allowance: 100_000_000,
+      // Not a renewal: the ledger period buckets the grant's lifetime spend.
+      // CurrentPeriod only knows daily|monthly, so the grant is tracked per
+      // UTC month until an explicit expiry matters.
+      renewal: "monthly",
+      allowanceEnv: "MERCURY_TOTAL_TOKENS",
+    },
+    verifiedAt: "2026-10-29",
+    verificationSource: "https://docs.inceptionlabs.ai/get-started.md",
+    notes:
+      "100M free tokens confirmed 2026-10-29 against the quick-start page (no payment info). " +
+      "mercury-3 via OpenAI-compatible /v1/chat/completions. Adapter: " +
+      "integrations/generation/mercury.ts over the shared openai-compatible base. Selected first " +
+      "in the free-first chain; an exhausted grant is an error, never a fallback. " +
+      "MERCURY_TOTAL_TOKENS should be set to the account's real remaining balance.",
+  },
+  {
     id: "cerebras",
     capability: "generate",
     freeClass: "trial",

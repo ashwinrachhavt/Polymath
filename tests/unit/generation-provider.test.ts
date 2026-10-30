@@ -11,6 +11,8 @@ import { cloudflareProvider } from "@/integrations/generation/cloudflare";
 import { fixtureProvider } from "@/integrations/generation/fixture";
 import { geminiProvider } from "@/integrations/generation/gemini";
 import { openRouterProvider } from "@/integrations/generation/openrouter";
+import { mercuryProvider } from "@/integrations/generation/mercury";
+import { openAICompatibleProvider } from "@/integrations/generation/openai-compatible";
 
 const geminiOk = () =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "hello " }, { text: "world" }] } }] }));
@@ -20,12 +22,15 @@ describe("generationProvider selection", () => {
   it("throws unconfigured without keys", () => {
     expect(() => generationProvider({})).toThrow(GenerationUnconfiguredError);
   });
-  it("prefers the free Gemini allowance when both keys are present", () => {
-    // Free-first (owner decision 2026-10-27). This used to assert OpenRouter,
-    // which billed every debrief and draft while the Gemini free tier sat
-    // configured and unused.
-    const p = generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" });
-    expect(p.registryId).toBe("gemini");
+  it("prefers the Mercury trial grant, then free Gemini, then OpenRouter", () => {
+    // Free-first (owner decision 2026-10-29): the one-time 100M-token Mercury
+    // grant outranks the recurring Gemini free tier; the paid OpenRouter key
+    // stays last. This used to assert OpenRouter, which billed every debrief
+    // and draft while free tiers sat configured and unused.
+    const p = generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g", MERCURY_API_KEY: "m" });
+    expect(p.registryId).toBe("mercury");
+    expect(generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" }).registryId).toBe("gemini");
+    expect(generationProvider({ INCEPTION_API_KEY: "m" }).registryId).toBe("mercury");
   });
   it("still generates on OpenRouter when that is the only key", () => {
     expect(generationProvider({ OPENROUTER_API_KEY: "k" }).registryId).toBe("openrouter");
@@ -68,6 +73,75 @@ describe("geminiProvider", () => {
     const f = async () => new Response("key detail", { status: 429 });
     const p = geminiProvider({ GEMINI_API_KEY: "g" }, f as unknown as typeof fetch);
     await expect(p.generate({ prompt: "x" })).rejects.toThrow("HTTP 429");
+  });
+});
+
+describe("openAICompatibleProvider (mercury + openrouter share the wire)", () => {
+  const mercuryOk = () =>
+    Response.json({ choices: [{ message: { content: "diffused" } }], usage: { prompt_tokens: 9, completion_tokens: 2 } });
+
+  it("mercury generate: OpenAI wire shape, bearer auth, usage mapped", async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const f = async (u: unknown, i?: RequestInit) => {
+      calls.push([String(u), i!]);
+      return mercuryOk();
+    };
+    const p = mercuryProvider({ MERCURY_API_KEY: "m" }, f as unknown as typeof fetch);
+    const out = await p.generate({ system: "sys", prompt: "doc", json: true });
+    expect(out.text).toBe("diffused");
+    expect(out.usage).toEqual({ inputTokens: 9, outputTokens: 2 });
+    expect(p.name).toBe("mercury:mercury-3");
+    expect(p.registryId).toBe("mercury");
+    expect(calls[0][0]).toBe("https://api.inceptionlabs.ai/v1/chat/completions");
+    expect((calls[0][1].headers as Record<string, string>).Authorization).toBe("Bearer m");
+    const body = JSON.parse(String(calls[0][1].body));
+    expect(body.model).toBe("mercury-3");
+    expect(body.messages).toEqual([
+      { role: "system", content: "sys" },
+      { role: "user", content: "doc" },
+    ]);
+    expect(body.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("fails closed on HTTP errors with status only", async () => {
+    const f = async () => new Response("key detail", { status: 401 });
+    const p = mercuryProvider({ MERCURY_API_KEY: "m" }, f as unknown as typeof fetch);
+    await expect(p.generate({ prompt: "x" })).rejects.toThrow("HTTP 401");
+  });
+
+  it("streams OpenAI deltas, maps reasoning to thinking, terminal usage frame", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(sseStream([
+        { choices: [{ delta: { reasoning: "hmm" } }] },
+        { choices: [{ delta: { content: "Hel" } }] },
+        { choices: [{ delta: { content: "lo" } }] },
+        { usage: { prompt_tokens: 5, completion_tokens: 2 } },
+      ])),
+    );
+    const p = mercuryProvider({ MERCURY_API_KEY: "m" }, fetchMock as unknown as typeof fetch);
+    const chunks = await collect(p.stream!({ prompt: "hi" }));
+    expect(chunks).toEqual([
+      { type: "thinking", content: "hmm" },
+      { type: "token", content: "Hel" },
+      { type: "token", content: "lo" },
+      { type: "usage", usage: { inputTokens: 5, outputTokens: 2 } },
+    ]);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.stream).toBe(true);
+  });
+
+  it("catalog honors the model override and env model var", () => {
+    const pinned = mercuryProvider({ MERCURY_API_KEY: "m", MERCURY_MODEL: "mercury-2.5" });
+    expect(pinned.name).toBe("mercury:mercury-2.5");
+    // providerFromCatalog's modelOverride (pre-ASH-187 callers) beats the env.
+    const fromCatalog = openAICompatibleProvider({
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "k",
+      model: "cheap/model",
+      registryId: "openrouter",
+      streamUsage: true,
+    });
+    expect(fromCatalog.name).toBe("openrouter:cheap/model");
   });
 });
 

@@ -110,10 +110,15 @@ const search = (env: Record<string, string | undefined>) =>
 
 const GENERATION_CHOICES: Record<string, readonly string[]> = {
   gemini: ["GEMINI_API_KEY"],
+  mercury: ["MERCURY_API_KEY", "INCEPTION_API_KEY"],
   openrouter: ["OPENROUTER_API_KEY"],
 };
 const generation = (env: Record<string, string | undefined>) =>
-  selectorResolution(env, "GENERATION_PROVIDER", GENERATION_CHOICES, ["OPENROUTER_API_KEY", "GEMINI_API_KEY"]);
+  selectorResolution(env, "GENERATION_PROVIDER", GENERATION_CHOICES, [
+    "MERCURY_API_KEY",
+    "GEMINI_API_KEY",
+    "OPENROUTER_API_KEY",
+  ]);
 
 const EMBEDDING_CHOICES: Record<string, readonly string[]> = {
   openrouter: ["OPENROUTER_API_KEY"],
@@ -171,13 +176,14 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "generation",
     label: "Model generation",
-    watches: ["GENERATION_PROVIDER", "OPENROUTER_API_KEY", "GEMINI_API_KEY"],
+    watches: ["GENERATION_PROVIDER", "MERCURY_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY"],
     // Mirrors generationProvider(): the selector wins outright; the fallback
-    // prefers the paid OpenRouter key, then the free Gemini key.
+    // prefers the Mercury trial grant, then the free Gemini key, then the paid
+    // OpenRouter key.
     ready: (env) => generation(env).ready,
     missing: (env) => generation(env).missing,
     subject: "Drafting and classification that call a model are unavailable",
-    action: "set OPENROUTER_API_KEY or GEMINI_API_KEY",
+    action: "set MERCURY_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY",
   },
   {
     id: "embeddings",

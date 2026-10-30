@@ -19,8 +19,8 @@ describe("capabilityStatus", () => {
   it("reports a capability missing when none of its variables are set, and names them", () => {
     const generation = find({}, "generation");
     expect(generation.configured).toBe(false);
-    expect(generation.missingEnv).toEqual(["OPENROUTER_API_KEY", "GEMINI_API_KEY"]);
-    expect(generation.reason).toContain("set OPENROUTER_API_KEY or GEMINI_API_KEY");
+    expect(generation.missingEnv).toEqual(["MERCURY_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"]);
+    expect(generation.reason).toContain("set MERCURY_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY");
   });
 
   it("treats any one configured variable as sufficient when no selector is set", () => {

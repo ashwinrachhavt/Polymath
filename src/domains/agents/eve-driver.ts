@@ -141,7 +141,7 @@ export function eveBridgeUnavailableReason(): string | null {
 /** The Authorization header for one Eve call, minted from the caller's verified context. */
 function bridgeHeaders(
   auth: AuthContext,
-  claims: { runId?: string; skillId?: string } = {},
+  claims: { runId?: string; skillId?: string; model?: string } = {},
 ): Record<string, string> {
   const secret = bridgeSecret();
   if (!secret) throw new Error(eveBridgeUnavailableReason() ?? "Eve bridge is not configured.");
@@ -160,6 +160,12 @@ function bridgeHeaders(
 function skillIdOfSnapshot(snapshot: unknown): string | undefined {
   const skill = (snapshot as { skill?: { id?: unknown } } | null | undefined)?.skill;
   return typeof skill?.id === "string" ? skill.id : undefined;
+}
+
+/** The model frozen onto the run's policy snapshot, when it named one. */
+function modelOfSnapshot(snapshot: unknown): string | undefined {
+  const model = (snapshot as { model?: unknown } | null | undefined)?.model;
+  return typeof model === "string" && model.trim() ? model : undefined;
 }
 
 /**
@@ -183,9 +189,18 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       // session.started, before this driver could write session_ref, so a
       // lookup there would race the create call.
       const skillId = skillIdOfSnapshot(policy);
+      /*
+       * The frozen model travels as a signed claim, the same channel the skill
+       * pin uses. Without it the agent resolved its own default: the run row
+       * recorded mercury-3 for pricing while Gemini answered, so the spend row
+       * and the executing model disagreed. A run that froze no model omits the
+       * claim and falls back as before.
+       */
+      const model = modelOfSnapshot(policy);
       const headers = bridgeHeaders(auth, {
         runId: sessionId,
         ...(skillId ? { skillId } : {}),
+        ...(model ? { model } : {}),
       });
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
@@ -225,16 +240,20 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       if (!ref) throw new Error("run has no Eve session yet");
       // "resume" carries no text to send; a follow-up is the message itself.
       if (signal === "resume") return;
-      // A follow-up is an ACTIVE INBOUND TURN, and the skill resolver reads the
-      // turn's auth: a token minted without the pin would let the resolver fall
-      // back to no skill and the run would lose it for the rest of the session.
-      // Same run, same frozen pin, same claims as start.
+      // Same run, same frozen pin and model, same claims as start: a follow-up
+      // turn resolves the model again, and a token without the model would put
+      // the rest of the session back on the agent's default.
       const skillId = skillIdOfSnapshot(run.policySnapshot);
+      const model = modelOfSnapshot(run.policySnapshot);
       const response = await fetch(`${eveMount(agentName)}/session/${ref}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...bridgeHeaders(auth, { runId: sessionId, ...(skillId ? { skillId } : {}) }),
+          ...bridgeHeaders(auth, {
+            runId: sessionId,
+            ...(skillId ? { skillId } : {}),
+            ...(model ? { model } : {}),
+          }),
         },
         body: JSON.stringify({ message: signal }),
       });
