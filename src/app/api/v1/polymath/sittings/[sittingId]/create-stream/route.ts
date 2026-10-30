@@ -5,6 +5,7 @@ import { problemResponse } from "@/lib/problems";
 import { getSitting, SittingError } from "@/domains/knowledge/sittings";
 import {
   encodeSittingEvent,
+  isSittingEventName,
   SITTING_PROTOCOL_VERSION,
   type SittingEvent,
 } from "@/domains/knowledge/sitting-events";
@@ -122,15 +123,21 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
         else buffer.push({ event, seq });
       });
       try {
-        // 1. Durable replay from the cursor (§16.1: allowlisted events only).
+        // 1. Durable replay from the cursor (§16.1: protocol events only).
+        // agent_steps also carries non-protocol rows (kind:"model" usage);
+        // replaying one would hand the reducer an event outside
+        // SITTING_EVENTS, whose switch returns undefined and crashes the
+        // writing surface. Skip any payload whose event is not in the family.
         for (const step of await durableEvents(auth, runId, cursor)) {
           const payload = (step.payload ?? {}) as Record<string, unknown>;
+          const eventName = typeof payload.event === "string" ? payload.event : "";
+          if (!isSittingEventName(eventName)) continue;
           deliver({
             protocolVersion: SITTING_PROTOCOL_VERSION,
             operationId: runId,
             ...(typeof payload.artifactId === "string" ? { artifactId: payload.artifactId } : {}),
             ...(typeof payload.artifactVersionId === "string" ? { artifactVersionId: payload.artifactVersionId } : {}),
-            event: (payload.event as SittingEvent["event"]) ?? "warning",
+            event: eventName as SittingEvent["event"],
             payload,
           }, step.sequence);
         }

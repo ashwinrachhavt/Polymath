@@ -67,6 +67,12 @@ export const SITTING_EVENTS = [
 ] as const;
 export type SittingEventName = (typeof SITTING_EVENTS)[number];
 
+/** Runtime guard for the closed event family: replay must skip non-protocol
+ * rows (agent_steps kind:"model" usage) rather than cast them into events. */
+export function isSittingEventName(value: string): value is SittingEventName {
+  return (SITTING_EVENTS as readonly string[]).includes(value);
+}
+
 /*
  * §15.2: the ONLY strings that may persist as a stage outcome in
  * agent_steps.payload. The event-schema test enumerates this list; anything

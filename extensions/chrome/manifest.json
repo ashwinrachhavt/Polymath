@@ -65,7 +65,6 @@
       "resources": [
         "widget.css",
         "icons/*",
-        "api.js",
         "dashboard.html",
         "dashboard.css",
         "dashboard.js",
