@@ -88,7 +88,7 @@ eve-logs:
 # stack with local-stack-down, which leaves the db volume (a reset is still
 # `docker compose down -v`, deliberately not wired to a make target).
 local-stack-up:
-	docker compose up -d --wait db docling
+	docker compose up -d --wait db docling searxng firecrawl
 	$(MAKE) langfuse-up
 	@echo ""
 	@echo "export LANGFUSE_PUBLIC_KEY=$${LANGFUSE_PUBLIC_KEY:-pk-lf-polymath-local}"
@@ -97,8 +97,11 @@ local-stack-up:
 	@echo ""
 	@echo "next: make dev   (it starts eve too; export the lines above in that shell for tracing)"
 
+# Mirrors search-down plus the always-on pair: stopping the db while leaving
+# the search stack running is the surprising half-state this target exists to
+# avoid. Volumes survive; `docker compose down -v` remains the deliberate reset.
 local-stack-down: langfuse-down
-	docker compose stop db docling
+	docker compose rm -sf db docling searxng firecrawl firecrawl-playwright firecrawl-postgres firecrawl-rabbitmq redis-search
 	@echo "app dependencies stopped (volumes kept) — docker compose down -v resets them"
 
 # Self-hosted Langfuse (compose.langfuse.yaml) — the eval loop's trace store.
