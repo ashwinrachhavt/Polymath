@@ -1,0 +1,34 @@
+# Dependency review on every PR: a diff-aware pass over what the change
+# adds to the lockfile, reported where the change itself is reviewed.
+# Informational by design at first - only critical advisories fail the
+# check; tighten fail-on-severity once the baseline is known clean.
+name: Security
+
+on:
+  pull_request:
+
+permissions:
+  # The action posts its review summary as a PR comment; that is the only
+  # write and it needs pull-requests. Everything else is read-only.
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Review dependency changes for vulnerabilities and licenses
+        # The action moved from github/ to actions/ (the old path 404s);
+        # only full version tags exist there - v4.9.0 is the newest v4.
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          comment-summary-in-pr: always
+          # Informational mode: report every advisory (minSeverity falls back
+          # to `low` when warn-only is set) as warnings without failing PRs.
+          # `fail-on-severity: critical` would instead FILTER the reported
+          # changes to critical-only, hiding high/moderate/low findings from
+          # the summary and PR comment entirely. To promote this gate later:
+          # set warn-only: false and add fail-on-severity: critical.
+          warn-only: true

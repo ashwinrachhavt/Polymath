@@ -9,10 +9,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: every job gets a read-only token unless it grants more.
+# The evals job declares its own scoped permissions (pull-requests: write
+# for the eval-results PR comment), which fully overrides this block.
+permissions:
+  contents: read
+
 env:
-  # The build reads .node-version too; this keeps the runner honest if that
-  # file is ever renamed.
-  NODE_VERSION: "24"
+  NEXT_TELEMETRY_DISABLED: "1"
   # Date math in tests and builds resolves against one zone everywhere, not
   # whichever zone a runner image happens to ship with.
   TZ: "UTC"
@@ -20,6 +24,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       # The integration suites hold the invariants a mock cannot: idempotency,
       # tenancy, version conflicts, the import's identity rules. Without a
@@ -41,22 +46,22 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Incremental Next build state; the full build below and the one inside
-      # the e2e job both reuse it, so CI stops paying for two cold builds.
+      # Incremental production-build state; scope both exact and fallback
+      # restores to this ref to avoid another branch's compiled modules.
       - uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-next-${{ github.ref }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-next-${{ github.ref }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm install --frozen-lockfile
       - name: Guard append-only migration checkpoints
         env:
@@ -79,9 +84,120 @@ jobs:
       # Next 16 dropped per-route First Load JS from the build table; this
       # restores the spec's JS-budget measurement from the build manifest.
       - run: node scripts/check-route-js.mjs
+      # Schema drift gate: a domain schema edited without a generated
+      # migration passes every other check here and breaks the next deploy or
+      # migration replay. drizzle-kit generate never touches the database
+      # (verified offline: a dead-endpoint DATABASE_URL generates cleanly), so
+      # a port-closed dummy URL satisfies drizzle.config.ts's "must be set"
+      # check — and if a drizzle-kit upgrade ever starts connecting, the dead
+      # port fails fast instead of hanging the job.
+      - name: Guard schema drift (domain schemas vs generated migrations)
+        env:
+          DATABASE_URL: postgresql://drizzle:unused@127.0.0.1:9/ci_generate_never_connects
+        run: |
+          generate_log="$(mktemp)"
+          pnpm db:generate >"$generate_log" 2>&1 || {
+            echo "::error::pnpm db:generate failed; the drift gate cannot run."
+            tail -20 "$generate_log"
+            exit 1
+          }
+          # drizzle-kit exits 0 even when a rename/create ambiguity needs an
+          # interactive answer (CI has no TTY): it generates nothing and says
+          # so only on stderr. The diff check below is the gate either way —
+          # this keeps the silent no-op visible.
+          if grep -q "Interactive prompts require a TTY" "$generate_log"; then
+            echo "::warning::drizzle-kit needed an interactive rename/create answer and generated nothing; the drift check below ran against no fresh output. Resolve the pending question locally (pnpm db:generate in a terminal) and commit the result."
+          fi
+          # status --porcelain, not git diff: a brand-new migration file is
+          # untracked, and diff alone would miss it.
+          if [ -n "$(git status --porcelain -- src/db/migrations)" ]; then
+            echo "::error::src/domains/*/schema.ts changed without a generated migration. Run 'pnpm db:generate' locally, commit the generated migration, and push."
+            git status --porcelain -- src/db/migrations
+            # Leave the tree as we found it: the generated output is the
+            # author's to make locally, and later steps should not see it.
+            git checkout -- src/db/migrations
+            git clean -fdq src/db/migrations
+            exit 1
+          fi
+      # Production boot smoke: e2e runs the dev server (the keyless dev-auth
+      # design stands down under NODE_ENV=production), so the just-built
+      # production app is booted nowhere. Start it here, wait for readiness,
+      # and assert the public routes that exist render: /landing (the one
+      # public marketing route) and /polymath (the anonymous-shell render of
+      # the workspace front door, where / redirects). /sign-in and /sign-up
+      # 404 by design until Clerk keys exist — a keyless CI boot cannot expect
+      # 200 from them. Catches the "builds but doesn't boot" class before
+      # Vercel does.
+      - name: Production boot smoke (next start + real public routes)
+        env:
+          # The routes under test render without a database (the anonymous
+          # shell path reads none); the URL keeps the server in the same env
+          # shape the e2e job boots with, against this job's own service.
+          DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
+        run: |
+          base="http://127.0.0.1:3000"
+          log="$(mktemp)"
+          # next start owns its process group via setsid, so the group kill
+          # reaps pnpm, the sh wrapper, and the next-server child alike — no
+          # orphaned listener for later steps.
+          setsid pnpm start >"$log" 2>&1 &
+          server_pid=$!
+          cleanup() { kill -- -"$server_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=""
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "::error::production server exited before becoming ready; log tail:"
+              tail -40 "$log"
+              exit 1
+            fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/landing" || true)
+            if [ "$code" = "200" ]; then ready=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "::error::production server did not serve a 200 within 60s; log tail:"
+            tail -40 "$log"
+            exit 1
+          fi
+          fail=0
+          for route in /landing /polymath; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base${route}" || true)
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${route} returned ${code}, expected 200 — the production build does not boot clean."
+              fail=1
+            else
+              echo "GET ${route} -> 200"
+            fi
+          done
+          # The root entry is a config redirect to the workspace front door;
+          # a broken redirect fails the boot as surely as a 500.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/" || true)
+          if [ "$code" != "307" ]; then
+            echo "::error::GET / returned ${code}, expected the 307 redirect to /polymath."
+            fail=1
+          else
+            echo "GET / -> 307 (redirects to /polymath)"
+          fi
+          if [ "$fail" != "0" ]; then
+            tail -40 "$log"
+            exit 1
+          fi
+          echo "Production boot smoke passed."
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # 2-way shard of the main suite (Playwright splits the test files
+      # across the legs). Legs are isolated runners - each gets its own
+      # postgres service below and boots its own dev server - so a shard
+      # shares nothing mutable with its sibling. fail-fast: false: a red
+      # shard must not orphan the other's in-flight evidence; the artifact
+      # uploads are always() for the same reason.
+      matrix:
+        shard: [1, 2]
     services:
       # The canonical routes read Postgres (identity resolution, run rows);
       # without a database the server renders error boundaries and the
@@ -102,21 +218,13 @@ jobs:
     env:
       DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Dev-server cache, exact-SHA restores only: the lockfile-keyed
-      # restore-keys let a branch run resurrect another branch's compiled
-      # modules (the lock hash is identical across branches), and the e2e
-      # server then rendered the WRONG branch's routes - a smoke run once
-      # read main's rail order from a stacked branch's own checkout.
-      - uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+      # Next's dev server does not populate the production .next/cache path.
       # The chromium download is ~20s of every run; the OS deps step below is
       # a fast no-op once the image has them, and install skips what is cached.
       - uses: actions/cache@v4
@@ -133,11 +241,13 @@ jobs:
           done
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
-      # playwright.config.ts builds and starts the server itself.
+      # playwright.config.ts builds and starts the server itself. Each matrix
+      # leg boots its own server and runs its shard of the suite; the fixture
+      # env is unchanged from the pre-shard invocation.
       # PERF_BUDGET_ENFORCE turns the hero-route navigation budget from
       # reporting into a tripwire; the dev ceilings stay deliberately generous
       # (compile noise) and only catastrophic regressions fail.
-      - run: pnpm e2e
+      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/2
         env:
           PERF_BUDGET_ENFORCE: "1"
           # The generation journeys (meeting prep, write from library,
@@ -162,10 +272,11 @@ jobs:
           EVE_GATEWAY_SECRET: e2e-gateway-secret-fixture-value-32chars
       # Structured record of the run above: names every test with its status,
       # including skips the list output never prints.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-report
+          name: "e2e-report-${{ matrix.shard }}"
+          retention-days: 14
           path: e2e-report.json
           if-no-files-found: warn
       # The Canva handoff's async journey (approve -> import_started -> sweep
@@ -184,7 +295,13 @@ jobs:
       # already). Their own failure still fails the job on its merits.
       # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
       # overwriting the main run's e2e-report.json in cwd.
-      - if: always()
+      # De-serialized: pinned to shard 2's tail so it overlaps shard 1
+      # instead of following the whole pool. The ASH-305 finding was about
+      # the shutdown ritual's workspace writes, not canva's - and the legs
+      # are isolated runners (own dev server, own postgres), so overlapped
+      # canva journeys cannot touch shard 1's workspace at all. The
+      # invocation's own failure still fails the job on its merits.
+      - if: always() && matrix.shard == 2
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
       # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
       # applies a real shutdown - parking captures, finishing sessions,
@@ -194,24 +311,37 @@ jobs:
       # every run that carried it, green on every run before it). It also
       # skips itself without SHUTDOWN_RITUAL_E2E, so the main run never
       # picks it up. Own --output dir: Playwright wipes it per invocation.
-      - if: always()
+      # Un-sharded: pinned to shard 1 so it runs exactly once per workflow
+      # run, still serial and alone on the workspace it writes to - each
+      # leg owns its dev server and database, so the ritual cannot touch
+      # the sibling leg's journeys.
+      - if: always() && matrix.shard == 1
         run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 1
+        with:
+          name: "e2e-report-shutdown-${{ matrix.shard }}"
+          path: e2e-report-shutdown.json
+          if-no-files-found: warn
+          retention-days: 14
       # ASH-305 integration gate: real-route shutdown pixels (desktop form,
       # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 1
         with:
-          name: shutdown-real-route-pixels
+          name: "shutdown-real-route-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results-shutdown/**/shutdown-real-*.png
           if-no-files-found: warn
       # Failure forensics: Playwright's per-failure page snapshots and retry
       # traces. if: always(), not failure(): a journey that only passes on
       # retry is exactly the one whose first-attempt evidence must survive -
       # without these a green-with-retry run is a message, not evidence.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-error-context
+          name: "e2e-error-context-${{ matrix.shard }}"
+          retention-days: 14
           path: |
             test-results/**/error-context.md
             test-results-fixture/**/error-context.md
@@ -222,31 +352,36 @@ jobs:
           if-no-files-found: ignore
       # The fixture invocation's own structured record: its journey results
       # (including skips) are evidence too, and the default report filename
-      # would overwrite the main run's uploaded above.
-      - uses: actions/upload-artifact@v4
-        if: always()
+      # would overwrite the main run's uploaded above. Only shard 2 runs
+      # the fixture invocation, so only shard 2 has this report.
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 2
         with:
-          name: e2e-report-fixture
+          name: "e2e-report-fixture-${{ matrix.shard }}"
+          retention-days: 14
           path: e2e-report-fixture.json
           if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: bulk-complete-pixels
+          name: "bulk-complete-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/bulk-pixels/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: onboarding-pixels
+          name: "onboarding-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/onboarding-pixels/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: feature-pixels
+          name: "feature-pixels-${{ matrix.shard }}"
+          retention-days: 14
           path: test-results/feature-pixels/
           if-no-files-found: ignore
 
@@ -258,6 +393,7 @@ jobs:
   # present, the strict eval run remains a required CI check and regressions fail.
   evals:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: check
     # The PR-comment step posts with the workflow token; everything else in
     # this job is read-only. Minimum grant, scoped to the job.
@@ -265,9 +401,9 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -315,12 +451,12 @@ jobs:
         run: echo "::notice::GEMINI_API_KEY is not set on main; agent evals were skipped."
       - name: Upload eval artifacts
         if: always() && steps.credential.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eve-evals
           path: eve/polymath/.eve/evals/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
       # Post the same table as a PR comment, replacing the previous one. The
       # marker lets the comment be found and deleted before the fresh post, so
       # a PR carries one live results thread instead of a stack per run. The
