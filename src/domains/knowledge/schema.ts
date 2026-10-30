@@ -42,17 +42,19 @@ import { companies, contacts } from "../crm/schema";
  * did it say when I approved it" is always answerable.
  */
 
+// Label order mirrors the applied `artifact_kind` type: PG enums are ordered
+// by creation, and schema.ts must not re-sort them (2026-10-30 alignment).
 export const artifactKind = pgEnum("artifact_kind", [
   "note",
-  "zettel",
   "document",
   "memo",
   "report",
   "diagram",
   "transcript",
+  "other",
+  "zettel",
   "deck",
   "infographic",
-  "other",
 ]);
 export const artifactStatus = pgEnum("artifact_status", [
   "draft",
@@ -90,13 +92,16 @@ export const claimStatus = pgEnum("claim_status", [
   "retracted",
 ]);
 export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
-export const projectSourcePolicy = pgEnum("project_source_policy", ["bounded", "open"]);
-export const projectQuestionStatus = pgEnum("project_question_status", [
+// The applied database types are `dossier_*` — no migration ever created the
+// `project_*` spellings (2026-10-30 alignment; `notebook_memories.source` is
+// plain text with a 'manual' default in the applied history, so it has no
+// enum type at all).
+export const dossierSourcePolicy = pgEnum("dossier_source_policy", ["bounded", "open"]);
+export const dossierQuestionStatus = pgEnum("dossier_question_status", [
   "open",
   "answered",
   "dropped",
 ]);
-export const projectMemorySource = pgEnum("project_memory_source", ["manual", "session"]);
 export const conceptSense = pgEnum("concept_sense", ["ordinary", "technical", "domain"]);
 
 export const artifacts = pgTable(
@@ -730,7 +735,7 @@ export const notebooks = pgTable(
     instructions: text("instructions"),
     emoji: text("emoji"),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
-    sourcePolicy: projectSourcePolicy("source_policy").notNull().default("bounded"),
+    sourcePolicy: dossierSourcePolicy("source_policy").notNull().default("bounded"),
     projectId: uuid("project_id"),
     ...mutable,
   },
@@ -768,7 +773,7 @@ export const notebookQuestions = pgTable(
       .notNull()
       .references(() => notebooks.id, { onDelete: "cascade" }),
     question: text("question").notNull(),
-    status: projectQuestionStatus("status").notNull().default("open"),
+    status: dossierQuestionStatus("status").notNull().default("open"),
     answer: text("answer"),
     ...mutable,
   },
@@ -816,7 +821,9 @@ export const notebookMemories = pgTable(
       .notNull()
       .references(() => notebooks.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
-    source: projectMemorySource("source").notNull().default("manual"),
+    // Plain text in the applied history (default 'manual'); the enum was a
+    // declaration-only idea that no migration ever created.
+    source: text("source").notNull().default("manual"),
     ...mutable,
   },
   (t) => [index("notebook_memories_notebook_idx").on(t.notebookId, t.createdAt)],
@@ -837,6 +844,9 @@ export const notebookAccounts = pgTable(
       .references(() => notebooks.id, { onDelete: "cascade" }),
     gatewayAccountId: uuid("gateway_account_id").notNull(),
     enabled: boolean("enabled").notNull().default(true),
+    // The applied history gave this table its own updated_at (NOT NULL,
+    // default now()) on top of `recorded`'s created_at.
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     ...recorded,
   },
   (t) => [

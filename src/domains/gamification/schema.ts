@@ -27,6 +27,9 @@ export const ledgerReason = pgEnum("ledger_reason", [
   "focus_completed",
   "task_completed",
   "review_decided",
+  // Applied history has this label between review_decided and weekly_review;
+  // PG enum labels are append-only, so the declaration keeps it (2026-10-30).
+  "learning_reviewed",
   "weekly_review",
   "adjustment",
 ]);

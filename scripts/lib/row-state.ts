@@ -116,6 +116,15 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
       },
     ],
   },
+  "knowledge.notebook_accounts": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail: "the only write is a single-statement upsert: INSERT ... ON CONFLICT (notebook_id, gateway_account_id) DO UPDATE SET enabled — the unique key makes it idempotent and the toggled column is a scalar boolean written without a read, so there is no read-modify-write to race. updated_at exists (applied history, NOT NULL default now()) but no update touches it",
+        evidence: "src/domains/knowledge/project-settings.ts:163-175",
+      },
+    ],
+  },
   "knowledge.document_enrichment": {
     guards: [
       {
