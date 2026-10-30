@@ -1,4 +1,4 @@
-import type { Appearance } from "@clerk/types";
+import type { ClerkAppearanceTheme } from "@clerk/nextjs/types";
 import { homeHref } from "@/lib/navigation";
 
 /*
@@ -12,11 +12,9 @@ export const clerkAppearance = {
     colorPrimary: "var(--primary)",
     colorBackground: "var(--card)",
     colorForeground: "var(--foreground)",
-    colorText: "var(--foreground)",
-    colorTextSecondary: "var(--muted-foreground)",
-    colorTextOnPrimaryBackground: "var(--primary-foreground)",
-    colorInputBackground: "var(--background)",
-    colorInputText: "var(--foreground)",
+    colorPrimaryForeground: "var(--primary-foreground)",
+    colorInput: "var(--background)",
+    colorInputForeground: "var(--foreground)",
     colorDanger: "var(--destructive)",
     colorNeutral: "var(--muted-foreground)",
     colorMuted: "var(--muted)",
@@ -45,7 +43,7 @@ export const clerkAppearance = {
     userButtonPopoverActionButton: "text-foreground hover:bg-muted",
     userButtonPopoverFooter: "hidden",
   },
-} satisfies Appearance;
+} satisfies ClerkAppearanceTheme;
 
 /*
  * Post-auth landing. Imported rather than repeated: the sign-in screen is a
