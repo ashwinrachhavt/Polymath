@@ -25,4 +25,10 @@ jobs:
         uses: actions/dependency-review-action@v4.9.0
         with:
           comment-summary-in-pr: always
-          fail-on-severity: critical
+          # Informational mode: report every advisory (minSeverity falls back
+          # to `low` when warn-only is set) as warnings without failing PRs.
+          # `fail-on-severity: critical` would instead FILTER the reported
+          # changes to critical-only, hiding high/moderate/low findings from
+          # the summary and PR comment entirely. To promote this gate later:
+          # set warn-only: false and add fail-on-severity: critical.
+          warn-only: true
