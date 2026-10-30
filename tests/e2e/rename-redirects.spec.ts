@@ -26,6 +26,6 @@ test("/apps/alfred/* redirects to /apps/polymath/*", async ({ page }) => {
 });
 
 test("a deep alfred route carries its path across", async ({ page }) => {
-  await page.goto("/alfred/knowledge/zettels/session");
-  await expect(page).toHaveURL(/\/polymath\/knowledge\/zettels\/session$/);
+  await page.goto("/alfred/knowledge?doc=x");
+  await expect(page).toHaveURL(/\/polymath\/knowledge\?doc=x$/);
 });

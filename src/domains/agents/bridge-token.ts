@@ -35,6 +35,13 @@ export type BridgeClaims = {
    */
   runId?: string;
   skillId?: string;
+  /*
+   * The run's frozen model. The run row records one model for pricing; without
+   * this claim the agent resolved its own default, so a run recorded mercury-3
+   * while Gemini answered and billed — two numbers that disagreed and only one
+   * of them was real.
+   */
+  model?: string;
 };
 
 type Payload = {
@@ -47,6 +54,7 @@ type Payload = {
   jti: string;
   rid?: string;
   skid?: string;
+  mdl?: string;
 };
 
 /** The shared secret, or null when it is missing or too short to trust. */
@@ -77,6 +85,7 @@ export function signBridgeToken(
     // exactly the bytes earlier versions produced.
     ...(claims.runId !== undefined ? { rid: claims.runId } : {}),
     ...(claims.skillId !== undefined ? { skid: claims.skillId } : {}),
+    ...(claims.model !== undefined ? { mdl: claims.model } : {}),
   };
   const body = `v1.${encode(JSON.stringify(payload))}`;
   return `${body}.${encode(sign(options.secret, body))}`;
@@ -114,11 +123,13 @@ export function verifyBridgeToken(
   // code — refuse rather than pass a non-string into a database lookup.
   if (payload.rid !== undefined && typeof payload.rid !== "string") return null;
   if (payload.skid !== undefined && typeof payload.skid !== "string") return null;
+  if (payload.mdl !== undefined && typeof payload.mdl !== "string") return null;
   return {
     userId: payload.uid,
     workspaceId: payload.wid,
     role: payload.role,
     ...(payload.rid !== undefined ? { runId: payload.rid } : {}),
     ...(payload.skid !== undefined ? { skillId: payload.skid } : {}),
+    ...(payload.mdl !== undefined ? { model: payload.mdl } : {}),
   };
 }

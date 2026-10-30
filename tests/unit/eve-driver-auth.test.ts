@@ -52,8 +52,9 @@ describe("verified workspace binding to Eve", () => {
     expect(headers["x-spike-clerk-user-id"]).toBeUndefined();
     const claims = verifyBridgeToken(headers.authorization.replace("Bearer ", ""), { secret: SECRET });
     // Every token for a run names it: the skill resolver needs the run even
-    // when the run pinned no skill.
-    expect(claims).toEqual({ ...auth, runId: "run-uuid" });
+    // when the run pinned no skill. It also carries the run's frozen model, so
+    // the agent runs the model the run row prices.
+    expect(claims).toEqual({ ...auth, runId: "run-uuid", model: "m" });
     expect(JSON.parse(String(init.body))).toMatchObject({ message: "Read tasks", operationId: "axiom-run-run-uuid" });
     expect(mocks.update).toHaveBeenCalledOnce();
   });
@@ -74,6 +75,42 @@ describe("verified workspace binding to Eve", () => {
       attributes: { workspaceId: "ws-1" }, principalId: "user-1",
     });
     expect(await bridge(new Request("https://eve.test/s", { headers: { authorization: "Bearer v1.bad.token" } }))).toBeNull();
+  });
+
+  it("start sends the run's frozen model in the signed claims", async () => {
+    // The run row freezes a model at start, and the agent must run THAT model:
+    // an unsent model silently fell back to the default, so a run recorded
+    // mercury-3 while Gemini answered and billed. The claim is the only channel
+    // that reaches the model resolver before the first step.
+    const fetch = vi.fn().mockResolvedValue(Response.json({ sessionId: "wrun_1" }, { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    await createEveDriver().start({ ...input(), policy: { ...input().policy, model: "mercury-3" } });
+    const headers = (fetch.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>;
+    const claims = verifyBridgeToken(headers.authorization.replace("Bearer ", ""), { secret: SECRET });
+    expect(claims).toEqual({ ...auth, runId: "run-uuid", model: "mercury-3" });
+  });
+
+  it("start omits the model claim when the run froze none", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ sessionId: "wrun_1" }, { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    await createEveDriver().start({ ...input(), policy: { ...input().policy, model: null } });
+    const headers = (fetch.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>;
+    const claims = verifyBridgeToken(headers.authorization.replace("Bearer ", ""), { secret: SECRET });
+    // Byte-compatible with tokens minted before this claim existed.
+    expect(claims).toEqual({ ...auth, runId: "run-uuid" });
+  });
+
+  it("the Eve channel publishes the model claim as a session attribute", async () => {
+    vi.resetModules();
+    const { authenticators } = await import("../../eve/polymath/agent/channels/eve");
+    const bridge = authenticators[0];
+    const { verifyWorkspaceBinding: verify } = await import("@/domains/identity/resolve");
+    vi.mocked(verify).mockResolvedValueOnce(auth);
+    const token = signBridgeToken({ ...auth, runId: "run-uuid", model: "mercury-3" }, { secret: SECRET });
+    const result = await bridge(new Request("https://eve.test/s", { headers: { authorization: `Bearer ${token}` } }));
+    expect(result).toMatchObject({
+      attributes: { workspaceId: "ws-1", runId: "run-uuid", model: "mercury-3" },
+    });
   });
 
   it("production never mounts localDev", async () => {

@@ -352,6 +352,21 @@ describe("threadBlocks", () => {
     expect(block).toMatchObject({ id: "assistant:turn_0:0", done: true });
   });
 
+  it("never repeats a block id when one turn holds two assistant answers", () => {
+    // A resumed turn answers again, and the stream id carries no step number,
+    // so both messages used to become `assistant:turn_0:0`. React renders
+    // duplicate keys by dropping or duplicating children - the conversation
+    // silently lost a message. Only the first may claim the stream's id.
+    const blocks = threadBlocks([
+      { sequence: 1, role: "user", text: "Question", turnId: "turn_0" },
+      { sequence: 2, role: "assistant", text: "First", turnId: "turn_0" },
+      { sequence: 3, role: "assistant", text: "Second", turnId: "turn_0" },
+    ]);
+    const ids = blocks.map((block) => block.id);
+    expect(ids).toEqual(["user:stored:1", "assistant:turn_0:0", "assistant:stored:3"]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("keys a message with no turnId by sequence, since no replay can collide with it", () => {
     const blocks = threadBlocks([
       { sequence: 4, role: "user", text: "Question", turnId: null },

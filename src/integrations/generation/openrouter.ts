@@ -1,13 +1,8 @@
 import {
-  GENERATION_TIMEOUT_MS,
-  GenerationRequestError,
   GenerationUnconfiguredError,
-  chatMessages,
-  type GenerateInput,
   type GenerationProvider,
-  type StreamChunk,
 } from "./provider";
-import { sseLines } from "./sse";
+import { providerFromCatalog } from "./openai-compatible-providers";
 
 /*
  * The status-quo generation route: the workspace's own OpenRouter key. This
@@ -15,79 +10,19 @@ import { sseLines } from "./sse";
  * registry marks it "paid", and the seam never selects it as a rescue when a
  * free route is exhausted; it runs only when configured explicitly or when it
  * is the only key present (the pre-ASH-187 default).
+ *
+ * Since the catalog (openai-compatible-providers.ts) this is a thin wrapper
+ * over the shared OpenAI-wire adapter; the streamUsage flag keeps the
+ * include_usage request so metered() still sees token counts. The model
+ * override parameter is preserved for pre-ASH-187 callers that pin a model.
  */
-
-const URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "openai/gpt-4o-mini";
-
-type OpenRouterResponse = {
-  choices?: Array<{ message?: { content?: string }; delta?: { content?: string; reasoning?: string } }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
-};
 
 export function openRouterProvider(
   env: Record<string, string | undefined>,
   fetchImpl: typeof fetch = fetch,
   modelOverride?: string,
 ): GenerationProvider {
-  const apiKey = env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new GenerationUnconfiguredError();
-  const model = modelOverride || env.GENERATION_MODEL || DEFAULT_MODEL;
-  return {
-    name: `openrouter:${model}`,
-    registryId: "openrouter",
-    async generate(input: GenerateInput) {
-      const response = await fetchImpl(URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          ...(input.json ? { response_format: { type: "json_object" } } : {}),
-          temperature: input.temperature ?? 0,
-          messages: chatMessages(input),
-        }),
-        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-      });
-      // Provider error text is not kept: status only.
-      if (!response.ok) throw new GenerationRequestError("openrouter", response.status);
-      const body = (await response.json().catch(() => null)) as OpenRouterResponse | null;
-      return {
-        text: body?.choices?.[0]?.message?.content ?? "",
-        usage: { inputTokens: body?.usage?.prompt_tokens, outputTokens: body?.usage?.completion_tokens },
-      };
-    },
-    async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
-      const response = await fetchImpl(URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          stream: true,
-          // Ask for the terminal usage frame; OpenRouter sends it when the
-          // upstream reports stream token counts.
-          stream_options: { include_usage: true },
-          temperature: input.temperature ?? 0,
-          messages: chatMessages(input),
-        }),
-        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-      });
-      if (!response.ok) throw new GenerationRequestError("openrouter", response.status);
-      if (!response.body) return;
-      for await (const data of sseLines(response.body)) {
-        try {
-          const parsed = JSON.parse(data) as OpenRouterResponse;
-          if (parsed.usage) {
-            yield { type: "usage", usage: { inputTokens: parsed.usage.prompt_tokens, outputTokens: parsed.usage.completion_tokens } };
-            continue;
-          }
-          const delta = parsed.choices?.[0]?.delta;
-          // Reasoning surfaces as thinking, answer text as tokens (§3 protocol).
-          if (delta?.reasoning) yield { type: "thinking", content: delta.reasoning };
-          if (delta?.content) yield { type: "token", content: delta.content };
-        } catch {
-          // A malformed SSE frame skips; the stream contract stays line-shaped.
-        }
-      }
-    },
-  };
+  const provider = providerFromCatalog("openrouter", env, fetchImpl, modelOverride);
+  if (!provider) throw new GenerationUnconfiguredError();
+  return provider;
 }

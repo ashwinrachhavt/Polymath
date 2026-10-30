@@ -624,6 +624,13 @@
       "when": 1793600520000,
       "tag": "0262_one_running_creation_run",
       "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1793600580000,
+      "tag": "0263_drop_cards_areas_sittings",
+      "breakpoints": true
     }
   ]
 }
