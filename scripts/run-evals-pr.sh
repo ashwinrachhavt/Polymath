@@ -50,9 +50,10 @@ cred_shaped() {
   esac
 }
 
-# Runner-injected harness credentials (mirrors stubs.ts isHarnessInjected):
-# ACTIONS_/GITHUB_/RUNNER_ names belong to the CI runner or to gh itself, not
-# to a provider. GH_TOKEN in particular feeds the script's own posting step.
+# Runner-injected harness credentials. The eval gate (stubs.ts) enumerates
+# the exact credential-shaped names it exempts; the sanitizer is
+# deliberately broader — wildcard prefixes clear CI-runner plumbing the
+# enumerated gate never sees, and the gate remains the authority.
 harness_injected() {
   case "$1" in
     ACTIONS_* | GITHUB_* | RUNNER_* | GH_TOKEN | GITHUB_TOKEN) return 0 ;;
@@ -230,12 +231,15 @@ if $POST; then
     # results in place, so the new comment lands before any deletion.
     new_url="$(gh pr comment "$pr" --body-file "$BODY" 2>/dev/null)" || new_url=""
     if [ -n "$new_url" ]; then
+      # The new comment's own URL ends in its id; exclude it from the stale
+      # sweep, or the deletion loop removes what we just posted.
+      new_id="${new_url##*-}"
       # Collect stale marker comments across all pages (issues API is
       # oldest-first; a marker beyond page 1 must still be replaced).
       page=1
       while :; do
         batch="$(gh api "repos/{owner}/{repo}/issues/$pr/comments?per_page=100&page=$page" \
-          --jq ".[] | select(.body | startswith(\"$COMMENT_MARKER\")) | .id" 2>/dev/null || true)"
+          --jq ".[] | select(.body | startswith(\"$COMMENT_MARKER\")) | select(.id != $new_id) | .id" 2>/dev/null || true)"
         while IFS= read -r cid; do
           [ -n "$cid" ] || continue
           gh api -X DELETE "repos/{owner}/{repo}/issues/comments/$cid" >/dev/null || true
