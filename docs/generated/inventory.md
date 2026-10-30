@@ -18,7 +18,7 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `drizzle-kit` | 0.31.11 |
 | `postgres` | ^3.4.9 |
 | `pg` | absent |
-| `@clerk/nextjs` | 7.9.20 |
+| `@clerk/nextjs` | 7.9.21 |
 | `@tiptap/react` | ^3.32.0 |
 | `tailwindcss` | ^4.3.3 |
 | `zod` | ^4.6.7 |
