@@ -631,6 +631,13 @@
       "when": 1793600580000,
       "tag": "0263_drop_cards_areas_sittings",
       "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1793600640000,
+      "tag": "0264_sticky_richard_fisk",
+      "breakpoints": true
     }
   ]
 }
