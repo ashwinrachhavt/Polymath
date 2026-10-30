@@ -1,0 +1,15 @@
+# Dependency maintenance on a schedule instead of on maintainers' radar.
+# The npm ecosystem reads pnpm-lock.yaml natively, so both the app's
+# packages and the workflows' actions get the same weekly drift check.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
