@@ -79,6 +79,41 @@ jobs:
       # Next 16 dropped per-route First Load JS from the build table; this
       # restores the spec's JS-budget measurement from the build manifest.
       - run: node scripts/check-route-js.mjs
+      # Schema drift gate: a domain schema edited without a generated
+      # migration passes every other check here and breaks the next deploy or
+      # migration replay. drizzle-kit generate never touches the database
+      # (verified offline: a dead-endpoint DATABASE_URL generates cleanly), so
+      # a port-closed dummy URL satisfies drizzle.config.ts's "must be set"
+      # check — and if a drizzle-kit upgrade ever starts connecting, the dead
+      # port fails fast instead of hanging the job.
+      - name: Guard schema drift (domain schemas vs generated migrations)
+        env:
+          DATABASE_URL: postgresql://drizzle:unused@127.0.0.1:9/ci_generate_never_connects
+        run: |
+          generate_log="$(mktemp)"
+          pnpm db:generate >"$generate_log" 2>&1 || {
+            echo "::error::pnpm db:generate failed; the drift gate cannot run."
+            tail -20 "$generate_log"
+            exit 1
+          }
+          # drizzle-kit exits 0 even when a rename/create ambiguity needs an
+          # interactive answer (CI has no TTY): it generates nothing and says
+          # so only on stderr. The diff check below is the gate either way —
+          # this keeps the silent no-op visible.
+          if grep -q "Interactive prompts require a TTY" "$generate_log"; then
+            echo "::warning::drizzle-kit needed an interactive rename/create answer and generated nothing; the drift check below ran against no fresh output. Resolve the pending question locally (pnpm db:generate in a terminal) and commit the result."
+          fi
+          # status --porcelain, not git diff: a brand-new migration file is
+          # untracked, and diff alone would miss it.
+          if [ -n "$(git status --porcelain -- src/db/migrations)" ]; then
+            echo "::error::src/domains/*/schema.ts changed without a generated migration. Run 'pnpm db:generate' locally, commit the generated migration, and push."
+            git status --porcelain -- src/db/migrations
+            # Leave the tree as we found it: the generated output is the
+            # author's to make locally, and later steps should not see it.
+            git checkout -- src/db/migrations
+            git clean -fdq src/db/migrations
+            exit 1
+          fi
 
   e2e:
     runs-on: ubuntu-latest
