@@ -231,4 +231,85 @@ suite("daybook (Neon)", () => {
     expect(second.created).toBe(false);
     expect(second.id).toBe(first.id);
   });
+
+  // Value: protects=getWeekActivity derives Mon-Sun bounds in the owner's
+  // timezone and counts the same four sources getDayPage does, excluding
+  // archived artifacts, discarded captures and agent-actor events;
+  // fails_when=the CTE computes bounds in UTC instead of user_preferences tz,
+  // starts the week on Sunday, counts archived/discarded rows, or leaks
+  // agent-actor audit events into the strip; why_new=the query is new
+  // hand-written SQL whose bound math duplicates getDayPage's and any drift
+  // silently lies on the week strip - the suite already has the tz fixtures;
+  // seam=queries.getWeekActivity against real Postgres via makeTestDb;
+  // no_claim=none beyond protects.
+  it("counts the week's activity per day in the owner's timezone", async () => {
+    if (!handle) return;
+    // 2026-10-22 (Thu) sits in the Mon Oct 19 - Sun Oct 25 LA week.
+    // 2026-10-22 20:00 LA = 2026-10-23 03:00 UTC: belongs to LA's Thursday.
+    await noteWithVersion(ws.workspaceId, ws.userId, "week note", new Date("2026-10-23T03:00:00Z"));
+    // A Sunday-late event (2026-10-25 23:00 LA = 2026-10-26 06:00 UTC) must
+    // land in Sunday's cell, not spill into the next week's Monday.
+    await noteWithVersion(ws.workspaceId, ws.userId, "sunday-night note", new Date("2026-10-26T06:00:00Z"));
+    const week = await queries.getWeekActivity(auth, "2026-10-22");
+    expect(week).toHaveLength(7);
+    expect(week[0].date).toBe("2026-10-19"); // Monday
+    expect(week[6].date).toBe("2026-10-25"); // Sunday
+    const byDate = new Map(week.map((d) => [d.date, d.events]));
+    expect(byDate.get("2026-10-22")).toBeGreaterThanOrEqual(1); // Thursday note
+    expect(byDate.get("2026-10-25")).toBeGreaterThanOrEqual(1); // Sunday note
+    expect(byDate.get("2026-10-26")).toBeUndefined(); // outside the week
+  });
+
+  it("does not count archived artifacts or discarded captures in the week", async () => {
+    if (!handle) return;
+    // A fresh workspace gives the count exactness: nothing else contributes.
+    const iso = await seedWorkspace(handle.db, `daybook-week-${Date.now()}`);
+    const isoAuth = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'America/Los_Angeles')`,
+    );
+    const live = await noteWithVersion(iso.workspaceId, iso.userId, "live note", new Date("2026-10-22T18:00:00Z"));
+    const archived = await noteWithVersion(iso.workspaceId, iso.userId, "archived note", new Date("2026-10-22T18:05:00Z"));
+    await holder.db!.update(artifacts).set({ archivedAt: new Date() }).where(eq(artifacts.id, archived.artifactId));
+    await holder.db!.insert(captures).values({
+      workspaceId: iso.workspaceId,
+      kind: "text",
+      captureMode: "authored",
+      rawPayload: { text: "discarded" },
+      text: "discarded",
+      processingState: "discarded",
+      createdAt: new Date("2026-10-22T18:10:00Z"),
+      createdBy: iso.userId,
+      updatedBy: iso.userId,
+    });
+    // A user-actor audit event the CTE must not count twice (note.created +
+    // live note = 1 event + 1 artifact; if the strip double-counted the
+    // note.created action behind the artifact, the total would be 2+).
+    await holder.db!.insert(auditEvents).values({
+      workspaceId: iso.workspaceId,
+      actorId: iso.userId,
+      actorKind: "user",
+      action: "note.snapshot",
+      subjectType: "artifact",
+      subjectId: live.artifactId,
+      summary: "human edit",
+      createdAt: new Date("2026-10-22T18:15:00Z"),
+    });
+    // An agent-actor event must stay out.
+    await holder.db!.insert(auditEvents).values({
+      workspaceId: iso.workspaceId,
+      actorId: iso.userId,
+      actorKind: "agent",
+      action: "note.snapshot",
+      subjectType: "artifact",
+      subjectId: live.artifactId,
+      summary: "agent edit",
+      createdAt: new Date("2026-10-22T18:20:00Z"),
+    });
+    const week = await queries.getWeekActivity(isoAuth, "2026-10-22");
+    const thursday = week.find((d) => d.date === "2026-10-22")!.events;
+    // 1 live artifact + 1 user-actor audit event. The archived note, the
+    // discarded capture and the agent event contribute nothing.
+    expect(thursday).toBe(2);
+  });
 });

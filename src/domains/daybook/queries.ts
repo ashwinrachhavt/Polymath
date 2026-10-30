@@ -254,6 +254,11 @@ export async function getWeekActivity(
     )
     select to_char(d.day, 'YYYY-MM-DD') as date,
       (
+        -- Artifacts and captures cover creations; the audit slice counts
+        -- only work-done actions (snapshots, renames, completions), so a
+        -- note.created event and its artifact never count the same thing
+        -- twice. created/worked-on actions are split exactly as the day
+        -- page's DAYBOOK_ACTIONS registry splits them.
         (select count(*) from artifacts a
           where a.workspace_id = ${auth.workspaceId}
             and a.created_at >= lb.day_start
@@ -267,7 +272,7 @@ export async function getWeekActivity(
       + (select count(*) from audit_events ev
           where ev.workspace_id = ${auth.workspaceId}
             and ev.actor_kind = 'user'
-            and ev.action in ${DAYBOOK_ACTION_LIST}
+            and ev.action in ('note.snapshot', 'note.ai.applied', 'note.tags_changed', 'note.renamed', 'task.completed', 'capture.converted', 'document.version_restored', 'opportunity.stage_changed', 'daybook.pin_added')
             and ev.created_at >= lb.day_start
             and ev.created_at < lb.day_start + interval '1 day')
       + (select count(*) from focus_sessions fs
