@@ -110,7 +110,7 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
       from audit_events ev
       where ev.workspace_id = ${auth.workspaceId}
         and ev.actor_kind = 'user'
-        and ev.action in ${DAYBOOK_ACTION_LIST}
+        and ev.action in ${DAYBOOK_WORKED_ACTION_LIST}
         and ev.created_at >= (select day_start from bounds)
         and ev.created_at < (select day_end from bounds)
       limit 50
@@ -217,15 +217,28 @@ export async function getDayPage(auth: AuthContext, localDate: string): Promise<
   };
 }
 
+/**
+ * The work-done audit slice: the registry's workedOn + decided groups, the
+ * list every surface that counts "what changed" (worked-on lateral, week
+ * strip) must filter on — never the full DAYBOOK_ACTION_LIST, whose creation
+ * actions would double-render/double-count rows the created/captured
+ * laterals already cover.
+ */
+export const DAYBOOK_WORKED_ACTION_LIST: readonly string[] = [
+  ...DAYBOOK_ACTIONS.workedOn,
+  ...DAYBOOK_ACTIONS.decided,
+];
+
 export { DAYBOOK_ACTIONS, DAYBOOK_ACTION_LIST };
 
 /**
  * Per-day activity counts for the week containing `localDate` (Mon–Sun, the
  * owner's timezone), plus the day of week the owner's week starts on. The
  * day page's week strip reads these; each cell links the day and shows a bar
- * weighted to the busiest day. One grouped query over the same four sources the
- * day page derives from — artifacts, captures, audit events, focus sessions —
- * so a quiet record and a busy one render the same strip honestly.
+ * weighted to the busiest day. One grouped query over the same five sources the
+ * day page derives from — artifacts, captures, audit events, focus sessions,
+ * calendar events — so a quiet record and a busy one render the same strip
+ * honestly.
  */
 export async function getWeekActivity(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
@@ -239,7 +252,7 @@ export async function getWeekActivity(
   // Built in TypeScript from DAYBOOK_ACTIONS (never a literal here), so a
   // registry rename moves this query in the same compile; only creations
   // stay out — artifacts and captures already count those.
-  const workedActions = [...DAYBOOK_ACTIONS.workedOn, ...DAYBOOK_ACTIONS.decided];
+  const workedActions = DAYBOOK_WORKED_ACTION_LIST;
 
   const rows = (await db.execute(sql`
     with ws as (
@@ -300,6 +313,11 @@ export async function getWeekActivity(
           where fs.workspace_id = ${auth.workspaceId}
             and fs.started_at >= lb.day_start
             and fs.started_at < lb.day_end)
+      + (select count(*) from events e
+          where e.workspace_id = ${auth.workspaceId}
+            and e.starts_at >= lb.day_start
+            and e.starts_at < lb.day_end
+            and e.status <> 'cancelled')
       )::int as events
     from days d
     left join local_bounds lb on lb.day = d.day

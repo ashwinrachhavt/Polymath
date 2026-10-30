@@ -338,4 +338,29 @@ suite("daybook (Neon)", () => {
     // cell carries the event twice and Monday's cell is absent from this week.
     expect(week.find((d) => d.date === "2026-10-26")!.events).toBe(0);
   });
+
+  // Value: protects=the day record renders each creation exactly once - the
+  // worked-on lateral must exclude creation actions, which the created and
+  // captured laterals already cover; fails_when=the worked-on filter reverts
+  // to the full DAYBOOK_ACTION_LIST, so a note shows as both a Created row and
+  // a 'Created note ...' Changed row; why_new=the adversarial review caught the
+  // day-page twin of the double-count fixed for the week strip and no test
+  // asserted the single-render invariant; seam=queries.getDayPage against real
+  // Postgres; no_claim=none beyond protects.
+  it("renders a creation once, never as both Created and Changed", async () => {
+    if (!handle) return;
+    const iso = await seedWorkspace(handle.db, `daybook-single-${Date.now()}`);
+    const a = ownerAuth(iso.userId, iso.workspaceId);
+    await handle.db.execute(
+      sql`insert into user_preferences (workspace_id, user_id, timezone) values (${iso.workspaceId}, ${iso.userId}, 'UTC')`,
+    );
+    await noteWithVersion(iso.workspaceId, iso.userId, "once only", new Date("2026-10-22T18:00:00Z"));
+    const day = await queries.getDayPage(a, "2026-10-22");
+    expect(day.created.map((r) => r.title)).toContain("once only");
+    // The worked-on slice excludes creation actions: no 'Created note ...' row.
+    expect(day.workedOn.map((r) => r.title)).not.toContain('Created note "once only"');
+    // And the week strip counts the note once (artifact only, no audit event).
+    const week = await queries.getWeekActivity(a, "2026-10-22");
+    expect(week.find((d) => d.date === "2026-10-22")!.events).toBe(1);
+  });
 });

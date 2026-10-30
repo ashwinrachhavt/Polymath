@@ -241,11 +241,6 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
             />
           )}
 
-          {day.meetings.length ? (
-            <Panel title="Meetings" description="Scheduled time this day.">
-              <DayItemRows items={day.meetings} timezone={day.timezone} />
-            </Panel>
-          ) : null}
         </div>
 
         <aside className="flex min-w-0 flex-col gap-6">
@@ -327,18 +322,6 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
   );
 }
 
-function DayItemRows({ items, timezone }: { items: Array<{ id: string; title: string; at: Date | null }>; timezone: string }) {
-  return (
-    <div className="divide-y divide-border">
-      {items.map((item) => (
-        <div key={item.id} className="flex items-baseline justify-between gap-3 py-2 first:pt-0">
-          <span className="text-[13px]">{item.title}</span>
-          <span className="text-xs text-muted-foreground">{formatTime(item.at, timezone)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /*
  * `connection()` must sit inside a Suspense boundary under cacheComponents,
