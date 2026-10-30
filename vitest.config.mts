@@ -17,6 +17,11 @@ export default defineConfig({
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
           setupFiles: ["tests/unit/setup.clock.ts"],
+          // Unit files are pure: no database, no shared filesystem state, so
+          // their per-file startup (import + transform, the bulk of the serial
+          // wall) can overlap safely. The root false below stays in force for
+          // every project that does not override it here.
+          fileParallelism: true,
         },
       },
       {
