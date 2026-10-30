@@ -1,0 +1,9 @@
+{
+  "name": "polymath-evals-langgraph",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "langgraphjs dev --config langgraph.json",
+    "eval": "tsx src/cli.ts"
+  }
+}
