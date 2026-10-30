@@ -49,6 +49,25 @@ function isCredentialShaped(key: string): boolean {
   );
 }
 
+/*
+ * CI-harness credentials are injected by the runner itself, not by the
+ * operator: GitHub Actions exports ACTIONS_RUNTIME_TOKEN (artifact upload
+ * auth) and ACTIONS_CACHE_SERVICE_TOKEN into every step, and gh CLI
+ * authenticates with GH_TOKEN/GITHUB_TOKEN. They are credential-shaped, but
+ * they are not provider credentials a tool could spend — and the evals CI
+ * job's token is scoped to contents:read + pull-requests:write. Exempting
+ * these harness names keeps the gate closed for operator keys while letting
+ * the evals CI job and gh-authenticated local runs work at all.
+ */
+const HARNESS_ENV_PREFIXES = ["ACTIONS_", "GITHUB_", "RUNNER_"] as const;
+const HARNESS_ENV_NAMES = new Set(["GH_TOKEN", "GITHUB_TOKEN"]);
+
+function isHarnessInjected(key: string): boolean {
+  return (
+    HARNESS_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) || HARNESS_ENV_NAMES.has(key)
+  );
+}
+
 export class EvalEnvironmentViolation extends Error {
   constructor(key: string) {
     super(
@@ -71,6 +90,7 @@ export function assertEvalEnvironment(
     if (
       !(ALLOWED_EVAL_ENV as readonly string[]).includes(key) &&
       isCredentialShaped(key) &&
+      !isHarnessInjected(key) &&
       isSet(env[key])
     ) {
       throw new EvalEnvironmentViolation(key);

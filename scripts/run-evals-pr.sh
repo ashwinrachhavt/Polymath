@@ -50,12 +50,23 @@ cred_shaped() {
   esac
 }
 
+# Runner-injected harness credentials (mirrors stubs.ts isHarnessInjected):
+# ACTIONS_/GITHUB_/RUNNER_ names belong to the CI runner or to gh itself, not
+# to a provider. GH_TOKEN in particular feeds the script's own posting step.
+harness_injected() {
+  case "$1" in
+    ACTIONS_* | GITHUB_* | RUNNER_* | GH_TOKEN | GITHUB_TOKEN) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Clear every credential-shaped name seen in the shell or defined in
 # .env.local (eve injects the latter into process.env regardless of what the
-# parent shell carries), except the allowlisted three.
+# parent shell carries), except the allowlisted three and harness names.
 while IFS= read -r name; do
   case "$name" in '' | *[!A-Za-z0-9_]*) continue ;; esac
   cred_shaped "$name" || continue
+  harness_injected "$name" && continue
   case "$ALLOWED" in *" $name "*) continue ;; esac
   export "$name="
 done < <( {

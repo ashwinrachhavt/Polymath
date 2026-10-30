@@ -31,4 +31,21 @@ describe("assertEvalEnvironment", () => {
     const env = { GEMINI_API_KEY: "k", XAI_API_KEY: "k" };
     expect(() => assertEvalEnvironment(env)).toThrow(EvalEnvironmentViolation);
   });
+
+  it("lets GitHub Actions harness credentials through (runner-injected, not operator keys)", () => {
+    const env = {
+      GEMINI_API_KEY: "k",
+      ACTIONS_RUNTIME_TOKEN: "rt",
+      ACTIONS_CACHE_SERVICE_TOKEN: "ct",
+      GITHUB_TOKEN: "gt",
+      GH_TOKEN: "gh",
+      RUNNER_TRACKING_ID: "track",
+    };
+    expect(() => assertEvalEnvironment(env)).not.toThrow();
+  });
+
+  it("still throws for an operator credential outside the harness namespaces", () => {
+    const env = { STRIPE_WEBHOOK_SECRET: "k" };
+    expect(() => assertEvalEnvironment(env)).toThrow(EvalEnvironmentViolation);
+  });
 });

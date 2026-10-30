@@ -73,7 +73,20 @@ const rows = report.results.map((result) => {
     id: result.id,
     passed,
     gates: `${assertions.length - failed.length}/${assertions.length}`,
-    detail: String(firstFailure).replaceAll("|", "\\|").slice(0, 90),
+    // Model-derived text can embed newlines, which would break the markdown
+    // table and inject arbitrary rows into the PR comment. Strip control
+    // characters (code points 0-31 and 127) without a control-character
+    // regex: split into code points and keep the printable ones.
+    detail: String(firstFailure)
+      .replace(/[\r\n]+/g, " ")
+      .replaceAll("|", "\\|")
+      .slice(0, 90)
+      .split("")
+      .filter((ch) => {
+        const code = ch.codePointAt(0);
+        return code === undefined || (code > 31 && code !== 127);
+      })
+      .join(""),
   };
 });
 
@@ -111,14 +124,30 @@ async function gh(pathname, init = {}) {
   return response.json();
 }
 
-const comments = await gh(`/issues/${prNumber}/comments?per_page=100`);
-const mine = comments.filter((comment) => comment.body?.startsWith(MARKER));
-for (const comment of mine) {
-  await gh(`/issues/comments/${comment.id}`, { method: "DELETE" });
-}
-await gh(`/issues/${prNumber}/comments`, {
+// Post first, then delete the stale marker comments (excluding the new one):
+// a failed post then leaves the previous results in place instead of wiping
+// them — the reverse order loses the last report exactly when the eval run
+// failed and the table mattered most.
+const posted = await gh(`/issues/${prNumber}/comments`, {
   method: "POST",
   body: JSON.stringify({ body }),
 });
+// The issues API returns comments oldest-first; a marker beyond the first
+// page would never be replaced. Paginate forward until a page yields no
+// marker comments.
+const stale = [];
+let page = 1;
+for (;;) {
+  const batch = await gh(`/issues/${prNumber}/comments?per_page=100&page=${page}`);
+  if (!Array.isArray(batch) || batch.length === 0) break;
+  for (const comment of batch) {
+    if (comment.body?.startsWith(MARKER) && comment.id !== posted.id) stale.push(comment.id);
+  }
+  if (batch.length < 100) break;
+  page += 1;
+}
+for (const id of stale) {
+  await gh(`/issues/comments/${id}`, { method: "DELETE" });
+}
 
-console.log(`Posted eval results comment on PR #${prNumber} (${mine.length} previous replaced).`);
+console.log(`Posted eval results comment on PR #${prNumber} (${stale.length} previous replaced).`);

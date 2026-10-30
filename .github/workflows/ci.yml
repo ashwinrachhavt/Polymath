@@ -331,11 +331,15 @@ jobs:
         if: always() && steps.credential.outputs.present == 'true' && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          # PR number comes from the event context expression — there is no
+          # default GITHUB_EVENT_PULL_REQUEST_NUMBER env var; an empty value
+          # would make the poster exit 2 on every PR.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           node .github/scripts/eval-comment.mjs \
             "$RUNNER_TEMP/eval-report.json" \
             "$GITHUB_REPOSITORY" \
-            "$GITHUB_EVENT_PULL_REQUEST_NUMBER"
+            "$PR_NUMBER"
 
   # Vercel deploys `main` through its own GitHub integration; every other branch
   # is disabled in vercel.json, so a merged PR is the only thing that ships.
