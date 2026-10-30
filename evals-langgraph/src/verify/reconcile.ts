@@ -66,7 +66,7 @@ export function checkDataset(scope: VerificationScope, data: TraceDataset): Veri
     if (header.objective !== scope.objective) headerProblems.push("row objective ≠ case objective");
     if (!["succeeded", "failed", "cancelled"].includes(header.state)) headerProblems.push(`non-terminal state ${header.state}`);
     if (!header.model) headerProblems.push("model is null");
-    if (header.startedAt === null || header.endedAt === null || !Number.isFinite(Date.parse(header.startedAt)) || Date.parse(header.startedAt) > Date.parse(header.endedAt)) headerProblems.push("invalid [started_at, ended_at] window");
+    if (header.startedAt === null || header.endedAt === null || !Number.isFinite(Date.parse(header.startedAt)) || !Number.isFinite(Date.parse(header.endedAt)) || Date.parse(header.startedAt) > Date.parse(header.endedAt)) headerProblems.push("invalid [started_at, ended_at] window");
   }
   const headersOk = headerProblems.length === 0;
   const events = data.events;

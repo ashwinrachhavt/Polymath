@@ -29,6 +29,9 @@ async function main(): Promise<void> {
   const live = args.includes("--live");
   const skipReconcile = args.includes("--skip-reconcile");
   let dev: ReturnType<typeof superviseDevServer> | undefined;
+  // Hoisted so finally can release the Postgres connection on every path,
+  // including a ConfigurationError before the report prints.
+  let fetchers: ReturnType<typeof postgresFetchers> | undefined;
   try {
     const cases = caseRegistry(process.env).filter((item) => live ? !item.fixtureOnly : item.fixtureOnly);
     if (args.includes("--supervise-dev")) {
@@ -41,8 +44,8 @@ async function main(): Promise<void> {
       });
       await dev.ready();
     }
-    const fetchers = live && !skipReconcile ? postgresFetchers(databaseUrl(process.env)) : undefined;
-    const verify = fetchers ? createVerifyRun(verifyDependencies(process.env, (runId) => loadTraceDataset(fetchers, runId))) : undefined;
+    fetchers = live && !skipReconcile ? postgresFetchers(databaseUrl(process.env)) : undefined;
+    const verify = fetchers ? createVerifyRun(verifyDependencies(process.env, (runId) => loadTraceDataset(fetchers!, runId))) : undefined;
     const results: RunState[] = [];
     // Serial by default, matching eve maxConcurrency=1 and model quota limits.
     for (const item of cases) results.push(await createCaseGraph({ verify, captureStdout: dev?.capture }).invoke({ caseId: item.id, skipReconcile }));
@@ -50,6 +53,6 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(reportJson(results), null, 2));
     process.exitCode = reportExitCode(results, args.includes("--strict"));
   } catch (error) { console.error(String(error)); process.exitCode = 2; }
-  finally { await dev?.stop(); }
+  finally { await fetchers?.close(); await dev?.stop(); }
 }
 if (import.meta.url === `file://${process.argv[1]}`) void main();

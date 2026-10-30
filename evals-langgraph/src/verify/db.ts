@@ -50,9 +50,14 @@ export async function loadTraceDataset(fetchers: TraceFetchers, runId: string): 
 export function postgresFetchers(connectionString: string): TraceFetchers & { close: () => Promise<void> } {
   const sql = postgres(connectionString, { max: 1, prepare: false });
   return {
-    header: async (runId) => toHeader((await sql<HeaderSqlRow[]>`
+    header: async (runId) => {
+      const row = (await sql<HeaderSqlRow[]>`
       select id, workspace_id, objective, state, model, error, last_event_seq, session_ref, started_at, ended_at
-      from agent_runs where id = ${runId} limit 1`)[0]),
+      from agent_runs where id = ${runId} limit 1`)[0];
+      // Contract is TraceHeader | undefined: a missing row must reach the header
+      // check as "no run row", not crash the fetcher into a generic adapter failure.
+      return row ? toHeader(row) : undefined;
+    },
     events: async (runId, workspaceId) => toEvents(await sql<EventSqlRow[]>`
       select sequence, type, data from run_events
       where run_id = ${runId} and workspace_id = ${workspaceId} order by sequence`),

@@ -15,6 +15,7 @@ it("checks five groups but requires explicit Langfuse evidence for all six", () 
 const breaks: { group: string; break: (data: TraceDataset) => void }[] = [
   { group: "header", break: (data) => { data.headers = []; } },
   { group: "header", break: (data) => { data.headers[0].workspaceId = "other"; } },
+  { group: "header", break: (data) => { data.headers[0].endedAt = "invalid"; } },
   { group: "ordering", break: (data) => { data.events[1].sequence = 4; } },
   { group: "ordering", break: (data) => { data.events.pop(); } },
   { group: "tools", break: (data) => { data.tools[0].ok = null; } },
