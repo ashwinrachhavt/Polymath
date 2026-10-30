@@ -1,11 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { IdeaCard } from "@/components/polymath/ideas/idea-card";
-
-// Testing Library's auto-cleanup only arms when `afterEach` is a global, and
-// this repo runs vitest without globals: without this, each render lands in
-// the previous test's DOM and `screen` queries can match a stale node.
-afterEach(cleanup);
 
 const item = {
   id: "z1",

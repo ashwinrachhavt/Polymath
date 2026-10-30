@@ -1,11 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { IdeaGrid } from "@/components/polymath/ideas/idea-grid";
-
-// Testing Library's auto-cleanup only arms when `afterEach` is a global, and
-// this repo runs vitest without globals: without this, each render lands in
-// the previous test's DOM and `screen` queries can match a stale node.
-afterEach(cleanup);
 
 const items = [
   { id: "a", title: "Snapshots, not locks", tags: [], excerpt: "MVCC buys concurrency.", createdAt: new Date("2026-10-14T00:00:00Z"), updatedAt: new Date("2026-10-14T00:00:00Z"), sourceDocumentId: null, sourceTitle: null, bloom: null, suggestedLinks: [] },

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
 
 /*
  * The detail route reads one artifact and renders it, or a friendly miss. The
@@ -9,13 +9,10 @@ import { cleanup, render, screen } from "@testing-library/react";
  */
 
 /*
- * Testing Library's automatic cleanup hooks `afterEach` on the GLOBAL scope,
- * and this repo runs vitest without globals - so without this line the second
- * test renders into the first test's DOM and `getByText` can match a stale
- * node (it found two "Back to Ideas" links). Every `.tsx` test in the `ui`
- * project needs this until the project carries a shared setup file for it.
+ * Testing Library's automatic cleanup hooks `afterEach` on the GLOBAL scope and
+ * this repo runs vitest without globals, so the `ui` project carries
+ * tests/unit/setup.ui.ts, which registers cleanup for every component test.
  */
-afterEach(cleanup);
 
 const IDEA = {
   id: "6f1c2b7a-5b3e-4c8d-9a10-2b3c4d5e6f70",

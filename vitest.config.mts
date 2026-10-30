@@ -34,7 +34,7 @@ export default defineConfig({
           name: "ui",
           include: ["tests/unit/**/*.test.tsx"],
           environment: "jsdom",
-          setupFiles: ["tests/unit/setup.clock.ts"],
+          setupFiles: ["tests/unit/setup.clock.ts", "tests/unit/setup.ui.ts"],
         },
       },
     ],
