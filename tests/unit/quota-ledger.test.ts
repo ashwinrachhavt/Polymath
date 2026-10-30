@@ -90,4 +90,12 @@ describe("currentPeriod", () => {
     // 06:30 UTC on Jan 15 is still Jan 14 at 22:30 Pacific.
     expect(currentPeriod("daily", new Date("2026-01-15T06:30:00Z"))).toBe("2026-01-14");
   });
+  it("never rolls a lifetime allowance over, so a spent grant stays spent", () => {
+    // A one-time grant (Mercury's 100M tokens) is not a monthly quota. Under
+    // "monthly" the ledger opened a fresh bucket on the 1st and re-admitted the
+    // full allowance, so an exhausted grant passed the gate again every month.
+    expect(currentPeriod("lifetime")).toBe("lifetime");
+    expect(currentPeriod("lifetime", new Date("2027-06-01T00:00:00Z"))).toBe("lifetime");
+    expect(currentPeriod("lifetime", new Date("2030-12-31T23:59:59Z"))).toBe("lifetime");
+  });
 });

@@ -9,6 +9,7 @@ import {
   Layers,
   LayoutList,
   Library,
+  Lightbulb,
   Moon,
   NotebookPen,
   Puzzle,
@@ -76,6 +77,13 @@ export const destinations: Destination[] = [
     label: "Notes",
     purpose: "Write and keep your own pages.",
     icon: NotebookPen,
+    group: "polymath",
+  },
+  {
+    href: "/polymath/ideas",
+    label: "Ideas",
+    purpose: "Your ideas, each with its evidence.",
+    icon: Lightbulb,
     group: "polymath",
   },
   {
@@ -189,6 +197,14 @@ const featureRoutes: Record<string, string> = {
   "/apps/polymath/dossiers": "/projects",
   "/polymath/dossiers": "/projects",
   "/polymath/artifacts": "/artifacts",
+  // Ideas became a top-level surface; the zettel, card, area and sitting
+  // routes that used to live under the vault prefix forward there so an old
+  // bookmark lands on Ideas rather than a 404.
+  "/polymath/knowledge/zettels": "/polymath/ideas",
+  "/polymath/knowledge/zettels/session": "/polymath/ideas",
+  "/polymath/knowledge/ideas": "/polymath/ideas",
+  "/polymath/knowledge/cards": "/polymath/ideas",
+  "/polymath/knowledge/areas": "/polymath/ideas",
 };
 
 export const featureDestinations: Destination[] = products.flatMap((product) =>

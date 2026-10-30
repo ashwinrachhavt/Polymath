@@ -27,6 +27,7 @@ export type ModelProviderId =
   | "mistral"
   | "ovh"
   | "zai"
+  | "mercury"
   | "openrouter-free";
 
 export type ModelOption = {
@@ -189,6 +190,15 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyEnv: "ZAI_API_KEY",
     probe: "live 2026-10-24",
+  },
+  {
+    id: "mercury-3",
+    provider: "mercury",
+    label: "Mercury 3 (Inception)",
+    note: "Diffusion-token model on the 100M free-token grant; 1M context, fast.",
+    baseUrl: "https://api.inceptionlabs.ai/v1",
+    keyEnv: "MERCURY_API_KEY",
+    probe: "live 2026-10-30 (chat, tool calls with index, tool-result round-trip, SSE streaming verified)",
   },
   {
     id: "deepseek/deepseek-chat",

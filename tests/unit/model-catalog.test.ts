@@ -35,8 +35,19 @@ describe("model catalog invariants", () => {
     expect(resolveModelId("claude-hive-gone")).toBe(resolveModelId(undefined));
   });
 
-  it("sends a DeepSeek id only to the base URL that serves it", () => {
-    // The same id is served by more than one gateway; an entry that pairs one
+  it("offers Mercury when its key is set, on Inception's endpoint", () => {
+    // 100M-token trial grant (owner decision 2026-10-29). The picker entry is
+    // separate from the generation seam's catalog; both must point at the same
+    // OpenAI-compatible base URL.
+    const mercury = modelById("mercury-3");
+    expect(mercury).not.toBeNull();
+    expect(mercury!.baseUrl).toBe("https://api.inceptionlabs.ai/v1");
+    expect(mercury!.keyEnv).toBe("MERCURY_API_KEY");
+    expect(availableModels({ MERCURY_API_KEY: "m" }).map((m) => m.id)).toContain("mercury-3");
+    expect(availableModels({}).map((m) => m.id)).not.toContain("mercury-3");
+  });
+
+  it("sends a DeepSeek id only to the base URL that serves it", () => {    // The same id is served by more than one gateway; an entry that pairs one
     // gateway's id with another's base URL fails with "not a valid model ID".
     for (const model of MODEL_CATALOG.filter((m) => m.id.startsWith("deepseek/"))) {
       expect(model.baseUrl, model.id).toMatch(/^https:\/\//);

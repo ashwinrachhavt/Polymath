@@ -52,9 +52,12 @@ export interface QuotaStore {
  * The period key for an allowance. Monthly allowances use the UTC calendar
  * month (Firecrawl refreshes monthly; the account's exact billing anchor is
  * not exposed). Daily allowances use the Pacific date, because the one daily
- * quota we enforce (Gemini's RPD) resets at midnight Pacific.
+ * quota we enforce (Gemini's RPD) resets at midnight Pacific. A lifetime
+ * allowance is a one-time grant: one bucket that never rolls over, so an
+ * exhausted grant stays exhausted rather than re-admitting on a date change.
  */
-export function currentPeriod(renewal: "daily" | "monthly", now: Date = new Date()): string {
+export function currentPeriod(renewal: "daily" | "monthly" | "lifetime", now: Date = new Date()): string {
+  if (renewal === "lifetime") return "lifetime";
   if (renewal === "monthly") {
     return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   }

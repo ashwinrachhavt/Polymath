@@ -72,7 +72,14 @@ function polymathModel(runModel?: string | null) {
     // A model whose key vanished from the deployment must not silently fall back
     // to a different provider: the run's frozen model is a spend and behaviour
     // contract, and quietly running another one makes the run row a lie.
-    throw new Error(`${entry.keyEnv} is not set, so ${entry.label} cannot run. Choose another model or set the key.`);
+    //
+    // The message names the restart case explicitly. A dev server inherits its
+    // environment at boot, so a key added to .env while eve is already running
+    // is invisible here and reads exactly like a missing key - which sent one
+    // person hunting for a credential that was already in place.
+    throw new Error(
+      `${entry.keyEnv} is not set, so ${entry.label} cannot run. Set ${entry.keyEnv} and restart the agent process (a dev server only sees .env as it was at boot), or choose another model.`,
+    );
   }
 
   // Gemini's OpenAI-compatible surface needs the streaming repair; the other
@@ -101,13 +108,18 @@ export default defineAgent({
   // (session/turn selections must be serializable gateway id strings).
   model: defineDynamic({
     events: {
-      // The driver prepends the run's frozen model as session context in the
-      // first user message; eve has no per-run config channel. The env var is
-      // the fallback for evals and the TUI, which have no run row.
-      "step.started": () => ({
-        model: polymathModel(process.env.AXIOM_RUN_MODEL),
-        modelContextWindowTokens: 128_000,
-      }),
+      // The run's frozen model rides in the signed bridge token, which the
+      // channel publishes as a session attribute; eve has no per-run config
+      // channel before the first step. The env var is the fallback for evals
+      // and the TUI, which have no run row.
+      "step.started": (_event, ctx) => {
+        const fromSession = ctx.session.auth.current?.attributes?.model;
+        const runModel = typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL;
+        return {
+          model: polymathModel(runModel),
+          modelContextWindowTokens: 128_000,
+        };
+      },
     },
   }),
 });

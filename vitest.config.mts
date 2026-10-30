@@ -25,6 +25,18 @@ export default defineConfig({
           include: ["tests/{integration,contract,migration}/**/*.test.ts"],
         },
       },
+      // Component tests render React, so they need a DOM and a `.tsx` include
+      // that the `unit` project's `*.test.ts` pattern cannot match. They keep
+      // the same pinned clock; the unit project stays out of jsdom so its
+      // thousands of pure tests keep running in milliseconds.
+      {
+        test: {
+          name: "ui",
+          include: ["tests/unit/**/*.test.tsx"],
+          environment: "jsdom",
+          setupFiles: ["tests/unit/setup.clock.ts", "tests/unit/setup.ui.ts"],
+        },
+      },
     ],
     // All integration files share one test database, and reliability.test.ts
     // truncates every table in its beforeAll. Parallel files race that truncate

@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   analyzePaste,
   locateSpan,
-  PASTE_TOO_LONG,
   sourceHash,
 } from "@/domains/knowledge/decomposition";
-import { DECOMPOSE_MAX_CHARS, DECOMPOSE_PASTE_CHARS } from "@/domains/knowledge/sittings";
+
+/*
+ * The decomposition rules (§4): verbatim evidence only, multiple passages per
+ * candidate, real omissions surfaced, and stable dedupe ids. The paste-size
+ * cap and the model-calling entry points belonged to the sitting pipeline and
+ * left with it; what is pinned here is the document-facing analysis.
+ */
 
 const TEXT = [
   "The queue drains oldest first.",
@@ -26,7 +31,7 @@ const raw = {
   ],
 };
 
-describe("decomposition (§4, §15.1)", () => {
+describe("decomposition (§4)", () => {
   it("locates a verbatim span and rejects a quote that is not in the source", () => {
     expect(locateSpan(TEXT, "The queue drains oldest first.")).toEqual({ start: 0, end: 30, quote: "The queue drains oldest first." });
     expect(locateSpan(TEXT, "absent")).toBeNull();
@@ -51,15 +56,5 @@ describe("decomposition (§4, §15.1)", () => {
     const b = analyzePaste(TEXT, raw);
     expect(a.candidates.map((c) => c.id)).toEqual(b.candidates.map((c) => c.id));
     expect(a.sourceHash).toBe(sourceHash(TEXT));
-  });
-
-  it("rejects over-cap input, never truncates (§15.1 exact copy)", () => {
-    const big = "x".repeat(DECOMPOSE_MAX_CHARS + 1);
-    expect(() => analyzePaste(big, raw)).toThrowError(PASTE_TOO_LONG);
-  });
-
-  it("named constants keep their contracted values", () => {
-    expect(DECOMPOSE_PASTE_CHARS).toBe(2000);
-    expect(DECOMPOSE_MAX_CHARS).toBe(20000);
   });
 });

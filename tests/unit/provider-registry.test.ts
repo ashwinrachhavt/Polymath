@@ -113,6 +113,26 @@ describe("composio entry", () => {
   });
 });
 
+describe("mercury entry", () => {
+  it("carries the one-time trial grant with a verified spend gate", () => {
+    // Owner decision 2026-10-29: first in the free-first chain while the
+    // 100M-token grant lasts. A trial, not a recurring tier — and the ledger,
+    // not this entry, is what stops spend when the grant drains.
+    const entry = providerEntry("mercury")!;
+    expect(entry.enabled).toBe(true);
+    expect(entry.freeClass).toBe("trial");
+    expect(entry.allowPaidUsage).toBe(false);
+    expect(entry.allowPaidFallback).toBe(false);
+    expect(entry.sensitiveDataAllowed).toBe(false);
+    expect(entry.quota).not.toBeNull();
+    expect(entry.quota!.unit).toBe("tokens");
+    expect(entry.quota!.allowance).toBe(100_000_000);
+    expect(entry.quota!.allowanceEnv).toBe("MERCURY_TOTAL_TOKENS");
+    expect(entry.verifiedAt).toBe("2026-10-29");
+    expect(entry.verificationSource).toContain("inceptionlabs.ai");
+  });
+});
+
 describe("assertProviderUsable", () => {
   it("fails closed on unknown, disabled and unverified providers", () => {
     expect(() => assertProviderUsable(null, "made-up")).toThrow(ProviderDisabledError);

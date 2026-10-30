@@ -1,40 +1,32 @@
-import { createHash } from "node:crypto";
-import { z } from "zod";
-import type { AuthContext } from "@/domains/identity/resolve";
-import { sql } from "drizzle-orm";
-import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationRequestError,
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
-import { providerEntry } from "@/integrations/providers/registry";
-import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 import { and, eq, isNull, or } from "drizzle-orm";
-import { createTask } from "@/domains/work/commands";
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { IdempotencyConflictError, withReceipt } from "@/domains/audit/receipt";
 import { requestReceipts } from "@/domains/audit/schema";
-import { artifactLinks, artifacts, zettelSittingCards, zettelSittings } from "./schema";
+import { createTask } from "@/domains/work/commands";
+import { artifactLinks, artifacts } from "./schema";
 import { commitNoteSnapshot, createNote, getNote } from "./notes";
-import { DECOMPOSE_MAX_CHARS, SittingError } from "./sittings";
 
 /*
- * Decomposition (plan §4): a proposal-generating compiler. A paste over
- * DECOMPOSE_PASTE_CHARS triggers analysis; over DECOMPOSE_MAX_CHARS it is
- * REJECTED, never truncated (§15.1 - silent truncation would violate the
- * surfaced-omissions invariant). One JSON call, schema-validated, and
- * commit-nothing-on-failure: analysis writes nothing, and a failed analysis
- * throws before any proposal exists.
+ * Decomposition (§4): a proposal-generating compiler for a pasted or selected
+ * text. Analysis writes nothing; commit turns the owner's decisions into
+ * routed destinations (principle -> zettel, decision record -> note, checklist
+ * -> task, never a zettel).
  *
  * The invariants are the extractor's, extended: no invented quotes (every
  * candidate's quotes are re-located verbatim in the source; an unlocatable
  * quote drops the candidate), multiple passages may support one candidate,
- * omitted material is surfaced with its reason, extraction and synthesis are
- * distinguished, and roles route destinations (principle -> zettel; decision
- * record -> note; checklist -> task, never a zettel).
+ * omitted material is surfaced with its reason, and extraction and synthesis
+ * are distinguished.
+ *
+ * This module used to also carry the retired creation-flow entry points (the
+ * paste analyzer, its size cap, and the quota-wired decomposer). Those left
+ * with the flow itself; what remains is the document-facing analysis and the
+ * commit/merge/link decisions a review surface drives.
  */
 
 export type DecompositionRole = "principle" | "decision" | "checklist";
@@ -61,9 +53,6 @@ export type DecompositionAnalysis = {
   sourceHash: string;
 };
 
-export const PASTE_TOO_LONG = "Paste is too long to analyze at once — split it or select a section.";
-export const pasteTooLong = () => new SittingError("PASTE_TOO_LONG", PASTE_TOO_LONG);
-
 export const sourceHash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
 
 /** The verbatim-locate (§4): a quote that is not really in the source is dropped, never trusted. */
@@ -73,7 +62,13 @@ export function locateSpan(text: string, quote: string): DecompositionSpan | nul
   return { start, end: start + quote.length, quote };
 }
 
-const responseSchema = z.object({
+/**
+ * The answer shape every analysis starts from. Exported because the model call
+ * that produced it left with the sitting pipeline: a future document-facing
+ * entry point parses its answer with this, and the analysis below stays a pure
+ * function of already-validated data.
+ */
+export const decompositionResponseSchema = z.object({
   candidates: z.array(
     z.object({
       role: z.enum(["principle", "decision", "checklist"]),
@@ -86,74 +81,12 @@ const responseSchema = z.object({
   omitted: z.array(z.object({ quote: z.string().min(1), reason: z.string().min(1) })).default([]),
 });
 
-const SYSTEM = `You decompose a pasted text into its intellectual structure. Return JSON with exactly this shape: {"candidates":[{"role","kind","title","content","quotes"}],"omitted":[{"quote","reason"}]}.
-"role": "principle" for a principle or claim (becomes a zettel), "decision" for a decision record (becomes a linked note), "checklist" for actionable steps (becomes a task, never a zettel).
-"kind": "extraction" when the content restates what the text says, "synthesis" when it draws a conclusion the text supports but does not state.
-"content": one atomic statement, preserving the text's qualifiers, negations and attribution exactly.
-"quotes": the passages supporting this candidate, copied VERBATIM from the text - one candidate may rest on several passages. Never paraphrase, never reconstruct from memory; if you cannot quote support, drop the candidate.
-"omitted": passages you consciously did not turn into candidates, each with a one-line reason.
-Return {"candidates":[],"omitted":[]} when the text has no decomposable structure. ${untrustedDataClauseJsonSafe("text")}`;
-
-export interface PasteDecomposer {
-  readonly name: string;
-  decompose(text: string): Promise<z.infer<typeof responseSchema>>;
-}
-
-function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): PasteDecomposer {
-  return {
-    name: provider.name,
-    async decompose(text) {
-      let out: { text: string };
-      try {
-        out = await run({ system: SYSTEM, prompt: text });
-      } catch (cause) {
-        if (cause instanceof GenerationRequestError) {
-          throw new SittingError("DECOMPOSE_PROVIDER_FAILED", `Decomposition failed (HTTP ${cause.status}).`);
-        }
-        throw cause;
-      }
-      try {
-        return responseSchema.parse(JSON.parse(out.text));
-      } catch {
-        throw new SittingError("DECOMPOSE_BAD_RESPONSE", "Decomposition returned an unreadable answer.");
-      }
-    },
-  };
-}
-
-/** The seam-wired decomposer: the resolved generation provider under the workspace's quota (same contract as the zettel extractor). */
-export function defaultPasteDecomposer(
-  workspaceId?: string,
-  env: NodeJS.ProcessEnv = process.env,
-  fetchImpl: typeof fetch = fetch,
-  quotaStore?: QuotaStore,
-): PasteDecomposer {
-  let provider: GenerationProvider;
-  try {
-    provider = generationProvider(env, fetchImpl);
-  } catch (cause) {
-    if (cause instanceof GenerationUnconfiguredError) {
-      throw new SittingError("DECOMPOSE_UNCONFIGURED", "No generation provider is configured.");
-    }
-    throw cause;
-  }
-  const entry = providerEntry(provider.registryId);
-  return fromGeneration(provider, (input) => {
-    const call = () => provider.generate({ ...input, json: true });
-    if (workspaceId && entry?.quota && entry.enabled) {
-      return withQuota(quotaStore ?? drizzleQuotaStore(), entry, workspaceId, 1, call);
-    }
-    return call();
-  });
-}
-
 /*
- * Analysis writes nothing. Over-cap input is rejected before the model call;
- * unlocatable quotes drop their candidate; omitted passages are re-located
- * the same way so the "omitted" list can never invent content either.
+ * Analysis writes nothing. Unlocatable quotes drop their candidate; omitted
+ * passages are re-located the same way so the "omitted" list can never invent
+ * content either.
  */
-export function analyzePaste(text: string, raw: z.infer<typeof responseSchema>): DecompositionAnalysis {
-  if (text.length > DECOMPOSE_MAX_CHARS) throw pasteTooLong();
+export function analyzePaste(text: string, raw: z.infer<typeof decompositionResponseSchema>): DecompositionAnalysis {
   const hash = sourceHash(text);
   const candidates: DecompositionCandidate[] = [];
   for (const candidate of raw.candidates) {
@@ -201,17 +134,6 @@ export async function findSimilarZettels(
   return rows;
 }
 
-/** Full analysis through the decomposer: validates the cap, then the schema, then the verbatim locate. */
-export async function decomposePaste(auth: AuthContext, text: string, decomposer?: PasteDecomposer): Promise<DecompositionAnalysis> {
-  if (text.length > DECOMPOSE_MAX_CHARS) throw pasteTooLong();
-  const raw = await (decomposer ?? defaultPasteDecomposer(auth.workspaceId)).decompose(text);
-  const analysis = analyzePaste(text, raw);
-  for (const candidate of analysis.candidates) {
-    if (candidate.role === "principle") candidate.similar = await findSimilarZettels(auth, candidate.title);
-  }
-  return analysis;
-}
-
 export type DecompositionDecision =
   | { candidateId: string; action: "skip" }
   | { candidateId: string; action: "create" }
@@ -231,7 +153,7 @@ export type DecompositionDecision =
  */
 export async function commitDecomposition(
   auth: AuthContext,
-  input: { analysis: DecompositionAnalysis; decisions: DecompositionDecision[]; idempotencyKey: string; sittingId?: string },
+  input: { analysis: DecompositionAnalysis; decisions: DecompositionDecision[]; idempotencyKey: string },
 ): Promise<{
   created: { candidateId: string; destination: "zettel" | "note" | "task"; id: string }[];
   merged: { candidateId: string; targetId: string; versionNumber: number }[];
@@ -259,7 +181,7 @@ export async function commitDecomposition(
        * merge can never convert a foreign or non-card artifact.
        */
       const target = await getNote(auth, decision.targetArtifactId);
-      if (!target || target.kind !== "zettel") throw new SittingError("MERGE_TARGET_NOT_FOUND", "The card to merge into no longer exists.");
+      if (!target || target.kind !== "zettel") throw new Error("The card to merge into no longer exists.");
       const existing = (target.content as { content?: unknown[] } | null)?.content ?? [];
       try {
         const snapshot = await commitNoteSnapshot(auth, {
@@ -337,42 +259,12 @@ export async function commitDecomposition(
         kind: "zettel",
       });
       created.push({ candidateId: candidate.id, destination: "zettel", id: note.id });
-      if (input.sittingId) {
-        /*
-         * The review runs inside the sitting's writing surface, so the new
-         * card was created here (plan §2 role model). The join is the whole
-         * association - cards never belong to a sitting - and the first
-         * write wins on a retried batch (UNIQUE(sitting, artifact)).
-         */
-        await withTransaction(async (tx: TxDrizzle) => {
-          const sitting = await tx
-            .select({ id: zettelSittings.id })
-            .from(zettelSittings)
-            .where(and(eq(zettelSittings.id, input.sittingId!), eq(zettelSittings.workspaceId, auth.workspaceId)))
-            .limit(1);
-          if (!sitting.length) throw new SittingError("SITTING_NOT_FOUND", "The sitting no longer exists.");
-          const existingJoin = await tx
-            .select({ id: zettelSittingCards.id })
-            .from(zettelSittingCards)
-            .where(and(eq(zettelSittingCards.sittingId, input.sittingId!), eq(zettelSittingCards.artifactId, note.id)))
-            .limit(1);
-          if (!existingJoin.length) {
-            await tx.insert(zettelSittingCards).values({
-              workspaceId: auth.workspaceId,
-              sittingId: input.sittingId!,
-              artifactId: note.id,
-              roleInSitting: "created_here",
-              position: 0,
-            });
-          }
-        });
-      }
       if (decision.action === "link") {
         // Same server-side guard as merge: the edge target must be a live
         // zettel here. onConflictDoNothing keeps a retried batch idempotent
         // against the (artifact, target) unique edge key.
         const target = await getNote(auth, decision.targetArtifactId);
-        if (!target || target.kind !== "zettel") throw new SittingError("LINK_TARGET_NOT_FOUND", "The card to link to no longer exists.");
+        if (!target || target.kind !== "zettel") throw new Error("The card to link to no longer exists.");
         await withTransaction(async (tx: TxDrizzle) => {
           await tx
             .insert(artifactLinks)

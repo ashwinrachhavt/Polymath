@@ -40,7 +40,7 @@ for (const vp of VIEWPORTS) {
     // the heading is the unambiguous handle.
     await expect(page.getByRole("heading", { name: `Append 4 lines to \u201cLaunch notes (${vp.name})\u201d in Notion` })).toBeVisible({ timeout: 30_000 });
     // Shared strings match the sibling viewport's card too; .first() is the
-    // honest scope, matching the pattern in proposal-batches.spec.ts.
+    // honest scope, matching the pattern the other pixel journeys use.
     await expect(page.getByText("Added to the end of").first()).toBeVisible();
     await expect(page.getByRole("link", { name: `Launch notes (${vp.name})` })).toBeVisible();
     await expect(page.getByText("Pricing unchanged").first()).toBeVisible();

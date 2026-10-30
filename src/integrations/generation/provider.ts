@@ -92,6 +92,7 @@ export function chatMessages(input: GenerateInput): { role: "system" | "user"; c
 import { cloudflareProvider } from "./cloudflare";
 import { fixtureProvider } from "./fixture";
 import { geminiProvider } from "./gemini";
+import { mercuryProvider } from "./mercury";
 import { openRouterProvider } from "./openrouter";
 
 export function generationProvider(
@@ -109,6 +110,8 @@ export function generationProvider(
       return fixtureProvider();
     case "gemini":
       return geminiProvider(env, fetchImpl);
+    case "mercury":
+      return mercuryProvider(env, fetchImpl);
     case "openrouter":
       return openRouterProvider(env, fetchImpl);
     // Opt-in only (plan §8): the free-first default chain above is untouched.
@@ -116,11 +119,13 @@ export function generationProvider(
       return cloudflareProvider(env, fetchImpl);
     case undefined:
     case "":
-      // Free-first (ASH-187, owner decision 2026-10-27): the free allowance
-      // wins over a key that bills. OpenRouter was checked first here, so every
-      // debrief, prep brief and draft billed while the Gemini free tier sat
-      // configured and unused. OpenRouter remains the second choice, so a
-      // workspace that has only that key still generates.
+      // Free-first (ASH-187, owner decision 2026-10-27; Mercury added first on
+      // the owner's 2026-10-29 decision): the one-time 100M-token Mercury grant
+      // wins, then the free Gemini allowance, then the paid OpenRouter key.
+      // OpenRouter remains last so a workspace that has only that key still
+      // generates. No route rescues another mid-run: an exhausted allowance is
+      // an error the caller surfaces.
+      if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, fetchImpl);
       if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, fetchImpl);
       if (env.OPENROUTER_API_KEY) return openRouterProvider(env, fetchImpl);
       throw new GenerationUnconfiguredError();

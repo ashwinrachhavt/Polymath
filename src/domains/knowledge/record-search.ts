@@ -131,7 +131,7 @@ export async function searchRecordsForAttach(
         row.kind === "note"
           ? `/polymath/notes?note=${row.id}`
           : row.kind === "zettel"
-            ? `/polymath/knowledge/zettels?zettel=${row.id}`
+            ? `/polymath/ideas?zettel=${row.id}`
             : `/polymath/artifacts/${row.id}`,
     }));
   references.push(
