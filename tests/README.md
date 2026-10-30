@@ -15,6 +15,25 @@ the table below says what each holds.
 Provider contract tests use sanitized fixtures — never live calls in CI, and
 never real contacts, mail, resumes, tokens, or screenshots of private data.
 
+## The fetch boundary
+
+Every Vitest project installs a guard on `globalThis.fetch` before test
+modules load, so an accidental `fetch(...)` fails with `TestNetworkViolation`
+instead of reaching the network — rejection happens before any transport, and
+even the evals model host is denied. The `unit` and `ui` projects run
+**deny-all** (`tests/setup.fetch-guard.ts`, loopback included); the `db`
+project runs **loopback-only** (`tests/setup.fetch-guard.loopback.ts`) so its
+integration tests can drive real production code against local mock HTTP
+servers — every external host still fails closed there.
+
+No fetch guard can see past the fetch API: `node:http`/`node:https`, undici
+used directly, `net`/`tls` sockets, DNS, child processes, the Postgres
+connection (which speaks sockets, not fetch), the Playwright browser, and the
+dev server it drives are all outside it — it is a test boundary, not a
+sandbox. A test that needs an HTTP exchange stubs it explicitly
+(`vi.stubGlobal("fetch", …)` or a fixture transport); restoring the stub puts
+the guard back, so a restored mock can never leave native fetch exposed.
+
 Two rules that decide most cases: invariants run against **real Postgres**
 (mocks prove the mock works), and Playwright covers journeys
 (capture → task → briefing → focus → completion), not markup.

@@ -31,7 +31,7 @@ Migrations: 91 files, highest `0264_sticky_richard_fisk`.
 
 ## Tests
 
-430 `.test.ts` and 43 `.spec.ts` files (unit: 251, integration: 179, e2e: 43).
+432 `.test.ts` and 43 `.spec.ts` files (unit: 252, integration: 180, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
