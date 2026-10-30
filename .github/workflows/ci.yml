@@ -272,7 +272,7 @@ jobs:
           EVE_GATEWAY_SECRET: e2e-gateway-secret-fixture-value-32chars
       # Structured record of the run above: names every test with its status,
       # including skips the list output never prints.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: "e2e-report-${{ matrix.shard }}"
@@ -317,7 +317,7 @@ jobs:
       # the sibling leg's journeys.
       - if: always() && matrix.shard == 1
         run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.shard == 1
         with:
           name: "e2e-report-shutdown-${{ matrix.shard }}"
@@ -326,7 +326,7 @@ jobs:
           retention-days: 14
       # ASH-305 integration gate: real-route shutdown pixels (desktop form,
       # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.shard == 1
         with:
           name: "shutdown-real-route-pixels-${{ matrix.shard }}"
@@ -337,7 +337,7 @@ jobs:
       # traces. if: always(), not failure(): a journey that only passes on
       # retry is exactly the one whose first-attempt evidence must survive -
       # without these a green-with-retry run is a message, not evidence.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: "e2e-error-context-${{ matrix.shard }}"
@@ -354,7 +354,7 @@ jobs:
       # (including skips) are evidence too, and the default report filename
       # would overwrite the main run's uploaded above. Only shard 2 runs
       # the fixture invocation, so only shard 2 has this report.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.shard == 2
         with:
           name: "e2e-report-fixture-${{ matrix.shard }}"
@@ -363,21 +363,21 @@ jobs:
           if-no-files-found: warn
       # Hydrated visual evidence for journeys that capture review pixels
       # (currently the bulk-complete specs); empty when none ran.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: "bulk-complete-pixels-${{ matrix.shard }}"
           retention-days: 14
           path: test-results/bulk-pixels/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: "onboarding-pixels-${{ matrix.shard }}"
           retention-days: 14
           path: test-results/onboarding-pixels/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: "feature-pixels-${{ matrix.shard }}"
@@ -451,7 +451,7 @@ jobs:
         run: echo "::notice::GEMINI_API_KEY is not set on main; agent evals were skipped."
       - name: Upload eval artifacts
         if: always() && steps.credential.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eve-evals
           path: eve/polymath/.eve/evals/
