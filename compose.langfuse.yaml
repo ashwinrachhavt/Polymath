@@ -51,15 +51,15 @@ services:
       CLICKHOUSE_CLUSTER_ENABLED: "false"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: langfuse
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
       # Server-side media fetch (worker ingestion) resolves through the compose
       # network; the web service overrides the browser-facing endpoint below.
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
@@ -72,8 +72,8 @@ services:
       LANGFUSE_S3_BATCH_EXPORT_REGION: auto
       LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://langfuse-minio:9000
       LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: http://127.0.0.1:9090
-      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: langfuse
-      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: langfuse
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: miniosecret # upstream default; CHANGEME
       LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
       REDIS_HOST: langfuse-redis
       REDIS_PORT: "6379"
@@ -164,8 +164,10 @@ services:
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
-      MINIO_ROOT_USER: langfuse
-      MINIO_ROOT_PASSWORD: langfuse
+      # Upstream's own defaults (docker-compose.yml @ main, retrieved
+      # 2026-10-30); MinIO requires the root password to be at least 8 chars.
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret # CHANGEME
     ports:
       - "127.0.0.1:9090:9000"
       - "127.0.0.1:9091:9001"
