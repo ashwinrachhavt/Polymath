@@ -15,7 +15,7 @@ import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from ".
 import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
 import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
-import { toolLabel } from "./tool-labels";
+import { toolLabel } from "@/domains/agents/tool-labels";
 import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
 import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";

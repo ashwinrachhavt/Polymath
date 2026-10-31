@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { agentProfiles, agentQuestions, agentRuns } from "./schema";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
-import { toolDescription, toolLabel } from "@/components/chat/tool-labels";
+import { toolDescription, toolLabel } from "./tool-labels";
 
 /*
  * What the conversation surface needs about the run's actor: who it is, the
