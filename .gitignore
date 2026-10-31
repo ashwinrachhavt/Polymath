@@ -1,3 +1,6 @@
+# pnpm-only repo; a stray bun install leaves this and it must never land.
+bun.lock
+
 # secrets — never commit
 opencode.json
 .env

@@ -84,12 +84,5 @@
   "packageManager": "pnpm@12.10.1",
   "engines": {
     "node": ">=24"
-  },
-  "pnpm": {
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "@vantezzen/langfuse-eve>eve": "0.76.3"
-      }
-    }
   }
 }
