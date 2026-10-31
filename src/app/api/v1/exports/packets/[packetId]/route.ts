@@ -2,8 +2,8 @@ import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
+import { serveBlob } from "@/lib/blob-serve";
 import { getExportPacketBlob } from "@/domains/knowledge/packets";
-import { readBlob } from "@/integrations/object-store/object-store";
 
 /*
  * GET /api/v1/exports/packets/:packetId - download one assembled packet.
@@ -18,15 +18,15 @@ export const GET = authedHandler<Ctx>(async (auth, _request, ctx) => {
   if (!z.string().uuid().safeParse(packetId).success) return problemResponse(404, "not_found", "No such packet in this workspace.");
   const packet = await getExportPacketBlob(auth, { packetId });
   if (!packet) return problemResponse(404, "not_found", "No such packet in this workspace.");
-  const bytes = await readBlob(packet.storageKey);
   const name = packet.manifestName.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "packet";
-  return new Response(Buffer.from(bytes), {
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Length": String(packet.sizeBytes),
-      "Content-Disposition": `attachment; filename="${name}.zip"`,
-      "Cache-Control": "private, no-store",
-      "X-Content-SHA256": packet.contentHash,
-    },
+  return serveBlob({
+    storageKey: packet.storageKey,
+    contentType: "application/zip",
+    inline: false,
+    filename: `${name}.zip`,
+    sizeBytes: packet.sizeBytes,
+    label: "packet",
+    cacheControl: "private, no-store",
+    headers: { "X-Content-SHA256": packet.contentHash },
   });
 });

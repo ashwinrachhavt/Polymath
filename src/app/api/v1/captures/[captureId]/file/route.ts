@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
+import { serveBlob } from "@/lib/blob-serve";
 import { db } from "@/lib/db";
-import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
 
@@ -36,28 +36,13 @@ export const GET = authedHandler(async (auth, _request, ctx: { params: Promise<{
   const quarantined = payload.quarantined === true;
   const filename = (payload.filename ?? "capture").replace(/["\\]/g, "");
 
-  let bytes: Uint8Array;
-  try {
-    bytes = await readBlob(row.storageKey);
-  } catch (error) {
-    const missing = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return problemResponse(
-      missing ? 404 : 500,
-      missing ? "file_unavailable" : "file_read_failed",
-      missing
-        ? "The stored file for this capture is not reachable from this server."
-        : "The stored file for this capture could not be read.",
-    );
-  }
-
   const inline = !quarantined && INLINE_SAFE.has(row.mimeType);
-  return new Response(Buffer.from(bytes), {
-    headers: {
-      "Content-Type": inline ? row.mimeType : "application/octet-stream",
-      "Content-Length": String(row.sizeBytes ?? bytes.byteLength),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"`,
-      "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "private, max-age=60",
-    },
+  return serveBlob({
+    storageKey: row.storageKey,
+    contentType: row.mimeType,
+    inline,
+    filename,
+    sizeBytes: row.sizeBytes,
+    label: "capture",
   });
 });
