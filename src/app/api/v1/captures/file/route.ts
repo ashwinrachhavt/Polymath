@@ -1,15 +1,12 @@
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { validateFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
-import { requestReceipts } from "@/domains/audit/schema";
-import { IdempotencyConflictError, receiptRequestHash } from "@/domains/audit/receipt";
-import { ConflictError, createFileCapture, fileCaptureReceiptRequest, StorageWriteFailedError } from "@/domains/capture/commands";
+import { IdempotencyConflictError } from "@/domains/audit/receipt";
+import { ConflictError, createFileCapture, StorageWriteFailedError } from "@/domains/capture/commands";
 
 /*
  * The deploy-supported ceiling: 4 MB, the same one every intake path shares.
@@ -55,24 +52,11 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "empty_file", "The uploaded file is empty.");
   }
 
-  // The receipt payload is one shared shape: this pre-check and the command's
-  // in-transaction receipt hash the same object, so a replay can never read a
-  // conflict out of its own first attempt.
+  // The idempotency protocol is createFileCapture's withReceipt: the advisory
+  // lock serializes racing first attempts, a replay returns the first
+  // attempt's stored response before its blob write, and a same-key different
+  // request surfaces here as IdempotencyConflictError.
   const contentHash = await sha256Hex(bytes);
-  const receiptRequest = fileCaptureReceiptRequest(contentHash, file.name.trim().slice(0, 500) || "file");
-  if (idempotencyKey) {
-    const [receipt] = await db
-      .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
-      .from(requestReceipts)
-      .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, idempotencyKey)))
-      .limit(1);
-    if (receipt) {
-      if (receipt.requestHash !== (await receiptRequestHash(receiptRequest))) {
-        return problemResponse(422, "idempotency_conflict", "This key was used for a different request.");
-      }
-      return Response.json(receipt.response, { status: 201 });
-    }
-  }
 
   try {
     const result = await createFileCapture(auth, {

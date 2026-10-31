@@ -192,7 +192,7 @@ export async function createCapture(
  * Verified files are likewise not extracted here: `text` stays null, so
  * search and semantic surfaces never imply the file's contents are readable.
  */
-/** The receipt payload for a file capture - route pre-check and command receipt must hash this exact shape. */
+/** The receipt payload for a file capture - one shape so every replay and conflict check hashes the same bytes. */
 export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
   return { op: "createFileCapture", contentHash, filename };
 }
