@@ -13,7 +13,7 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | Package | Version |
 | --- | --- |
 | `next` | 16.4.3 |
-| `react` | 19.3.0 |
+| `react` | 19.3.1 |
 | `drizzle-orm` | 0.45.4 |
 | `drizzle-kit` | 0.31.11 |
 | `postgres` | ^3.4.9 |
