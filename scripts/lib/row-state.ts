@@ -74,7 +74,7 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
       {
         kind: "atomic-counter",
         detail: "increment happens in the statement: SET reserved = reserved + EXCLUDED.reserved, with a guard clause in WHERE",
-        evidence: "src/integrations/providers/quota.ts:72-96",
+        evidence: "src/integrations/providers/quota.ts:91-113",
       },
     ],
   },

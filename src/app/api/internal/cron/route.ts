@@ -6,6 +6,7 @@ import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
+import { reapStaleReservations } from "@/integrations/providers/quota";
 import { problemResponse } from "@/lib/problems";
 
 /*
@@ -80,7 +81,17 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       senderSync = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
-    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync, senderSync });
+    // Stranded quota reservations: a process that died between reserve and
+    // settle/release holds bucket units until the period rolls (forever for a
+    // lifetime grant). Reaping here rides the same tick that recovers stranded
+    // outbox leases; a failure must not break the rest of the pass.
+    let quotaReap: { reaped: number } | { error: string } | null = null;
+    try {
+      quotaReap = { reaped: await reapStaleReservations() };
+    } catch (cause) {
+      quotaReap = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
+    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync, senderSync, quotaReap });
   } finally {
     await client.end({ timeout: 5 });
   }

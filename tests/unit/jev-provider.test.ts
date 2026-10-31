@@ -41,12 +41,12 @@ function fakeStore() {
   const store: QuotaStore = {
     async reserve(_key, units) {
       events.push(["reserve", units]);
-      return { bucketId: "b1" };
+      return { bucketId: "b1", reservationId: "r1" };
     },
-    async settle(_bucketId, _held, actual) {
+    async settle(_bucketId, _reservationId, _held, actual) {
       events.push(["settle", actual]);
     },
-    async release(_bucketId, held) {
+    async release(_bucketId, _reservationId, held) {
       events.push(["release", held]);
     },
   };

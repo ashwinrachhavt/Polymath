@@ -33,7 +33,7 @@ describe("defaultZettelExtractor", () => {
     const store = {
       async reserve() {
         events.push("reserve");
-        return { bucketId: "b" };
+        return { bucketId: "b", reservationId: "r" };
       },
       async settle() {
         events.push("settle");

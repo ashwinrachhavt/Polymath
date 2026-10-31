@@ -195,6 +195,11 @@ export const triggers = pgTable(
  *
  * Buckets are provisioned lazily on first reservation in a period. Allowances
  * come from the provider registry (with its env override), never from input.
+ *
+ * Idempotency: every reserve mints a `reservation_ref` and carries it into
+ * settle/release. The partial unique index below makes a finalize claim
+ * (kind settle or release) at-most-once per reservation — a transport retry
+ * or a racing reaper claims nothing the first finalize already claimed.
  */
 export const providerQuotaBuckets = pgTable(
   "provider_quota_buckets",
@@ -232,10 +237,15 @@ export const providerUsageLedger = pgTable(
     units: integer("units").notNull(),
     /** The agent run that caused the entry, when one drove the call. */
     runId: text("run_id"),
+    /** The reservation this entry belongs to; null for pre-ref ledger rows. */
+    reservationRef: uuid("reservation_ref"),
     ...recorded,
   },
   (t) => [
     index("provider_usage_ledger_bucket_idx").on(t.bucketId),
+    uniqueIndex("provider_usage_ledger_reservation_final_key")
+      .on(t.bucketId, t.reservationRef)
+      .where(sql`kind in ('settle', 'release')`),
     check("provider_usage_ledger_kind_check", sql`${t.kind} in ('reserve', 'settle', 'release')`),
     check("provider_usage_ledger_units_check", sql`${t.units} >= 0`),
   ],
