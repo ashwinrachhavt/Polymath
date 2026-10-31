@@ -261,8 +261,8 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      # 3-way shard of the main suite (Playwright splits the test files
-      # across the legs). Legs are isolated runners - each gets its own
+      # 3-way shard of the main suite (explicit per-leg file lists, below).
+      # Legs are isolated runners - each gets its own
       # postgres service below and boots its own dev server - so a shard
       # shares nothing mutable with its siblings. fail-fast: false: a red
       # shard must not orphan the others' in-flight evidence; the artifact
@@ -313,12 +313,33 @@ jobs:
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself. Each matrix
-      # leg boots its own server and runs its shard of the suite; the fixture
-      # env is unchanged from the pre-shard invocation.
+      # leg boots its own server and runs its explicit slice of the suite;
+      # the fixture env is unchanged from the pre-shard invocation.
       # PERF_BUDGET_ENFORCE turns the hero-route navigation budget from
       # reporting into a tripwire; the dev ceilings stay deliberately generous
       # (compile noise) and only catastrophic regressions fail.
-      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/3
+      # Explicit lists, not --shard: Playwright splits by test count, and
+      # counts lie (smoke.spec.ts is ~15% of the whole suite on its own).
+      # The lists were computed once by greedy longest-first assignment over
+      # per-file summed durations from this workflow's Playwright JSON reports
+      # (run 41245349696, per-file wall on the current tree), with the two
+      # pinned invocations' serial tails counted toward their leg's load
+      # (+28s shutdown on shard 1, +54s canva on shard 3): effective leg
+      # weights land at 222s/222s/223s, vs 135s/263s/230s under a count
+      # split. shutdown-ritual and design-brief-canva-fixture are excluded
+      # from the main lists on purpose: both specs self-skip every test
+      # unless their pinning env is set, so their only main-slice presence
+      # is a no-op - the real runs are the dedicated invocations below.
+      # To rebalance: download the e2e-report-* artifacts, re-run the greedy
+      # assignment over per-file durations, and paste the three lists in
+      # longest-first order.
+      - run: |
+          case ${{ matrix.shard }} in
+            1) SPECS="tests/e2e/task-notes-editor.spec.ts tests/e2e/neuralflow.spec.ts tests/e2e/work-bulk-complete.spec.ts tests/e2e/voice-capture.spec.ts tests/e2e/layout-alignment.spec.ts tests/e2e/document-review-loop.spec.ts tests/e2e/onboarding-fixtures.spec.ts tests/e2e/interface-modes.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/home-decisions.spec.ts tests/e2e/list-toolbar.spec.ts tests/e2e/github-triage.spec.ts tests/e2e/daybook.spec.ts tests/e2e/onboarding-conversation.spec.ts" ;;
+            2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/e2e/neuralflow-canonical-consolidation.spec.ts tests/e2e/command-center.spec.ts tests/e2e/meeting-prep.spec.ts tests/e2e/library-writing.spec.ts tests/e2e/activity-feed.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/sender-grants.spec.ts tests/e2e/connectors-tier-journey.spec.ts tests/e2e/conversational-navigation.spec.ts tests/e2e/inbox-pixels.spec.ts tests/e2e/ingestion-selection.spec.ts" ;;
+            3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/linear-issue-draft.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
+          esac
+          pnpm exec playwright test $SPECS
         env:
           PERF_BUDGET_ENFORCE: "1"
           # The generation journeys (meeting prep, write from library,
