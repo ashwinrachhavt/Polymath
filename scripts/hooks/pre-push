@@ -6,4 +6,10 @@
 # A non-zero exit aborts the push.
 set -e
 
-pnpm lint && pnpm typecheck
+# A bare pnpm binary is the normal case (standalone installs, setup-pnpm);
+# corepack-only environments still need the gate, so fall back instead of
+# aborting the push on a missing shim.
+PNPM="pnpm"
+command -v pnpm >/dev/null 2>&1 || PNPM="corepack pnpm"
+
+$PNPM lint && $PNPM typecheck
