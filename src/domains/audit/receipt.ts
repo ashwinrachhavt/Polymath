@@ -123,6 +123,37 @@ export async function claimStartReceipt(
   return { claimed: false, kind: "replayed", response: prior.response };
 }
 
+export type ReceiptPrecheck =
+  | { action: "proceed" }
+  | { action: "replay"; response: unknown }
+  | { action: "in_progress" }
+  | { action: "conflict" };
+
+/**
+ * Read-only look before a caller starts work it cannot hold a claim across —
+ * the shape for a long-running start whose expensive first step (a blob
+ * upload) must not run for a request the receipt already answered. It never
+ * inserts, so it cannot collide with the in-transaction withReceipt backstop
+ * the way a route-level claim would deadlock the winner's own lock. The
+ * race-gap between peek and receipt (two concurrent peeks both see nothing)
+ * is exactly what the in-transaction backstop serializes.
+ */
+export async function peekReceipt(
+  auth: Pick<AuthContext, "workspaceId">,
+  key: string,
+  requestHash: string,
+): Promise<ReceiptPrecheck> {
+  const [prior] = await db
+    .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
+    .from(requestReceipts)
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)))
+    .limit(1);
+  if (!prior) return { action: "proceed" };
+  if (prior.requestHash !== requestHash) return { action: "conflict" };
+  if (prior.response === null) return { action: "in_progress" };
+  return { action: "replay", response: prior.response };
+}
+
 export async function completeStartReceipt(
   on: TxDrizzle | typeof db,
   auth: Pick<AuthContext, "workspaceId">,

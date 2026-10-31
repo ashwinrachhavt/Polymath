@@ -5,8 +5,8 @@ import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { validateFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
-import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { ConflictError, createFileCapture, StorageWriteFailedError } from "@/domains/capture/commands";
+import { IdempotencyConflictError, peekReceipt, receiptRequestHash } from "@/domains/audit/receipt";
+import { ConflictError, createFileCapture, fileCaptureReceiptRequest, StorageWriteFailedError } from "@/domains/capture/commands";
 
 /*
  * The deploy-supported ceiling: 4 MB, the same one every intake path shares.
@@ -58,10 +58,36 @@ export const POST = authedHandler(async (auth, request) => {
   // request surfaces here as IdempotencyConflictError.
   const contentHash = await sha256Hex(bytes);
 
+  // Look before the storage write: createFileCapture uploads the blob before
+  // its in-transaction receipt backstop, so an identical retry during a
+  // storage outage would 503 instead of replaying the stored 201, and every
+  // completed retry would re-upload a throwaway object. peekReceipt never
+  // inserts, so it cannot collide with that backstop — its race-gap (two
+  // concurrent peeks both see nothing) is what withReceipt serializes. The
+  // filename is normalized exactly as the command normalizes it, so this
+  // hash matches the receipt the backstop writes.
+  const filename = file.name.trim().slice(0, 500);
+  if (idempotencyKey) {
+    const precheck = await peekReceipt(
+      auth,
+      idempotencyKey,
+      await receiptRequestHash(fileCaptureReceiptRequest(contentHash, filename)),
+    );
+    if (precheck.action === "conflict") {
+      return problemResponse(422, "idempotency_conflict", "This idempotency key was used for a different request.");
+    }
+    if (precheck.action === "in_progress") {
+      return problemResponse(409, "request_in_progress", "This capture is still being processed. Retry in a moment.");
+    }
+    if (precheck.action === "replay") {
+      return Response.json(precheck.response, { status: 201 });
+    }
+  }
+
   try {
     const result = await createFileCapture(auth, {
       bytes,
-      filename: file.name,
+      filename,
       verdict,
       contentHash,
       source: "quick_capture",
