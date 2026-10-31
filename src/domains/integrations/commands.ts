@@ -3,6 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { CAPABILITIES, PROVIDER_TIERS, type Capability, type Provider } from "./capabilities";
 import { externalAccounts, integrationCatalog } from "./schema";
 
@@ -67,7 +68,7 @@ export async function registerAccount(
       );
       return account;
     } catch (cause) {
-      if ((cause as { cause?: { code?: string } })?.cause?.code === "23505") {
+      if (isUniqueViolation(cause)) {
         throw new ConflictError(`The alias "${input.alias}" is already used for another account.`);
       }
       throw cause;
@@ -302,7 +303,7 @@ export async function renameAccount(
         )
         .returning();
     } catch (cause) {
-      if ((cause as { cause?: { code?: string } })?.cause?.code === "23505") {
+      if (isUniqueViolation(cause)) {
         throw new ConflictError(`The name "${alias}" is already used for another account.`);
       }
       throw cause;

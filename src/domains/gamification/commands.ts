@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { rewardDefinitions, rewardLedger } from "./schema";
 
 /*
@@ -25,10 +26,6 @@ export class ConflictError extends Error {
 
 export class StaleWriteError extends Error {
   readonly code = "stale_write";
-}
-
-function isUniqueViolation(cause: unknown): boolean {
-  return (cause as { cause?: { code?: string } })?.cause?.code === "23505";
 }
 
 export type RewardDefinitionInput = {

@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { nextAlias } from "./alias";
 import { connectionAttempts, externalAccounts } from "./schema";
 
@@ -91,7 +92,7 @@ export async function beginConnection(
       } catch (cause) {
         // Two flows racing to the same auto-picked name hit the unique index;
         // say so in words, not in SQL.
-        if ((cause as { cause?: { code?: string } })?.cause?.code === "23505") {
+        if (isUniqueViolation(cause)) {
           throw new ConflictError("Another connection just took that name. Try again.");
         }
         throw cause;

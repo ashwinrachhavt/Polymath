@@ -3,6 +3,7 @@ import { enqueueOutbox } from "@/domains/audit/outbox";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
@@ -481,20 +482,11 @@ export async function convertCaptureToDocument(
   const firstLine = body.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured text";
   const title = input.title?.trim() || capture.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
 
-  // Drizzle wraps the driver error, so the Postgres code sits one level down
-  // (the probe showed `{ query, params, cause: PostgresError }`). Matching the
-  // constraint name too keeps an unrelated 23505 out of this message.
-  const isDuplicateSourceUrl = (cause: unknown) => {
-    let current: unknown = cause;
-    for (let depth = 0; depth < 4 && current; depth += 1) {
-      const error = current as { code?: unknown; constraint_name?: unknown };
-      if (error.code === "23505" && (!error.constraint_name || error.constraint_name === "documents_workspace_source_url_key")) {
-        return true;
-      }
-      current = (current as { cause?: unknown }).cause;
-    }
-    return false;
-  };
+  // Matching the constraint name keeps an unrelated 23505 out of this
+  // message: the replay is only for a duplicate source_url, and an unnamed
+  // violation still counts (a wrapper may not forward the name).
+  const isDuplicateSourceUrl = (cause: unknown) =>
+    isUniqueViolation(cause, "documents_workspace_source_url_key");
 
   let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
