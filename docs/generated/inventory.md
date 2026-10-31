@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 91 files, highest `0264_sticky_richard_fisk`.
+Migrations: 92 files, highest `0265_quota_reservation_refs`.
 
 ## Tests
 
-439 `.test.ts` and 43 `.spec.ts` files (unit: 259, integration: 180, e2e: 43).
+442 `.test.ts` and 43 `.spec.ts` files (unit: 262, integration: 180, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
@@ -297,9 +297,13 @@ Totals: 90 versioned, 57 append-only, 5 versionless but guarded (each declared w
 
 ## Outbox
 
-Emitted topics: 24. Registered handlers: 10. Declared audit-only: 0.
+Emitted topics: 24. Registered handlers: 10. Declared audit-only: 14.
 
 Topics with no handler and no declaration (a defect if non-empty):
+
+- none
+
+Declared audit-only (observation events; no consumer by design):
 
 - `agent_principal.registered`
 - `agent_principal.status_changed`
@@ -315,7 +319,3 @@ Topics with no handler and no declaration (a defect if non-empty):
 - `role.defined`
 - `role.revised`
 - `role.unassigned`
-
-Declared audit-only (observation events; no consumer by design):
-
-- none
