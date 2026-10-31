@@ -19,8 +19,23 @@ describe("shared Postgres pool", () => {
     const work = vi.fn(async (tx: object) => tx);
     expect(await withTransaction(work)).toEqual({ marker: "transaction" });
     expect(db.transaction).toHaveBeenCalledWith(work);
-    // prepare:false keeps the pool safe behind Neon's transaction-mode pooler.
-    expect(mocks.pools).toEqual([[expect.any(String), { max: 5, prepare: false }]]);
+    // prepare:false keeps the pool safe behind Neon's transaction-mode
+    // pooler. The timeouts are guardrails: a wedged statement or a leaked
+    // idle-in-transaction connection must not hold one of the five pool
+    // slots indefinitely.
+    expect(mocks.pools).toEqual([
+      [
+        expect.any(String),
+        {
+          max: 5,
+          prepare: false,
+          idle_timeout: 30,
+          connect_timeout: 10,
+          max_lifetime: 3600,
+          connection: { statement_timeout: 30_000, idle_in_transaction_session_timeout: 60_000 },
+        },
+      ],
+    ]);
     expect(mocks.adapters).toBe(1);
   });
   it("propagates callback rejection rather than swallowing a rollback", async () => {
