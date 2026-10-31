@@ -1,0 +1,9 @@
+#!/bin/sh
+# Pre-push gate for the CI split (perf: a red lint/typecheck push costs a full
+# CI round trip across three parallel legs; locally it costs ~90s). Fast checks
+# only — build, tests, and e2e stay in CI. Installed via the prepare script:
+#   git config core.hooksPath scripts/hooks
+# A non-zero exit aborts the push.
+set -e
+
+pnpm lint && pnpm typecheck
