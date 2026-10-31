@@ -5,6 +5,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
 
@@ -30,10 +31,6 @@ export class ConflictError extends Error {
 
 export class StaleWriteError extends Error {
   readonly code = "stale_write";
-}
-
-function isUniqueViolation(cause: unknown): boolean {
-  return (cause as { cause?: { code?: string } })?.cause?.code === "23505";
 }
 
 export async function startFocusSession(

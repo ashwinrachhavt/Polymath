@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import type { RelationshipStatus } from "./status";
 import {
   companies,
@@ -31,10 +32,6 @@ export class StaleWriteError extends Error {
 
 export class NotFoundError extends Error {
   readonly code = "not_found";
-}
-
-function isUniqueViolation(cause: unknown): boolean {
-  return (cause as { cause?: { code?: string } })?.cause?.code === "23505";
 }
 
 export type ContactInput = {

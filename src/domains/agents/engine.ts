@@ -114,12 +114,13 @@ async function scopeCheck(runId: string, auth: AuthContext) {
 
 /** Closes a run that will never do work. The error text is redacted on write. */
 async function failRun(runId: string, error: string, at: Date): Promise<void> {
-  // A driver/provider failure message is where a credential leaks into a
-  // column; the schema says redacted detail only, never a raw provider payload.
+  // Guarded on active states, the same claim discipline cancel uses: a cancel
+  // that lands in a failure window wins, and a terminal run is never rewritten
+  // into failed (which would erase the state the user was already shown).
   await db
     .update(agentRuns)
     .set({ state: "failed", error: redactText(error), endedAt: at, updatedAt: at })
-    .where(eq(agentRuns.id, runId));
+    .where(and(eq(agentRuns.id, runId), inArray(agentRuns.state, ACTIVE_STATES)));
 }
 
 /*
@@ -236,10 +237,23 @@ export function createEngine(
         throw new Error("Spend ceiling exceeded");
       }
 
-      await db
+      // The queued→running flip is conditional: the window between the insert
+      // and here spans the whole reserveSpend transaction, and a cancel landing
+      // in it wins the CAS on ACTIVE_STATES. Writing running unconditionally
+      // would resurrect a run the user was told was cancelled — unbilled and
+      // unreservable at close.
+      const started = await db
         .update(agentRuns)
         .set({ state: "running", startedAt: now(), updatedAt: now() })
-        .where(eq(agentRuns.id, run.id));
+        .where(and(eq(agentRuns.id, run.id), eq(agentRuns.state, "queued")))
+        .returning({ id: agentRuns.id });
+      if (started.length === 0) {
+        // The run was closed in the window: hand back the budget this path
+        // just reserved (the closer already released its own view of it) and
+        // refuse to start a session nothing is watching.
+        await releaseOpenReservation(run.id, input.auth.workspaceId);
+        throw new Error("The run was cancelled before it started");
+      }
 
       // The objective is the thread's first message, written before Eve can
       // emit anything so a reload always reads it first.

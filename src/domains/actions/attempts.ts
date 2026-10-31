@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { actionAttempts } from "./schema";
 
@@ -19,15 +20,6 @@ export class AttemptAlreadyClaimedError extends Error {
     super("This effect has already been claimed.");
     this.name = "AttemptAlreadyClaimedError";
   }
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  // postgres-js surfaces the PostgresError directly; drizzle wraps it in a
-  // DrizzleQueryError whose `cause` keeps the original code.
-  const code =
-    (error as { code?: unknown } | null)?.code ??
-    (error as { cause?: { code?: unknown } } | null)?.cause?.code;
-  return code === "23505";
 }
 
 export async function claimAttempt(

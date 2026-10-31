@@ -2,8 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
+import { serveBlob } from "@/lib/blob-serve";
 import { db } from "@/lib/db";
-import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "@/domains/audit/schema";
 import { documents, files } from "@/domains/knowledge/schema";
 
@@ -29,29 +29,12 @@ export const GET = authedHandler(async (auth, _request, ctx: { params: Promise<{
     .limit(1);
   if (!row) return problemResponse(404, "not_found", "This document has no stored file — it may be a captured web page.");
 
-  // A read failure is a storage fault, not a missing document. Left unhandled
-  // it becomes a 500 the <iframe> renders as an empty white pane, which looks
-  // identical to "this file has no pages" — so it is answered with a problem
-  // the viewer can surface as text.
-  let bytes: Uint8Array;
-  try {
-    bytes = await readBlob(row.storageKey);
-  } catch (error) {
-    const missing = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return problemResponse(
-      missing ? 404 : 500,
-      missing ? "file_unavailable" : "file_read_failed",
-      missing
-        ? "The stored file for this document is not reachable from this server."
-        : "The stored file for this document could not be read.",
-    );
-  }
-  return new Response(Buffer.from(bytes), {
-    headers: {
-      "Content-Type": row.mimeType ?? "application/octet-stream",
-      "Content-Length": String(row.sizeBytes ?? bytes.byteLength),
-      "Content-Disposition": `inline; filename="${(row.filename ?? "document").replace(/["\\]/g, "")}"`,
-      "Cache-Control": "private, max-age=60",
-    },
+  return serveBlob({
+    storageKey: row.storageKey,
+    contentType: row.mimeType ?? "application/octet-stream",
+    inline: true,
+    filename: row.filename ?? "document",
+    sizeBytes: row.sizeBytes,
+    label: "document",
   });
 });

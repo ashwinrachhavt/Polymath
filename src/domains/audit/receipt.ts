@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { db } from "@/lib/db";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
 import { requestReceipts } from "./schema";
@@ -64,4 +65,113 @@ export async function withReceipt<T>(
     response: value ?? null,
   });
   return { value, replayed: false };
+}
+
+/*
+ * The start protocol: the same contract as withReceipt, claim-first, for work
+ * that cannot hold a transaction across it (a run's engine session, an
+ * upload's blob write — db-transaction.ts's own rule). The request_receipts
+ * unique index on (workspace, key) is the serialization:
+ *
+ *   claimStartReceipt    — insert-or-lose. The winner starts the work; the
+ *                          losers replay, wait (in-progress), or conflict.
+ *   completeStartReceipt — the winner stores the response. Pass the finalize
+ *                          transaction when there is one, so the receipt and
+ *                          the work commit together.
+ *   freeStartReceipt     — the winner failed before completion: free the key
+ *                          so a retry starts fresh.
+ *
+ * A claimant that dies between claim and completion leaves the key answering
+ * in-progress — the visible record that a start began, the same tradeoff the
+ * claim rows' 24h expiresAt exists to bound once a purge lands.
+ */
+
+export type StartReceiptClaim =
+  | { claimed: true }
+  | { claimed: false; kind: "conflict" }
+  | { claimed: false; kind: "in_progress" }
+  | { claimed: false; kind: "replayed"; response: unknown };
+
+export async function claimStartReceipt(
+  auth: Pick<AuthContext, "workspaceId">,
+  key: string,
+  requestHash: string,
+): Promise<StartReceiptClaim> {
+  const [claimed] = await db
+    .insert(requestReceipts)
+    .values({
+      workspaceId: auth.workspaceId,
+      idempotencyKey: key,
+      requestHash,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
+    .onConflictDoNothing()
+    .returning({ id: requestReceipts.id });
+  if (claimed) return { claimed: true };
+
+  const [prior] = await db
+    .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
+    .from(requestReceipts)
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)))
+    .limit(1);
+  // The row can vanish between the lost insert and this read — the claimant
+  // ahead of us failed and freed the key. Race again rather than answer a
+  // conflict for a request that was never stored.
+  if (!prior) return claimStartReceipt(auth, key, requestHash);
+  if (prior.requestHash !== requestHash) return { claimed: false, kind: "conflict" };
+  if (!prior.response) return { claimed: false, kind: "in_progress" };
+  return { claimed: false, kind: "replayed", response: prior.response };
+}
+
+export type ReceiptPrecheck =
+  | { action: "proceed" }
+  | { action: "replay"; response: unknown }
+  | { action: "in_progress" }
+  | { action: "conflict" };
+
+/**
+ * Read-only look before a caller starts work it cannot hold a claim across —
+ * the shape for a long-running start whose expensive first step (a blob
+ * upload) must not run for a request the receipt already answered. It never
+ * inserts, so it cannot collide with the in-transaction withReceipt backstop
+ * the way a route-level claim would deadlock the winner's own lock. The
+ * race-gap between peek and receipt (two concurrent peeks both see nothing)
+ * is exactly what the in-transaction backstop serializes.
+ */
+export async function peekReceipt(
+  auth: Pick<AuthContext, "workspaceId">,
+  key: string,
+  requestHash: string,
+): Promise<ReceiptPrecheck> {
+  const [prior] = await db
+    .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
+    .from(requestReceipts)
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)))
+    .limit(1);
+  if (!prior) return { action: "proceed" };
+  if (prior.requestHash !== requestHash) return { action: "conflict" };
+  if (prior.response === null) return { action: "in_progress" };
+  return { action: "replay", response: prior.response };
+}
+
+export async function completeStartReceipt(
+  on: TxDrizzle | typeof db,
+  auth: Pick<AuthContext, "workspaceId">,
+  key: string,
+  statusCode: number,
+  response: unknown,
+): Promise<void> {
+  await on
+    .update(requestReceipts)
+    .set({ statusCode, response })
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)));
+}
+
+export async function freeStartReceipt(
+  auth: Pick<AuthContext, "workspaceId">,
+  key: string,
+): Promise<void> {
+  await db
+    .delete(requestReceipts)
+    .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, key)));
 }

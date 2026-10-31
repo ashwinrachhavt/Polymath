@@ -1,14 +1,11 @@
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { validateFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
-import { requestReceipts } from "@/domains/audit/schema";
-import { IdempotencyConflictError, receiptRequestHash } from "@/domains/audit/receipt";
+import { IdempotencyConflictError, peekReceipt, receiptRequestHash } from "@/domains/audit/receipt";
 import { ConflictError, createFileCapture, fileCaptureReceiptRequest, StorageWriteFailedError } from "@/domains/capture/commands";
 
 /*
@@ -55,29 +52,42 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "empty_file", "The uploaded file is empty.");
   }
 
-  // The receipt payload is one shared shape: this pre-check and the command's
-  // in-transaction receipt hash the same object, so a replay can never read a
-  // conflict out of its own first attempt.
+  // The idempotency protocol is createFileCapture's withReceipt: the advisory
+  // lock serializes racing first attempts, a replay returns the first
+  // attempt's stored response before its blob write, and a same-key different
+  // request surfaces here as IdempotencyConflictError.
   const contentHash = await sha256Hex(bytes);
-  const receiptRequest = fileCaptureReceiptRequest(contentHash, file.name.trim().slice(0, 500) || "file");
+
+  // Look before the storage write: createFileCapture uploads the blob before
+  // its in-transaction receipt backstop, so an identical retry during a
+  // storage outage would 503 instead of replaying the stored 201, and every
+  // completed retry would re-upload a throwaway object. peekReceipt never
+  // inserts, so it cannot collide with that backstop — its race-gap (two
+  // concurrent peeks both see nothing) is what withReceipt serializes. The
+  // filename is normalized exactly as the command normalizes it, so this
+  // hash matches the receipt the backstop writes.
+  const filename = file.name.trim().slice(0, 500);
   if (idempotencyKey) {
-    const [receipt] = await db
-      .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
-      .from(requestReceipts)
-      .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, idempotencyKey)))
-      .limit(1);
-    if (receipt) {
-      if (receipt.requestHash !== (await receiptRequestHash(receiptRequest))) {
-        return problemResponse(422, "idempotency_conflict", "This key was used for a different request.");
-      }
-      return Response.json(receipt.response, { status: 201 });
+    const precheck = await peekReceipt(
+      auth,
+      idempotencyKey,
+      await receiptRequestHash(fileCaptureReceiptRequest(contentHash, filename)),
+    );
+    if (precheck.action === "conflict") {
+      return problemResponse(422, "idempotency_conflict", "This idempotency key was used for a different request.");
+    }
+    if (precheck.action === "in_progress") {
+      return problemResponse(409, "request_in_progress", "This capture is still being processed. Retry in a moment.");
+    }
+    if (precheck.action === "replay") {
+      return Response.json(precheck.response, { status: 201 });
     }
   }
 
   try {
     const result = await createFileCapture(auth, {
       bytes,
-      filename: file.name,
+      filename,
       verdict,
       contentHash,
       source: "quick_capture",

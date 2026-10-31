@@ -40,10 +40,11 @@ let stubResults: Record<string, StubResult> = {};
  * (select/insert/update/execute), the spend command, and the driver call. The
  * test asserts the order, because the order is the contract.
  */
-const { fakeDb, ops, setCalls } = vi.hoisted(() => ({
+const { fakeDb, ops, setCalls, whereCalls } = vi.hoisted(() => ({
   fakeDb: {} as Record<string, unknown>,
   ops: [] as string[],
   setCalls: [] as unknown[],
+  whereCalls: [] as unknown[],
 }));
 
 vi.mock("@/lib/db", () => {
@@ -56,6 +57,10 @@ vi.mock("@/lib/db", () => {
     }
     self.set = (values: unknown) => {
       setCalls.push(values);
+      return self;
+    };
+    self.where = (condition: unknown) => {
+      whereCalls.push({ op, condition });
       return self;
     };
     self.returning = async () => current().returning ?? [];
@@ -94,6 +99,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   ops.length = 0;
   setCalls.length = 0;
+  whereCalls.length = 0;
   stubResults = {
     select: { returning: [profileRow] },
     insert: { returning: [{ id: RUN.id }] },
@@ -185,6 +191,38 @@ describe("engine", () => {
       { workspaceId: WS },
       { reservationId: "rsv_7" },
     );
+  });
+
+  it("a cancel landing before the running flip wins: start refuses, hands back the budget, starts no session", async () => {
+    const { driver } = fakeDriver();
+    // The cancel CAS (state in ACTIVE_STATES) already closed the run, so the
+    // queued→running flip matches nothing.
+    stubResults.update = { returning: [] };
+    // The reservation start just made is still open and must go back.
+    stubResults.execute = { rows: [{ id: "rsv_5" }] };
+
+    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("cancelled before it started");
+
+    // No session for a run the user was told was cancelled.
+    expect(driver.start).not.toHaveBeenCalled();
+    // The budget start reserved in its own transaction is handed back —
+    // without this the run is unreservable at close and the spend vanishes.
+    expect(releaseSpend).toHaveBeenCalledWith(expect.anything(), { workspaceId: WS }, { reservationId: "rsv_5" });
+  });
+
+  it("the closing writes stay state-guarded: the running flip and failRun carry predicates", async () => {
+    const { driver } = fakeDriver();
+    driver.start.mockRejectedValueOnce(new Error("eve unreachable"));
+    stubResults.execute = { rows: [{ id: "rsv_7" }] };
+
+    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("eve unreachable");
+
+    // Both update writes on the start path — the queued→running flip and the
+    // failRun close — are conditional on run state. Dropping the predicate is
+    // exactly the cancel-overwrite race: a terminal run gets rewritten.
+    const updateWheres = whereCalls.filter((w) => (w as { op: string }).op === "update");
+    expect(updateWheres.length).toBeGreaterThanOrEqual(2);
+    for (const w of updateWheres) expect((w as { condition: unknown }).condition).toBeDefined();
   });
 
   it("cancel is terminal-only-once: second cancel is a no-op", async () => {

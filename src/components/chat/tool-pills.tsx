@@ -4,7 +4,7 @@ import { memo, useState } from "react";
 import { Check, ChevronRight, CircleDashed, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "cn";
 import type { ChatState } from "./use-chat-stream";
-import { INTERNAL_TOOLS, toolLabel } from "./tool-labels";
+import { INTERNAL_TOOLS, toolLabel } from "@/domains/agents/tool-labels";
 import { collectRecords } from "./record-links";
 import { RecordCards } from "./record-card";
 

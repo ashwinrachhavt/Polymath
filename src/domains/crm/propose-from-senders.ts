@@ -6,6 +6,7 @@ import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import { listContactStatusesByEmail } from "./queries";
 import { companies, contactCompanies, contactObservations, contacts, correspondence } from "./schema";
 import { companyFromEmail, gmailThreadUrl, isAutomatedSender, nameFromEmail, parseSender } from "./sender-parsing";
@@ -205,7 +206,7 @@ export async function approveContactProposal(
       return withTransaction(async (tx) => applyContact(tx, auth, await loadApprovedPayload(tx, auth, input, { requireApproved: true })));
     }
     // A concurrent writer took the unique email index; the whole unit rolled back, so replay it once.
-    if ((error as { cause?: { code?: string } })?.cause?.code === "23505") return run();
+    if (isUniqueViolation(error)) return run();
     throw error;
   }
 }

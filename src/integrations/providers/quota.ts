@@ -38,14 +38,24 @@ export type QuotaKey = {
 export interface QuotaStore {
   /**
    * Atomically add `units` to the bucket's reserved counter, creating the
-   * bucket for the period if needed. Returns the bucket id, or null when the
-   * reservation would exceed the allowance (the caller's hard stop).
+   * bucket for the period if needed. Returns the bucket id plus the
+   * reservation ref that finalizes key off, or null when the reservation
+   * would exceed the allowance (the caller's hard stop).
    */
-  reserve(key: QuotaKey, units: number, allowance: number, unit: string): Promise<{ bucketId: string } | null>;
-  /** Move units from reserved to consumed after the call. */
-  settle(bucketId: string, held: number, actual: number): Promise<void>;
-  /** Return held units after a failed call. */
-  release(bucketId: string, held: number): Promise<void>;
+  reserve(
+    key: QuotaKey,
+    units: number,
+    allowance: number,
+    unit: string,
+  ): Promise<{ bucketId: string; reservationId: string } | null>;
+  /**
+   * Move units from reserved to consumed after the call. Keyed by the
+   * reservation ref: a replayed settle (or a settle racing a release or the
+   * reaper) is a no-op — at most one finalize ever claims a reservation.
+   */
+  settle(bucketId: string, reservationId: string, held: number, actual: number): Promise<void>;
+  /** Return held units after a failed call. Same once-per-reservation rule. */
+  release(bucketId: string, reservationId: string, held: number): Promise<void>;
 }
 
 /*
@@ -71,50 +81,104 @@ export function drizzleQuotaStore(database: typeof db = db): QuotaStore {
     async reserve(key, units, allowance, unit) {
       if (units <= 0) throw new Error("reserve needs at least one unit");
       if (units > allowance) return null;
-      const rows = await database.execute(sql`
-        INSERT INTO provider_quota_buckets (workspace_id, provider, period, unit, allowance, reserved)
-        VALUES (${key.workspaceId}::uuid, ${key.provider}, ${key.period}, ${unit}, ${allowance}, ${units})
-        ON CONFLICT (workspace_id, provider, period) DO UPDATE
-          SET reserved = provider_quota_buckets.reserved + EXCLUDED.reserved,
-              allowance = EXCLUDED.allowance,
+      // The ref mints before the transaction so a connection drop after the
+      // upsert cannot leave the bucket incremented with no ledger row: counter
+      // and evidence commit together or not at all.
+      const reservationId = crypto.randomUUID();
+      return database.transaction(async (tx) => {
+        const rows = await tx.execute(sql`
+          INSERT INTO provider_quota_buckets (workspace_id, provider, period, unit, allowance, reserved)
+          VALUES (${key.workspaceId}::uuid, ${key.provider}, ${key.period}, ${unit}, ${allowance}, ${units})
+          ON CONFLICT (workspace_id, provider, period) DO UPDATE
+            SET reserved = provider_quota_buckets.reserved + EXCLUDED.reserved,
+                allowance = EXCLUDED.allowance,
+                updated_at = now()
+            WHERE provider_quota_buckets.consumed + provider_quota_buckets.reserved + EXCLUDED.reserved
+                  <= provider_quota_buckets.allowance
+          RETURNING id
+        `);
+        const row = (rows as unknown as Array<{ id: string }>)[0];
+        if (!row) return null;
+        await tx.execute(sql`
+          INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units, reservation_ref)
+          VALUES (${key.workspaceId}::uuid, ${row.id}::uuid, 'reserve', ${units}, ${reservationId}::uuid)
+        `);
+        return { bucketId: row.id, reservationId };
+      });
+    },
+    async settle(bucketId, reservationId, held, actual) {
+      await database.transaction(async (tx) => {
+        // Claim first: the partial unique index on (bucket_id, reservation_ref)
+        // over finalize rows lets exactly one settle/release/reaper per
+        // reservation past the claim, so a retried settle cannot double-count.
+        const claimed = await tx.execute(sql`
+          INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units, reservation_ref)
+          SELECT workspace_id, id, 'settle', ${actual}, ${reservationId}::uuid
+          FROM provider_quota_buckets WHERE id = ${bucketId}::uuid
+          ON CONFLICT (bucket_id, reservation_ref) WHERE kind in ('settle', 'release') DO NOTHING
+          RETURNING id
+        `);
+        if ((claimed as unknown as Array<unknown>).length === 0) return;
+        await tx.execute(sql`
+          UPDATE provider_quota_buckets
+          SET consumed = consumed + ${actual},
+              reserved = greatest(reserved - ${held}, 0),
               updated_at = now()
-          WHERE provider_quota_buckets.consumed + provider_quota_buckets.reserved + EXCLUDED.reserved
-                <= provider_quota_buckets.allowance
-        RETURNING id
-      `);
-      const row = (rows as unknown as Array<{ id: string }>)[0];
-      if (!row) return null;
-      await database.execute(sql`
-        INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units)
-        VALUES (${key.workspaceId}::uuid, ${row.id}::uuid, 'reserve', ${units})
-      `);
-      return { bucketId: row.id };
+          WHERE id = ${bucketId}::uuid
+        `);
+      });
     },
-    async settle(bucketId, held, actual) {
-      await database.execute(sql`
-        UPDATE provider_quota_buckets
-        SET consumed = consumed + ${actual},
-            reserved = greatest(reserved - ${held}, 0),
-            updated_at = now()
-        WHERE id = ${bucketId}::uuid
-      `);
-      await database.execute(sql`
-        INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units)
-        SELECT workspace_id, id, 'settle', ${actual} FROM provider_quota_buckets WHERE id = ${bucketId}::uuid
-      `);
-    },
-    async release(bucketId, held) {
-      await database.execute(sql`
-        UPDATE provider_quota_buckets
-        SET reserved = greatest(reserved - ${held}, 0), updated_at = now()
-        WHERE id = ${bucketId}::uuid
-      `);
-      await database.execute(sql`
-        INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units)
-        SELECT workspace_id, id, 'release', ${held} FROM provider_quota_buckets WHERE id = ${bucketId}::uuid
-      `);
+    async release(bucketId, reservationId, held) {
+      await database.transaction(async (tx) => {
+        const claimed = await tx.execute(sql`
+          INSERT INTO provider_usage_ledger (workspace_id, bucket_id, kind, units, reservation_ref)
+          SELECT workspace_id, id, 'release', ${held}, ${reservationId}::uuid
+          FROM provider_quota_buckets WHERE id = ${bucketId}::uuid
+          ON CONFLICT (bucket_id, reservation_ref) WHERE kind in ('settle', 'release') DO NOTHING
+          RETURNING id
+        `);
+        if ((claimed as unknown as Array<unknown>).length === 0) return;
+        await tx.execute(sql`
+          UPDATE provider_quota_buckets
+          SET reserved = greatest(reserved - ${held}, 0), updated_at = now()
+          WHERE id = ${bucketId}::uuid
+        `);
+      });
     },
   };
+}
+
+/**
+ * Reclaim reservations whose call never came back: a reserve ledger row with
+ * no settle/release sibling after `olderThanMs` is a dead process's held
+ * units, and the reaper returns them to the bucket. Finalizing through the
+ * same claimed release as everyone else keeps it safe against a late settle
+ * (one of the two wins the claim) and against its own retries. Legacy rows
+ * minted before reservation refs existed carry no ref and are left alone —
+ * they cannot be finalized idempotently. Wired into the daily cron.
+ */
+export async function reapStaleReservations(olderThanMs = 60 * 60 * 1000): Promise<number> {
+  const stale = await db.execute(sql`
+    SELECT r.bucket_id, r.reservation_ref, r.units
+    FROM provider_usage_ledger r
+    WHERE r.kind = 'reserve'
+      AND r.reservation_ref IS NOT NULL
+      AND r.created_at < now() - make_interval(secs => ${olderThanMs / 1000})
+      AND NOT EXISTS (
+        SELECT 1 FROM provider_usage_ledger f
+        WHERE f.bucket_id = r.bucket_id
+          AND f.reservation_ref = r.reservation_ref
+          AND f.kind IN ('settle', 'release')
+      )
+    LIMIT 100
+  `);
+  const store = drizzleQuotaStore();
+  let reaped = 0;
+  for (const row of stale as unknown as Array<{ bucket_id: string; reservation_ref: string; units: number }>) {
+    await store.release(row.bucket_id, row.reservation_ref, row.units);
+    reaped++;
+  }
+  return reaped;
 }
 
 /**
@@ -143,10 +207,10 @@ export async function withQuota<T>(
   if (!reservation) throw new QuotaExhaustedError(entry.id, period, allowance);
   try {
     const result = await fn();
-    await store.settle(reservation.bucketId, estimate, actualOf ? actualOf(result) : estimate);
+    await store.settle(reservation.bucketId, reservation.reservationId, estimate, actualOf ? actualOf(result) : estimate);
     return result;
   } catch (cause) {
-    await store.release(reservation.bucketId, estimate);
+    await store.release(reservation.bucketId, reservation.reservationId, estimate);
     throw cause;
   }
 }

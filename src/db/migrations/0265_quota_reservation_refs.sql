@@ -1,0 +1,2 @@
+ALTER TABLE "provider_usage_ledger" ADD COLUMN "reservation_ref" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "provider_usage_ledger_reservation_final_key" ON "provider_usage_ledger" USING btree ("bucket_id","reservation_ref") WHERE kind in ('settle', 'release');

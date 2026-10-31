@@ -8,7 +8,12 @@ import { problemResponse } from "@/lib/problems";
 import { sha256Hex } from "@/lib/hash";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, validateFile } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
-import { requestReceipts } from "@/domains/audit/schema";
+import {
+  claimStartReceipt,
+  completeStartReceipt,
+  freeStartReceipt,
+  type StartReceiptClaim,
+} from "@/domains/audit/receipt";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { resolveFolderPath } from "@/domains/knowledge/folder-paths";
@@ -85,70 +90,73 @@ export const POST = authedHandler(async (auth, request) => {
     ? await sha256Hex(`${contentHex}:${parsedTitle.data.title}`)
     : null;
 
-  // Replay check before any blob write: the stored response is the document id
-  // from the first attempt, so a retry cannot duplicate the document.
-  if (idempotencyKey) {
-    const [receipt] = await db
-      .select({ requestHash: requestReceipts.requestHash, response: requestReceipts.response })
-      .from(requestReceipts)
-      .where(
-        and(
-          eq(requestReceipts.workspaceId, auth.workspaceId),
-          eq(requestReceipts.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (receipt) {
-      if (receipt.requestHash !== requestHash) {
-        return problemResponse(
-          422,
-          "idempotency_conflict",
-          "This key was used for a different request.",
-        );
+  // Claim before any work: the claim is insert-or-lose on the receipt unique
+  // index, so two concurrent first attempts cannot both write a blob and both
+  // race into finalize — the loser of the claim replays or waits instead of
+  // dying on the index as an unhandled 500.
+  let claim: StartReceiptClaim | null = null;
+  if (idempotencyKey && requestHash) {
+    claim = await claimStartReceipt(auth, idempotencyKey, requestHash);
+    if (!claim.claimed) {
+      if (claim.kind === "conflict") {
+        return problemResponse(422, "idempotency_conflict", "This key was used for a different request.");
       }
-      return Response.json(receipt.response, { status: 201 });
+      if (claim.kind === "in_progress") {
+        return problemResponse(409, "request_in_progress", "This upload is still being processed. Retry in a moment.");
+      }
+      return Response.json(claim.response, { status: 201 });
     }
   }
+  // A claim is only held while this attempt owns the key: every early return
+  // after the claim frees it, so a deterministic failure (bad folder) or a
+  // crashed finalize leaves the key retryable.
+  const freeClaim = async () => {
+    if (idempotencyKey) await freeStartReceipt(auth, idempotencyKey);
+  };
 
   // The owner is standing in a folder: uploads file there. A dropped
   // directory keeps its relative structure underneath it. Verify the folder
   // before creating anything, so a stale tab cannot file into a foreign or
   // archived folder.
   const baseFolderId = parsedTitle.data.folderId ?? null;
-  if (baseFolderId) {
-    const [folder] = await db
-      .select({ id: documentFolders.id })
-      .from(documentFolders)
-      .where(
-        and(
-          eq(documentFolders.id, baseFolderId),
-          eq(documentFolders.workspaceId, auth.workspaceId),
-          isNull(documentFolders.archivedAt),
-        ),
-      )
-      .limit(1);
-    if (!folder) return problemResponse(404, "not_found", "That folder is not available.");
-  }
-
   let targetFolderId = baseFolderId;
-  if (parsedTitle.data.folderPath) {
-    try {
-      targetFolderId = (
-        await resolveFolderPath(auth, parsedTitle.data.folderPath, { parentId: baseFolderId })
-      ).folderId;
-    } catch (error) {
-      // A dropped directory can carry a segment the folder rules reject (too
-      // long, empty after trimming). That is the upload's fault, not a server
-      // fault, so the client gets a readable 400 instead of a 500.
-      if (error instanceof FolderError) {
-        return problemResponse(400, "invalid_folder", error.message);
-      }
-      throw error;
-    }
-  }
-
   let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
+    if (baseFolderId) {
+      const [folder] = await db
+        .select({ id: documentFolders.id })
+        .from(documentFolders)
+        .where(
+          and(
+            eq(documentFolders.id, baseFolderId),
+            eq(documentFolders.workspaceId, auth.workspaceId),
+            isNull(documentFolders.archivedAt),
+          ),
+        )
+        .limit(1);
+      if (!folder) {
+        await freeClaim();
+        return problemResponse(404, "not_found", "That folder is not available.");
+      }
+    }
+
+    if (parsedTitle.data.folderPath) {
+      try {
+        targetFolderId = (
+          await resolveFolderPath(auth, parsedTitle.data.folderPath, { parentId: baseFolderId })
+        ).folderId;
+      } catch (error) {
+        // A dropped directory can carry a segment the folder rules reject (too
+        // long, empty after trimming). That is the upload's fault, not a server
+        // fault, so the client gets a readable 400 instead of a 500.
+        if (error instanceof FolderError) {
+          await freeClaim();
+          return problemResponse(400, "invalid_folder", error.message);
+        }
+        throw error;
+      }
+    }
+
     result = await intakeFile(auth, {
       bytes,
       filename: file.name,
@@ -157,23 +165,34 @@ export const POST = authedHandler(async (auth, request) => {
       verdict,
       contentHash: contentHex,
       origin: "upload",
-      // Receipt in the same transaction as finalize, for quarantine too: the
-      // retry path most likely to be exercised (re-POST after fixing something)
-      // must not mint a second blob + file row for the same key.
+      // Completion in the same transaction as finalize, for quarantine too:
+      // the receipt's response commits atomically with the document row it
+      // names, so a replay can never answer for work that rolled back. The
+      // retry path most likely to be exercised (re-POST after fixing
+      // something) must not mint a second blob + file row for the same key.
       inTransaction: async (tx, rows) => {
         if (!idempotencyKey) return;
-        await tx.insert(requestReceipts).values({
-          workspaceId: auth.workspaceId,
+        await completeStartReceipt(
+          tx,
+          auth,
           idempotencyKey,
-          requestHash: requestHash!,
-          statusCode: rows.documentId ? 201 : 200,
-          response: rows.documentId
+          rows.documentId ? 201 : 200,
+          rows.documentId
             ? { documentId: rows.documentId, contentHash: contentHex }
             : { fileId: rows.fileId, fileStatus: "quarantined" },
-        });
+        );
       },
     });
   } catch (error) {
+    // Every fault after the claim frees it: a stranded claim answers 409
+    // request_in_progress to every retry, forever. Freeing is best-effort —
+    // if the free itself fails (DB down), the primary error still surfaces
+    // and the receipt's 24h expiry bounds the stranded key.
+    try {
+      await freeClaim();
+    } catch {
+      /* bounded by the receipt row's expiresAt */
+    }
     if (error instanceof ObjectStoreUnconfiguredError) {
       return problemResponse(503, "storage_unconfigured", error.message);
     }

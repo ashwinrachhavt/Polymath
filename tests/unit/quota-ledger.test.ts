@@ -19,14 +19,14 @@ function fakeStore(allowance: number) {
       if (units > allowance || bucket.consumed + bucket.reserved + units > allowance) return null;
       bucket.reserved += units;
       events.push(`reserve:${units}`);
-      return { bucketId: "b1" };
+      return { bucketId: "b1", reservationId: "r1" };
     },
-    async settle(_id, held, actual) {
+    async settle(_id, _reservationId, held, actual) {
       bucket.reserved -= held;
       bucket.consumed += actual;
       events.push(`settle:${actual}`);
     },
-    async release(_id, held) {
+    async release(_id, _reservationId, held) {
       bucket.reserved -= held;
       events.push(`release:${held}`);
     },

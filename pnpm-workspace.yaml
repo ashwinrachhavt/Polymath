@@ -11,6 +11,13 @@ allowBuilds:
   sharp: false
   unrs-resolver: false
 
+# pnpm 12 reads peer-dependency rule config from here; the same key in
+# package.json is ignored by this major and only looked like it was doing
+# something. Suppresses the langfuse-eve peer pin warning.
+peerDependencyRules:
+  allowedVersions:
+    '@vantezzen/langfuse-eve>eve': 0.76.3
+
 # Security pins for transitive chains whose direct requesters hold exact (or
 # 0.x-caret) ranges excluding every patched release. Each selector only fires
 # while the resolved version is vulnerable and goes inert once upstream bumps

@@ -162,7 +162,7 @@ describe("searchWebForAgent quota gating", () => {
       async reserve(_k: unknown, units: number) {
         if (spent + units > cap) return null;
         spent += units;
-        return { bucketId: "b" };
+        return { bucketId: "b", reservationId: "r" };
       },
       async settle() {},
       async release() {

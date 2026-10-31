@@ -104,8 +104,14 @@ collectKeys(ytSrc, "export const youtubeHandlers");
  * row is the record and the outbox row waits for a future subscriber; the suite
  * in tests/unit/outbox-topic-coverage.test.ts enforces the declaration. Without
  * reading it here the summary counts deliberate design as missing work.
+ *
+ * Read the declaration in outbox-topics.ts, not the re-export in
+ * outbox-handlers.ts: the list moved there (80ba99ee) and slicing the re-export
+ * line finds no `];`, so the parsed set came back empty and all 22 deliberate
+ * topics were misreported as undeclared defects.
  */
-const auditOnlySrc = handlerSrc.slice(handlerSrc.indexOf("AUDIT_ONLY_TOPICS"));
+const topicsSrc = read(join(ROOT, "src/domains/audit/outbox-topics.ts"));
+const auditOnlySrc = topicsSrc.slice(topicsSrc.indexOf("AUDIT_ONLY_TOPICS"));
 const auditOnly = new Set<string>(
   [...auditOnlySrc.slice(0, auditOnlySrc.indexOf("];")).matchAll(/"([a-z0-9_.]+)"/g)].map((m) => m[1]),
 );

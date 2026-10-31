@@ -85,10 +85,10 @@ export function jevClassifier(
       if (!reservation) throw new QuotaExhaustedError("jev", period, allowance);
       try {
         const response = await client.systemOne({ state: input.state, questions: input.questions });
-        await quotaStore.settle(reservation.bucketId, estimate, Math.max(1, response.usage.input_tokens));
+        await quotaStore.settle(reservation.bucketId, reservation.reservationId, estimate, Math.max(1, response.usage.input_tokens));
         return { model: response.model, answers: response.answers, usage: response.usage };
       } catch (cause) {
-        await quotaStore.release(reservation.bucketId, estimate);
+        await quotaStore.release(reservation.bucketId, reservation.reservationId, estimate);
         throw cause;
       }
     },
