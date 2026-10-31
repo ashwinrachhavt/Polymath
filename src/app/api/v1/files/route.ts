@@ -119,44 +119,44 @@ export const POST = authedHandler(async (auth, request) => {
   // before creating anything, so a stale tab cannot file into a foreign or
   // archived folder.
   const baseFolderId = parsedTitle.data.folderId ?? null;
-  if (baseFolderId) {
-    const [folder] = await db
-      .select({ id: documentFolders.id })
-      .from(documentFolders)
-      .where(
-        and(
-          eq(documentFolders.id, baseFolderId),
-          eq(documentFolders.workspaceId, auth.workspaceId),
-          isNull(documentFolders.archivedAt),
-        ),
-      )
-      .limit(1);
-    if (!folder) {
-      await freeClaim();
-      return problemResponse(404, "not_found", "That folder is not available.");
-    }
-  }
-
   let targetFolderId = baseFolderId;
-  if (parsedTitle.data.folderPath) {
-    try {
-      targetFolderId = (
-        await resolveFolderPath(auth, parsedTitle.data.folderPath, { parentId: baseFolderId })
-      ).folderId;
-    } catch (error) {
-      // A dropped directory can carry a segment the folder rules reject (too
-      // long, empty after trimming). That is the upload's fault, not a server
-      // fault, so the client gets a readable 400 instead of a 500.
-      if (error instanceof FolderError) {
-        await freeClaim();
-        return problemResponse(400, "invalid_folder", error.message);
-      }
-      throw error;
-    }
-  }
-
   let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
+    if (baseFolderId) {
+      const [folder] = await db
+        .select({ id: documentFolders.id })
+        .from(documentFolders)
+        .where(
+          and(
+            eq(documentFolders.id, baseFolderId),
+            eq(documentFolders.workspaceId, auth.workspaceId),
+            isNull(documentFolders.archivedAt),
+          ),
+        )
+        .limit(1);
+      if (!folder) {
+        await freeClaim();
+        return problemResponse(404, "not_found", "That folder is not available.");
+      }
+    }
+
+    if (parsedTitle.data.folderPath) {
+      try {
+        targetFolderId = (
+          await resolveFolderPath(auth, parsedTitle.data.folderPath, { parentId: baseFolderId })
+        ).folderId;
+      } catch (error) {
+        // A dropped directory can carry a segment the folder rules reject (too
+        // long, empty after trimming). That is the upload's fault, not a server
+        // fault, so the client gets a readable 400 instead of a 500.
+        if (error instanceof FolderError) {
+          await freeClaim();
+          return problemResponse(400, "invalid_folder", error.message);
+        }
+        throw error;
+      }
+    }
+
     result = await intakeFile(auth, {
       bytes,
       filename: file.name,
@@ -184,7 +184,15 @@ export const POST = authedHandler(async (auth, request) => {
       },
     });
   } catch (error) {
-    await freeClaim();
+    // Every fault after the claim frees it: a stranded claim answers 409
+    // request_in_progress to every retry, forever. Freeing is best-effort —
+    // if the free itself fails (DB down), the primary error still surfaces
+    // and the receipt's 24h expiry bounds the stranded key.
+    try {
+      await freeClaim();
+    } catch {
+      /* bounded by the receipt row's expiresAt */
+    }
     if (error instanceof ObjectStoreUnconfiguredError) {
       return problemResponse(503, "storage_unconfigured", error.message);
     }
