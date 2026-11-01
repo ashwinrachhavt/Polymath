@@ -4076,7 +4076,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "focus_sessions_active_idx" ON "focus_sessions
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "event_links" ADD CONSTRAINT "event_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'opportunity', 'run', 'thread'));
+ALTER TABLE "event_links" ADD CONSTRAINT "event_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -4084,7 +4084,7 @@ END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'opportunity', 'run', 'thread'));
+ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread', 'zettel'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -4092,7 +4092,7 @@ END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "opportunity_links" ADD CONSTRAINT "opportunity_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'opportunity', 'run', 'thread'));
+ALTER TABLE "opportunity_links" ADD CONSTRAINT "opportunity_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -4100,7 +4100,7 @@ END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "task_links" ADD CONSTRAINT "task_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'opportunity', 'run', 'thread'));
+ALTER TABLE "task_links" ADD CONSTRAINT "task_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -5089,7 +5089,7 @@ ALTER TABLE "artifact_links" DROP CONSTRAINT IF EXISTS "artifact_links_target_ty
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread'));
+ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_target_type_check" CHECK (target_type in ('task', 'project', 'space', 'note', 'artifact', 'document', 'source', 'event', 'contact', 'company', 'person', 'organization', 'opportunity', 'run', 'thread', 'zettel'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -6755,7 +6755,7 @@ END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_link_type_check" CHECK (link_type in ('reference', 'related', 'supports', 'contradicts', 'source', 'semantic'));
+ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_link_type_check" CHECK (link_type in ('reference', 'related', 'supports', 'contradicts', 'source', 'semantic', 'explains', 'applies', 'extends', 'contrasts', 'dismissed', 'instance_of', 'part_of', 'causes'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
@@ -7038,7 +7038,7 @@ ALTER TABLE "artifact_links" DROP CONSTRAINT IF EXISTS "artifact_links_link_type
 --> statement-breakpoint
 
 DO $$ BEGIN
-ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_link_type_check" CHECK (link_type in ('reference', 'related', 'supports', 'contradicts', 'source', 'semantic', 'explains', 'applies', 'extends', 'contrasts', 'dismissed'));
+ALTER TABLE "artifact_links" ADD CONSTRAINT "artifact_links_link_type_check" CHECK (link_type in ('reference', 'related', 'supports', 'contradicts', 'source', 'semantic', 'explains', 'applies', 'extends', 'contrasts', 'dismissed', 'instance_of', 'part_of', 'causes'));
 EXCEPTION
   WHEN duplicate_object THEN null;
   WHEN duplicate_table THEN null;
