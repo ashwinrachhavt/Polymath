@@ -16,9 +16,23 @@ import { test, expect } from "@playwright/test";
  * instant-validation) and render non-instantly.
  */
 
+/*
+ * First-hit dev compiles are the slow step on a cold server: /neuralflow/work
+ * and /polymath/notes each take tens of seconds to compile on first request,
+ * and the 30s defaults read that as a test failure (QA F10 — 2 specs failed
+ * cold here, passed warm, zero code changes). Both ceilings ride up together:
+ * the goto timeouts so the compile itself waits, the test timeout so the
+ * goto's headroom exists. The ceiling covers the worst case in one test —
+ * goto(90s) still leaves room for the interactions after it — so 240s, not
+ * merely the goto's 90.
+ */
+test.setTimeout(240_000);
+
+const GOTO = { timeout: 90_000 } as const;
+
 test("quick-add from Today commits the task and shows it in place", async ({ page }) => {
   const title = `Today commit probe ${Date.now().toString(36)}`;
-  await page.goto("/neuralflow/work?view=today");
+  await page.goto("/neuralflow/work?view=today", GOTO);
   // Today holds more than one page on a long-lived workspace and a new task
   // ranks to the end, so narrow to this row before asserting it is on screen.
   await page.getByRole("searchbox", { name: /search/i }).fill(title);
@@ -32,7 +46,7 @@ test("quick-add from Today commits the task and shows it in place", async ({ pag
 
 test("quick-add from the list captures to Inbox without committing", async ({ page }) => {
   const title = `Inbox capture probe ${Date.now().toString(36)}`;
-  await page.goto("/neuralflow/work?view=saved");
+  await page.goto("/neuralflow/work?view=saved", GOTO);
   await page.getByRole("searchbox", { name: /search/i }).fill(title);
   await page.getByLabel("New task title").fill(title);
   await page.getByRole("button", { name: "Add task" }).click();
