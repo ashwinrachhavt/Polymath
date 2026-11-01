@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 import proxy from "@/proxy";
 
-vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false }));
+vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false, proxyArmed: true }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => ({
   ...await importOriginal<typeof import("@clerk/nextjs/server")>(),
   clerkMiddleware: (handler: unknown) => handler,
@@ -77,13 +77,10 @@ describe("Clerk proxy token boundary", () => {
     expect(response?.headers.get("location")).toBe(`https://axiom.test/landing?returnTo=${encodeURIComponent(path)}`);
   });
 
-  it.each(["//evil.test", "/\\evil.test"])("drops a non-same-origin path from the landing returnTo (%s)", async (path) => {
-    const check = vi.fn().mockResolvedValue({ isAuthenticated: false });
-    const response = await runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
-    expect(response?.status).toBe(307);
-    expect(response?.headers.get("location")).toBe("https://axiom.test/landing");
-  });
-
+  // The protocol-relative returnTo cases moved to
+  // tests/unit/proxy-redirect-chain.test.ts: since QA F8 an unmatched path
+  // gets the 404 rewrite rather than a landing redirect, which also cannot
+  // echo a non-same-origin path into returnTo.
   it.each(["/sign-in", "/sign-up", "/api/webhooks/provider"])("leaves %s to its public or signature-verification boundary", async (path) => {
     const protect = vi.fn();
     await runProxy(Object.assign(vi.fn(), { protect }), new NextRequest(`https://axiom.test${path}`));

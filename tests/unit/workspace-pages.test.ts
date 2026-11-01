@@ -48,7 +48,8 @@ describe("workspace page shells", () => {
     // must not exist either.
     expect(fs.existsSync(path.join(ROOT, "src/app/page.tsx"))).toBe(false);
     expect(fs.existsSync(path.join(ROOT, "src/app/(workspace)/page.tsx"))).toBe(false);
-    const config = fs.readFileSync(path.join(ROOT, "next.config.ts"), "utf8");
+    // The table lives in redirects.ts; next.config.ts delegates to it.
+    const config = fs.readFileSync(path.join(ROOT, "redirects.ts"), "utf8");
     expect(config).toContain('source: "/"');
     expect(config).toContain('destination: "/polymath"');
   });

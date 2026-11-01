@@ -43,7 +43,8 @@ describe("rename sweep", () => {
   });
 
   it("redirects legacy /alfred/* and /apps/alfred/* URLs and never redirects to them", () => {
-    const config = readFileSync(join(process.cwd(), "next.config.ts"), "utf8");
+    // The redirect table lives in redirects.ts (next.config delegates to it).
+    const config = readFileSync(join(process.cwd(), "redirects.ts"), "utf8");
     expect(config).toContain('source: "/alfred/:path*"');
     expect(config).toContain('destination: "/polymath/:path*"');
     expect(config).toContain('source: "/apps/alfred/:path*"');
