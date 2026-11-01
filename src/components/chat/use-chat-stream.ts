@@ -235,7 +235,9 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
                 connection: "done",
                 lastFailedTurn: false,
                 runFailed: true,
-                error: "This run failed. Retry it to start a new run.",
+                // Neutral on purpose: the hook is shared, and only surfaces
+                // that wire a fresh-start retry should promise one.
+                error: "This run failed.",
                 retryable: false,
               }));
             } else {

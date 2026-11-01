@@ -59,7 +59,7 @@ describe("useChatStream terminal run failure (end frame state \"failed\")", () =
     const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
     await waitFor(() => expect(result.current.runFailed).toBe(true));
     expect(result.current.connection).toBe("done");
-    expect(result.current.error).toBe("This run failed. Retry it to start a new run.");
+    expect(result.current.error).toBe("This run failed.");
     expect(result.current.retryable).toBe(false);
   });
 
@@ -71,7 +71,7 @@ describe("useChatStream terminal run failure (end frame state \"failed\")", () =
     const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
     await waitFor(() => expect(result.current.connection).toBe("done"));
     expect(result.current.error).not.toBe("The last reply failed. You can send another message.");
-    expect(result.current.error).toBe("This run failed. Retry it to start a new run.");
+    expect(result.current.error).toBe("This run failed.");
   });
 
   it("leaves no failure state behind when the run ended successfully", async () => {

@@ -449,7 +449,12 @@ export function ChatSurface({
 
         {chat.error && (
           <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
-            <p>{chat.error}</p>
+            {/* Retry guidance lives with the button that delivers it — only a
+                surface wired for a fresh-start retry promises one. */}
+            <p>
+              {chat.error}
+              {chat.runFailed && onRunFailedRetry ? " Retry it to start a new run." : ""}
+            </p>
             {chat.connection === "error" && chat.retryable ? (
               <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
                 Retry
