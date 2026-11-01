@@ -261,3 +261,17 @@ export function modelById(id: string): ModelOption | null {
 export function resolveModelId(stored: unknown): string {
   return typeof stored === "string" && modelById(stored) ? stored : DEFAULT_MODEL_ID;
 }
+
+/**
+ * One resolution order for a run's model: a profile's pinned primary when it
+ * names a catalog entry, else the catalog default. The eve runtime resolves
+ * the same way on a run's first turn; the onboarding credential gate calls
+ * this before minting a run, so the two can never disagree.
+ */
+export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
+  const primary =
+    typeof modelPolicy === "object" && modelPolicy !== null
+      ? (modelPolicy as { primary?: unknown }).primary
+      : null;
+  return modelById(resolveModelId(primary));
+}

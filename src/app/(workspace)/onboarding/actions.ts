@@ -1,11 +1,13 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { db } from "@/lib/db";
-import { agentProfiles } from "@/domains/agents/schema";
-import { completeOnboarding, readOnboardingRun, startOnboardingRun } from "@/domains/agents/onboarding";
+import {
+  completeOnboarding,
+  readOnboardingModelPolicy,
+  readOnboardingRun,
+  startOnboardingRun,
+} from "@/domains/agents/onboarding";
 import { onboardingBriefSchema, type OnboardingBrief } from "@/domains/agents/onboarding-brief";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { interviewModelGate } from "./model-gate";
@@ -58,15 +60,11 @@ export async function startOnboardingAction(): Promise<StartOnboardingResult> {
     // The credential gate runs before any row exists (QA F7). The eve runtime
     // resolves the profile's model on its first turn, so a missing provider
     // key used to surface only there — run created, profile made, reservation
-    // held, interview dead mid-conversation. Resolving the same model here
-    // (the profile's pinned primary, else the catalog default) turns that
-    // into a labelled start failure whose card carries the form fallback.
-    const [profile] = await db
-      .select({ modelPolicy: agentProfiles.modelPolicy })
-      .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, auth.workspaceId), eq(agentProfiles.name, "polymath")))
-      .limit(1);
-    const gate = interviewModelGate(profile?.modelPolicy ?? null);
+    // held, interview dead mid-conversation. Gating on the profile's resolved
+    // model here turns that into a labelled start failure whose card carries
+    // the form fallback. The policy read lives in the domain (readOnboarding
+    // ModelPolicy); the action never touches db/schema directly.
+    const gate = interviewModelGate(await readOnboardingModelPolicy(auth.workspaceId));
     if (!gate.ok) return { ok: false, message: gate.message };
 
     const { runId } = await startOnboardingRun(auth);
