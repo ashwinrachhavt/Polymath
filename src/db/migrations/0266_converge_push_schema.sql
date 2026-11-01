@@ -2031,25 +2031,9 @@ CREATE TABLE IF NOT EXISTS "boards" (
 );
 --> statement-breakpoint
 
-CREATE TABLE IF NOT EXISTS "daily_outcomes" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"workspace_id" uuid NOT NULL,
-	"on_date" date NOT NULL,
-	"task_id" uuid,
-	"title" text NOT NULL,
-	"rationale" text,
-	"rank" text DEFAULT 'm' NOT NULL,
-	"accepted_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"completed_at" timestamp with time zone,
-	"created_by" uuid,
-	"updated_by" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"archived_at" timestamp with time zone,
-	"version" integer DEFAULT 1 NOT NULL
-);
---> statement-breakpoint
-
+-- daily_outcomes lifecycle omitted: created in 0001 and dropped in 0257, so the
+-- chain's final schema has no such table. Re-creating it (even guarded) churns
+-- every database and its unique index could only ever reject valid rows.
 CREATE TABLE IF NOT EXISTS "projects" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -3456,22 +3440,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 
-DO $$ BEGIN
-ALTER TABLE "daily_outcomes" ADD CONSTRAINT "daily_outcomes_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
-  WHEN duplicate_object THEN null;
-  WHEN duplicate_table THEN null;
-END $$;
---> statement-breakpoint
-
-DO $$ BEGIN
-ALTER TABLE "daily_outcomes" ADD CONSTRAINT "daily_outcomes_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
-  WHEN duplicate_object THEN null;
-  WHEN duplicate_table THEN null;
-END $$;
---> statement-breakpoint
-
+-- daily_outcomes FKs omitted with the table lifecycle (dropped in 0257).
 DO $$ BEGIN
 ALTER TABLE "projects" ADD CONSTRAINT "projects_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -3739,9 +3708,9 @@ CREATE INDEX IF NOT EXISTS "capture_proposals_pending_idx" ON "capture_proposals
 CREATE INDEX IF NOT EXISTS "captures_inbox_idx" ON "captures" USING btree ("workspace_id","created_at") WHERE processing_state in ('unprocessed', 'classifying');
 --> statement-breakpoint
 
-CREATE UNIQUE INDEX IF NOT EXISTS "captures_workspace_source_url_key" ON "captures" USING btree ("workspace_id","source","url") WHERE url is not null;
---> statement-breakpoint
-
+-- captures_workspace_source_url_key omitted: dropped in 0258 in favor of the
+-- mode-aware identity indexes. Re-creating it before that drop would reject
+-- current-schema-valid rows (same workspace/source/url, different hash).
 CREATE INDEX IF NOT EXISTS "companies_workspace_name_idx" ON "companies" USING btree ("workspace_id","name");
 --> statement-breakpoint
 
@@ -3967,12 +3936,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "board_columns_board_value_key" ON "board_colu
 CREATE UNIQUE INDEX IF NOT EXISTS "boards_workspace_name_key" ON "boards" USING btree ("workspace_id","name");
 --> statement-breakpoint
 
-CREATE INDEX IF NOT EXISTS "daily_outcomes_day_idx" ON "daily_outcomes" USING btree ("workspace_id","on_date","rank");
---> statement-breakpoint
-
-CREATE UNIQUE INDEX IF NOT EXISTS "daily_outcomes_day_task_key" ON "daily_outcomes" USING btree ("workspace_id","on_date","task_id") WHERE task_id is not null;
---> statement-breakpoint
-
+-- daily_outcomes indexes omitted with the table lifecycle (dropped in 0257).
 CREATE INDEX IF NOT EXISTS "projects_workspace_phase_idx" ON "projects" USING btree ("workspace_id","phase");
 --> statement-breakpoint
 
