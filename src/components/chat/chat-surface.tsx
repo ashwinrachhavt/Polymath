@@ -103,6 +103,14 @@ export type ChatSurfaceProps = {
    * caller knows how to carry the message into a new segment.
    */
   onContinue?: (runId: string, text: string) => Promise<{ ok: true; runId: string } | { ok: false; message: string }>;
+  /**
+   * The recovery for a run that failed terminally (the stream's end frame said
+   * "failed"): rendered as the Retry on the failure line. Only the caller knows
+   * how to start a fresh run — a terminal run has no session to retry into —
+   * so without this the failure line stands alone and the page's own
+   * affordances own the recovery.
+   */
+  onRunFailedRetry?: () => void;
 };
 
 export function ChatSurface({
@@ -122,6 +130,7 @@ export function ChatSurface({
   onInterruptAnswer,
   onInterruptResolve,
   onContinue,
+  onRunFailedRetry,
 }: ChatSurfaceProps) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
@@ -443,6 +452,14 @@ export function ChatSurface({
             <p>{chat.error}</p>
             {chat.connection === "error" && chat.retryable ? (
               <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
+                Retry
+              </Button>
+            ) : null}
+            {chat.runFailed && onRunFailedRetry ? (
+              // The run is terminal — the stream-side retry (chat.retry) would
+              // only replay a closed session, so this Retry is the caller's
+              // fresh-start action instead.
+              <Button type="button" size="sm" variant="outline" onClick={onRunFailedRetry}>
                 Retry
               </Button>
             ) : null}

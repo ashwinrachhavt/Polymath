@@ -13,8 +13,15 @@ import { OnboardingConversation } from "./onboarding-conversation";
 import { OnboardingStatusCard } from "./onboarding-status-card";
 import { OnboardingConfirm } from "./onboarding-confirm";
 import { OnboardingInterview } from "./onboarding-interview";
+import { resolveReloadSurface } from "./reload-surface";
 
 export const metadata = { title: "Meet your agent · Polymath" };
+
+// Every branch renders its surface in the same centered wrapper; named once
+// so the page reads as a decision, not as a stack of identical divs.
+const surfaceWrap = (node: React.ReactNode) => (
+  <div className="page-content flex flex-1 items-center justify-center pt-16">{node}</div>
+);
 
 /*
  * First-run onboarding: one short conversation with the workspace's future
@@ -24,8 +31,9 @@ export const metadata = { title: "Meet your agent · Polymath" };
  *
  * The page is the reload anchor. It re-derives where the flow stands from the
  * database on every load — an open interview run resumes, a finished run with
- * a valid brief goes straight to the card, a finished run without one falls
- * to the pre-filled form — so no client state is ever load-bearing.
+ * a valid brief goes straight to the card, a failed run lands on its failure
+ * card or the pre-filled form (never an auto-start) — so no client state is
+ * ever load-bearing.
  */
 async function OnboardingSurface() {
   await io();
@@ -39,11 +47,7 @@ async function OnboardingSurface() {
   // this deployment is.
   const unavailable = eveBridgeUnavailableReason();
   if (unavailable) {
-    return (
-      <div className="page-content flex flex-1 items-center justify-center pt-16">
-        <OnboardingStatusCard reason={unavailable} />
-      </div>
-    );
+    return surfaceWrap(<OnboardingStatusCard reason={unavailable} />);
   }
 
   // An open interview resumes on the same run — continue signals it, never a
@@ -53,50 +57,32 @@ async function OnboardingSurface() {
   if (live) {
     const reading = await readOnboardingRun(auth, live.id);
     if (reading?.brief) {
-      return (
-        <div className="page-content flex flex-1 items-center justify-center pt-16">
-          <OnboardingConfirm initial={reading.brief} profileVersion={reading.profileVersion} />
-        </div>
-      );
+      return surfaceWrap(<OnboardingConfirm initial={reading.brief} profileVersion={reading.profileVersion} />);
     }
-    return (
-      <div className="page-content flex flex-1 items-center justify-center pt-16">
-        <OnboardingConversation initialRunId={live.id} />
-      </div>
-    );
+    return surfaceWrap(<OnboardingConversation initialRunId={live.id} />);
   }
 
   // A finished interview the person never confirmed: the brief (or the
-  // salvageable pieces of it) still leads. A run that failed or closed
-  // without a parseable payload routes to the form pre-filled from the
-  // thread — extraction failure can never brick onboarding.
+  // salvageable pieces of it) still leads. A failed run never auto-restarts
+  // (F5): what it captured routes to the form, and a failed run with nothing
+  // salvageable lands on the failure card, whose Retry makes the next run
+  // explicit — a reload can no longer mint run rows, sessions, and spend
+  // reservations behind the reader's back.
   const latest = await findLatestOnboardingRun(auth.workspaceId);
   if (latest) {
-    const reading = await readOnboardingRun(auth, latest.id);
-    if (reading?.brief) {
-      return (
-        <div className="page-content flex flex-1 items-center justify-center pt-16">
-          <OnboardingConfirm initial={reading.brief} profileVersion={reading.profileVersion} />
-        </div>
-      );
+    const surface = resolveReloadSurface(latest, await readOnboardingRun(auth, latest.id));
+    if (surface.kind === "confirm") {
+      return surfaceWrap(<OnboardingConfirm initial={surface.brief} profileVersion={surface.profileVersion} />);
     }
-    if (reading && Object.keys(reading.prefill).length > 0) {
-      return (
-        <div className="page-content flex flex-1 items-center justify-center pt-16">
-          <OnboardingInterview
-            initial={reading.prefill}
-            notice="We couldn't read the interview's summary cleanly. What's salvageable is pre-filled — correct it and continue."
-          />
-        </div>
-      );
+    if (surface.kind === "interview") {
+      return surfaceWrap(<OnboardingInterview initial={surface.prefill} notice={surface.notice} />);
+    }
+    if (surface.kind === "retry") {
+      return surfaceWrap(<OnboardingConversation initialError={surface.message} />);
     }
   }
 
-  return (
-    <div className="page-content flex flex-1 items-center justify-center pt-16">
-      <OnboardingConversation />
-    </div>
-  );
+  return surfaceWrap(<OnboardingConversation />);
 }
 
 /*

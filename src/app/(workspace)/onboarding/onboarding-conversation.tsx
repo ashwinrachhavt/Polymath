@@ -22,25 +22,39 @@ import { OnboardingInterview } from "./onboarding-interview";
 export type OnboardingConversationProps = {
   /** An already-open interview run to resume; omitted starts a fresh one on mount. */
   initialRunId?: string;
+  /**
+   * A failure to land on instead of an auto-start — the page's reload surface
+   * for an interview run that already failed (QA F5). The error card renders
+   * at once and no start fires until its Retry asks for one, so a dead run
+   * never mints replacements behind the reader's back.
+   */
+  initialError?: string;
 };
 
-export function OnboardingConversation({ initialRunId }: OnboardingConversationProps) {
+export function OnboardingConversation({ initialRunId, initialError }: OnboardingConversationProps) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [confirmed, setConfirmed] = useState<{
     brief: OnboardingBrief;
     profileVersion: number | null;
   } | null>(null);
   const [fallback, setFallback] = useState(false);
-  const startedRef = useRef(false);
+  // A start is in flight or done — and, when the page landed us on a failure
+  // card (initialError), that no start may fire until the person asks for one.
+  const startedRef = useRef(Boolean(initialError));
+  // Keyed into the start effect so Retry can re-fire it (QA F2). Retry used to
+  // call setRunId(null) — a no-op when the failed start had left runId null —
+  // so the effect never re-ran and the island stood on "Starting the
+  // interview…" forever.
+  const [startAttempt, setStartAttempt] = useState(0);
 
-  // Start once per mount. The action is resume-first, so even a strict-mode
-  // double effect converges on one run; the ref just saves the extra call.
-  // No cancel-on-cleanup: strict mode's simulated unmount runs the cleanup
-  // while the component stays alive, and discarding the in-flight result
-  // there is what stranded the island on "Starting the interview…" forever.
-  // A setState after a real unmount is a harmless no-op, and a genuine
-  // remount gets a fresh ref and a resume-first action.
+  // Start once per mount, or once per Retry. The action is resume-first, so
+  // even a strict-mode double effect converges on one run; the ref just saves
+  // the extra call. No cancel-on-cleanup: strict mode's simulated unmount runs
+  // the cleanup while the component stays alive, and discarding the in-flight
+  // result there is what stranded the island on "Starting the interview…"
+  // forever. A setState after a real unmount is a harmless no-op, and a
+  // genuine remount gets a fresh ref and a resume-first action.
   useEffect(() => {
     if (runId || startedRef.current) return;
     startedRef.current = true;
@@ -49,6 +63,7 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
         const result = await startOnboardingAction();
         if (!result.ok) {
           setError(result.message);
+          startedRef.current = false; // the card's Retry may start again
           return;
         }
         setRunId(result.runId);
@@ -56,10 +71,11 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
         // A rejected action call (module load, network, a 500 outside the
         // action's own labelling) must land on the same labelled surface -
         // "Starting the interview…" is never the end state.
+        startedRef.current = false;
         setError("The interview could not be reached. Check the connection and retry.");
       }
     })();
-  }, [runId]);
+  }, [runId, startAttempt]);
 
   // Watch for the brief: while the conversation is open, ask the server every
   // few seconds whether the run's final turn produced one. The stream carries
@@ -109,7 +125,10 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
             onClick={() => {
               setError(null);
               startedRef.current = false;
-              setRunId(null);
+              // Bumping the attempt (not setRunId(null), which was a no-op on
+              // a failed start whose runId was already null) is what re-runs
+              // the start effect.
+              setStartAttempt((attempt) => attempt + 1);
             }}
           >
             Retry
@@ -152,6 +171,15 @@ export function OnboardingConversation({ initialRunId }: OnboardingConversationP
         emptyText="Your agent is saying hello…"
         showHeader={false}
         className="min-h-[320px] flex-1"
+        onRunFailedRetry={() => {
+          // The run failed terminally (QA F6): the conversation cannot take
+          // another message, so the recovery is a fresh start through the
+          // same mechanism the error card's Retry uses. The surface unmounts
+          // as runId clears; the start effect (attempt bumped) does the rest.
+          setRunId(null);
+          startedRef.current = false;
+          setStartAttempt((attempt) => attempt + 1);
+        }}
       />
     </div>
   );
