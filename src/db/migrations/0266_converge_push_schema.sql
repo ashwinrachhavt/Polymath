@@ -3775,7 +3775,7 @@ CREATE INDEX IF NOT EXISTS "follow_ups_open_idx" ON "follow_ups" USING btree ("w
 CREATE INDEX IF NOT EXISTS "focus_sessions_workspace_started_idx" ON "focus_sessions" USING btree ("workspace_id","started_at");
 --> statement-breakpoint
 
-CREATE INDEX IF NOT EXISTS "focus_sessions_active_idx" ON "focus_sessions" USING btree ("workspace_id") WHERE state in ('running', 'paused');
+CREATE UNIQUE INDEX IF NOT EXISTS "focus_sessions_active_idx" ON "focus_sessions" ("workspace_id") WHERE state in ('running', 'paused') AND started_at IS NOT NULL;
 --> statement-breakpoint
 
 CREATE UNIQUE INDEX IF NOT EXISTS "daily_snapshots_day_key" ON "daily_snapshots" USING btree ("workspace_id","user_id","on_date");
@@ -4072,7 +4072,7 @@ CREATE INDEX IF NOT EXISTS "tasks_space_idx" ON "tasks" USING btree ("space_id")
 CREATE INDEX IF NOT EXISTS "tasks_recurrence_template_idx" ON "tasks" USING btree ("recurrence_template_id");
 --> statement-breakpoint
 
-CREATE UNIQUE INDEX IF NOT EXISTS "focus_sessions_active_idx" ON "focus_sessions" USING btree ("workspace_id") WHERE state in ('running', 'paused');
+CREATE UNIQUE INDEX IF NOT EXISTS "focus_sessions_active_idx" ON "focus_sessions" ("workspace_id") WHERE state in ('running', 'paused') AND started_at IS NOT NULL;
 --> statement-breakpoint
 
 DO $$ BEGIN
