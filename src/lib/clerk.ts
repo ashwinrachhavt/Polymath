@@ -21,3 +21,13 @@ export const clerkConfigured =
  */
 export const devAuthBypass =
   process.env.POLYMATH_DEV_AUTH === "1" && process.env.NODE_ENV !== "production";
+
+/*
+ * Whether the proxy (src/proxy.ts) enforces sessions at the edge. The bypass
+ * only exists outside production (it is false there by definition), so the
+ * proxy's spelled-out arm condition reduces to this. next.config.ts reads it
+ * too: a static "/" redirect can only exist while the proxy is a
+ * pass-through, or config redirects — which run before the proxy — would
+ * recreate the two-hop signed-out root (QA F9).
+ */
+export const proxyArmed = clerkConfigured && !devAuthBypass;
