@@ -1,7 +1,9 @@
 # Migrations
 
 Forward-only SQL, one file per change, applied in glob order (CI applies them
-with `psql`; Vercel does not apply them on deploy). The convention lives in
+with `psql`; the Vercel deploy applies them with `drizzle-kit migrate` before
+compiling — see `buildCommand` in `vercel.json`, which needs `DATABASE_URL`
+exposed to the build environment). The convention lives in
 the engineering guidelines; this note covers the snapshot chain under `meta/`.
 
 ## The 2026-10-25 chain repair (ASH-316)
