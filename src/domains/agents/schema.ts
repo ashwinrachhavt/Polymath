@@ -385,6 +385,13 @@ export const agentRuns = pgTable(
     sessionRef: text("session_ref"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
+    /**
+     * Set when the run is retired without deleting it: failed onboarding
+     * interviews are hidden this way at completion instead of being removed,
+     * so the audit trail (events, steps, tool calls) survives. NULL means the
+     * row is a live participant in its conversation surfaces.
+     */
+    discardedAt: timestamp("discarded_at", { withTimezone: true }),
     ...mutable,
   },
   (t) => [

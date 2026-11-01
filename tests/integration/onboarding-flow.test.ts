@@ -1,6 +1,6 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentProfiles, agentRuns, onboardingSessions } from "@/domains/agents/schema";
+import { agentProfiles, agentRuns, onboardingSessions, runEvents } from "@/domains/agents/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -20,12 +20,15 @@ const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let onboarding: typeof import("@/domains/agents/onboarding");
 let eventBridge: typeof import("@/domains/agents/event-bridge");
+let listRecentRuns: typeof import("@/domains/agents/queries")["listRecentRuns"];
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   onboarding = await import("@/domains/agents/onboarding");
   eventBridge = await import("@/domains/agents/event-bridge");
+  // Same lazy-import discipline: queries.ts opens @/lib/db at module load.
+  listRecentRuns = (await import("@/domains/agents/queries")).listRecentRuns;
 });
 
 afterAll(async () => {
@@ -83,10 +86,20 @@ suite("onboarding interview flow", () => {
       .limit(1);
     expect(session.status).toBe("in_progress");
 
-    // The objective is the thread's first persisted message.
+    // The objective is seeded as its own audit event, not a chat message: it
+    // stays in run_events for the record, and the thread reader keeps it out
+    // of the transcript (QA F3 — the script must never read as something the
+    // person said).
+    const [seededObjective] = await db
+      .select({ type: runEvents.type, data: runEvents.data })
+      .from(runEvents)
+      .where(eq(runEvents.runId, first.runId))
+      .orderBy(asc(runEvents.sequence))
+      .limit(1);
+    expect(seededObjective?.type).toBe("objective");
+    expect((seededObjective?.data as { content?: string }).content).toContain("onboarding-interview v1");
     const reading = await onboarding.readOnboardingRun(auth, first.runId);
-    expect(reading?.thread[0]?.kind).toBe("user");
-    expect(reading?.thread[0]?.text).toContain("onboarding-interview v1");
+    expect(reading?.thread.some((entry) => entry.text.includes("onboarding-interview v1"))).toBe(false);
 
     // No path stamps onboarded_at before the confirm click.
     expect(await onboarding.isWorkspaceOnboarded(seeded.workspaceId)).toBe(false);
@@ -198,6 +211,72 @@ suite("onboarding interview flow", () => {
       sql`select action from audit_events where workspace_id = ${seeded.workspaceId} and action = 'onboarding.completed'`,
     );
     expect(audit.length).toBe(1);
+  });
+
+  it("completeOnboarding sweeps failed interview runs, and the home list filter keeps machinery out", async () => {
+    const seeded = await seedWorkspace(db, `onb-gc-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+
+    // The keyless journey: the interview fails, the user reloads, another
+    // interview starts and fails again — the junk rows the home list used to
+    // surface forever, titled with the raw objective (QA F4).
+    const failedA = await onboarding.startOnboardingRun(auth, fakeDriver([]));
+    await db.update(agentRuns).set({ state: "failed" }).where(eq(agentRuns.id, failedA.runId));
+    const failedB = await onboarding.startOnboardingRun(auth, fakeDriver([]));
+    await db.update(agentRuns).set({ state: "failed" }).where(eq(agentRuns.id, failedB.runId));
+    // A cancelled interview run is the interview's own record, not junk.
+    const cancelled = await onboarding.startOnboardingRun(auth, fakeDriver([]));
+    await db.update(agentRuns).set({ state: "cancelled" }).where(eq(agentRuns.id, cancelled.runId));
+    // A failed run that is not onboarding must survive the sweep untouched.
+    const [profile] = await db
+      .select()
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "polymath")))
+      .limit(1);
+    const [normalFailed] = await db
+      .insert(agentRuns)
+      .values({
+        workspaceId: seeded.workspaceId,
+        agentProfileId: profile.id,
+        objective: "Do the thing",
+        state: "failed",
+        policySnapshot: {},
+        model: "claude-sonnet-4-6",
+      })
+      .returning({ id: agentRuns.id });
+
+    await onboarding.completeOnboarding(auth, {
+      agentName: "Jarvis",
+      role: "Software engineer",
+      tools: [],
+      priorities: [],
+    });
+
+    const surviving = await db
+      .select({ id: agentRuns.id, discardedAt: agentRuns.discardedAt })
+      .from(agentRuns)
+      .where(eq(agentRuns.workspaceId, seeded.workspaceId));
+    const discardedById = new Map(surviving.map((row) => [row.id, row.discardedAt]));
+    // The failed interviews are discarded by the completion that made them
+    // pointless — marked, not destroyed.
+    expect(discardedById.get(failedA.runId)).not.toBeNull();
+    expect(discardedById.get(failedB.runId)).not.toBeNull();
+    // Cancelled onboarding runs and unrelated runs stay, unmarked.
+    expect(discardedById.get(cancelled.runId)).toBeNull();
+    expect(discardedById.get(normalFailed.id)).toBeNull();
+
+    // Discarding is not deleting: the failed runs' event history survives for
+    // audit (the objective event the start seeded is still in run_events).
+    const failedAEvents = await db
+      .select({ count: count() })
+      .from(runEvents)
+      .where(eq(runEvents.runId, failedA.runId));
+    expect(failedAEvents[0].count).toBeGreaterThan(0);
+
+    // The other half of F4: the conversation-list filter keeps machinery off
+    // the home list regardless of run state.
+    const home = await listRecentRuns(seeded.workspaceId, 50, { excludeOnboarding: true });
+    expect(home.map((run) => run.id)).toEqual([normalFailed.id]);
   });
 
   it("the expectedVersion guard rejects a confirm that raced another tab", async () => {

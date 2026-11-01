@@ -23,7 +23,7 @@ const profileRow = {
   workspaceId: WS,
   name: "polymath",
   instructions: "Be brief.",
-  modelPolicy: { primary: "claude-sonnet-4-6" },
+  modelPolicy: { primary: "gemini-3.5-flash-lite" },
   allowedTools: [],
   allowedAccounts: [],
   budgetPolicy: {},
@@ -144,7 +144,7 @@ describe("engine", () => {
     expect(reserveSpend).toHaveBeenCalledWith(
       expect.anything(),
       { workspaceId: WS },
-      { runId: RUN.id, model: "claude-sonnet-4-6", estimateUsd: "0.50" },
+      { runId: RUN.id, model: "gemini-3.5-flash-lite", estimateUsd: "0.50" },
     );
     // The session is keyed on the run id and carries the frozen snapshot.
     expect(driver.start).toHaveBeenCalledWith(
@@ -152,9 +152,28 @@ describe("engine", () => {
         sessionId: RUN.id,
         auth,
         instructions: "Be brief.",
-        policy: expect.objectContaining({ profileId: "prof_1", model: "claude-sonnet-4-6" }),
+        policy: expect.objectContaining({ profileId: "prof_1", model: "gemini-3.5-flash-lite" }),
       }),
     );
+  });
+
+  it("seeds the objective as its own event kind when the objective is internal, and as a message otherwise", async () => {
+    const { driver } = fakeDriver();
+    // The thread writer is injected, so the seeded event's kind is readable
+    // without a database. The kind is the transcript filter's contract.
+    const written: Array<{ type: string; data?: unknown }> = [];
+    const write = async (event: { type: string; data?: unknown }) => {
+      written.push({ type: event.type, data: event.data });
+    };
+
+    await createEngine(driver, undefined, write).start(startInput);
+    await createEngine(driver, undefined, write).start({ ...startInput, objectiveInternal: true });
+
+    // The person's words go down as a message; a scripted interview's
+    // objective goes down as `objective` machinery — same payload either way,
+    // so the audit trail shows exactly what the run was told.
+    expect(written.map((event) => event.type)).toEqual(["message", "objective"]);
+    expect(written[1].data).toEqual({ role: "user", content: startInput.objective });
   });
 
   it("start closes the run and never starts a session when the ceiling is hit", async () => {

@@ -57,8 +57,9 @@ export async function PolymathSurface() {
   const [runs, skillRows, modelPolicy] = await Promise.all([
     // Every conversation on this surface is a run, so runs are the history.
     // Fifty is a bounded read, not the whole table, and it is deep enough that
-    // the grouped list still reaches "Older" for a regular user.
-    listRecentRuns(auth.workspaceId, 50),
+    // the grouped list still reaches "Older" for a regular user. Onboarding
+    // runs are machinery the person never typed, not conversations.
+    listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
     // Only enabled skills can be pinned; the engine refuses anything else.
     listSkills(auth, { enabled: true }),
     getProfileModelPolicy(auth.workspaceId, "polymath"),

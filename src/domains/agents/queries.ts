@@ -1,7 +1,10 @@
-import { and, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
+// Onboarding's own module owns the objective constant; importing it here is
+// cycle-free (nothing in onboarding's graph reads this module).
+import { ONBOARDING_OBJECTIVE } from "./onboarding";
 import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 
 /*
@@ -25,7 +28,12 @@ export async function getRunBySessionRef(
 }
 
 /** The workspace's recent runs, newest first. Feeds the Alfred page. */
-export async function listRecentRuns(workspaceId: string, limit = 10) {
+export async function listRecentRuns(
+  workspaceId: string,
+  limit = 10,
+  /** Conversation-list callers exclude onboarding runs — machinery, not conversations. */
+  options: { excludeOnboarding?: boolean } = {},
+) {
   return db
     .select({
       id: agentRuns.id,
@@ -37,7 +45,15 @@ export async function listRecentRuns(workspaceId: string, limit = 10) {
       createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
-    .where(eq(agentRuns.workspaceId, workspaceId))
+    .where(
+      and(
+        eq(agentRuns.workspaceId, workspaceId),
+        // Discarded runs are retired: hidden from conversation surfaces,
+        // still present for audit.
+        isNull(agentRuns.discardedAt),
+        options.excludeOnboarding ? ne(agentRuns.objective, ONBOARDING_OBJECTIVE) : undefined,
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 }

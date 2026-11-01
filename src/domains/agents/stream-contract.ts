@@ -214,7 +214,13 @@ export function threadBlocks(messages: StoredMessage[]): ChatBlock[] {
  * lifecycle, usage, compaction). Returning [] rather than null keeps the caller
  * a flat map.
  */
-export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFrame[] {
+export function frameOf(
+  runId: string,
+  event: EveEvent,
+  cursor: number,
+  /** When set, the objective echo is dropped rather than folded into a user block. */
+  options: { suppressObjectiveText?: string | null } = {},
+): ChatFrame[] {
   const data = event.data ?? {};
   switch (event.type) {
     case "message.appended": {
@@ -314,9 +320,14 @@ export function frameOf(runId: string, event: EveEvent, cursor: number): ChatFra
     }
     case "message.received": {
       // The durable stream replays the person's turn, so a reload shows the
-      // question as well as the answer instead of an orphaned reply.
+      // question as well as the answer instead of an orphaned reply. A run
+      // whose objective is machinery (its seeded event is an `objective`,
+      // written by the engine) echoes that objective back through this event
+      // as well — the surface must never render it as something the person
+      // said, so the echo is dropped and the empty state shows instead.
       const text = asString(data.message);
       if (text === null || text.length === 0) return [];
+      if (options.suppressObjectiveText != null && text === options.suppressObjectiveText) return [];
       return [{ type: "message", runId, role: "user", text, cursor }];
     }
     case "turn.completed":

@@ -5,6 +5,7 @@ import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
+import { resolveRunModel } from "./models";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
 import { SessionNotActiveError } from "./eve-driver";
@@ -70,6 +71,13 @@ export interface AgentEngine {
      * read it the same way. [] means the run can call no tools at all.
      */
     allowedTools?: string[];
+    /**
+     * Set when the objective is run machinery — a scripted interview — rather
+     * than the person's own words. The seeded event is written as its own
+     * `objective` kind and stays out of chat transcripts; it is never deleted,
+     * so the run's audit trail still shows exactly what the agent was told.
+     */
+    objectiveInternal?: boolean;
   }): Promise<{ runId: string; reservationId: string }>;
   signal(runId: string, signal: string, auth: AuthContext): Promise<void>;
   resume(runId: string, auth: AuthContext): Promise<void>;
@@ -83,17 +91,6 @@ const ACTIVE_STATES: RunState[] = ["queued", "running", "waiting_input", "waitin
 const TERMINAL_STATES: RunState[] = ["succeeded", "failed", "cancelled"];
 
 const isTerminal = (state: RunState) => TERMINAL_STATES.includes(state);
-
-/*
- * A profile's model routing is provider-shaped jsonb; the run row's `model`
- * column is the resolved primary, which is what spend prices against. Anything
- * else in the policy stays in the frozen snapshot untouched.
- */
-function primaryModel(modelPolicy: unknown): string | null {
-  if (typeof modelPolicy !== "object" || modelPolicy === null) return null;
-  const primary = (modelPolicy as { primary?: unknown }).primary;
-  return typeof primary === "string" ? primary : null;
-}
 
 /**
  * Resolves the run and proves it belongs to the caller's workspace in one read.
@@ -180,7 +177,14 @@ export function createEngine(
         throw new Error("That skill is not available. Enable it in Skills and try again.");
       }
 
-      const model = primaryModel(profile.modelPolicy);
+      /*
+       * The run row's `model` is the resolved primary, which is what spend
+       * prices against — resolved through the same catalog fallback eve uses
+       * on the first turn (PR #408's audit B3), so the row and the runtime
+       * can never disagree. Anything else in the policy stays in the frozen
+       * snapshot untouched.
+       */
+      const model = resolveRunModel(profile.modelPolicy)?.id ?? null;
       // The run keeps this revision even if the profile is edited afterwards.
       const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
       const policy: PolicySnapshot = {
@@ -255,12 +259,15 @@ export function createEngine(
         throw new Error("The run was cancelled before it started");
       }
 
-      // The objective is the thread's first message, written before Eve can
-      // emit anything so a reload always reads it first.
+      // The objective is the thread's first event, written before Eve can emit
+      // anything so a reload always reads it first. The person's own words go
+      // down as a message; an internal objective (a scripted interview) gets
+      // its own kind, which the transcript readers treat as machinery rather
+      // than as something the person said.
       await writeEvent({
         runId: run.id,
         workspaceId: input.auth.workspaceId,
-        type: "message",
+        type: input.objectiveInternal ? "objective" : "message",
         data: { role: "user", content: input.objective },
       });
 

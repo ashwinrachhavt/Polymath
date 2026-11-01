@@ -183,6 +183,22 @@ describe("frameOf", () => {
     expect(frameOf(RUN, { type: "message.received", data: { message: "" } }, 0)).toEqual([]);
   });
 
+  it("drops the objective echo on a machinery run, and nothing else", () => {
+    const objective = "onboarding-interview v1\nThis session is the workspace's first-run onboarding interview.";
+    const suppress = { suppressObjectiveText: objective };
+    // The seeded objective comes back through the stream as a received
+    // message; a run whose objective is machinery must not render it as chat.
+    expect(frameOf(RUN, { type: "message.received", data: { message: objective } }, 0, suppress)).toEqual([]);
+    // The person's own messages still come through untouched.
+    expect(frameOf(RUN, { type: "message.received", data: { message: "Gmail and Linear" } }, 1, suppress)).toEqual([
+      { type: "message", runId: RUN, role: "user", text: "Gmail and Linear", cursor: 1 },
+    ]);
+    // Without the option (every ordinary run) nothing is suppressed.
+    expect(frameOf(RUN, { type: "message.received", data: { message: objective } }, 2)).toEqual([
+      { type: "message", runId: RUN, role: "user", text: objective, cursor: 2 },
+    ]);
+  });
+
   it("maps a cancelled turn to a turn frame, not an end frame", () => {
     // The session survives a cancelled turn and accepts the next message, so
     // the surface must keep the composer open.
