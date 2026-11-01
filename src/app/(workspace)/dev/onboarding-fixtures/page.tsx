@@ -5,6 +5,7 @@ import { OnboardingConfirm } from "../../onboarding/onboarding-confirm";
 import { OnboardingConversation } from "../../onboarding/onboarding-conversation";
 import { OnboardingInterview } from "../../onboarding/onboarding-interview";
 import { OnboardingStatusCard } from "../../onboarding/onboarding-status-card";
+import { RETRY_CARD_MESSAGE } from "../../onboarding/reload-surface";
 
 export const metadata = {
   title: "Onboarding fixtures",
@@ -79,6 +80,21 @@ async function Fixture({
      */
     case "island-success":
       return wrapper(<OnboardingConversation initialRunId="fixture-success-run" />);
+    /*
+     * The island on a run whose stream reports the run failed terminally
+     * (QA F6): the e2e spec intercepts this run's stream with turn.failed +
+     * end(failed) frames, so the real ChatSurface renders the terminal
+     * failure line and the fresh-start Retry wired by the island.
+     */
+    case "island-failed":
+      return wrapper(<OnboardingConversation initialRunId="fixture-failed-run" />);
+    /*
+     * The page's reload surface for a failed interview run with nothing
+     * salvageable (QA F5): the failure card renders at once and no start
+     * fires until its Retry is clicked.
+     */
+    case "retry-card":
+      return wrapper(<OnboardingConversation initialError={RETRY_CARD_MESSAGE} />);
     case "status":
       return wrapper(<OnboardingStatusCard reason={BRIDGE_DOWN_REASON} />);
     case "form":

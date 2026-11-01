@@ -47,6 +47,13 @@ export type ChatState = {
    * stream state as "this conversation has ended".
    */
   lastFailedTurn: boolean;
+  /**
+   * The run itself failed terminally — the stream's `end` frame arrived with
+   * state "failed", which only a `run.failed` event produces. The run row is
+   * failed and its session is closed, so a follow-up message 409s; the
+   * surface says so and offers the caller's fresh-start action if it has one.
+   */
+  runFailed: boolean;
 };
 
 const MAX_BACKOFF_MS = 8_000;
@@ -77,6 +84,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     error: null,
     retryable: true,
     lastFailedTurn: false,
+    runFailed: false,
   }));
 
   // Bumped by retry(): a new value restarts the connection effect with a fresh
@@ -153,6 +161,9 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
           const { lines, rest } = splitLines(buffer);
           buffer = rest;
           let terminal = false;
+          // The end frame carries the run's terminal state; only "failed"
+          // changes what the surface may promise the reader.
+          let endState: "succeeded" | "failed" | "cancelled" | null = null;
           for (const line of lines) {
             const frame = decodeFrame(line);
             if (!frame) continue;
@@ -205,14 +216,33 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             }
             if (frame.type === "end") {
               terminal = true;
+              endState = frame.state;
             }
           }
           scheduleFlush();
           if (terminal) {
             // A failed turn ends the stream, not the conversation: the error
             // and the open composer survive (chat-surface reads lastFailedTurn
-            // before its ended banner).
-            setState((prev) => (prev.lastFailedTurn ? prev : { ...prev, connection: "done" }));
+            // before its ended banner). An `end` whose state is "failed" is
+            // different in kind — only a run.failed event produces it, so the
+            // run row is terminal and its session closed; a follow-up would
+            // 409 (run_finished). The turn-failure line promising another
+            // message into that run is replaced with the terminal truth, and
+            // chat-surface's affordance (or the caller's) owns the recovery.
+            if (endState === "failed") {
+              setState((prev) => ({
+                ...prev,
+                connection: "done",
+                lastFailedTurn: false,
+                runFailed: true,
+                // Neutral on purpose: the hook is shared, and only surfaces
+                // that wire a fresh-start retry should promise one.
+                error: "This run failed.",
+                retryable: false,
+              }));
+            } else {
+              setState((prev) => (prev.lastFailedTurn ? prev : { ...prev, connection: "done" }));
+            }
             return;
           }
         }

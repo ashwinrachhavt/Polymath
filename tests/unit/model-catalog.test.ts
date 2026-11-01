@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODEL_CATALOG, availableModels, modelById, resolveModelId } from "@/domains/agents/models";
+import { MODEL_CATALOG, DEFAULT_MODEL_ID, availableModels, modelById, resolveModelId, resolveRunModel } from "@/domains/agents/models";
 
 /*
  * The catalog is the contract between the picker, the spend row, and the
@@ -55,6 +55,19 @@ describe("model catalog invariants", () => {
       // fails with "not a valid model ID", so the mapping is asserted, not assumed.
       if (model.provider === "openrouter-free") expect(model.baseUrl, model.id).toBe("https://openrouter.ai/api/v1");
       if (model.provider === "nvidia") expect(model.baseUrl, model.id).toBe("https://integrate.api.nvidia.com/v1");
+    }
+  });
+});
+
+describe("resolveRunModel", () => {
+  it("resolves the profile's pinned primary when it names a catalog entry", () => {
+    const pinned = MODEL_CATALOG.find((m) => m.id !== DEFAULT_MODEL_ID) ?? MODEL_CATALOG[0];
+    expect(resolveRunModel({ primary: pinned.id })?.id).toBe(pinned.id);
+  });
+
+  it("falls back to the catalog default for a missing, non-object, or unknown pin", () => {
+    for (const policy of [null, undefined, "gemini-3.5-flash-lite", 42, {}, { primary: "claude-hive-gone" }]) {
+      expect(resolveRunModel(policy)?.id, JSON.stringify(policy)).toBe(DEFAULT_MODEL_ID);
     }
   });
 });

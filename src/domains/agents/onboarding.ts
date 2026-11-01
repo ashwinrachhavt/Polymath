@@ -34,6 +34,30 @@ export type OnboardingInput = {
   priorities: string[];
 };
 
+/**
+ * The onboarding interview's agent profile. ensureProfile creates the row;
+ * this constant is the one home for its lookup convention, so callers never
+ * hand-write the name.
+ */
+export const ONBOARDING_PROFILE_NAME = "polymath";
+
+/**
+ * The onboarding profile's model policy, or null when no profile exists yet
+ * (first visit — ensureProfile has not run). The start action reads it for
+ * the credential gate (QA F7) instead of importing db and the domain schema
+ * directly: the UI-to-domain dependency keeps pointing inward.
+ */
+export async function readOnboardingModelPolicy(workspaceId: string): Promise<unknown> {
+  const [profile] = await db
+    .select({ modelPolicy: agentProfiles.modelPolicy })
+    .from(agentProfiles)
+    .where(
+      and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, ONBOARDING_PROFILE_NAME)),
+    )
+    .limit(1);
+  return profile?.modelPolicy ?? null;
+}
+
 export async function getOnboardingSession(workspaceId: string) {
   const [session] = await db
     .select()

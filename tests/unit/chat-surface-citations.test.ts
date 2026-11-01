@@ -47,6 +47,7 @@ function stateWith(citations: ChatState["citations"]): () => ChatState {
     error: null,
     retryable: true,
     lastFailedTurn: false,
+    runFailed: false,
   });
 }
 
@@ -85,6 +86,7 @@ describe("ChatSurface seeded transcript", () => {
       error: null,
       retryable: true,
       lastFailedTurn: false,
+      runFailed: false,
     });
     const html = renderToStaticMarkup(
       createElement(ChatSurface, {
