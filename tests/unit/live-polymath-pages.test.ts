@@ -184,8 +184,9 @@ describe("live Alfred route functionality", () => {
     expect(html).not.toContain(">Recent<");
     expect(html).not.toContain("No runs yet");
     // One query feeds both the five under the composer and the history menu,
-    // so the limit is the menu's, not the glance's.
-    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50);
+    // so the limit is the menu's, not the glance's. Onboarding runs are
+    // machinery, not conversations, and the home list never shows them.
+    expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50, { excludeOnboarding: true });
   });
 
   it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {

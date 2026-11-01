@@ -8,10 +8,12 @@ import { agentRuns, runEvents } from "./schema";
 
 /*
  * A run's thread is its run_events, read in sequence order. The first event is
- * the objective as a user message (written by the engine at start), assistant
- * replies and follow-ups are appended as `message` events, and a cancel writes
- * a `cancelled` event. Nothing is held in the browser, so a reload reads the
- * same thread back from listRecentRuns plus these events.
+ * the objective (written by the engine at start) — as a user message for an
+ * ordinary run, as an `objective` event that is not thread content when the
+ * objective is machinery; assistant replies and follow-ups are appended as
+ * `message` events, and a cancel writes a `cancelled` event. Nothing is held
+ * in the browser, so a reload reads the same thread back from listRecentRuns
+ * plus these events.
  */
 
 export type ThreadEntry = {
@@ -30,6 +32,10 @@ export const isFinished = (state: string) => (TERMINAL as readonly string[]).inc
 
 function toEntry(row: { sequence: number; type: string; data: unknown; createdAt: Date; feedback?: string | null }): ThreadEntry | null {
   const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown; text?: unknown; turnId?: unknown };
+  // The engine's seeded objective on a machinery run (a scripted interview):
+  // audit-only. It is what the run was told, not anything the person said, so
+  // it never renders as thread content — the event stays for the run's record.
+  if (row.type === "objective") return null;
   if (row.type === "message" && typeof data.content === "string") {
     return {
       sequence: row.sequence,

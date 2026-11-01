@@ -67,7 +67,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
   if (!run) notFound();
 
   const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals] = await Promise.all([
-    listRecentRuns(auth.workspaceId, 50),
+    // The history menu is the same conversation list the idle home renders
+    // (history.ts feeds both), so it excludes onboarding runs for the same
+    // reason: machinery the person never typed is not a conversation.
+    listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
     listThreads(auth.workspaceId, [run.id]),
     draftsForRuns(auth, [run.id]),
     getRunUsage(auth.workspaceId, run.id),

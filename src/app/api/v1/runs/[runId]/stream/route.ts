@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { problemResponse } from "@/lib/problems";
 import { eveAgentForProfile, eveBridgeUnavailableReason, eveSessionEndpoint } from "@/domains/agents/eve-driver";
 import { getProfileNameForRun } from "@/domains/agents/queries";
-import { agentRuns } from "@/domains/agents/schema";
+import { agentRuns, runEvents } from "@/domains/agents/schema";
 import { isFinished } from "@/domains/agents/thread";
 import {
   encodeFrame,
@@ -59,12 +59,26 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
       state: agentRuns.state,
       sessionRef: agentRuns.sessionRef,
       agentProfileId: agentRuns.agentProfileId,
+      objective: agentRuns.objective,
+      // The run's first event carries the engine's seeded objective; when it
+      // was written as the `objective` kind, the objective is machinery and
+      // its echo must not reach the transcript as chat.
+      firstEventType: runEvents.type,
     })
     .from(agentRuns)
+    // The objective write is sequence 1 by construction, and (run_id, sequence)
+    // is unique, so the join can only ever add that one row — or nothing.
+    .leftJoin(runEvents, and(eq(runEvents.runId, agentRuns.id), eq(runEvents.sequence, 1)))
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, auth.workspaceId)))
     .limit(1);
   // A run in another workspace answers the same 404 as a missing one.
   if (!run) return problemResponse(404, "not_found", "No such run.");
+
+  // A machinery objective (the engine seeds it as the `objective` event kind)
+  // is echoed back by Eve as the session's first user message. Dropping the
+  // echo here keeps the live transcript free of it, the same way the stored
+  // side's thread reader skips the objective event itself.
+  const suppressObjectiveText = run.firstEventType === "objective" ? run.objective : null;
 
   // The cursor the client has already applied. Eve's startIndex is an absolute
   // event count, so this is a count, not an event id. A malformed or negative
@@ -163,7 +177,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
             // advance the cursor: the cursor is Eve's absolute event count, and
             // counting a non-event would make every reconnect replay.
             if (!event) continue;
-            for (const frame of frameOf(runId, event, cursor)) push(encodeFrame(frame));
+            for (const frame of frameOf(runId, event, cursor, { suppressObjectiveText })) push(encodeFrame(frame));
             cursor += 1;
             if (event.type === "session.completed" || event.type === "session.failed") {
               // Terminal: stop following rather than waiting for the lease.
@@ -186,7 +200,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         // a terminal one.
         const tail = decodeEveEvent(buffer);
         if (tail && !gone) {
-          for (const frame of frameOf(runId, tail, cursor)) push(encodeFrame(frame));
+          for (const frame of frameOf(runId, tail, cursor, { suppressObjectiveText })) push(encodeFrame(frame));
         }
       } catch {
         // A client disconnect or upstream reset ends the read; the durable

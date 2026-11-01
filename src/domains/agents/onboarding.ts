@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/lib/auth";
-import { agentProfiles, onboardingSessions } from "./schema";
+import { agentProfiles, agentRuns, onboardingSessions } from "./schema";
 import { ensureProfile } from "./commands";
 
 /*
@@ -169,6 +169,26 @@ export async function completeOnboarding(
       sql`update workspaces set onboarded_at = now(), updated_by = ${auth.userId}, updated_at = now() where id = ${auth.workspaceId}`,
     );
 
+    // Failed interview runs are junk rows the home conversation list would
+    // otherwise surface forever, titled with the raw objective script. The
+    // workspace is onboarded now — a dead interview has no reader — so the
+    // failed ones are discarded with the commit that made them pointless.
+    // Discarding marks the row (and hides it from conversation surfaces)
+    // without destroying history: events, steps, and tool calls stay in
+    // run_events for audit. Succeeded and cancelled runs stay untouched: they
+    // are the interview's own record.
+    await tx
+      .update(agentRuns)
+      .set({ discardedAt: new Date() })
+      .where(
+        and(
+          eq(agentRuns.workspaceId, auth.workspaceId),
+          eq(agentRuns.objective, ONBOARDING_OBJECTIVE),
+          eq(agentRuns.state, "failed"),
+          isNull(agentRuns.discardedAt),
+        ),
+      );
+
     await recordAudit(
       auth,
       {
@@ -195,7 +215,6 @@ export async function completeOnboarding(
  * state, and the commit path is the unchanged completeOnboarding above.
  * ------------------------------------------------------------------------- */
 
-import { agentRuns } from "./schema";
 import { desc, inArray } from "drizzle-orm";
 import { createEngine, type SessionDriver } from "./engine";
 import { createEveDriver, eveAgentForProfile } from "./eve-driver";
@@ -290,6 +309,9 @@ export async function startOnboardingRun(
     // The interview is conversation only: no tools, and a dime of headroom.
     estimateUsd: "0.10",
     allowedTools: [],
+    // The script is machinery, not the person's words: it is seeded as the
+    // run's own `objective` event and kept out of the chat transcript.
+    objectiveInternal: true,
   });
   return { runId, resumed: false };
 }
