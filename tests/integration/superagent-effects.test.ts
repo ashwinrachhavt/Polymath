@@ -17,12 +17,7 @@ import {
   runReceiptsPass,
   runSuperagentDispatch,
 } from "@/domains/superagent/effects";
-import {
-  attentionEffects,
-  createSuperagentStore,
-  dueEffects,
-  pendingReceipts,
-} from "@/domains/superagent/store";
+import { attentionEffects, createSuperagentStore, dueEffects, pendingReceipts } from "@/domains/superagent/store";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -259,7 +254,11 @@ suite("superagent reply lane (outbox receipts)", () => {
   it("a send that throws stops the conversation and recovers in order", async () => {
     const { store, workspaceId } = await seedStore("recover");
     const ch = channel("t1", "m-1");
-    for (const [id, text] of [["m-1", "one"], ["m-2", "two"], ["m-3", "three"]] as const) {
+    for (const [id, text] of [
+      ["m-1", "one"],
+      ["m-2", "two"],
+      ["m-3", "three"],
+    ] as const) {
       store.outbox.send({ id, channel: ch, text, kind: "reply" });
     }
     await store.flush();

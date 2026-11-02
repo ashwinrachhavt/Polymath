@@ -22,7 +22,8 @@ export interface ChannelRef {
 export const threadKey = (ref: ThreadRef): string => `${ref.source}:${ref.id}`;
 
 /** The conversation a channel points at: one send-ordered unit for the reply lane's effects and claims. */
-export const conversationKey = (channel: { source: string; thread: string }): string => `${channel.source}:${channel.thread}`;
+export const conversationKey = (channel: { source: string; thread: string }): string =>
+  `${channel.source}:${channel.thread}`;
 /**
  * Normalizes valid timestamps to `Date#toISOString` form so stored timestamps compare lexicographically in memory and SQL;
  * values that do not parse as a timestamp are returned unchanged.

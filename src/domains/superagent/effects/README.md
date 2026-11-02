@@ -4,14 +4,14 @@ The durable queue of external work the engine asked for, and the reply lane that
 
 ## What lives here
 
-| File | Role |
-|---|---|
-| `later.ts` | The `Later` throw: an honest defer that counts no failure. |
-| `backoff.ts` | Per-kind retry curves. Everything but `reply` doubles 2s → 60s; `reply` goes 5s → 300s. Full jitter; the draw is injectable for tests. |
-| `queue.ts` | The `work_effects` mechanics over the raw postgres client: claim, complete, fail, defer, sweep. |
+| File          | Role                                                                                                                                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `later.ts`    | The `Later` throw: an honest defer that counts no failure.                                                                                           |
+| `backoff.ts`  | Per-kind retry curves. Everything but `reply` doubles 2s → 60s; `reply` goes 5s → 300s. Full jitter; the draw is injectable for tests.               |
+| `queue.ts`    | The `work_effects` mechanics over the raw postgres client: claim, complete, fail, defer, sweep.                                                      |
 | `receipts.ts` | The `work_outbox_receipts` lane: conversation-scoped claims, ordered send, sent/dropped, sweep, and the `reply` effect's conversation-drain handler. |
-| `drain.ts` | `runEffectsPass` and `runSuperagentDispatch` — the drain passes. |
-| `handlers.ts` | The registry: which consumer handles each kind. |
+| `drain.ts`    | `runEffectsPass` and `runSuperagentDispatch` — the drain passes.                                                                                     |
+| `handlers.ts` | The registry: which consumer handles each kind.                                                                                                      |
 
 ## The two lanes
 
@@ -37,4 +37,4 @@ The same three the audit outbox uses:
 
 ## What does not live here
 
-Handler *semantics* for the executor's kinds (`assessment`, `launch`, `delivery`) belong to the executor wave; they attach in `handlers.ts`. The `ChatStreamSink` implementation (the run-events-backed sender) belongs to the chat cutover wave. The repositories port never reads this module — the engine stays deterministic and database-free.
+Handler _semantics_ for the executor's kinds (`assessment`, `launch`, `delivery`) belong to the executor wave; they attach in `handlers.ts`. The `ChatStreamSink` implementation (the run-events-backed sender) belongs to the chat cutover wave. The repositories port never reads this module — the engine stays deterministic and database-free.

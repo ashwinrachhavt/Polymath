@@ -65,7 +65,13 @@ type ReceiptEntry = { value: OutboundMessage; status: ReplyStatus; persisted: bo
  * and the first enqueue of a pair wins. Effects are never hydrated — the drain pass reads the table directly —
  * so the cache only needs to survive until the flush that persists them.
  */
-type EffectEntry = { kind: EffectKind; key: string; payload?: Record<string, unknown>; availableAt?: string; dirty: boolean };
+type EffectEntry = {
+  kind: EffectKind;
+  key: string;
+  payload?: Record<string, unknown>;
+  availableAt?: string;
+  dirty: boolean;
+};
 
 type CacheSnapshot = {
   triggers: [string, Entry<Trigger>][];
