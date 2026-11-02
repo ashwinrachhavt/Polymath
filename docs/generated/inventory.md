@@ -31,15 +31,7 @@ Migrations: 101 files, highest `0274_superagent_store`.
 
 ## Tests
 
-<<<<<<< HEAD
-501 `.test.ts` and 44 `.spec.ts` files (unit: 299, integration: 199, e2e: 44).
-=======
-<<<<<<< HEAD
-500 `.test.ts` and 44 `.spec.ts` files (unit: 298, integration: 199, e2e: 44).
-=======
-496 `.test.ts` and 44 `.spec.ts` files (unit: 296, integration: 197, e2e: 44).
->>>>>>> 69820d62 (test(superagent): store integration specs)
->>>>>>> 9215ddf8 (test(superagent): store integration specs)
+503 `.test.ts` and 44 `.spec.ts` files (unit: 300, integration: 200, e2e: 44).
 ## Domains
 
 24 folders; 19 own tables.

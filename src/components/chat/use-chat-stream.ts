@@ -23,7 +23,7 @@ import { StreamHttpError, describeStreamFailure } from "./stream-errors";
  * terminal frame arrives. There is no polling and no second source of truth.
  */
 
-type ChatConnection = "connecting" | "streaming" | "waiting" | "done" | "error";
+export type ChatConnection = "connecting" | "streaming" | "waiting" | "done" | "error";
 
 export type ChatState = {
   blocks: ChatBlock[];

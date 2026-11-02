@@ -30,6 +30,7 @@ export const workspaceSegments: readonly string[] = [
   "projects",
   "reviews",
   "settings",
+  "supervision",
 ];
 
 // Public page segments (also mirrored as publicPatterns in src/proxy.ts).
