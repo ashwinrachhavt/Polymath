@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 // The extension ships plain scripts; the state machine is exported for Node.
 import Outbox from "../../extensions/chrome/outbox-core.js";
+import Focus from "../../extensions/chrome/focus-core.js";
 
 /*
  * extensions/chrome/api.js assigns window.AlfredAPI at module load and touches
@@ -200,6 +201,11 @@ async function loadWorker(options: {
   vi.stubGlobal("importScripts", (...files: string[]) => {
     for (const file of files) {
       if (file === "outbox-core.js") (globalThis as Record<string, unknown>).AxiomOutbox = Outbox;
+      // Real module: background.js reads Focus.POLL_ALARM on every alarm, so
+      // the alarm listener needs it defined. focus-blocker.js stays unmapped —
+      // it is only touched inside listeners these tests never fire; map it
+      // (with a declarativeNetRequest stub) when a test needs the poller.
+      if (file === "focus-core.js") (globalThis as Record<string, unknown>).AxiomFocus = Focus;
       if (file === "api.js") {
         (globalThis as Record<string, unknown>).AlfredAPI = options.api || {
           base: async () => {
@@ -212,6 +218,8 @@ async function loadWorker(options: {
   });
   vi.stubGlobal("chrome", {
     storage: {
+      // background.js polls the focus blocker when the paired token changes.
+      onChanged: { addListener: vi.fn() },
       local: {
         get: vi.fn(async (key: string) => (key in store ? { [key]: store[key] } : {})),
         set: vi.fn(async (values: Record<string, unknown>) => {
