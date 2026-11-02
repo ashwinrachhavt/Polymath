@@ -65,30 +65,54 @@ export async function reserveSpend(
     if (row?.exceeds) return exceeded(policy);
   }
 
-  if (policy?.dailyCeilingUsd != null) {
+  if (policy && (policy.dailyCeilingUsd != null || policy.monthlyCeilingUsd != null)) {
     /*
-     * A daily ceiling is a local-day budget, so the boundary is midnight in the
-     * workspace's timezone, not UTC. Postgres does the timezone math — it owns
-     * the tz database, and `timezone(tz, date_trunc('day', timezone(tz, now())))`
-     * is the local midnight as a UTC instant. Both committed and still-open
-     * reservations count against it.
+     * The basis is hybrid, per Pino's call (2026-11-02): a reservation counts
+     * its reserved estimate while the run is in flight — the claim that makes
+     * concurrent starts safe — and its settled actual once settlement knows
+     * the real number. Settled rows stop counting a stale estimate: under-
+     * spend frees budget, over-spend becomes visible.
+     *
+     * Both ceilings share one query and one basis expression so they cannot
+     * drift apart. The windows are the workspace's local midnight and local
+     * calendar month — the same `timezone(tz, date_trunc(...))` rule
+     * spending/queries.ts reads with. Postgres owns the tz math, and the
+     * arithmetic stays `numeric`: money is never a JS float.
      */
-    const row = firstRow<{ exceeds: boolean }>(
+    const row = firstRow<{ daily_exceeds: boolean | null; monthly_exceeds: boolean | null }>(
       await tx.execute(sql`
         with budget_context as (
           select coalesce(
             (select timezone from user_preferences where workspace_id = ${ctx.workspaceId} limit 1),
             'UTC') as tz
+        ),
+        claimed as (
+          select r.created_at,
+                 coalesce(r.settled_usd, r.reserved_usd) as claimed_usd,
+                 b.tz
+          from spending_reservations r, budget_context b
+          where r.workspace_id = ${ctx.workspaceId}
+            and r.status in ('reserved', 'settled')
+        ),
+        period_spend as (
+          select
+            coalesce(sum(claimed_usd) filter (
+              where created_at >= timezone(tz, date_trunc('day', timezone(tz, now())))
+            ), 0) as day,
+            coalesce(sum(claimed_usd) filter (
+              where created_at >= timezone(tz, date_trunc('month', timezone(tz, now())))
+            ), 0) as month
+          from claimed
         )
-        select coalesce(sum(r.reserved_usd), 0) + ${input.estimateUsd}::numeric
-                 > ${policy.dailyCeilingUsd}::numeric as exceeds
-        from spending_reservations r, budget_context b
-        where r.workspace_id = ${ctx.workspaceId}
-          and r.status in ('reserved', 'settled')
-          and r.created_at >= timezone(b.tz, date_trunc('day', timezone(b.tz, now())))
+        select
+          ${policy.dailyCeilingUsd}::numeric is not null
+            and ${input.estimateUsd}::numeric + day > ${policy.dailyCeilingUsd}::numeric as daily_exceeds,
+          ${policy.monthlyCeilingUsd}::numeric is not null
+            and ${input.estimateUsd}::numeric + month > ${policy.monthlyCeilingUsd}::numeric as monthly_exceeds
+        from period_spend
       `),
     );
-    if (row?.exceeds) return exceeded(policy);
+    if (row?.daily_exceeds || row?.monthly_exceeds) return exceeded(policy);
   }
 
   const [reservation] = await tx

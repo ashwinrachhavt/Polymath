@@ -6,6 +6,9 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   test: {
+    // Captures the run-start DATABASE_URL before the pool forks; see
+    // tests/helpers/app-db-safety.ts.
+    globalSetup: ["./tests/setup.capture-app-db.ts"],
     // The shape is declared now so a test lands in the right place rather than
     // the root of the repo; see tests/README.md for what each one proves. The
     // unit project runs under the pinned clock in tests/unit/setup.clock.ts;
