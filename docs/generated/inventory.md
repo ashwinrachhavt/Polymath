@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 100 files, highest `0272_imported_agent_sessions`.
+Migrations: 99 files, highest `0272_imported_agent_sessions`.
 
 ## Tests
 
-461 `.test.ts` and 43 `.spec.ts` files (unit: 276, integration: 183, e2e: 43).
+465 `.test.ts` and 43 `.spec.ts` files (unit: 279, integration: 184, e2e: 43).
 ## Domains
 
 23 folders; 18 own tables.
