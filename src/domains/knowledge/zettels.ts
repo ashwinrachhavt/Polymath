@@ -43,36 +43,55 @@ export const MAX_ZETTELS_PER_DOCUMENT = 8;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
-/** Same shape as obligationDedupeKey: kind, document, then what makes this one distinct (its span). */
-export function zettelDedupeKey(documentId: string, spanStart: number, spanEnd: number) {
-  return `zettel:${documentId}:${spanStart}-${spanEnd}`;
+/** Same shape as obligationDedupeKey: kind, source, then what makes this one distinct (its span). */
+export function zettelDedupeKey(prefix: "doc" | "artifact", sourceId: string, spanStart: number, spanEnd: number) {
+  return `zettel:${prefix}:${sourceId}:${spanStart}-${spanEnd}`;
 }
 
-/** Locate a quote in the text, tolerating only whitespace differences at the edges. */
-function locate(text: string, quote: string): { start: number; end: number } | null {
-  const q = quote.trim();
-  if (q.length < 12) return null;
-  const start = text.indexOf(q);
-  return start === -1 ? null : { start, end: start + q.length };
-}
+export type ZettelSourceInput =
+  | { documentId: string; extractor?: ZettelExtractor; tx?: TxDrizzle }
+  | { sourceArtifactId: string; extractor?: ZettelExtractor; tx?: TxDrizzle };
 
-export async function proposeZettels(
+export type ResolvedZettelSource = {
+  text: string;
+  documentId: string | null;
+  extractionId: string | null;
+  sourceArtifactId: string | null;
+  title: string;
+};
+
+/**
+ * The text a proposal pass reads, from whichever source the input names. The
+ * document branch is the succeeded-extraction lookup the per-document pass has
+ * always used; the artifact branch reads the artifact's current version body,
+ * so a conversation mined for ideas proposes against exactly what it shows.
+ */
+export async function resolveZettelSource(
   auth: AuthContext,
-  input: {
-    documentId: string;
-    extractor?: ZettelExtractor;
-    /**
-     * Run the reads and inserts in the caller's transaction, so a caller that
-     * writes its own audit row can commit that row with the proposals it
-     * describes. Defaults to the shared client, which is what the per-document
-     * pass has always used.
-     */
-    tx?: TxDrizzle;
-  },
-) {
-  const conn = input.tx ?? db;
+  input: ZettelSourceInput,
+  conn: Pick<TxDrizzle, "select">,
+): Promise<ResolvedZettelSource> {
+  if ("sourceArtifactId" in input) {
+    const [artifact] = await conn
+      .select({ id: artifacts.id, title: artifacts.title, text: artifactVersions.plainText })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(and(eq(artifacts.id, input.sourceArtifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!artifact?.text?.trim()) throw new Error("artifact has no readable text");
+    return {
+      text: artifact.text,
+      documentId: null,
+      extractionId: null,
+      sourceArtifactId: artifact.id,
+      title: artifact.title,
+    };
+  }
+
+  // Ownership first, exactly as the per-document pass always reported it: a
+  // document outside the workspace is "not found", whatever its extraction state.
   const [document] = await conn
-    .select({ id: documents.id })
+    .select({ id: documents.id, title: documents.title })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
     .limit(1);
@@ -93,16 +112,49 @@ export async function proposeZettels(
     )
     .limit(1);
   if (!extraction?.text) throw new Error("document has no succeeded extraction");
+  return {
+    text: extraction.text,
+    documentId: document.id,
+    extractionId: extraction.id,
+    sourceArtifactId: null,
+    title: document.title,
+  };
+}
+/** Locate a quote in the text, tolerating only whitespace differences at the edges. */
+function locate(text: string, quote: string): { start: number; end: number } | null {
+  const q = quote.trim();
+  if (q.length < 12) return null;
+  const start = text.indexOf(q);
+  return start === -1 ? null : { start, end: start + q.length };
+}
+
+/**
+ * Which single origin a resolved source names. The plan's resolved-source
+ * shape carries both ids as nullable, so the narrowing lives here instead of
+ * a type assertion at the insert: a source naming neither is a bug and stops
+ * the pass loudly.
+ */
+function zettelOrigin(source: ResolvedZettelSource): { path: "doc" | "artifact"; id: string } {
+  if (source.documentId) return { path: "doc", id: source.documentId };
+  if (source.sourceArtifactId) return { path: "artifact", id: source.sourceArtifactId };
+  throw new Error("resolved source names neither a document nor an artifact");
+}
+
+export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput) {
+  const conn = input.tx ?? db;
+  const source = await resolveZettelSource(auth, input, conn);
+  const origin = zettelOrigin(source);
+  const fromDocument = origin.path === "doc";
 
   const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
-  const candidates = await extractor.extract(extraction.text);
+  const candidates = await extractor.extract(source.text);
 
   const accepted: Array<ZettelCandidate & { start: number; end: number }> = [];
   for (const c of candidates) {
     const title = c.title?.trim();
     const claim = c.claim?.trim();
     if (!title || !claim || typeof c.quote !== "string") continue;
-    const span = locate(extraction.text, c.quote);
+    const span = locate(source.text, c.quote);
     if (!span) continue; // not a verbatim passage: no evidence, no proposal
     accepted.push({
       title: title.slice(0, MAX_TITLE),
@@ -119,19 +171,27 @@ export async function proposeZettels(
       .insert(zettelProposals)
       .values({
         workspaceId: auth.workspaceId,
-        documentId: input.documentId,
-        extractionId: extraction.id,
+        ...(fromDocument
+          ? { documentId: origin.id, extractionId: source.extractionId }
+          : { sourceArtifactId: origin.id }),
         title: z.title,
         claim: z.claim,
         quote: z.quote,
         spanStart: z.start,
         spanEnd: z.end,
-        dedupeKey: zettelDedupeKey(input.documentId, z.start, z.end),
+        dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
         proposer: extractor.name,
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
-      .onConflictDoNothing({ target: [zettelProposals.documentId, zettelProposals.dedupeKey] })
+      .onConflictDoNothing(
+        fromDocument
+          ? { target: [zettelProposals.documentId, zettelProposals.dedupeKey] }
+          : {
+              target: [zettelProposals.sourceArtifactId, zettelProposals.dedupeKey],
+              where: sql`source_artifact_id is not null`,
+            },
+      )
       .returning();
     if (row) created.push(row);
   }
@@ -173,40 +233,69 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       )
       .returning();
     if (!proposal) throw new Error("zettel not found or already decided");
-    if (!proposal.documentId) throw new Error("proposal is not document-sourced");
-
-    const [doc] = await tx
-      .select({ fileId: documents.fileId, title: documents.title })
-      .from(documents)
-      .where(and(eq(documents.id, proposal.documentId), eq(documents.workspaceId, auth.workspaceId)))
-      .limit(1);
-    if (!doc) throw new Error("document not found in workspace");
-
-    // The evidence points at a source row for the document's file; make it once.
+    /*
+     * Provenance splits by source. A document-sourced proposal keeps the
+     * extraction-span evidence it always had (a sources row and a
+     * claim_evidence row). An artifact-sourced one has no extraction, so its
+     * evidence is the verbatim quote carried on the card and its source edge
+     * points at the artifact itself.
+     */
     let sourceId: string | undefined;
-    if (doc.fileId) {
-      const [existing] = await tx
-        .select({ id: sources.id })
-        .from(sources)
-        .where(
-          and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")),
-        )
+    let sourceLabel: string;
+    let edgeTargetType: "document" | "artifact";
+    let edgeTargetId: string;
+    if (proposal.documentId) {
+      const [doc] = await tx
+        .select({ fileId: documents.fileId, title: documents.title })
+        .from(documents)
+        .where(and(eq(documents.id, proposal.documentId), eq(documents.workspaceId, auth.workspaceId)))
         .limit(1);
-      sourceId = existing?.id;
-    }
-    if (!sourceId) {
-      const [created] = await tx
-        .insert(sources)
-        .values({
-          workspaceId: auth.workspaceId,
-          kind: "document",
-          title: doc.title,
-          fileId: doc.fileId,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning({ id: sources.id });
-      sourceId = created.id;
+      if (!doc) throw new Error("document not found in workspace");
+      sourceLabel = doc.title;
+      edgeTargetType = "document";
+      edgeTargetId = proposal.documentId;
+
+      // The evidence points at a source row for the document's file; make it once.
+      if (doc.fileId) {
+        const [existing] = await tx
+          .select({ id: sources.id })
+          .from(sources)
+          .where(
+            and(
+              eq(sources.workspaceId, auth.workspaceId),
+              eq(sources.fileId, doc.fileId),
+              eq(sources.kind, "document"),
+            ),
+          )
+          .limit(1);
+        sourceId = existing?.id;
+      }
+      if (!sourceId) {
+        const [created] = await tx
+          .insert(sources)
+          .values({
+            workspaceId: auth.workspaceId,
+            kind: "document",
+            title: doc.title,
+            fileId: doc.fileId,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning({ id: sources.id });
+        sourceId = created.id;
+      }
+    } else if (proposal.sourceArtifactId) {
+      const [sourceArtifact] = await tx
+        .select({ title: artifacts.title })
+        .from(artifacts)
+        .where(and(eq(artifacts.id, proposal.sourceArtifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+        .limit(1);
+      if (!sourceArtifact) throw new Error("source artifact not found in workspace");
+      sourceLabel = sourceArtifact.title;
+      edgeTargetType = "artifact";
+      edgeTargetId = proposal.sourceArtifactId;
+    } else {
+      throw new Error("proposal names no source");
     }
 
     await tx
@@ -244,15 +333,17 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
         updatedBy: auth.userId,
       })
       .returning({ id: claims.id });
-    await tx.insert(claimEvidence).values({
-      workspaceId: auth.workspaceId,
-      claimId: claim.id,
-      sourceId,
-      extractionId: proposal.extractionId,
-      quote: proposal.quote,
-      startOffset: proposal.spanStart,
-      endOffset: proposal.spanEnd,
-    });
+    if (sourceId) {
+      await tx.insert(claimEvidence).values({
+        workspaceId: auth.workspaceId,
+        claimId: claim.id,
+        sourceId,
+        extractionId: proposal.extractionId,
+        quote: proposal.quote,
+        startOffset: proposal.spanStart,
+        endOffset: proposal.spanEnd,
+      });
+    }
     // The zettel card: one artifact, version 1, carrying the claim as its
     // body and the verbatim quote as its evidence block. [[Title]] links in
     // the claim resolve on the next note-link sync like any note's.
@@ -293,10 +384,10 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
     await tx.insert(artifactLinks).values({
       workspaceId: auth.workspaceId,
       artifactId: card.id,
-      targetType: "document",
-      targetId: proposal.documentId,
+      targetType: edgeTargetType,
+      targetId: edgeTargetId,
       linkType: "source",
-      label: doc.title,
+      label: sourceLabel,
       context: proposal.quote,
     });
     await tx
@@ -311,7 +402,13 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       subjectType: "zettel_proposal",
       subjectId: proposal.id,
       summary: `Accepted zettel "${proposal.title}"`,
-      metadata: { conceptId: concept.id, claimId: claim.id, documentId: proposal.documentId, artifactId: card.id },
+      metadata: {
+        conceptId: concept.id,
+        claimId: claim.id,
+        documentId: proposal.documentId,
+        sourceArtifactId: proposal.sourceArtifactId,
+        artifactId: card.id,
+      },
     });
     return { conceptId: concept.id, claimId: claim.id, artifactId: card.id };
   }).then(async (value) => {
