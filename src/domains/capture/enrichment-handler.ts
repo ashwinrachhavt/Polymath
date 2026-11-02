@@ -33,6 +33,8 @@ import {
   TranscriptionUnconfiguredError,
   type TranscriptionProvider,
 } from "@/integrations/transcription/provider";
+import type { ExtractionProvider } from "@/integrations/extraction/provider";
+import { OCR_IMAGE_MIMES, openRouterVisionProviderFromEnv } from "@/integrations/extraction/openrouter-vision";
 import { captureProposals, captures } from "./schema";
 import { triageCapture } from "./jev-classify";
 import { workingText } from "./mode";
@@ -43,6 +45,9 @@ import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } f
  *
  *   Tier 0  normalizeCapturedText ($0, pure)     -> clean_text
  *   Voice   transcription (ASH-298, explicit TRANSCRIPTION_PROVIDER opt-in)
+ *           -> the capture's text, then the same ladder classifies the words
+ *   Image   vision OCR (explicit OCR_PROVIDER=openrouter opt-in; reuses the
+ *           document chain's metered vision adapter)
  *           -> the capture's text, then the same ladder classifies the words
  *   Tier 1  classifyStructure      ($0, regex)   -> structure + signals
  *   Tier 2  Jev classifier (when the registry enables it): typed judgments
@@ -78,6 +83,8 @@ export type CaptureEnrichmentDeps = {
   judger?: ClassifyJudger;
   /** Test seam: a pre-built transcription provider. Production resolves the explicit env selection. */
   transcriber?: TranscriptionProvider;
+  /** Test seam: a pre-built vision reader. Production resolves the explicit env selection. */
+  ocr?: ExtractionProvider;
 };
 
 export const captureEnrichmentRequestedHandler: OutboxHandler = (event) => runCaptureEnrichment(event);
@@ -191,6 +198,22 @@ async function enrichLeased(
     const transcript = await transcribeVoiceCapture(token, capture, event, deps.transcriber);
     if (transcript === null) return;
     textForLadder = transcript;
+  }
+  // Image rung beside the voice rung: a blob whose bytes are an image the
+  // vision reader can open (the same set the upload sniff admits). The reading
+  // becomes the capture's text, then the SAME ladder classifies the words - no
+  // parallel image pipeline. Unconfigured is honest: the image is kept, the
+  // reason names OCR_PROVIDER, and this event completes instead of
+  // redelivering against a missing key forever. A reader failure also lands as
+  // a named reason on the row rather than a redelivery loop: the outbox
+  // dead-letters after five attempts, and a capture that outlived them all
+  // with nothing on its row would say "pending" forever - the lie this rung
+  // exists to prevent. A provider ERROR from later rungs (Jev, generation)
+  // still stays redeliverable, like the other tiers.
+  if (capture.captureMode === "blob" && capture.kind !== "voice" && !textForLadder) {
+    const rung = await readImageCaptureText(token, capture, event, deps.ocr);
+    if (rung.case === "handled") return;
+    if (rung.case === "text") textForLadder = rung.text;
   }
 
   const body = textForLadder;
@@ -520,4 +543,91 @@ async function transcribeVoiceCapture(
     });
   }
   return transcript;
+}
+
+type ImageRung = { case: "not-image" } | { case: "handled" } | { case: "text"; text: string };
+
+/**
+ * Read a blob capture's image with the workspace's vision reader and persist
+ * the words as its text - the seat the voice transcript occupies. Returns
+ * "not-image" when the blob is not an image the reader can open (the ladder
+ * proceeds exactly as it did before this rung existed), "handled" when the
+ * capture was marked honestly and the event should complete, or the text.
+ *
+ * The image bytes are the immutable original in raw_payload/blob storage; the
+ * reading is derived material and lands in `text`, where the ladder and the
+ * owner can read it. Metering is the adapter's own: page cap (OCR_MAX_PAGES),
+ * per-page output cap, fail-closed model allowlist - the same bounds the
+ * document chain runs it under. Quota is not wrapped, also like the document
+ * chain's use of this adapter.
+ */
+async function readImageCaptureText(
+  token: string,
+  capture: { id: string; workspaceId: string; blobId: string | null; rawPayload: unknown },
+  event: ClaimedOutboxEvent,
+  injected?: ExtractionProvider,
+): Promise<ImageRung> {
+  if (!capture.blobId) return { case: "not-image" };
+  const [blob] = await db.select().from(blobObjects).where(eq(blobObjects.id, capture.blobId)).limit(1);
+  if (!blob) throw new Error(`capture ${capture.id} points at missing blob ${capture.blobId}`);
+  if (!OCR_IMAGE_MIMES.has(blob.mimeType)) return { case: "not-image" };
+
+  let reader: ExtractionProvider | null;
+  try {
+    reader = injected ?? openRouterVisionProviderFromEnv(process.env);
+  } catch (cause) {
+    // A resolver throw is configuration (an unverified OCR_MODEL, a privacy
+    // gate left unconfirmed), not a transient condition: name it on the row
+    // instead of redelivering into the same throw five times.
+    const message = cause instanceof Error ? cause.message : String(cause);
+    await markImageReadFailed(token, capture.id, `Image reading is misconfigured - the image is kept; ${message}`);
+    return { case: "handled" };
+  }
+  if (!reader) {
+    await markImageReadFailed(
+      token,
+      capture.id,
+      "Image reading is not configured on this deployment - the image is kept; ask the owner to set OCR_PROVIDER=openrouter.",
+    );
+    return { case: "handled" };
+  }
+
+  const filename =
+    typeof (capture.rawPayload as { filename?: unknown } | null)?.filename === "string"
+      ? (capture.rawPayload as { filename: string }).filename
+      : capture.id;
+  const result = await reader.extract({ bytes: await readBlob(blob.storageKey), filename, mimeType: blob.mimeType });
+  if (!result.ok) {
+    await markImageReadFailed(token, capture.id, `Reading the image failed: ${result.error}. The image is kept.`);
+    return { case: "handled" };
+  }
+
+  const reading = result.text.trim();
+  await ownedUpdate(token, capture.id, {
+    text: reading || null,
+    processingState: "unprocessed",
+    updatedAt: new Date(),
+  });
+  const ownerAuth = await workspaceOwnerAuth(event.workspaceId);
+  if (ownerAuth) {
+    await recordAudit(ownerAuth, {
+      action: "capture.extracted",
+      subjectType: "capture",
+      subjectId: capture.id,
+      summary: `Read with ${result.extractor} (${reading.length} chars)`,
+      metadata: { actor: "ocr", extractor: result.extractor },
+      actorKind: "system",
+    });
+  }
+  return { case: "text", text: reading };
+}
+
+/** Mark the read failed, honestly, and release the lease: the event completes. */
+async function markImageReadFailed(token: string, captureId: string, reason: string) {
+  await ownedUpdate(token, captureId, {
+    processingState: "failed",
+    failureReason: reason,
+    updatedAt: new Date(),
+    ...RELEASE,
+  });
 }

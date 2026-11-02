@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOpenRouterVisionProvider,
   DEFAULT_OCR_MODEL,
+  OCR_IMAGE_MIMES,
   OCR_MODEL_RATES,
   openRouterVisionProviderFromEnv,
   UPSTREAM_PRIVACY_UNVERIFIED,
@@ -109,7 +110,10 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
   it("treats a page the model could not read as a failed extraction naming the page", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValueOnce(completion("UNREADABLE")).mockResolvedValueOnce(completion("Fine page")),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(completion("UNREADABLE"))
+        .mockResolvedValueOnce(completion("Fine page")),
     );
     const provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
     const result = await provider.extract({
@@ -155,9 +159,11 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
   it("a page cut off at the output cap (finish_reason=length) is a failed page, never a truncated page filed as complete", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        jsonResponse({ choices: [{ message: { content: "Half a page of text" }, finish_reason: "length" }] }),
-      ),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          jsonResponse({ choices: [{ message: { content: "Half a page of text" }, finish_reason: "length" }] }),
+        ),
     );
     const provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
     const result = await provider.extract({
@@ -175,9 +181,11 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
   it("a content-filtered or refused page is a failed page with the provider's reason class", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        jsonResponse({ choices: [{ message: { content: null }, finish_reason: "content_filter" }] }),
-      ),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          jsonResponse({ choices: [{ message: { content: null }, finish_reason: "content_filter" }] }),
+        ),
     );
     let provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
     let result = await provider.extract({ bytes: PNG_BYTES, filename: "scan.png", mimeType: "image/png" });
@@ -186,9 +194,13 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        jsonResponse({ choices: [{ message: { content: null, refusal: "cannot transcribe" }, finish_reason: "stop" }] }),
-      ),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          jsonResponse({
+            choices: [{ message: { content: null, refusal: "cannot transcribe" }, finish_reason: "stop" }],
+          }),
+        ),
     );
     provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
     result = await provider.extract({ bytes: PNG_BYTES, filename: "scan.png", mimeType: "image/png" });
@@ -284,12 +296,19 @@ describe("openRouterVisionProviderFromEnv: opt-in, never inferred", () => {
         openRouterVisionProviderFromEnv({ ...KEY_ENV, OCR_PROVIDER: "openrouter", OCR_MODEL: model }),
       ).toThrow(/unverified upstream privacy/);
       expect(() => createOpenRouterVisionProvider("test-key", { model })).toThrow(/unverified upstream privacy/);
-      expect(() =>
-        createOpenRouterVisionProvider("test-key", { model, allowUnverifiedUpstream: true }),
-      ).not.toThrow();
+      expect(() => createOpenRouterVisionProvider("test-key", { model, allowUnverifiedUpstream: true })).not.toThrow();
     }
     // The default and any model outside the unverified set need no such flag.
     expect(UPSTREAM_PRIVACY_UNVERIFIED.has(DEFAULT_OCR_MODEL)).toBe(false);
     expect(() => createOpenRouterVisionProvider("test-key", { model: DEFAULT_OCR_MODEL })).not.toThrow();
+  });
+
+  it("the capture rung's gate admits exactly the image types this adapter reads", () => {
+    // The producer enqueues on OCR_IMAGE_MIMES and the rung re-checks it
+    // against the blob's sniffed type; if the adapter ever grows a readable
+    // type (or drops one), the capture gate must move with it - an enqueue
+    // with no reader admits nothing, and a readable type the gate misses is
+    // never read.
+    expect([...OCR_IMAGE_MIMES].sort()).toEqual(["image/jpeg", "image/png", "image/webp"]);
   });
 });
