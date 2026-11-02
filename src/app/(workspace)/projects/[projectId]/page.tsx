@@ -161,9 +161,12 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
                         <span className="w-20 shrink-0 text-xs text-muted-foreground">
                           {AGENT_SOURCE_LABEL[agentSession.source]}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-[15px]">
+                        <Link
+                          href={`/projects/${projectId}/agent-sessions/${agentSession.id}`}
+                          className="min-w-0 flex-1 truncate text-[15px] hover:underline"
+                        >
                           {agentSession.aiTitle ?? agentSession.externalSessionId}
-                        </span>
+                        </Link>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {agentSession.fileCount} file{agentSession.fileCount === 1 ? "" : "s"} ·{" "}
                           {agentSession.commandCount} command{agentSession.commandCount === 1 ? "" : "s"}

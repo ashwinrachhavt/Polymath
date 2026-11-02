@@ -81,6 +81,7 @@ export async function getProjectSession(
   sessionId: string,
 ): Promise<
   | (ProjectSessionRow & {
+      cwd: string;
       summary: SessionSummary;
       decisionNote: string | null;
       decisionStatus: "recorded" | "inferred";
@@ -97,6 +98,7 @@ export async function getProjectSession(
     id: row.id,
     source: row.source,
     externalSessionId: row.externalSessionId,
+    cwd: row.cwd,
     aiTitle: row.summary.aiTitle ?? null,
     startedAt: row.startedAt,
     lastActivityAt: row.lastActivityAt,
