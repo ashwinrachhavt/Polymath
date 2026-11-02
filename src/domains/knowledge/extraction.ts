@@ -16,6 +16,7 @@ import type {
 import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "../audit/schema";
 import { embedExtraction } from "./embedding";
+import { DocumentNotFoundError, syncDocumentToGraph } from "./document-graph";
 import { advanceDocumentEnrichment } from "./enrichment";
 import { markDerivedIdeasStale } from "./staleness";
 import { proposeFromText, RULES_PROPOSER } from "./field-rules";
@@ -498,4 +499,33 @@ async function runProposalPass(
     })
     .where(and(thisRow, eq(documentExtractions.proposalStatus, "pending")));
   return "succeeded";
+}
+
+/**
+ * One full extraction pass: read the document, then mirror it into the search
+ * graph. The outbox consumer runs exactly this for every
+ * document.extraction_requested; a surface that just created a document calls
+ * the same pass so the reading becomes searchable without waiting for the
+ * next dispatcher drain. Redelivery-safe either way: the extraction ledger
+ * dedupes the read, and the mirror syncs idempotently.
+ */
+export async function runExtractionPass(
+  auth: AuthContext,
+  input: { documentId: string },
+): Promise<ExtractDocumentResult> {
+  const result = await extractDocument(auth, input);
+  // A provider failure is recorded on the extraction row; throwing lets the
+  // outbox redelivery retry it and a direct caller's catch observe it.
+  if (!result.ok) throw new Error(result.error);
+  // Mirror the source into the search index. A failure throws too: redelivery
+  // dedupes the extraction and retries the mirror, so a source never stays
+  // invisible because one sync attempt failed. A document that vanished
+  // mid-flight has no mirror to write.
+  try {
+    await syncDocumentToGraph(auth, input.documentId);
+  } catch (cause) {
+    if (cause instanceof DocumentNotFoundError) return result;
+    throw cause;
+  }
+  return result;
 }

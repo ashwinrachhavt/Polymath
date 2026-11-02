@@ -2,8 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
-import { DocumentNotFoundError, syncDocumentToGraph } from "@/domains/knowledge/document-graph";
-import { extractDocument } from "@/domains/knowledge/extraction";
+import { runExtractionPass } from "@/domains/knowledge/extraction";
 import { EMBEDDING_RETRY_TOPIC, embeddingRetryRequestedHandler } from "@/domains/knowledge/embedding-retry";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
@@ -50,19 +49,9 @@ export const extractionRequestedHandler: OutboxHandler = async (event) => {
   if (!documentId) return;
   const auth = await workspaceOwnerAuth(event.workspaceId);
   if (!auth) throw new Error("workspace has no active owner to act for the extraction");
-  const result = await extractDocument(auth, { documentId });
-  // `in_progress` elsewhere throws nothing; a provider failure is recorded on
-  // the extraction row and is retried by redelivery, so surface it.
-  if (!result.ok) throw new Error(result.error);
-  // Mirror the source into the search index (document-graph). A failure here
-  // throws too: redelivery dedupes the extraction and retries the mirror, so
-  // a source never stays invisible because one sync attempt failed.
-  try {
-    await syncDocumentToGraph(auth, documentId);
-  } catch (cause) {
-    if (cause instanceof DocumentNotFoundError) return;
-    throw cause;
-  }
+  // Read, then mirror - one pass, shared with the surfaces that just created
+  // a document (see runExtractionPass). Redelivery dedupes the extraction.
+  await runExtractionPass(auth, { documentId });
 };
 
 /*

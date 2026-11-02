@@ -449,9 +449,7 @@ export function InboxDetail({
                 Save as note
               </Button>
             )}
-            {capture.kind === "file" ||
-            voiceWithoutTranscript ||
-            !(capture.cleanText ?? capture.text)?.trim() ? null : (
+            {voiceWithoutTranscript || !(capture.cleanText ?? capture.text)?.trim() ? null : (
               <Button
                 size="sm"
                 variant="outline"
@@ -469,8 +467,9 @@ export function InboxDetail({
             )}
             {capture.kind === "file" ? (
               <span className="flex items-center text-xs text-muted-foreground">
-                A file stays a file - notes and drafts start from text. Make a task from
-                {capture.text?.trim() ? " its words" : " its filename"}, or open the file itself.
+                {capture.text?.trim()
+                  ? "File the reading in the library, or make a task from its words - the file itself stays here."
+                  : "A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself."}
               </span>
             ) : voiceWithoutTranscript ? (
               <span className="flex items-center text-xs text-muted-foreground">
