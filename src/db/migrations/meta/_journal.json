@@ -659,6 +659,13 @@
       "when": 1793687160000,
       "tag": "0267_onboarding_run_discarded_at",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1793687220000,
+      "tag": "0268_drop_retired_tables",
+      "breakpoints": true
     }
   ]
 }
