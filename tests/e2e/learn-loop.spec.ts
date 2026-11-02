@@ -177,14 +177,20 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   test.skip(!fixture, "DATABASE_URL not configured (server and test).");
   await openLearn(page);
 
+  // Dev streams the content subtree twice, so every assertion scopes to the
+  // first #content (the pattern the other specs use).
+  const content = page.locator("#content").first();
+
   // The library: learning state per document, the Stones stat, and the
   // honest state for the document still being read.
-  await expect(page.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
-  await expect(page.getByText("Stones earned")).toBeVisible();
-  const docRow = page.getByRole("listitem").filter({ hasText: DOC_TITLE });
+  await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
+  await expect(content.getByText("Stones earned")).toBeVisible();
+  const docRow = content.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
   await expect(docRow).toContainText("Best score 1/3");
   await expect(docRow.getByRole("link", { name: "Retake" })).toBeVisible();
-  const readingRow = page.getByRole("listitem").filter({ hasText: STILL_READING_TITLE });
+  const readingRow = content
+    .getByRole("listitem")
+    .filter({ has: page.getByText(STILL_READING_TITLE, { exact: true }) });
   await expect(readingRow).toContainText("Still reading this document");
   await expect(readingRow.getByRole("button", { name: "Generate quiz" })).toBeDisabled();
 
@@ -195,30 +201,30 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // Open the quiz: one question at a time, choices plus the apart
   // I-don't-know option.
   await docRow.getByRole("link", { name: "Retake" }).click();
-  await expect(page.getByText("Question 1 of 3")).toBeVisible();
-  await expect(page.getByRole("button", { name: "I don't know" })).toBeVisible();
+  await expect(content.getByText("Question 1 of 3")).toBeVisible();
+  await expect(content.getByRole("button", { name: "I don't know" })).toBeVisible();
 
   // Correct answer: instant mark, then the explanation.
-  await page.getByRole("button", { name: "In the same transaction" }).click();
-  await expect(page.getByText("Correct!")).toBeVisible();
-  await expect(page.getByText("so a crash cannot leave one behind")).toBeVisible();
-  await page.getByRole("button", { name: "Next question" }).click();
+  await content.getByRole("button", { name: "In the same transaction" }).click();
+  await expect(content.getByText("Correct!")).toBeVisible();
+  await expect(content.getByText("so a crash cannot leave one behind")).toBeVisible();
+  await content.getByRole("button", { name: "Next question" }).click();
 
   // Wrong answer: the mark, the correct answer named, no award yet.
-  await expect(page.getByText("Question 2 of 3")).toBeVisible();
-  await page.getByRole("button", { name: "The passages' byte offsets" }).click();
-  await expect(page.getByText("Incorrect. The correct answer is:")).toBeVisible();
-  await page.getByRole("button", { name: "Next question" }).click();
+  await expect(content.getByText("Question 2 of 3")).toBeVisible();
+  await content.getByRole("button", { name: "The passages' byte offsets" }).click();
+  await expect(content.getByText("Incorrect. The correct answer is:")).toBeVisible();
+  await content.getByRole("button", { name: "Next question" }).click();
 
   // The gap: I-don't-know reveals the answer without a wrong mark.
-  await expect(page.getByText("Question 3 of 3")).toBeVisible();
-  await page.getByRole("button", { name: "I don't know" }).click();
-  await expect(page.getByText("Kept as an honest gap.")).toBeVisible();
-  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(content.getByText("Question 3 of 3")).toBeVisible();
+  await content.getByRole("button", { name: "I don't know" }).click();
+  await expect(content.getByText("Kept as an honest gap.")).toBeVisible();
+  await content.getByRole("button", { name: "Finish" }).click();
 
   // The sitting is recorded; one ledger row earned the stone exactly once.
-  await expect(page.getByText("1 of 3")).toBeVisible();
-  await expect(page.getByText("+10 stones for finishing this quiz.")).toBeVisible();
+  await expect(content.getByText("1 of 3")).toBeVisible();
+  await expect(content.getByText("+10 stones for finishing this quiz.")).toBeVisible();
   const rows = await client<{ idempotency_key: string; points: number }[]>`
     select idempotency_key, points
     from reward_ledger
@@ -235,8 +241,8 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   const earned = Number(stonesBefore) + 10;
   await page.goto("/apps/neuralflow/rewards");
   await waitSettled(page);
-  await expect(page.getByText("Points earned")).toBeVisible();
+  await expect(page.locator("#content").first().getByText("Points earned")).toBeVisible();
   await expect(page.getByText(String(earned)).first()).toBeVisible();
   await openLearn(page);
-  await expect(page.getByText("Best score 1/3")).toBeVisible();
+  await expect(page.locator("#content").first().getByText("Best score 1/3")).toBeVisible();
 });

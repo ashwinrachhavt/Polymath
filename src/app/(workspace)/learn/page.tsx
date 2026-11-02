@@ -28,44 +28,53 @@ function learningState(row: LearnLibraryRow): string {
   return `Best score ${row.bestCorrect}/${row.questionCount}`;
 }
 
+/**
+ * Raw SQL aggregates bypass drizzle's column mapping, so an attempt
+ * timestamp arrives as the driver's text form or a Date depending on the
+ * pg wire round-trip. A display hint must never take the screen down over
+ * either, so format only what parses and hide the rest.
+ */
+function formatAttempted(value: string | Date | null): string | null {
+  if (value === null) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? attemptedDate.format(time) : null;
+}
+
 function LibraryList({ rows }: { rows: LearnLibraryRow[] }) {
   return (
     <ul className="flex flex-col">
-      {rows.map((row) => (
-        <li
-          key={row.documentId}
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 hover:bg-muted"
-        >
-          <Link
-            href={`/learn/${row.documentId}`}
-            className="min-w-0 flex-1 truncate text-[13px] font-medium underline-offset-4 hover:underline"
+      {rows.map((row) => {
+        const attempted = formatAttempted(row.lastAttemptedAt);
+        return (
+          <li
+            key={row.documentId}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 hover:bg-muted"
           >
-            {row.title}
-          </Link>
-          <span className="text-xs text-muted-foreground">{learningState(row)}</span>
-          {row.lastAttemptedAt ? (
-            <span className="text-xs text-muted-foreground">
-              last attempted {attemptedDate.format(row.lastAttemptedAt)}
-            </span>
-          ) : null}
-          {row.quizzable ? (
-            row.quizId ? (
-              <Link
-                href={`/learn/${row.documentId}`}
-                className="text-[13px] font-medium underline-offset-4 hover:underline"
-              >
-                Retake
-              </Link>
+            <Link
+              href={`/learn/${row.documentId}`}
+              className="min-w-0 flex-1 truncate text-[13px] font-medium underline-offset-4 hover:underline"
+            >
+              {row.title}
+            </Link>
+            <span className="text-xs text-muted-foreground">{learningState(row)}</span>
+            {attempted ? <span className="text-xs text-muted-foreground">last attempted {attempted}</span> : null}
+            {row.quizzable ? (
+              row.quizId ? (
+                <Link
+                  href={`/learn/${row.documentId}`}
+                  className="text-[13px] font-medium underline-offset-4 hover:underline"
+                >
+                  Retake
+                </Link>
+              ) : (
+                <GenerateQuizButton documentId={row.documentId} />
+              )
             ) : (
-              <GenerateQuizButton documentId={row.documentId} />
-            )
-          ) : (
-            <span className="inline-flex h-7 items-center rounded-md border border-border bg-muted/60 px-2.5 text-[0.8rem] font-medium text-muted-foreground">
-              Generate quiz
-            </span>
-          )}
-        </li>
-      ))}
+              <GenerateQuizButton documentId={row.documentId} disabled />
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
