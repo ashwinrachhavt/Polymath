@@ -73,7 +73,12 @@ export type ScoredHit = ChunkHit & { fusedScore: number };
  * carry no calibrated score across legs, which is exactly why rank-only
  * fusion works. First side wins on a shared key, keeping its span and text.
  */
-export function rrfMerge(ftsHits: ChunkHit[], vectorHits: ChunkHit[], limit: number, input?: { legsRun?: number }): ScoredHit[] {
+export function rrfMerge(
+  ftsHits: ChunkHit[],
+  vectorHits: ChunkHit[],
+  limit: number,
+  input?: { legsRun?: number },
+): ScoredHit[] {
   const legsRun = input?.legsRun ?? (ftsHits.length && vectorHits.length ? 2 : 1);
   const rrf = (rank: number) => RRF_K / legsRun / (RRF_K + rank);
   const scores = new Map<string, { hit: ChunkHit; score: number }>();
@@ -130,14 +135,14 @@ export async function searchDocumentsForAgent(
         searchChunks(auth, { query, limit, provider: input.provider, documentIds }),
         searchChunksFts(auth, { query, limit, documentIds }),
       ]);
-      hits = rrfMerge(ftsHits, vectorHits, limit);
+      hits = rrfMerge(ftsHits, vectorHits, limit, { legsRun: 2 });
       mode = "hybrid";
     } catch (cause) {
       if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
       // No embedding key is a deployment gap, not a reason to fail closed:
       // answer from Postgres full-text over the same current extractions and
       // label the mode so the model can say how the passage was found.
-      hits = rrfMerge(await searchChunksFts(auth, { query, limit, documentIds }), [], limit);
+      hits = rrfMerge(await searchChunksFts(auth, { query, limit, documentIds }), [], limit, { legsRun: 1 });
       mode = "text";
     }
     // A passage below the floor is not evidence, so it does not leave the

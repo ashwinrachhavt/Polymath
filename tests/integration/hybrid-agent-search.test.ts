@@ -8,16 +8,21 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * Hybrid agent search: with an embedding provider configured, the vector and
- * full-text rankings run in parallel and fuse by reciprocal rank. The exact-
- * wording passage and the loosely-matching one both surface, and a hit only
- * one leg saw still ranks on its single contribution.
+ * full-text rankings run in parallel and fuse by reciprocal rank. A hit only
+ * one leg saw still ranks on its single contribution — and the relevance
+ * floor then filters the merge: a passage neither leg ranks highly is not
+ * evidence, however it fused.
  */
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
 const extractor = vi.hoisted(() => ({ extract: vi.fn<() => Promise<ExtractionResult>>() }));
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -25,7 +30,9 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 vi.mock("@/integrations/extraction/docling-docker", () => ({ createDoclingDockerProvider: () => extractor }));
-vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])) }));
+vi.mock("@/integrations/object-store/object-store", () => ({
+  readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
+}));
 
 import { embedExtraction } from "@/domains/knowledge/embedding";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
@@ -51,43 +58,78 @@ function fakeProvider(model = "fake:hash-1536"): EmbeddingProvider {
   return provider;
 }
 
-beforeAll(() => { holder.db = handle?.db; });
-afterAll(async () => { await handle?.client.end(); });
+beforeAll(() => {
+  holder.db = handle?.db;
+});
+afterAll(async () => {
+  await handle?.client.end();
+});
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture");
 });
 
-const EXACT = "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit. ".repeat(30);
+const EXACT =
+  "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit. ".repeat(30);
 // Same topic, but only "deposit" overlaps the query's words: it matches both
 // legs, yet far more weakly than EXACT, so RRF must rank it second.
-const LOOSE = "Twelve hundred dollars is due each month for the dwelling. The deposit is retained by the property owner. ".repeat(30);
+const LOOSE =
+  "Twelve hundred dollars is due each month for the dwelling. The deposit is retained by the property owner. ".repeat(
+    30,
+  );
 const UNRELATED = "Quarterly revenue rose three percent. The board approved the annual budget. ".repeat(30);
 
 async function seedRow(auth: { workspaceId: string; userId: string }, title: string) {
   const db = holder.db!;
-  const [blob] = await db.insert(blobObjects).values({
-    workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(),
-    sizeBytes: 4, mimeType: "application/pdf",
-  }).returning();
-  const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: `${title}.pdf` }).returning();
-  const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title, fileId: file.id, mimeType: "application/pdf" }).returning();
+  const [blob] = await db
+    .insert(blobObjects)
+    .values({
+      workspaceId: auth.workspaceId,
+      storageKey: `private/${crypto.randomUUID()}`,
+      contentHash: crypto.randomUUID(),
+      sizeBytes: 4,
+      mimeType: "application/pdf",
+    })
+    .returning();
+  const [file] = await db
+    .insert(files)
+    .values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: `${title}.pdf` })
+    .returning();
+  const [doc] = await db
+    .insert(documents)
+    .values({ workspaceId: auth.workspaceId, title, fileId: file.id, mimeType: "application/pdf" })
+    .returning();
   return doc;
 }
 
-async function seed(auth: { workspaceId: string; userId: string }, text: string, title: string, provider?: EmbeddingProvider) {
+async function seed(
+  auth: { workspaceId: string; userId: string },
+  text: string,
+  title: string,
+  provider?: EmbeddingProvider,
+) {
   const doc = await seedRow(auth, title);
-  extractor.extract.mockResolvedValueOnce({ ok: true, text, spans: [{ page: 1, start: 0, end: text.length }], pageCount: 1, extractor: "fixture@1" });
+  extractor.extract.mockResolvedValueOnce({
+    ok: true,
+    text,
+    spans: [{ page: 1, start: 0, end: text.length }],
+    pageCount: 1,
+    extractor: "fixture@1",
+  });
   const result = await extractDocument({ ...auth, role: "owner" as const }, { documentId: doc.id });
   if (!result.ok) throw new Error("seed failed");
   // No provider means no embeddings: the document is findable by FTS only.
-  if (provider) await embedExtraction({ ...auth, role: "owner" as const }, { extractionId: result.extractionId, provider });
+  if (provider)
+    await embedExtraction({ ...auth, role: "owner" as const }, { extractionId: result.extractionId, provider });
   return doc;
 }
-const workspace = async () => ({ ...await seedWorkspace(holder.db!, `hs-${crypto.randomUUID()}`), role: "owner" as const });
+const workspace = async () => ({
+  ...(await seedWorkspace(holder.db!, `hs-${crypto.randomUUID()}`)),
+  role: "owner" as const,
+});
 
 suite("hybrid agent search (real Postgres + pgvector)", () => {
-  it("returns mode hybrid with the exact match first and the loose match second", async () => {
+  it("returns mode hybrid with the exact match first and drops sub-floor loose matches", async () => {
     const provider = fakeProvider();
     const a = await workspace();
     await seed(a, EXACT, "lease-exact", provider);
@@ -98,7 +140,11 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     if (!res.ok) return;
     expect(res.mode).toBe("hybrid");
     expect(res.results[0]).toMatchObject({ title: "lease-exact" });
-    expect(res.results[1]).toMatchObject({ title: "lease-loose" });
+    // The loose match is vector-only at rank 3 (the keyword leg refuses it:
+    // the query's terms are ANDed), fusing at 30/63 ≈ 0.48 — below the floor.
+    // Before the floor it surfaced second; a passage neither leg ranks highly
+    // is not evidence, so it no longer pollutes the results.
+    expect(res.results[1]).toBeUndefined();
   });
 
   it("a gibberish query returns mode hybrid with a low result list, never a thrown error or a text label", async () => {
