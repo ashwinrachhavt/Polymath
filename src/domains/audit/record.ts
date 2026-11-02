@@ -19,8 +19,15 @@ export type AuditInput = {
   actorKind?: "user" | "system" | "agent";
 };
 
+/**
+ * A system caller has no user: actorId is null and the audit row says so
+ * (actorKind "system"). AuthContext cannot satisfy this type - it carries a
+ * userId string - so a request surface cannot quietly audit as "system".
+ */
+export type SystemAuditContext = { workspaceId: string; userId: null };
+
 export async function recordAudit(
-  auth: AuthContext,
+  auth: AuthContext | SystemAuditContext,
   input: AuditInput,
   tx: TxDrizzle | typeof db = db,
 ) {

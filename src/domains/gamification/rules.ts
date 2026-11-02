@@ -51,6 +51,9 @@ export function levelForPoints(points: number): number {
 /** The level the mastery stone waits for (spec §5: diamond at level 5). */
 export const DIAMOND_LEVEL = 5;
 
+/** Spec §6: a definition can never price a jackpot - points are bounded. */
+export const REWARD_DEFINITION_POINTS_MAX = 10000;
+
 /** The consistency stone's streak length (spec §5: topaz at 7 consecutive earning days). */
 export const TOPAZ_STREAK_DAYS = 7;
 

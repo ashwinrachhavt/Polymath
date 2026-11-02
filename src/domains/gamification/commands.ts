@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { recordAudit } from "@/domains/audit/record";
+import { recordAudit, type SystemAuditContext } from "@/domains/audit/record";
 import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
@@ -23,6 +23,7 @@ import {
   learningGateMet,
   levelForPoints,
   streakFromDays,
+  REWARD_DEFINITION_POINTS_MAX,
   type RuleText,
   type TaskPriority,
 } from "./rules";
@@ -51,6 +52,19 @@ export class StaleWriteError extends Error {
   readonly code = "stale_write";
 }
 
+export class InvalidRewardDefinitionError extends Error {
+  readonly code = "invalid_reward_definition";
+}
+
+/** Spec §6: bounded prices - a definition can never mint a jackpot. */
+function assertBoundedPoints(points: number): void {
+  if (!Number.isInteger(points) || points < 0 || points > REWARD_DEFINITION_POINTS_MAX) {
+    throw new InvalidRewardDefinitionError(
+      `Points must be a whole number between 0 and ${REWARD_DEFINITION_POINTS_MAX}.`,
+    );
+  }
+}
+
 export type RewardDefinitionInput = {
   key: string;
   kind: "points" | "streak_day" | "badge" | "collectible";
@@ -62,6 +76,7 @@ export type RewardDefinitionInput = {
 };
 
 export async function createRewardDefinition(auth: AuthContext, input: RewardDefinitionInput) {
+  assertBoundedPoints(input.points ?? 0);
   try {
     return await withTransaction(async (tx) => {
       const [definition] = await tx
@@ -103,6 +118,7 @@ export async function updateRewardDefinition(
   auth: AuthContext,
   input: RewardDefinitionInput & { expectedVersion: number; active?: boolean },
 ) {
+  assertBoundedPoints(input.points ?? 0);
   return withTransaction(async (tx) => {
     const [updated] = await tx
       .update(rewardDefinitions)
@@ -223,6 +239,13 @@ export async function awardReward(
  */
 
 export const STONES_PER_SHARD = 5;
+
+/**
+ * A reversal row's subject type: the marker that ties a compensating entry
+ * to the award it undoes. Reversals never count as stones (see the shard
+ * counts) and are never reversible themselves.
+ */
+const REVERSAL_SUBJECT_TYPE = "reward_ledger";
 
 const QUARTZ = { ...QUARTZ_RULE, points: 10 };
 const SHARD = { key: "shard", label: "Shard", points: 0 };
@@ -665,7 +688,7 @@ export async function shardState(auth: AuthContext): Promise<{ stones: number; c
   const { db } = await import("@/lib/db");
   const rows = await db.execute(sql`
     select
-      count(*) filter (where d.key <> ${SHARD.key})::int as stones,
+      count(*) filter (where d.key <> ${SHARD.key} and l.subject_type is distinct from ${REVERSAL_SUBJECT_TYPE})::int as stones,
       count(*) filter (where d.key = ${SHARD.key})::int as claimed
     from reward_ledger l
     join reward_definitions d on d.id = l.reward_definition_id
@@ -685,9 +708,13 @@ export async function claimShard(auth: AuthContext) {
     });
     if (!definition) throw new ConflictError("The shard definition could not be created.");
 
+    // The claim key `shard-claim:<n>` is workspace-scoped: five stones
+    // anywhere in the workspace fuse into the next shard, and the unique
+    // index (workspace, key) - not the per-user one - serializes two
+    // members racing to claim the same one.
     const rows = await tx.execute(sql`
       select
-        count(*) filter (where d.key <> ${SHARD.key})::int as stones,
+        count(*) filter (where d.key <> ${SHARD.key} and l.subject_type is distinct from ${REVERSAL_SUBJECT_TYPE})::int as stones,
         count(*) filter (where d.key = ${SHARD.key})::int as claimed
       from reward_ledger l
       join reward_definitions d on d.id = l.reward_definition_id
@@ -730,5 +757,66 @@ export async function claimShard(auth: AuthContext) {
       if (isUniqueViolation(cause)) throw new ConflictError("That shard was already claimed.");
       throw cause;
     }
+  });
+}
+
+/*
+ * Spec §6: the guarded, system-only way a reward un-happens. The ledger is
+ * append-only, so a reversed award is a compensating negative adjustment
+ * row that references the original - never a delete or an update.
+ *
+ * System-only is structural: the function takes a workspace id, not an
+ * AuthContext, so no request surface can call it "as" a user, and the audit
+ * row records actorKind "system". The guards refuse to reverse a reversal
+ * (no chains), an entry with no user, or an entry carrying no points, and
+ * the workspace-unique key `reversal:<entryId>` means exactly one negative
+ * row can ever exist per original - a raced second reversal is a conflict,
+ * not a second debit.
+ */
+export async function reverseLedgerEntry(workspaceId: string, input: { originalEntryId: string; reason: string }) {
+  return withTransaction(async (tx) => {
+    const [original] = await tx
+      .select()
+      .from(rewardLedger)
+      .where(and(eq(rewardLedger.workspaceId, workspaceId), eq(rewardLedger.id, input.originalEntryId)))
+      .limit(1);
+    if (!original) throw new ConflictError("No such ledger entry in this workspace.");
+    if (original.subjectType === REVERSAL_SUBJECT_TYPE) {
+      throw new ConflictError("This entry is itself a reversal - reversals are not reversible.");
+    }
+    if (original.userId === null) throw new ConflictError("This entry has no user to reverse against.");
+    if (original.points <= 0) throw new ConflictError("This entry carries no points to reverse.");
+
+    const [reversal] = await tx
+      .insert(rewardLedger)
+      .values({
+        workspaceId,
+        rewardDefinitionId: original.rewardDefinitionId,
+        userId: original.userId,
+        reason: "adjustment",
+        subjectType: REVERSAL_SUBJECT_TYPE,
+        subjectId: original.id,
+        note: input.reason,
+        points: -original.points,
+        idempotencyKey: `reversal:${original.id}`,
+      })
+      .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+      .returning();
+    if (!reversal) throw new ConflictError("This entry was already reversed.");
+
+    const auditAuth: SystemAuditContext = { workspaceId, userId: null };
+    await recordAudit(
+      auditAuth,
+      {
+        action: "reward.reversed",
+        subjectType: "reward_ledger",
+        subjectId: reversal.id,
+        summary: `Reward reversed: ${reversal.points} pts (${input.reason})`,
+        metadata: { originalEntryId: original.id, originalPoints: original.points },
+        actorKind: "system",
+      },
+      tx,
+    );
+    return reversal;
   });
 }
