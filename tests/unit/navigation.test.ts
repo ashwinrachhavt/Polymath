@@ -98,7 +98,7 @@ describe("navigation", () => {
    * keep their donor labels, only the rail governs.
    */
 
-  it("rails exactly the nineteen destinations in order", () => {
+  it("rails exactly the twenty destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
@@ -123,6 +123,7 @@ describe("navigation", () => {
       "Connectors",
       "Day",
       "Shut down",
+      "Supervision",
       "Reviews",
       "Activity",
       "Spending",

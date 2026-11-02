@@ -9,7 +9,15 @@
  */
 import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { ticketRuns, workEffects, workOutboxReceipts, workSubscriptions, workThreads, workTickets } from "./schema";
+import {
+  ticketRuns,
+  workDecisions,
+  workEffects,
+  workOutboxReceipts,
+  workSubscriptions,
+  workThreads,
+  workTickets,
+} from "./schema";
 
 /** WorkThreads with Triggers queued for Eval or an Eval in progress. */
 export function activeThreads(db: PostgresJsDatabase, workspaceId: string) {
@@ -87,6 +95,31 @@ export function attentionEffects(db: PostgresJsDatabase, workspaceId: string) {
     .select({ id: workEffects.id, kind: workEffects.kind, key: workEffects.key, lastError: workEffects.lastError })
     .from(workEffects)
     .where(and(eq(workEffects.workspaceId, workspaceId), eq(workEffects.needsAttention, true)));
+}
+
+/**
+ * Unavailable Decisions nobody dismissed: the panel overview's "the eval
+ * could not decide" list. A person dismisses one through the Engine, which
+ * is the sole writer of domain state.
+ */
+export function unavailableDecisions(db: PostgresJsDatabase, workspaceId: string) {
+  return db
+    .select({
+      id: workDecisions.id,
+      threadKey: workDecisions.threadKey,
+      triggerIds: workDecisions.triggerIds,
+      at: workDecisions.at,
+      reason: workDecisions.reason,
+    })
+    .from(workDecisions)
+    .where(
+      and(
+        eq(workDecisions.workspaceId, workspaceId),
+        eq(workDecisions.kind, "unavailable"),
+        eq(workDecisions.dismissed, false),
+      ),
+    )
+    .orderBy(desc(workDecisions.seq));
 }
 
 /** Receipts still waiting to go out, in insertion order — per-conversation order rides on the global one. */

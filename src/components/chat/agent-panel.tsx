@@ -23,8 +23,8 @@ export type AgentPanelData = {
   tools: { id: string; name: string; description: string | null }[];
 };
 
-export function AgentPanel({ agent }: { agent: AgentPanelData }) {
-  const [open, setOpen] = useState(false);
+export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelData; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [openTool, setOpenTool] = useState<string | null>(null);
 
   return (
@@ -37,9 +37,7 @@ export function AgentPanel({ agent }: { agent: AgentPanelData }) {
       >
         <Bot aria-hidden className="size-3.5" />
         <span className="truncate">{agent.name}</span>
-        {agent.model ? (
-          <span className="readout shrink-0 text-[11px] opacity-80">{agent.model}</span>
-        ) : null}
+        {agent.model ? <span className="readout shrink-0 text-[11px] opacity-80">{agent.model}</span> : null}
         <ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
 
@@ -54,9 +52,7 @@ export function AgentPanel({ agent }: { agent: AgentPanelData }) {
 
           {agent.tools.length > 0 ? (
             <div className="flex flex-col gap-1">
-              <p className="text-muted-foreground text-[11px] font-medium">
-                Tools · {agent.tools.length}
-              </p>
+              <p className="text-muted-foreground text-[11px] font-medium">Tools · {agent.tools.length}</p>
               <ul className="flex flex-col">
                 {agent.tools.map((tool) => {
                   const expanded = openTool === tool.id;
@@ -75,7 +71,10 @@ export function AgentPanel({ agent }: { agent: AgentPanelData }) {
                         {tool.description ? (
                           <ChevronDown
                             aria-hidden
-                            className={cn("text-muted-foreground size-3 shrink-0 transition-transform", expanded && "rotate-180")}
+                            className={cn(
+                              "text-muted-foreground size-3 shrink-0 transition-transform",
+                              expanded && "rotate-180",
+                            )}
                           />
                         ) : null}
                       </button>
