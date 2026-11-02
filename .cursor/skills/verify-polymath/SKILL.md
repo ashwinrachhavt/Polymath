@@ -1,13 +1,13 @@
 ---
 name: verify-polymath
-description: Verify Polymath end to end. Launch the Next.js dev server against the sandbox Postgres, drive user-facing features with agent-browser, and capture proof. Use before declaring UI work done, to reproduce a defect on the real surface, or to gather evidence for a visual change.
+description: Verify Polymath end to end. Launch the Next.js dev server against the sandbox Postgres, drive user-facing features with the repo's own Playwright harness, and capture proof. Use before declaring UI work done, to reproduce a defect on the real surface, or to gather evidence for a visual change.
 ---
 
 # Verify Polymath
 
-Polymath is a Next.js app (App Router, React 19, Drizzle over Postgres). A signed-in user lands on the Assistant conversation at `/polymath`. This skill launches the app in this sandbox, drives it with agent-browser, and leaves evidence.
+Polymath is a Next.js app (App Router, React 19, Drizzle over Postgres). A signed-in user lands on the Assistant conversation at `/polymath`. This skill launches the app in this sandbox, drives it with the repo's own Playwright, and leaves evidence.
 
-It ships no scripts on purpose. State seeding goes through the repo's own e2e helpers, and every journey in `features/` names the spec that owns it in CI.
+It ships exactly one script: the drive block in Drive. State seeding goes through the repo's own e2e helpers, and every journey in `features/` names the spec that owns it in CI.
 
 ## Launch
 
@@ -58,13 +58,18 @@ Launch is done when the app is reachable, signed in, and past the first-run gate
    SQL
    ```
 
-5. Start the server in its own tmux session:
+5. Start the server in its own tmux session. The runtime must be Node 24 or newer. `next.config.ts` wraps the app in `withEve`, which unconditionally spawns an Eve dev server per agent, and Eve exits on older Node with `eve requires Node.js >=24` — taking the whole launch with it. `pnpm exec next dev` does not avoid this: it loads the same config. This sandbox ships Node 20 on `PATH`, so install a local Node 24 once and prefix it:
 
    ```sh
-   tmux new-session -d -s polymath-dev 'pnpm exec next dev'
+   node --version   # printed v20.20.2 here; the repo needs v24 or newer
+   mkdir -p /home/user/work/tools
+   curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz -o /tmp/node24.tar.xz
+   tar -xJf /tmp/node24.tar.xz -C /home/user/work/tools
+   tmux new-session -d -s polymath-dev \
+     'PATH=/home/user/work/tools/node-v24.22.2-linux-x64/bin:$PATH pnpm dev'
    ```
 
-   `pnpm dev` wraps `next dev` and also spawns the Eve bridge child. Eve needs Node 24 or newer and this sandbox runs Node 20, so the child exits and takes `pnpm dev` with it (`eve requires Node.js >=24`). `pnpm exec next dev` starts the app alone, which is what the UI journeys need. Journeys that call the Eve bridge (`POST /api/v1/runs`) need a Node 24 shell running `pnpm dev`. The first request to a route pays its compile, so give the readiness check time.
+   Under Node 24 the launch boots Next plus both Eve dev servers; their `server listening at http://127.0.0.1:…` lines in the tmux pane are the bridge config working. The first request to a route pays its compile, so give the readiness check time.
 
 6. Poll for readiness:
 
@@ -98,20 +103,28 @@ Read the results:
 
 ## Drive
 
-Drive the app the way a user does, through agent-browser (preinstalled on this sandbox):
+Drive the app the way a user does, with the repo's own Playwright (`playwright` and its Chromium ship for `tests/e2e`). Write the script under `/home/user/work/`, not in the checkout, and resolve the repo's Playwright against the repo's package.json:
 
-```sh
-agent-browser open http://localhost:3000/polymath
-agent-browser set viewport 1440 900 2
-agent-browser snapshot -i
+```js
+import { createRequire } from "node:module";
+const { chromium } = createRequire("/home/user/work/Polymath/package.json")("playwright");
+
+const RUN_ID = process.argv[2];
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await page.goto(`http://localhost:3000/polymath/${RUN_ID}`, { waitUntil: "load" });
+await page.getByText("<objective>", { exact: false }).first().waitFor({ timeout: 20000 });
+console.log((await page.locator("body").innerText()).includes("This conversation has no messages yet."));
+await page.screenshot({ path: "/home/user/work/evidence/verify-polymath/tc-1-detail.png" });
+await browser.close();
 ```
 
-Every interaction follows open, snapshot, act, snapshot, verify. Re-run snapshot after each navigation; refs expire.
+Run it from the repo root so module resolution finds the repo: `node /home/user/work/drive.mjs <runId>`. Assert on rendered text a user reads, and look at the captures before calling anything verified.
 
 Stable handles, taken from `tests/e2e` (the suite that owns these journeys in CI):
 
 - `#content` is the workspace content main. Scope assertions to `page.locator("#content").first()`; in dev the streamed subtree can be mounted twice.
-- Assistant home: `#content h1` reads "What would you like to work on?". The composer is a textbox named "Start a conversation", placeholder "Ask anything or describe a task…".
+- Assistant home: `#content h1` reads "What would you like to work on?". The composer is a textbox named "Start a conversation", placeholder "Ask anything or describe a task…". History rows sit under "YOUR CONVERSATIONS", bucketed by day (history.ts), and the row title is `displayTitle(stripMentionContext(run.objective))` — the objective a seed inserts is the text the row shows.
 - Conversation detail: `#content h1` is the objective. Region "Conversation". An empty run reads "This conversation has no messages yet.".
 - History rows carry no status words. Reviews owns the waiting-on-you vocabulary; the conversation screens never show "Running", "Succeeded", or "Needs your reply".
 - `/polymath/*` screens are headerless. There is no "Search workspace" trigger there, so never wait on one.
@@ -127,6 +140,7 @@ Capture to `/home/user/work/evidence/verify-polymath/`. Create the directory bef
 - Name captures `tc-N-<what>.png`. One result capture per verified behavior, or a before and after pair when the visual change is the point.
 - Record a short WebM only for an interaction worth watching.
 - Verify side effects beside the screen: the run id in the URL matches the seeded row, a created note survives a reload, a deleted row is gone from `agent_runs`.
+- The drive script's JSON line and exit code are not the verdict. Look at the captures (view the PNGs) before calling a behavior proven.
 - Evidence survives cleanup by design. Cleanup deletes processes and seeded rows, never this directory.
 - Check captures for secrets before uploading them anywhere.
 
@@ -135,7 +149,7 @@ Capture to `/home/user/work/evidence/verify-polymath/`. Create the directory bef
 Kill only what you started.
 
 - Server: `tmux kill-session -t polymath-dev`, then confirm the port is free (`ss -ltnp | grep :3000` prints nothing).
-- Seeded rows: delete by the ids you inserted. If you used `seedRun`, its `removeSeededRuns()` is the pattern. Never truncate `polymath_qa`; it holds the shared QA data.
+- Seeded rows: delete by the ids you inserted. A bare seeded run deletes directly; ten tables hold `agent_runs` foreign keys (steps, events, tool calls, reviews…), so a run that accumulated model output needs its children deleted first. If you used `seedRun`, its `removeSeededRuns()` is the pattern. Never truncate `polymath_qa`; it holds the shared QA data.
 - Scratch databases: drop only ones you created for a journey.
 - After cleanup, run `ls /home/user/work/evidence/verify-polymath/` and confirm the captures are still there. A cleanup that eats the proof failed.
 

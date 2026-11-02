@@ -12,13 +12,13 @@ What it is: the home of the product. A user types an objective, the run behind i
 
 Sign in and you are already here: the root redirects to `/polymath`. History rows link to `/polymath/<run id>`. The rail's "Polymath" entry returns to the home.
 
-## Driving it with agent-browser
+## Driving it with Playwright
 
-The deterministic path needs no model. It mirrors `tests/e2e/smoke.spec.ts`, which owns this surface in CI.
+Use the drive block in SKILL.md (the repo's Playwright, script outside the checkout). The deterministic path needs no model. It mirrors `tests/e2e/smoke.spec.ts`, which owns this surface in CI.
 
 1. Seed a conversation the way `tests/e2e/helpers/runs.ts` does: insert into `agent_runs` for the dev owner's workspace, state `waiting_approval` (the state the CI smoke test seeds, because it renders without a model), an objective that names the verification, and keep the returned id. Register it for deletion.
-2. Open `http://localhost:3000/polymath/<run id>`. Verify the h1 is the objective text, the "Conversation" region is visible, and it reads "This conversation has no messages yet.". A waiting run is live from the page's point of view, so the composer offers a follow-up and a stop.
-3. Open `http://localhost:3000/polymath`. Verify the h1, and that a history row named by the objective links to `/polymath/<run id>`.
+2. Open `http://localhost:3000/polymath/<run id>`. Verify the h1 is the objective text, the "Conversation" region is visible, and it reads "This conversation has no messages yet.". A waiting run reads its state as the badge "Working", and is live from the page's point of view, so the composer offers a follow-up ("Reply to continue…") and a stop control.
+3. Open `http://localhost:3000/polymath`. Verify the h1, and that a history row named by the objective (under "YOUR CONVERSATIONS", bucket "Today" for a fresh row) links to `/polymath/<run id>`.
 4. Capture both states to `/home/user/work/evidence/verify-polymath/`.
 
 The real user path (exercises the start flow, not the transcript) is typing into the composer or calling `POST /api/v1/runs`. The run starts, but its transcript will not progress without a model provider, so use it to verify the start contract, then move on.
