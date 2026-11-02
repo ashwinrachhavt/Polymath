@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/domains/identity/resolve", () => ({
   resolveAuthContext: vi.fn(async () => ({ userId: "u", workspaceId: "w", role: "owner" })),
@@ -33,16 +33,27 @@ vi.mock("@clerk/nextjs/server", () => ({
       if (userId?.startsWith("api_")) {
         return { isAuthenticated: true, id: "mch_good", tokenType: "api_key" };
       }
-      return userId
-        ? { isAuthenticated: true, userId }
-        : { isAuthenticated: false, userId: null };
+      return userId ? { isAuthenticated: true, userId } : { isAuthenticated: false, userId: null };
     }
     return { userId };
   }),
 }));
 
 let userId: string | undefined;
-import { authedHandler, getAuthContext, UnauthorizedError } from "@/lib/auth";
+
+// Shared-worker rule (isolate:false): a sibling file can evaluate @/lib/auth
+// first without this file's mocks, and the registry-cached instance binds the
+// real Clerk auth(), which trips server-only. Reset the registry and re-import
+// per test so the vi.mock factories above always wire the module under test.
+type AuthModule = typeof import("@/lib/auth");
+let authedHandler: AuthModule["authedHandler"];
+let getAuthContext: AuthModule["getAuthContext"];
+let UnauthorizedError: AuthModule["UnauthorizedError"];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ authedHandler, getAuthContext, UnauthorizedError } = await import("@/lib/auth"));
+});
 
 describe("auth guards", () => {
   it("authedHandler returns 401 problem+json when unauthenticated", async () => {
