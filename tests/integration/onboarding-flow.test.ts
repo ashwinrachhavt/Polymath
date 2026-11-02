@@ -20,13 +20,15 @@ const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let onboarding: typeof import("@/domains/agents/onboarding");
 let eventBridge: typeof import("@/domains/agents/event-bridge");
-let listRecentRuns: typeof import("@/domains/agents/queries")["listRecentRuns"];
+let commands: typeof import("@/domains/agents/commands");
+let listRecentRuns: (typeof import("@/domains/agents/queries"))["listRecentRuns"];
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   onboarding = await import("@/domains/agents/onboarding");
   eventBridge = await import("@/domains/agents/event-bridge");
+  commands = await import("@/domains/agents/commands");
   // Same lazy-import discipline: queries.ts opens @/lib/db at module load.
   listRecentRuns = (await import("@/domains/agents/queries")).listRecentRuns;
 });
@@ -77,12 +79,7 @@ suite("onboarding interview flow", () => {
     const [session] = await db
       .select()
       .from(onboardingSessions)
-      .where(
-        and(
-          eq(onboardingSessions.workspaceId, seeded.workspaceId),
-          isNull(onboardingSessions.archivedAt),
-        ),
-      )
+      .where(and(eq(onboardingSessions.workspaceId, seeded.workspaceId), isNull(onboardingSessions.archivedAt)))
       .limit(1);
     expect(session.status).toBe("in_progress");
 
@@ -119,7 +116,9 @@ suite("onboarding interview flow", () => {
     const runs = await db
       .select({ id: agentRuns.id })
       .from(agentRuns)
-      .where(and(eq(agentRuns.workspaceId, seeded.workspaceId), eq(agentRuns.objective, onboarding.ONBOARDING_OBJECTIVE)));
+      .where(
+        and(eq(agentRuns.workspaceId, seeded.workspaceId), eq(agentRuns.objective, onboarding.ONBOARDING_OBJECTIVE)),
+      );
     expect(runs).toHaveLength(1);
   });
 
@@ -213,7 +212,7 @@ suite("onboarding interview flow", () => {
     expect(audit.length).toBe(1);
   });
 
-  it("completeOnboarding sweeps failed interview runs, and the home list filter keeps machinery out", async () => {
+  it("completeOnboarding sweeps every non-completed interview run, and the home list filter keeps machinery out", async () => {
     const seeded = await seedWorkspace(db, `onb-gc-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
 
@@ -224,9 +223,14 @@ suite("onboarding interview flow", () => {
     await db.update(agentRuns).set({ state: "failed" }).where(eq(agentRuns.id, failedA.runId));
     const failedB = await onboarding.startOnboardingRun(auth, fakeDriver([]));
     await db.update(agentRuns).set({ state: "failed" }).where(eq(agentRuns.id, failedB.runId));
-    // A cancelled interview run is the interview's own record, not junk.
+    // A cancelled interview run is also non-completed machinery: its row
+    // still carries the raw script as its title, so the widened sweep
+    // discards it with the failed ones.
     const cancelled = await onboarding.startOnboardingRun(auth, fakeDriver([]));
     await db.update(agentRuns).set({ state: "cancelled" }).where(eq(agentRuns.id, cancelled.runId));
+    // A succeeded interview run is the interview's own record, not junk.
+    const succeeded = await onboarding.startOnboardingRun(auth, fakeDriver([]));
+    await db.update(agentRuns).set({ state: "succeeded" }).where(eq(agentRuns.id, succeeded.runId));
     // A failed run that is not onboarding must survive the sweep untouched.
     const [profile] = await db
       .select()
@@ -261,16 +265,17 @@ suite("onboarding interview flow", () => {
     // pointless — marked, not destroyed.
     expect(discardedById.get(failedA.runId)).not.toBeNull();
     expect(discardedById.get(failedB.runId)).not.toBeNull();
-    // Cancelled onboarding runs and unrelated runs stay, unmarked.
-    expect(discardedById.get(cancelled.runId)).toBeNull();
+    // Every non-completed interview is discarded — failed, stale, cancelled —
+    // while the succeeded interview and unrelated runs stay, unmarked.
+    expect(discardedById.get(failedA.runId)).not.toBeNull();
+    expect(discardedById.get(failedB.runId)).not.toBeNull();
+    expect(discardedById.get(cancelled.runId)).not.toBeNull();
+    expect(discardedById.get(succeeded.runId)).toBeNull();
     expect(discardedById.get(normalFailed.id)).toBeNull();
 
     // Discarding is not deleting: the failed runs' event history survives for
     // audit (the objective event the start seeded is still in run_events).
-    const failedAEvents = await db
-      .select({ count: count() })
-      .from(runEvents)
-      .where(eq(runEvents.runId, failedA.runId));
+    const failedAEvents = await db.select({ count: count() }).from(runEvents).where(eq(runEvents.runId, failedA.runId));
     expect(failedAEvents[0].count).toBeGreaterThan(0);
 
     // The other half of F4: the conversation-list filter keeps machinery off
@@ -279,11 +284,76 @@ suite("onboarding interview flow", () => {
     expect(home.map((run) => run.id)).toEqual([normalFailed.id]);
   });
 
+  it("a pre-#410 stale run — earlier script text, no marker — never reaches the home list, and completion retires it", async () => {
+    const seeded = await seedWorkspace(db, `onb-stale-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    await commands.ensureProfile(seeded.workspaceId, "polymath");
+    const [profile] = await db
+      .select()
+      .from(agentProfiles)
+      .where(and(eq(agentProfiles.workspaceId, seeded.workspaceId), eq(agentProfiles.name, "polymath")))
+      .limit(1);
+
+    // The orphan the live verification found (build 1b31ee5f): written before
+    // #410 renamed the default agent, so its objective is the earlier script
+    // revision's text — not today's constant — and it hung in a live state
+    // with no discarded_at (the marker did not exist yet).
+    const pre410Objective = onboarding.ONBOARDING_OBJECTIVE.replace('use "Polymath"', 'use "Alfred"');
+    expect(pre410Objective).not.toBe(onboarding.ONBOARDING_OBJECTIVE);
+    const [stale] = await db
+      .insert(agentRuns)
+      .values({
+        workspaceId: seeded.workspaceId,
+        agentProfileId: profile.id,
+        objective: pre410Objective,
+        state: "running",
+        policySnapshot: {},
+        model: "claude-sonnet-4-6",
+      })
+      .returning({ id: agentRuns.id });
+    // A normal conversation on the same surface keeps rendering throughout.
+    const [normal] = await db
+      .insert(agentRuns)
+      .values({
+        workspaceId: seeded.workspaceId,
+        agentProfileId: profile.id,
+        objective: "Summarize the Q3 notes",
+        state: "succeeded",
+        policySnapshot: {},
+        model: "claude-sonnet-4-6",
+      })
+      .returning({ id: agentRuns.id });
+
+    // The home list excludes the stale run before any sweep has run: the
+    // machinery prefix holds across script revisions, no marker required.
+    let home = await listRecentRuns(seeded.workspaceId, 50, { excludeOnboarding: true });
+    expect(home.map((run) => run.id)).toEqual([normal.id]);
+
+    // The completion sweep finishes the job: the stale run is marked — not
+    // destroyed — whatever its age or state, and the list stays clean.
+    await onboarding.completeOnboarding(auth, {
+      agentName: "Jarvis",
+      role: "Software engineer",
+      tools: [],
+      priorities: [],
+    });
+    const [staleAfter] = await db
+      .select({ discardedAt: agentRuns.discardedAt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, stale.id));
+    expect(staleAfter.discardedAt).not.toBeNull();
+    home = await listRecentRuns(seeded.workspaceId, 50, { excludeOnboarding: true });
+    expect(home.map((run) => run.id)).toEqual([normal.id]);
+  });
+
   it("the expectedVersion guard rejects a confirm that raced another tab", async () => {
     const seeded = await seedWorkspace(db, `onb-race-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     await onboarding.startOnboardingRun(auth, fakeDriver([]));
-    const reading = await onboarding.readOnboardingRun(auth, (await onboarding.findLiveOnboardingRun(seeded.workspaceId))!.id);
+    const reading = await onboarding.readOnboardingRun(
+      auth,
+      (await onboarding.findLiveOnboardingRun(seeded.workspaceId))!.id,
+    );
 
     await expect(
       onboarding.completeOnboarding(auth, {
