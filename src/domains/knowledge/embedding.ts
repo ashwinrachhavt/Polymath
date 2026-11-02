@@ -1,4 +1,6 @@
 import { and, count, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { enqueueOutbox } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
 import {
   EMBEDDING_DIMENSIONS,
@@ -8,7 +10,7 @@ import {
 } from "@/integrations/embeddings/provider";
 import { db } from "@/lib/db";
 import { materializeSemanticEdges } from "./relations";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { chunkText } from "./chunking";
 import { artifacts, artifactVersions, documentExtractions, embeddings } from "./schema";
 
@@ -26,6 +28,72 @@ import { artifacts, artifactVersions, documentExtractions, embeddings } from "./
  */
 
 export const EMBEDDING_OWNER_TYPE = "document_extraction";
+
+/*
+ * The retry order: a failed pass is not a dead end. The failure record and an
+ * outbox job commit together, and the dispatcher redelivers the job with
+ * backoff until the pass succeeds or the attempt ceiling dead-letters it.
+ * This is what turns the honest pending/failed counts (retrieval.ts) from a
+ * ledger of the dark into a queue that drains.
+ */
+
+export const EMBEDDING_RETRY_TOPIC = "embedding.retry_requested";
+
+export type EmbeddingRetryOwnerType = "artifact" | "document_extraction";
+
+/** Dedupe identity for a retry order: one live order per owner, version, and model. */
+export function embeddingRetryDispatchKey(
+  ownerType: EmbeddingRetryOwnerType,
+  ownerId: string,
+  versionToken: string | null,
+  modelToken: string,
+): string {
+  return `embedding.retry:${ownerType}:${ownerId}:${versionToken ?? "none"}:${modelToken}`;
+}
+
+const retryOwnerIdSchema = z.string().uuid();
+
+/**
+ * A payload the producer never wrote - or a non-uuid id, which would surface
+ * as a Postgres cast error instead of a clean not-found - is rejected here,
+ * so the handler fails the attempt loudly rather than completing a no-op.
+ */
+export function parseEmbeddingRetryPayload(
+  payload: unknown,
+): { ownerType: EmbeddingRetryOwnerType; ownerId: string } | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const raw = payload as { ownerType?: unknown; ownerId?: unknown };
+  if (raw.ownerType !== "artifact" && raw.ownerType !== "document_extraction") return null;
+  const parsed = retryOwnerIdSchema.safeParse(raw.ownerId);
+  if (!parsed.success) return null;
+  return { ownerType: raw.ownerType, ownerId: parsed.data };
+}
+
+/**
+ * Never throws past the recorded failure: the failure is already durable on
+ * the row, so a lost order only delays the heal to the next save or sweep.
+ */
+async function enqueueRetryOrderTx(
+  tx: TxDrizzle,
+  workspaceId: string,
+  work: { ownerType: EmbeddingRetryOwnerType; ownerId: string; versionToken: string | null; modelToken: string },
+): Promise<void> {
+  try {
+    await enqueueOutbox(
+      tx,
+      { workspaceId },
+      {
+        topic: EMBEDDING_RETRY_TOPIC,
+        payload: { ownerType: work.ownerType, ownerId: work.ownerId },
+        dispatchKey: embeddingRetryDispatchKey(work.ownerType, work.ownerId, work.versionToken, work.modelToken),
+      },
+    );
+  } catch (cause) {
+    console.error(
+      `embedding retry order failed for ${work.ownerType} ${work.ownerId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+}
 
 export type EmbedOutcome =
   | { status: "succeeded"; chunks: number }
@@ -60,26 +128,46 @@ export async function embedExtraction(
   if (!text.trim()) return { status: "skipped", reason: "no_text" };
 
   const record = (error: string) =>
-    db.update(documentExtractions)
+    db
+      .update(documentExtractions)
       .set({ embedError: error })
       .where(and(eq(documentExtractions.id, extraction.id), eq(documentExtractions.workspaceId, auth.workspaceId)));
 
-  let provider: EmbeddingProvider;
+  // Same shape as the artifact pass below: the provider resolves before any
+  // work because its model defines coverage (search reads only same-model
+  // rows), and an unconfigured provider is not yet a failure.
+  let provider: EmbeddingProvider | null = null;
+  let setupError: string | null = null;
   try {
     provider = input.provider ?? embeddingProvider();
   } catch (cause) {
-    const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : "The embedding provider could not be set up.";
+    setupError = cause instanceof EmbeddingUnconfiguredError ? SAFE_UNCONFIGURED : SAFE_SETUP;
+  }
+
+  // Unlike the artifact pass there is no covered early return here: an
+  // explicit re-embed always re-runs the provider (an operator retry or an
+  // enrichment pass re-chunks on purpose), the swap below is idempotent, and
+  // a failed pass leaves the previous chunks in place.
+  if (provider === null) {
+    // Unconfigured is a config state, not transient work: the reason is
+    // recorded for the UI, but no retry order is cut - retrying cannot set
+    // a key. The next save or a sweep picks the row up once one is set.
+    const error = setupError ?? SAFE_SETUP;
     await record(error);
     return { status: "failed", error };
   }
 
   const chunks = chunkText(text, extraction.spans as { page: number; start: number; end: number }[]);
   let vectors: number[][];
+  const model = provider.model;
   try {
     vectors = [];
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE).map((c) => c.text);
-      const out = await withDeadline(provider.embed(batch, { signal: AbortSignal.timeout(EMBED_BATCH_TIMEOUT_MS) }), EMBED_BATCH_TIMEOUT_MS);
+      const out = await withDeadline(
+        provider.embed(batch, { signal: AbortSignal.timeout(EMBED_BATCH_TIMEOUT_MS) }),
+        EMBED_BATCH_TIMEOUT_MS,
+      );
       if (out.length !== batch.length) throw new Error("The provider returned the wrong number of vectors.");
       vectors.push(...out);
     }
@@ -89,19 +177,42 @@ export async function embedExtraction(
   } catch (cause) {
     // Provider text can carry request details; keep the durable message generic.
     logProviderFailure("embedding failed for extraction", extraction.id, cause);
-    const error = "Embedding could not complete. Retry to try again.";
-    await record(error);
-    return { status: "failed", error };
+    await record(SAFE_FAILED);
+    // The retry order rides its own transaction (this failure was recorded
+    // outside one) and commits with the failure it answers: a provider outage
+    // that outlives this process still ends in a re-drive.
+    try {
+      await withTransaction((tx) =>
+        enqueueRetryOrderTx(tx, auth.workspaceId, {
+          ownerType: "document_extraction",
+          ownerId: extraction.id,
+          versionToken: extraction.id,
+          modelToken: model,
+        }),
+      );
+    } catch (enqueueCause) {
+      // enqueueRetryOrderTx never throws for the enqueue itself; only the
+      // transaction envelope can fail here, and the failure is already
+      // recorded - a lost order only delays the heal to the next save or sweep.
+      console.error(
+        `embedding retry order failed for document_extraction ${extraction.id}: ${enqueueCause instanceof Error ? enqueueCause.message : String(enqueueCause)}`,
+      );
+    }
+    return { status: "failed", error: SAFE_FAILED };
   }
 
   await withTransaction(async (tx) => {
     // One replace at a time per extraction; a concurrent pass waits, then replaces again.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${extraction.id}, 0))`);
-    await tx.delete(embeddings).where(and(
-      eq(embeddings.workspaceId, auth.workspaceId),
-      eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
-      eq(embeddings.ownerId, extraction.id),
-    ));
+    await tx
+      .delete(embeddings)
+      .where(
+        and(
+          eq(embeddings.workspaceId, auth.workspaceId),
+          eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+          eq(embeddings.ownerId, extraction.id),
+        ),
+      );
     for (let i = 0; i < chunks.length; i += 100) {
       await tx.insert(embeddings).values(
         chunks.slice(i, i + 100).map((chunk, offset) => ({
@@ -119,7 +230,8 @@ export async function embedExtraction(
         })),
       );
     }
-    await tx.update(documentExtractions)
+    await tx
+      .update(documentExtractions)
       .set({ embeddedAt: new Date(), embedModel: provider.model, embedError: null })
       .where(and(eq(documentExtractions.id, extraction.id), eq(documentExtractions.workspaceId, auth.workspaceId)));
   });
@@ -207,12 +319,16 @@ export async function embedArtifact(
     // double-click or a retry racing the commit-path embed joins here instead
     // of paying for a second metered batch. Try-lock, never queue - the loser
     // is told a pass is already running.
-    const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${input.artifactId}, 0)) as got`)) as unknown as { got: boolean }[];
+    const [lock] = (await tx.execute(
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${input.artifactId}, 0)) as got`,
+    )) as unknown as { got: boolean }[];
     if (!lock.got) return { status: "skipped", reason: "busy" };
     // A provider that hangs AND ignores the abort signal would otherwise pin
     // this transaction, its advisory lock, and the pool slot forever.
     // SET rejects bound parameters; the value is a module constant, inlined as a checked integer.
-    await tx.execute(sql`set local idle_in_transaction_session_timeout = ${sql.raw(String(EMBED_TX_IDLE_TIMEOUT_MS | 0))}`);
+    await tx.execute(
+      sql`set local idle_in_transaction_session_timeout = ${sql.raw(String(EMBED_TX_IDLE_TIMEOUT_MS | 0))}`,
+    );
 
     const [row] = await tx
       .select({
@@ -229,7 +345,8 @@ export async function embedArtifact(
     if (!text.trim()) return { status: "skipped", reason: "no_text" };
 
     const record = (error: string | null) =>
-      tx.update(artifacts)
+      tx
+        .update(artifacts)
         .set({ embedError: error })
         .where(and(eq(artifacts.id, row.id), eq(artifacts.workspaceId, auth.workspaceId)));
 
@@ -239,44 +356,75 @@ export async function embedArtifact(
     // guarded write that lands on a moved version reports the race instead.
     // (Success already has the same guard below, before vectors are written.)
     const recordFailureIfCurrent = async (error: string): Promise<boolean> => {
-      const written = await tx.update(artifacts)
+      const written = await tx
+        .update(artifacts)
         .set({ embedError: error })
-        .where(and(
-          eq(artifacts.id, row.id),
-          eq(artifacts.workspaceId, auth.workspaceId),
-          eq(artifacts.currentVersionId, row.currentVersionId!),
-        ))
+        .where(
+          and(
+            eq(artifacts.id, row.id),
+            eq(artifacts.workspaceId, auth.workspaceId),
+            eq(artifacts.currentVersionId, row.currentVersionId!),
+          ),
+        )
         .returning({ id: artifacts.id });
       return written.length > 0;
     };
+
+    // The provider resolves before the coverage check because its model is
+    // what makes vectors count: search reads only same-model rows (the guard
+    // in search.ts), so an index written by a since-retired model is dark and
+    // must not read as coverage. An unconfigured provider is not yet a
+    // failure - a version that holds vectors under any model stays indexed.
+    let provider: EmbeddingProvider | null = null;
+    let setupError: string | null = null;
+    try {
+      provider = input.provider ?? embeddingProvider();
+    } catch (cause) {
+      setupError = cause instanceof EmbeddingUnconfiguredError ? SAFE_UNCONFIGURED : SAFE_SETUP;
+    }
 
     // A twin pass that finished first already indexed this version: join its
     // result, clear any stale recorded failure, and skip the metered call.
     const [existing] = await tx
       .select({ n: count() })
       .from(embeddings)
-      .where(and(
-        eq(embeddings.workspaceId, auth.workspaceId),
-        eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
-        eq(embeddings.ownerId, row.id),
-        eq(embeddings.sourceVersionId, row.currentVersionId),
-      ));
+      .where(
+        and(
+          eq(embeddings.workspaceId, auth.workspaceId),
+          eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+          eq(embeddings.ownerId, row.id),
+          eq(embeddings.sourceVersionId, row.currentVersionId),
+          // The same-model guard: vectors another model wrote are never read by
+          // search, so they do not satisfy coverage for this pass. Without a
+          // provider no model is current, and the join keeps its any-model shape.
+          provider ? eq(embeddings.model, provider.model) : undefined,
+        ),
+      );
     if (existing.n > 0) {
       await record(null);
       return { status: "succeeded", chunks: existing.n };
     }
 
-    let provider: EmbeddingProvider;
-    try {
-      provider = input.provider ?? embeddingProvider();
-    } catch (cause) {
-      const error = cause instanceof EmbeddingUnconfiguredError ? cause.message : SAFE_SETUP;
+    if (provider === null) {
+      // Unconfigured is a config state, not transient work: the reason is
+      // recorded for the UI, but no retry order is cut - retrying cannot set
+      // a key. The next save or a sweep picks the row up once one is set.
+      const error = setupError ?? SAFE_SETUP;
       if (!(await recordFailureIfCurrent(error))) return { status: "skipped", reason: "edited" };
+      if (error !== SAFE_UNCONFIGURED) {
+        await enqueueRetryOrderTx(tx, auth.workspaceId, {
+          ownerType: "artifact",
+          ownerId: row.id,
+          versionToken: row.currentVersionId,
+          modelToken: "none",
+        });
+      }
       return { status: "failed", error };
     }
 
     const chunks = chunkText(text);
     let vectors: number[][];
+    const model = provider.model;
     try {
       vectors = [];
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
@@ -292,6 +440,16 @@ export async function embedArtifact(
     } catch (cause) {
       logProviderFailure("embedding failed for artifact", row.id, cause);
       if (!(await recordFailureIfCurrent(SAFE_FAILED))) return { status: "skipped", reason: "edited" };
+      // The order commits with the failure it answers: a provider outage that
+      // outlives this process still ends in a re-drive, not a permanently
+      // dark card. The retry handler re-enters this pass; its order then
+      // dedupes against the row already in flight.
+      await enqueueRetryOrderTx(tx, auth.workspaceId, {
+        ownerType: "artifact",
+        ownerId: row.id,
+        versionToken: row.currentVersionId,
+        modelToken: model,
+      });
       return { status: "failed", error: SAFE_FAILED };
     }
 
@@ -306,11 +464,15 @@ export async function embedArtifact(
       .limit(1);
     if (fresh?.currentVersionId !== row.currentVersionId) return { status: "skipped", reason: "edited" };
 
-    await tx.delete(embeddings).where(and(
-      eq(embeddings.workspaceId, auth.workspaceId),
-      eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
-      eq(embeddings.ownerId, row.id),
-    ));
+    await tx
+      .delete(embeddings)
+      .where(
+        and(
+          eq(embeddings.workspaceId, auth.workspaceId),
+          eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+          eq(embeddings.ownerId, row.id),
+        ),
+      );
     for (let i = 0; i < chunks.length; i += 100) {
       await tx.insert(embeddings).values(
         chunks.slice(i, i + 100).map((chunk, offset) => ({
@@ -335,7 +497,9 @@ export async function embedArtifact(
     try {
       await materializeSemanticEdges(auth, input.artifactId);
     } catch (cause) {
-      console.error(`semantic edges failed for artifact ${input.artifactId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      console.error(
+        `semantic edges failed for artifact ${input.artifactId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
     }
   }
   return outcome;

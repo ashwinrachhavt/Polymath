@@ -2,7 +2,19 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileText, Inbox, Keyboard, ListTodo, Mic, Paperclip, Plus, Search, Square, Users } from "lucide-react";
+import {
+  ArrowRight,
+  FileText,
+  Inbox,
+  Keyboard,
+  ListTodo,
+  Mic,
+  Paperclip,
+  Plus,
+  Search,
+  Square,
+  Users,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +24,24 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ShortcutsDialog } from "./shortcuts-dialog";
-import { quickCapture, refreshInbox, searchWorkspace, type WorkspaceRecord } from "./shell-actions";
+import { mergePaletteResults } from "./palette-merge";
+import {
+  quickCapture,
+  refreshInbox,
+  searchWorkspace,
+  searchWorkspaceKnowledge,
+  type WorkspaceKnowledgeResult,
+  type WorkspaceRecord,
+} from "./shell-actions";
 
 const subscribeToHydration = () => () => {};
 
 export function CommandLayer() {
-  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   const { notify } = useWorkspace();
   const router = useRouter();
   const [mode, setMode] = useState<"search" | "capture" | null>(null);
@@ -27,10 +51,17 @@ export function CommandLayer() {
   const [saveErrorId, setSaveErrorId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [records, setRecords] = useState<WorkspaceRecord[]>([]);
+  // The palette's second phase: knowledge cards the hybrid engine ranks by
+  // body text and meaning, streamed in behind the title matches.
+  const [knowledgeRecords, setKnowledgeRecords] = useState<WorkspaceRecord[]>([]);
+  const [meaningState, setMeaningState] = useState<WorkspaceKnowledgeResult["meaning"] | null>(null);
   const [searched, setSearched] = useState(false);
   const [selected, setSelected] = useState(0);
   const searchTrigger = useRef<HTMLButtonElement>(null);
   const captureTrigger = useRef<HTMLButtonElement>(null);
+  // One sequence id per debounce fire: only the newest query may write search
+  // state, whichever phase lands last.
+  const searchSeq = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const [filePending, setFilePending] = useState(false);
   // Voice notes record straight into the same dialog (ASH-314): one entry
@@ -44,6 +75,8 @@ export function CommandLayer() {
     returnTo.current = next;
     setQuery("");
     setSelected(0);
+    setKnowledgeRecords([]);
+    setMeaningState(null);
     setMode(next);
   }
 
@@ -52,46 +85,115 @@ export function CommandLayer() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         returnTo.current = "search";
-        setQuery(""); setSelected(0);
-        setMode((current) => current === "search" ? null : "search");
+        setQuery("");
+        setSelected(0);
+        setMode((current) => (current === "search" ? null : "search"));
       }
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "c") {
-        event.preventDefault(); returnTo.current = "capture"; setMode("capture");
+        event.preventDefault();
+        returnTo.current = "capture";
+        setMode("capture");
       }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const navigation = [...destinations, ...["command-center", "neuralflow", "polymath"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug))].map((destination) => ({
-    key: destination.href, label: destination.label,
-    context: destination.href.startsWith("/apps/") ? "Preview tool" : destination.group === "shared" ? "Shared workspace" : "Polymath",
-    icon: destination.icon, href: destination.href,
+  const navigation = [
+    ...destinations,
+    ...["command-center", "neuralflow", "polymath"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug)),
+  ].map((destination) => ({
+    key: destination.href,
+    label: destination.label,
+    context: destination.href.startsWith("/apps/")
+      ? "Preview tool"
+      : destination.group === "shared"
+        ? "Shared workspace"
+        : "Polymath",
+    icon: destination.icon,
+    href: destination.href,
   }));
   // Canonical record search: debounced server query over saved tasks, notes,
-  // people, and inbox items - the rows every other surface reads.
+  // people, and inbox items - the rows every other surface reads. The second
+  // phase streams in the knowledge cards behind them (the notes page's
+  // pattern: keyword renders first, the fused ranking arrives once the query
+  // has been embedded). No provider key means the second phase answers
+  // keyword-only and says so; the palette never errors for want of a key.
   const search = query.trim();
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.length < 2) { setRecords([]); setSearched(false); return; }
+      if (search.length < 2) {
+        setRecords([]);
+        setKnowledgeRecords([]);
+        setMeaningState(null);
+        setSearched(false);
+        return;
+      }
+      const seq = ++searchSeq.current;
       void searchWorkspace(search)
-        .then((found) => { setRecords(found); setSearched(true); })
-        .catch(() => { setRecords([]); setSearched(true); });
+        .then((found) => {
+          if (searchSeq.current === seq) {
+            setRecords(found);
+            setSearched(true);
+          }
+        })
+        .catch(() => {
+          if (searchSeq.current === seq) {
+            setRecords([]);
+            setSearched(true);
+          }
+        });
+      void searchWorkspaceKnowledge(search)
+        .then((found) => {
+          if (searchSeq.current === seq) {
+            setKnowledgeRecords(found.records);
+            setMeaningState(found.meaning);
+          }
+        })
+        .catch(() => {
+          if (searchSeq.current === seq) {
+            setKnowledgeRecords([]);
+            setMeaningState(null);
+          }
+        });
     }, 250);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const recordResults = records.map((record) => ({
-    key: record.id, label: record.label, context: record.context,
-    icon: record.kind === "task" ? ListTodo : record.kind === "contact" ? Users : record.kind === "inbox" ? Inbox : FileText,
+  const toRow = (record: WorkspaceRecord) => ({
+    key: record.id,
+    label: record.label,
+    context: record.context,
+    icon:
+      record.kind === "task"
+        ? ListTodo
+        : record.kind === "contact"
+          ? Users
+          : record.kind === "inbox"
+            ? Inbox
+            : FileText,
     href: record.href,
-  }));
-  const navMatches = search ? navigation.filter((result) => `${result.label} ${result.context}`.toLowerCase().includes(search.toLowerCase())) : navigation;
+  });
+  // Title matches keep their tiered order; knowledge cards the meaning leg
+  // surfaced append in fused rank, minus anything the titles already found.
+  const recordResults = mergePaletteResults(records.map(toRow), knowledgeRecords.map(toRow));
+  const navMatches = search
+    ? navigation.filter((result) => `${result.label} ${result.context}`.toLowerCase().includes(search.toLowerCase()))
+    : navigation;
   const matches = search ? [...recordResults, ...navMatches] : navigation;
   const results = matches.slice(0, 20);
   const active = Math.min(selected, Math.max(0, results.length - 1));
+  // Degraded-mode honesty (the notes page's wording): the meaning leg could
+  // not run, so what is showing is keyword matches only.
+  const meaningNote =
+    meaningState && meaningState !== "ok" && matches.length > 0
+      ? " Showing keyword matches only. Meaning search is not available right now."
+      : "";
 
-  function navigate(href: string) { setMode(null); router.push(href); }
+  function navigate(href: string) {
+    setMode(null);
+    router.push(href);
+  }
   // Files and screenshots capture through the multipart API route (server
   // actions cap below the 4.5 MB function ceiling), then the cached inbox is
   // refreshed so the new row is there when the dialog lands on it.
@@ -100,24 +202,37 @@ export function CommandLayer() {
     setSaveError("");
     setSaveErrorId(null);
     // Matches the API route's deploy-supported cap; the message shows BEFORE submit.
-    if (file.size > MAX_UPLOAD_BYTES) { setSaveError(`Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this app accepts.`); return; }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setSaveError(`Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this app accepts.`);
+      return;
+    }
     setFilePending(true);
     const form = new FormData();
     form.set("file", file);
-    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+    void fetch("/api/v1/captures/file", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+      body: form,
+    })
       .then(async (res) => {
         if (!res.ok) {
           // A platform-level 413 answers with an HTML error page, not a
           // problem body - name the limit either way, and never auto-retry.
-          if (res.status === 413) { setSaveError(`That file is over the ${MAX_UPLOAD_LABEL} limit.`); return; }
+          if (res.status === 413) {
+            setSaveError(`That file is over the ${MAX_UPLOAD_LABEL} limit.`);
+            return;
+          }
           const problem = (await res.json().catch(() => null)) as { title?: string } | null;
           setSaveError(problem?.title ?? "Could not capture the file. Try again.");
           return;
         }
         const created = (await res.json()) as { captureId: string; quarantined: boolean };
         await refreshInbox();
-        notify(created.quarantined ? `Captured ${file.name} - type not recognized, stored as-is.` : `Captured ${file.name}.`);
-        setText(""); setMode(null);
+        notify(
+          created.quarantined ? `Captured ${file.name} - type not recognized, stored as-is.` : `Captured ${file.name}.`,
+        );
+        setText("");
+        setMode(null);
         navigate(`/command-center/inbox?id=${created.captureId}`);
       })
       .catch(() => setSaveError("Could not capture the file. Try again."))
@@ -131,9 +246,14 @@ export function CommandLayer() {
     setPending(true);
     void quickCapture(text, crypto.randomUUID())
       .then((result) => {
-        if (!result.ok) { setSaveError(result.error); setSaveErrorId(result.existingId ?? null); return; }
+        if (!result.ok) {
+          setSaveError(result.error);
+          setSaveErrorId(result.existingId ?? null);
+          return;
+        }
         notify(result.message);
-        setText(""); setMode(null);
+        setText("");
+        setMode(null);
       })
       .catch(() => setSaveError("Could not save. Try again."))
       .finally(() => setPending(false));
@@ -161,24 +281,29 @@ export function CommandLayer() {
       setSaveError("This browser cannot record audio. Type or attach a file instead.");
       return;
     }
-    void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-      const session = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      const chunks: Blob[] = [];
-      session.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
-      session.addEventListener("stop", () => {
-        stream.getTracks().forEach((track) => track.stop());
-        recorder.current = null;
-        setRecording(false);
-        if (!chunks.length) return;
-        const type = session.mimeType || "audio/webm";
-        const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        attachFile(new File(chunks, `voice-note.${extension}`, { type }));
-      });
-      recorder.current = session;
-      session.start();
-      setRecording(true);
-    }).catch(() => setSaveError("Microphone access was refused. Type or attach a file instead."));
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+        const session = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const chunks: Blob[] = [];
+        session.addEventListener("dataavailable", (event) => {
+          if (event.data.size) chunks.push(event.data);
+        });
+        session.addEventListener("stop", () => {
+          stream.getTracks().forEach((track) => track.stop());
+          recorder.current = null;
+          setRecording(false);
+          if (!chunks.length) return;
+          const type = session.mimeType || "audio/webm";
+          const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+          attachFile(new File(chunks, `voice-note.${extension}`, { type }));
+        });
+        recorder.current = session;
+        session.start();
+        setRecording(true);
+      })
+      .catch(() => setSaveError("Microphone access was refused. Type or attach a file instead."));
   }
 
   // The mic never outlives the dialog: closing or switching modes stops it.
@@ -186,70 +311,238 @@ export function CommandLayer() {
     if (mode === null && recorder.current) recorder.current.stop();
   }, [mode]);
 
-  return <>
-    <span className="contents md:hidden"><button ref={searchTrigger} type="button" disabled={!hydrated} onClick={() => open("search")} aria-label="Search workspace" aria-keyshortcuts="Meta+K Control+K" data-search-trigger className="global-search disabled:opacity-50">
-      <Search aria-hidden className="size-4 shrink-0" /><span className="hidden lg:inline">Search your workspace</span>
-    </button></span>
-    <Button ref={captureTrigger} size="sm" disabled={!hydrated} onClick={() => open("capture")} aria-keyshortcuts="Meta+Shift+C Control+Shift+C"><Plus aria-hidden /><span className="hidden sm:inline">Capture</span><span className="sr-only sm:hidden">Capture</span></Button>
-    <Dialog open={mode !== null} onOpenChange={(value) => { if (!value) setMode(null); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" onCloseAutoFocus={(event) => { event.preventDefault(); if (returnTo.current === "capture") { captureTrigger.current?.focus(); return; } const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")); (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus(); }}>
-        <DialogTitle>{mode === "search" ? "Search and commands" : "Capture"}</DialogTitle>
-        <DialogDescription>{mode === "search" ? "Navigate anywhere, or find saved tasks, notes, people and inbox items. Documents use the search in Polymath Knowledge." : "Everything lands in the inbox first. Polymath reads it and suggests what it becomes - you only ever capture."}</DialogDescription>
-        {mode === "search" ? <>
-          <Input key="search" autoFocus className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-label="Search workspace" value={query} placeholder="Search tasks, notes, people and destinations" onChange={(event) => { setQuery(event.target.value); setSelected(0); }} onKeyDown={(event) => {
-            if (event.key === "ArrowDown") { event.preventDefault(); setSelected(Math.min(active + 1, results.length - 1)); }
-            if (event.key === "ArrowUp") { event.preventDefault(); setSelected(Math.max(active - 1, 0)); }
-            if (event.key === "Enter" && results[active]) { event.preventDefault(); navigate(results[active].href); }
-          }} aria-controls="command-results" aria-activedescendant={results[active] ? `command-${active}` : undefined} />
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}><Plus aria-hidden />Capture something<span className="readout ml-auto text-[11px]">Ctrl/⌘ Shift C</span></Button>
-            {/* The header stays quiet: the shortcuts list lives here, on the
+  return (
+    <>
+      <span className="contents md:hidden">
+        <button
+          ref={searchTrigger}
+          type="button"
+          disabled={!hydrated}
+          onClick={() => open("search")}
+          aria-label="Search workspace"
+          aria-keyshortcuts="Meta+K Control+K"
+          data-search-trigger
+          className="global-search disabled:opacity-50"
+        >
+          <Search aria-hidden className="size-4 shrink-0" />
+          <span className="hidden lg:inline">Search your workspace</span>
+        </button>
+      </span>
+      <Button
+        ref={captureTrigger}
+        size="sm"
+        disabled={!hydrated}
+        onClick={() => open("capture")}
+        aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
+      >
+        <Plus aria-hidden />
+        <span className="hidden sm:inline">Capture</span>
+        <span className="sr-only sm:hidden">Capture</span>
+      </Button>
+      <Dialog
+        open={mode !== null}
+        onOpenChange={(value) => {
+          if (!value) setMode(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (returnTo.current === "capture") {
+              captureTrigger.current?.focus();
+              return;
+            }
+            const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]"));
+            (triggers.find((el) => el.offsetParent !== null) ?? searchTrigger.current)?.focus();
+          }}
+        >
+          <DialogTitle>{mode === "search" ? "Search and commands" : "Capture"}</DialogTitle>
+          <DialogDescription>
+            {mode === "search"
+              ? "Navigate anywhere, or find saved tasks, notes, people, knowledge cards and inbox items. Documents use the search in Polymath Knowledge."
+              : "Everything lands in the inbox first. Polymath reads it and suggests what it becomes - you only ever capture."}
+          </DialogDescription>
+          {mode === "search" ? (
+            <>
+              <Input
+                key="search"
+                autoFocus
+                className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1"
+                role="combobox"
+                aria-expanded="true"
+                aria-autocomplete="list"
+                aria-label="Search workspace"
+                value={query}
+                placeholder="Search tasks, notes, people and destinations"
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setSelected(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setSelected(Math.min(active + 1, results.length - 1));
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSelected(Math.max(active - 1, 0));
+                  }
+                  if (event.key === "Enter" && results[active]) {
+                    event.preventDefault();
+                    navigate(results[active].href);
+                  }
+                }}
+                aria-controls="command-results"
+                aria-activedescendant={results[active] ? `command-${active}` : undefined}
+              />
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}>
+                  <Plus aria-hidden />
+                  Capture something<span className="readout ml-auto text-[11px]">Ctrl/⌘ Shift C</span>
+                </Button>
+                {/* The header stays quiet: the shortcuts list lives here, on the
                 keyboard surface, instead of a sixth header control. Shift+?
                 still opens it from anywhere. */}
-            <ShortcutsDialog trigger={<Button variant="outline" aria-label="Keyboard shortcuts"><Keyboard aria-hidden /><span className="hidden sm:inline">Shortcuts</span><span className="readout ml-auto hidden text-[11px] sm:inline">Shift ?</span></Button>} />
-          </div>
-          <div id="command-results" role="listbox" aria-label="Search results" className="max-h-[45dvh] overflow-y-auto">
-            {results.map((result, index) => <button key={result.key} id={`command-${index}`} role="option" aria-selected={active === index} type="button" onClick={() => navigate(result.href)} onMouseEnter={() => setSelected(index)} className="command-result">
-              <result.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" /><span className="flex min-w-0 flex-1 flex-col items-start"><span className="max-w-full truncate">{result.label}</span><span className="text-[11px] text-muted-foreground">{result.context}</span></span><ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-            </button>)}
-          </div>
-          <p role="status" className="text-xs text-muted-foreground">{matches.length === 0 ? (search && !searched ? "Searching…" : "No results. Capture a new item or try a different search.") : matches.length > results.length ? `Showing ${results.length} of ${matches.length} matches. Refine your search for more.` : `${matches.length} ${matches.length === 1 ? "result" : "results"}`}</p>
-        </> : <>
-          <form id="quick-capture-form" onSubmit={saveCapture} className="flex flex-col gap-4">
-            <label className="flex flex-col gap-2 text-[13px] font-medium">Anything worth keeping<Textarea key="capture" autoFocus required rows={4} maxLength={10000} value={text} onChange={(event) => setText(event.target.value)} onPaste={pasteCapture} placeholder="A thought, a task, a link, a pasted screenshot" /></label>
-            <div className="flex items-center gap-2">
-              <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(event) => { const chosen = event.target.files?.[0]; event.target.value = ""; if (chosen) attachFile(chosen); }} />
-              <Button type="button" variant="outline" size="sm" disabled={filePending || pending || recording} onClick={() => fileInput.current?.click()}><Paperclip aria-hidden />{filePending ? "Capturing…" : "Attach file"}</Button>
-              <Button type="button" variant={recording ? "secondary" : "outline"} size="sm" disabled={filePending || pending} aria-pressed={recording} onClick={toggleRecording}>
-                {recording ? <Square aria-hidden /> : <Mic aria-hidden />}{recording ? "Stop and save" : "Voice note"}
-              </Button>
-              <span className="text-[11px] text-muted-foreground">Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.</span>
-            </div>
-          </form>
-          <ImportDrop hint="Add pasted text or a URL. Files upload through Polymath Knowledge, where they are extracted." onImport={(result) => {
-            if (result.kind === "file") { setSaveError("Use Attach file to keep it as-is in the inbox, or Polymath Knowledge to extract it."); setSaveErrorId(null); return; }
-            setText((current) => current ? `${current}\n${result.value}` : result.value);
-          }} />
-          {saveError ? (
-            <p className="text-destructive text-[13px]" role="alert">
-              {saveError}
-              {saveErrorId ? (
-                <>
-                  {" "}
+                <ShortcutsDialog
+                  trigger={
+                    <Button variant="outline" aria-label="Keyboard shortcuts">
+                      <Keyboard aria-hidden />
+                      <span className="hidden sm:inline">Shortcuts</span>
+                      <span className="readout ml-auto hidden text-[11px] sm:inline">Shift ?</span>
+                    </Button>
+                  }
+                />
+              </div>
+              <div
+                id="command-results"
+                role="listbox"
+                aria-label="Search results"
+                className="max-h-[45dvh] overflow-y-auto"
+              >
+                {results.map((result, index) => (
                   <button
+                    key={result.key}
+                    id={`command-${index}`}
+                    role="option"
+                    aria-selected={active === index}
                     type="button"
-                    className="underline underline-offset-2 hover:text-foreground"
-                    onClick={() => navigate(`/command-center/inbox?id=${saveErrorId}`)}
+                    onClick={() => navigate(result.href)}
+                    onMouseEnter={() => setSelected(index)}
+                    className="command-result"
                   >
-                    Open the one you already have
+                    <result.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex min-w-0 flex-1 flex-col items-start">
+                      <span className="max-w-full truncate">{result.label}</span>
+                      <span className="text-[11px] text-muted-foreground">{result.context}</span>
+                    </span>
+                    <ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
                   </button>
-                </>
+                ))}
+              </div>
+              <p role="status" className="text-xs text-muted-foreground">
+                {matches.length === 0
+                  ? search && !searched
+                    ? "Searching…"
+                    : "No results. Capture a new item or try a different search."
+                  : matches.length > results.length
+                    ? `Showing ${results.length} of ${matches.length} matches. Refine your search for more.${meaningNote}`
+                    : `${matches.length} ${matches.length === 1 ? "result" : "results"}.${meaningNote}`}
+              </p>
+            </>
+          ) : (
+            <>
+              <form id="quick-capture-form" onSubmit={saveCapture} className="flex flex-col gap-4">
+                <label className="flex flex-col gap-2 text-[13px] font-medium">
+                  Anything worth keeping
+                  <Textarea
+                    key="capture"
+                    autoFocus
+                    required
+                    rows={4}
+                    maxLength={10000}
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                    onPaste={pasteCapture}
+                    placeholder="A thought, a task, a link, a pasted screenshot"
+                  />
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    className="hidden"
+                    aria-hidden
+                    tabIndex={-1}
+                    onChange={(event) => {
+                      const chosen = event.target.files?.[0];
+                      event.target.value = "";
+                      if (chosen) attachFile(chosen);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={filePending || pending || recording}
+                    onClick={() => fileInput.current?.click()}
+                  >
+                    <Paperclip aria-hidden />
+                    {filePending ? "Capturing…" : "Attach file"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={recording ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={filePending || pending}
+                    aria-pressed={recording}
+                    onClick={toggleRecording}
+                  >
+                    {recording ? <Square aria-hidden /> : <Mic aria-hidden />}
+                    {recording ? "Stop and save" : "Voice note"}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.
+                  </span>
+                </div>
+              </form>
+              <ImportDrop
+                hint="Add pasted text or a URL. Files upload through Polymath Knowledge, where they are extracted."
+                onImport={(result) => {
+                  if (result.kind === "file") {
+                    setSaveError("Use Attach file to keep it as-is in the inbox, or Polymath Knowledge to extract it.");
+                    setSaveErrorId(null);
+                    return;
+                  }
+                  setText((current) => (current ? `${current}\n${result.value}` : result.value));
+                }}
+              />
+              {saveError ? (
+                <p className="text-destructive text-[13px]" role="alert">
+                  {saveError}
+                  {saveErrorId ? (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-2 hover:text-foreground"
+                        onClick={() => navigate(`/command-center/inbox?id=${saveErrorId}`)}
+                      >
+                        Open the one you already have
+                      </button>
+                    </>
+                  ) : null}
+                </p>
               ) : null}
-            </p>
-          ) : null}
-          <div className="flex justify-end"><Button type="submit" form="quick-capture-form" disabled={!text.trim() || pending}>Save capture</Button></div>
-        </>}
-      </DialogContent>
-    </Dialog>
-  </>;
+              <div className="flex justify-end">
+                <Button type="submit" form="quick-capture-form" disabled={!text.trim() || pending}>
+                  Save capture
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }

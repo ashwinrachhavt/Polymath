@@ -31,7 +31,7 @@ Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
 
 ## Tests
 
-492 `.test.ts` and 44 `.spec.ts` files (unit: 294, integration: 195, e2e: 44).
+495 `.test.ts` and 44 `.spec.ts` files (unit: 296, integration: 196, e2e: 44).
 ## Domains
 
 24 folders; 18 own tables.
@@ -304,7 +304,7 @@ Totals: 93 versioned, 60 append-only, 5 versionless but guarded (each declared w
 
 ## Outbox
 
-Emitted topics: 24. Registered handlers: 10. Declared audit-only: 14.
+Emitted topics: 25. Registered handlers: 11. Declared audit-only: 14.
 
 Topics with no handler and no declaration (a defect if non-empty):
 
