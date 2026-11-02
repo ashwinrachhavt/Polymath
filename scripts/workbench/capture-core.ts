@@ -156,10 +156,9 @@ export function parseTestResults(raw: string, capturedAt: string): CapturedTestR
   return entries.map((entry) => ({ name: entry.name, ok: entry.ok, runAt: entry.runAt ?? capturedAt }));
 }
 
-/** The disclosure line every brief carries: capture is local and model-free. */
-export const CAPTURE_DISCLOSURE = "Captured locally from git state and provided test results. Nothing was sent to a model.";
-/** The literal fallback when no decision was recorded at capture time. */
-export const RATIONALE_INFERRED = "rationale inferred after implementation";
+/** The disclosure line and the inferred-rationale fallback live with the brief's data shape. */
+import { CAPTURE_DISCLOSURE, RATIONALE_INFERRED } from "@/domains/agents/change-brief";
+export { CAPTURE_DISCLOSURE, RATIONALE_INFERRED };
 
 function formatCommitLines(subjects: CommitSubject[]): string[] {
   const lines = subjects.slice(0, MAX_BRIEF_COMMITS).map((c) => `  - ${c.sha.slice(0, 12)} ${c.subject}`);

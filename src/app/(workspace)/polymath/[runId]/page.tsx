@@ -14,6 +14,8 @@ import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
 import { getRun, getRunUsage, listRecentRuns, type RunUsage } from "@/domains/agents/queries";
+import { getRunChangeBrief } from "@/domains/agents/change-brief-queries";
+import { ChangeBriefPanel } from "@/components/polymath/workbench/change-brief-panel";
 import { getOpenQuestion, getRunAgent, listRunPendingProposals } from "@/domains/agents/run-context";
 import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
@@ -66,7 +68,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals] = await Promise.all([
+  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals, brief] = await Promise.all([
     // The history menu is the same conversation list the idle home renders
     // (history.ts feeds both), so it excludes onboarding runs for the same
     // reason: machinery the person never typed is not a conversation.
@@ -78,6 +80,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
     getRunAgent(auth.workspaceId, run.id),
     getOpenQuestion(auth.workspaceId, run.id),
     listRunPendingProposals(auth.workspaceId, run.id),
+    // The change brief rides along with the other parallel loads: null when no
+    // checkpoint was captured for this run, and the panel renders only then.
+    getRunChangeBrief(auth.workspaceId, run.id),
   ]);
   const historyGroups = groupHistory(
     history.map(
@@ -179,6 +184,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
        */}
       <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
         <section aria-label="Conversation" className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 py-4">
+          {/* The change brief, when a checkpoint was captured for this run: the
+              Designer's primary entry, above the transcript because the reader's
+              question is "what just happened to my app?", not "read the tape". */}
+          {brief ? <ChangeBriefPanel brief={brief} /> : null}
           {/*
            * A live run streams; a finished one keeps the stored transcript.
            * Rendering the snapshot for a running run was the whole reason a new
