@@ -31,7 +31,7 @@ Migrations: 102 files, highest `0275_focus_blocklist`.
 
 ## Tests
 
-485 `.test.ts` and 43 `.spec.ts` files (unit: 288, integration: 194, e2e: 43).
+487 `.test.ts` and 43 `.spec.ts` files (unit: 289, integration: 195, e2e: 43).
 ## Domains
 
 23 folders; 18 own tables.
