@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
-import { saveMessageAsIdea, saveMessageAsNote } from "@/domains/knowledge/save-message";
+import { saveMessageAsIdea, saveMessageAsNote, messageIdeaTitle } from "@/domains/knowledge/save-message";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
@@ -22,7 +22,8 @@ const citation = z.object({
 
 const saveNoteInput = z.object({
   runId: z.string().uuid(),
-  title: z.string().trim().min(1).max(200),
+  // Optional: the toolbar sends only the text; the server derives the title.
+  title: z.string().trim().max(200).optional(),
   text: z.string().min(1, "There is no answer to save.").max(200_000),
   citations: z.array(citation).max(20).default([]),
   idempotencyKey: z.string().uuid(),
@@ -30,7 +31,7 @@ const saveNoteInput = z.object({
 
 const saveIdeaInput = z.object({
   runId: z.string().uuid(),
-  title: z.string().trim().min(1).max(200),
+  title: z.string().trim().max(200).optional(),
   text: z.string().min(1, "There is no answer to save.").max(200_000),
   idempotencyKey: z.string().uuid(),
 });
@@ -66,7 +67,8 @@ export async function saveMessageAsNoteAction(input: z.input<typeof saveNoteInpu
   const parsed = saveNoteInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That message cannot be saved." };
   const auth = await authorize();
-  const result = await guarded(() => saveMessageAsNote(auth, parsed.data));
+  const payload = { ...parsed.data, title: parsed.data.title || messageIdeaTitle(parsed.data.text) };
+  const result = await guarded(() => saveMessageAsNote(auth, payload));
   if (result.ok) revalidatePath(`/polymath/${parsed.data.runId}`);
   return result;
 }
@@ -75,7 +77,8 @@ export async function saveMessageAsIdeaAction(input: z.input<typeof saveIdeaInpu
   const parsed = saveIdeaInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That message cannot be saved." };
   const auth = await authorize();
-  const result = await guarded(() => saveMessageAsIdea(auth, parsed.data));
+  const payload = { ...parsed.data, title: parsed.data.title || messageIdeaTitle(parsed.data.text) };
+  const result = await guarded(() => saveMessageAsIdea(auth, payload));
   if (result.ok) revalidatePath(`/polymath/${parsed.data.runId}`);
   return result;
 }

@@ -410,7 +410,12 @@ export function ChatSurface({
                       the prose and the list below resolve in one numbering. */}
                     <CitedText text={block.text} citations={chat.citations} />
                     {block.kind === "assistant" && block.done ? (
-                      <MessageActions runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
+                      <MessageActions
+                        runId={runId}
+                        turnId={turnIdOf(block.id)}
+                        text={block.text}
+                        messageId={block.messageId ?? null}
+                      />
                     ) : null}
                   </div>
                 ),
