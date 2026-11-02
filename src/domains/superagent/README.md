@@ -65,6 +65,11 @@ taken and load-bearing elsewhere in the codebase:
   `Repositories`, and the source-scope protocol. No implementation.
 - `ids.ts` — deterministic, idempotent keys (`key(...)`) hashed with
   SHA-256, so the same source event always yields the same id.
+- `policy/` — the pure `Policy` port implementation over plain config:
+  the admission table (`policy/admission.ts`), and the gate, accept
+  modes, version hash, and mandate revalidation (`policy/gate.ts`).
+  Host settings validation and persistence arrive with the settings
+  module, which hands a validated `PolicyConfig` here.
 - `errors.ts` — the `UserError` catalog; every refusal a caller can hit has
   one named code.
 - `reasons.ts` — reason codes and their display text for decisions, ends,
