@@ -121,8 +121,10 @@ export type RunUsage = {
  * rows, runs without a frozen model — still counts. Must stay identical to
  * the close path's predicate in event-bridge.ts runSettlement(): the ledger,
  * the run page, and the settlement must never disagree about what was priced.
+ * Exported so the history backfill's reconciliation summary aggregates with
+ * the same fragment the panel reads — one derivation, not four.
  */
-const pricedFigure = sql`coalesce(
+export const pricedFigure = sql`coalesce(
   nullif(e.data->'pricing'->>'usd', ''),
   case when e.data->>'costUsd' ~ '^[0-9]+([.][0-9]+)?$' then e.data->>'costUsd' end
 )::numeric`;

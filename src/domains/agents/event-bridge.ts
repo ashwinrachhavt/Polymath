@@ -14,7 +14,7 @@ import { decideSettlement, type SettlementState } from "@/domains/spending/settl
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { agentQuestions, agentRuns, messages, runEvents, threads, toolCalls } from "./schema";
-import { MODEL_CATALOG, type ModelProviderId } from "./models";
+import { providerForModel } from "./models";
 
 /*
  * The event bridge: the one place eve's observe-only stream events become
@@ -272,11 +272,6 @@ export async function recordUsageEvent(input: {
     data: input.source ? { ...input.usage, source: input.source } : input.usage,
     pricing,
   });
-}
-
-/** The catalog provider that owns a model id, or null for an unknown model. */
-function providerForModel(model: string): ModelProviderId | null {
-  return MODEL_CATALOG.find((entry) => entry.id === model)?.provider ?? null;
 }
 
 /**

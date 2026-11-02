@@ -31,7 +31,7 @@ Migrations: 99 files, highest `0272_model_rate_card_validity_cache`.
 
 ## Tests
 
-461 `.test.ts` and 43 `.spec.ts` files (unit: 275, integration: 184, e2e: 43).
+463 `.test.ts` and 43 `.spec.ts` files (unit: 276, integration: 185, e2e: 43).
 ## Domains
 
 23 folders; 18 own tables.
