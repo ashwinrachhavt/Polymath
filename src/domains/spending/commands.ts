@@ -19,17 +19,14 @@ type Money = string;
 type ExceededAction = "pause" | "fail";
 
 type ReserveResult =
-  | { ok: true; reservationId: string }
-  | { ok: false; reason: "ceiling_exceeded"; action: ExceededAction };
+  { ok: true; reservationId: string } | { ok: false; reason: "ceiling_exceeded"; action: ExceededAction };
 
 /*
  * drizzle-orm 0.45's postgres-js `execute` resolves to a plain array of rows,
  * not a `{ rows }` envelope. Typing that once here keeps every caller's read
  * from being a cast.
  */
-function firstRow<TRow extends Record<string, unknown>>(
-  rows: unknown[],
-): TRow | undefined {
+function firstRow<TRow extends Record<string, unknown>>(rows: unknown[]): TRow | undefined {
   return rows[0] as TRow | undefined;
 }
 
@@ -63,9 +60,7 @@ export async function reserveSpend(
   const perRun = policy?.perRunCeilingUsd ?? null;
   if (perRun !== null) {
     const row = firstRow<{ exceeds: boolean }>(
-      await tx.execute(
-        sql`select ${input.estimateUsd}::numeric > ${perRun}::numeric as exceeds`,
-      ),
+      await tx.execute(sql`select ${input.estimateUsd}::numeric > ${perRun}::numeric as exceeds`),
     );
     if (row?.exceeds) return exceeded(policy);
   }
@@ -134,13 +129,19 @@ export async function settleSpend(
         eq(spendingReservations.status, "reserved"),
       ),
     )
-    .returning({ id: spendingReservations.id });
+    .returning({ id: spendingReservations.id, runId: spendingReservations.runId, model: spendingReservations.model });
 
   if (updated.length === 0) return { wasSettled: false };
+  const settled = updated[0];
 
   await tx.insert(spendSettlements).values({
     workspaceId: ctx.workspaceId,
     reservationId: input.reservationId,
+    // The reservation is the claim on the run, so its run and model are the
+    // settlement's — carried on the ledger row so readers never need a join
+    // to know what a settled figure bought.
+    runId: settled.runId,
+    model: settled.model,
     amountUsd: input.actualUsd,
     usage: input.usage ?? null,
   });

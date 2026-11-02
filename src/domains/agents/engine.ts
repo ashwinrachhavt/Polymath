@@ -1,10 +1,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { getSkill } from "@/domains/skills/queries";
-import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
+import { releaseSpend, reserveSpend, settleSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { recordRoundEvent, redactText } from "./event-bridge";
+import { recordRoundEvent, redactText, runSettlement } from "./event-bridge";
 import { resolveRunModel } from "./models";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
@@ -21,8 +21,9 @@ import { SessionNotActiveError } from "./eve-driver";
  *     policy snapshot is frozen at that moment;
  *   - the spend reservation commits before the driver sees the session;
  *   - cancel flips the run to a terminal state first, and only then tells the
- *     driver and hands the reservation back. Terminal states are immutable, so
- *     a second cancel matches no row and is a no-op.
+ *     driver and closes the reservation — settled when the hooks recorded
+ *     usage, released when they recorded none. Terminal states are immutable,
+ *     so a second cancel matches no row and is a no-op.
  */
 
 export type PolicySnapshot = {
@@ -121,21 +122,50 @@ async function failRun(runId: string, error: string, at: Date): Promise<void> {
 }
 
 /*
- * Hands back whatever budget the run still holds. Scoped to the workspace so a
- * run id from elsewhere cannot touch another tenant's reservation; a settled or
- * already-released claim matches nothing (releaseSpend is guarded the same way).
+ * Closes the run's open reservation. A run whose hooks recorded usage events
+ * settles by the close rule (priced actuals, else the reservation estimate) —
+ * releasing it would be the leak where consumed spend escapes the settlement
+ * ledger and both ceilings (PR-5). A run with no usage events hands the
+ * budget back: nothing was consumed.
+ *
+ * Scoped to the workspace so a run id from elsewhere cannot touch another
+ * tenant's reservation; a settled, expired, or already-released claim matches
+ * nothing (settleSpend/releaseSpend are guarded the same way). The usage
+ * count rides the same statement as the reservation lookup, so the close
+ * decision reads one consistent snapshot.
  */
-async function releaseOpenReservation(runId: string, workspaceId: string): Promise<void> {
+async function closeOpenReservation(runId: string, workspaceId: string): Promise<void> {
   await withTransaction(async (tx) => {
-    const open = (await tx.execute(
-      sql`select id from spending_reservations
-          where run_id = ${runId} and workspace_id = ${workspaceId} and status = 'reserved'
-          limit 1`,
-    )) as unknown as { id: string }[];
-    const reservation = open[0];
-    if (reservation) {
-      await releaseSpend(tx, { workspaceId }, { reservationId: reservation.id });
+    const open = (
+      (await tx.execute(
+        sql`select r.id,
+                   r.reserved_usd::text as reserved_usd,
+                   (select count(*) from run_events e
+                    where e.run_id = r.run_id and e.workspace_id = r.workspace_id and e.type = 'usage'
+                   )::int as usage_events
+            from spending_reservations r
+            where r.run_id = ${runId} and r.workspace_id = ${workspaceId} and r.status = 'reserved'
+            limit 1`,
+      )) as unknown as { id: string; reserved_usd: string; usage_events: number }[]
+    )[0];
+    if (!open) return;
+
+    if ((open.usage_events ?? 0) === 0) {
+      await releaseSpend(tx, { workspaceId }, { reservationId: open.id });
+      return;
     }
+
+    // Usage happened: settle instead of release, by the same rule closeRun uses.
+    const settlement = await runSettlement(tx, { runId, workspaceId, reservedUsd: open.reserved_usd });
+    await settleSpend(
+      tx,
+      { workspaceId },
+      {
+        reservationId: open.id,
+        actualUsd: settlement.actualUsd,
+        usage: settlement.usage,
+      },
+    );
   });
 }
 
@@ -157,12 +187,7 @@ export function createEngine(
       const [profile] = await db
         .select()
         .from(agentProfiles)
-        .where(
-          and(
-            eq(agentProfiles.workspaceId, input.auth.workspaceId),
-            eq(agentProfiles.name, input.profileName),
-          ),
-        )
+        .where(and(eq(agentProfiles.workspaceId, input.auth.workspaceId), eq(agentProfiles.name, input.profileName)))
         .limit(1);
       if (!profile) throw new Error(`Unknown agent profile: ${input.profileName}`);
 
@@ -254,8 +279,9 @@ export function createEngine(
       if (started.length === 0) {
         // The run was closed in the window: hand back the budget this path
         // just reserved (the closer already released its own view of it) and
-        // refuse to start a session nothing is watching.
-        await releaseOpenReservation(run.id, input.auth.workspaceId);
+        // refuse to start a session nothing is watching. No session ran, so
+        // the reservation closes as a release.
+        await closeOpenReservation(run.id, input.auth.workspaceId);
         throw new Error("The run was cancelled before it started");
       }
 
@@ -284,7 +310,7 @@ export function createEngine(
         // the budget back, else the row stays live with money held forever.
         const message = cause instanceof Error ? cause.message : String(cause);
         await failRun(run.id, `driver failed to start: ${message}`, now());
-        await releaseOpenReservation(run.id, input.auth.workspaceId);
+        await closeOpenReservation(run.id, input.auth.workspaceId);
         throw cause;
       }
 
@@ -298,11 +324,13 @@ export function createEngine(
         await driver.signal(run.id, signal, auth);
       } catch (cause) {
         // A session that died under a live run (eve restart, expired lease)
-        // cannot take this or any future message: close the run and hand the
-        // budget back. Retry makes a new run with a fresh session.
+        // cannot take this or any future message: close the run and close its
+        // reservation — the usage its steps already recorded settles by the
+        // close rule, and only a zero-usage run hands the budget back. Retry
+        // makes a new run with a fresh session.
         if (cause instanceof SessionNotActiveError) {
           await failRun(run.id, cause.message, now());
-          await releaseOpenReservation(run.id, auth.workspaceId);
+          await closeOpenReservation(run.id, auth.workspaceId);
         }
         throw cause;
       }
@@ -335,9 +363,11 @@ export function createEngine(
       await driver.cancel(runId, auth);
       await writeEvent({ runId, workspaceId: auth.workspaceId, type: "cancelled", data: { by: auth.userId } });
 
-      // The run is terminal before the budget is handed back; the release is
-      // guarded on status = 'reserved', so a settled claim is left alone.
-      await releaseOpenReservation(runId, auth.workspaceId);
+      // The run is terminal before the budget is closed; the close settles a
+      // run that consumed (its usage events already recorded) and releases a
+      // run that did not — settleSpend and releaseSpend are both guarded on
+      // status = 'reserved', so a settled claim is left alone.
+      await closeOpenReservation(runId, auth.workspaceId);
 
       return { cancelled: true };
     },

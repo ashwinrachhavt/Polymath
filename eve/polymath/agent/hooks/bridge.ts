@@ -10,6 +10,7 @@ import {
   recordToolCall,
   recordUsageEvent,
 } from "../../../../src/domains/agents/event-bridge";
+import { reportBridgeFailure } from "../../../../src/domains/agents/bridge-failures";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 
 /*
@@ -67,7 +68,10 @@ async function guarded(label: string, fn: () => Promise<unknown>): Promise<void>
   try {
     await fn();
   } catch (cause) {
-    console.error(`event bridge: ${label} failed`, cause);
+    // The turn must not break over a bookkeeping write, but the failure is
+    // not silent: one structured, redacted line plus a process-local counter
+    // (reportBridgeFailure) is what a log drain can alert on.
+    reportBridgeFailure(label, cause);
   }
 }
 
@@ -257,9 +261,7 @@ export default defineHook({
       const workspaceId = workspaceIdOf(ctx);
       const runId = await runIdOf(ctx);
       if (!workspaceId || !runId) return;
-      await guarded("session.completed", () =>
-        closeRun({ runId, workspaceId, state: "succeeded" }),
-      );
+      await guarded("session.completed", () => closeRun({ runId, workspaceId, state: "succeeded" }));
       void event;
     },
 

@@ -7,6 +7,7 @@ import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
 import { reapStaleReservations } from "@/integrations/providers/quota";
+import { expireStaleReservations } from "@/domains/spending/reconcile";
 import { problemResponse } from "@/lib/problems";
 
 /*
@@ -91,7 +92,25 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       quotaReap = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
-    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync, senderSync, quotaReap });
+    // Stuck spending reservations: an open claim whose run is terminal (a close
+    // that failed mid-flight) or that has simply outlived the hard cap holds
+    // budget forever and haunts the open list. Expiry rides the same tick for
+    // the same reason: a failure must not break the rest of the pass.
+    let reservationExpiry: { expired: number } | { error: string } | null = null;
+    try {
+      reservationExpiry = await expireStaleReservations();
+    } catch (cause) {
+      reservationExpiry = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
+    return Response.json({
+      recovered: recovered.length,
+      ...result,
+      reconciled: reconciliation.reconciled,
+      instantSync,
+      senderSync,
+      quotaReap,
+      reservationExpiry,
+    });
   } finally {
     await client.end({ timeout: 5 });
   }
