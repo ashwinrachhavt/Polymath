@@ -15,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
+import { blobObjects } from "../audit/schema";
 import { memberships } from "../identity/schema";
 // users comes from tables, not schema: identity/schema sits in a cycle with
 // db/columns, and its partial evaluation under Turbopack drops the `export *`
@@ -644,6 +645,43 @@ export const contextManifestItems = pgTable(
       columns: [t.workspaceId, t.manifestId],
       foreignColumns: [contextManifests.workspaceId, contextManifests.id],
     }),
+  ],
+);
+
+/** One entry of the test-results file provided at capture time. */
+export type CapturedTestResult = { name: string; ok: boolean; runAt: string };
+
+/*
+ * Workbench checkpoint: the repository state an agent-authored change landed
+ * as, written by scripts/workbench/capture.ts at an explicit capture point.
+ * Capture is mechanical — git status/diff/log plus a provided test-results
+ * file; no hooks, no model. The diff bytes live in audit.blob_objects,
+ * deduped by content_hash. Append-only: a re-capture at the same commit
+ * writes a new row and reuses the blob; nothing here is ever updated.
+ */
+export const repoCheckpoints = pgTable(
+  "repo_checkpoints",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** The run whose change session produced the captured state; null when captured without a run record. */
+    runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "set null" }),
+    repoUrl: text("repo_url").notNull(),
+    baseCommitSha: text("base_commit_sha").notNull(),
+    commitSha: text("commit_sha").notNull(),
+    /** The base..HEAD diff bytes. Set null only if the blob's retention lapses; the diff is re-derivable from the commits. */
+    diffBlobId: uuid("diff_blob_id").references(() => blobObjects.id, { onDelete: "set null" }),
+    testResults: jsonb("test_results").$type<CapturedTestResult[]>(),
+    /** What the operator said the change was for, when they said it at all. */
+    decisionNote: text("decision_note"),
+    /** recorded: a human wrote decisionNote at capture time. inferred: the rationale was reconstructed afterwards. */
+    decisionStatus: text("decision_status").$type<"recorded" | "inferred">().notNull().default("inferred"),
+    ...recorded,
+  },
+  (t) => [
+    index("repo_checkpoints_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    index("repo_checkpoints_run_idx").on(t.runId),
+    check("repo_checkpoints_decision_status_check", sql`decision_status in ('recorded', 'inferred')`),
   ],
 );
 
