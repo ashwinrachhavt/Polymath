@@ -707,6 +707,13 @@
       "when": 1793687520000,
       "tag": "0274_focus_strictness",
       "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1793687580000,
+      "tag": "0275_focus_blocklist",
+      "breakpoints": true
     }
   ]
 }

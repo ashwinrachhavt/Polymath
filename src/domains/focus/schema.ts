@@ -72,3 +72,32 @@ export const focusSessions = pgTable(
       .where(sql`state in ('running', 'paused') and ${t.startedAt} is not null`),
   ],
 );
+
+/*
+ * The blocklist the setup screen curates and the browser companion polls
+ * (GET /api/v1/focus/blocklist). A pattern is a hostname the extension
+ * matches (e.g. "news.ycombinator.com"); `kind` decides the verdict — a
+ * matching `allow` wins over any matching `block`, which is why allow rows
+ * sort first in every read. Stored lowercased so the unique key dedupes
+ * case-variants instead of letting "GitHub.com" and "github.com" diverge.
+ */
+export const focusBlocklistKind = pgEnum("focus_blocklist_kind", ["block", "allow"]);
+
+export const focusBlocklist = pgTable(
+  "focus_blocklist",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    pattern: text("pattern").notNull(),
+    kind: focusBlocklistKind("kind").notNull().default("block"),
+    ...mutable,
+  },
+  (t) => [
+    // One verdict per pattern per workspace, live rows only: archiving frees
+    // the pattern for re-adding, the same lifecycle focus_sessions_active_idx
+    // gives the live session above.
+    uniqueIndex("focus_blocklist_pattern_key")
+      .on(t.workspaceId, t.pattern)
+      .where(sql`${t.archivedAt} is null`),
+  ],
+);

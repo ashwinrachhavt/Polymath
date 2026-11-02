@@ -4,10 +4,11 @@ import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
 import { tasks } from "@/domains/work/schema";
-import { focusSessions, focusStrictness, type FocusStrictness } from "./schema";
+import { focusBlocklist, focusSessions, focusStrictness, type FocusStrictness } from "./schema";
 import { TIMEOUT_PAUSE_LIMIT, abandonRemainingSeconds, elapsedSecondsAt, timeoutAutoResumeAt } from "./strictness";
 
 /*
@@ -35,6 +36,14 @@ import { TIMEOUT_PAUSE_LIMIT, abandonRemainingSeconds, elapsedSecondsAt, timeout
 
 export class ConflictError extends Error {
   readonly code = "conflict";
+  /** The live row already holding the contested key, when the conflict has one — additive context, like the captures contract. */
+  constructor(
+    message: string,
+    readonly existingId?: string,
+  ) {
+    super(message);
+    this.name = "ConflictError";
+  }
 }
 
 export class StaleWriteError extends Error {
@@ -509,4 +518,112 @@ export async function startScheduledFocusSession(
     }
     throw cause;
   }
+}
+
+/*
+ * Blocklist curation (setup screen + /api/v1/focus/blocklist). The extension
+ * only ever READS these rows, so every write here is a signed-in member's
+ * act: a machine key that could weaken the blocklist would let a blocked
+ * page un-block itself through its own companion. Patterns are canonicalized
+ * (trimmed, lowercased) before the unique key sees them, so case variants
+ * dedupe into one entry.
+ */
+
+function canonicalBlocklistPattern(pattern: string): string {
+  return pattern.trim().toLowerCase();
+}
+
+export async function createFocusBlocklistEntry(
+  auth: AuthContext,
+  input: { pattern: string; kind?: "block" | "allow" },
+) {
+  const pattern = canonicalBlocklistPattern(input.pattern);
+  try {
+    const [entry] = await db
+      .insert(focusBlocklist)
+      .values({
+        workspaceId: auth.workspaceId,
+        pattern,
+        kind: input.kind ?? "block",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning();
+    return entry;
+  } catch (cause) {
+    // Two tabs racing the same pattern: the partial unique index picks one
+    // winner, the loser answers 409 pointing at the row that is already there.
+    if (isUniqueViolation(cause, "focus_blocklist_pattern_key")) {
+      const [existing] = await db
+        .select({ id: focusBlocklist.id })
+        .from(focusBlocklist)
+        .where(
+          and(
+            eq(focusBlocklist.workspaceId, auth.workspaceId),
+            eq(focusBlocklist.pattern, pattern),
+            isNull(focusBlocklist.archivedAt),
+          ),
+        )
+        .limit(1);
+      throw new ConflictError("That pattern is already on the blocklist.", existing?.id);
+    }
+    throw cause;
+  }
+}
+
+export async function updateFocusBlocklistEntry(
+  auth: AuthContext,
+  blockId: string,
+  input: { pattern?: string; kind?: "block" | "allow" },
+) {
+  // A settings row converges under last-write-wins: there is no state machine
+  // to corrupt, and the response carries the row the winner wrote.
+  try {
+    const [entry] = await db
+      .update(focusBlocklist)
+      .set({
+        // The set source takes a per-column SQL escape hatch, which is how the
+        // version bump stays an atomic increment rather than a read-modify-write.
+        ...(input.pattern !== undefined ? { pattern: canonicalBlocklistPattern(input.pattern) } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        updatedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${focusBlocklist.version} + 1`,
+      })
+      .where(
+        and(
+          eq(focusBlocklist.id, blockId),
+          eq(focusBlocklist.workspaceId, auth.workspaceId),
+          isNull(focusBlocklist.archivedAt),
+        ),
+      )
+      .returning();
+    return entry ?? null;
+  } catch (cause) {
+    if (isUniqueViolation(cause, "focus_blocklist_pattern_key")) {
+      throw new ConflictError("That pattern is already on the blocklist.");
+    }
+    throw cause;
+  }
+}
+
+/** Archiving, not deleting: the pattern's history stays in the row, and the partial unique key frees it for re-adding. */
+export async function archiveFocusBlocklistEntry(auth: AuthContext, blockId: string) {
+  const [entry] = await db
+    .update(focusBlocklist)
+    .set({
+      archivedAt: new Date(),
+      updatedBy: auth.userId,
+      updatedAt: new Date(),
+      version: sql`${focusBlocklist.version} + 1`,
+    })
+    .where(
+      and(
+        eq(focusBlocklist.id, blockId),
+        eq(focusBlocklist.workspaceId, auth.workspaceId),
+        isNull(focusBlocklist.archivedAt),
+      ),
+    )
+    .returning();
+  return entry ?? null;
 }

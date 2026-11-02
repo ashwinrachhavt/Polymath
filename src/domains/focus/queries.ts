@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { tasks } from "@/domains/work/schema";
-import { focusSessions } from "./schema";
+import { focusBlocklist, focusSessions } from "./schema";
 import { elapsedSecondsAt } from "./strictness";
 
 /*
@@ -149,4 +149,28 @@ export async function listDayFocusSessions(auth: AuthContext, input: { from: Dat
     )
     .orderBy(focusSessions.scheduledAt, focusSessions.startedAt);
   return rows.map((row) => withElapsed(row));
+}
+
+/*
+ * The blocklist the setup screen curates and the companion polls (ASH focus
+ * mode). The order is the contract, not presentation: allow rows come before
+ * block rows because a matching allow wins over any matching block, so a
+ * client can walk the list front to back and stop at the first hit. Within a
+ * kind, alphabetical by pattern, so consecutive polls of an unchanged list
+ * observe one stable order.
+ */
+export async function listFocusBlocklist(
+  auth: AuthContext,
+): Promise<Array<{ id: string; pattern: string; kind: "block" | "allow"; createdAt: Date; updatedAt: Date }>> {
+  return db
+    .select({
+      id: focusBlocklist.id,
+      pattern: focusBlocklist.pattern,
+      kind: focusBlocklist.kind,
+      createdAt: focusBlocklist.createdAt,
+      updatedAt: focusBlocklist.updatedAt,
+    })
+    .from(focusBlocklist)
+    .where(and(eq(focusBlocklist.workspaceId, auth.workspaceId), isNull(focusBlocklist.archivedAt)))
+    .orderBy(sql`(kind = 'allow') desc`, focusBlocklist.pattern);
 }
