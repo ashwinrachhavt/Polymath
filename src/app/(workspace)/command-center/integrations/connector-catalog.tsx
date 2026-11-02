@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import { Empty, SearchField, Status } from "@/components/workspace/ui";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { cn } from "cn";
-import { AccessToggles, AccountControls, ConnectButton, SenderGrantControls, SenderProposalsRow } from "./connector-controls";
+import {
+  AccessToggles,
+  AccountControls,
+  ConnectButton,
+  SenderGrantControls,
+  SenderProposalsRow,
+} from "./connector-controls";
 import { senderProposalsBlockedReason } from "@/domains/crm/sender-proposals-gate";
 
 /*
@@ -14,7 +20,7 @@ import { senderProposalsBlockedReason } from "@/domains/crm/sender-proposals-gat
  * shows a control its state cannot honor.
  */
 
-export type CatalogAccount = {
+type CatalogAccount = {
   id: string;
   alias: string;
   status: string;
@@ -48,7 +54,7 @@ export type CardState = "needs_config" | "coming_soon" | "available" | "connecti
  * instant.* names, and no connection is ever created for them — the card
  * offers nothing to connect because there is nothing to connect.
  */
-export function isInstantConnector(connector: CatalogConnector): boolean {
+function isInstantConnector(connector: CatalogConnector): boolean {
   return connector.capabilities.some((capability) => capability.startsWith("instant."));
 }
 
@@ -146,7 +152,8 @@ export function ConnectorCatalog({
     return connectors.filter((connector) => {
       const state = cardState(connector);
       if (filter === "connected" && state !== "connected") return false;
-      if (filter === "available" && (state === "connected" || state === "coming_soon" || state === "needs_config")) return false;
+      if (filter === "available" && (state === "connected" || state === "coming_soon" || state === "needs_config"))
+        return false;
       if (!needle) return true;
       return connector.displayName.toLowerCase().includes(needle);
     });
@@ -282,8 +289,14 @@ export function ConnectorCatalog({
                       {connector.accounts.map((account) => (
                         <div key={account.id} className="mb-2">
                           <p className="text-[13px] font-medium">{account.alias}</p>
-                          <p className="mt-1 mb-2 text-xs text-muted-foreground">Finish connecting to start using it.</p>
-                          <ConnectButton provider={connector.provider} alias={account.alias} label="Finish connecting" />
+                          <p className="mt-1 mb-2 text-xs text-muted-foreground">
+                            Finish connecting to start using it.
+                          </p>
+                          <ConnectButton
+                            provider={connector.provider}
+                            alias={account.alias}
+                            label="Finish connecting"
+                          />
                         </div>
                       ))}
                     </div>

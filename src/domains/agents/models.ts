@@ -26,7 +26,7 @@
  * above the agent's baseline request.
  */
 
-export type ModelProviderId =
+type ModelProviderId =
   | "gemini"
   | "groq"
   | "ai-gateway"

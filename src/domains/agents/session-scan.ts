@@ -45,7 +45,7 @@ function asDate(iso: string | undefined): Date | undefined {
 }
 
 /** False when a note is only whitespace — a blank line is not a rationale. */
-export function isRecordedNote(note: string | undefined): note is string {
+function isRecordedNote(note: string | undefined): note is string {
   return note !== undefined && note.trim() !== "";
 }
 

@@ -30,12 +30,6 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
-/** A field that arrives as a string or as a list of objects (Claude Code `message.content`). */
-export function stringOrRecord(value: unknown): string | Record<string, unknown> | undefined {
-  if (typeof value === "string") return value;
-  return asRecord(value);
-}
-
 /** Pick the first field that narrows to a non-empty string. */
 export function firstString(value: Record<string, unknown>, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -43,15 +37,4 @@ export function firstString(value: Record<string, unknown>, ...keys: string[]): 
     if (found !== undefined && found.trim() !== "") return found;
   }
   return undefined;
-}
-
-/** Canonical JSON for stable dedupe keys; key order follows insertion, which is fine for same-writer data. */
-export function stableKey(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(stableKey).join(",")}]`;
-  const entries = Object.entries(value)
-    .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `${JSON.stringify(k)}:${stableKey(v)}`);
-  return `{${entries.join(",")}}`;
 }

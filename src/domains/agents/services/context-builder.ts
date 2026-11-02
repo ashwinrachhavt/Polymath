@@ -2,15 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { artifactVersions, artifacts, claimEvidence, claims, sources } from "@/domains/knowledge/schema";
-import {
-  contextManifestItems,
-  contextManifests,
-  memoryItems,
-  memoryRevisions,
-  messages,
-  threads,
-} from "../schema";
-import { agentProfileRevisions } from "../runtime-schema";
+import { contextManifestItems, contextManifests, memoryItems, memoryRevisions, messages, threads } from "../schema";
 
 /*
  * ASH-118 (RT04): source-version-pinned context assembly.
@@ -31,7 +23,7 @@ import { agentProfileRevisions } from "../runtime-schema";
  */
 
 /** ~4 chars per token: an estimate for budgeting, never billing. */
-export const estimateTokens = (text: string) => Math.max(1, Math.ceil(text.length / 4));
+const estimateTokens = (text: string) => Math.max(1, Math.ceil(text.length / 4));
 const contentHash = (text: string) => createHash("sha256").update(text).digest("hex");
 
 export type ContextItemInput = {
@@ -363,7 +355,15 @@ export async function loadManifest(
         gaps.push({ kind: row.kind, refId: row.refId, reason: "revoked since manifest construction" });
         continue;
       }
-      items.push({ kind: row.kind, refId: row.refId, refParentId: row.refParentId, refVersion: row.refVersion, text: v.plainText ?? "", staleness: row.staleness, selectionReason: row.selectionReason ?? "" });
+      items.push({
+        kind: row.kind,
+        refId: row.refId,
+        refParentId: row.refParentId,
+        refVersion: row.refVersion,
+        text: v.plainText ?? "",
+        staleness: row.staleness,
+        selectionReason: row.selectionReason ?? "",
+      });
     } else if (row.kind === "memory_revision") {
       const [r] = await db
         .select({ body: memoryRevisions.body, status: memoryItems.status })
@@ -375,7 +375,15 @@ export async function loadManifest(
         gaps.push({ kind: row.kind, refId: row.refId, reason: "memory no longer accepted" });
         continue;
       }
-      items.push({ kind: row.kind, refId: row.refId, refParentId: row.refParentId, refVersion: row.refVersion, text: r.body, staleness: row.staleness, selectionReason: row.selectionReason ?? "" });
+      items.push({
+        kind: row.kind,
+        refId: row.refId,
+        refParentId: row.refParentId,
+        refVersion: row.refVersion,
+        text: r.body,
+        staleness: row.staleness,
+        selectionReason: row.selectionReason ?? "",
+      });
     } else if (row.kind === "message") {
       const [m] = await db
         .select({ content: messages.content })
@@ -386,7 +394,15 @@ export async function loadManifest(
         gaps.push({ kind: row.kind, refId: row.refId, reason: "message no longer available" });
         continue;
       }
-      items.push({ kind: row.kind, refId: row.refId, refParentId: row.refParentId, refVersion: row.refVersion, text: m.content ?? "", staleness: row.staleness, selectionReason: row.selectionReason ?? "" });
+      items.push({
+        kind: row.kind,
+        refId: row.refId,
+        refParentId: row.refParentId,
+        refVersion: row.refVersion,
+        text: m.content ?? "",
+        staleness: row.staleness,
+        selectionReason: row.selectionReason ?? "",
+      });
     } else if (row.kind === "source_span") {
       const [src] = await db
         .select({ id: sources.id })
@@ -398,7 +414,15 @@ export async function loadManifest(
         gaps.push({ kind: row.kind, refId: row.refId, reason: "source no longer available" });
         continue;
       }
-      items.push({ kind: row.kind, refId: row.refId, refParentId: row.refParentId, refVersion: row.refVersion, text: "", staleness: row.staleness, selectionReason: row.selectionReason ?? "" });
+      items.push({
+        kind: row.kind,
+        refId: row.refId,
+        refParentId: row.refParentId,
+        refVersion: row.refVersion,
+        text: "",
+        staleness: row.staleness,
+        selectionReason: row.selectionReason ?? "",
+      });
     }
   }
   return { items, gaps };
@@ -419,10 +443,7 @@ export type ClaimSupport = {
  * actual support, not citation presence. A span with impossible offsets is
  * malformed, which is reported rather than counted as support.
  */
-export async function validateClaimEvidence(
-  claimIds: string[],
-  workspaceId: string,
-): Promise<ClaimSupport[]> {
+export async function validateClaimEvidence(claimIds: string[], workspaceId: string): Promise<ClaimSupport[]> {
   if (!claimIds.length) return [];
   const rows = await db
     .select({
@@ -441,7 +462,12 @@ export async function validateClaimEvidence(
     .where(and(inArray(claims.id, claimIds), eq(claims.workspaceId, workspaceId)));
   const byClaim = new Map<string, ClaimSupport>();
   for (const row of rows) {
-    const support = byClaim.get(row.claimId) ?? { claimId: row.claimId, statement: row.statement, supported: false, spans: [] };
+    const support = byClaim.get(row.claimId) ?? {
+      claimId: row.claimId,
+      statement: row.statement,
+      supported: false,
+      spans: [],
+    };
     if (row.evidenceId && row.sourceAccessible) {
       const malformed =
         (row.startOffset != null && row.startOffset < 0) ||
@@ -452,26 +478,18 @@ export async function validateClaimEvidence(
     byClaim.set(row.claimId, support);
   }
   for (const id of claimIds) {
-    if (!byClaim.has(id)) byClaim.set(id, { claimId: id, statement: "", supported: false, spans: [], reason: "claim not found in workspace" });
+    if (!byClaim.has(id))
+      byClaim.set(id, {
+        claimId: id,
+        statement: "",
+        supported: false,
+        spans: [],
+        reason: "claim not found in workspace",
+      });
     const support = byClaim.get(id)!;
     if (!support.supported && !support.reason) {
       support.reason = support.spans.length ? "all evidence spans are malformed" : "no accessible source evidence";
     }
   }
   return claimIds.map((id) => byClaim.get(id)!);
-}
-
-/** The profile revision a manifest was built against, for audit readers. */
-export async function getManifestProfileRevision(manifestId: string, workspaceId: string) {
-  const [row] = await db
-    .select({
-      revisionId: agentProfileRevisions.id,
-      revisionNumber: agentProfileRevisions.revision,
-      contentHash: agentProfileRevisions.contentHash,
-    })
-    .from(contextManifests)
-    .innerJoin(agentProfileRevisions, eq(contextManifests.profileRevisionId, agentProfileRevisions.id))
-    .where(and(eq(contextManifests.id, manifestId), eq(contextManifests.workspaceId, workspaceId)))
-    .limit(1);
-  return row ?? null;
 }

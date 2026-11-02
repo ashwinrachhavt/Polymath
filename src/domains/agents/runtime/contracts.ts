@@ -39,21 +39,18 @@ export const capabilityGrant = z.object({
   expiresAt: z.string().datetime(),
   delegationDepth: z.number().int().min(0).max(3).default(0),
 });
-export type CapabilityGrant = z.infer<typeof capabilityGrant>;
 
-export const spendReservation = z.object({
+const spendReservation = z.object({
   reservationId: z.string().uuid(),
   currency: z.literal("USD"),
   maxUnits: z.string().regex(/^\d+(\.\d{1,4})?$/),
 });
-export type SpendReservation = z.infer<typeof spendReservation>;
 
-export const runtimeLimits = z.object({
+const runtimeLimits = z.object({
   maxRuntimeSeconds: z.number().int().positive().max(86_400),
   maxToolCalls: z.number().int().positive().max(10_000),
   maxTokens: z.number().int().positive().optional(),
 });
-export type RuntimeLimits = z.infer<typeof runtimeLimits>;
 
 export const runtimeStartRequest = z.object({
   identity: runIdentity,
@@ -87,38 +84,23 @@ export type StartOutcome =
   | { kind: "duplicate"; runtimeRef: string }
   | { kind: "unknown"; detail?: string };
 
-export type SignalOutcome =
-  | { kind: "delivered" }
-  | { kind: "duplicate" }
-  | { kind: "unknown"; detail?: string };
+export type SignalOutcome = { kind: "delivered" } | { kind: "duplicate" } | { kind: "unknown"; detail?: string };
 
-export type CancelOutcome =
-  | { kind: "cancelled" }
-  | { kind: "already-terminal" }
-  | { kind: "unknown"; detail?: string };
+export type CancelOutcome = { kind: "cancelled" } | { kind: "already-terminal" } | { kind: "unknown"; detail?: string };
 
-export const runtimePhase = z.enum([
-  "starting",
-  "running",
-  "waiting_input",
-  "waiting_approval",
-  "completed",
-  "failed",
-  "cancelled",
-]);
-export type RuntimePhase = z.infer<typeof runtimePhase>;
+export type RuntimePhase =
+  "starting" | "running" | "waiting_input" | "waiting_approval" | "completed" | "failed" | "cancelled";
 
-export const runtimeObservation = z.object({
-  identity: runIdentity,
-  runtimeRef: z.string(),
-  phase: runtimePhase,
+export type RuntimeObservation = {
+  identity: RunIdentity;
+  runtimeRef: string;
+  phase: RuntimePhase;
   /** Output is exposed separately from phase: completed is not validated. */
-  output: z.string().nullable(),
+  output: string | null;
   /** Redacted detail only - never a raw provider payload. */
-  detail: z.string().nullable(),
-  observedAt: z.string().datetime(),
-});
-export type RuntimeObservation = z.infer<typeof runtimeObservation>;
+  detail: string | null;
+  observedAt: string;
+};
 
 /** Reconciliation of a start whose response was lost. */
 export type StartReconciliation =

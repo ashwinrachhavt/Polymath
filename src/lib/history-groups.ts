@@ -10,7 +10,7 @@
 
 const DAY_MS = 86_400_000;
 
-export type HistoryGroupKey = "today" | "this-week" | "older";
+type HistoryGroupKey = "today" | "this-week" | "older";
 
 export type HistoryGroup<T> = {
   key: HistoryGroupKey;
@@ -40,9 +40,7 @@ export function groupByRecency<T extends { createdAt: Date | string }>(
     const ms = at.getTime();
     // Rounding absorbs the 23 and 25 hour days either side of a DST change.
     // Future-dated rows (clock skew between server and browser) read as today.
-    const days = Number.isFinite(ms)
-      ? Math.round((today - startOfLocalDay(at)) / DAY_MS)
-      : Number.POSITIVE_INFINITY;
+    const days = Number.isFinite(ms) ? Math.round((today - startOfLocalDay(at)) / DAY_MS) : Number.POSITIVE_INFINITY;
 
     const key: HistoryGroupKey = days <= 0 ? "today" : days < 7 ? "this-week" : "older";
     buckets.get(key)!.push(row);

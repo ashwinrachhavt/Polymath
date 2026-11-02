@@ -1,4 +1,3 @@
-
 /*
  * The only module that talks to Composio (D09). It reads COMPOSIO_API_KEY
  * (the project key; the token never leaves Composio). Per-provider auth
@@ -42,7 +41,7 @@ export class ComposioReadOnlyViolationError extends Error {
   }
 }
 
-export class ComposioWriteMethodError extends Error {
+class ComposioWriteMethodError extends Error {
   readonly code = "composio_write_method";
   constructor(method: string) {
     super(`Composio write execution refused a ${method} call: the write path is POST-only.`);
@@ -59,7 +58,7 @@ export class ComposioNotConfiguredError extends Error {
  * invalid) with a different fix than a provider outage, and the account row
  * should say so instead of rotting into a misleading "expired".
  */
-export class ComposioLinkError extends Error {
+class ComposioLinkError extends Error {
   readonly code = "composio_link_failed";
   readonly status: number;
   constructor(status: number) {
@@ -75,7 +74,7 @@ export class ComposioLinkError extends Error {
   }
 }
 
-export function authConfigEnvName(provider: string) {
+function authConfigEnvName(provider: string) {
   return `COMPOSIO_AUTH_CONFIG_${provider.toUpperCase().replace(/-/g, "_")}`;
 }
 
@@ -85,7 +84,7 @@ export function authConfigEnvName(provider: string) {
  * ("googlecalendar"). Discovery matches on the concatenated form, so an
  * override env name keeps its own mapping via authConfigEnvName.
  */
-export function composioToolkitSlug(provider: string) {
+function composioToolkitSlug(provider: string) {
   return provider.replace(/-/g, "");
 }
 
@@ -129,7 +128,7 @@ export function resetAuthConfigDiscovery() {
  * key is missing or the project has no config for the toolkit yet — callers
  * turn that into "not configured" copy rather than guessing an id.
  */
-export async function resolveAuthConfigId(provider: string): Promise<string | null> {
+async function resolveAuthConfigId(provider: string): Promise<string | null> {
   const override = process.env[authConfigEnvName(provider)];
   if (override) return override;
   const apiKey = process.env.COMPOSIO_API_KEY;
@@ -159,9 +158,7 @@ export async function createHostedConnectLink(input: {
   const apiKey = process.env.COMPOSIO_API_KEY;
   const authConfigId = await resolveAuthConfigId(input.provider);
   if (!apiKey || !authConfigId) {
-    throw new ComposioNotConfiguredError(
-      `Composio is not configured for "${input.provider}" on this deployment yet.`,
-    );
+    throw new ComposioNotConfiguredError(`Composio is not configured for "${input.provider}" on this deployment yet.`);
   }
   /*
    * No `alias` in this payload. Composio rejects a link whose alias is already
@@ -246,7 +243,8 @@ export type ComposioCallResult =
  */
 async function postThroughProxy(payload: Record<string, unknown>): Promise<ComposioCallResult> {
   const apiKey = process.env.COMPOSIO_API_KEY;
-  if (!apiKey) return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
+  if (!apiKey)
+    return { ok: false, code: "not_configured", message: "Composio is not configured on this deployment yet." };
   let response: Response;
   try {
     response = await fetch(EXECUTE_PROXY_URL, {
@@ -258,7 +256,12 @@ async function postThroughProxy(payload: Record<string, unknown>): Promise<Compo
     return { ok: false, code: "provider_error", message: "The connected service is unreachable." };
   }
   if (!response.ok) {
-    return { ok: false, code: "provider_error", status: response.status, message: `The connected service returned ${response.status}.` };
+    return {
+      ok: false,
+      code: "provider_error",
+      status: response.status,
+      message: `The connected service returned ${response.status}.`,
+    };
   }
   const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
   if (body === null) return { ok: false, code: "provider_error", message: "The connected service returned no body." };
@@ -350,7 +353,11 @@ export type ComposioWriteCall = Omit<ComposioCall, "method"> & {
 };
 
 export type ComposioWriteResult =
-  | { ok: true; data: unknown; /** The provider's own HTTP status, from the proxy's 200 envelope, when present. */ providerStatus?: number }
+  | {
+      ok: true;
+      data: unknown;
+      /** The provider's own HTTP status, from the proxy's 200 envelope, when present. */ providerStatus?: number;
+    }
   // `ambiguous` is the important one: the request may have reached the provider.
   // Anything that cannot prove "not sent" belongs here, and the executor turns
   // it into UNKNOWN rather than a retry.
@@ -433,7 +440,12 @@ export async function executeComposioWrite(call: ComposioWriteCall): Promise<Com
   // response. Say so rather than inventing an outcome.
   const body = (await response.json().catch(() => null)) as { data?: unknown; status?: unknown } | null;
   if (body === null) {
-    return { ok: false, code: "ambiguous", status: response.status, message: "The connected service returned no parseable body." };
+    return {
+      ok: false,
+      code: "ambiguous",
+      status: response.status,
+      message: "The connected service returned no parseable body.",
+    };
   }
   // The envelope carries the provider's own status (`status`, required by the
   // contract) alongside the provider body (`data`). Surface it: a provider

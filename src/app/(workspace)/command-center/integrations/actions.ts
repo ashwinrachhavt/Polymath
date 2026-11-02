@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import {
-  registerAccount,
   renameAccount,
   revokeConnectedAccount,
   setAccountAccessTier,
@@ -40,18 +39,6 @@ async function authorize() {
 
 function fail(error: unknown): Result {
   return { ok: false, error: error instanceof Error ? error.message : "The connector write failed." };
-}
-
-export async function registerAccountAction(input: { provider: string; alias: string }): Promise<Result> {
-  const auth = await authorize();
-  if (!input.alias.trim()) return { ok: false, error: "An alias is required - models choose accounts by alias." };
-  try {
-    await registerAccount(auth, { provider: input.provider, alias: input.alias.trim() });
-  } catch (error) {
-    return fail(error);
-  }
-  revalidate();
-  return { ok: true };
 }
 
 export async function setWriteDefaultAction(input: { accountId: string; expectedVersion: number }): Promise<Result> {
@@ -106,9 +93,10 @@ export async function revokeAccountAction(input: { accountId: string; expectedVe
  * marked failed with the real reason at once: nothing is left in
  * `connecting` to rot into a misleading "expired".
  */
-export async function startConnectionAction(input: { provider: string; alias?: string }): Promise<
-  { ok: true; redirectUrl: string } | { ok: false; error: string }
-> {
+export async function startConnectionAction(input: {
+  provider: string;
+  alias?: string;
+}): Promise<{ ok: true; redirectUrl: string } | { ok: false; error: string }> {
   const auth = await authorize();
   const alias = input.alias?.trim() ?? "";
   try {
@@ -203,7 +191,11 @@ export async function renameAccountAction(input: {
  * OFF always works, because stopping must never depend on access the owner
  * may already have taken away.
  */
-export async function setSenderProposalsAction(input: { accountId: string; expectedVersion: number; enabled: boolean }): Promise<Result> {
+export async function setSenderProposalsAction(input: {
+  accountId: string;
+  expectedVersion: number;
+  enabled: boolean;
+}): Promise<Result> {
   const auth = await authorize();
   try {
     await setSenderProposals(auth, input);
@@ -214,9 +206,9 @@ export async function setSenderProposalsAction(input: { accountId: string; expec
   return { ok: true };
 }
 
-export async function syncGoogleCalendarAction(input: { accountId: string }): Promise<
-  { ok: true; summary: string } | { ok: false; error: string }
-> {
+export async function syncGoogleCalendarAction(input: {
+  accountId: string;
+}): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
   const auth = await authorize();
   try {
     const r = await syncGoogleCalendarAccount(auth, { externalAccountId: input.accountId });
@@ -229,14 +221,17 @@ export async function syncGoogleCalendarAction(input: { accountId: string }): Pr
 }
 
 /* Read-only pull of shared Notion pages into knowledge documents. Nothing is written to Notion. */
-export async function syncNotionAction(input: { accountId: string }): Promise<
-  { ok: true; summary: string } | { ok: false; error: string }
-> {
+export async function syncNotionAction(input: {
+  accountId: string;
+}): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
   const auth = await authorize();
   try {
     const r = await syncNotionAccount(auth, { externalAccountId: input.accountId });
     revalidate();
-    return { ok: true, summary: `${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged, ${r.failed} failed` };
+    return {
+      ok: true,
+      summary: `${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged, ${r.failed} failed`,
+    };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The Notion sync failed." };
   }

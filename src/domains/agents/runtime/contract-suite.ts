@@ -22,7 +22,7 @@ import {
  * its suite invocation rather than deleting the case.
  */
 
-export type RuntimeTestControls = {
+type RuntimeTestControls = {
   /** Make the next start's response disappear after the session was created. */
   loseNextStartResponse(): void;
   /** Make the next signal's response disappear after delivery. */
@@ -57,11 +57,11 @@ export function makeStartRequest(overrides: Partial<RuntimeStartRequest> = {}): 
   });
 }
 
-export function makeSignal(identity: RunIdentity, kind: RuntimeSignal["kind"] = "user_input"): RuntimeSignal {
+function makeSignal(identity: RunIdentity, kind: RuntimeSignal["kind"] = "user_input"): RuntimeSignal {
   return runtimeSignal.parse({ identity, signalId: crypto.randomUUID(), kind });
 }
 
-export function runAgentRuntimeContract(
+function runAgentRuntimeContract(
   name: string,
   make: () => { runtime: AgentRuntime; controls: RuntimeTestControls },
 ): void {

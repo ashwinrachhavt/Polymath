@@ -22,10 +22,10 @@ import { vectorLiteral } from "./embedding";
  * alone, so search never errors for want of a key.
  */
 
-export const RRF_K = 60;
-export const LEG_DEPTH = 50;
+const RRF_K = 60;
+const LEG_DEPTH = 50;
 /** Chunks closer than this are noise; cosine distance, same scale as the link edges. */
-export const MEANING_MAX_DISTANCE = 0.6;
+const MEANING_MAX_DISTANCE = 0.6;
 export const SEARCH_KINDS = ["note", "zettel", "document", "memo", "report", "transcript"] as const;
 
 export type SearchMode = "hybrid" | "keyword" | "meaning";
@@ -390,7 +390,7 @@ export async function countMeaningUncoveredByState(
  * edge's recorded context is the reason/passage the spec asks for - a
  * "source" edge carries the supporting quote verbatim.
  */
-export type HitConnection = {
+type HitConnection = {
   id: string;
   title: string;
   kind: string;

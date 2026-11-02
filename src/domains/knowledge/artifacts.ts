@@ -20,16 +20,16 @@ import { artifactVersions, artifacts, wikiPages } from "./schema";
  * are artifacts of kind "note" backed by a wiki_pages registry row - so it
  * filters by the registry join, not by artifacts.kind.
  */
-export const ARTIFACT_KINDS = ["report", "deck", "infographic", "zettel", "wiki"] as const;
-export type ArtifactKindFilter = (typeof ARTIFACT_KINDS)[number];
+const ARTIFACT_KINDS = ["report", "deck", "infographic", "zettel", "wiki"] as const;
+type ArtifactKindFilter = (typeof ARTIFACT_KINDS)[number];
 
 /** The statuses a kept artifact can carry. "published" is never set; "archived" is a discarded draft. */
-export const ARTIFACT_STATUSES = ["draft", "generated", "reviewed"] as const;
-export type ArtifactStatusFilter = (typeof ARTIFACT_STATUSES)[number];
+const ARTIFACT_STATUSES = ["draft", "generated", "reviewed"] as const;
+type ArtifactStatusFilter = (typeof ARTIFACT_STATUSES)[number];
 
 const GENERATED_KINDS = ["report", "deck", "infographic", "zettel"] as const;
 
-export type ArtifactRow = {
+type ArtifactRow = {
   id: string;
   title: string;
   /** The stored kind; "note" rows the wiki registry claims read as wiki. */
@@ -120,7 +120,12 @@ export async function pageArtifacts(
       status: row.status,
       updatedAt: row.updatedAt,
       excerpt: row.excerpt
-        ? (row.excerpt.split("\n").map((l: string) => l.trim()).find((l: string) => l.length > 0) ?? null)?.slice(0, 240) ?? null
+        ? ((
+            row.excerpt
+              .split("\n")
+              .map((l: string) => l.trim())
+              .find((l: string) => l.length > 0) ?? null
+          )?.slice(0, 240) ?? null)
         : null,
     })),
   };

@@ -17,10 +17,8 @@ export type ToggleState = {
 };
 
 /** The provider's single proposal-kind capability, or null. */
-export function writeCapability(provider: Provider): Capability | null {
-  const found = Object.entries(CAPABILITIES).find(
-    ([, spec]) => spec.provider === provider && spec.kind === "proposal",
-  );
+function writeCapability(provider: Provider): Capability | null {
+  const found = Object.entries(CAPABILITIES).find(([, spec]) => spec.provider === provider && spec.kind === "proposal");
   return found ? (found[0] as Capability) : null;
 }
 
@@ -44,7 +42,9 @@ export function accessToggleState(provider: Provider, currentTier: string | null
 
   const off = new Set(disabled);
   const grantedReads = currentTier
-    ? readCapabilities.filter((capability) => tiers.find((t) => t.id === currentTier)?.capabilities.includes(capability))
+    ? readCapabilities.filter((capability) =>
+        tiers.find((t) => t.id === currentTier)?.capabilities.includes(capability),
+      )
     : [];
   // Read is on only when the tier grants reads and every granted read is
   // enabled: a single switched-off read means the switch state is off, which

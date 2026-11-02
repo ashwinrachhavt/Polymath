@@ -7,12 +7,16 @@ import type { Recurrence, Task, TaskStatus } from "./types";
  */
 
 export const taskStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"];
-export const statusLabels: Record<TaskStatus, string> = { INBOX: "Inbox", BACKLOG: "Backlog", READY: "Ready", IN_PROGRESS: "In progress", WAITING: "Waiting", DONE: "Done" };
+export const statusLabels: Record<TaskStatus, string> = {
+  INBOX: "Inbox",
+  BACKLOG: "Backlog",
+  READY: "Ready",
+  IN_PROGRESS: "In progress",
+  WAITING: "Waiting",
+  DONE: "Done",
+};
 
-export const priorityRank: Record<Task["priority"], number> = { High: 0, Medium: 1, Low: 2 };
-export const recurrenceFrequencies: Recurrence["frequency"][] = ["daily", "weekly", "monthly"];
-export const recurringStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING"];
-export const attachmentKinds: NonNullable<Task["attachments"]>[number]["kind"][] = ["file", "url", "note"];
+const priorityRank: Record<Task["priority"], number> = { High: 0, Medium: 1, Low: 2 };
 
 /*
  * Manual order. Rank is only meaningful inside a status column, which is what
@@ -21,15 +25,21 @@ export const attachmentKinds: NonNullable<Task["attachments"]>[number]["kind"][]
  * queue and the list never reorders itself between renders.
  */
 export function nextRank(tasks: Task[], status: TaskStatus) {
-  const ranks = tasks.filter((task) => task.status === status && typeof task.rank === "number").map((task) => task.rank as number);
+  const ranks = tasks
+    .filter((task) => task.status === status && typeof task.rank === "number")
+    .map((task) => task.rank as number);
   return ranks.length ? Math.max(...ranks) + 1 : 1;
 }
 
 export function compareTasks(a: Task, b: Task) {
   const ranked = a.rank !== undefined && b.rank !== undefined;
   if (ranked && a.rank !== b.rank) return (a.rank as number) - (b.rank as number);
-  if (a.rank !== undefined !== (b.rank !== undefined)) return a.rank !== undefined ? -1 : 1;
-  return priorityRank[a.priority] - priorityRank[b.priority] || (a.dueDate || "9999").localeCompare(b.dueDate || "9999") || a.title.localeCompare(b.title);
+  if ((a.rank !== undefined) !== (b.rank !== undefined)) return a.rank !== undefined ? -1 : 1;
+  return (
+    priorityRank[a.priority] - priorityRank[b.priority] ||
+    (a.dueDate || "9999").localeCompare(b.dueDate || "9999") ||
+    a.title.localeCompare(b.title)
+  );
 }
 
 /*
@@ -94,16 +104,10 @@ export function completionPatch(task: Task, completedAt = new Date()): Partial<T
   if (!task.recurrence) return { status: "DONE", completedAt: completedAt.toISOString() };
   const next = advanceRecurrence(task.dueDate || "", task.recurrence, completedAt);
   if (!next) return { status: "DONE", completedAt: completedAt.toISOString(), recurrence: undefined };
-  return { status: task.status === "IN_PROGRESS" ? "READY" : task.status, dueDate: next, completedAt: completedAt.toISOString(), completionCount: (task.completionCount || 0) + 1 };
-}
-
-export function isRecurring(task: Task) { return Boolean(task.recurrence); }
-
-export function matchesTask(task: Task, query: string) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [task.title, task.description, task.tags.join(" "), task.dueDate || "", task.status, task.priority, ...(task.attachments || []).map((attachment) => attachment.label)]
-    .join(" ")
-    .toLowerCase()
-    .includes(needle);
+  return {
+    status: task.status === "IN_PROGRESS" ? "READY" : task.status,
+    dueDate: next,
+    completedAt: completedAt.toISOString(),
+    completionCount: (task.completionCount || 0) + 1,
+  };
 }

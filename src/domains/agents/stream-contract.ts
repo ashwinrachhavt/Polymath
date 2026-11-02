@@ -66,7 +66,7 @@ export type ChatFrame =
   /** A transport-level problem the surface should show, not crash on. */
   | { type: "error"; runId: string; code: ChatErrorCode; message: string; cursor: number };
 
-export type ChatErrorCode = "run_finished" | "run_not_found" | "agent_bridge_unavailable" | "stream_unavailable";
+type ChatErrorCode = "run_finished" | "run_not_found" | "agent_bridge_unavailable" | "stream_unavailable";
 
 /**
  * A citation as the chat surface sees it. Deliberately the same fields as

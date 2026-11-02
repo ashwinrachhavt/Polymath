@@ -18,10 +18,27 @@ import {
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import { dismissSemanticLink, LinkEditError, promoteSemanticLink, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
-import { NOTE_AI_ACTIONS, NoteAIError, applyNoteAIResult, getNoteAIRunOutput, startNoteAIRun } from "@/domains/knowledge/note-ai";
-import { NoteCommentError, addNoteComment, listNoteComments, resolveNoteComment } from "@/domains/knowledge/note-comments";
-import { LinearIssueNoteError, draftLinearIssueFromNote, type LinearIssueDraftResult } from "@/domains/capture/linear-issue-proposal";
+import {
+  dismissSemanticLink,
+  LinkEditError,
+  promoteSemanticLink,
+  RELATION_TYPES,
+  removeLink,
+  setLinkRelation,
+} from "@/domains/knowledge/relations";
+import {
+  NOTE_AI_ACTIONS,
+  NoteAIError,
+  applyNoteAIResult,
+  getNoteAIRunOutput,
+  startNoteAIRun,
+} from "@/domains/knowledge/note-ai";
+import { NoteCommentError, addNoteComment, resolveNoteComment } from "@/domains/knowledge/note-comments";
+import {
+  LinearIssueNoteError,
+  draftLinearIssueFromNote,
+  type LinearIssueDraftResult,
+} from "@/domains/capture/linear-issue-proposal";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
@@ -52,7 +69,15 @@ async function authorize(): Promise<AuthContext> {
 }
 
 type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-const domainErrors = [LinkEditError, NoteNotFoundError, VersionConflictError, IdempotencyConflictError, NoteAIError, LinearIssueNoteError, NoteCommentError];
+const domainErrors = [
+  LinkEditError,
+  NoteNotFoundError,
+  VersionConflictError,
+  IdempotencyConflictError,
+  NoteAIError,
+  LinearIssueNoteError,
+  NoteCommentError,
+];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -106,14 +131,26 @@ const commitInput = z.object({
   idempotencyKey: key,
 });
 
-export async function commitNoteAction(input: z.input<typeof commitInput>): Promise<Result<{ version: number; versionNumber: number; versions: { id: string; versionNumber: number; reason: string; note: string | null; createdAt: string }[] }>> {
+export async function commitNoteAction(
+  input: z.input<typeof commitInput>,
+): Promise<
+  Result<{
+    version: number;
+    versionNumber: number;
+    versions: { id: string; versionNumber: number; reason: string; note: string | null; createdAt: string }[];
+  }>
+> {
   const parsed = commitInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That checkpoint is not valid." };
   const auth = await authorize();
   return guarded(async () => {
     const { version, versionNumber } = await commitNoteSnapshot(auth, parsed.data);
     const versions = await listNoteVersions(auth, parsed.data.artifactId);
-    return { version, versionNumber, versions: versions.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })) };
+    return {
+      version,
+      versionNumber,
+      versions: versions.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+    };
   });
 }
 
@@ -134,7 +171,9 @@ const retryEmbedInput = z.object({ artifactId: z.string().uuid() });
  * their workspace's note; the outcome string is the provider's honest state,
  * never a blanket "indexed".
  */
-export async function retryNoteEmbeddingAction(input: z.input<typeof retryEmbedInput>): Promise<Result<{ message: string }>> {
+export async function retryNoteEmbeddingAction(
+  input: z.input<typeof retryEmbedInput>,
+): Promise<Result<{ message: string }>> {
   const auth = await authorize();
   const parsed = retryEmbedInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That note id is not valid." };
@@ -143,10 +182,14 @@ export async function retryNoteEmbeddingAction(input: z.input<typeof retryEmbedI
     revalidate();
     if (out.status === "succeeded") return { ok: true, message: "Indexed for meaning search." };
     if (out.status === "skipped") {
-      const reason = out.reason === "no_text" ? "This note has no text to index yet."
-        : out.reason === "busy" ? "Indexing is already in progress for this note."
-        : out.reason === "edited" ? "This note changed while indexing. Retry to index the latest version."
-        : "That note is not here.";
+      const reason =
+        out.reason === "no_text"
+          ? "This note has no text to index yet."
+          : out.reason === "busy"
+            ? "Indexing is already in progress for this note."
+            : out.reason === "edited"
+              ? "This note changed while indexing. Retry to index the latest version."
+              : "That note is not here.";
       return { ok: false, error: reason };
     }
     // Authored categories only: a provider payload must never reach the UI.
@@ -167,7 +210,9 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
 const linkRelatedInput = z.object({ artifactId: z.string().uuid(), targetId: z.string().uuid() });
 
 /** Confirm a "related by meaning" suggestion into the explicit graph. */
-export async function linkRelatedNoteAction(input: z.input<typeof linkRelatedInput>): Promise<Result<{ linked: true }>> {
+export async function linkRelatedNoteAction(
+  input: z.input<typeof linkRelatedInput>,
+): Promise<Result<{ linked: true }>> {
   const parsed = linkRelatedInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That suggestion is not valid." };
   const auth = await authorize();
@@ -196,7 +241,9 @@ export async function setLinkRelationAction(input: z.input<typeof relationInput>
 }
 
 /** Remove a curated link or reject a suggestion; neither touches the notes. */
-export async function removeLinkAction(input: z.input<typeof linkRelatedInput> & { dismiss?: boolean }): Promise<Result<{ removed: true }>> {
+export async function removeLinkAction(
+  input: z.input<typeof linkRelatedInput> & { dismiss?: boolean },
+): Promise<Result<{ removed: true }>> {
   const parsed = linkRelatedInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That link is not valid." };
   const auth = await authorize();
@@ -217,7 +264,9 @@ const tagsInput = z.object({
   idempotencyKey: key,
 });
 
-export async function setNoteTagsAction(input: z.input<typeof tagsInput>): Promise<Result<{ version: number; tags: string[] }>> {
+export async function setNoteTagsAction(
+  input: z.input<typeof tagsInput>,
+): Promise<Result<{ version: number; tags: string[] }>> {
   const parsed = tagsInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Those tags are not valid." };
   const auth = await authorize();
@@ -253,7 +302,9 @@ export async function startNoteAIAction(input: z.input<typeof aiStartInput>): Pr
 const aiPollInput = z.object({ runId: z.string().uuid() });
 
 /** A read, polled by the editor while a run is live — deliberately no revalidate. */
-export async function getNoteAIRunOutputAction(input: z.input<typeof aiPollInput>): Promise<Result<{ state: string; output: string | null }>> {
+export async function getNoteAIRunOutputAction(
+  input: z.input<typeof aiPollInput>,
+): Promise<Result<{ state: string; output: string | null }>> {
   const parsed = aiPollInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That run reference is not valid." };
   const auth = await getAuthContext();
@@ -275,14 +326,20 @@ const aiApplyInput = z.object({
   idempotencyKey: key,
 });
 
-export async function applyNoteAIResultAction(input: z.input<typeof aiApplyInput>): Promise<Result<{ version: number; versionNumber: number }>> {
+export async function applyNoteAIResultAction(
+  input: z.input<typeof aiApplyInput>,
+): Promise<Result<{ version: number; versionNumber: number }>> {
   const parsed = aiApplyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That apply request is not valid." };
   const auth = await authorize();
   return guarded(async () => applyNoteAIResult(auth, parsed.data));
 }
 
-const findInput = z.object({ query: z.string().max(200), mode: z.enum(["keyword", "hybrid"]), excludeId: z.string().uuid().optional() });
+const findInput = z.object({
+  query: z.string().max(200),
+  mode: z.enum(["keyword", "hybrid"]),
+  excludeId: z.string().uuid().optional(),
+});
 
 /**
  * Cards the `[[` picker can link to, from the same retrieval layer as search.
@@ -302,7 +359,13 @@ const addCommentInput = z.object({
   idempotencyKey: key,
 });
 
-export async function addNoteCommentAction(input: z.input<typeof addCommentInput>): Promise<Result<{ comment: { id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null } }>> {
+export async function addNoteCommentAction(
+  input: z.input<typeof addCommentInput>,
+): Promise<
+  Result<{
+    comment: { id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null };
+  }>
+> {
   const parsed = addCommentInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That comment is not valid." };
   const auth = await authorize();
@@ -326,7 +389,9 @@ const resolveCommentInput = z.object({
   idempotencyKey: key,
 });
 
-export async function resolveNoteCommentAction(input: z.input<typeof resolveCommentInput>): Promise<Result<{ resolvedAt: string | null }>> {
+export async function resolveNoteCommentAction(
+  input: z.input<typeof resolveCommentInput>,
+): Promise<Result<{ resolvedAt: string | null }>> {
   const parsed = resolveCommentInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That comment reference is not valid." };
   const auth = await authorize();
@@ -334,27 +399,6 @@ export async function resolveNoteCommentAction(input: z.input<typeof resolveComm
     const { resolvedAt } = await resolveNoteComment(auth, parsed.data);
     return { resolvedAt: resolvedAt ? resolvedAt.toISOString() : null };
   });
-}
-
-/** The open note's comments for the margin panel, oldest first. A read. */
-export async function listNoteCommentsAction(input: { noteId: string }): Promise<{ id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null }[]> {
-  const parsed = z.object({ noteId: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return [];
-  const auth = await getAuthContext();
-  try {
-    const rows = await listNoteComments(auth, parsed.data.noteId);
-    return rows.map((c) => ({
-      id: c.id,
-      body: c.body,
-      resolvedAt: c.resolvedAt ? c.resolvedAt.toISOString() : null,
-      createdAt: c.createdAt.toISOString(),
-      authorName: c.authorName,
-    }));
-  } catch {
-    // A bad or foreign note id is the empty panel, not an error surface;
-    // the note itself 404s elsewhere.
-    return [];
-  }
 }
 
 const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
@@ -366,19 +410,27 @@ const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
  * honest too: unchanged source replays the existing draft, a changed source
  * refreshes it as a new version. It never talks to Linear.
  */
-export async function proposeLinearIssueAction(input: z.input<typeof proposeIssueInput>): Promise<Result<LinearIssueDraftResult>> {
+export async function proposeLinearIssueAction(
+  input: z.input<typeof proposeIssueInput>,
+): Promise<Result<LinearIssueDraftResult>> {
   const parsed = proposeIssueInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That issue request is not valid." };
   const auth = await authorize();
   return guarded(async () => draftLinearIssueFromNote(auth, parsed.data));
 }
 
-export async function findLinkTargetsAction(input: z.input<typeof findInput>): Promise<{ id: string; title: string; kind: string; href?: string }[]> {
+export async function findLinkTargetsAction(
+  input: z.input<typeof findInput>,
+): Promise<{ id: string; title: string; kind: string; href?: string }[]> {
   const parsed = findInput.safeParse(input);
   if (!parsed.success) return [];
   const auth = await getAuthContext();
   const query = parsed.data.query.trim();
-  if (!query) return (await listNotes(auth, 9)).filter((r) => r.id !== parsed.data.excludeId).slice(0, 8).map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
+  if (!query)
+    return (await listNotes(auth, 9))
+      .filter((r) => r.id !== parsed.data.excludeId)
+      .slice(0, 8)
+      .map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
   // Row 36: the picker searches beyond knowledge artifacts - captures and
   // tasks match too. Non-artifact targets carry a canonical href (captures
   // resolve at the inbox, tasks at the tasks page); the editor inserts those
@@ -453,7 +505,10 @@ export async function listNotionPagesAction(): Promise<{ id: string; title: stri
   try {
     const client = composioNotionClient(account.connectedAccountId);
     const hits = await client.searchEditedSince(null);
-    return hits.filter((hit) => hit.object === "page").slice(0, 25).map((hit) => ({ id: hit.id, title: hit.title, url: hit.url }));
+    return hits
+      .filter((hit) => hit.object === "page")
+      .slice(0, 25)
+      .map((hit) => ({ id: hit.id, title: hit.title, url: hit.url }));
   } catch {
     // A Notion outage must not make the note editor unusable; the picker is
     // simply empty and the action reports the real failure when used.

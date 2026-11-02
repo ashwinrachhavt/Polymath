@@ -1,4 +1,4 @@
-import { CAPABILITIES, FIXED_ROLE_CAPABILITIES, validateRoleCapabilities, type Capability } from "./capabilities";
+import { FIXED_ROLE_CAPABILITIES, validateRoleCapabilities, Capability } from "./capabilities";
 import type { AuthRole } from "./resolve";
 
 /*
@@ -22,7 +22,7 @@ export function diffRoleCapabilities(from: readonly Capability[], to: readonly C
 }
 
 /** What each capability family governs, in product language. */
-export const CAPABILITY_FAMILY_SURFACES: Record<string, string> = {
+const CAPABILITY_FAMILY_SURFACES: Record<string, string> = {
   person: "People and company records",
   document: "Documents and knowledge",
   member: "Workspace membership administration",
@@ -60,7 +60,8 @@ export function previewRoleChange(
   const beforeFamilies = new Map<string, number>();
   for (const c of before) beforeFamilies.set(capabilityFamily(c), (beforeFamilies.get(capabilityFamily(c)) ?? 0) + 1);
   const afterFamilies = new Map<string, number>();
-  for (const c of validated.capabilities) afterFamilies.set(capabilityFamily(c), (afterFamilies.get(capabilityFamily(c)) ?? 0) + 1);
+  for (const c of validated.capabilities)
+    afterFamilies.set(capabilityFamily(c), (afterFamilies.get(capabilityFamily(c)) ?? 0) + 1);
 
   const surfacesOpened: string[] = [];
   const surfacesClosed: string[] = [];
@@ -71,14 +72,4 @@ export function previewRoleChange(
     if (had && !has) surfacesClosed.push(surface);
   }
   return { ...diff, surfacesOpened, surfacesClosed };
-}
-
-/** Every fixed role, as a comparison baseline for the editor. */
-export function fixedRoleBaselines(): Record<AuthRole, readonly Capability[]> {
-  return FIXED_ROLE_CAPABILITIES;
-}
-
-/** The full catalog, for the editor's picklist. */
-export function catalogOptions(): readonly Capability[] {
-  return CAPABILITIES;
 }

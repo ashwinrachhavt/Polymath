@@ -64,25 +64,18 @@ export class ProfileResearchUnusableAnswerError extends Error {
 export const COMPANY_CARD_KINDS = ["overview", "offerings", "news", "watch"] as const;
 export const CONTACT_CARD_KINDS = ["background", "role", "mentions", "talking-points"] as const;
 export const CONTACT_RESEARCH_FOCI = ["profile", "background", "mentions", "talking-points"] as const;
-
-export type CompanyCardKind = (typeof COMPANY_CARD_KINDS)[number];
-export type ContactCardKind = (typeof CONTACT_CARD_KINDS)[number];
 export type ContactResearchFocus = (typeof CONTACT_RESEARCH_FOCI)[number];
 
-export const PROFILE_RESEARCH_LINK_LABEL = "Profile research";
-export const PROFILE_RESEARCH_CONTENT_TYPE = "profile-research";
-export const PROFILE_RESEARCH_SOURCE_KIND = "profile-research";
+const PROFILE_RESEARCH_LINK_LABEL = "Profile research";
+const PROFILE_RESEARCH_CONTENT_TYPE = "profile-research";
+const PROFILE_RESEARCH_SOURCE_KIND = "profile-research";
 
-/** Bounded pass budgets: a click costs at most this, every time. */
-export const COMPANY_MAX_FETCHES = 2;
-export const COMPANY_MAX_SEARCHES = 1;
-export const CONTACT_MAX_SEARCHES = 2;
-export const PROFILE_SEARCH_LIMIT = 5;
-export const PROFILE_MAX_CARDS = 6;
-export const PROFILE_MAX_SNIPPET_CHARS = 900;
-export const PROFILE_MAX_MANIFEST = 12;
+const PROFILE_SEARCH_LIMIT = 5;
+const PROFILE_MAX_CARDS = 6;
+const PROFILE_MAX_SNIPPET_CHARS = 900;
+const PROFILE_MAX_MANIFEST = 12;
 
-export type ProfileManifestEntry = {
+type ProfileManifestEntry = {
   ref: string;
   title: string;
   url: string;
@@ -100,15 +93,17 @@ export type ProfileCard = {
 };
 
 export type ProfileResearchAdapters = {
-  search(query: string, limit: number): Promise<{ title: string; url: string; publishedAt: string | null; snippet?: string }[]>;
+  search(
+    query: string,
+    limit: number,
+  ): Promise<{ title: string; url: string; publishedAt: string | null; snippet?: string }[]>;
   fetchPage(url: string): Promise<{ title: string | null; url: string; markdown: string } | { error: string }>;
 };
 
 /* ------------------------------------------------------- evidence planning */
 
 export type EvidenceStep =
-  | { kind: "fetch"; url: string; purpose: string }
-  | { kind: "search"; query: string; purpose: string };
+  { kind: "fetch"; url: string; purpose: string } | { kind: "search"; query: string; purpose: string };
 
 /** Normalize a stored domain into a bare host; junk is a caller-visible error, not a silent skip. */
 export function normalizeDomain(raw: string | null): string | null {
@@ -167,10 +162,18 @@ export function planContactEvidence(input: {
       steps.push({ kind: "search", query: `${quoted}${company} bio OR background OR career`, purpose: "background" });
       break;
     case "mentions":
-      steps.push({ kind: "search", query: `${quoted}${company} news OR interview OR talk`, purpose: "recent mentions" });
+      steps.push({
+        kind: "search",
+        query: `${quoted}${company} news OR interview OR talk`,
+        purpose: "recent mentions",
+      });
       break;
     case "talking-points":
-      steps.push({ kind: "search", query: `${quoted}${company} writing OR podcast OR interests`, purpose: "talking points" });
+      steps.push({
+        kind: "search",
+        query: `${quoted}${company} writing OR podcast OR interests`,
+        purpose: "talking points",
+      });
       break;
     default:
       steps.push({ kind: "search", query: `${quoted}${company} news OR interview`, purpose: "recent mentions" });
@@ -373,7 +376,8 @@ function fixtureAdapters(): ProfileResearchAdapters {
             title: "Priya Nair on pricing analytics for small teams",
             url: "https://podcast.test/priya-nair-pricing",
             publishedAt: "2026-09-18",
-            snippet: "Priya Nair argues small teams want pricing answers in the tool they already use, not another dashboard.",
+            snippet:
+              "Priya Nair argues small teams want pricing answers in the tool they already use, not another dashboard.",
           },
         ];
       }
@@ -440,81 +444,118 @@ async function persistCardSet(
   },
 ): Promise<{ artifactId: string; replayed: boolean }> {
   return withTransaction(async (tx) => {
-    const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, { op: "runProfileResearch", ...input, manifest: undefined, cards: undefined }, async () => {
-      const payload: PersistedCardSet = {
-        type: PROFILE_RESEARCH_CONTENT_TYPE,
-        subjectType: input.subjectType,
-        subjectId: input.subjectId,
-        focus: input.focus,
-        generatedAt: new Date().toISOString(),
-        proposer: input.proposer,
-        cards: input.cards,
-        gaps: input.gaps,
-        manifest: input.manifest.map(({ ref, title, url, publishedAt, retrievedAt }) => ({ ref, title, url, publishedAt, retrievedAt })),
-      };
-      const plainText = [
-        `Profile research: ${input.subjectName} (${input.focus})`,
-        ...input.cards.map((c) => `${c.title}: ${c.body}`),
-        ...input.manifest.map((m) => m.title),
-      ].join("\n");
-      const title = `Research: ${input.subjectName}`;
-      const [artifact] = await tx
-        .insert(artifacts)
-        .values({ workspaceId: auth.workspaceId, kind: "report", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
-        .returning({ id: artifacts.id });
-      const [version] = await tx
-        .insert(artifactVersions)
-        .values({
+    const { value, replayed } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "runProfileResearch", ...input, manifest: undefined, cards: undefined },
+      async () => {
+        const payload: PersistedCardSet = {
+          type: PROFILE_RESEARCH_CONTENT_TYPE,
+          subjectType: input.subjectType,
+          subjectId: input.subjectId,
+          focus: input.focus,
+          generatedAt: new Date().toISOString(),
+          proposer: input.proposer,
+          cards: input.cards,
+          gaps: input.gaps,
+          manifest: input.manifest.map(({ ref, title, url, publishedAt, retrievedAt }) => ({
+            ref,
+            title,
+            url,
+            publishedAt,
+            retrievedAt,
+          })),
+        };
+        const plainText = [
+          `Profile research: ${input.subjectName} (${input.focus})`,
+          ...input.cards.map((c) => `${c.title}: ${c.body}`),
+          ...input.manifest.map((m) => m.title),
+        ].join("\n");
+        const title = `Research: ${input.subjectName}`;
+        const [artifact] = await tx
+          .insert(artifacts)
+          .values({
+            workspaceId: auth.workspaceId,
+            kind: "report",
+            status: "generated",
+            title,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning({ id: artifacts.id });
+        const [version] = await tx
+          .insert(artifactVersions)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            versionNumber: 1,
+            content: payload,
+            plainText,
+            reason: "created",
+            createdBy: auth.userId,
+          })
+          .returning({ id: artifactVersions.id });
+        await tx
+          .update(artifacts)
+          .set({ currentVersionId: version.id, embedError: null })
+          .where(eq(artifacts.id, artifact.id));
+        await tx
+          .insert(artifactLinks)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            targetType: input.subjectType,
+            targetId: input.subjectId,
+            label: PROFILE_RESEARCH_LINK_LABEL,
+            linkType: "reference",
+          })
+          .onConflictDoNothing({
+            target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId],
+          });
+        for (const m of input.manifest) {
+          await tx.insert(sources).values({
+            workspaceId: auth.workspaceId,
+            kind: PROFILE_RESEARCH_SOURCE_KIND,
+            title: m.title,
+            url: m.url,
+            metadata: { publishedAt: m.publishedAt, retrievedAt: m.retrievedAt, artifactId: artifact.id },
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          });
+        }
+        await recordAudit(
+          auth,
+          {
+            action: "research.profile.completed",
+            subjectType: "artifact",
+            subjectId: artifact.id,
+            summary: `Profile research on "${input.subjectName}" (${input.subjectType}/${input.focus}, ${input.manifest.length} sources, ${input.cards.length} cards, ${input.gaps} gaps)`,
+            metadata: {
+              subjectType: input.subjectType,
+              subjectId: input.subjectId,
+              focus: input.focus,
+              manifestSize: input.manifest.length,
+              cards: input.cards.length,
+              gaps: input.gaps,
+              proposer: input.proposer,
+            },
+          },
+          tx,
+        );
+        await tx.insert(outboxEvents).values({
           workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          versionNumber: 1,
-          content: payload,
-          plainText,
-          reason: "created",
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id });
-      await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-      await tx
-        .insert(artifactLinks)
-        .values({
-          workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          targetType: input.subjectType,
-          targetId: input.subjectId,
-          label: PROFILE_RESEARCH_LINK_LABEL,
-          linkType: "reference",
-        })
-        .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
-      for (const m of input.manifest) {
-        await tx.insert(sources).values({
-          workspaceId: auth.workspaceId,
-          kind: PROFILE_RESEARCH_SOURCE_KIND,
-          title: m.title,
-          url: m.url,
-          metadata: { publishedAt: m.publishedAt, retrievedAt: m.retrievedAt, artifactId: artifact.id },
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
+          topic: "research.profile.completed",
+          payload: {
+            artifactId: artifact.id,
+            subjectType: input.subjectType,
+            subjectId: input.subjectId,
+            focus: input.focus,
+          },
         });
-      }
-      await recordAudit(
-        auth,
-        {
-          action: "research.profile.completed",
-          subjectType: "artifact",
-          subjectId: artifact.id,
-          summary: `Profile research on "${input.subjectName}" (${input.subjectType}/${input.focus}, ${input.manifest.length} sources, ${input.cards.length} cards, ${input.gaps} gaps)`,
-          metadata: { subjectType: input.subjectType, subjectId: input.subjectId, focus: input.focus, manifestSize: input.manifest.length, cards: input.cards.length, gaps: input.gaps, proposer: input.proposer },
-        },
-        tx,
-      );
-      await tx.insert(outboxEvents).values({
-        workspaceId: auth.workspaceId,
-        topic: "research.profile.completed",
-        payload: { artifactId: artifact.id, subjectType: input.subjectType, subjectId: input.subjectId, focus: input.focus },
-      });
-      return { artifactId: artifact.id };
-    });
+        return { artifactId: artifact.id };
+      },
+    );
     return { artifactId: value.artifactId, replayed };
   });
 }
@@ -577,7 +618,9 @@ export async function runCompanyProfileResearch(
   const [company] = await db
     .select({ id: companies.id, name: companies.name, domain: companies.domain })
     .from(companies)
-    .where(and(eq(companies.id, input.companyId), eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt)))
+    .where(
+      and(eq(companies.id, input.companyId), eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt)),
+    )
     .limit(1);
   if (!company) throw new ProfileResearchError("No such company.");
   const steps = planCompanyEvidence(company);
@@ -610,14 +653,22 @@ export async function runContactProfileResearch(
   const [contact] = await db
     .select({ id: contacts.id, fullName: contacts.fullName, title: contacts.title })
     .from(contacts)
-    .where(and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, auth.workspaceId), isNull(contacts.archivedAt)))
+    .where(
+      and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, auth.workspaceId), isNull(contacts.archivedAt)),
+    )
     .limit(1);
   if (!contact) throw new ProfileResearchError("No such contact.");
   const [current] = await db
     .select({ name: companies.name })
     .from(contactCompanies)
     .innerJoin(companies, eq(companies.id, contactCompanies.companyId))
-    .where(and(eq(contactCompanies.contactId, contact.id), eq(contactCompanies.workspaceId, auth.workspaceId), eq(contactCompanies.isCurrent, true)))
+    .where(
+      and(
+        eq(contactCompanies.contactId, contact.id),
+        eq(contactCompanies.workspaceId, auth.workspaceId),
+        eq(contactCompanies.isCurrent, true),
+      ),
+    )
     .limit(1);
   const steps = planContactEvidence({ fullName: contact.fullName, currentCompanyName: current?.name ?? null, focus });
   return runPass(

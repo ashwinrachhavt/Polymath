@@ -9,10 +9,10 @@ import type { ExtractionSpan } from "@/integrations/extraction/provider";
 
 export type Chunk = { index: number; text: string; start: number; end: number; page: number | null };
 
-export const CHUNK_TARGET_CHARS = 1200;
-export const CHUNK_OVERLAP_CHARS = 150;
+const CHUNK_TARGET_CHARS = 1200;
+const CHUNK_OVERLAP_CHARS = 150;
 /** A 4 MB upload cannot become an unbounded bill: past this many chunks the rest is not embedded. */
-export const MAX_CHUNKS = 400;
+const MAX_CHUNKS = 400;
 
 /** Prefer to end a chunk at a paragraph break, then a sentence, then a space. */
 function breakPoint(text: string, from: number, hardEnd: number): number {
@@ -21,7 +21,12 @@ function breakPoint(text: string, from: number, hardEnd: number): number {
   const floor = Math.floor(window.length * 0.5);
   const para = window.lastIndexOf("\n\n");
   if (para >= floor) return from + para + 2;
-  const sentence = Math.max(window.lastIndexOf(". "), window.lastIndexOf(".\n"), window.lastIndexOf("? "), window.lastIndexOf("! "));
+  const sentence = Math.max(
+    window.lastIndexOf(". "),
+    window.lastIndexOf(".\n"),
+    window.lastIndexOf("? "),
+    window.lastIndexOf("! "),
+  );
   if (sentence >= floor) return from + sentence + 2;
   const space = window.lastIndexOf(" ");
   if (space >= floor) return from + space + 1;

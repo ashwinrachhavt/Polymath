@@ -97,11 +97,11 @@ function propertyText(value: unknown): string {
     case "rich_text":
       return richTextPlain(v[v.type]);
     case "select":
-      return ((v.select as { name?: string } | null)?.name) ?? "";
+      return (v.select as { name?: string } | null)?.name ?? "";
     case "multi_select":
       return ((v.multi_select as { name?: string }[]) ?? []).map((s) => s.name).join(", ");
     case "date":
-      return ((v.date as { start?: string } | null)?.start) ?? "";
+      return (v.date as { start?: string } | null)?.start ?? "";
     case "number":
       return String(v.number ?? "");
     case "checkbox":
@@ -111,9 +111,12 @@ function propertyText(value: unknown): string {
     case "phone_number":
       return (v[v.type] as string) ?? "";
     case "status":
-      return ((v.status as { name?: string } | null)?.name) ?? "";
+      return (v.status as { name?: string } | null)?.name ?? "";
     case "people":
-      return ((v.people as { name?: string }[]) ?? []).map((p) => p.name ?? "").filter(Boolean).join(", ");
+      return ((v.people as { name?: string }[]) ?? [])
+        .map((p) => p.name ?? "")
+        .filter(Boolean)
+        .join(", ");
     default:
       return "";
   }
@@ -272,5 +275,3 @@ export function composioNotionClient(
     },
   };
 }
-
-export { NOTION_VERSION };

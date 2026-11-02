@@ -18,7 +18,7 @@ import { artifactLinks, artifacts } from "./schema";
  * embedding has no semantic relations; the explicit graph still answers.
  */
 
-export const SEMANTIC_EDGE_LIMIT = 5;
+const SEMANTIC_EDGE_LIMIT = 5;
 export const SEMANTIC_EDGE_MAX_DISTANCE = 0.45;
 
 export type RelatedNote = {
