@@ -310,7 +310,7 @@ export function NewConversation({
             }
           }}
         />
-        <div className="px-3.5">
+        <div className="px-3.5 pb-10">
           <ContextChips
             chips={chips}
             onRemove={removeChip}
@@ -323,8 +323,8 @@ export function NewConversation({
          * button sits inside it bottom-right: the composer is one surface,
          * not a toolbar under a box.
          */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
-          <div className="flex min-w-0 items-center gap-1">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
+          <div className="pointer-events-auto flex min-w-0 items-center gap-1">
             <ComposerPlus
               label="Add to message"
               records={records}
@@ -374,7 +374,7 @@ export function NewConversation({
             type="submit"
             size="icon"
             aria-label="Send"
-            className="size-8 shrink-0 rounded-full"
+            className="pointer-events-auto size-8 shrink-0 rounded-full"
             disabled={
               !draft.trim() ||
               pending ||
