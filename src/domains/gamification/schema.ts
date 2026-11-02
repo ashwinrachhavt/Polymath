@@ -37,6 +37,13 @@ export const rewardDefinitions = pgTable(
     threshold: integer("threshold").notNull().default(1),
     /** A text equivalent always accompanies the visual, for accessibility. */
     accessibilityLabel: text("accessibility_label"),
+    /**
+     * The foundry recipe (spec §7), when this stone is ML-designed: the
+     * parsed {@link StoneRecipe} written only by the system - the approval
+     * path that applies an owner-approved proposal. Definition forms and the
+     * API never write it; a null is a catalog or rule-defined stone.
+     */
+    recipe: jsonb("recipe"),
     active: boolean("active").notNull().default(true),
     ...mutable,
   },

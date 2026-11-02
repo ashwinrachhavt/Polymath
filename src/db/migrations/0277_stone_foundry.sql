@@ -1,0 +1,1 @@
+ALTER TABLE "reward_definitions" ADD COLUMN "recipe" jsonb;

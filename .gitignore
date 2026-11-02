@@ -76,3 +76,4 @@ mockups/
 # the old one.
 src/db/migrations/meta/*_snapshot.json
 !src/db/migrations/meta/0276_snapshot.json
+!src/db/migrations/meta/0277_snapshot.json
