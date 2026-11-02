@@ -714,6 +714,13 @@
       "when": 1793687580000,
       "tag": "0275_focus_blocklist",
       "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793687640000,
+      "tag": "0276_reward_integrity",
+      "breakpoints": true
     }
   ]
 }

@@ -202,12 +202,15 @@ export async function awardReward(
 /*
  * The owner's earning rules (ASH-150 follow-up, decided 2026-10-18):
  *
- * QUARTZ - one per day, on the first completed task. The day boundary is the
- * workspace timezone (user_preferences); the idempotency key `quartz:<day>`
- * plus the unique index makes "first of the day" a database fact, and a
- * replayed or second completion is a silent skip, not an error. The
- * definition is created lazily with the donor's value (10 points) so the
- * rule works before anyone opens the definition form.
+ * QUARTZ - one per user per day, on the first completed task. The day
+ * boundary is the workspace timezone (user_preferences); the idempotency key
+ * `quartz:<userId>:<day>` plus the per-user unique index makes "first of the
+ * day, for this user" a database fact, and a replayed or second completion
+ * is a silent skip, not an error. (Spec §6: the key is user-scoped - under
+ * the old workspace-wide `quartz:<day>` key, whoever completed first claimed
+ * the day and every other member silently earned nothing.) The definition is
+ * created lazily with the donor's value (10 points) so the rule works
+ * before anyone opens the definition form.
  *
  * SHARD - explicit claim, never auto-convert. Five recorded stones fuse into
  * one claimable shard (the donor's stonesPerShard = 5); claiming records a
@@ -222,6 +225,20 @@ const QUARTZ = { ...QUARTZ_RULE, points: 10 };
 const SHARD = { key: "shard", label: "Shard", points: 0 };
 
 type TxDrizzle = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+/**
+ * Today as the ledger writes it: YYYY-MM-DD in the workspace's timezone
+ * (user_preferences, falling back to UTC) - the same boundary the day keys
+ * and the daily caps count against.
+ */
+async function workspaceDay(tx: TxDrizzle, auth: AuthContext): Promise<string> {
+  const rows = await tx.execute(sql`
+    select to_char(timezone(coalesce(
+      (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
+      'UTC'), now()), 'YYYY-MM-DD') as day
+  `);
+  return (rows as unknown as Array<{ day: string }>)[0].day;
+}
 
 async function ensureDefinition(
   tx: TxDrizzle,
@@ -261,12 +278,7 @@ export async function recordDailyQuartz(
   taskId: string,
   note?: string,
 ): Promise<boolean> {
-  const rows = await tx.execute(sql`
-    select to_char(timezone(coalesce(
-      (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
-      'UTC'), now()), 'YYYY-MM-DD') as day
-  `);
-  const day = (rows as unknown as Array<{ day: string }>)[0].day;
+  const day = await workspaceDay(tx, auth);
 
   const definition = await ensureDefinition(tx, auth, {
     ...QUARTZ,
@@ -285,9 +297,11 @@ export async function recordDailyQuartz(
       subjectId: taskId,
       note: note ?? null,
       points: definition.points,
-      idempotencyKey: `quartz:${day}`,
+      idempotencyKey: `quartz:${auth.userId}:${day}`,
     })
-    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .onConflictDoNothing({
+      target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
+    })
     .returning();
   if (!entry) return false;
   await recordAudit(
@@ -332,7 +346,9 @@ export async function recordLearningReview(
       points: definition.points,
       idempotencyKey: input.idempotencyKey,
     })
-    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .onConflictDoNothing({
+      target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
+    })
     .returning();
   if (!entry) return false;
   await recordAudit(
@@ -394,7 +410,9 @@ export async function recordFocusReward(
       points,
       idempotencyKey: `focus:${session.id}`,
     })
-    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .onConflictDoNothing({
+      target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
+    })
     .returning();
   if (!entry) return false;
   await recordAudit(
@@ -493,7 +511,9 @@ async function recordStoneOnce(
       points: 0,
       idempotencyKey: `${stone.key}:${auth.userId}`,
     })
-    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .onConflictDoNothing({
+      target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
+    })
     .returning();
   if (!entry) return false;
   await recordAudit(

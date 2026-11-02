@@ -48,7 +48,8 @@ suite("reward rules", () => {
     expect(ledger[0].reason).toBe("task_completed");
     expect(ledger[0].subjectId).toBe(first.id);
     expect(ledger[0].points).toBe(10); // the donor's value
-    expect(ledger[0].idempotencyKey).toMatch(/^quartz:\d{4}-\d{2}-\d{2}$/);
+    // User-scoped (spec §6): the key names the user and the day.
+    expect(ledger[0].idempotencyKey.startsWith("quartz:" + auth.userId + ":")).toBe(true);
 
     // The lazily-created definition is the donor's Quartz.
     const [quartz] = await db
@@ -91,11 +92,17 @@ suite("reward rules", () => {
     ]);
     // The guarded UPDATE lets exactly one racer through; the other gets null.
     expect([a, b].filter((r) => r !== null)).toHaveLength(1);
-    expect((await ledgerFor(auth.workspaceId))).toHaveLength(1);
+    expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
     const audits = await db
       .select({ id: auditEvents.id })
       .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.action, "task.completed"),
+          eq(auditEvents.subjectId, task.id),
+        ),
+      );
     expect(audits).toHaveLength(1);
   });
 
@@ -118,7 +125,13 @@ suite("reward rules", () => {
     const audits = await db
       .select({ id: auditEvents.id })
       .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "task.completed"), eq(auditEvents.subjectId, task.id)));
+      .where(
+        and(
+          eq(auditEvents.workspaceId, auth.workspaceId),
+          eq(auditEvents.action, "task.completed"),
+          eq(auditEvents.subjectId, task.id),
+        ),
+      );
     expect(audits).toHaveLength(1);
   });
 
@@ -156,8 +169,20 @@ suite("reward rules", () => {
 
   it("a disabled quartz definition skips the award without blocking completion", async () => {
     const auth = await seed("quartz-disabled");
-    const definition = await commands.createRewardDefinition(auth, { key: "quartz", kind: "points", label: "Quartz", points: 10 });
-    await commands.updateRewardDefinition(auth, { key: "quartz", kind: "points", label: "Quartz", points: 10, expectedVersion: definition.version, active: false });
+    const definition = await commands.createRewardDefinition(auth, {
+      key: "quartz",
+      kind: "points",
+      label: "Quartz",
+      points: 10,
+    });
+    await commands.updateRewardDefinition(auth, {
+      key: "quartz",
+      kind: "points",
+      label: "Quartz",
+      points: 10,
+      expectedVersion: definition.version,
+      active: false,
+    });
     const task = await work.createOwnerTask(auth, { title: "Quiet task" });
     await work.completeTask(auth, { taskId: task.id });
     expect(await ledgerFor(auth.workspaceId)).toHaveLength(0);
@@ -203,7 +228,12 @@ suite("quartz from every completion path", () => {
   it("updateTask to done earns the daily Quartz once, and reports it from completeTask", async () => {
     const auth = await seed("quartz-update");
     const tasks = await import("@/domains/work/task-commands");
-    const a = await work.createOwnerTask(auth, { title: "Board card", priority: "high", estimateMinutes: 25, tags: ["ui"] });
+    const a = await work.createOwnerTask(auth, {
+      title: "Board card",
+      priority: "high",
+      estimateMinutes: 25,
+      tags: ["ui"],
+    });
     const done = await tasks.updateTask(auth, { taskId: a.id, expectedVersion: 1, patch: { status: "done" } });
     expect(await ledgerFor(auth.workspaceId)).toHaveLength(1);
     // Re-saving as done is not a new completion.
