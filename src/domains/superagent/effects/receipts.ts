@@ -119,11 +119,7 @@ export async function claimPendingReceipts(
 }
 
 /** How many receipts of one conversation are still queued, claimed or not. */
-async function countPendingReceipts(
-  rawClient: RawClient,
-  workspaceId: string,
-  conversation: string,
-): Promise<number> {
+async function countPendingReceipts(rawClient: RawClient, workspaceId: string, conversation: string): Promise<number> {
   const rows = await rawClient<{ count: string }[]>`
     select count(*) as count from work_outbox_receipts
     where workspace_id = ${workspaceId}::uuid
@@ -134,7 +130,7 @@ async function countPendingReceipts(
 }
 
 /** Marks a claimed receipt sent. A stale lease token is rejected, not silently dropped. */
-export async function completeReceipt(rawClient: RawClient, input: { id: string; leaseToken: string }): Promise<void> {
+async function completeReceipt(rawClient: RawClient, input: { id: string; leaseToken: string }): Promise<void> {
   const updated = await rawClient`
     update work_outbox_receipts
     set status = 'sent', sent_at = now(), updated_at = now(),
@@ -146,7 +142,7 @@ export async function completeReceipt(rawClient: RawClient, input: { id: string;
 }
 
 /** Marks a claimed receipt dropped — its conversation can never receive it. */
-export async function dropReceipt(rawClient: RawClient, input: { id: string; leaseToken: string }): Promise<void> {
+async function dropReceipt(rawClient: RawClient, input: { id: string; leaseToken: string }): Promise<void> {
   const updated = await rawClient`
     update work_outbox_receipts
     set status = 'dropped', dropped_at = now(), updated_at = now(),
@@ -169,7 +165,7 @@ export async function recoverStrandedReceipts(rawClient: RawClient): Promise<str
 }
 
 /** A pass over every free conversation: claim prefixes, send in order, record the outcomes. */
-export type ReceiptsPassResult = { claimed: number; sent: number; dropped: number; deferred: number };
+type ReceiptsPassResult = { claimed: number; sent: number; dropped: number; deferred: number };
 
 export async function runReceiptsPass(
   rawClient: RawClient,
@@ -220,7 +216,7 @@ export async function runReceiptsPass(
 }
 
 /** The reply effect's payload: the conversation whose receipts the handler drains. */
-export type ReplyEffectPayload = { source: string; thread: string };
+type ReplyEffectPayload = { source: string; thread: string };
 
 function parseReplyPayload(payload: Record<string, unknown> | null): ReplyEffectPayload {
   if (payload && typeof payload.source === "string" && typeof payload.thread === "string")
@@ -258,7 +254,10 @@ export function conversationReplyHandler(
       if (pending > 0) {
         // Another pass is sending this conversation's head. Look again on the
         // reply curve — parked, not failed; the holder may simply be slow.
-        throw new Later(backoffMs(REPLY_BACKOFF, effect.consecutiveFailures + 1), "another pass is sending this conversation");
+        throw new Later(
+          backoffMs(REPLY_BACKOFF, effect.consecutiveFailures + 1),
+          "another pass is sending this conversation",
+        );
       }
       // Nothing pending: the burst coalesced into this one effect and the
       // direct passes resolved it. Done.

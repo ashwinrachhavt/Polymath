@@ -10,40 +10,20 @@
  */
 export { Later } from "./later";
 export {
-  EFFECT_BACKOFF,
-  REPLY_BACKOFF,
-  type BackoffCurve,
-  backoffCurveFor,
-  backoffMs,
-  effectBackoffMs,
-} from "./backoff";
-export {
   type ClaimedEffect,
   type EffectHandler,
-  type EffectHandlers,
-  type RawClient,
-  EffectStaleWriteError,
   claimDueEffects,
   completeEffect,
   deferEffect,
-  failEffect,
   recoverStrandedEffects,
 } from "./queue";
 export {
   type ClaimedReceipt,
   type ReceiptSender,
-  type ReceiptsPassResult,
   claimPendingReceipts,
-  completeReceipt,
   conversationReplyHandler,
-  dropReceipt,
   recoverStrandedReceipts,
   runReceiptsPass,
 } from "./receipts";
-export {
-  type EffectsPassResult,
-  type SuperagentDispatchResult,
-  runEffectsPass,
-  runSuperagentDispatch,
-} from "./drain";
+export { runEffectsPass, runSuperagentDispatch } from "./drain";
 export { effectHandlers } from "./handlers";

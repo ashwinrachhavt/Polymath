@@ -22,7 +22,7 @@ import {
 } from "./queue";
 import { recoverStrandedReceipts } from "./receipts";
 
-export type EffectsPassResult = { claimed: number; done: number; deferred: number; failed: number };
+type EffectsPassResult = { claimed: number; done: number; deferred: number; failed: number };
 
 /** The error text the row keeps: the message for an Error, the value otherwise. */
 function describe(error: unknown): string {
@@ -88,7 +88,7 @@ export async function runEffectsPass(
 }
 
 /** The whole superagent side of one dispatch: sweep the stranded, drain effects, then sweep the reply lane. */
-export type SuperagentDispatchResult = {
+type SuperagentDispatchResult = {
   strandedEffects: number;
   strandedReceipts: number;
   effects: EffectsPassResult;

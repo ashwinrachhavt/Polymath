@@ -17,7 +17,7 @@ const DEFAULT_LEASE_MS = 60_000;
 export const DEFAULT_PARK_MS = 60_000;
 
 /** Raised when a queue write arrives for a lease the worker no longer holds. */
-export class EffectStaleWriteError extends Error {
+class EffectStaleWriteError extends Error {
   constructor(message = "The effect row moved on after its lease expired.") {
     super(message);
     this.name = "EffectStaleWriteError";

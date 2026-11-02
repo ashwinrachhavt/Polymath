@@ -1,7 +1,7 @@
 /** Per-kind retry curves for the effects queue: base doubling with full jitter, capped per kind. */
 import type { EffectKind } from "../store/schema";
 
-export type BackoffCurve = { baseMs: number; capMs: number };
+type BackoffCurve = { baseMs: number; capMs: number };
 
 /** Every kind but `reply`: doubles from 2s and stops growing at 60s. */
 export const EFFECT_BACKOFF: BackoffCurve = { baseMs: 2_000, capMs: 60_000 };
