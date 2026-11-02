@@ -7,7 +7,7 @@ import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { inline } from "@/components/markdown-inline";
-import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
+import { ChatSurface } from "@/components/chat/chat-surface";
 import { ChainOfThought } from "@/components/chat/chain-of-thought";
 import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
@@ -35,10 +35,9 @@ export const metadata = { title: "Conversation · Polymath" };
 /*
  * One conversation, full page. The home lists rows; this is what a row opens.
  *
- * The transcript is the page. Controls under it are the ones that act on this
- * run: follow-up or cancel, and the draft the run produced. Decisions on
- * approvals live in Reviews; that surface owns the waiting-on-you vocabulary
- * and the routes to act.
+ * The transcript is the page. The only control under it is retry, and the
+ * draft the run produced. Decisions on approvals live in Reviews; that surface
+ * owns the waiting-on-you vocabulary and the routes to act.
  */
 
 /*
@@ -123,9 +122,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
   const finished = ["succeeded", "failed", "cancelled"].includes(run.state);
-  // A live run streams when the bridge is up; without it the run still takes a
-  // follow-up and a stop through the plain API controls - a waiting run is a
-  // conversation, not a dead end.
+  // A live run streams when the bridge is up and takes its next message through
+  // the composer; without the bridge there is no composer, so nothing here can
+  // continue the run.
   const isLive = !finished && !unavailable;
   // The model's display label, not its provider id — the header speaks product words.
   const modelLabel = run.model ? (modelById(run.model)?.label ?? run.model) : null;
@@ -235,6 +234,18 @@ async function ConversationSurface({ runId }: { runId: string }) {
             />
           ) : (
             <div className="w-full space-y-3">
+              {/*
+               * A live run without the bridge has no composer and no follow-up
+               * field on purpose: the messages endpoint answers 503 in that
+               * state, so a control here would promise a reply it cannot send.
+               * Say why the page is quiet instead of leaving a dead end.
+               */}
+              {!finished && unavailable ? (
+                <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+                  This conversation cannot continue until the agent bridge is configured on this deployment. The run is
+                  still recorded, and its transcript is below.
+                </p>
+              ) : null}
               {visibleThread.length === 0 ? (
                 <p className="text-muted-foreground text-[13px]">This conversation has no messages yet.</p>
               ) : null}
@@ -285,21 +296,18 @@ async function ConversationSurface({ runId }: { runId: string }) {
               {run.error}
             </p>
           ) : null}
-          {/* One quiet action row under the transcript: the live composer above
-              already sends messages, so this row only carries what it lacks —
-              stop for a live run, retry for a finished one — plus the draft.
-              Text actions, not buttons: they share the transcript's edge and
-              never read as a second composer. */}
-          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
-            {finished ? (
-              <RunControls runId={run.id} finished />
-            ) : unavailable ? (
-              <RunControls runId={run.id} finished={false} />
-            ) : (
-              <ChatCancel runId={run.id} />
-            )}
-            <DraftControls draft={drafts.get(run.id) ?? null} />
-          </div>
+          {/* One quiet action row under the transcript, rendered only when it
+              has something to carry: retry for a finished run, and the draft.
+              A live run needs no controls here — the composer above sends the
+              next message, and a stop control that could not settle the run
+              only took space. Text actions, not buttons: they share the
+              transcript's edge and never read as a second composer. */}
+          {finished || (drafts.get(run.id) ?? null) ? (
+            <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+              {finished ? <RunControls runId={run.id} /> : null}
+              <DraftControls draft={drafts.get(run.id) ?? null} />
+            </div>
+          ) : null}
 
           {/* The run's review block: the agent's self-critique proposal and the
               operator's verdict. Finished runs only - a live run's review would

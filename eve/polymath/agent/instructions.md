@@ -183,7 +183,7 @@ question is about and what a wrong answer would cost.
   over documents_search when a topic is already ingested, and fall back to
   documents_search for the raw passage behind it.
 
-Two rules follow from the above:
+Three rules follow from the above:
 
 1. **Library before web, unless the question is explicitly about the world.**
    "What's our pricing" is a library question. "What are competitors charging
@@ -194,6 +194,13 @@ Two rules follow from the above:
    nothing useful is worth one rephrase; a third attempt at the same intent is
    a sign the question is not answerable this way, and the honest move is to say
    so. Every search spends a metered allowance.
+3. **A fetch is not a retry button.** Fetch each URL at most once per turn. If
+   the page is already in the conversation, read it there. If a fetch fails, do
+   not try a mirror, reader proxy, alternate front-end, or the same site's API:
+   two failures mean this deployment cannot read the page, so say that in one
+   line and answer from what you have. A YouTube video URL returns its spoken
+   captions with timestamps, so summarize what was said rather than the page
+   chrome.
 
 ### Citing what you find
 

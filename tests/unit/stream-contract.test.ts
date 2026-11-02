@@ -225,6 +225,42 @@ describe("frameOf", () => {
     ]);
   });
 
+  it("carries Eve's reason on a terminal failed end frame", () => {
+    const [frame] = frameOf(
+      RUN,
+      {
+        type: "session.failed",
+        data: { code: "MODEL_CALL_FAILED", message: "Request too large for model `qwen/qwen3.8-27b`." },
+      },
+      9,
+    );
+    expect(frame).toEqual({
+      type: "end",
+      runId: RUN,
+      state: "failed",
+      cursor: 9,
+      error: "Request too large for model `qwen/qwen3.8-27b`.",
+    });
+  });
+
+  it("falls back to the failure code when Eve sends no message", () => {
+    const [frame] = frameOf(RUN, { type: "session.failed", data: { code: "MODEL_CALL_FAILED" } }, 9);
+    expect(frame).toMatchObject({ type: "end", state: "failed", error: "MODEL_CALL_FAILED" });
+  });
+
+  it("bounds a paragraph-long provider failure to one wire line", () => {
+    const [frame] = frameOf(RUN, { type: "session.failed", data: { message: "x".repeat(1_000) } }, 9);
+    expect(frame).toMatchObject({ type: "end", state: "failed" });
+    expect(frame && "error" in frame ? frame.error : "").toHaveLength(401);
+    expect(frame && "error" in frame ? frame.error?.endsWith("…") : false).toBe(true);
+  });
+
+  it("carries the reason on a failed turn without ending the session", () => {
+    expect(frameOf(RUN, { type: "turn.failed", data: { message: "tool timed out" } }, 10)).toEqual([
+      { type: "turn", runId: RUN, state: "failed", cursor: 10, error: "tool timed out" },
+    ]);
+  });
+
   it("drops lifecycle events the surface does not render", () => {
     for (const type of ["session.started", "step.started", "step.completed", "usage", "compaction.completed"]) {
       expect(frameOf(RUN, { type }, 1)).toEqual([]);
