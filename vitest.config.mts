@@ -19,9 +19,11 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
-          // load-env first: a handful of unit files (the instant-tool and
-          // gateway suites) drive production code that opens the test database,
-          // and makeTestDb() now fails loudly rather than skipping.
+          // load-env first: unit files legitimately manipulate DATABASE_URL
+          // (e2e-database deletes it, live-polymath-pages stubs it empty) and
+          // src/lib/db-transaction.ts caches its client at first evaluation,
+          // so setup.db-url.ts pins the variable to the scratch database
+          // before any unit module graph loads. No unit file opens a database.
           setupFiles: [
             "tests/setup.load-env.ts",
             "tests/unit/setup.db-url.ts",
