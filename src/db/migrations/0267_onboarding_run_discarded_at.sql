@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "discarded_at" timestamp with time zone;
