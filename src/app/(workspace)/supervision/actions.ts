@@ -47,7 +47,6 @@ const savePolicyInputSchema = z
   })
   .strict();
 
-export type PolicyRuleInput = z.infer<typeof ruleInputSchema>;
 export type SavePolicyInput = z.infer<typeof savePolicyInputSchema>;
 
 /** A person's engine: the people commands over the workspace's store. */

@@ -101,7 +101,7 @@ export async function getPolicy(db: PostgresJsDatabase, workspaceId: string): Pr
  * edits admission cells yet, and a wave-two editor should use the gate's
  * own vocabulary.
  */
-export function storedSourcePolicy(
+function storedSourcePolicy(
   parts: Record<
     string,
     { allowed?: { id: string }[]; bots?: string[]; admission?: Record<string, Record<string, string>> }

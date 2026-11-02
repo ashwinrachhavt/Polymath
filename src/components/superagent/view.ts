@@ -36,7 +36,7 @@ export const STAGE_META: Readonly<Record<StageKey, { label: string; waitingOn: "
   ended: { label: "Ended", waitingOn: "system" },
 };
 
-export const STAGE_ORDER: readonly StageKey[] = [
+const STAGE_ORDER: readonly StageKey[] = [
   "person-delivery",
   "person-answer",
   "person-review",
@@ -51,7 +51,7 @@ export const STAGE_ORDER: readonly StageKey[] = [
 export const isStageKey = (value: string): value is StageKey => Object.hasOwn(STAGE_META, value);
 
 /** The stage table's key for one classification; exhaustive over the core union. */
-export function stageKeyOf(stage: TicketStage): StageKey {
+function stageKeyOf(stage: TicketStage): StageKey {
   switch (stage.stage) {
     case "person":
       return `person-${stage.action}`;
