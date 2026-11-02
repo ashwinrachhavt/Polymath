@@ -19,7 +19,7 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `postgres` | ^3.4.9 |
 | `pg` | absent |
 | `@clerk/nextjs` | 7.9.21 |
-| `@tiptap/react` | ^3.32.1 |
+| `@tiptap/react` | ^3.32.2 |
 | `tailwindcss` | ^4.3.3 |
 | `zod` | ^4.6.7 |
 | `@vercel/blob` | ^2.8.2 |
@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 95 files, highest `0268_repo_checkpoints`.
+Migrations: 96 files, highest `0269_drop_retired_tables`.
 
 ## Tests
 
-450 `.test.ts` and 43 `.spec.ts` files (unit: 268, integration: 181, e2e: 43).
+451 `.test.ts` and 43 `.spec.ts` files (unit: 268, integration: 181, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
