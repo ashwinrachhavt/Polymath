@@ -130,7 +130,18 @@ async function listClaudeTranscripts(
       continue;
     }
     for (const file of files) {
-      if (file.isSymbolicLink() || !file.isFile()) continue;
+      // A link is never followed, and the skip is recorded so scan output
+      // explains why a transcript the user can see was not parsed.
+      if (file.isSymbolicLink()) {
+        skipped.push({
+          source: "claude-code",
+          path: path.join(dirPath, file.name),
+          kind: "unsafe_path",
+          reason: "symlink (never followed)",
+        });
+        continue;
+      }
+      if (!file.isFile()) continue;
       if (!isLiveClaudeTranscript(file.name)) continue;
       const filePath = path.join(dirPath, file.name);
       const size = await sizeOf(filePath);
@@ -192,7 +203,17 @@ async function listCodexRollouts(
           continue;
         }
         for (const file of files) {
-          if (file.isSymbolicLink() || !file.isFile()) continue;
+          // Same rule as the claude walker: never follow, always record.
+          if (file.isSymbolicLink()) {
+            skipped.push({
+              source: "codex",
+              path: path.join(sessionsDir, year.name, month, day, file.name),
+              kind: "unsafe_path",
+              reason: "symlink (never followed)",
+            });
+            continue;
+          }
+          if (!file.isFile()) continue;
           if (!file.name.startsWith("rollout-") || !file.name.endsWith(".jsonl")) continue;
           const filePath = path.join(sessionsDir, year.name, month, day, file.name);
           const size = await sizeOf(filePath);

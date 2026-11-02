@@ -125,8 +125,15 @@ export function threadIdFromFileName(fileName: string): string | undefined {
 type PendingCall = { name: string; cmd?: string; files: FileTouch[] };
 
 function commandText(args: unknown): string | undefined {
+  if (typeof args === "string") {
+    // Real rollouts encode `arguments` as a JSON string; fixtures may carry
+    // the object directly. Parse once so both shapes read the same.
+    const parsed = safeJsonParse(args);
+    if (parsed !== undefined) return commandText(parsed);
+    return args;
+  }
   const record = asRecord(args);
-  if (!record) return typeof args === "string" ? args : undefined;
+  if (!record) return undefined;
   const command = record.command;
   if (typeof command === "string") return command;
   const parts = asArray(command)
@@ -147,16 +154,14 @@ function filesFromPatch(patch: string): FileTouch[] {
 
 /** Register a call so its output can be paired by call_id. */
 function registerCall(pending: Map<string, PendingCall>, callId: string, name: string, args: unknown): void {
-  const asStringArgs = typeof args === "string" ? args : undefined;
-  const patchSource = asStringArgs ?? commandText(args) ?? "";
+  const patchSource = commandText(args) ?? "";
   const isPatch = name === "apply_patch" || patchSource.includes("*** Begin Patch");
   if (isPatch) {
     const files = filesFromPatch(patchSource);
     pending.set(callId, { name, cmd: `apply_patch ${files.map((f) => f.path).join(", ")}`.trim(), files });
     return;
   }
-  const cmd = commandText(args) ?? patchSource;
-  pending.set(callId, { name, cmd: cmd === "" ? undefined : redactExcerpt(cmd, 500), files: [] });
+  pending.set(callId, { name, cmd: patchSource === "" ? undefined : redactExcerpt(patchSource, 500), files: [] });
 }
 
 /** Exit code lives in the output JSON's metadata; absence of evidence is success. */
