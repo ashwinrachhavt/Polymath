@@ -67,5 +67,13 @@ export default defineConfig({
     // files run one at a time (within a file, tests still parallelize where
     // independent).
     fileParallelism: false,
+    // The truncate-everything suites (document-schema, reliability) guard
+    // against the operator pointing DATABASE_URL at the scratch database.
+    // makeTestDb retargets process.env.DATABASE_URL in its own worker, and
+    // projects share the worker pool, so a guard reading the live variable
+    // sees whatever the previous file in that worker left behind. Capture the
+    // operator's value once here, in the parent, before any test can mutate
+    // it, and inject it into every worker read-only.
+    env: { PRISTINE_DATABASE_URL: process.env.DATABASE_URL ?? "" },
   },
 });
