@@ -374,15 +374,20 @@ export async function convertCaptureToTask(
       // A file capture's only label is its filename; its bytes are not text.
       ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
       "Captured item";
-    // The title is the first line; a multi-line capture keeps its full text
-    // as the description, so nothing the owner wrote is lost or crammed into
-    // the title.
+    // Title preference: the capture's own title (person-supplied at creation,
+    // or enrichment's suggestion into an empty slot) wins; the first line of
+    // the working text is the fallback. A multi-line capture keeps its full
+    // text as the description, so nothing the owner wrote is lost or crammed
+    // into the title.
     const firstLine =
       sourceText
         .split("\n")
         .map((line) => line.trim())
         .find(Boolean) ?? sourceText;
-    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+    const title =
+      input.title?.trim() ||
+      capture.title?.trim() ||
+      (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
     const task = await createTask(
       auth,
       {
@@ -454,7 +459,12 @@ export async function convertCaptureToNote(
         .split("\n")
         .map((line) => line.trim())
         .find(Boolean) ?? "Captured item";
-    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+    // Same title preference as the task conversion: the capture's own title
+    // wins over the first-line fallback.
+    const title =
+      input.title?.trim() ||
+      capture.title?.trim() ||
+      (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
     const note = await createNoteInTx(tx, auth, {
       title,
       content: { format: "markdown", text: body },
@@ -629,14 +639,18 @@ export async function convertCaptureToDraft(
         .split("\n")
         .map((line) => line.trim())
         .find(Boolean) ?? "Captured item";
-    let title = draftTitle(input.template, firstLine);
+    // Same title preference as the other conversions: the capture's own title
+    // names the draft (and seeds the linear-issue proposer); the body still
+    // quotes the material verbatim.
+    const preferredTitle = capture.title?.trim() || firstLine;
+    let title = draftTitle(input.template, preferredTitle);
     let body = draftBody(input.template, { firstLine, material });
     if (input.template === "linear-issue") {
       // ASH-285 part 2: with a generation provider configured, fill the
       // scaffold into a fully formed proposal grounded in the capture. Any
       // failure keeps the honest deterministic scaffold - never fake content.
       try {
-        const { proposal, proposer } = await proposeLinearIssue(auth, { title: firstLine, text: material });
+        const { proposal, proposer } = await proposeLinearIssue(auth, { title: preferredTitle, text: material });
         title = `Linear issue: ${proposal.title}`;
         body = renderLinearIssueDraft(proposal, { sourceMaterial: material, proposer });
       } catch {
