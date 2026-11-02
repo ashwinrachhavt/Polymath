@@ -75,7 +75,10 @@ test.skip(
 
 test.beforeAll(async () => {
   const roots = fixtureRoots();
-  test.skip(!roots, "POLYMATH_AGENT_ARTIFACT_ROOTS must name both fixture roots");
+  if (!roots) {
+    test.skip(true, "POLYMATH_AGENT_ARTIFACT_ROOTS must name both fixture roots");
+    return;
+  }
 
   // Fixture trees at the documented layouts (art_GNwwKckZ §2): Claude Code
   // under projects/<slug>/<sessionId>.jsonl, Codex under

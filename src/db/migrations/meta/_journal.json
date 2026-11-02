@@ -710,11 +710,14 @@
       "idx": 275,
       "version": "7",
       "when": 1793687520001,
-<<<<<<< HEAD
       "tag": "0275_short_mikhail_rasputin",
-=======
-      "tag": "0275_project_repo_path",
->>>>>>> 8c5d20eb (feat(workbench): agent-sessions section on the project page)
+      "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793687520002,
+      "tag": "0276_project_repo_path",
       "breakpoints": true
     },
     {
