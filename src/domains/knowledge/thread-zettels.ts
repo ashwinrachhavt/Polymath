@@ -16,9 +16,11 @@ import { artifactLinks, artifactVersions, artifacts } from "./schema";
  * the ordinary proposal pipeline reads it. Note-kind, not "transcript": a
  * thread-sourced idea's provenance card must not read as a recording, and the
  * two thread-to-artifact paths stay consistent, differing only in which
- * messages are in the body. A second pass reuses that artifact when its text
- * is unchanged and proposes nothing new — the thread's own earlier proposals
- * dedupe first, then the corpus.
+ * messages are in the body. A second pass over an unchanged thread reuses
+ * that artifact and proposes nothing new: its candidates are deduped against
+ * the thread's own earlier proposals for the artifact (pending and accepted)
+ * by claim/quote overlap — the span-key index alone misses a re-chunked
+ * region — and the accepted corpus flags whatever survives.
  */
 
 export type ZettelizeThreadResult = { artifactId: string; proposed: number; unreadChars: number };
