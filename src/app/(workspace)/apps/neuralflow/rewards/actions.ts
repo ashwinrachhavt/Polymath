@@ -69,6 +69,8 @@ export async function decideFoundryProposalAction(input: {
   idempotencyKey: string;
   decision: "approved" | "rejected";
 }): Promise<Result> {
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
   const result = await decideProposalAction(input);
   revalidatePath("/apps/neuralflow/rewards");
   if (!result.ok) return { ok: false, error: result.error };
