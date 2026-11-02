@@ -428,7 +428,10 @@
     }
   }
 
-  async function saveSelectionToNotes(text) {
+  // The one selection-save verb. The name states what the old two-button row
+  // hid: a selection lands in Polymath's inbox — not yet a note, not yet a
+  // library entry; the inbox's suggestion card proposes which it becomes.
+  async function saveSelectionToPolymath(text) {
     try {
       // Extract structured selection with formatting preserved
       var extracted = window.AlfredExtract
@@ -453,15 +456,33 @@
         "success",
       );
       refreshRecentCaptures();
+      return true;
     } catch (err) {
       showToast(`Save failed: ${err.message}`, "error");
+      return false;
     }
   }
 
-  // Summarize needs an AI endpoint Polymath does not expose to the companion yet.
-  // Say so plainly instead of letting the button hit a 404.
-  function summarizeSelection() {
-    showToast("Summarize is not available yet. Capture the selection instead.", "info");
+  // Summarize IS the capture path plus Polymath's read of it: the selection
+  // saves through the same outbox, the enrichment ladder classifies it on the
+  // server, and the inbox detail it opens shows the suggestion card proposing
+  // what the capture becomes. The extension runs no model of its own — the
+  // summary is Polymath's proposal, so the verb opens Polymath.
+  async function summarizeSelection(text) {
+    const saved = await saveSelectionToPolymath(text);
+    if (!saved) return; // the save verb already said what failed
+    try {
+      const base = await AlfredAPI.base();
+      // No capture id yet: the outbox answers before the server row exists.
+      // The inbox detail falls back to the newest unprocessed capture, which
+      // the just-delivered save is by the time the tab loads.
+      const opened = window.open(`${base}/command-center/inbox?filter=unprocessed`, "_blank", "noopener");
+      if (!opened) showToast("Saved. Open Polymath's inbox to see its read of it.", "info");
+    } catch (err) {
+      // Saved but the address is unreachable: the capture is safe on this
+      // device, and the popup's outbox status covers recovery.
+      showToast(`Saved, but Polymath could not be opened: ${err.message}`, "warning");
+    }
   }
 
   // ── Selection toolbar ───────────────────────────────────────────────
@@ -470,32 +491,25 @@
 
   function buildToolbar() {
     if (toolbar) return;
-    toolbar = el("div", { id: "alfred-selection-toolbar" }, [
-      el("button", {
-        class: "alfred-toolbar-btn",
-        onClick: () => {
-          const text = getSelectedText();
-          if (text) saveSelectionToNotes(text);
-          hideToolbar();
-        },
-      }, "Save to Notes"),
-      el("button", {
-        class: "alfred-toolbar-btn",
-        onClick: () => {
-          const text = getSelectedText();
-          if (text) saveSelectionToNotes(text);
-          hideToolbar();
-        },
-      }, "Save to Library"),
-      el("button", {
-        class: "alfred-toolbar-btn",
-        onClick: () => {
-          const text = getSelectedText();
-          if (text) summarizeSelection(text);
-          hideToolbar();
-        },
-      }, "Summarize"),
-    ]);
+    // The verbs build through the catalog module, which refuses to render a
+    // toolbar whose labels lie — two labels wired to one behavior never load.
+    const specs = AxiomSelectionToolbar.build({
+      save: saveSelectionToPolymath,
+      summarize: summarizeSelection,
+    });
+    toolbar = el("div", { id: "alfred-selection-toolbar" });
+    for (const spec of specs) {
+      toolbar.appendChild(
+        el("button", {
+          class: "alfred-toolbar-btn",
+          onClick: () => {
+            const text = getSelectedText();
+            if (text) spec.run(text);
+            hideToolbar();
+          },
+        }, spec.label),
+      );
+    }
     document.body.appendChild(toolbar);
   }
 
@@ -604,7 +618,7 @@
       e.preventDefault();
       const selected = getSelectedText();
       if (selected) {
-        saveSelectionToNotes(selected);
+        saveSelectionToPolymath(selected);
       } else {
         saveQuickNote();
       }

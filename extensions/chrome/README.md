@@ -5,7 +5,7 @@ A Chrome extension that lets you capture text selections, full pages, and quick 
 ## Features
 
 - **Floating Dock** (Alt+N): A sidebar widget with a quick-note textarea, page capture, and recent captures list.
-- **Selection Toolbar**: Select text on any page to see "Save to Notes", "Save to Library", and "Summarize" buttons.
+- **Selection Toolbar**: Select text on any page to see "Save to Polymath" (lands in the inbox, where the suggestion card proposes what it becomes) and "Summarize" (saves the selection, then opens Polymath's read of it in the inbox).
 - **Keyboard Shortcuts**: Alt+N (toggle dock), Alt+S (save selection/note), Alt+P (capture full page).
 - **Popup**: Quick actions, page capture, and settings accessible from the toolbar icon.
 - **Dashboard**: Full note management, library browsing, capture history, and settings (opens in a new tab).
