@@ -21,7 +21,10 @@ import { MAX_UPLOAD_LABEL } from "@/lib/file-validation";
  * the panel unmounts, so an idle tab never keeps asking.
  */
 
-const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
+// The server accepts WebP images too (same gate as the rest); the picker had
+// quietly left it out. Files dragged past the picker still reach the server's
+// validate, which owns the verdict.
+const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp";
 
 export type FilePhase =
   | { kind: "uploading"; percent: number }
@@ -336,7 +339,7 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
         <div>
           <p className="text-[13px] font-medium">Choose files or drag &amp; drop them here</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            PDF, PNG and JPEG, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.
+            PDF, PNG, JPEG and WebP, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.
           </p>
         </div>
         <Button
