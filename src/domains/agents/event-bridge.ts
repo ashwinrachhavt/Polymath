@@ -2,16 +2,12 @@ import { outboxEvents } from "@/domains/audit/schema";
 import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
+import { reportedCostFromUsage, resolvePricing, tokensFromUsage, type PricedUsage } from "@/domains/spending/pricing";
+import { findEffectiveRateCard } from "@/domains/spending/queries";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import {
-  agentQuestions,
-  agentRuns,
-  messages,
-  runEvents,
-  threads,
-  toolCalls,
-} from "./schema";
+import { agentQuestions, agentRuns, messages, runEvents, threads, toolCalls } from "./schema";
+import { MODEL_CATALOG, type ModelProviderId } from "./models";
 
 /*
  * The event bridge: the one place eve's observe-only stream events become
@@ -72,9 +68,7 @@ export function redactText(text: string): string {
  * not a `{ rows }` envelope. Typing that once here keeps every read below from
  * being a cast.
  */
-function firstRow<TRow extends Record<string, unknown>>(
-  rows: unknown[],
-): TRow | undefined {
+function firstRow<TRow extends Record<string, unknown>>(rows: unknown[]): TRow | undefined {
   return rows[0] as TRow | undefined;
 }
 
@@ -85,15 +79,9 @@ function firstRow<TRow extends Record<string, unknown>>(
  * write is scoped by both columns anyway; this is the guard that makes a
  * cross-workspace call a no-op rather than a row with a mismatched owner.
  */
-async function assertRunInWorkspace(
-  tx: TxDrizzle,
-  runId: string,
-  workspaceId: string,
-): Promise<void> {
+async function assertRunInWorkspace(tx: TxDrizzle, runId: string, workspaceId: string): Promise<void> {
   const run = firstRow<{ id: string }>(
-    await tx.execute(
-      sql`select id from agent_runs where id = ${runId} and workspace_id = ${workspaceId} limit 1`,
-    ),
+    await tx.execute(sql`select id from agent_runs where id = ${runId} and workspace_id = ${workspaceId} limit 1`),
   );
   if (!run) throw new Error("run not found in workspace");
 }
@@ -105,7 +93,13 @@ async function assertRunInWorkspace(
  */
 async function appendEvent(
   tx: TxDrizzle,
-  input: { runId: string; workspaceId: string; type: string; data?: unknown },
+  input: {
+    runId: string;
+    workspaceId: string;
+    type: string;
+    data?: unknown;
+    pricing?: PricedUsage;
+  },
 ): Promise<{ sequence: number; deduplicated: boolean }> {
   await assertRunInWorkspace(tx, input.runId, input.workspaceId);
 
@@ -113,8 +107,8 @@ async function appendEvent(
   // below is the second guard, for a writer that escaped the lock's reach.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.runId}, 0))`);
 
-  const data = input.data ?? null;
-  const encoded = data === null ? null : JSON.stringify(data);
+  const data = input.pricing ? { ...(input.data ?? {}), pricing: input.pricing } : (input.data ?? null);
+  const encoded = input.data === undefined ? null : JSON.stringify(input.data);
 
   /*
    * A replayed hook re-delivers the identical event — same type, same payload.
@@ -123,22 +117,25 @@ async function appendEvent(
    * re-firing its hook must dedupe, not append a second row. Callers therefore
    * pass the source event's own coordinates inside `data` (see
    * recordUsageEvent), so two genuinely distinct events never collide.
+   *
+   * The comparison strips the `pricing` stamp from the stored side: a replayed
+   * usage hook re-resolves pricing, and the card may have changed since the
+   * first delivery — a different dollar figure must not fork the timeline into
+   * a second row. The first price an event got is the one it keeps.
    */
   const existing = firstRow<{ sequence: number }>(
     await tx.execute(sql`
       select sequence from run_events
       where run_id = ${input.runId}
         and type = ${input.type}
-        and data is not distinct from ${encoded}::jsonb
+        and (data - 'pricing') is not distinct from ${encoded}::jsonb
       limit 1
     `),
   );
   if (existing) return { sequence: existing.sequence, deduplicated: true };
 
   const next = firstRow<{ next: number }>(
-    await tx.execute(
-      sql`select coalesce(max(sequence), 0) + 1 as next from run_events where run_id = ${input.runId}`,
-    ),
+    await tx.execute(sql`select coalesce(max(sequence), 0) + 1 as next from run_events where run_id = ${input.runId}`),
   );
   const sequence = next?.next ?? 1;
 
@@ -172,6 +169,7 @@ export async function recordRoundEvent(input: {
   workspaceId: string;
   type: string;
   data?: unknown;
+  pricing?: PricedUsage;
 }): Promise<{ sequence: number; deduplicated: boolean }> {
   return withTransaction((tx) => appendEvent(tx, input));
 }
@@ -248,6 +246,10 @@ export async function recordQuestion(input: {
  *
  * `source` carries the step's coordinates so two steps reporting identical
  * token counts are two rows, not one deduped replay.
+ *
+ * Priced at ingestion: the resolver stamps `data.pricing` next to the raw
+ * tokens, from the rate card effective now — so a card edited later prices
+ * later events only and this row's history is never rewritten.
  */
 export async function recordUsageEvent(input: {
   workspaceId: string;
@@ -255,12 +257,54 @@ export async function recordUsageEvent(input: {
   usage: Record<string, unknown>;
   source?: Record<string, unknown>;
 }): Promise<{ sequence: number; deduplicated: boolean }> {
+  const pricing = await priceUsage(input);
   return recordRoundEvent({
     runId: input.runId,
     workspaceId: input.workspaceId,
     type: "usage",
     data: input.source ? { ...input.usage, source: input.source } : input.usage,
+    pricing,
   });
+}
+
+/** The catalog provider that owns a model id, or null for an unknown model. */
+function providerForModel(model: string): ModelProviderId | null {
+  return MODEL_CATALOG.find((entry) => entry.id === model)?.provider ?? null;
+}
+
+/**
+ * Resolves a usage payload's price from the card effective right now. Returns
+ * undefined (event stored unpriced) when the run has no frozen model, the
+ * model is outside the catalog, or pricing fails — a rate-card outage must
+ * never drop a usage row; it only loses the dollar figure.
+ */
+async function priceUsage(input: {
+  workspaceId: string;
+  runId: string;
+  usage: Record<string, unknown>;
+}): Promise<PricedUsage | undefined> {
+  try {
+    const [run] = await db
+      .select({ model: agentRuns.model })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, input.workspaceId)))
+      .limit(1);
+    const model = run?.model;
+    if (!model) return undefined;
+    const provider = providerForModel(model);
+    if (!provider) return undefined;
+    const card = await findEffectiveRateCard(input.workspaceId, provider, model, new Date());
+    return resolvePricing({
+      provider,
+      model,
+      tokens: tokensFromUsage(input.usage),
+      reportedCostUsd: reportedCostFromUsage(input.usage),
+      rateCard: card,
+    });
+  } catch (cause) {
+    console.error("event bridge: usage pricing failed; event stored unpriced", cause);
+    return undefined;
+  }
 }
 
 /**
@@ -293,10 +337,7 @@ export async function mirrorMessage(input: {
         .values({ workspaceId: input.workspaceId, agentProfileId: run.agentProfileId })
         .returning({ id: threads.id });
       threadId = thread.id;
-      await tx
-        .update(agentRuns)
-        .set({ threadId, updatedAt: new Date() })
-        .where(eq(agentRuns.id, input.runId));
+      await tx.update(agentRuns).set({ threadId, updatedAt: new Date() }).where(eq(agentRuns.id, input.runId));
     }
 
     await tx.insert(messages).values({
@@ -330,11 +371,7 @@ export async function markWaitingForInput(input: { workspaceId: string; runId: s
     .update(agentRuns)
     .set({ state: "waiting_input", updatedAt: new Date() })
     .where(
-      and(
-        eq(agentRuns.id, input.runId),
-        eq(agentRuns.workspaceId, input.workspaceId),
-        eq(agentRuns.state, "running"),
-      ),
+      and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, input.workspaceId), eq(agentRuns.state, "running")),
     );
 }
 
@@ -344,11 +381,7 @@ export async function markWaitingForInput(input: { workspaceId: string; runId: s
  * on "running", so a close that landed first is never rewritten, and a run
  * already waiting for input is not disturbed.
  */
-export async function parkRunForReview(input: {
-  workspaceId: string;
-  runId: string;
-  reason: string;
-}): Promise<void> {
+export async function parkRunForReview(input: { workspaceId: string; runId: string; reason: string }): Promise<void> {
   await withTransaction(async (tx) => {
     const flipped = await tx
       .update(agentRuns)

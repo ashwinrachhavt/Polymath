@@ -1,15 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  jsonb,
-  numeric,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 
 /*
@@ -19,12 +9,7 @@ import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
  * spend the last dollar.
  */
 
-export const reservationStatus = pgEnum("reservation_status", [
-  "reserved",
-  "settled",
-  "released",
-  "expired",
-]);
+export const reservationStatus = pgEnum("reservation_status", ["reserved", "settled", "released", "expired"]);
 
 export const modelRateCards = pgTable(
   "model_rate_cards",
@@ -36,7 +21,21 @@ export const modelRateCards = pgTable(
     /** USD per million tokens. */
     inputPerMillion: numeric("input_per_million", { precision: 12, scale: 6 }).notNull(),
     outputPerMillion: numeric("output_per_million", { precision: 12, scale: 6 }).notNull(),
+    /**
+     * Null cache rates price cache tokens at the input rate — the common
+     * provider default. No reasoning rate: eve does not record reasoning
+     * tokens yet; add that column when the schema does.
+     */
+    cacheReadPerMillion: numeric("cache_read_per_million", { precision: 12, scale: 6 }),
+    cacheWritePerMillion: numeric("cache_write_per_million", { precision: 12, scale: 6 }),
     effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Exclusive upper bound of the card's validity: a card covers
+     * [effective_from, valid_to). A price change closes the old card at the
+     * instant the new one opens, so a lookup at valid_to picks the successor —
+     * the two never both claim an event. Null is open-ended.
+     */
+    validTo: timestamp("valid_to", { withTimezone: true }),
     ...mutable,
   },
   (t) => [uniqueIndex("model_rate_cards_key").on(t.workspaceId, t.provider, t.model, t.effectiveFrom)],

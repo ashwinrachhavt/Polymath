@@ -22,6 +22,7 @@
     "seed:personal": "tsx --env-file=.env scripts/seed/companies.ts",
     "seed:parties": "tsx --env-file=.env scripts/seed/parties.ts",
     "seed:inventory": "tsx --env-file=.env scripts/seed/inventory.ts",
+    "seed:rate-cards": "tsx --env-file=.env scripts/seed/rate-cards.ts",
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
     "check:snapshot-invariant": "tsx scripts/check-snapshot-invariant.ts",
