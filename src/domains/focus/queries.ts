@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { tasks } from "@/domains/work/schema";
 import { focusSessions } from "./schema";
+import { elapsedSecondsAt } from "./strictness";
 
 /*
  * Read queries for the focus surface (ASH-137 A09). Elapsed time is derived
@@ -19,12 +20,7 @@ export type FocusSessionView = typeof focusSessions.$inferSelect & {
 export function withElapsed(session: typeof focusSessions.$inferSelect, now = new Date()): FocusSessionView {
   // startedAt is null while a session is only scheduled (ASH-308); a running
   // session always has the clock fields.
-  const clockStart = session.lastResumedAt ?? session.startedAt;
-  const openStretch =
-    session.state === "running" && clockStart
-      ? Math.max(0, Math.floor((now.getTime() - clockStart.getTime()) / 1000))
-      : 0;
-  return { ...session, elapsedSeconds: session.accumulatedSeconds + openStretch };
+  return { ...session, elapsedSeconds: elapsedSecondsAt(session, now) };
 }
 
 /** The one live session (running or paused), or null. Planned rows (started_at null) are not live. */
@@ -141,7 +137,11 @@ export async function listDayFocusSessions(auth: AuthContext, input: { from: Dat
         eq(focusSessions.workspaceId, auth.workspaceId),
         isNull(focusSessions.archivedAt),
         or(
-          and(gte(focusSessions.scheduledAt, input.from), lt(focusSessions.scheduledAt, input.to), isNull(focusSessions.startedAt)),
+          and(
+            gte(focusSessions.scheduledAt, input.from),
+            lt(focusSessions.scheduledAt, input.to),
+            isNull(focusSessions.startedAt),
+          ),
           and(gte(focusSessions.startedAt, input.from), lt(focusSessions.startedAt, input.to)),
           inArray(focusSessions.state, ["running", "paused"]),
         ),
