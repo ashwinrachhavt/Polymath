@@ -19,7 +19,7 @@ import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-propo
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
-import { findCaptureByUrl } from "./queries";
+import { findCaptureByUrl, findCaptureReadingExtractor } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
 import { OCR_IMAGE_MIMES } from "@/integrations/extraction/openrouter-vision";
 import type { FileValidationResult } from "@/lib/file-validation";
@@ -517,7 +517,7 @@ export async function convertCaptureToNote(
 }
 
 /**
- * Turn a text capture into a library document (Capture spec: the inbox owns
+ * Turn a capture into a library document (Capture spec: the inbox owns
  * the triggers that create zettels from captured knowledge). The capture's
  * cleaned text becomes the document's markdown bytes through the one intake
  * path, so extraction and the enrichment pipeline (embed, zettel proposals,
@@ -526,6 +526,10 @@ export async function convertCaptureToNote(
  * audit row ride inside intake's transaction: a stale version or an
  * already-converted capture rolls the whole intake back, never a second
  * document.
+ *
+ * A blob capture files once its bytes carry a reading: the OCR rung's words
+ * in `text` are the body. A genuinely textless blob keeps the refusal - the
+ * capture IS the file, and nothing invents words for it here.
  */
 export async function convertCaptureToDocument(
   auth: AuthContext,
@@ -549,6 +553,12 @@ export async function convertCaptureToDocument(
   // filename.
   const body = workingText(capture)?.trim() ?? "";
   if (!body) throw new ConflictError("That capture has no text to file.");
+  // A blob's reading carries its provenance: the rung's audit row names the
+  // reader that turned the bytes into words, and the document's extraction
+  // records that reader - not a fresh plain-text parse of the markdown copy.
+  // Text without such a row (the owner's words, a transcript) files like any
+  // text capture: the plain-text reader genuinely reads those bytes.
+  const extractor = capture.captureMode === "blob" ? await findCaptureReadingExtractor(auth, capture.id) : null;
   const firstLine =
     body
       .split("\n")
@@ -573,6 +583,7 @@ export async function convertCaptureToDocument(
       verdict: { ok: true, mimeType: "text/markdown" },
       origin: "capture",
       sourceUrl: capture.url ?? undefined,
+      ...(extractor ? { preExtracted: { text: body, extractor } } : {}),
       inTransaction: async (tx, { documentId }) => {
         const [updated] = await tx
           .update(captures)
