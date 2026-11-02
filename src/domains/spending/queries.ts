@@ -28,6 +28,13 @@ export type SpendingOverview = {
   openReservations: Array<typeof spendingReservations.$inferSelect>;
   recentSettlements: Array<typeof spendSettlements.$inferSelect>;
   rateCards: Array<typeof modelRateCards.$inferSelect>;
+  /**
+   * The workspace's local timezone: the same clock the day bounds above
+   * resolve in, surfaced so consumers rendering dates (the spending panel)
+   * show the local day the accounting figures were measured against —
+   * never a UTC slice that disagrees with them.
+   */
+  timezone: string;
 };
 
 export async function getSpendingOverview(auth: AuthContext): Promise<SpendingOverview> {
@@ -66,7 +73,8 @@ export async function getSpendingOverview(auth: AuthContext): Promise<SpendingOv
       coalesce((select sum(s.amount_usd) from spend_settlements s, bounds b
         where s.workspace_id = ${auth.workspaceId}
           and s.created_at >= b.month_start), 0)::text as settled_this_month,
-      (${policy?.dailyCeilingUsd ?? null}::numeric - (select total from claimed_today))::text as remaining_today
+      (${policy?.dailyCeilingUsd ?? null}::numeric - (select total from claimed_today))::text as remaining_today,
+      (select tz from budget_context) as timezone
   `);
 
   const [openReservations, recentSettlements, rateCards, totalsRows] = await Promise.all([
@@ -101,6 +109,7 @@ export async function getSpendingOverview(auth: AuthContext): Promise<SpendingOv
     openReservations,
     recentSettlements,
     rateCards,
+    timezone: row.timezone ?? "UTC",
   };
 }
 

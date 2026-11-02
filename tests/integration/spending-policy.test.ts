@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { userPreferences } from "@/domains/identity/schema";
 import { spendingReservations, spendSettlements } from "@/domains/spending/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -193,5 +194,18 @@ suite("spending policy, rate cards and overview", () => {
     expect(overview.remainingToday).toBeNull();
     expect(Number(overview.openReservedToday)).toBe(0);
     expect(Number(overview.settledToday)).toBe(0);
+  });
+
+  it("overview surfaces the workspace's local timezone for day-bound consumers", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `spend-tz-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    // No saved preference: the day bounds resolve in UTC, and the surfaced
+    // clock says so.
+    expect((await queries.getSpendingOverview(auth)).timezone).toBe("UTC");
+
+    await db.insert(userPreferences).values({ workspaceId, userId, timezone: "America/New_York" });
+    // The panel's local-day dates must be computed on the same clock the
+    // settled-day bounds use.
+    expect((await queries.getSpendingOverview(auth)).timezone).toBe("America/New_York");
   });
 });
