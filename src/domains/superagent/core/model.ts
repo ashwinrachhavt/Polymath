@@ -211,9 +211,9 @@ export interface WorkThread {
   meta: Record<string, unknown>;
 }
 /** Text in both interface languages, or the same text in both. */
-export type Text = string | { zh: string; en: string };
+type Text = string | { zh: string; en: string };
 /** One fact a Source states about its thread, such as an issue number or a CI result; `problem` marks one that needs a person. */
-export interface ThreadFact {
+interface ThreadFact {
   label?: Text;
   value: Text;
   problem?: true;

@@ -4,7 +4,7 @@ import type { OutboundMessage, ScopeResult, Trigger } from "../core";
 import type { SourceContext } from "./host";
 
 /** Configuration field specification; the settings panel renders these without per-kind code. */
-export type FieldSpec =
+type FieldSpec =
   | { key: string; label: string; hint?: string; type: "switch" }
   | { key: string; label: string; hint?: string; type: "select"; options: { value: string; label: string }[] }
   | { key: string; label: string; hint?: string; type: "number"; min?: number; max?: number }
@@ -26,7 +26,7 @@ export type FieldSpec =
     };
 
 /** One admission-table row a kind declares for its receiving scopes; the cells name what each row admits. */
-export interface AdmissionRowView {
+interface AdmissionRowView {
   id: string;
   label: string;
   note: string;
@@ -34,7 +34,7 @@ export interface AdmissionRowView {
 }
 
 /** The Source's part of the Policy: who may originate work there, and what its receiving scopes admit. */
-export interface SourcePolicyPart<P extends Record<string, unknown> = Record<string, unknown>> {
+interface SourcePolicyPart<P extends Record<string, unknown> = Record<string, unknown>> {
   /** Validates the Source's part of the Policy, including `allowed` (senders who may originate work). */
   schema: z.ZodType<P>;
   /** Form fields of the policy part; the first is `allowed`. */
@@ -46,7 +46,7 @@ export interface SourcePolicyPart<P extends Record<string, unknown> = Record<str
 }
 
 /** Outbound messaging adapter for a source kind's conversations. */
-export interface SourceChannel<C> {
+interface SourceChannel<C> {
   /** Whether a reply may still go to `address`; without it, every address may receive replies. */
   allowed?(address: Record<string, string>, config: C): boolean;
   /**
@@ -60,7 +60,7 @@ export interface SourceChannel<C> {
 }
 
 /** One normalized message of a conversation, as assessments read it; `bot` marks a sender whose message never authorizes work alone. */
-export interface ContextMessage {
+interface ContextMessage {
   id: string;
   from: string;
   at: string;
@@ -70,8 +70,8 @@ export interface ContextMessage {
   url?: string;
 }
 /** Which slice of a conversation a read returns. */
-export type ContextPartName = "thread" | "root" | "parent";
-export interface ContextPart {
+type ContextPartName = "thread" | "root" | "parent";
+interface ContextPart {
   messages: ContextMessage[];
   /** Cursor of the next page; omitted on the last page. */
   next?: string;
@@ -80,7 +80,7 @@ export interface ContextPart {
 }
 
 /** Bounded thread context reader assessments use to inspect the conversation around a trigger. */
-export interface ThreadContext<C> {
+interface ThreadContext<C> {
   /** The id of the Trigger's own message among the messages of its conversation. */
   messageId(trigger: Trigger): string;
   /** Reads a page of the conversation (`thread`, first page when `cursor` is omitted), its root, or the replied-to message. */
@@ -123,12 +123,4 @@ export interface SourceKind<C extends Record<string, unknown> = Record<string, u
   repliesTo?(trigger: Trigger): string | undefined;
   /** The Source's part of the Policy. */
   policy?: SourcePolicyPart;
-}
-
-/** One enabled or disabled Source of a workspace: the kind, its id, and its stored configuration. */
-export interface SourceInstance<C extends Record<string, unknown> = Record<string, unknown>> {
-  id: string;
-  kind: string;
-  enabled: boolean;
-  config: C;
 }

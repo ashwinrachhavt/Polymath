@@ -24,7 +24,7 @@ export type PolicyDocument = {
 
 export type StoredPolicy = { policy: PolicyDocument; rules: PolicyRuleRow[] };
 
-export function policyRowToDocument(row: SuperagentPolicyRow): PolicyDocument {
+function policyRowToDocument(row: SuperagentPolicyRow): PolicyDocument {
   return {
     version: row.version,
     paused: row.paused,
@@ -34,10 +34,7 @@ export function policyRowToDocument(row: SuperagentPolicyRow): PolicyDocument {
   };
 }
 
-export function rulesToRows(
-  workspaceId: string,
-  rules: PolicyRuleRow[],
-): (typeof superagentPolicyRules.$inferInsert)[] {
+function rulesToRows(workspaceId: string, rules: PolicyRuleRow[]): (typeof superagentPolicyRules.$inferInsert)[] {
   return rules.map((rule) => ({
     workspaceId,
     ruleId: rule.id,

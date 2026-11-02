@@ -316,17 +316,8 @@ export class Engine {
   }
 }
 
-/** What Sources ask and tell the Engine. */
-export type EngineForSources = Pick<Engine, "receive" | "bindThread" | "threadClosed">;
-/** What the main Session asks of the Engine. */
-export type EngineForMainSession = Pick<
-  Engine,
-  "candidate" | "candidateDelivered" | "decide" | "attach" | "reply" | "requestStatus" | "note"
->;
 /** What people ask of the Engine, through the panel or the main Session. */
 export type EngineForPeople = Pick<Engine, "stopTicket" | "retryTicket" | "reevaluate" | "unsubscribe" | "dismiss">;
-/** What Settings tells the Engine. */
-export type EngineForSettings = Pick<Engine, "policyChanged">;
 /** What the Executor tells the Engine, and what its workers ask of it. */
 export type EngineForExecutor = Pick<
   Engine,

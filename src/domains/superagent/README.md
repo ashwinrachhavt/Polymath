@@ -1,127 +1,114 @@
 # superagent
 
-Owns: the supervised agent layer — Triggers, WorkThreads, Assessments, Tickets,
-TicketRuns, Subscriptions, the Engine and its five parts, the stage table, and
-reason codes.
+The agent architecture that supervises work instead of only reacting to it:
+immutable Triggers, a policy gate and an Assessment before anything starts,
+Tickets carrying frozen Mandates, durable effects, and honest reporting.
+Ported from the dsh-superagent-prototype's concepts and rules; adapted to
+Polymath's host (eve, Drizzle, the audit outbox, Clerk workspaces).
 
-## What lives here
+## What this domain owns
 
-`core/` is the pure domain, ported from the
-[dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)
-core (`src/core`): model types, ports, the Engine with its five parts
-(Intake, Evals, Tickets, Runs, Replies), the first-match-wins stage table
-(`stage.ts`), reason codes (`reasons.ts`), and in-memory repositories
-(`memory-repository.ts`) that make the engine specs fast and deterministic.
+- **The pipeline.** A person's chat message becomes a Trigger (translated by
+  the chat Source plugin, stable id, own messages dropped). The policy gate
+  admits it (explicit immediately; inferred only with enabled rules and the
+  configured accept mode). An Assessment judges the candidate — one eve eval
+  session with bounded context — and an accepted assessment opens a **Ticket**
+  whose Mandate is frozen at admission (strength, basis, scope, policy
+  version). Execution runs as **TicketRuns** on eve; replies and reports flow
+  back through outbox receipts into the same chat thread.
+- **The engine.** `core/` — the sole writer of domain state. Five parts
+  (Intake, Evals, Tickets, Runs, Replies), one transaction per command, the
+  stage table as the panel's vocabulary, reason codes for every non-admission.
+  Pure: no I/O, no eve, no database. In-memory repositories power the unit
+  specs.
+- **The store.** `store/` — the repositories over Drizzle and Postgres.
+  Write-behind caches per aggregate: `save` marks dirty, `flush()` persists
+  the transaction (every wiring command ends in one flush — "one command, one
+  transaction" is enforced at that boundary, not by SQL). Generated columns
+  (`is_active`, `needs_attention`) keep passes on active work. Owns
+  `work_*` and `superagent_state` tables and its own migration series.
+- **Effects.** `effects/` — the durable queue (`work_effects`): one row per
+  (kind, key), claim/complete/fail with leases, backoff 2s→60s (reply 5s→300s),
+  a `Later` throw defers without counting a failure, a health entry after
+  three consecutive failures. The engine enqueues inside the command's
+  transaction; handlers run only after the flush.
+- **Policy.** `core/policy/` — the gate, the admission matrix, accept modes,
+  revalidation per basis. The frozen revision is one hash over the rules, the
+  accept mode, and the source parts (`policyVersion(config)`) — strength and
+  accept mode ride the snapshot, no parallel table. A version change discards
+  running assessments and requeues their triggers; live mandates stay.
+- **Assessor.** `assessor/` — the admission judge. One dedicated eve profile,
+  bounded context, expiry after two requeues then unavailable. Since the
+  Mercury directive: the Eve judgment AND a Mercury Decide call run together;
+  the Assessment records both and which path decided. Below-threshold
+  probabilities and material disagreement take the escalate path. Decide
+  lives behind the port — the engine stays deterministic.
+- **Decide.** `decide/` — the Mercury Decisions client. `POST /v1/decisions`
+  is NOT chat-completions shaped: typed questions over a state object, typed
+  calibrated answers. Revalidation stays deterministic (rules, no model call).
+- **Sources.** `sources/` — the SourceKind protocol and the chat plugin.
+  v1 scope: the Polymath chat surface only. Proactive admission ships off.
+- **Executor.** `executor/` — the ticket executor over eve runs. Start,
+  deliver, and stop enqueue effects only. Worker slots cap concurrency with
+  one spare slot a person's message can always use. Restart recovery reports
+  interrupted runs oldest-first with a check-before-repeat note.
+- **The panel.** `src/components/superagent` — Overview (what needs a person
+  now), Tickets with drill-down, Settings.
 
-**Pure domain only**: no I/O, no eve imports, no database, no Next. External
-work (an eve run, a channel send) is expressed as ports (`Assessor`,
-`Executor`, `Outbox`) that the Engine calls; the store, effects, policy,
-assessor, sources, and executor modules planned beside this core implement
-those ports over Drizzle, the outbox, and eve. The Engine is the sole writer
-of domain state; every command is one transaction; receipts are claimed
-before work and completed after.
+## What stays on eve
 
-## Naming: the two-vocabularies rule
+Nothing here replaces the eve runtime. Sessions, streaming, tool calls,
+spend, cancel — all eve, always behind the seams (`executor/eve.ts`,
+`assessor/eve.ts`). One eve run per TicketRun, one eval session per
+Assessment. The reactive run path (`POST /api/v1/runs`) still exists for the
+other call sites; only the main chat send path goes through this domain in
+v1.
 
-This domain ports the prototype's concepts under Polymath names. The
-locked renames (spec §4) exist because several blueprint names are already
-taken and load-bearing elsewhere in the codebase:
+## Naming
 
-| Blueprint (prototype) | In Polymath                 | Home                    |
-| --------------------- | --------------------------- | ----------------------- |
-| Source                | Source (protocol)           | `sources/`              |
-| Thread                | **WorkThread**              | `core/model.ts`         |
-| Eval                  | **Assessment**              | `core/model.ts`         |
-| Assignment            | **TicketRun**               | `core/model.ts`         |
-| Ticket                | Ticket                      | `core/model.ts`         |
-| Mandate               | Mandate                     | `core/model.ts`         |
-| Trigger               | Trigger                     | `core/model.ts`         |
-| Subscription          | Subscription                | `core/model.ts`         |
-| Policy                | Policy (settings-versioned) | `policy/` (later wave)  |
-| Effect                | Effect                      | `effects/` (later wave) |
-| Outbound receipt      | Outbox receipt              | `effects/` (later wave) |
+| Concept                                          | Here                        | Table                  |
+| ------------------------------------------------ | --------------------------- | ---------------------- |
+| Trigger                                          | Trigger                     | `work_triggers`        |
+| WorkThread (work context, not a chat transcript) | WorkThread                  | `work_threads`         |
+| Assessment (the prototype's Eval)                | Assessment                  | `work_assessments`     |
+| Mandate                                          | Mandate (column on tickets) | `work_tickets.mandate` |
+| Ticket                                           | Ticket                      | `work_tickets`         |
+| TicketRun (the prototype's Assignment)           | TicketRun                   | `ticket_runs`          |
+| Subscription                                     | Subscription                | `work_subscriptions`   |
+| Policy                                           | Policy (settings-versioned) | `superagent_policy*`   |
+| Effect                                           | Effect                      | `work_effects`         |
+| Outbox receipt                                   | Outbox receipt              | `work_outbox_receipts` |
 
-> **`threads` vs `WorkThreads`.** `agents.threads` groups chat transcripts
-> around runs (`src/domains/agents/schema.ts`); a `WorkThread` here is a work
-> context the domain groups Tickets and Subscriptions under. They are
-> different concepts with the same name — never merge them, and never name a
-> superagent table or export `thread*` where the agents schema already owns
-> the word. The same caution applies to `Source`, `Channel`, `Assignment`,
-> and `Eval`, which the migration map (research §7.1) marked as taken.
+No table or export reuses a name from the agents schema. "Thread" in this
+domain's text always means WorkThread; a chat transcript stays a
+conversation — the sessionless eve run the chat surface streams.
 
-## Modules
+## How the wiring runs it
 
-- `model.ts` — domain types and the pure helpers over them (`liveTicket`,
-  `runningTicketRun`, `ticketOutcome`, `followupOwners`, `reached`,
-  `waitsForPerson`).
-- `sources/` — the Source protocol (`kind.ts`), the host seams the store,
-  effects, and cutover wiring implement (`host.ts`), the registry that adapts
-  registered kinds to the Engine's `SourceScope` port (`registry.ts`), and the
-  chat plugin (`chat.ts`): the Polymath chat surface as intake — stable
-  trigger ids from the message's stream identity, the agent's own messages
-  dropped, the read position advanced only after every covered trigger was
-  stored, and the channel defined over the existing ChatFrame stream
-- `ports.ts` — the seams: `Policy`, `Assessor`, `Executor`, `Outbox`,
-  `Repositories`, and the source-scope protocol. No implementation.
-- `ids.ts` — deterministic, idempotent keys (`key(...)`) hashed with
-  SHA-256, so the same source event always yields the same id.
-- `policy/` — the pure `Policy` port implementation over plain config:
-  the admission table (`policy/admission.ts`), and the gate, accept
-  modes, version hash, and mandate revalidation (`policy/gate.ts`).
-  Host settings validation and persistence arrive with the settings
-  module, which hands a validated `PolicyConfig` here.
-- `errors.ts` — the `UserError` catalog; every refusal a caller can hit has
-  one named code.
-- `reasons.ts` — reason codes and their display text for decisions, ends,
-  and gates.
-- `stage.ts` — the panel's vocabulary: the first-matching-row stage table
-  (`ticketStage`) and `canRetry`.
-- `engine-parts.ts` — the `EngineOptions` wiring and the `EnginePart` base.
-- `intake.ts`, `evals.ts`, `tickets.ts`, `runs.ts`, `replies.ts` — the five
-  parts. `runs.ts` is the prototype's Assignments part renamed.
-- `engine.ts` — `Engine`, `createEngine`, and the role-scoped `Pick` types
-  (`EngineForSources`, `EngineForMainSession`, `EngineForPeople`,
-  `EngineForSettings`).
-- `memory-repository.ts` — in-memory `Repositories` for tests.
-- `sources/` — the Source protocol (`kind.ts`), the host seams the store,
-  effects, and cutover wiring implement (`host.ts`), the registry that adapts
-  registered kinds to the Engine's `SourceScope` port (`registry.ts`), and the
-  chat plugin (`chat.ts`): the Polymath chat surface as intake — stable
-  trigger ids from the message's stream identity, the agent's own messages
-  dropped, the read position advanced only after every covered trigger was
-  stored, and the channel defined over the existing ChatFrame stream
-  contract, with no new transport.
+`wiring.ts` composes the real host per workspace: the Drizzle store, the
+policy from the stored document, the chat Source registry, the eve seams for
+assessor and executor, and the engine over them. Three drain triggers move
+effects:
 
-## Decide (`decide/`)
+1. **Inline after commit.** The send path (`startSuperagentConversation`,
+   used by the chat-actions route) ticks the engine and chains bounded
+   dispatch passes so a warm pipeline returns a reply in the same request.
+2. **The dispatch endpoint.** `POST /api/internal/outbox` (bearer-guarded)
+   sweeps then drains — the operator's lever when inline work is cold.
+3. **Cron recovery.** The existing cron route sweeps (tick + the ticket-run
+   observer) and drains; on the free plan it is daily, which is why the
+   inline drain is the primary trigger.
 
-The Mercury Decide seam (`POST /v1/decisions`, Inception Labs), a wave-1
-module beside the core rather than in it: `types.ts` is the typed wire
-contract (binary-probability `noul`, categorical `choice`, ordinal `score`,
-and text-span `extract` questions over a shared text/JSON state; typed
-answers with calibrated probabilities; no streaming, no tool calling);
-`client.ts` is the thin HTTP client (Bearer auth, timeout, typed
-`DecideError` paths with a `retryable` flag); `record.ts` is the
-`AssessmentDecisionRecord` — the Eve judgment, the Decide probability, and
-the final decision with which path decided it — plus the escalation rule
-(`resolveAssessmentDecision`): below-threshold probabilities and material
-Eve/Decide disagreement record not-admitted for the panel to surface.
+The prototype ticked every two seconds in-process; `engine.evaluateDue()` is
+that tick, run at serverless granularity by every drain and dispatch pass.
 
-It is a fourth port beside `Assessor` and `Executor` in the core's port
-family, consumed by the assessor implementation. The Engine never imports
-it: no Decide in core, so the Engine stays deterministic. The
-decisions-only model id `mercury-decide` is declared in `client.ts`
-(`DECIDE_MODEL_ID`), not in the chat model catalog — it does not serve
-`/chat/completions`.
+## Invariants worth restating
 
-## Tests
-
-`tests/unit/superagent/core-engine.test.ts` and `stage.test.ts` are the
-prototype's core-engine and stage specs, ported with the same renames and
-driven from in-memory repositories: receiving, gate, assessment, fan-out,
-resume and stop, interrupted runs, pause, policy changes, reports, attaching,
-replies, and failed deliveries; the stage spec checks the table row by row.
-`sources-chat.test.ts` is the chat Source's spec: trigger id idempotency,
-the own-message drop, the listen-versus-observe scope through the registry,
-the read position (start from now, replay-safe rounds), and the channel
-returning `sent` or `gone`, never both, with frames that round-trip the
-stream contract.
+- One writer (the engine), one transaction per command, external work enqueued
+  inside and run only after commit.
+- Receipts are claimed before work and completed after; the queue never queues
+  an id twice; per-ticket, per-conversation order holds.
+- `meta` on a Trigger is untrusted; revalidation may use only stored policy.
+- Reports are honest: ready means ready, blocked means blocked, a draft says
+  unfinished. Blocked and failed tickets take no automatic input — a person's
+  message releases them.

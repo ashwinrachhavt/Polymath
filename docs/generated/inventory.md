@@ -27,7 +27,7 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 107 files, highest `0280_project_repo_path`.
+Migrations: 108 files, highest `0281_superagent_state`.
 
 ## Tests
 
@@ -55,7 +55,7 @@ Migrations: 107 files, highest `0280_project_repo_path`.
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
-| `superagent` | 11 |
+| `superagent` | 12 |
 | `work` | 10 |
 
 No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
@@ -224,6 +224,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `superagent` | `work_outbox_receipts` | app-cas |
 | `superagent` | `superagent_policies` | app-cas |
 | `superagent` | `superagent_policy_rules` | append-only |
+| `superagent` | `superagent_state` | sole-writer |
 | `work` | `spaces` | versioned |
 | `work` | `projects` | versioned |
 | `work` | `recurrence_templates` | versioned |
@@ -235,7 +236,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 100 versioned, 63 append-only, 7 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 100 versioned, 63 append-only, 8 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 

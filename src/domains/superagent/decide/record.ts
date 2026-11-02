@@ -29,10 +29,10 @@ export interface DecideVerdict {
 }
 
 /** Which path produced the final decision: Eve's judgment, or the escalation rule when the two judgments parted. */
-export type DecisionPath = "eve" | "escalated";
+type DecisionPath = "eve" | "escalated";
 
 /** Why the escalation rule decided: the probability fell below the admit threshold on an Eve acceptance, or the two judgments disagreed about admission. */
-export type EscalationCause = "belowThreshold" | "disagreement";
+type EscalationCause = "belowThreshold" | "disagreement";
 
 export interface AssessmentDecisionRecord {
   eve: EveJudgment;

@@ -10,6 +10,7 @@
 import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
+  superagentState,
   ticketRuns,
   workDecisions,
   workEffects,
@@ -18,6 +19,27 @@ import {
   workThreads,
   workTickets,
 } from "./schema";
+
+/** The wiring's host bookkeeping (Source read positions, observer cursors): read one value. */
+export async function readStateValue(db: PostgresJsDatabase, workspaceId: string, stateKey: string) {
+  const rows = await db
+    .select({ value: superagentState.value })
+    .from(superagentState)
+    .where(and(eq(superagentState.workspaceId, workspaceId), eq(superagentState.key, stateKey)))
+    .limit(1);
+  return rows[0]?.value;
+}
+
+/** The wiring's host bookkeeping: write one value, creating or replacing its row. */
+export async function writeStateValue(db: PostgresJsDatabase, workspaceId: string, stateKey: string, value: string) {
+  await db
+    .insert(superagentState)
+    .values({ workspaceId, key: stateKey, value })
+    .onConflictDoUpdate({
+      target: [superagentState.workspaceId, superagentState.key],
+      set: { value, updatedAt: new Date() },
+    });
+}
 
 /** WorkThreads with Triggers queued for Eval or an Eval in progress. */
 export function activeThreads(db: PostgresJsDatabase, workspaceId: string) {

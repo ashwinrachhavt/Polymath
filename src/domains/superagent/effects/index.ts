@@ -26,4 +26,3 @@ export {
   runReceiptsPass,
 } from "./receipts";
 export { runEffectsPass, runSuperagentDispatch } from "./drain";
-export { effectHandlers } from "./handlers";

@@ -4,15 +4,15 @@
  * and this module owns who handles what, so a new consumer registers in one
  * place and the routes stay dumb.
  *
- * Wave-one consumers so far:
- * - `reply` — the conversation drain over the receipts lane, registered when
- *   the host provides its ReceiptSender (the chat Source's ChatStreamSink).
- *   Without a sender the map is empty and reply effects park without failure,
- *   which is the deploy-order-safe posture: producers may land before the
- *   consumer that resolves them.
+ * The base map carries the reply lane — the conversation drain over the
+ * receipts lane, registered when the host provides its ReceiptSender (the
+ * chat Source's ChatStreamSink). Without a sender the map is empty and reply
+ * effects park without failure, the deploy-order-safe posture: producers may
+ * land before the consumer that resolves them.
  *
- * The executor's kinds (`assessment`, `launch`, `delivery`) and the notice and
- * relay consumers attach here as their waves land.
+ * The wiring (../wiring.ts) composes this map with the assessor's
+ * `assessment` consumer and the executor's `launch` and `delivery`
+ * consumers, and the drain routes pass the result to runSuperagentDispatch.
  */
 import postgres from "postgres";
 import type { EffectHandlers } from "./queue";

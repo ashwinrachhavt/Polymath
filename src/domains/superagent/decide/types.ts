@@ -21,7 +21,7 @@ export type DecideState = string | { [key: string]: JsonValue } | JsonValue[];
  * Binary-probability question (wire type `noul`): the answer is the probability
  * of a positive answer, 0 to 1.
  */
-export interface DecideBinaryQuestion {
+interface DecideBinaryQuestion {
   type: "noul";
   instructions?: string;
   /** Optional descriptions of what counts as the positive (`true`) or negative (`false`) answer. */
@@ -33,7 +33,7 @@ export interface DecideBinaryQuestion {
  * `criteria` — options are never inferred from `instructions` — and a
  * description may be null.
  */
-export interface DecideChoiceQuestion {
+interface DecideChoiceQuestion {
   type: "choice";
   instructions?: string;
   criteria: Record<string, string | null>;
@@ -43,7 +43,7 @@ export interface DecideChoiceQuestion {
  * Ordinal question: the answer is a probability-weighted level, 0-based into
  * `criteria`, so it can be fractional.
  */
-export interface DecideOrdinalQuestion {
+interface DecideOrdinalQuestion {
   type: "score";
   instructions?: string;
   /** 1-10 ordered level descriptions, level 0 first. */
@@ -56,7 +56,7 @@ export interface DecideOrdinalQuestion {
  * alone; `criteria` names further fields. When `state` is an object the API
  * requires `source`, the string-valued field the offsets measure.
  */
-export interface DecideSpanQuestion {
+interface DecideSpanQuestion {
   type: "extract";
   instructions?: string;
   /** Required by the API when `state` is an object. */
@@ -78,13 +78,13 @@ export interface DecideSpan {
 }
 
 /** Binary-probability answer (wire type `noul`): the API names the field `noul`. */
-export interface DecideBinaryAnswer {
+interface DecideBinaryAnswer {
   type: "noul";
   probability: number;
 }
 
 /** Categorical answer: the chosen option, its per-option probabilities, and the model's confidence. */
-export interface DecideChoiceAnswer {
+interface DecideChoiceAnswer {
   type: "choice";
   choice: string;
   probabilities: Record<string, number>;
@@ -92,7 +92,7 @@ export interface DecideChoiceAnswer {
 }
 
 /** Ordinal answer: the probability-weighted level, the level descriptions by stringified index, and the probabilities. */
-export interface DecideOrdinalAnswer {
+interface DecideOrdinalAnswer {
   type: "score";
   score: number;
   legend: Record<string, string>;
@@ -101,7 +101,7 @@ export interface DecideOrdinalAnswer {
 }
 
 /** Text-span answer: matching spans per field (an empty list means none), and the probability no span exists. */
-export interface DecideSpanAnswer {
+interface DecideSpanAnswer {
   type: "extract";
   spans: Record<string, DecideSpan[]>;
   notStated: Record<string, number>;
@@ -117,7 +117,7 @@ export interface DecideRequest {
 }
 
 /** Token usage of one decision call: the Decisions endpoint bills input tokens only. */
-export interface DecideUsage {
+interface DecideUsage {
   inputTokens: number;
   outputTokens: number;
 }

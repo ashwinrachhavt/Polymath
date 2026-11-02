@@ -146,7 +146,7 @@ export function rowToDecision(row: WorkDecisionRow): Decision {
 /* Tickets and their runs                                              */
 /* ------------------------------------------------------------------ */
 
-export function rowToTicketRun(row: TicketRunRow): TicketRun {
+function rowToTicketRun(row: TicketRunRow): TicketRun {
   return defined({
     id: row.id,
     state: row.state as TicketRun["state"],
