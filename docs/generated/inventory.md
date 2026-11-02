@@ -31,7 +31,7 @@ Migrations: 102 files, highest `0275_short_mikhail_rasputin`.
 
 ## Tests
 
-507 `.test.ts` and 44 `.spec.ts` files (unit: 303, integration: 201, e2e: 44).
+511 `.test.ts` and 44 `.spec.ts` files (unit: 307, integration: 201, e2e: 44).
 ## Domains
 
 24 folders; 19 own tables.
