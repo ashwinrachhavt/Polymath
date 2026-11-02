@@ -1,6 +1,6 @@
 {
-  "id": "01162266-5a5c-4a32-802b-f6624dc021cd",
-  "prevId": "ec2417e3-900f-468f-8b48-b6874ed9e3ad",
+  "id": "aab87429-cb2d-4bc3-bb43-a7fdf7d6fffe",
+  "prevId": "01162266-5a5c-4a32-802b-f6624dc021cd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3463,6 +3463,168 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.message_comments": {
+      "name": "message_comments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "message_comments_message_idx": {
+          "name": "message_comments_message_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "message_comments_workspace_id_workspaces_id_fk": {
+          "name": "message_comments_workspace_id_workspaces_id_fk",
+          "tableFrom": "message_comments",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "message_comments_thread_id_threads_id_fk": {
+          "name": "message_comments_thread_id_threads_id_fk",
+          "tableFrom": "message_comments",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "message_comments_message_id_messages_id_fk": {
+          "name": "message_comments_message_id_messages_id_fk",
+          "tableFrom": "message_comments",
+          "tableTo": "messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "message_comments_body_check": {
+          "name": "message_comments_body_check",
+          "value": "length(btrim(body)) between 1 and 2000"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.messages": {
@@ -21196,13 +21358,13 @@
           "name": "document_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "extraction_id": {
           "name": "extraction_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "title": {
           "name": "title",
@@ -21262,6 +21424,18 @@
         },
         "artifact_id": {
           "name": "artifact_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_artifact_id": {
+          "name": "source_artifact_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duplicate_of_artifact_id": {
+          "name": "duplicate_of_artifact_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -21346,6 +21520,28 @@
           "method": "btree",
           "with": {}
         },
+        "zettel_proposals_artifact_dedupe_key": {
+          "name": "zettel_proposals_artifact_dedupe_key",
+          "columns": [
+            {
+              "expression": "source_artifact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "source_artifact_id is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "zettel_proposals_workspace_status_idx": {
           "name": "zettel_proposals_workspace_status_idx",
           "columns": [
@@ -21420,6 +21616,32 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "zettel_proposals_source_artifact_id_artifacts_id_fk": {
+          "name": "zettel_proposals_source_artifact_id_artifacts_id_fk",
+          "tableFrom": "zettel_proposals",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "source_artifact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "zettel_proposals_duplicate_of_artifact_id_artifacts_id_fk": {
+          "name": "zettel_proposals_duplicate_of_artifact_id_artifacts_id_fk",
+          "tableFrom": "zettel_proposals",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "duplicate_of_artifact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -21429,6 +21651,10 @@
         "zettel_proposals_span_check": {
           "name": "zettel_proposals_span_check",
           "value": "span_start >= 0 AND span_end > span_start"
+        },
+        "zettel_proposals_one_source_check": {
+          "name": "zettel_proposals_one_source_check",
+          "value": "num_nonnulls(document_id, source_artifact_id) = 1"
         }
       },
       "isRLSEnabled": false

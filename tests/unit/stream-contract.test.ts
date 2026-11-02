@@ -25,9 +25,7 @@ describe("frameOf", () => {
       { type: "message.appended", data: { messageDelta: "Hel", turnId: "turn-1", stepIndex: 0 } },
       3,
     );
-    expect(frames).toEqual([
-      { type: "delta", runId: RUN, blockId: "assistant:turn-1:0", text: "Hel", cursor: 3 },
-    ]);
+    expect(frames).toEqual([{ type: "delta", runId: RUN, blockId: "assistant:turn-1:0", text: "Hel", cursor: 3 }]);
   });
 
   it("keeps two assistant messages in one turn in separate blocks", () => {
@@ -139,7 +137,11 @@ describe("frameOf", () => {
         type: "action.result",
         data: {
           status: "failed",
-          result: { callId: "c1", toolName: "documents_search", output: { results: [{ documentId: "d1", title: "t", text: "x" }] } },
+          result: {
+            callId: "c1",
+            toolName: "documents_search",
+            output: { results: [{ documentId: "d1", title: "t", text: "x" }] },
+          },
         },
       },
       8,
@@ -155,7 +157,14 @@ describe("frameOf", () => {
         RUN,
         {
           type: "action.result",
-          data: { status, result: { callId: "c1", toolName: "documents_search", output: { results: [{ documentId: "d", title: "t", text: "x" }] } } },
+          data: {
+            status,
+            result: {
+              callId: "c1",
+              toolName: "documents_search",
+              output: { results: [{ documentId: "d", title: "t", text: "x" }] },
+            },
+          },
         },
         1,
       );
@@ -167,7 +176,10 @@ describe("frameOf", () => {
   it("ignores a tool output with no citable results", () => {
     const frames = frameOf(
       RUN,
-      { type: "action.result", data: { status: "completed", result: { callId: "c1", toolName: "web_search", output: { hits: [] } } } },
+      {
+        type: "action.result",
+        data: { status: "completed", result: { callId: "c1", toolName: "web_search", output: { hits: [] } } },
+      },
       9,
     );
     expect(frames).toHaveLength(1);
@@ -270,6 +282,30 @@ describe("ChatAccumulator", () => {
     expect(acc.list()).toHaveLength(1);
   });
 
+  it("keeps a paired message id when a replayed block replaces the seeded one", () => {
+    // The run page pairs stored message ids onto the seeded blocks. Eve
+    // replays the session from the start on every connect, and a replayed
+    // `block` frame carries no message id — dropping the pair would hide the
+    // comment control seconds after it rendered. The block id is the identity
+    // proof: same id is the same message, so the pairing survives the replace.
+    const acc = new ChatAccumulator();
+    acc.apply({
+      type: "snapshot",
+      runId: RUN,
+      cursor: 0,
+      blocks: [{ id: "assistant:turn_0:0", kind: "assistant", text: "Answer.", done: true, messageId: "m1" }],
+    });
+    acc.apply({
+      type: "block",
+      runId: RUN,
+      blockId: "assistant:turn_0:0",
+      text: "Answer.",
+      finishReason: "stop",
+      cursor: 1,
+    });
+    expect(acc.list()[0]?.messageId).toBe("m1");
+  });
+
   it("keeps reasoning out of the visible reply", () => {
     const acc = new ChatAccumulator();
     acc.apply({ type: "delta", runId: RUN, blockId: "reasoning:t:0", text: "thinking", cursor: 0 });
@@ -325,7 +361,10 @@ describe("wire framing", () => {
   });
 
   it("accepts a stateless frame that carries only a cursor", () => {
-    expect(decodeFrame('{"type":"turn","runId":"r","state":"waiting","cursor":3}')).toMatchObject({ type: "turn", cursor: 3 });
+    expect(decodeFrame('{"type":"turn","runId":"r","state":"waiting","cursor":3}')).toMatchObject({
+      type: "turn",
+      cursor: 3,
+    });
     expect(decodeFrame('{"type":"end","runId":"r","state":"succeeded","cursor":4}')).toMatchObject({ type: "end" });
   });
 
@@ -411,7 +450,9 @@ describe("threadBlocks", () => {
 describe("ChatAccumulator with a seeded transcript", () => {
   it("ignores replayed deltas for a block the seed already completed", () => {
     const acc = new ChatAccumulator();
-    const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Sierra retired its coding rounds.", turnId: "turn_0" }]);
+    const seed = threadBlocks([
+      { sequence: 2, role: "assistant", text: "Sierra retired its coding rounds.", turnId: "turn_0" },
+    ]);
     acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
     acc.apply({ type: "delta", runId: RUN, blockId: "assistant:turn_0:0", text: "Sierra retired", cursor: 1 });
     expect(acc.assistantText()).toBe("Sierra retired its coding rounds.");
@@ -428,7 +469,14 @@ describe("ChatAccumulator with a seeded transcript", () => {
     const acc = new ChatAccumulator();
     const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Partial stored text", turnId: "turn_0" }]);
     acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
-    acc.apply({ type: "block", runId: RUN, blockId: "assistant:turn_0:0", text: "The full answer.", finishReason: "stop", cursor: 9 });
+    acc.apply({
+      type: "block",
+      runId: RUN,
+      blockId: "assistant:turn_0:0",
+      text: "The full answer.",
+      finishReason: "stop",
+      cursor: 9,
+    });
     expect(acc.assistantText()).toBe("The full answer.");
   });
 });

@@ -31,7 +31,16 @@ export type ChatFrame =
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
   /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
   /** `input` is the call's parsed arguments, `input` on a settled frame is the result payload — capped by MAX_TOOL_PAYLOAD. */
-  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown; cursor: number }
+  | {
+      type: "tool";
+      runId: string;
+      callId: string;
+      label: string;
+      status: "running" | "ok" | "error";
+      detail?: string;
+      input?: unknown;
+      cursor: number;
+    }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
@@ -43,11 +52,7 @@ export type ChatFrame =
   /** A transport-level problem the surface should show, not crash on. */
   | { type: "error"; runId: string; code: ChatErrorCode; message: string; cursor: number };
 
-export type ChatErrorCode =
-  | "run_finished"
-  | "run_not_found"
-  | "agent_bridge_unavailable"
-  | "stream_unavailable";
+export type ChatErrorCode = "run_finished" | "run_not_found" | "agent_bridge_unavailable" | "stream_unavailable";
 
 /**
  * A citation as the chat surface sees it. Deliberately the same fields as
@@ -67,6 +72,13 @@ export type ChatBlock = {
   kind: "assistant" | "reasoning" | "user";
   text: string;
   done: boolean;
+  /**
+   * The mirrored `messages.id` this block renders, when the stored mirror is
+   * count-parity with the rendered events (plan Task 8). Null — not guessed —
+   * whenever the two lists disagree; a null hides the comment control rather
+   * than risk attaching a comment to the wrong message.
+   */
+  messageId?: string | null;
 };
 
 /**
@@ -129,12 +141,15 @@ const MAX_TOOL_PAYLOAD = 8_192;
 function capPayload(value: unknown): unknown {
   let size: number;
   try {
-    size = typeof value === "string" ? value.length : JSON.stringify(value ?? null)?.length ?? 0;
+    size = typeof value === "string" ? value.length : (JSON.stringify(value ?? null)?.length ?? 0);
   } catch {
     return String(value);
   }
   if (size <= MAX_TOOL_PAYLOAD) return value;
-  return { truncated: true, reason: `Result over ${MAX_TOOL_PAYLOAD} bytes; the full output stays in the run's recorded events.` };
+  return {
+    truncated: true,
+    reason: `Result over ${MAX_TOOL_PAYLOAD} bytes; the full output stays in the run's recorded events.`,
+  };
 }
 
 /**
@@ -164,7 +179,13 @@ function blockIdFor(data: Record<string, unknown>, kind: "assistant" | "reasonin
 }
 
 /** One stored message, reduced to what a block needs. */
-export type StoredMessage = { sequence: number; role: "user" | "assistant"; text: string; turnId?: string | null };
+export type StoredMessage = {
+  sequence: number;
+  role: "user" | "assistant";
+  text: string;
+  turnId?: string | null;
+  messageId?: string | null;
+};
 
 /**
  * The transcript Polymath has already stored, as chat blocks.
@@ -199,10 +220,17 @@ export function threadBlocks(messages: StoredMessage[]): ChatBlock[] {
         kind: "assistant",
         text: message.text,
         done: true,
+        messageId: message.messageId ?? null,
       });
       continue;
     }
-    blocks.push({ id: `user:stored:${message.sequence}`, kind: "user", text: message.text, done: true });
+    blocks.push({
+      id: `user:stored:${message.sequence}`,
+      kind: "user",
+      text: message.text,
+      done: true,
+      messageId: message.messageId ?? null,
+    });
   }
   return blocks;
 }
@@ -301,7 +329,7 @@ export function frameOf(
           // code when the call failed, a count when a list came back.
           detail: succeeded
             ? summaryFromToolOutput(result.output)
-            : asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed"),
+            : (asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed")),
           // The result payload itself, capped, so a pill can expand to the
           // real data without the wire or the client state holding unbounded
           // provider output.
@@ -371,16 +399,27 @@ export class ChatAccumulator {
         // otherwise have every replayed delta appended to its complete text.
         if (existing.done) return;
         existing.text += frame.text;
-      } else this.blocks.set(frame.blockId, { id: frame.blockId, kind: this.kindOf(frame.blockId), text: frame.text, done: false });
+      } else
+        this.blocks.set(frame.blockId, {
+          id: frame.blockId,
+          kind: this.kindOf(frame.blockId),
+          text: frame.text,
+          done: false,
+        });
       return;
     }
     if (frame.type === "block") {
-      // Authoritative: replaces whatever deltas accumulated.
+      // Authoritative: replaces whatever deltas accumulated. A replayed block
+      // carries no message id, but the block id is the identity proof — same
+      // id is the same message — so the pair the page seeded survives the
+      // replace instead of hiding the comment control after every reconnect.
+      const pairedMessageId = this.blocks.get(frame.blockId)?.messageId ?? null;
       this.blocks.set(frame.blockId, {
         id: frame.blockId,
         kind: this.kindOf(frame.blockId),
         text: frame.text,
         done: true,
+        messageId: pairedMessageId,
       });
       return;
     }
@@ -450,7 +489,13 @@ export function decodeFrame(line: string): ChatFrame | null {
     return null;
   }
   if (typeof parsed.type !== "string" || typeof parsed.runId !== "string") return null;
-  if (!STATELESS_FRAMES.has(parsed.type) && parsed.type !== "delta" && parsed.type !== "block" && parsed.type !== "message" && parsed.type !== "snapshot") {
+  if (
+    !STATELESS_FRAMES.has(parsed.type) &&
+    parsed.type !== "delta" &&
+    parsed.type !== "block" &&
+    parsed.type !== "message" &&
+    parsed.type !== "snapshot"
+  ) {
     // An unknown frame type is protocol skew. Dropping it silently is correct
     // for forward compatibility; the caller sees no state change.
     return null;

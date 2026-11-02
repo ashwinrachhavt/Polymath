@@ -4,6 +4,7 @@ import {
   hasMentionContext,
   mentionedEntities,
   resolveMentionPayload,
+  serializeChips,
   serializeMentionContext,
   stripMentionContext,
   MAX_CONTEXT_BLOCK_CHARS,
@@ -20,8 +21,18 @@ import {
  * brackets, and a block's own JSON must never leak into a title.
  */
 
-const company: MentionEntity = { id: "b0000000-0000-0000-0000-000000000001", kind: "company", title: "Abby Care", href: "/command-center/relationships/companies/b0000000-0000-0000-0000-000000000001" };
-const person: MentionEntity = { id: "p0000000-0000-0000-0000-000000000002", kind: "person", title: "Dana Whitfield", href: "/command-center/relationships/contacts?id=p0000000-0000-0000-0000-000000000002" };
+const company: MentionEntity = {
+  id: "b0000000-0000-0000-0000-000000000001",
+  kind: "company",
+  title: "Abby Care",
+  href: "/command-center/relationships/companies/b0000000-0000-0000-0000-000000000001",
+};
+const person: MentionEntity = {
+  id: "p0000000-0000-0000-0000-000000000002",
+  kind: "person",
+  title: "Dana Whitfield",
+  href: "/command-center/relationships/contacts?id=p0000000-0000-0000-0000-000000000002",
+};
 
 describe("mention context", () => {
   it("keeps only the entities the message still names", () => {
@@ -30,7 +41,9 @@ describe("mention context", () => {
   });
 
   it("serializes one compact block per entity and strips it back out", () => {
-    const entries = [{ entity: company, context: { id: company.id, name: "Abby Care", people: [{ name: "Xiaoyu Miao" }] } }];
+    const entries = [
+      { entity: company, context: { id: company.id, name: "Abby Care", people: [{ name: "Xiaoyu Miao" }] } },
+    ];
     const payload = `What is the status?${serializeMentionContext(entries)}`;
     expect(hasMentionContext(payload)).toBe(true);
     expect(stripMentionContext(payload)).toBe("What is the status?");
@@ -87,7 +100,12 @@ describe("mention context budget", () => {
     const wide = Object.fromEntries(
       Array.from({ length: 3 }, (_, i) => [`field${i}`, "z".repeat(MAX_CONTEXT_FIELD_CHARS)]),
     );
-    const third: MentionEntity = { id: "c0000000-0000-0000-0000-000000000005", kind: "company", title: "Third Co", href: "/z" };
+    const third: MentionEntity = {
+      id: "c0000000-0000-0000-0000-000000000005",
+      kind: "company",
+      title: "Third Co",
+      href: "/z",
+    };
     const payload = serializeMentionContext([
       { entity: company, context: wide },
       { entity: person, context: wide },
@@ -166,7 +184,12 @@ describe("mention context format", () => {
 
 describe("exact mention matching", () => {
   const ann: MentionEntity = { id: "a0000000-0000-0000-0000-000000000003", kind: "person", title: "Ann", href: "/x" };
-  const annSmith: MentionEntity = { id: "a0000000-0000-0000-0000-000000000004", kind: "person", title: "Ann Smith", href: "/y" };
+  const annSmith: MentionEntity = {
+    id: "a0000000-0000-0000-0000-000000000004",
+    kind: "person",
+    title: "Ann Smith",
+    href: "/y",
+  };
 
   it("does not match Ann Smith when only Ann is the entity and the text names Ann Smith", () => {
     // "@Ann Smith" names Ann Smith; "@Ann" alone would match Ann.
@@ -213,5 +236,36 @@ describe("resolveMentionPayload", () => {
   it("returns the text untouched when no entity is named or resolves", async () => {
     expect(await resolveMentionPayload([company], "No mentions here", fetcher as never)).toBe("No mentions here");
     expect(await resolveMentionPayload([person], "Ask @Dana Whitfield", fetcher as never)).toBe("Ask @Dana Whitfield");
+  });
+});
+
+const chipPerson = { id: "11111111-1111-4111-8111-111111111111", kind: "person" as const, title: "Ann", href: "/x" };
+
+describe("serializeChips", () => {
+  it("returns an empty payload with no chips", () => {
+    expect(serializeChips([])).toEqual({ payload: "", truncated: false });
+  });
+  it("serializes a fetched chip into one mention block", () => {
+    const { payload, truncated } = serializeChips([{ entity: chipPerson, context: { name: "Ann" }, error: null }]);
+    expect(payload).toContain(`[context:mention id=${chipPerson.id}]`);
+    expect(truncated).toBe(false);
+  });
+  it("skips a chip whose fetch failed and reports nothing truncated", () => {
+    expect(serializeChips([{ entity: chipPerson, context: null, error: "Could not load" }])).toEqual({
+      payload: "",
+      truncated: false,
+    });
+  });
+  it("reports truncation when the budget drops a block", () => {
+    const big = { body: "x".repeat(1900) };
+    // Each string field is clamped to MAX_CONTEXT_FIELD_CHARS, so one chip
+    // rides at roughly 600 characters: seven still fit under the 4000 total,
+    // the eighth is the first the budget drops.
+    const chips = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+      entity: { ...chipPerson, id: `1111111${i}-1111-4111-8111-111111111111` },
+      context: big,
+      error: null,
+    }));
+    expect(serializeChips(chips).truncated).toBe(true);
   });
 });

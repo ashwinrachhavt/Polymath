@@ -1,11 +1,11 @@
-import { and, count, desc, eq, gte, ilike, inArray, isNull, notLike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, notLike, or, sql, type SQL } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 // Onboarding's own module owns the machinery markers; importing them here is
 // cycle-free (nothing in onboarding's graph reads this module).
 import { ONBOARDING_OBJECTIVE_PREFIX } from "./onboarding";
-import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
+import { agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -97,6 +97,22 @@ export async function getRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return run ?? null;
+}
+
+/*
+ * The Zoe bridge mirrors every rendered message into `messages`, but the
+ * mirror is guarded and can lag or fail, so the stored list can disagree
+ * with the rendered events (plan Task 8). Callers pair by index ONLY when
+ * the counts match and leave every pairing null otherwise: attaching a
+ * comment to the wrong message is worse than not offering one.
+ */
+export async function listRunMessageIds(workspaceId: string, runId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(and(eq(messages.workspaceId, workspaceId), eq(messages.runId, runId)))
+    .orderBy(asc(messages.createdAt), asc(messages.id));
+  return rows.map((row) => row.id);
 }
 
 export type RunUsage = {

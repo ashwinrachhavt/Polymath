@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 99 files, highest `0272_imported_agent_sessions`.
+Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
 
 ## Tests
 
-473 `.test.ts` and 43 `.spec.ts` files (unit: 284, integration: 187, e2e: 43).
+479 `.test.ts` and 43 `.spec.ts` files (unit: 287, integration: 189, e2e: 43).
 ## Domains
 
 24 folders; 18 own tables.
@@ -39,7 +39,7 @@ Migrations: 99 files, highest `0272_imported_agent_sessions`.
 | Domain | Tables |
 | --- | ---: |
 | `actions` | 7 |
-| `agents` | 26 |
+| `agents` | 27 |
 | `applications` | 3 |
 | `audit` | 7 |
 | `calendar` | 6 |
@@ -81,6 +81,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `su
 | `agents` | `threads` | versioned |
 | `agents` | `messages` | append-only |
 | `agents` | `thread_checkpoints` | append-only |
+| `agents` | `message_comments` | versioned |
 | `agents` | `agent_runs` | versioned (+ trigger-immutable) |
 | `agents` | `agent_steps` | append-only |
 | `agents` | `tool_calls` | append-only |
@@ -221,7 +222,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `su
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 92 versioned, 60 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 93 versioned, 60 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
