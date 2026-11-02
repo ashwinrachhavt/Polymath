@@ -1,6 +1,6 @@
 {
-  "id": "2bf24265-0d14-46ed-8daf-c6b185774e52",
-  "prevId": "f61d88fa-d095-4527-850c-58a94ddd08df",
+  "id": "2cd73aa8-8e9b-4238-ae7a-61ae181e7cdb",
+  "prevId": "2bf24265-0d14-46ed-8daf-c6b185774e52",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9996,6 +9996,12 @@
         "accessibility_label": {
           "name": "accessibility_label",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipe": {
+          "name": "recipe",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -27281,7 +27287,8 @@
         "review_decided",
         "learning_reviewed",
         "weekly_review",
-        "adjustment"
+        "adjustment",
+        "foundry_drop"
       ]
     },
     "public.reward_kind": {

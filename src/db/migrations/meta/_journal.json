@@ -721,6 +721,13 @@
       "when": 1793687640000,
       "tag": "0276_reward_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793687640001,
+      "tag": "0277_stone_foundry",
+      "breakpoints": true
     }
   ]
 }

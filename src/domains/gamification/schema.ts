@@ -21,6 +21,9 @@ export const ledgerReason = pgEnum("ledger_reason", [
   "learning_reviewed",
   "weekly_review",
   "adjustment",
+  // Spec §7 foundry drop: a deep finish that rolled a designed stone. The
+  // label is append-only, so the drop joins at the end.
+  "foundry_drop",
 ]);
 
 export const rewardDefinitions = pgTable(
@@ -37,6 +40,13 @@ export const rewardDefinitions = pgTable(
     threshold: integer("threshold").notNull().default(1),
     /** A text equivalent always accompanies the visual, for accessibility. */
     accessibilityLabel: text("accessibility_label"),
+    /**
+     * The foundry recipe (spec §7), when this stone is ML-designed: the
+     * parsed {@link StoneRecipe} written only by the system - the approval
+     * path that applies an owner-approved proposal. Definition forms and the
+     * API never write it; a null is a catalog or rule-defined stone.
+     */
+    recipe: jsonb("recipe"),
     active: boolean("active").notNull().default(true),
     ...mutable,
   },
