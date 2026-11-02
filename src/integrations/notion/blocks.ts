@@ -16,8 +16,8 @@ export type NotionBlockInput = {
   [key: string]: unknown;
 };
 
-export const NOTION_BLOCK_LIMIT = 100;
-export const NOTION_RICH_TEXT_LIMIT = 2000;
+const NOTION_BLOCK_LIMIT = 100;
+const NOTION_RICH_TEXT_LIMIT = 2000;
 
 type RichText = { type: "text"; text: { content: string; link?: { url: string } } };
 
@@ -43,12 +43,21 @@ function splitLongPart(part: RichText): RichText[] {
   if (content.length <= NOTION_RICH_TEXT_LIMIT) return [part];
   const out: RichText[] = [];
   for (let i = 0; i < content.length; i += NOTION_RICH_TEXT_LIMIT) {
-    out.push({ type: "text", text: { content: content.slice(i, i + NOTION_RICH_TEXT_LIMIT), ...(part.text.link ? { link: part.text.link } : {}) } });
+    out.push({
+      type: "text",
+      text: {
+        content: content.slice(i, i + NOTION_RICH_TEXT_LIMIT),
+        ...(part.text.link ? { link: part.text.link } : {}),
+      },
+    });
   }
   return out;
 }
 
-function textBlock(type: "paragraph" | "heading_1" | "heading_2" | "heading_3" | "quote", line: string): NotionBlockInput {
+function textBlock(
+  type: "paragraph" | "heading_1" | "heading_2" | "heading_3" | "quote",
+  line: string,
+): NotionBlockInput {
   const rt = richTextParts(line);
   return { object: "block", type, [type]: { rich_text: rt } };
 }
@@ -77,13 +86,19 @@ export function markdownToBlocks(markdown: string): NotionBlockInput[] {
     if (/^#{1,3}\s+/.test(line)) {
       flush();
       const level = (line.match(/^#+/)?.[0].length ?? 1) as 1 | 2 | 3;
-      blocks.push(textBlock(`heading_${level}` as "heading_1" | "heading_2" | "heading_3", line.replace(/^#{1,3}\s+/, "")));
+      blocks.push(
+        textBlock(`heading_${level}` as "heading_1" | "heading_2" | "heading_3", line.replace(/^#{1,3}\s+/, "")),
+      );
       continue;
     }
     const bullet = /^[-*]\s+(.*)$/.exec(line);
     if (bullet) {
       flush();
-      blocks.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: richTextParts(bullet[1]) } });
+      blocks.push({
+        object: "block",
+        type: "bulleted_list_item",
+        bulleted_list_item: { rich_text: richTextParts(bullet[1]) },
+      });
       continue;
     }
     const quote = /^>\s?(.*)$/.exec(line);

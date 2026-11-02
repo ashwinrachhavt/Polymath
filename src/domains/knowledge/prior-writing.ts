@@ -24,9 +24,9 @@ import { firstLine } from "./relations";
  * writes nothing and cannot drift.
  */
 
-export type PriorWritingBasis = "from-page" | "mentions";
+type PriorWritingBasis = "from-page" | "mentions";
 
-export type PriorWritingItem = {
+type PriorWritingItem = {
   id: string;
   kind: string;
   title: string;
@@ -44,10 +44,7 @@ const PER_GROUP = 3;
 
 const empty: PriorWriting = { documentId: null, items: [] };
 
-export async function listPriorWritingForUrl(
-  auth: AuthContext,
-  input: { url: string },
-): Promise<PriorWriting> {
+export async function listPriorWritingForUrl(auth: AuthContext, input: { url: string }): Promise<PriorWriting> {
   // Parsing only - nothing is fetched, so private addresses are allowed here;
   // the fetch-time screen stays with captureUrl.
   const parsed = parseCaptureUrl(input.url, true);
@@ -72,14 +69,16 @@ export async function listPriorWritingForUrl(
         .from(artifactLinks)
         .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
         .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-        .where(and(
-          eq(artifactLinks.workspaceId, auth.workspaceId),
-          eq(artifactLinks.linkType, "source"),
-          eq(artifactLinks.targetType, "document"),
-          eq(artifactLinks.targetId, document.id),
-          eq(artifacts.workspaceId, auth.workspaceId),
-          isNull(artifacts.archivedAt),
-        ))
+        .where(
+          and(
+            eq(artifactLinks.workspaceId, auth.workspaceId),
+            eq(artifactLinks.linkType, "source"),
+            eq(artifactLinks.targetType, "document"),
+            eq(artifactLinks.targetId, document.id),
+            eq(artifacts.workspaceId, auth.workspaceId),
+            isNull(artifacts.archivedAt),
+          ),
+        )
         .orderBy(desc(artifacts.updatedAt))
         .limit(PER_GROUP)
     : [];
@@ -95,23 +94,27 @@ export async function listPriorWritingForUrl(
     })
     .from(artifacts)
     .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(
-      eq(artifacts.workspaceId, auth.workspaceId),
-      inArray(artifacts.kind, ["note", "zettel"]),
-      isNull(artifacts.archivedAt),
-      or(...patterns.map((pattern) => ilike(artifactVersions.plainText, pattern))),
-      fromPageIds.length ? notInArray(artifacts.id, fromPageIds) : undefined,
-    ))
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        inArray(artifacts.kind, ["note", "zettel"]),
+        isNull(artifacts.archivedAt),
+        or(...patterns.map((pattern) => ilike(artifactVersions.plainText, pattern))),
+        fromPageIds.length ? notInArray(artifacts.id, fromPageIds) : undefined,
+      ),
+    )
     .orderBy(desc(artifacts.updatedAt))
     .limit(PER_GROUP);
 
-  const toItem = (basis: PriorWritingBasis) => (row: { id: string; kind: string; title: string; plainText: string | null }): PriorWritingItem => ({
-    id: row.id,
-    kind: row.kind,
-    title: row.title,
-    excerpt: firstLine(row.plainText),
-    basis,
-  });
+  const toItem =
+    (basis: PriorWritingBasis) =>
+    (row: { id: string; kind: string; title: string; plainText: string | null }): PriorWritingItem => ({
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      excerpt: firstLine(row.plainText),
+      basis,
+    });
 
   return {
     documentId: document?.id ?? null,

@@ -2,7 +2,7 @@
 
 import { cancelCorrespondence, draftCorrespondence, requestSendApproval } from "@/domains/crm/correspondence";
 import { gmailMailSender } from "@/domains/crm/mail-sender";
-import { resolveUnknownSend, sendApprovedCorrespondence } from "@/domains/crm/send-executor";
+import { sendApprovedCorrespondence } from "@/domains/crm/send-executor";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ImportBusyError, ImportLimitError, importConnections, type ImportSummary } from "@/domains/identity/party-csv";
@@ -49,7 +49,8 @@ const revalidate = () => {
     "/command-center/relationships/people",
     "/command-center/relationships/companies",
     "/command-center/relationships/contacts",
-  ]) revalidatePath(path);
+  ])
+    revalidatePath(path);
 };
 
 /*
@@ -135,9 +136,7 @@ export async function updateContactAction(input: unknown): Promise<Result> {
 }
 
 export async function archiveContactAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({ contactId: uuid, expectedVersion: z.number().int().min(1) })
-    .safeParse(input);
+  const parsed = z.object({ contactId: uuid, expectedVersion: z.number().int().min(1) }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That contact could not be archived." };
   const auth = await authorize();
   try {
@@ -232,7 +231,11 @@ export async function createCompanyAction(input: unknown): Promise<Result> {
 }
 
 /* C03 outreach: drafts and the approval gate. Nothing sends from here. */
-export async function draftCorrespondenceAction(input: { contactId: string; subject?: string; body: string }): Promise<Result> {
+export async function draftCorrespondenceAction(input: {
+  contactId: string;
+  subject?: string;
+  body: string;
+}): Promise<Result> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   if (!input.body.trim()) return { ok: false, error: "The draft needs a body." };
@@ -249,7 +252,10 @@ export async function draftCorrespondenceAction(input: { contactId: string; subj
   return { ok: true };
 }
 
-export async function cancelCorrespondenceAction(input: { correspondenceId: string; expectedVersion: number }): Promise<Result> {
+export async function cancelCorrespondenceAction(input: {
+  correspondenceId: string;
+  expectedVersion: number;
+}): Promise<Result> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {
@@ -261,7 +267,10 @@ export async function cancelCorrespondenceAction(input: { correspondenceId: stri
   return { ok: true };
 }
 
-export async function requestSendApprovalAction(input: { correspondenceId: string; expectedVersion: number }): Promise<Result> {
+export async function requestSendApprovalAction(input: {
+  correspondenceId: string;
+  expectedVersion: number;
+}): Promise<Result> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {
@@ -302,47 +311,6 @@ export async function sendApprovedCorrespondenceAction(input: {
 }
 
 /*
- * ASH-191: close a send whose outcome the provider never confirmed. Without
- * this the draft stayed blocked forever and the only exit was editing the
- * database by hand. The caller reports what the provider actually holds — the
- * message, or nothing — and the command records that as evidence.
- */
-export async function resolveUnknownSendAction(input: {
-  attemptId: string;
-  outcome: "sent" | "absent";
-  providerObjectId?: string;
-}): Promise<Result> {
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
-  const parsed = z
-    .object({
-      attemptId: z.uuid(),
-      outcome: z.enum(["sent", "absent"]),
-      providerObjectId: z.string().trim().min(1).optional(),
-    })
-    .refine((value) => value.outcome !== "sent" || Boolean(value.providerObjectId), {
-      message: "Give the provider's message id when the message exists.",
-      path: ["providerObjectId"],
-    })
-    .safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details and try again." };
-  try {
-    await resolveUnknownSend(auth, {
-      attemptId: parsed.data.attemptId,
-      observation:
-        parsed.data.outcome === "sent"
-          ? { observedState: "sent", providerObjectId: parsed.data.providerObjectId! }
-          : { observedState: "absent" },
-      source: "human_check",
-    });
-  } catch (error) {
-    return fail(error);
-  }
-  revalidate();
-  return { ok: true };
-}
-
-/*
  * ASH-114 company-record entry point: a public-mode case study on this
  * company, persisted as a Studio draft and linked back to the company record
  * so the workbench shows where it belongs.
@@ -365,7 +333,13 @@ export async function researchCompanyRecordAction(input: { companyId: string; id
     });
     await linkDraftToRecord(auth, { artifactId: result.artifactId, targetType: "company", targetId: company.id });
     revalidate();
-    return { ok: true as const, artifactId: result.artifactId, title: result.title, manifestSize: result.manifestSize, gapSections: result.gapSections };
+    return {
+      ok: true as const,
+      artifactId: result.artifactId,
+      title: result.title,
+      manifestSize: result.manifestSize,
+      gapSections: result.gapSections,
+    };
   } catch (error) {
     if (error instanceof CompanyResearchError) return { ok: false as const, error: error.message };
     throw error;
@@ -378,7 +352,9 @@ const mergeFields = {
   expectedTargetVersion: z.number().int().min(1),
 };
 
-export async function mergeContactsAction(input: unknown): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
+export async function mergeContactsAction(
+  input: unknown,
+): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
   const parsed = z.object(mergeFields).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
   const auth = await authorize();
@@ -391,7 +367,9 @@ export async function mergeContactsAction(input: unknown): Promise<{ ok: true; m
   }
 }
 
-export async function mergeCompaniesAction(input: unknown): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
+export async function mergeCompaniesAction(
+  input: unknown,
+): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
   const parsed = z.object(mergeFields).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
   const auth = await authorize();
@@ -416,14 +394,24 @@ export async function researchCompanyProfileAction(input: { companyId: string; i
   try {
     const result = await runCompanyProfileResearch(auth, parsed);
     revalidate();
-    return { ok: true as const, artifactId: result.artifactId, cardCount: result.cardCount, gaps: result.gaps, manifestSize: result.manifestSize };
+    return {
+      ok: true as const,
+      artifactId: result.artifactId,
+      cardCount: result.cardCount,
+      gaps: result.gaps,
+      manifestSize: result.manifestSize,
+    };
   } catch (error) {
     if (error instanceof ProfileResearchError) return { ok: false as const, error: error.message };
     throw error;
   }
 }
 
-export async function researchContactProfileAction(input: { contactId: string; focus?: string; idempotencyKey: string }) {
+export async function researchContactProfileAction(input: {
+  contactId: string;
+  focus?: string;
+  idempotencyKey: string;
+}) {
   const auth = await authorize();
   const parsed = z
     .object({ contactId: z.uuid(), focus: z.enum(CONTACT_RESEARCH_FOCI).optional(), idempotencyKey: z.uuid() })
@@ -431,7 +419,14 @@ export async function researchContactProfileAction(input: { contactId: string; f
   try {
     const result = await runContactProfileResearch(auth, parsed);
     revalidate();
-    return { ok: true as const, artifactId: result.artifactId, cardCount: result.cardCount, gaps: result.gaps, manifestSize: result.manifestSize, focus: result.focus };
+    return {
+      ok: true as const,
+      artifactId: result.artifactId,
+      cardCount: result.cardCount,
+      gaps: result.gaps,
+      manifestSize: result.manifestSize,
+      focus: result.focus,
+    };
   } catch (error) {
     if (error instanceof ProfileResearchError) return { ok: false as const, error: error.message };
     throw error;

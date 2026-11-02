@@ -47,7 +47,7 @@ const OPEN_STATES = sql`${captures.processingState} in ('unprocessed', 'classify
  * have no body, and the pass must skip rather than propose from a filename.
  * `zettelSourceWhere` expresses this same rule in SQL; keep the two in step.
  */
-export function zettelSourceText(capture: { cleanText: string | null; text: string | null }): string | null {
+function zettelSourceText(capture: { cleanText: string | null; text: string | null }): string | null {
   return capture.cleanText?.trim() || capture.text?.trim() || null;
 }
 

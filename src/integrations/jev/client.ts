@@ -14,7 +14,7 @@
  */
 
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-export const JEV_TIMEOUT_MS = 30_000;
+const JEV_TIMEOUT_MS = 30_000;
 export const DEFAULT_JEV_MODEL = "jev-1.14.0";
 
 export class JevUnconfiguredError extends Error {
@@ -48,8 +48,8 @@ export type JevChoiceQuestion = {
 
 export type JevQuestion = JevNoulQuestion | JevChoiceQuestion;
 
-export type JevNoulAnswer = { type: "noul"; noul: number };
-export type JevChoiceAnswer = {
+type JevNoulAnswer = { type: "noul"; noul: number };
+type JevChoiceAnswer = {
   type: "choice";
   choice: string;
   confidence: number;
@@ -57,14 +57,14 @@ export type JevChoiceAnswer = {
 };
 export type JevAnswer = JevNoulAnswer | JevChoiceAnswer;
 
-export type JevResponse = {
+type JevResponse = {
   /** The versioned model id that answered (aliases resolve server-side). */
   model: string;
   answers: Record<string, JevAnswer>;
   usage: { input_tokens: number; output_tokens: number };
 };
 
-export type JevRequest = {
+type JevRequest = {
   state: string;
   questions: Record<string, JevQuestion>;
 };
@@ -85,7 +85,11 @@ export function httpJevClient(
       const response = await fetchImpl(JEV_ENDPOINT, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: env.JEV_MODEL || DEFAULT_JEV_MODEL, state: input.state, questions: input.questions }),
+        body: JSON.stringify({
+          model: env.JEV_MODEL || DEFAULT_JEV_MODEL,
+          state: input.state,
+          questions: input.questions,
+        }),
         signal: AbortSignal.timeout(JEV_TIMEOUT_MS),
       });
       if (!response.ok) {

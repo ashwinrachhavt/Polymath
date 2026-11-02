@@ -12,7 +12,7 @@ import { timeAgoShort } from "@/lib/time";
  */
 
 export type HistoryRow = { id: string; title: string; href: string; at: Date };
-export type HistoryRowView = { id: string; title: string; href: string; time: string };
+type HistoryRowView = { id: string; title: string; href: string; time: string };
 export type HistoryGroup = { key: string; label: string; rows: HistoryRowView[] };
 
 const DAY = 86_400_000;

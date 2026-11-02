@@ -1,11 +1,3 @@
-/*
- * Tool label vocabulary, shared by the tool pills and any surface that names
- * a tool call. Internal lookups with nothing to say (a registry search, a
- * self-check) are filtered out of the transcript entirely.
- */
-
-export const INTERNAL_TOOLS = /^(eve__|search_models|search_registry|notebook_open)/;
-
 const TOOL_LABELS: Array<[RegExp, string]> = [
   [/tasks_recent/i, "Checked completed tasks"],
   [/tasks_read|tasks\./i, "Checked open tasks"],

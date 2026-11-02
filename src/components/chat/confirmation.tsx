@@ -18,7 +18,7 @@ import { cn } from "cn";
  * here ends in an explicit press.
  */
 
-export type InterruptKind = "question" | "approval";
+type InterruptKind = "question" | "approval";
 
 export type InterruptCard = {
   id: string;
@@ -46,7 +46,10 @@ export function Confirmation({
   const [error, setError] = useState<string | null>(null);
   const [settled, setSettled] = useState<null | "answered" | "approved" | "rejected">(null);
 
-  async function run(kind: null | "answer" | "approved" | "rejected", action: () => Promise<{ ok: boolean; message?: string }>) {
+  async function run(
+    kind: null | "answer" | "approved" | "rejected",
+    action: () => Promise<{ ok: boolean; message?: string }>,
+  ) {
     setPending(kind);
     setError(null);
     const result = await action();
@@ -60,23 +63,24 @@ export function Confirmation({
 
   const Icon = card.kind === "question" ? ShieldQuestion : AlertCircle;
   const settledLabel =
-    settled === "approved" ? "Approved" : settled === "rejected" ? "Rejected" : settled === "answered" ? "Answered" : null;
+    settled === "approved"
+      ? "Approved"
+      : settled === "rejected"
+        ? "Rejected"
+        : settled === "answered"
+          ? "Answered"
+          : null;
 
   return (
     <div
-      className={cn(
-        "border-border bg-card rounded-lg border px-3.5 py-3",
-        settled === "rejected" && "opacity-70",
-      )}
+      className={cn("border-border bg-card rounded-lg border px-3.5 py-3", settled === "rejected" && "opacity-70")}
       role="group"
       aria-label={card.kind === "question" ? "The agent needs an answer" : "The agent needs approval"}
     >
       <p className="flex items-center gap-2 text-[13px] font-medium">
         <Icon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
         <span className="min-w-0 flex-1">{card.title}</span>
-        {settledLabel ? (
-          <span className="text-muted-foreground shrink-0 text-[11px]">{settledLabel}</span>
-        ) : null}
+        {settledLabel ? <span className="text-muted-foreground shrink-0 text-[11px]">{settledLabel}</span> : null}
       </p>
       <p className="text-muted-foreground mt-1 text-[13px] leading-5">{card.body}</p>
 
@@ -91,7 +95,12 @@ export function Confirmation({
                   disabled={pending !== null}
                   onClick={() => {
                     setAnswer(option);
-                    void run("answer", () => onAnswer?.(option) ?? Promise.resolve({ ok: false, message: "This conversation cannot take an answer." }));
+                    void run(
+                      "answer",
+                      () =>
+                        onAnswer?.(option) ??
+                        Promise.resolve({ ok: false, message: "This conversation cannot take an answer." }),
+                    );
                   }}
                   className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-7 items-center rounded-md border px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
                 >
@@ -105,7 +114,12 @@ export function Confirmation({
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!answer.trim()) return;
-                void run("answer", () => onAnswer?.(answer.trim()) ?? Promise.resolve({ ok: false, message: "This conversation cannot take an answer." }));
+                void run(
+                  "answer",
+                  () =>
+                    onAnswer?.(answer.trim()) ??
+                    Promise.resolve({ ok: false, message: "This conversation cannot take an answer." }),
+                );
               }}
             >
               <input
@@ -131,7 +145,14 @@ export function Confirmation({
           <button
             type="button"
             disabled={pending !== null}
-            onClick={() => void run("rejected", () => onResolve?.("rejected") ?? Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }))}
+            onClick={() =>
+              void run(
+                "rejected",
+                () =>
+                  onResolve?.("rejected") ??
+                  Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }),
+              )
+            }
             className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-8 items-center rounded-md border px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
           >
             Reject
@@ -139,14 +160,28 @@ export function Confirmation({
           <button
             type="button"
             disabled={pending !== null}
-            onClick={() => void run("approved", () => onResolve?.("approved") ?? Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }))}
+            onClick={() =>
+              void run(
+                "approved",
+                () =>
+                  onResolve?.("approved") ??
+                  Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }),
+              )
+            }
             className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
           >
-            {pending === "approved" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Check aria-hidden className="size-3.5" />}
+            {pending === "approved" ? (
+              <Loader2 aria-hidden className="size-3.5 animate-spin" />
+            ) : (
+              <Check aria-hidden className="size-3.5" />
+            )}
             Approve
           </button>
           {card.href ? (
-            <a href={card.href} className="text-muted-foreground hover:text-foreground ml-1 text-[12px] underline-offset-2 hover:underline">
+            <a
+              href={card.href}
+              className="text-muted-foreground hover:text-foreground ml-1 text-[12px] underline-offset-2 hover:underline"
+            >
               Review in full
             </a>
           ) : null}

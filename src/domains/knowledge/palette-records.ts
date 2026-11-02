@@ -12,7 +12,7 @@ import { searchKnowledge, type SearchFilters, type SearchHit, type SearchResult 
  * so, exactly like the notes page; the palette never errors for want of a key.
  */
 
-export type PaletteKnowledgeRecord = {
+type PaletteKnowledgeRecord = {
   /** "note" matches the palette's existing note rows; every other card is "knowledge". */
   kind: "note" | "knowledge";
   id: string;
@@ -28,7 +28,7 @@ export type PaletteKnowledgeResult = {
 };
 
 /** How many knowledge cards the palette's second phase contributes. */
-export const PALETTE_KNOWLEDGE_LIMIT = 8;
+const PALETTE_KNOWLEDGE_LIMIT = 8;
 
 const KIND_CONTEXT: Record<string, string> = {
   note: "Note in Polymath",

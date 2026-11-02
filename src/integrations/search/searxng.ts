@@ -52,7 +52,7 @@ export function searxngProvider(env: Record<string, string | undefined>): WebSea
 }
 
 /** Exported for the fixture test: pure response -> results, no network. */
-export function parseSearxngResults(body: SearxngResponse | null, limit: number): WebSearchResult[] {
+function parseSearxngResults(body: SearxngResponse | null, limit: number): WebSearchResult[] {
   const results: WebSearchResult[] = [];
   for (const row of body?.results ?? []) {
     if (results.length >= limit) break;

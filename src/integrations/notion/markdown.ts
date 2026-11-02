@@ -5,7 +5,7 @@
  * stops an import.
  */
 
-export type NotionRichText = { plain_text?: string; href?: string | null; annotations?: { code?: boolean } };
+type NotionRichText = { plain_text?: string; href?: string | null; annotations?: { code?: boolean } };
 export type NotionBlock = {
   id: string;
   type: string;
@@ -50,7 +50,8 @@ export function blocksToMarkdown(
 
   for (const block of blocks) {
     const numbered = block.type === "numbered_list_item";
-    const listItem = numbered || block.type === "bulleted_list_item" || block.type === "to_do" || block.type === "toggle";
+    const listItem =
+      numbered || block.type === "bulleted_list_item" || block.type === "to_do" || block.type === "toggle";
     listIndex = numbered ? (lastWasNumbered ? listIndex + 1 : 1) : 0;
     lastWasNumbered = numbered;
     // A list after a heading or paragraph gets a blank line before it, so the
@@ -70,18 +71,47 @@ export function blocksToMarkdown(
     };
 
     switch (block.type) {
-      case "heading_1": push(`\n# ${text}`); break;
-      case "heading_2": push(`\n## ${text}`); break;
-      case "heading_3": push(`\n### ${text}`); break;
-      case "paragraph": push(`\n${text}`); break;
-      case "bulleted_list_item": push(`- ${text}`); renderChildren(1); break;
-      case "numbered_list_item": push(`${listIndex}. ${text}`); renderChildren(1); break;
-      case "to_do": push(`- [${checked ? "x" : " "}] ${text}`); renderChildren(1); break;
-      case "toggle": push(`- ${text}`); renderChildren(1); break;
-      case "quote": push(`> ${text}`); break;
-      case "callout": push(`> ${text}`); renderChildren(1); break;
-      case "code": push(`\n\`\`\`${language ?? ""}\n${text}\n\`\`\``); break;
-      case "divider": push(`\n---`); break;
+      case "heading_1":
+        push(`\n# ${text}`);
+        break;
+      case "heading_2":
+        push(`\n## ${text}`);
+        break;
+      case "heading_3":
+        push(`\n### ${text}`);
+        break;
+      case "paragraph":
+        push(`\n${text}`);
+        break;
+      case "bulleted_list_item":
+        push(`- ${text}`);
+        renderChildren(1);
+        break;
+      case "numbered_list_item":
+        push(`${listIndex}. ${text}`);
+        renderChildren(1);
+        break;
+      case "to_do":
+        push(`- [${checked ? "x" : " "}] ${text}`);
+        renderChildren(1);
+        break;
+      case "toggle":
+        push(`- ${text}`);
+        renderChildren(1);
+        break;
+      case "quote":
+        push(`> ${text}`);
+        break;
+      case "callout":
+        push(`> ${text}`);
+        renderChildren(1);
+        break;
+      case "code":
+        push(`\n\`\`\`${language ?? ""}\n${text}\n\`\`\``);
+        break;
+      case "divider":
+        push(`\n---`);
+        break;
       case "child_page": {
         const title = (block.child_page as { title?: string } | undefined)?.title ?? "Untitled";
         push(`\n**Sub-page:** ${title} (notion://app/${block.id.replaceAll("-", "")})`);
@@ -96,7 +126,8 @@ export function blocksToMarkdown(
       case "file":
       case "pdf":
       case "video": {
-        const payload = block[block.type] as { type?: string; external?: { url?: string }; file?: { url?: string }; caption?: unknown } | undefined;
+        const payload = block[block.type] as
+          { type?: string; external?: { url?: string }; file?: { url?: string }; caption?: unknown } | undefined;
         const url = payload?.type === "external" ? payload.external?.url : payload?.file?.url;
         push(`\n[${block.type}: ${url ?? "attachment"}]`);
         break;
@@ -106,7 +137,12 @@ export function blocksToMarkdown(
         renderChildren(1);
     }
   }
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  return (
+    lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim() + "\n"
+  );
 }
 
 /** The page's properties line plus title, so a database row document still names its source fields. */

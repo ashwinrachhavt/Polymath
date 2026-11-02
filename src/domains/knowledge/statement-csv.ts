@@ -37,16 +37,17 @@ export function buildLedgerCsv(transactions: StatementTransaction[]): string {
 
 /** "ICICI Account - 2026-08-01 to 2026-08-31.csv" — readable, and safe as a filename. */
 export function ledgerCsvFilename(accountLabel: string, periodStart: string | null, periodEnd: string | null): string {
-  const label = accountLabel
-    .replace(/[^\w .-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80) || "Statement";
+  const label =
+    accountLabel
+      .replace(/[^\w .-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80) || "Statement";
   const period = periodStart && periodEnd ? ` ${periodStart} to ${periodEnd}` : periodStart ? ` ${periodStart}` : "";
   return `${label}${period}.csv`;
 }
 
-export const CLASSIFIED_CSV_COLUMNS = ["Date", "Description", "Amount", "Category", "Confidence", "Needs review"] as const;
+const CLASSIFIED_CSV_COLUMNS = ["Date", "Description", "Amount", "Category", "Confidence", "Needs review"] as const;
 
 /**
  * The ledger plus a category per row. Kept as a separate export so the plain

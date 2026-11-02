@@ -36,7 +36,7 @@ export class NotionImportError extends Error {
   }
 }
 
-export type NotionPageOutcome = "created" | "updated" | "unchanged" | "failed";
+type NotionPageOutcome = "created" | "updated" | "unchanged" | "failed";
 
 export type NotionSyncResult = {
   externalAccountId: string;
@@ -112,10 +112,20 @@ async function attachMarkdown(
       .returning({ id: files.id });
     const where = input.replace
       ? and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId))
-      : and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId), sql`${documents.fileId} is null`);
+      : and(
+          eq(documents.id, input.documentId),
+          eq(documents.workspaceId, auth.workspaceId),
+          sql`${documents.fileId} is null`,
+        );
     const [attached] = await tx
       .update(documents)
-      .set({ fileId: fileRow.id, mimeType: "text/markdown", title: input.title.slice(0, 200), updatedBy: auth.userId, updatedAt: new Date() })
+      .set({
+        fileId: fileRow.id,
+        mimeType: "text/markdown",
+        title: input.title.slice(0, 200),
+        updatedBy: auth.userId,
+        updatedAt: new Date(),
+      })
       .where(where)
       .returning({ id: documents.id });
     if (!attached) throw new Error("document changed concurrently");
@@ -166,7 +176,13 @@ async function importOnePage(
     (
       await db
         .insert(documents)
-        .values({ workspaceId: auth.workspaceId, title: hit.title.slice(0, 200), sourceUrl: hit.url, createdBy: auth.userId, updatedBy: auth.userId })
+        .values({
+          workspaceId: auth.workspaceId,
+          title: hit.title.slice(0, 200),
+          sourceUrl: hit.url,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
         .onConflictDoNothing()
         .returning({ id: documents.id })
     )[0]?.id ??
@@ -233,7 +249,12 @@ export async function syncNotionAccount(
         const result = await importOnePage(auth, { hit, client, externalAccountId: account.id });
         pages.push({ pageId: hit.id, title: hit.title, ...result });
       } catch (cause) {
-        pages.push({ pageId: hit.id, title: hit.title, outcome: "failed", error: cause instanceof Error ? cause.message : "import failed" });
+        pages.push({
+          pageId: hit.id,
+          title: hit.title,
+          outcome: "failed",
+          error: cause instanceof Error ? cause.message : "import failed",
+        });
       }
       if (hit.lastEditedTime && (!newest || hit.lastEditedTime > newest)) newest = hit.lastEditedTime;
     }
@@ -263,7 +284,10 @@ export async function syncNotionAccount(
       watermark: newest,
     };
   } catch (cause) {
-    await markCursor(auth, account.id, { state: "failed", lastError: cause instanceof Error ? cause.message : "sync failed" });
+    await markCursor(auth, account.id, {
+      state: "failed",
+      lastError: cause instanceof Error ? cause.message : "sync failed",
+    });
     throw cause;
   }
 }
@@ -271,7 +295,12 @@ export async function syncNotionAccount(
 async function markCursor(
   auth: AuthContext,
   externalAccountId: string,
-  patch: { state: "idle" | "running" | "partial" | "failed"; cursor?: string | null; lastSyncedAt?: Date; lastError?: string | null },
+  patch: {
+    state: "idle" | "running" | "partial" | "failed";
+    cursor?: string | null;
+    lastSyncedAt?: Date;
+    lastError?: string | null;
+  },
 ) {
   const [existing] = await db
     .select({ id: syncCursors.id })

@@ -60,7 +60,7 @@ import type { ExtractionInput, ExtractionProvider, ExtractionResult } from "./pr
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_OCR_MODEL = "anthropic/claude-haiku-4.5";
-export const DEFAULT_OCR_MAX_PAGES = 30;
+const DEFAULT_OCR_MAX_PAGES = 30;
 /** A page never rambles into an open-ended bill: output is capped per page. */
 const MAX_PAGE_OUTPUT_TOKENS = 2048;
 /*

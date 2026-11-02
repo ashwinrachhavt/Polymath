@@ -10,7 +10,6 @@ import {
   NoFreeSlotError,
   blockTimeForTask,
   cancelEvent,
-  moveEvent,
 } from "@/domains/calendar/commands";
 import {
   CalendarExecuteNotAllowedError,
@@ -24,7 +23,18 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-const known = [EventNotFoundError, EventVersionConflictError, InvalidRangeError, NoFreeSlotError, IdempotencyConflictError, ProposalConflictError, ProposalNotFoundError, StaleRevisionError, CalendarExecuteNotAllowedError, AttemptAlreadyClaimedError];
+const known = [
+  EventNotFoundError,
+  EventVersionConflictError,
+  InvalidRangeError,
+  NoFreeSlotError,
+  IdempotencyConflictError,
+  ProposalConflictError,
+  ProposalNotFoundError,
+  StaleRevisionError,
+  CalendarExecuteNotAllowedError,
+  AttemptAlreadyClaimedError,
+];
 
 async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -33,7 +43,8 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<
     return { ok: true, ...value };
   } catch (error) {
     if (known.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
-    if (error instanceof Error && error.message.startsWith("task not found")) return { ok: false, error: "That task no longer exists." };
+    if (error instanceof Error && error.message.startsWith("task not found"))
+      return { ok: false, error: "That task no longer exists." };
     throw error;
   }
 }
@@ -60,28 +71,6 @@ export async function blockTimeAction(input: {
   return guarded(() => blockTimeForTask(auth, parsed.data));
 }
 
-export async function moveEventAction(input: {
-  eventId: string;
-  expectedVersion: number;
-  startsAt: string;
-  endsAt: string;
-  idempotencyKey?: string;
-}) {
-  const parsed = z
-    .object({
-      eventId: uuid,
-      expectedVersion: z.number().int().min(1),
-      startsAt: z.coerce.date(),
-      endsAt: z.coerce.date(),
-      idempotencyKey: uuid.optional(),
-    })
-    .safeParse(input);
-  if (!parsed.success) return { ok: false, error: "That request was not valid." } as const;
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
-  return guarded(() => moveEvent(auth, parsed.data));
-}
-
 export async function cancelEventAction(input: { eventId: string; expectedVersion: number; idempotencyKey?: string }) {
   const parsed = z
     .object({ eventId: uuid, expectedVersion: z.number().int().min(1), idempotencyKey: uuid.optional() })
@@ -94,7 +83,11 @@ export async function cancelEventAction(input: { eventId: string; expectedVersio
 
 const decision = z.object({ proposalId: uuid, expectedVersion: z.number().int().min(1), revisionId: uuid });
 
-export async function approveProposalAction(input: { proposalId: string; expectedVersion: number; revisionId: string }) {
+export async function approveProposalAction(input: {
+  proposalId: string;
+  expectedVersion: number;
+  revisionId: string;
+}) {
   const parsed = decision.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That request was not valid." } as const;
   const auth = await getAuthContext();
@@ -113,9 +106,19 @@ export async function rejectProposalAction(input: { proposalId: string; expected
   });
 }
 
-export async function addBlockAction(input: { title: string; startsAt: string; endsAt: string; idempotencyKey?: string }) {
+export async function addBlockAction(input: {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  idempotencyKey?: string;
+}) {
   const parsed = z
-    .object({ title: z.string().trim().min(1).max(200), startsAt: z.coerce.date(), endsAt: z.coerce.date(), idempotencyKey: uuid.optional() })
+    .object({
+      title: z.string().trim().min(1).max(200),
+      startsAt: z.coerce.date(),
+      endsAt: z.coerce.date(),
+      idempotencyKey: uuid.optional(),
+    })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the block a title and a start and end time." } as const;
   const auth = await getAuthContext();

@@ -11,9 +11,9 @@ import { createNote } from "../knowledge/notes";
  * tag stays out of the user-facing tag list by convention (tags normalize to
  * lowercase; `daily:` is a reserved prefix).
  */
-export const DAILY_TAG_PREFIX = "daily:";
+const DAILY_TAG_PREFIX = "daily:";
 
-export function dailyTag(localDate: string): string {
+function dailyTag(localDate: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
     throw new Error(`Invalid local date: ${localDate}`);
   }
@@ -21,10 +21,7 @@ export function dailyTag(localDate: string): string {
 }
 
 /** The same-day note for this user's workspace, or null. */
-export async function findDailyNote(
-  auth: AuthContext,
-  localDate: string,
-): Promise<{ id: string; title: string } | null> {
+async function findDailyNote(auth: AuthContext, localDate: string): Promise<{ id: string; title: string } | null> {
   const tag = dailyTag(localDate);
   const [row] = await db
     .select({ id: artifacts.id, title: artifacts.title })

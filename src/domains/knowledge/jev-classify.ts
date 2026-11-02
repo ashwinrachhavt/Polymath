@@ -22,13 +22,19 @@ import { classifyDocument, documentTypes, type DocumentType } from "./vocabulary
  * onConflictDoNothing keeps a re-run from stacking duplicates.
  */
 
-export const JEV_CLASSIFIER = "jev@v1";
+const JEV_CLASSIFIER = "jev@v1";
 
 const DOC_YES = 0.7;
 
 export async function proposeJevClassification(
   auth: AuthContext,
-  input: { documentId: string; extractionId: string | null; text: string; fieldNames: string[]; filename?: string | null },
+  input: {
+    documentId: string;
+    extractionId: string | null;
+    text: string;
+    fieldNames: string[];
+    filename?: string | null;
+  },
   deps: { judger?: ClassifyJudger } = {},
 ): Promise<{ proposed: boolean; docType?: DocumentType; skipped: "settled" | "disabled" | null }> {
   const [doc] = await db
@@ -61,8 +67,12 @@ export async function proposeJevClassification(
   const choice = answers.docType;
   const fits = answers.docTypeFits;
   if (
-    !choice || choice.type !== "choice" || !fits || fits.type !== "noul" ||
-    fits.noul < DOC_YES || (choice.probabilities[choice.choice] ?? 0) < DOC_YES
+    !choice ||
+    choice.type !== "choice" ||
+    !fits ||
+    fits.type !== "noul" ||
+    fits.noul < DOC_YES ||
+    (choice.probabilities[choice.choice] ?? 0) < DOC_YES
   ) {
     return { proposed: false, skipped: null };
   }

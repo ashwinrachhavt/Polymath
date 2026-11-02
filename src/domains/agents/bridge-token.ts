@@ -16,8 +16,8 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
  * Node `crypto` only and no database import, so the Eve bundle can load it.
  */
 
-export const BRIDGE_AUDIENCE = "axiom-eve";
-export const BRIDGE_TOKEN_TTL_SECONDS = 60;
+const BRIDGE_AUDIENCE = "axiom-eve";
+const BRIDGE_TOKEN_TTL_SECONDS = 60;
 const MIN_SECRET_LENGTH = 32;
 /** Tolerated clock difference between the app and Eve, in seconds. */
 const CLOCK_SKEW_SECONDS = 5;
@@ -92,10 +92,7 @@ export function signBridgeToken(
 }
 
 /** Claims when the token is genuine, for this audience, and unexpired; otherwise null and no reason. */
-export function verifyBridgeToken(
-  token: string,
-  options: { secret: string; now?: Date },
-): BridgeClaims | null {
+export function verifyBridgeToken(token: string, options: { secret: string; now?: Date }): BridgeClaims | null {
   if (options.secret.length < MIN_SECRET_LENGTH) return null;
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== "v1") return null;

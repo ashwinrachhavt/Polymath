@@ -50,7 +50,7 @@ export type MoveOption = {
   tradeOffs: string[];
 };
 
-export type ExternalOption = {
+type ExternalOption = {
   kind: "resolve_in_provider";
   eventId: string;
   eventTitle: string;
@@ -67,7 +67,9 @@ const span = (e: ConflictEvent): Interval => ({ start: e.startsAt, end: e.endsAt
 
 /** Clusters of events that overlap, directly or through a chain; singletons are not conflicts. */
 export function detectConflicts(events: ConflictEvent[]): Conflict[] {
-  const sorted = [...events].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.endsAt.getTime() - b.endsAt.getTime());
+  const sorted = [...events].sort(
+    (a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.endsAt.getTime() - b.endsAt.getTime(),
+  );
   const clusters: ConflictEvent[][] = [];
   let clusterEnd = 0;
   for (const e of sorted) {
@@ -133,7 +135,9 @@ function costNotes(e: ConflictEvent): string[] {
   const notes: string[] = [];
   if (e.taskId) notes.push("This is a time block for a task; moving it changes only when the work happens.");
   if (e.attendeeCount > 0) {
-    notes.push(`It lists ${e.attendeeCount} attendee${e.attendeeCount === 1 ? "" : "s"}; moving it here does not tell them.`);
+    notes.push(
+      `It lists ${e.attendeeCount} attendee${e.attendeeCount === 1 ? "" : "s"}; moving it here does not tell them.`,
+    );
   }
   if (e.tentative) notes.push("It is marked tentative.");
   return notes;
@@ -184,7 +188,8 @@ export function resolutionOptions(conflict: Conflict, ctx: OptionContext): Resol
       const rest = conflict.events.map((e) => (e.id === event.id ? moved : e));
       const clearsConflict = detectConflicts(rest).length === 0;
       const shiftMinutes = Math.round((slot.start.getTime() - event.startsAt.getTime()) / MIN);
-      const sameDay = localDayStart(slot.start, ctx.timeZone).getTime() === localDayStart(event.startsAt, ctx.timeZone).getTime();
+      const sameDay =
+        localDayStart(slot.start, ctx.timeZone).getTime() === localDayStart(event.startsAt, ctx.timeZone).getTime();
       moves.push({
         kind: "move",
         eventId: event.id,
@@ -197,12 +202,19 @@ export function resolutionOptions(conflict: Conflict, ctx: OptionContext): Resol
         tradeOffs: [
           `Moves "${event.title}" ${hm(shiftMinutes)} ${shiftMinutes < 0 ? "earlier" : "later"} to ${clock(slot.start, ctx.timeZone)}${sameDay ? ", the same day" : ""}.`,
           ...costNotes(event),
-          ...(clearsConflict ? [] : ["Other events in this cluster still overlap afterwards; check again once this is approved."]),
+          ...(clearsConflict
+            ? []
+            : ["Other events in this cluster still overlap afterwards; check again once this is approved."]),
         ],
       });
     }
   }
-  moves.sort((a, b) => Number(b.clearsConflict) - Number(a.clearsConflict) || moveRank(a, conflict) - moveRank(b, conflict) || Math.abs(a.shiftMinutes) - Math.abs(b.shiftMinutes));
+  moves.sort(
+    (a, b) =>
+      Number(b.clearsConflict) - Number(a.clearsConflict) ||
+      moveRank(a, conflict) - moveRank(b, conflict) ||
+      Math.abs(a.shiftMinutes) - Math.abs(b.shiftMinutes),
+  );
 
   const options: ResolutionOption[] = moves.slice(0, MAX_MOVE_OPTIONS);
   for (const event of conflict.events.filter((e) => e.external)) {

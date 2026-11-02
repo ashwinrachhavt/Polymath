@@ -26,13 +26,6 @@ export class StatementExtractionMissingError extends Error {
   }
 }
 
-export class StatementNotParsableError extends Error {
-  constructor(readonly reason: string) {
-    super(reason);
-    this.name = "StatementNotParsableError";
-  }
-}
-
 /** The newest succeeded extraction for a document, workspace-scoped. */
 async function latestExtraction(auth: AuthContext, documentId: string) {
   const [row] = await db
@@ -169,12 +162,7 @@ export async function importStatement(
   const transactions = await db
     .select()
     .from(statementTransactions)
-    .where(
-      and(
-        eq(statementTransactions.workspaceId, auth.workspaceId),
-        eq(statementTransactions.importId, row.id),
-      ),
-    )
+    .where(and(eq(statementTransactions.workspaceId, auth.workspaceId), eq(statementTransactions.importId, row.id)))
     .orderBy(statementTransactions.position);
 
   return { import: row, transactions, reused: false };
@@ -187,23 +175,13 @@ async function loadImport(
   const [row] = await db
     .select()
     .from(statementImports)
-    .where(
-      and(
-        eq(statementImports.workspaceId, auth.workspaceId),
-        eq(statementImports.extractionId, extractionId),
-      ),
-    )
+    .where(and(eq(statementImports.workspaceId, auth.workspaceId), eq(statementImports.extractionId, extractionId)))
     .limit(1);
   if (!row) return null;
   const transactions = await db
     .select()
     .from(statementTransactions)
-    .where(
-      and(
-        eq(statementTransactions.workspaceId, auth.workspaceId),
-        eq(statementTransactions.importId, row.id),
-      ),
-    )
+    .where(and(eq(statementTransactions.workspaceId, auth.workspaceId), eq(statementTransactions.importId, row.id)))
     .orderBy(statementTransactions.position);
   return { import: row, transactions };
 }
@@ -216,28 +194,17 @@ export async function statementForDocument(
   const [row] = await db
     .select()
     .from(statementImports)
-    .where(
-      and(
-        eq(statementImports.workspaceId, auth.workspaceId),
-        eq(statementImports.documentId, documentId),
-      ),
-    )
+    .where(and(eq(statementImports.workspaceId, auth.workspaceId), eq(statementImports.documentId, documentId)))
     .orderBy(desc(statementImports.createdAt))
     .limit(1);
   if (!row) return null;
   const transactions = await db
     .select()
     .from(statementTransactions)
-    .where(
-      and(
-        eq(statementTransactions.workspaceId, auth.workspaceId),
-        eq(statementTransactions.importId, row.id),
-      ),
-    )
+    .where(and(eq(statementTransactions.workspaceId, auth.workspaceId), eq(statementTransactions.importId, row.id)))
     .orderBy(statementTransactions.position);
   return { import: row, transactions };
 }
-
 
 /**
  * Read a statement ledger without anyone asking, when the document reads like
@@ -291,12 +258,7 @@ export async function statementStatus(auth: AuthContext, documentId: string): Pr
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
     .leftJoin(files, eq(files.id, documents.fileId))
-    .where(
-      and(
-        eq(documentExtractions.workspaceId, auth.workspaceId),
-        eq(documentExtractions.documentId, documentId),
-      ),
-    )
+    .where(and(eq(documentExtractions.workspaceId, auth.workspaceId), eq(documentExtractions.documentId, documentId)))
     .orderBy(desc(documentExtractions.createdAt))
     .limit(1);
 

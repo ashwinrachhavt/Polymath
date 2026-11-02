@@ -5,7 +5,14 @@ import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { embedArtifact, embedExtraction } from "./embedding";
-import { ENRICHMENT_STAGES, documentEnrichment, documentExtractions, documents, zettelProposals, type EnrichmentStage } from "./schema";
+import {
+  ENRICHMENT_STAGES,
+  documentEnrichment,
+  documentExtractions,
+  documents,
+  zettelProposals,
+  type EnrichmentStage,
+} from "./schema";
 import { proposeZettels } from "./zettels";
 
 /*
@@ -30,7 +37,7 @@ export type EnrichmentRow = typeof documentEnrichment.$inferSelect;
 type Providers = { embedding?: EmbeddingProvider; zettels?: ZettelExtractor };
 
 /** Ensure the four stage rows exist for a document; returns them in pipeline order. */
-export async function ensureDocumentEnrichment(auth: AuthContext, documentId: string): Promise<EnrichmentRow[]> {
+async function ensureDocumentEnrichment(auth: AuthContext, documentId: string): Promise<EnrichmentRow[]> {
   await db
     .insert(documentEnrichment)
     .values(ENRICHMENT_STAGES.map((stage) => ({ workspaceId: auth.workspaceId, documentId, stage })))
@@ -57,11 +64,22 @@ async function mirrorExtract(auth: AuthContext, documentId: string): Promise<"su
   return !row ? "pending" : row.status === "succeeded" ? "succeeded" : row.status === "failed" ? "failed" : "pending";
 }
 
-async function mark(auth: AuthContext, documentId: string, stage: EnrichmentStage, set: Partial<typeof documentEnrichment.$inferInsert>) {
+async function mark(
+  auth: AuthContext,
+  documentId: string,
+  stage: EnrichmentStage,
+  set: Partial<typeof documentEnrichment.$inferInsert>,
+) {
   await db
     .update(documentEnrichment)
     .set({ ...set, updatedAt: new Date() })
-    .where(and(eq(documentEnrichment.workspaceId, auth.workspaceId), eq(documentEnrichment.documentId, documentId), eq(documentEnrichment.stage, stage)));
+    .where(
+      and(
+        eq(documentEnrichment.workspaceId, auth.workspaceId),
+        eq(documentEnrichment.documentId, documentId),
+        eq(documentEnrichment.stage, stage),
+      ),
+    );
 }
 
 async function runStage(
@@ -71,8 +89,19 @@ async function runStage(
   const { documentId, stage } = input;
   await db
     .update(documentEnrichment)
-    .set({ status: "running", attempts: sql`${documentEnrichment.attempts} + 1`, lastRunAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(documentEnrichment.workspaceId, auth.workspaceId), eq(documentEnrichment.documentId, documentId), eq(documentEnrichment.stage, stage)));
+    .set({
+      status: "running",
+      attempts: sql`${documentEnrichment.attempts} + 1`,
+      lastRunAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(documentEnrichment.workspaceId, auth.workspaceId),
+        eq(documentEnrichment.documentId, documentId),
+        eq(documentEnrichment.stage, stage),
+      ),
+    );
   const fail = async (error: string) => {
     await mark(auth, documentId, stage, { status: "failed", lastError: error });
     return { ok: false as const, error };
@@ -82,15 +111,20 @@ async function runStage(
       const [extraction] = await db
         .select({ id: documentExtractions.id })
         .from(documentExtractions)
-        .where(and(
-          eq(documentExtractions.documentId, documentId),
-          eq(documentExtractions.workspaceId, auth.workspaceId),
-          eq(documentExtractions.status, "succeeded"),
-        ))
+        .where(
+          and(
+            eq(documentExtractions.documentId, documentId),
+            eq(documentExtractions.workspaceId, auth.workspaceId),
+            eq(documentExtractions.status, "succeeded"),
+          ),
+        )
         .orderBy(sql`${documentExtractions.createdAt} desc`)
         .limit(1);
       if (!extraction) return fail("No succeeded extraction to embed.");
-      const outcome = await embedExtraction(auth, { extractionId: extraction.id, provider: input.providers?.embedding });
+      const outcome = await embedExtraction(auth, {
+        extractionId: extraction.id,
+        provider: input.providers?.embedding,
+      });
       if (outcome.status === "failed") return fail(outcome.error);
     } else if (stage === "zettels") {
       await proposeZettels(auth, { documentId, extractor: input.providers?.zettels });
@@ -98,14 +132,19 @@ async function runStage(
       const cards = await db
         .select({ artifactId: zettelProposals.artifactId })
         .from(zettelProposals)
-        .where(and(
-          eq(zettelProposals.workspaceId, auth.workspaceId),
-          eq(zettelProposals.documentId, documentId),
-          eq(zettelProposals.status, "accepted"),
-        ));
+        .where(
+          and(
+            eq(zettelProposals.workspaceId, auth.workspaceId),
+            eq(zettelProposals.documentId, documentId),
+            eq(zettelProposals.status, "accepted"),
+          ),
+        );
       for (const card of cards) {
         if (!card.artifactId) continue;
-        const outcome = await embedArtifact(auth, { artifactId: card.artifactId, provider: input.providers?.embedding });
+        const outcome = await embedArtifact(auth, {
+          artifactId: card.artifactId,
+          provider: input.providers?.embedding,
+        });
         if (outcome.status === "failed") return fail(outcome.error);
       }
     }
@@ -154,19 +193,18 @@ export async function advanceDocumentEnrichment(
 }
 
 /** A failed or pending stage may be retried on its own; later stages then advance. */
-export async function retryDocumentEnrichment(
-  auth: AuthContext,
-  input: { documentId: string; providers?: Providers },
-) {
+export async function retryDocumentEnrichment(auth: AuthContext, input: { documentId: string; providers?: Providers }) {
   await withTransaction(async (tx) => {
     await tx
       .update(documentEnrichment)
       .set({ status: "pending", updatedAt: new Date() })
-      .where(and(
-        eq(documentEnrichment.workspaceId, auth.workspaceId),
-        eq(documentEnrichment.documentId, input.documentId),
-        eq(documentEnrichment.status, "failed"),
-      ));
+      .where(
+        and(
+          eq(documentEnrichment.workspaceId, auth.workspaceId),
+          eq(documentEnrichment.documentId, input.documentId),
+          eq(documentEnrichment.status, "failed"),
+        ),
+      );
   });
   return advanceDocumentEnrichment(auth, input);
 }

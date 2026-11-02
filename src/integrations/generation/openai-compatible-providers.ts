@@ -10,7 +10,7 @@ import { openAICompatibleProvider } from "./openai-compatible";
  * resolveProviderConfig(id, env).
  */
 
-export type ProviderCatalogEntry = {
+type ProviderCatalogEntry = {
   baseUrl: string;
   /** Env vars checked in order for the API key; the first set one wins. */
   apiKeyEnv: readonly string[];
@@ -21,7 +21,7 @@ export type ProviderCatalogEntry = {
   streamUsage?: boolean;
 };
 
-export const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
+const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
   mercury: {
     baseUrl: "https://api.inceptionlabs.ai/v1",
     apiKeyEnv: ["MERCURY_API_KEY", "INCEPTION_API_KEY"],

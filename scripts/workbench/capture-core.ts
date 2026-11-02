@@ -23,7 +23,7 @@ export class CaptureError extends Error {
   }
 }
 
-export type CommitSubject = { sha: string; subject: string };
+type CommitSubject = { sha: string; subject: string };
 
 export type GitCaptureState = {
   repoPath: string;

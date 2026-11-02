@@ -7,7 +7,7 @@
  * is worse than a plain label, and the caller renders the label instead.
  */
 
-export const RECORD_KINDS = [
+const RECORD_KINDS = [
   "task",
   "note",
   "document",
@@ -50,7 +50,7 @@ const LABELS: Partial<Record<RecordKind, string>> = {
 
 export const recordLabel = (kind: RecordKind): string => LABELS[kind] ?? kind;
 
-export function isRecordKind(value: unknown): value is RecordKind {
+function isRecordKind(value: unknown): value is RecordKind {
   return typeof value === "string" && (RECORD_KINDS as readonly string[]).includes(value);
 }
 
@@ -111,7 +111,7 @@ const KEY_KINDS: Record<string, RecordKind> = {
   opportunities: "opportunity",
 };
 
-export function asRecordReference(entry: unknown, fallbackKind?: RecordKind): RecordReference | null {
+function asRecordReference(entry: unknown, fallbackKind?: RecordKind): RecordReference | null {
   if (entry === null || typeof entry !== "object") return null;
   const record = entry as Record<string, unknown>;
   const kind = record.kind ?? record.targetType ?? record.type ?? fallbackKind;

@@ -101,16 +101,3 @@ export async function resolveFolderPath(
   }
   return { folderId: parentId, created };
 }
-
-/** Every distinct directory path in one upload, resolved once. */
-export async function resolveFolderPaths(
-  auth: AuthContext,
-  paths: string[],
-): Promise<Map<string, string | null>> {
-  const resolved = new Map<string, string | null>();
-  for (const path of [...new Set(paths)]) {
-    const result = await resolveFolderPath(auth, path);
-    resolved.set(path, result.folderId);
-  }
-  return resolved;
-}

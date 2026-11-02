@@ -1,27 +1,7 @@
-import postgres from "postgres";
-
 /*
- * The automation ticker: fires due project automations once. Called from the
- * cron dispatcher pass, riding the same bearer-authenticated tick.
- *
- * Idempotency is claim-then-start: a due row is claimed with a conditional
- * UPDATE (next_run_at moved before the run starts), so two overlapping ticks
- * cannot both fire it - the second sees next_run_at already advanced. A claim
- * whose engine start fails is logged and skipped; the next cron computes the
- * following slot from the schedule, so a missed run is a missed slot, not a
- * stuck row.
+ * Cron evaluation for the automation scheduler: find the next UTC fire time
+ * of a five-field (minute hour day-of-month month day-of-week) expression.
  */
-
-export type TickerResult = { fired: number; failed: number };
-
-type DueRow = {
-  id: string;
-  workspace_id: string;
-  project_id: string;
-  prompt: string;
-  schedule: string;
-  next_run_at: Date | null;
-};
 
 /** The next UTC time a five-field cron expression fires after `after`. */
 export function nextCronRun(expression: string, after: Date): Date | null {
@@ -73,11 +53,12 @@ export function nextCronRun(expression: string, after: Date): Date | null {
   cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
   const end = new Date(after.getTime() + 366 * 24 * 60 * 60 * 1000);
   while (cursor <= end) {
-    const dayMatches = domRestricted && dowRestricted
-      ? daysOfMonth.has(cursor.getUTCDate()) || daysOfWeek.has(cursor.getUTCDay())
-      : domRestricted
-        ? daysOfMonth.has(cursor.getUTCDate())
-        : daysOfWeek.has(cursor.getUTCDay());
+    const dayMatches =
+      domRestricted && dowRestricted
+        ? daysOfMonth.has(cursor.getUTCDate()) || daysOfWeek.has(cursor.getUTCDay())
+        : domRestricted
+          ? daysOfMonth.has(cursor.getUTCDate())
+          : daysOfWeek.has(cursor.getUTCDay());
     if (
       months.has(cursor.getUTCMonth() + 1) &&
       hours.has(cursor.getUTCHours()) &&
@@ -89,48 +70,4 @@ export function nextCronRun(expression: string, after: Date): Date | null {
     cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
   }
   return null;
-}
-
-export async function tickAutomations(
-  client: postgres.Sql,
-  startRun: (input: { workspaceId: string; projectId: string; prompt: string }) => Promise<void>,
-  now = new Date(),
-  limit = 20,
-): Promise<TickerResult> {
-  const due = await client<DueRow[]>`
-    select id, workspace_id, project_id, prompt, schedule, next_run_at
-    from project_automations
-    where enabled is true
-      and archived_at is null
-      and next_run_at is not null
-      and next_run_at <= ${now.toISOString()}
-    order by next_run_at
-    limit ${limit}
-  `;
-
-  let fired = 0;
-  let failed = 0;
-  for (const automation of due) {
-    const following = nextCronRun(automation.schedule, now);
-    if (!following) {
-      // An unscheduleable row would fire forever; disable it so the state is visible.
-      await client`update project_automations set enabled = false, updated_at = ${now.toISOString()} where id = ${automation.id}`;
-      failed++;
-      continue;
-    }
-    // Claim: only the tick that moves next_run_at fires this row.
-    const claimed = await client`
-      update project_automations
-      set last_run_at = ${now.toISOString()}, next_run_at = ${following.toISOString()}, updated_at = ${now.toISOString()}
-      where id = ${automation.id} and next_run_at = ${automation.next_run_at!.toISOString()}
-    `;
-    if (claimed.count === 0) continue;
-    try {
-      await startRun({ workspaceId: automation.workspace_id, projectId: automation.project_id, prompt: automation.prompt });
-      fired++;
-    } catch {
-      failed++;
-    }
-  }
-  return { fired, failed };
 }

@@ -9,7 +9,7 @@ import { recordLabel, recordPath, type RecordReference } from "./record-links";
  * opens. The card is a real link on first paint — no client state, no fetch —
  * so a retrieved record is usable the moment it arrives in the stream.
  */
-export function RecordCard({ record }: { record: RecordReference }) {
+function RecordCard({ record }: { record: RecordReference }) {
   const href = recordPath(record.kind, record.id);
   const body = (
     <>
