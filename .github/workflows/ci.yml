@@ -342,4 +342,242 @@ jobs:
       - run: |
           case ${{ matrix.shard }} in
             1) SPECS="tests/e2e/task-notes-editor.spec.ts tests/e2e/neuralflow.spec.ts tests/e2e/work-bulk-complete.spec.ts tests/e2e/voice-capture.spec.ts tests/e2e/layout-alignment.spec.ts tests/e2e/document-review-loop.spec.ts tests/e2e/onboarding-fixtures.spec.ts tests/e2e/interface-modes.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/home-decisions.spec.ts tests/e2e/list-toolbar.spec.ts tests/e2e/github-triage.spec.ts tests/e2e/daybook.spec.ts tests/e2e/onboarding-conversation.spec.ts" ;;
-            2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/
+            2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/e2e/neuralflow-canonical-consolidation.spec.ts tests/e2e/command-center.spec.ts tests/e2e/meeting-prep.spec.ts tests/e2e/library-writing.spec.ts tests/e2e/activity-feed.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/sender-grants.spec.ts tests/e2e/connectors-tier-journey.spec.ts tests/e2e/conversational-navigation.spec.ts tests/e2e/inbox-pixels.spec.ts tests/e2e/ingestion-selection.spec.ts" ;;
+            3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/linear-issue-draft.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
+          esac
+          pnpm exec playwright test $SPECS
+        env:
+          PERF_BUDGET_ENFORCE: "1"
+          # The generation journeys (meeting prep, write from library,
+          # proposal batches) click through the whole pipeline against the
+          # deterministic fixture provider: no model key, no spend. Callers
+          # the fixture does not know get the same unconfigured error as a
+          # keyless run, treated as a skip.
+          GENERATION_PROVIDER: fixture
+          # The voice-capture journey transcribes through the deterministic
+          # fixture adapter: no model key, no spend, no fake words in prod -
+          # the seam is explicit opt-in everywhere (ASH-298).
+          TRANSCRIPTION_PROVIDER: fixture
+          # Lets a spec drain the outbox on purpose (one dispatcher pass)
+          # instead of sleeping for a background worker that does not exist here.
+          OUTBOX_DISPATCH_SECRET: e2e-outbox
+          # The connectors tier journey's gateway leg (steps 3-4) mints a
+          # gateway token for its seeded run with this value; the dev server
+          # inherits the same step env, so both sides agree. Fixture value,
+          # same standing as OUTBOX_DISPATCH_SECRET: the seeded account is a
+          # fake gmail row and the within-tier call files a proposal for
+          # review - nothing reaches a provider.
+          EVE_GATEWAY_SECRET: e2e-gateway-secret-fixture-value-32chars
+      # Structured record of the run above: names every test with its status,
+      # including skips the list output never prints.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: "e2e-report-${{ matrix.shard }}"
+          retention-days: 14
+          path: e2e-report.json
+          if-no-files-found: warn
+      # The Canva handoff's async journey (approve -> import_started -> sweep
+      # -> terminal settle) runs in its own invocation against the explicit,
+      # nonproduction-only import fixture: a global CANVA_IMPORT_PROVIDER
+      # would mask the honest unconfigured-refusal journey above. Zero real
+      # transport by construction - no Composio key exists here either.
+      # --output matters: Playwright deletes the output directory when a run
+      # starts, so a second invocation with the default test-results/ would
+      # wipe the main run's pixel evidence before the upload steps below.
+      # A sibling directory keeps both; the fixture's own screenshots are
+      # cwd-relative and still land in test-results/feature-pixels/.
+      # if: always() - the fixture journeys verify the async outcome workflow
+      # and own no assertion outside their seeded rows; an unrelated main-suite
+      # failure must not block their evidence (uploads below are always()
+      # already). Their own failure still fails the job on its merits.
+      # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the fixture run's json report from
+      # overwriting the main run's e2e-report.json in cwd.
+      # De-serialized: pinned to the tail leg (shard 3) so it overlaps the
+      # suite legs instead of following the whole pool. The ASH-305 finding
+      # was about the shutdown ritual's workspace writes, not canva's - and
+      # the legs are isolated runners (own dev server, own postgres), so
+      # overlapped canva journeys cannot touch another leg's workspace at
+      # all. The invocation's own failure still fails the job on its merits.
+      - if: always() && matrix.shard == 3
+        run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
+      # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
+      # applies a real shutdown - parking captures, finishing sessions,
+      # seeding tomorrow's list - in the one dev workspace every journey
+      # shares; inside the parallel pool those writes destabilize unrelated
+      # journeys (observed: meeting-prep, work-neon, calendar-conflicts on
+      # every run that carried it, green on every run before it). It also
+      # skips itself without SHUTDOWN_RITUAL_E2E, so the main run never
+      # picks it up. Own --output dir: Playwright wipes it per invocation.
+      # Un-sharded: pinned to shard 1 so it runs exactly once per workflow
+      # run, still serial and alone on the workspace it writes to - each
+      # leg owns its dev server and database, so the ritual cannot touch
+      # the sibling leg's journeys.
+      - if: always() && matrix.shard == 1
+        run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 1
+        with:
+          name: "e2e-report-shutdown-${{ matrix.shard }}"
+          path: e2e-report-shutdown.json
+          if-no-files-found: warn
+          retention-days: 14
+      # ASH-305 integration gate: real-route shutdown pixels (desktop form,
+      # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 1
+        with:
+          name: "shutdown-real-route-pixels-${{ matrix.shard }}"
+          retention-days: 14
+          path: test-results-shutdown/**/shutdown-real-*.png
+          if-no-files-found: warn
+      # Failure forensics: Playwright's per-failure page snapshots and retry
+      # traces. if: always(), not failure(): a journey that only passes on
+      # retry is exactly the one whose first-attempt evidence must survive -
+      # without these a green-with-retry run is a message, not evidence.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: "e2e-error-context-${{ matrix.shard }}"
+          retention-days: 14
+          path: |
+            test-results/**/error-context.md
+            test-results-fixture/**/error-context.md
+            test-results-shutdown/**/error-context.md
+            test-results/**/trace.zip
+            test-results-fixture/**/trace.zip
+            test-results-shutdown/**/trace.zip
+          if-no-files-found: ignore
+      # The fixture invocation's own structured record: its journey results
+      # (including skips) are evidence too, and the default report filename
+      # would overwrite the main run's uploaded above. Only shard 3 runs
+      # the fixture invocation, so only shard 3 has this report.
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.shard == 3
+        with:
+          name: "e2e-report-fixture-${{ matrix.shard }}"
+          retention-days: 14
+          path: e2e-report-fixture.json
+          if-no-files-found: warn
+      # Hydrated visual evidence for journeys that capture review pixels
+      # (currently the bulk-complete specs); empty when none ran.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: "bulk-complete-pixels-${{ matrix.shard }}"
+          retention-days: 14
+          path: test-results/bulk-pixels/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: "onboarding-pixels-${{ matrix.shard }}"
+          retention-days: 14
+          path: test-results/onboarding-pixels/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: "feature-pixels-${{ matrix.shard }}"
+          retention-days: 14
+          path: test-results/feature-pixels/
+          if-no-files-found: ignore
+
+  # Behavioral gate for the agent. The unit suite cannot see whether Polymath
+  # actually reaches for the corpus before answering; these evals drive a real
+  # turn against Gemini and fail the build when grounding regresses.
+  #
+  # Eval steps are skipped with a notice when the secret is absent. When it is
+  # present, the strict eval run remains a required CI check and regressions fail.
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No `needs:` - the eval run only requires install, and its PR-comment
+    # step reads PR_NUMBER from the event context, so it never depended on
+    # the check job. Running it parallel to the check legs keeps it off the
+    # critical path.
+    # The PR-comment step posts with the workflow token; everything else in
+    # this job is read-only. Minimum grant, scoped to the job.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the agent is runnable
+        id: credential
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GEMINI_API_KEY is not set; agent evals were skipped, not run."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run agent evals
+        id: evals
+        if: steps.credential.outputs.present == 'true'
+        working-directory: eve/polymath
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_AGENT_MODEL: gemini-3.5-flash-lite
+        # --strict turns soft thresholds into failures, so a score regression
+        # blocks the merge instead of only showing in the artifact.
+        # --json also prints the per-eval verdicts as one JSON document, which
+        # the summary step below turns into the job table.
+        run: |
+          set +e
+          ../../node_modules/.bin/eve eval --strict --json > "$RUNNER_TEMP/eval-report.json"
+          status=$?
+          cat "$RUNNER_TEMP/eval-report.json"
+          exit $status
+      # Surface the result where a reviewer looks first. The artifact has the
+      # detail; this table answers "which eval failed, and how many gates did it
+      # miss" without opening a download.
+      - name: Eval results
+        if: always() && steps.credential.outputs.present == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node .github/scripts/eval-summary.mjs "$RUNNER_TEMP/eval-report.json"
+      # Keep the missing-secret state visible on main without failing the rest
+      # of CI. The eval step above still runs and fails normally when configured.
+      - name: Skip evals on main when Gemini key is missing
+        if: github.ref == 'refs/heads/main' && steps.credential.outputs.present != 'true'
+        run: echo "::notice::GEMINI_API_KEY is not set on main; agent evals were skipped."
+      - name: Upload eval artifacts
+        if: always() && steps.credential.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eve-evals
+          path: eve/polymath/.eve/evals/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Post the same table as a PR comment, replacing the previous one. The
+      # marker lets the comment be found and deleted before the fresh post, so
+      # a PR carries one live results thread instead of a stack per run. The
+      # report file is re-rendered (not copied) because the job summary adds
+      # GITHUB_STEP_SUMMARY noise the comment should not carry. Job summaries
+      # still get the table; the comment is the PR-visible copy.
+      - name: Post eval results as PR comment
+        if: always() && steps.credential.outputs.present == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR number comes from the event context expression — there is no
+          # default GITHUB_EVENT_PULL_REQUEST_NUMBER env var; an empty value
+          # would make the poster exit 2 on every PR.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          node .github/scripts/eval-comment.mjs \
+            "$RUNNER_TEMP/eval-report.json" \
+            "$GITHUB_REPOSITORY" \
+            "$PR_NUMBER"
+
+  # Vercel deploys `main` through its own GitHub integration; every other branch
+  # is disabled in vercel.json, so a merged PR is the only thing that ships.
+  # Nothing is deployed from CI.
