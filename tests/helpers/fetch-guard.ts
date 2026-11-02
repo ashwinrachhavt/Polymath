@@ -126,22 +126,28 @@ let active: ActiveGuard | undefined;
 
 /*
  * Under shared workers (vitest `isolate: false`) one worker process runs many
- * test files while this module is evaluated once per worker, so `active`
- * cannot see what a test file did to `globalThis.fetch`: a leaked
- * `vi.stubGlobal("fetch", …)` (or a bare assignment) outlives its file and the
- * next file's setup would silently no-op — the no-network property would
- * disappear for every later file in that worker. Tagging the guard function
- * itself makes the install self-healing: each file's setup re-wraps whatever
- * is currently installed (native fetch or a leaked double) unless the live
- * guard is already on duty. Under per-file isolation this is the same
- * idempotent behavior as before; the tag only changes what happens in a
- * worker whose state a previous file polluted.
+ * test files, and module-level state (`active`, the guard on `globalThis.fetch`)
+ * outlives any one file: a leaked `vi.stubGlobal("fetch", …)` (or a bare
+ * assignment) in one file would otherwise strip the no-network property from
+ * every later file in that worker. Tagging the guard function itself lets the
+ * install tell "the live guard is on duty" from "whatever a sibling left
+ * behind". Under per-file isolation this is the same idempotent behavior as
+ * before; the tag only changes what happens in a polluted worker.
  */
 const GUARD_TAG = "__polymathTestFetchGuard";
 
 interface TaggedFetcher extends Fetcher {
   [GUARD_TAG]?: string;
 }
+
+// The guard installed on `globalThis.fetch`, tracked per module instance. A
+// sibling file's `vi.resetModules()` evicts this helper from the worker's
+// shared registry while the previous guard stays on duty; its thrown
+// violations then come from a class instance that later imports no longer
+// resolve to, and `instanceof TestNetworkViolation` in test files fails even
+// though the guard denied correctly. The install treats a tagged fetch whose
+// guard is not THIS instance's as "not installed" and replaces it.
+let lastInstalled: TaggedFetcher | undefined;
 
 /**
  * Install the deny-all guard on `globalThis.fetch` and return its
@@ -155,27 +161,27 @@ export function installFetchGuard(options: { policy?: FetchPolicy; label?: strin
   const label = options.label ?? "tests/setup.fetch-guard.ts";
   const current = globalThis.fetch as TaggedFetcher | undefined;
 
-  // The live guard for this setup is already installed (an idempotent double
-  // call, or a guard inherited from a worker whose module registry was forked
-  // and re-evaluated): hand back the live uninstaller without stacking.
-  if (current?.[GUARD_TAG] === label) {
-    active ??= {
-      restore: () => {
-        active = undefined;
-      },
-    };
-    return active.restore;
+  // This instance's live guard is already installed: a true double install —
+  // hand back the live uninstaller without stacking.
+  if (current !== undefined && current === lastInstalled && current[GUARD_TAG] === label) {
+    return active!.restore;
   }
 
+  // Anything else installs fresh: the worker's first file, a leaked double,
+  // or a guard inherited from a module registry a sibling file's
+  // vi.resetModules() forked. Re-wrapping the stale state keeps the guard on
+  // duty in every case; the previous fetch becomes the unwinding base.
   const base = globalThis.fetch;
   const policy = options.policy ?? denyAll;
   const guarded: TaggedFetcher = Object.assign(guardedFetch(base, policy, label), { [GUARD_TAG]: label });
   const restore = () => {
     globalThis.fetch = base;
     active = undefined;
+    lastInstalled = undefined;
   };
 
   active = { restore };
+  lastInstalled = guarded;
   globalThis.fetch = guarded;
   return restore;
 }
