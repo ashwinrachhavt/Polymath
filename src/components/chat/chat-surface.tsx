@@ -18,7 +18,14 @@ import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "@/domains/agents/tool-labels";
 import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
-import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
+import {
+  serializeChips,
+  stripMentionContext,
+  hasMentionContext,
+  type ContextChip,
+  type MentionEntity,
+} from "./mention-context";
+import { ContextChips } from "./context-chips";
 import { CitedText } from "./cited-text";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
 import { inline } from "@/components/markdown-inline";
@@ -160,9 +167,11 @@ export function ChatSurface({
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Entities picked from the mention menu; the ones the sent message still
-  // name as @Name become the context block on the model's copy.
-  const [mentions, setMentions] = useState<MentionEntity[]>([]);
+  // Records picked as context chips. The context is fetched when the chip is
+  // picked — never at send, which only serializes what the chips already
+  // fetched — and a chip whose fetch failed blocks the send until it is
+  // retried or removed.
+  const [chips, setChips] = useState<ContextChip[]>([]);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
   const [plusOpen, setPlusOpen] = useState(false);
   const [plusQuery, setPlusQuery] = useState("");
@@ -262,6 +271,46 @@ export function ChatSurface({
     forceScrollRef.current = false;
   }, [transcript.length, lastText, waiting.length]);
 
+  async function fetchChipContext(id: string, kind: MentionEntity["kind"]) {
+    try {
+      const context = await fetchMentionContext({ kind, id });
+      setChips((current) =>
+        current.map((chip) =>
+          chip.entity.id === id
+            ? context
+              ? { ...chip, context, error: null }
+              : { ...chip, error: "Could not load context. Retry." }
+            : chip,
+        ),
+      );
+    } catch {
+      setChips((current) =>
+        current.map((chip) => (chip.entity.id === id ? { ...chip, error: "Could not load context. Retry." } : chip)),
+      );
+    }
+  }
+
+  function pickChip(entity: MentionEntity) {
+    setChips((current) => {
+      if (current.some((chip) => chip.entity.id === entity.id)) return current;
+      return [...current, { entity, context: null, error: null }];
+    });
+    void fetchChipContext(entity.id, entity.kind);
+  }
+
+  function retryChip(id: string) {
+    const chip = chips.find((item) => item.entity.id === id);
+    if (!chip) return;
+    setChips((current) =>
+      current.map((item) => (item.entity.id === id ? { ...item, context: null, error: null } : item)),
+    );
+    void fetchChipContext(id, chip.entity.kind);
+  }
+
+  function removeChip(id: string) {
+    setChips((current) => current.filter((chip) => chip.entity.id !== id));
+  }
+
   async function send() {
     const message = draft.trim();
     if (!message || sending) return;
@@ -285,15 +334,15 @@ export function ChatSurface({
       // the surface would otherwise dead-end mid-thought. Without the handler
       // this is the plain follow-up the run endpoint serves.
       if (onContinue) {
-        // Named entities load their context as JSON appended to the model's
-        // copy; the transcript renders only the typed words.
-        const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
-        const result = await onContinue(runId, payload);
+        // Chips already fetched their context on pick; sending serializes
+        // what is here and touches no network for it.
+        const { payload } = serializeChips(chips);
+        const result = await onContinue(runId, `${message}${payload}`);
         if (!result.ok) {
           restore(result.message);
           return;
         }
-        setMentions([]);
+        setChips([]);
         if (result.runId !== runId) {
           // A new segment answered, so this transcript is no longer the head of
           // the conversation; the shell re-renders on the new run.
@@ -301,18 +350,18 @@ export function ChatSurface({
         }
         return;
       }
-      const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
+      const { payload } = serializeChips(chips);
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: payload }),
+        body: JSON.stringify({ message: `${message}${payload}` }),
       });
       if (!response.ok) {
         const problem = (await response.json().catch(() => null)) as { detail?: string; title?: string } | null;
         restore(problem?.detail ?? problem?.title ?? "The message was not sent.");
         return;
       }
-      setMentions([]);
+      setChips([]);
     } catch {
       restore("The message was not sent. Check the connection and try again.");
     } finally {
@@ -548,6 +597,14 @@ export function ChatSurface({
               {sendError}
             </p>
           )}
+          <div className="px-3.5 pt-2.5">
+            <ContextChips
+              chips={chips}
+              onRemove={removeChip}
+              onRetry={retryChip}
+              truncated={serializeChips(chips).truncated}
+            />
+          </div>
           <Textarea
             aria-label={composerLabel}
             className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
@@ -589,20 +646,14 @@ export function ChatSurface({
                 onFile={attachFile}
                 mention={mention}
                 onMentionPick={(record) => {
-                  if (!mention) return;
-                  if (record.kind === "person" || record.kind === "company") {
-                    const entity: MentionEntity = {
-                      id: record.id,
-                      kind: record.kind,
-                      title: record.title,
-                      href: record.href,
-                    };
-                    setMentions((current) => {
-                      if (current.some((picked) => picked.id === entity.id)) return current;
-                      return [...current, entity];
-                    });
+                  // A chip-kind pick adds the chip and never touches the
+                  // draft: the chip is the record's identity, the typed text
+                  // is the person's words. Other kinds keep the link rewrite.
+                  if (record.kind === "person" || record.kind === "company" || record.kind === "zettel") {
+                    pickChip({ id: record.id, kind: record.kind, title: record.title, href: record.href });
+                    return;
                   }
-                  setDraft((current) => replaceMention(current, mention, `@${record.title}`));
+                  if (mention) setDraft((current) => replaceMention(current, mention, `@${record.title}`));
                 }}
               />
               <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
@@ -613,7 +664,14 @@ export function ChatSurface({
               aria-label={sending ? "Sending" : "Send"}
               title={sending ? "Sending" : "Send"}
               className="size-8 shrink-0 rounded-full"
-              disabled={!draft.trim() || sending}
+              disabled={
+                !draft.trim() ||
+                sending ||
+                // A chip still loading or sitting on a failed fetch has no
+                // context to serialize: sending would drop it silently. The
+                // retry is one click; the removal is another.
+                chips.some((chip) => chip.error !== null || chip.context === null)
+              }
             >
               <ArrowUp aria-hidden className="size-4" />
             </Button>
