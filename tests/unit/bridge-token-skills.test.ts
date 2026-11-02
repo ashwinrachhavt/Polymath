@@ -26,10 +26,7 @@ const basePayload = {
 
 describe("bridge token skill claims", () => {
   it("round-trips runId and skillId", () => {
-    const token = signBridgeToken(
-      { ...claims, runId: "run_1", skillId: "skill_1" },
-      { secret, now },
-    );
+    const token = signBridgeToken({ ...claims, runId: "run_1", skillId: "skill_1" }, { secret, now });
     expect(verifyBridgeToken(token, { secret, now })).toEqual({
       ...claims,
       runId: "run_1",
@@ -71,7 +68,7 @@ vi.mock("@/lib/db", () => ({ db: { select: mocks.select, update: mocks.update } 
 vi.mock("eve/channels/eve", () => ({ eveChannel: (config: unknown) => config }));
 vi.mock("eve/channels/auth", () => ({ localDev: () => async () => null }));
 
-const { createEveDriver } = await import("@/domains/agents/eve-driver");
+let createEveDriver: typeof import("@/domains/agents/eve-driver").createEveDriver;
 
 const auth = { userId: claims.userId, workspaceId: claims.workspaceId, role: claims.role };
 const policy = {
@@ -89,7 +86,12 @@ function runRow(row: { sessionRef: string; policySnapshot: unknown }) {
   return { from: () => ({ where: () => ({ limit: async () => [row] }) }) };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: a driver graph
+  // cached from an earlier file would carry that file's db wiring and bypass
+  // this file's @/lib/db mock. Re-import per test so the mocks above win.
+  vi.resetModules();
+  ({ createEveDriver } = await import("@/domains/agents/eve-driver"));
   vi.clearAllMocks();
   vi.stubEnv("EVE_BASE_URL", "http://eve.fixture");
   vi.stubEnv("EVE_BRIDGE_SECRET", secret);
@@ -99,22 +101,28 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("the driver's run pin", () => {
   it("start and signal mint the same runId and skillId for the same run", async () => {
-    const fetch = vi.fn()
+    const fetch = vi
+      .fn()
       .mockResolvedValueOnce(Response.json({ sessionId: "wrun_1" }, { status: 202 }))
       .mockResolvedValueOnce(Response.json({ ok: true }));
     vi.stubGlobal("fetch", fetch);
-    mocks.select.mockReturnValue(runRow({ sessionRef: "wrun_1", policySnapshot: policy }));
+    try {
+      mocks.select.mockReturnValue(runRow({ sessionRef: "wrun_1", policySnapshot: policy }));
 
-    const driver = createEveDriver();
-    await driver.start({ sessionId: "run_1", auth, policy, instructions: null, objective: "Go" });
-    await driver.signal("run_1", "Keep going", auth);
+      const driver = createEveDriver();
+      await driver.start({ sessionId: "run_1", auth, policy, instructions: null, objective: "Go" });
+      await driver.signal("run_1", "Keep going", auth);
 
-    const tokenAt = (call: number) => {
-      const [, init] = fetch.mock.calls[call] as [string, RequestInit];
-      return (init.headers as Record<string, string>).authorization.replace("Bearer ", "");
-    };
-    expect(verifyBridgeToken(tokenAt(0), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
-    expect(verifyBridgeToken(tokenAt(1), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
-    vi.unstubAllGlobals();
+      const tokenAt = (call: number) => {
+        const [, init] = fetch.mock.calls[call] as [string, RequestInit];
+        return (init.headers as Record<string, string>).authorization.replace("Bearer ", "");
+      };
+      expect(verifyBridgeToken(tokenAt(0), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
+      expect(verifyBridgeToken(tokenAt(1), { secret })).toMatchObject({ runId: "run_1", skillId: "skill_1" });
+    } finally {
+      // Restore even on failure: a leaked stub would strip the fetch guard
+      // from every later file sharing this worker.
+      vi.unstubAllGlobals();
+    }
   });
 });

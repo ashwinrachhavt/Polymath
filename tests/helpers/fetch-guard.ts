@@ -124,6 +124,25 @@ interface ActiveGuard {
 // stack (eval guard wrapping this one) without occupying each other's slot.
 let active: ActiveGuard | undefined;
 
+/*
+ * Under shared workers (vitest `isolate: false`) one worker process runs many
+ * test files while this module is evaluated once per worker, so `active`
+ * cannot see what a test file did to `globalThis.fetch`: a leaked
+ * `vi.stubGlobal("fetch", …)` (or a bare assignment) outlives its file and the
+ * next file's setup would silently no-op — the no-network property would
+ * disappear for every later file in that worker. Tagging the guard function
+ * itself makes the install self-healing: each file's setup re-wraps whatever
+ * is currently installed (native fetch or a leaked double) unless the live
+ * guard is already on duty. Under per-file isolation this is the same
+ * idempotent behavior as before; the tag only changes what happens in a
+ * worker whose state a previous file polluted.
+ */
+const GUARD_TAG = "__polymathTestFetchGuard";
+
+interface TaggedFetcher extends Fetcher {
+  [GUARD_TAG]?: string;
+}
+
 /**
  * Install the deny-all guard on `globalThis.fetch` and return its
  * uninstaller. The setup files call this once per test file and discard the
@@ -132,20 +151,31 @@ let active: ActiveGuard | undefined;
  * to `denyAll`; the db project's setup passes `allowLoopbackOnly` (see that
  * file for why it must differ).
  */
-export function installFetchGuard(
-  options: { policy?: FetchPolicy; label?: string } = {},
-): () => void {
-  if (active !== undefined) return active.restore;
+export function installFetchGuard(options: { policy?: FetchPolicy; label?: string } = {}): () => void {
+  const label = options.label ?? "tests/setup.fetch-guard.ts";
+  const current = globalThis.fetch as TaggedFetcher | undefined;
+
+  // The live guard for this setup is already installed (an idempotent double
+  // call, or a guard inherited from a worker whose module registry was forked
+  // and re-evaluated): hand back the live uninstaller without stacking.
+  if (current?.[GUARD_TAG] === label) {
+    active ??= {
+      restore: () => {
+        active = undefined;
+      },
+    };
+    return active.restore;
+  }
 
   const base = globalThis.fetch;
-  const label = options.label ?? "tests/setup.fetch-guard.ts";
   const policy = options.policy ?? denyAll;
+  const guarded: TaggedFetcher = Object.assign(guardedFetch(base, policy, label), { [GUARD_TAG]: label });
   const restore = () => {
     globalThis.fetch = base;
     active = undefined;
   };
 
   active = { restore };
-  globalThis.fetch = guardedFetch(base, policy, label);
+  globalThis.fetch = guarded;
   return restore;
 }
