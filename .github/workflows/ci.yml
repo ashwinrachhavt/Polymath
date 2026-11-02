@@ -91,6 +91,12 @@ jobs:
         env:
           MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pnpm check:migrations "$MIGRATION_BASE"
+      # Exactly one tracked snapshot — the newest, matching the journal's last
+      # entry — or drizzle-kit generate diffs against a stale schema, an empty
+      # baseline, or a duplicate-prevId chain and the drift gate below turns
+      # red on every PR. See src/db/migrations/README.md.
+      - name: Guard snapshot invariant (exactly one tracked drizzle snapshot)
+        run: pnpm check:snapshot-invariant
       # Applied directly, in journal order: drizzle-kit migrate has a
       # pre-existing identifier-truncation issue on the early migrations.
       - run: |
@@ -129,7 +135,7 @@ jobs:
           # status --porcelain, not git diff: a brand-new migration file is
           # untracked, and diff alone would miss it.
           if [ -n "$(git status --porcelain -- src/db/migrations)" ]; then
-            echo "::error::src/domains/*/schema.ts changed without a generated migration. Run 'pnpm db:generate' locally, commit the generated migration, and push."
+            echo "::error::src/db/migrations is dirty after db:generate — either src/domains/*/schema.ts changed without a generated migration (run 'pnpm db:generate' locally, commit the generated migration, and push) or the snapshot invariant is broken: exactly one tracked snapshot, the newest, matching the journal's last entry (run 'pnpm check:snapshot-invariant'; see src/db/migrations/README.md)."
             git status --porcelain -- src/db/migrations
             # Leave the tree as we found it: the generated output is the
             # author's to make locally, and later steps should not see it.
