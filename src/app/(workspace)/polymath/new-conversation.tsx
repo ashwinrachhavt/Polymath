@@ -7,13 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ComposerPlus,
   mentionAt,
+  referenceLink,
   replaceMention,
   type RecordReference,
 } from "@/components/chat/composer-plus";
 import { startChatRun } from "@/app/(workspace)/apps/polymath/chat-actions";
 import { SurfaceCardView } from "@/components/chat/surface-card";
 import { fetchMentionContext } from "./mention-actions";
-import { resolveMentionPayload, type MentionEntity } from "@/components/chat/mention-context";
+import { serializeChips, type ContextChip } from "@/components/chat/mention-context";
+import { ContextChips } from "@/components/chat/context-chips";
 import { navigateInConversation } from "./navigation-actions";
 import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
@@ -49,9 +51,14 @@ export function NewConversation({
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
-  // Entities picked from the mention menu this conversation. A pick inserts
-  // @Name; the ones the sent message still name become the context block.
-  const [mentions, setMentions] = useState<MentionEntity[]>([]);
+  // Records picked as context chips — the same contract the chat composer
+  // runs: fetch on pick, visible error with retry, serialize at send.
+  const [chips, setChips] = useState<ContextChip[]>([]);
+  // @-mention: derived from the draft and caret each render. Typing "@" starts
+  // a lookup; whitespace or a deleted "@" closes it. Destructured so the
+  // effect keys on the primitives — the derived object is new every render.
+  const mention = mentionAt(draft, caret);
+  const { open: mentionOpen, query: mentionQuery } = mention ?? { open: false, query: "" };
   // A navigation answer replaces the composer in place, exactly like a run.
   const [navigated, setNavigated] = useState<NavigationReply | null>(null);
 
@@ -61,18 +68,26 @@ export function NewConversation({
    * cost a request per keystroke. `records === null` means "searching";
    * closed-state `undefined` renders no result section at all.
    */
-  const [plusOpen, setPlusOpen] = useState(false);
   const [plusQuery, setPlusQuery] = useState("");
-  // @-mention: derived from the draft and caret each render. Typing "@" starts
-  // a lookup; whitespace or a deleted "@" closes it. The effect below keys on
-  // the primitives, not the object, so a caret move that keeps the token does
-  // not re-fetch.
-  const mention = mentionAt(draft, caret);
-  const mentionOpen = mention?.open ?? false;
-  const mentionQuery = mention?.query ?? "";
+  // One picker serves both gestures, as in the chat composer: menuOpen is
+  // host state the plus button toggles and a typed "@" forces with the token
+  // as the seed.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [seedQuery, setSeedQuery] = useState("");
   useEffect(() => {
-    if (!plusOpen && !mentionOpen) return;
-    const query = mentionOpen ? mentionQuery : plusQuery;
+    if (!mentionOpen) return;
+    // Deferred a frame — synchronous setState in an effect body is what the
+    // react-hooks rule bans, and a menu opening one frame late is not
+    // perceptible.
+    const frame = requestAnimationFrame(() => {
+      setMenuOpen(true);
+      setSeedQuery(mentionQuery);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mentionOpen, mentionQuery]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const query = plusQuery;
     const controller = new AbortController();
     // Fetching lands in the timeout, so every setRecords call is async from
     // React's view — no synchronous setState inside the effect body.
@@ -86,10 +101,65 @@ export function NewConversation({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [plusOpen, plusQuery, mentionOpen, mentionQuery]);
+  }, [menuOpen, plusQuery]);
 
   function insertReference(markdown: string) {
     setDraft((current) => (current.trim() ? `${current.trimEnd()} ${markdown} ` : `${markdown} `));
+  }
+
+  async function fetchChipContext(id: string, kind: ContextChip["entity"]["kind"]) {
+    try {
+      const context = await fetchMentionContext({ kind, id });
+      setChips((current) =>
+        current.map((chip) =>
+          chip.entity.id === id
+            ? context
+              ? { ...chip, context, error: null }
+              : { ...chip, error: "Could not load context. Retry." }
+            : chip,
+        ),
+      );
+    } catch {
+      setChips((current) =>
+        current.map((chip) => (chip.entity.id === id ? { ...chip, error: "Could not load context. Retry." } : chip)),
+      );
+    }
+  }
+
+  function pickChip(entity: ContextChip["entity"]) {
+    setChips((current) => {
+      if (current.some((chip) => chip.entity.id === entity.id)) return current;
+      return [...current, { entity, context: null, error: null }];
+    });
+    void fetchChipContext(entity.id, entity.kind);
+  }
+
+  function retryChip(id: string) {
+    const chip = chips.find((item) => item.entity.id === id);
+    if (!chip) return;
+    setChips((current) =>
+      current.map((item) => (item.entity.id === id ? { ...item, context: null, error: null } : item)),
+    );
+    void fetchChipContext(id, chip.entity.kind);
+  }
+
+  function removeChip(id: string) {
+    setChips((current) => current.filter((chip) => chip.entity.id !== id));
+  }
+
+  // One pick handler for both gestures, as in the chat composer: chip kinds
+  // add a chip and leave the draft alone; reference kinds become a link,
+  // replacing the live @ token when the pick came from that gesture.
+  function handleRecordPick(record: RecordReference) {
+    if (record.kind === "person" || record.kind === "company" || record.kind === "zettel") {
+      pickChip({ id: record.id, kind: record.kind, title: record.title, href: record.href });
+      return;
+    }
+    if (mention) {
+      setDraft((current) => replaceMention(current, mention, referenceLink(record)));
+      return;
+    }
+    insertReference(referenceLink(record));
   }
 
   /*
@@ -119,10 +189,17 @@ export function NewConversation({
     setAttachNote(`Capturing ${file.name}…`);
     const form = new FormData();
     form.set("file", file);
-    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+    void fetch("/api/v1/captures/file", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+      body: form,
+    })
       .then(async (res) => {
         if (!res.ok) {
-          if (res.status === 413) { setAttachNote("That file is over the 4 MB limit."); return; }
+          if (res.status === 413) {
+            setAttachNote("That file is over the 4 MB limit.");
+            return;
+          }
           const problem = (await res.json().catch(() => null)) as { title?: string } | null;
           setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
           return;
@@ -151,15 +228,15 @@ export function NewConversation({
           return;
         }
       }
-      // Named entities load their context as JSON appended to the model's
-      // copy of the message; the transcript renders only the typed words.
-      const message = await resolveMentionPayload(mentions, objective, fetchMentionContext);
-      const result = await startChatRun({ objective: message, ...(skillId ? { skillId } : {}) });
+      // Chips already fetched their context on pick; sending serializes
+      // what is here and touches no network for it.
+      const { payload } = serializeChips(chips);
+      const result = await startChatRun({ objective: `${objective}${payload}`, ...(skillId ? { skillId } : {}) });
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      setMentions([]);
+      setChips([]);
       // The conversation opens in the home's started state, not on another
       // route: the runId mounts the transcript in place, and the typed message
       // crosses as the optimistic message until the stream echoes it. No
@@ -233,6 +310,14 @@ export function NewConversation({
             }
           }}
         />
+        <div className="px-3.5">
+          <ContextChips
+            chips={chips}
+            onRemove={removeChip}
+            onRetry={retryChip}
+            truncated={serializeChips(chips).truncated}
+          />
+        </div>
         {/*
          * The plus sits inside the input's frame, bottom-left, like the send
          * button sits inside it bottom-right: the composer is one surface,
@@ -243,33 +328,25 @@ export function NewConversation({
             <ComposerPlus
               label="Add to message"
               records={records}
-              onReference={insertReference}
+              open={menuOpen}
+              initialQuery={seedQuery}
+              onReference={handleRecordPick}
               onQueryChange={setPlusQuery}
-              onFile={attachFile}
-              mention={mention}
-              onMentionPick={(record) => {
-                if (!mention) return;
-                if (record.kind === "person" || record.kind === "company") {
-                  const entity: MentionEntity = { id: record.id, kind: record.kind, title: record.title, href: record.href };
-                  setMentions((current) => {
-                    if (current.some((picked) => picked.id === entity.id)) return current;
-                    return [...current, entity];
-                  });
-                }
-                setDraft((current) => replaceMention(current, mention, `@${record.title}`));
-              }}
               onOpenChange={(open) => {
-                setPlusOpen(open);
+                setMenuOpen(open);
                 if (!open) setPlusQuery("");
               }}
+              onFile={attachFile}
               items={[
                 ...(skills.length > 0
-                  ? [{
-                      label: "Pin a skill",
-                      hint: "Give this conversation a procedure to follow",
-                      icon: <Puzzle aria-hidden />,
-                      onSelect: () => setDraft("/"),
-                    }]
+                  ? [
+                      {
+                        label: "Pin a skill",
+                        hint: "Give this conversation a procedure to follow",
+                        icon: <Puzzle aria-hidden />,
+                        onSelect: () => setDraft("/"),
+                      },
+                    ]
                   : []),
               ]}
             />
@@ -298,7 +375,13 @@ export function NewConversation({
             size="icon"
             aria-label="Send"
             className="size-8 shrink-0 rounded-full"
-            disabled={!draft.trim() || pending}
+            disabled={
+              !draft.trim() ||
+              pending ||
+              // Same gate as the chat composer: a chip without fetched
+              // context must not be dropped silently by a send.
+              chips.some((chip) => chip.error !== null || chip.context === null)
+            }
           >
             <ArrowUp aria-hidden className="size-4" />
           </Button>
