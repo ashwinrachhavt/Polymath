@@ -92,6 +92,10 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       choices.some(
         (c) =>
           !c.label?.trim() ||
+          // Truncating a label could leave two distinct choices with an
+          // identical visible label - over-long labels are dropped, never
+          // repaired (same rule as choice values).
+          c.label.trim().length > MAX_CHOICE_LABEL_CHARS ||
           !c.value?.trim() ||
           // Truncating values could collide distinct choices into one
           // value and corrupt value-keyed grading - over-long values are
@@ -112,7 +116,7 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       prompt: prompt.slice(0, MAX_PROMPT_CHARS),
       choices: choices.map((c) => ({
         value: c.value.trim(),
-        label: c.label.trim().slice(0, MAX_CHOICE_LABEL_CHARS),
+        label: c.label.trim(),
       })),
       answerValue,
       explanation: explanation.slice(0, MAX_EXPLANATION_CHARS),

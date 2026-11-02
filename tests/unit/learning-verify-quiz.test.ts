@@ -127,6 +127,28 @@ describe("verifyQuiz", () => {
     expect(out.questions[0].choices[0].value).toBe(prefix);
   });
 
+  it("drops a question whose distinct labels would collide after the label cap", () => {
+    const prefix = "L".repeat(200);
+    const colliding = question({
+      quote: "The deposit is held in escrow.",
+      choices: [
+        { value: "rises", label: `${prefix}one` },
+        { value: "falls", label: `${prefix}two` },
+      ],
+    });
+    expect(verifyQuiz(TEXT, [colliding]).droppedQuestions).toBe(1);
+    const atCap = question({
+      quote: "The deposit is held in escrow.",
+      choices: [
+        { value: "rises", label: prefix },
+        { value: "falls", label: "Rent falls by 4%." },
+      ],
+    });
+    const out = verifyQuiz(TEXT, [atCap]);
+    expect(out.droppedQuestions).toBe(0);
+    expect(out.questions[0].choices[0].label).toBe(prefix);
+  });
+
   it("exposes the minimum count the domain enforces", () => {
     expect(MIN_QUIZ_QUESTIONS).toBe(3);
   });
