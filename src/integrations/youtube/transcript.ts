@@ -66,7 +66,6 @@ type CaptionTrack = {
   baseUrl?: string;
   languageCode?: string;
   kind?: string;
-  name?: { simpleText?: string; runs?: Array<{ text?: string }> };
 };
 
 const HOSTS = new Set([
@@ -131,45 +130,44 @@ function decodeEntities(text: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
+type XmlCueShape = {
+  tag: string;
+  startAttr: string;
+  durationAttr: string;
+  /** Divisor from the attribute's unit to seconds. */
+  scale: number;
+  /** srv3 wraps the words of a cue in `<s>`; join them to keep reading order. */
+  segments: boolean;
+};
+
+const SRV3: XmlCueShape = { tag: "p", startAttr: "t", durationAttr: "d", scale: 1 / 1000, segments: true };
+const LEGACY: XmlCueShape = { tag: "text", startAttr: "start", durationAttr: "dur", scale: 1, segments: false };
+
 /**
- * Parses YouTube's srv3 `<timedtext>` body. Each `<p t="ms" d="ms">` is one
- * displayed cue; its `<s …>` children are the word runs inside it, with their
- * own relative offsets that the cue start already covers.
+ * Parses one YouTube timedtext XML shape. srv3 puts each displayed cue in a
+ * `<p t="ms" d="ms">`; the older shape uses `<text start="s" dur="s">`.
  */
-function parseTimedTextXml(body: string): TranscriptCue[] {
+function parseXmlCues(body: string, shape: XmlCueShape): TranscriptCue[] {
   const cues: TranscriptCue[] = [];
-  for (const match of body.matchAll(/<p\s+([^>]*)>([\s\S]*?)<\/p>/g)) {
+  const block = new RegExp(`<${shape.tag}\\s+([^>]*)>([\\s\\S]*?)</${shape.tag}>`, "g");
+  const startAttr = new RegExp(`\\b${shape.startAttr}="([\\d.]+)"`);
+  const durationAttr = new RegExp(`\\b${shape.durationAttr}="([\\d.]+)"`);
+  for (const match of body.matchAll(block)) {
     const attrs = match[1];
-    const startMs = Number(/\bt="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
-    const durationMs = Number(/\bd="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
-    if (!Number.isFinite(startMs)) continue;
-    const segments = [...match[2].matchAll(/<s\b[^>]*>([\s\S]*?)<\/s>/g)].map((s) => s[1]);
-    const payload = decodeEntities((segments.length > 0 ? segments.join("") : match[2]).replace(/<[^>]+>/g, ""))
+    const startValue = Number(startAttr.exec(attrs)?.[1] ?? NaN);
+    if (!Number.isFinite(startValue)) continue;
+    const durationValue = Number(durationAttr.exec(attrs)?.[1] ?? NaN);
+    const inner = match[2];
+    const runs = shape.segments ? [...inner.matchAll(/<s\b[^>]*>([\s\S]*?)<\/s>/g)].map((s) => s[1]) : [];
+    const payload = decodeEntities((runs.length > 0 ? runs.join("") : inner).replace(/<[^>]+>/g, ""))
       .replace(/\s+/g, " ")
       .trim();
     if (!payload) continue;
     cues.push({
-      start: round3(startMs / 1000),
-      duration: round3(Number.isFinite(durationMs) ? durationMs / 1000 : 0),
+      start: round3(startValue * shape.scale),
+      duration: round3(Number.isFinite(durationValue) ? durationValue * shape.scale : 0),
       text: payload,
     });
-  }
-  return cues;
-}
-
-/** The older `<text start="1.2" dur="3.4">` timedtext shape, still served for some tracks. */
-function parseTimedTextLegacyXml(body: string): TranscriptCue[] {
-  const cues: TranscriptCue[] = [];
-  for (const match of body.matchAll(/<text\s+([^>]*)>([\s\S]*?)<\/text>/g)) {
-    const attrs = match[1];
-    const start = Number(/\bstart="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
-    const duration = Number(/\bdur="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
-    if (!Number.isFinite(start)) continue;
-    const payload = decodeEntities(match[2].replace(/<[^>]+>/g, ""))
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!payload) continue;
-    cues.push({ start: round3(start), duration: round3(Number.isFinite(duration) ? duration : 0), text: payload });
   }
   return cues;
 }
@@ -181,8 +179,8 @@ function parseTimedTextLegacyXml(body: string): TranscriptCue[] {
  */
 export function parseTimedText(body: string): TranscriptCue[] {
   if (/<timedtext|<text\s+[^>]*start=|<p\s+[^>]*\bt=/.test(body)) {
-    const cues = parseTimedTextXml(body);
-    return cues.length > 0 ? cues : parseTimedTextLegacyXml(body);
+    const cues = parseXmlCues(body, SRV3);
+    return cues.length > 0 ? cues : parseXmlCues(body, LEGACY);
   }
   const text = body.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   const cues: TranscriptCue[] = [];

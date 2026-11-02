@@ -35,10 +35,9 @@ export const metadata = { title: "Conversation · Polymath" };
 /*
  * One conversation, full page. The home lists rows; this is what a row opens.
  *
- * The transcript is the page. Controls under it are the ones that act on this
- * run: follow-up or cancel, and the draft the run produced. Decisions on
- * approvals live in Reviews; that surface owns the waiting-on-you vocabulary
- * and the routes to act.
+ * The transcript is the page. The only control under it is retry, and the
+ * draft the run produced. Decisions on approvals live in Reviews; that surface
+ * owns the waiting-on-you vocabulary and the routes to act.
  */
 
 /*
@@ -100,9 +99,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
   const finished = ["succeeded", "failed", "cancelled"].includes(run.state);
-  // A live run streams when the bridge is up; without it the run still takes a
-  // follow-up and a stop through the plain API controls - a waiting run is a
-  // conversation, not a dead end.
+  // A live run streams when the bridge is up and takes its next message through
+  // the composer; without the bridge there is no composer, so nothing here can
+  // continue the run.
   const isLive = !finished && !unavailable;
   // The model's display label, not its provider id — the header speaks product words.
   const modelLabel = run.model ? (modelById(run.model)?.label ?? run.model) : null;

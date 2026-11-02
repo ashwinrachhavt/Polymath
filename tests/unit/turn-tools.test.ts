@@ -85,11 +85,14 @@ describe("toolCallsThisTurn", () => {
 });
 
 describe("normalizeFetchUrl", () => {
-  it("collapses YouTube player variants to the video identity", () => {
+  it("collapses every YouTube address shape to one video identity", () => {
     expect(normalizeFetchUrl("https://www.youtube.com/watch?v=cd1xrO2q9HU&si=tracking#t=10")).toBe(
-      "youtube.com/watch?v=cd1xrO2q9HU",
+      "https://www.youtube.com/watch?v=cd1xrO2q9HU",
     );
-    expect(normalizeFetchUrl("https://youtu.be/cd1xrO2q9HU")).toBe("https://youtu.be/cd1xrO2q9HU");
+    expect(normalizeFetchUrl("https://youtu.be/cd1xrO2q9HU")).toBe("https://www.youtube.com/watch?v=cd1xrO2q9HU");
+    expect(normalizeFetchUrl("https://youtube.com/shorts/cd1xrO2q9HU")).toBe(
+      "https://www.youtube.com/watch?v=cd1xrO2q9HU",
+    );
   });
 
   it("drops the fragment and ignores malformed input", () => {

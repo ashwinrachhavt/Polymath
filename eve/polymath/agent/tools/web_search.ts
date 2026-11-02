@@ -54,14 +54,8 @@ export default defineTool({
       };
     }
     const empty = prior.filter((call) => {
-      const output = call.output;
-      return (
-        output !== null &&
-        typeof output === "object" &&
-        (output as { ok?: unknown }).ok === true &&
-        Array.isArray((output as { results?: unknown }).results) &&
-        (output as { results: unknown[] }).results.length === 0
-      );
+      const output = call.output as { ok?: unknown; results?: unknown } | null;
+      return output?.ok === true && Array.isArray(output.results) && output.results.length === 0;
     }).length;
     if (empty >= MAX_EMPTY_SEARCHES_PER_TURN) {
       return {

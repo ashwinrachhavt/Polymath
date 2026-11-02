@@ -72,13 +72,29 @@ describe("web_fetch turn guards", () => {
   it("refuses a page it already fetched this turn without calling the provider again", async () => {
     const messages: MessageLike[] = [
       { role: "user", content: "summarize this video" },
-      call({ toolCallId: "1", toolName: "web_fetch", input: { url: "https://www.youtube.com/watch?v=abc&si=x" } }),
+      call({
+        toolCallId: "1",
+        toolName: "web_fetch",
+        input: { url: "https://www.youtube.com/watch?v=cd1xrO2q9HU&si=x" },
+      }),
       result({ toolCallId: "1", toolName: "web_fetch", output: { type: "json", value: { ok: true } } }),
     ];
 
-    const out = await webFetch.execute({ url: "https://youtube.com/watch?v=abc#t=10" }, ctx(messages));
+    const out = await webFetch.execute({ url: "https://youtube.com/watch?v=cd1xrO2q9HU#t=10" }, ctx(messages));
     expect(out).toMatchObject({ ok: false });
     expect((out as { error: string }).error).toMatch(/already fetched this turn/);
+    expect(fetchPageForAgent).not.toHaveBeenCalled();
+  });
+
+  it("treats a short link and a watch URL as the same video", async () => {
+    const messages: MessageLike[] = [
+      { role: "user", content: "summarize this video" },
+      call({ toolCallId: "1", toolName: "web_fetch", input: { url: "https://youtu.be/cd1xrO2q9HU" } }),
+      result({ toolCallId: "1", toolName: "web_fetch", output: { type: "json", value: { ok: true } } }),
+    ];
+
+    const out = await webFetch.execute({ url: "https://www.youtube.com/watch?v=cd1xrO2q9HU&si=x" }, ctx(messages));
+    expect(out).toMatchObject({ ok: false });
     expect(fetchPageForAgent).not.toHaveBeenCalled();
   });
 

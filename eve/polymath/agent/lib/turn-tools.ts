@@ -7,6 +7,8 @@
  * Pure on purpose: no eve or database import, so the acceptance suite can
  * assert the guards without a running session.
  */
+import { canonicalVideoUrl, parseVideoId } from "../../../../src/integrations/youtube/transcript";
+
 export type MessageLike = {
   role: string;
   content: unknown;
@@ -61,18 +63,8 @@ function outputValue(output: unknown): unknown {
 }
 
 function isFailure(value: unknown): boolean {
-  if (typeof value === "string") {
-    const text = value.trim();
-    if (text.startsWith("{") || text.startsWith("[")) {
-      try {
-        return isFailure(JSON.parse(text));
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  }
-  return Boolean(value && typeof value === "object" && (value as { ok?: unknown }).ok === false);
+  const unwrapped = outputValue(value);
+  return Boolean(unwrapped && typeof unwrapped === "object" && (unwrapped as { ok?: unknown }).ok === false);
 }
 
 /**
@@ -114,20 +106,18 @@ export function toolCallsThisTurn(messages: readonly MessageLike[], toolName: st
 
 /**
  * The identity of a fetched page, for duplicate detection. Tracking parameters
- * and fragments do not change the content; YouTube's video id is the page, so
- * its player parameters collapse to one form.
+ * and fragments do not change the content; a video id is the page, so every
+ * YouTube URL shape collapses to one canonical form.
  */
 export function normalizeFetchUrl(raw: unknown): string {
   if (typeof raw !== "string") return "";
   const trimmed = raw.trim();
+  const videoId = parseVideoId(trimmed);
+  if (videoId) return canonicalVideoUrl(videoId);
   try {
     const url = new URL(trimmed);
     url.hash = "";
     url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
-    if (url.hostname === "youtube.com" && url.pathname === "/watch") {
-      const id = url.searchParams.get("v");
-      if (id) return `youtube.com/watch?v=${id}`;
-    }
     return url.toString();
   } catch {
     return trimmed;
