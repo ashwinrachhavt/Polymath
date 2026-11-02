@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const execute = vi.fn(async (_statement?: unknown) => ({ rows: [] }));
@@ -19,7 +19,15 @@ vi.mock("drizzle-orm/postgres-js", () => ({
 }));
 
 let withTransaction: typeof import("@/lib/db-transaction").withTransaction;
-beforeAll(async () => {
+beforeEach(async () => {
+  // Shared workers (isolate: false) reuse one module registry per worker: a
+  // db graph cached from an earlier file would beat this file's mocks and
+  // run the real pool. Re-import fresh per test so the mocks above always win.
+  vi.resetModules();
+  mocks.pools.length = 0;
+  mocks.adapters = 0;
+  mocks.transaction.mockClear();
+  mocks.execute.mockClear();
   ({ withTransaction } = await import("@/lib/db-transaction"));
 });
 

@@ -97,6 +97,43 @@ jobs:
       # red on every PR. See src/db/migrations/README.md.
       - name: Guard snapshot invariant (exactly one tracked drizzle snapshot)
         run: pnpm check:snapshot-invariant
+      # Repo hygiene: deny-by-default size ceiling (256 KB) on tracked blobs,
+      # plus a blocklist for generated/local artifacts (.next/, dist/,
+      # coverage/, build/, .turbo/, *.tsbuildinfo, .DS_Store) at any depth.
+      # Snapshot multiplicity is the guard above's job, not duplicated here.
+      # See docs/repo-hygiene.md.
+      - name: Guard repo hygiene (size ceiling + generated-artifact blocklist)
+        run: pnpm check:repo-hygiene
+      # Negative test: a guard that always passes is a no-op. Stage one blob a
+      # byte over the ceiling and one blocklisted path, assert the guard
+      # rejects both by name, then restore the index — the probes never leave
+      # the runner and nothing later in the job sees them.
+      - name: Repo hygiene guard self-test (deliberate violations must fail)
+        run: |
+          head -c 262145 /dev/zero > repo-hygiene-selftest-oversize.bin
+          mkdir -p dist
+          printf 'probe' > dist/repo-hygiene-selftest-probe.js
+          git add -f repo-hygiene-selftest-oversize.bin dist/repo-hygiene-selftest-probe.js
+          log="$(mktemp)"
+          if pnpm check:repo-hygiene >"$log" 2>&1; then
+            echo "::error::The hygiene guard passed a tree it must reject — it is a no-op."
+            cat "$log"
+            exit 1
+          fi
+          grep -q "repo-hygiene-selftest-oversize.bin" "$log" || {
+            echo "::error::The oversize probe was not reported."
+            cat "$log"
+            exit 1
+          }
+          grep -q "dist/repo-hygiene-selftest-probe.js" "$log" || {
+            echo "::error::The blocklist probe was not reported."
+            cat "$log"
+            exit 1
+          }
+          git reset -q -- repo-hygiene-selftest-oversize.bin dist/repo-hygiene-selftest-probe.js
+          rm -f repo-hygiene-selftest-oversize.bin
+          rm -rf dist
+          echo "Hygiene guard self-test passed: oversize and blocklist probes both rejected."
       # Applied directly, in journal order: drizzle-kit migrate has a
       # pre-existing identifier-truncation issue on the early migrations.
       - run: |

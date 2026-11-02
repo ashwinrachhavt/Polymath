@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, like, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordAudit } from "@/domains/audit/record";
@@ -51,9 +51,7 @@ export async function readOnboardingModelPolicy(workspaceId: string): Promise<un
   const [profile] = await db
     .select({ modelPolicy: agentProfiles.modelPolicy })
     .from(agentProfiles)
-    .where(
-      and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, ONBOARDING_PROFILE_NAME)),
-    )
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, ONBOARDING_PROFILE_NAME)))
     .limit(1);
   return profile?.modelPolicy ?? null;
 }
@@ -169,22 +167,26 @@ export async function completeOnboarding(
       sql`update workspaces set onboarded_at = now(), updated_by = ${auth.userId}, updated_at = now() where id = ${auth.workspaceId}`,
     );
 
-    // Failed interview runs are junk rows the home conversation list would
-    // otherwise surface forever, titled with the raw objective script. The
-    // workspace is onboarded now — a dead interview has no reader — so the
-    // failed ones are discarded with the commit that made them pointless.
-    // Discarding marks the row (and hides it from conversation surfaces)
-    // without destroying history: events, steps, and tool calls stay in
-    // run_events for audit. Succeeded and cancelled runs stay untouched: they
-    // are the interview's own record.
+    // Interview runs that never completed are junk rows the home conversation
+    // list would otherwise surface forever, titled with the raw objective
+    // script — failed, cancelled, or a run left hanging by a crashed tab or an
+    // old build (the F4 residual: a pre-#410 stale run also carries an earlier
+    // script revision's text, so the sweep matches every version through the
+    // stable first line rather than today's constant). The workspace is
+    // onboarded now — a dead interview has no reader — so every non-completed
+    // one is discarded with the commit that made it pointless. Discarding
+    // marks the row (and hides it from conversation surfaces) without
+    // destroying history: events, steps, and tool calls stay in run_events
+    // for audit. Succeeded runs stay untouched: they are the interview's own
+    // record.
     await tx
       .update(agentRuns)
       .set({ discardedAt: new Date() })
       .where(
         and(
           eq(agentRuns.workspaceId, auth.workspaceId),
-          eq(agentRuns.objective, ONBOARDING_OBJECTIVE),
-          eq(agentRuns.state, "failed"),
+          like(agentRuns.objective, `${ONBOARDING_OBJECTIVE_PREFIX}%`),
+          ne(agentRuns.state, "succeeded"),
           isNull(agentRuns.discardedAt),
         ),
       );
@@ -225,6 +227,15 @@ import {
   ONBOARDING_BRIEF_FENCE,
   type OnboardingBrief,
 } from "./onboarding-brief";
+
+/**
+ * The stable first line of every interview script version: the script's only
+ * edit so far (the default agent's name in the last line) left it untouched,
+ * so it is the one era-stable marker an interview run carries on its row.
+ * Sweeps and the home-list exclusion match this prefix, recognizing a
+ * machinery run whatever script revision wrote it.
+ */
+export const ONBOARDING_OBJECTIVE_PREFIX = "onboarding-interview";
 
 export const ONBOARDING_OBJECTIVE = [
   "onboarding-interview v1",

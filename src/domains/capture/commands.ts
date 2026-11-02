@@ -8,7 +8,13 @@ import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { intakeFile } from "@/domains/knowledge/intake";
-import { DRAFT_TEMPLATE_KIND, DRAFT_TEMPLATE_LABEL, draftBody, draftTitle, type DraftTemplate } from "./draft-templates";
+import {
+  DRAFT_TEMPLATE_KIND,
+  DRAFT_TEMPLATE_LABEL,
+  draftBody,
+  draftTitle,
+  type DraftTemplate,
+} from "./draft-templates";
 import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-proposal";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
@@ -88,7 +94,7 @@ export async function createCapture(
   if (!trimmed) throw new ConflictError("Nothing to capture.");
   const mode = input.mode ?? inferCaptureMode({ text: trimmed, url: input.url, kind: undefined });
   const isUrlReference = mode === "url-reference";
-  const url = isUrlReference ? (input.url?.trim() || trimmed) : (input.url?.trim() || null);
+  const url = isUrlReference ? input.url?.trim() || trimmed : input.url?.trim() || null;
   const source = input.source ?? "quick_capture";
   const text = isUrlReference ? null : trimmed;
   // The arriving text is the working text at insert; fetchedText only appears
@@ -139,7 +145,12 @@ export async function createCapture(
       }
       await recordAudit(
         auth,
-        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured ${capture.kind} (${mode})` },
+        {
+          action: "capture.created",
+          subjectType: "capture",
+          subjectId: capture.id,
+          summary: `Captured ${capture.kind} (${mode})`,
+        },
         tx,
       );
       // Only a page or a bare address promises the page's content, so only
@@ -225,7 +236,13 @@ export async function createFileCapture(
   // row exists, so the caller gets a clean error and nothing half-created.
   let stored: Awaited<ReturnType<typeof putBlob>>;
   try {
-    stored = await putBlob({ bytes: input.bytes, filename, contentType: mimeType, workspaceId: auth.workspaceId, contentHash });
+    stored = await putBlob({
+      bytes: input.bytes,
+      filename,
+      contentType: mimeType,
+      workspaceId: auth.workspaceId,
+      contentHash,
+    });
   } catch (cause) {
     // No rows exist yet; a storage fault is a clean, retryable failure, never
     // an ambiguous 500 that might have half-created something.
@@ -235,70 +252,83 @@ export async function createFileCapture(
   let lostRace = false;
   try {
     const result = await withTransaction(async (tx) => {
-      const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, fileCaptureReceiptRequest(contentHash, filename), async () => {
-    const blobRow =
-      (await tx
-        .insert(blobObjects)
-        .values({
-          workspaceId: auth.workspaceId,
-          storageKey: stored.storageKey,
-          contentHash,
-          sizeBytes: input.bytes.byteLength,
-          mimeType,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .onConflictDoNothing({ target: blobObjects.storageKey })
-        .returning({ id: blobObjects.id }))[0] ??
-      (
-        await tx
-          .select({ id: blobObjects.id })
-          .from(blobObjects)
-          .where(eq(blobObjects.storageKey, stored.storageKey))
-      )[0];
-      if (!blobRow) throw new Error("blob row missing after insert");
-      const [capture] = await tx
-        .insert(captures)
-        .values({
-          workspaceId: auth.workspaceId,
-          // Content decides the kind, same as the verdict decides the type: a
-          // sniffed audio payload is a voice capture, everything else a file.
-          kind: mimeType.startsWith("audio/") ? "voice" : "file",
-          // A blob is the bytes, not a reading of text: it never dedupes on
-          // content, so it carries no content hash.
-          captureMode: "blob",
-          source: input.source ?? "quick_capture",
-          rawPayload: {
-            filename,
-            mimeType,
-            sizeBytes: input.bytes.byteLength,
-            contentHash,
-            ...(input.verdict.ok ? {} : { quarantined: true }),
-          },
-          text: null,
-          blobId: blobRow.id,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning();
-      await recordAudit(
-        auth,
-        { action: "capture.created", subjectType: "capture", subjectId: capture.id, summary: `Captured file ${filename}` },
+      const { value, replayed } = await withReceipt(
         tx,
+        auth,
+        input.idempotencyKey,
+        fileCaptureReceiptRequest(contentHash, filename),
+        async () => {
+          const blobRow =
+            (
+              await tx
+                .insert(blobObjects)
+                .values({
+                  workspaceId: auth.workspaceId,
+                  storageKey: stored.storageKey,
+                  contentHash,
+                  sizeBytes: input.bytes.byteLength,
+                  mimeType,
+                  createdBy: auth.userId,
+                  updatedBy: auth.userId,
+                })
+                .onConflictDoNothing({ target: blobObjects.storageKey })
+                .returning({ id: blobObjects.id })
+            )[0] ??
+            (
+              await tx
+                .select({ id: blobObjects.id })
+                .from(blobObjects)
+                .where(eq(blobObjects.storageKey, stored.storageKey))
+            )[0];
+          if (!blobRow) throw new Error("blob row missing after insert");
+          const [capture] = await tx
+            .insert(captures)
+            .values({
+              workspaceId: auth.workspaceId,
+              // Content decides the kind, same as the verdict decides the type: a
+              // sniffed audio payload is a voice capture, everything else a file.
+              kind: mimeType.startsWith("audio/") ? "voice" : "file",
+              // A blob is the bytes, not a reading of text: it never dedupes on
+              // content, so it carries no content hash.
+              captureMode: "blob",
+              source: input.source ?? "quick_capture",
+              rawPayload: {
+                filename,
+                mimeType,
+                sizeBytes: input.bytes.byteLength,
+                contentHash,
+                ...(input.verdict.ok ? {} : { quarantined: true }),
+              },
+              text: null,
+              blobId: blobRow.id,
+              createdBy: auth.userId,
+              updatedBy: auth.userId,
+            })
+            .returning();
+          await recordAudit(
+            auth,
+            {
+              action: "capture.created",
+              subjectType: "capture",
+              subjectId: capture.id,
+              summary: `Captured file ${filename}`,
+            },
+            tx,
+          );
+          // Audio is promised a transcript (ASH-298): the outbox carries the
+          // wait, and the handler's unconfigured path answers honestly instead
+          // of looping. Non-audio files have no text to classify - the capture
+          // IS the file - so nothing else enqueues.
+          if (capture.kind === "voice") {
+            await enqueueOutbox(tx, auth, {
+              topic: CAPTURE_ENRICHMENT_TOPIC,
+              payload: { captureId: capture.id },
+              dispatchKey: `capture-enrichment:${capture.id}`,
+            });
+          }
+          return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
+        },
       );
-        // Audio is promised a transcript (ASH-298): the outbox carries the
-        // wait, and the handler's unconfigured path answers honestly instead
-        // of looping. Non-audio files have no text to classify - the capture
-        // IS the file - so nothing else enqueues.
-        if (capture.kind === "voice") {
-          await enqueueOutbox(tx, auth, {
-            topic: CAPTURE_ENRICHMENT_TOPIC,
-            payload: { captureId: capture.id },
-            dispatchKey: `capture-enrichment:${capture.id}`,
-          });
-        }
-        return { captureId: capture.id, quarantined: !input.verdict.ok, contentHash };
-      });
       lostRace = replayed;
       return value;
     });
@@ -344,11 +374,20 @@ export async function convertCaptureToTask(
       // A file capture's only label is its filename; its bytes are not text.
       ((capture.rawPayload as { filename?: string } | null)?.filename?.trim() || null) ??
       "Captured item";
-    // The title is the first line; a multi-line capture keeps its full text
-    // as the description, so nothing the owner wrote is lost or crammed into
-    // the title.
-    const firstLine = sourceText.split("\n").map((line) => line.trim()).find(Boolean) ?? sourceText;
-    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+    // Title preference: the capture's own title (person-supplied at creation,
+    // or enrichment's suggestion into an empty slot) wins; the first line of
+    // the working text is the fallback. A multi-line capture keeps its full
+    // text as the description, so nothing the owner wrote is lost or crammed
+    // into the title.
+    const firstLine =
+      sourceText
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) ?? sourceText;
+    const title =
+      input.title?.trim() ||
+      capture.title?.trim() ||
+      (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
     const task = await createTask(
       auth,
       {
@@ -376,7 +415,12 @@ export async function convertCaptureToTask(
     }
     await recordAudit(
       auth,
-      { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became task: ${title}` },
+      {
+        action: "capture.converted",
+        subjectType: "capture",
+        subjectId: capture.id,
+        summary: `Capture became task: ${title}`,
+      },
       tx,
     );
     return { capture: updated, task };
@@ -410,9 +454,22 @@ export async function convertCaptureToNote(
     }
 
     const body = capture.text ?? (capture.url ? `[${capture.url}](${capture.url})` : "Captured item");
-    const firstLine = (capture.text ?? capture.url ?? "Captured item").split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
-    const title = input.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
-    const note = await createNoteInTx(tx, auth, { title, content: { format: "markdown", text: body }, plainText: body });
+    const firstLine =
+      (capture.text ?? capture.url ?? "Captured item")
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) ?? "Captured item";
+    // Same title preference as the task conversion: the capture's own title
+    // wins over the first-line fallback.
+    const title =
+      input.title?.trim() ||
+      capture.title?.trim() ||
+      (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+    const note = await createNoteInTx(tx, auth, {
+      title,
+      content: { format: "markdown", text: body },
+      plainText: body,
+    });
     await syncNoteLinks(tx, auth, note.id, body);
 
     const [updated] = await tx
@@ -433,7 +490,12 @@ export async function convertCaptureToNote(
     }
     await recordAudit(
       auth,
-      { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became note: ${title}` },
+      {
+        action: "capture.converted",
+        subjectType: "capture",
+        subjectId: capture.id,
+        summary: `Capture became note: ${title}`,
+      },
       tx,
     );
     return { capture: updated, note };
@@ -441,7 +503,9 @@ export async function convertCaptureToNote(
   try {
     await embedArtifact(auth, { artifactId: result.note.id });
   } catch (cause) {
-    console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(
+      `embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
   return result;
 }
@@ -479,14 +543,20 @@ export async function convertCaptureToDocument(
   // filename.
   const body = workingText(capture)?.trim() ?? "";
   if (!body) throw new ConflictError("That capture has no text to file.");
-  const firstLine = body.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured text";
-  const title = input.title?.trim() || capture.title?.trim() || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+  const firstLine =
+    body
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) ?? "Captured text";
+  const title =
+    input.title?.trim() ||
+    capture.title?.trim() ||
+    (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
 
   // Matching the constraint name keeps an unrelated 23505 out of this
   // message: the replay is only for a duplicate source_url, and an unnamed
   // violation still counts (a wrapper may not forward the name).
-  const isDuplicateSourceUrl = (cause: unknown) =>
-    isUniqueViolation(cause, "documents_workspace_source_url_key");
+  const isDuplicateSourceUrl = (cause: unknown) => isUniqueViolation(cause, "documents_workspace_source_url_key");
 
   let result: Awaited<ReturnType<typeof intakeFile>>;
   try {
@@ -516,7 +586,12 @@ export async function convertCaptureToDocument(
         }
         await recordAudit(
           auth,
-          { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became document: ${title}` },
+          {
+            action: "capture.converted",
+            subjectType: "capture",
+            subjectId: capture.id,
+            summary: `Capture became document: ${title}`,
+          },
           tx,
         );
       },
@@ -559,15 +634,23 @@ export async function convertCaptureToDraft(
     }
 
     const material = capture.text ?? (capture.url ? capture.url : "Captured item");
-    const firstLine = material.split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
-    let title = draftTitle(input.template, firstLine);
+    const firstLine =
+      material
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) ?? "Captured item";
+    // Same title preference as the other conversions: the capture's own title
+    // names the draft (and seeds the linear-issue proposer); the body still
+    // quotes the material verbatim.
+    const preferredTitle = capture.title?.trim() || firstLine;
+    let title = draftTitle(input.template, preferredTitle);
     let body = draftBody(input.template, { firstLine, material });
     if (input.template === "linear-issue") {
       // ASH-285 part 2: with a generation provider configured, fill the
       // scaffold into a fully formed proposal grounded in the capture. Any
       // failure keeps the honest deterministic scaffold - never fake content.
       try {
-        const { proposal, proposer } = await proposeLinearIssue(auth, { title: firstLine, text: material });
+        const { proposal, proposer } = await proposeLinearIssue(auth, { title: preferredTitle, text: material });
         title = `Linear issue: ${proposal.title}`;
         body = renderLinearIssueDraft(proposal, { sourceMaterial: material, proposer });
       } catch {
@@ -600,7 +683,12 @@ export async function convertCaptureToDraft(
     }
     await recordAudit(
       auth,
-      { action: "capture.converted", subjectType: "capture", subjectId: capture.id, summary: `Capture became ${DRAFT_TEMPLATE_LABEL[input.template].toLowerCase()}: ${title}` },
+      {
+        action: "capture.converted",
+        subjectType: "capture",
+        subjectId: capture.id,
+        summary: `Capture became ${DRAFT_TEMPLATE_LABEL[input.template].toLowerCase()}: ${title}`,
+      },
       tx,
     );
     return { capture: updated, draft };
@@ -608,7 +696,9 @@ export async function convertCaptureToDraft(
   try {
     await embedArtifact(auth, { artifactId: result.draft.id });
   } catch (cause) {
-    console.error(`embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(
+      `embedArtifact after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
   return result;
 }
@@ -642,7 +732,9 @@ export async function updateCaptureText(
           .limit(1);
         if (!capture) throw new StaleWriteError("That capture no longer exists. Reload the inbox.");
         if (capture.processingState === "converted") {
-          throw new ConflictError("This capture was already converted. Editing it here would desync the record it became.");
+          throw new ConflictError(
+            "This capture was already converted. Editing it here would desync the record it became.",
+          );
         }
         // An enriched capture is still the owner's working text: only the
         // conversion boundary (above) closes editing. Editing an enriched
@@ -721,49 +813,55 @@ export async function retryCaptureUrl(
   input: { captureId: string; idempotencyKey?: string },
 ): Promise<{ enqueued: boolean }> {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "retryCaptureUrl", captureId: input.captureId }, async () => {
-      const [capture] = await tx
-        .select()
-        .from(captures)
-        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
-        .limit(1);
-      if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
-      if (!capture.url) throw new ConflictError("That capture has no address to read.");
-      if (capture.createdBy !== auth.userId && auth.role !== "owner") {
-        // A capture someone else owns is indistinguishable from one that is
-        // not there: the same rule every tenant-scoped read follows.
-        throw new NotFoundError("That capture no longer exists. Reload the inbox.");
-      }
-      const [updated] = await tx
-        .update(captures)
-        .set({
-          fetchOutcome: "pending",
-          failureReason: null,
-          version: sql`${captures.version} + 1`,
-          updatedAt: new Date(),
-          updatedBy: auth.userId,
-        })
-        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
-        .returning({ id: captures.id });
-      if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
-      const event = await enqueueOutbox(tx, auth, {
-        topic: CAPTURE_URL_CONTENT_TOPIC,
-        payload: { captureId: capture.id, url: capture.url },
-        // A repeated key enqueues nothing, so each retry gets its own.
-        dispatchKey: `capture-url-retry:${capture.id}:${Date.now()}`,
-      });
-      await recordAudit(
-        auth,
-        {
-          action: "capture.url_retry_requested",
-          subjectType: "capture",
-          subjectId: capture.id,
-          summary: "Page fetch retried",
-        },
-        tx,
-      );
-      return { enqueued: event.enqueued };
-    });
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "retryCaptureUrl", captureId: input.captureId },
+      async () => {
+        const [capture] = await tx
+          .select()
+          .from(captures)
+          .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
+          .limit(1);
+        if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+        if (!capture.url) throw new ConflictError("That capture has no address to read.");
+        if (capture.createdBy !== auth.userId && auth.role !== "owner") {
+          // A capture someone else owns is indistinguishable from one that is
+          // not there: the same rule every tenant-scoped read follows.
+          throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+        }
+        const [updated] = await tx
+          .update(captures)
+          .set({
+            fetchOutcome: "pending",
+            failureReason: null,
+            version: sql`${captures.version} + 1`,
+            updatedAt: new Date(),
+            updatedBy: auth.userId,
+          })
+          .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
+          .returning({ id: captures.id });
+        if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
+        const event = await enqueueOutbox(tx, auth, {
+          topic: CAPTURE_URL_CONTENT_TOPIC,
+          payload: { captureId: capture.id, url: capture.url },
+          // A repeated key enqueues nothing, so each retry gets its own.
+          dispatchKey: `capture-url-retry:${capture.id}:${Date.now()}`,
+        });
+        await recordAudit(
+          auth,
+          {
+            action: "capture.url_retry_requested",
+            subjectType: "capture",
+            subjectId: capture.id,
+            summary: "Page fetch retried",
+          },
+          tx,
+        );
+        return { enqueued: event.enqueued };
+      },
+    );
     return value;
   });
 }
@@ -843,7 +941,10 @@ async function loadPendingProposal(auth: AuthContext, proposalId: string) {
  * workflow (ASH-287) owns them - so accepting one is refused here and never
  * offered in the UI.
  */
-export async function acceptCaptureProposal(auth: AuthContext, input: { proposalId: string }): Promise<AcceptedProposal> {
+export async function acceptCaptureProposal(
+  auth: AuthContext,
+  input: { proposalId: string },
+): Promise<AcceptedProposal> {
   const proposal = await loadPendingProposal(auth, input.proposalId);
   if (proposal.kind === "contact") {
     throw new ConflictError("A contact starts from the CRM page - the suggestion only flags it.");

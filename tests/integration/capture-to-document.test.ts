@@ -17,7 +17,11 @@ import { makeTestDb, seedWorkspace, ownerAuth } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -29,7 +33,8 @@ import { convertCaptureToDocument, createCapture, ConflictError, StaleWriteError
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { proposeZettels } from "@/domains/knowledge/zettels";
 
-const BODY = "Atomic notes compound.\n\nA zettel carries one idea, verbatim evidence, and links to its neighbours. Writing them daily turns reading into thinking.";
+const BODY =
+  "Atomic notes compound.\n\nA zettel carries one idea, verbatim evidence, and links to its neighbours. Writing them daily turns reading into thinking.";
 
 beforeAll(() => {
   holder.db = handle?.db;
@@ -37,12 +42,30 @@ beforeAll(() => {
   vi.stubEnv("GEMINI_API_KEY", "");
   vi.stubEnv("OPENAI_API_KEY", "");
 });
-afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
 
-async function addTextCapture(db: NonNullable<typeof holder.db>, ws: string, userId: string, text: string | null) {
+async function addTextCapture(
+  db: NonNullable<typeof holder.db>,
+  ws: string,
+  userId: string,
+  text: string | null,
+  title?: string,
+) {
   const [row] = await db
     .insert(captures)
-    .values({ workspaceId: ws, kind: "text", captureMode: "authored", rawPayload: text ? { text } : {}, text, createdBy: userId, updatedBy: userId })
+    .values({
+      workspaceId: ws,
+      kind: "text",
+      captureMode: "authored",
+      rawPayload: text ? { text } : {},
+      text,
+      title: title ?? null,
+      createdBy: userId,
+      updatedBy: userId,
+    })
     .returning();
   return row;
 }
@@ -70,11 +93,32 @@ suite("convertCaptureToDocument", () => {
     expect(updated.convertedType).toBe("document");
     expect(updated.convertedId).toBe(result.documentId);
 
-    const [queued] = await holder.db!
-      .select()
+    const [queued] = await holder
+      .db!.select()
       .from(outboxEvents)
       .where(and(eq(outboxEvents.workspaceId, workspaceId), eq(outboxEvents.topic, "document.extraction_requested")));
     expect(queued).toBeTruthy();
+  });
+
+  it("prefers the conversion title, then the capture's own title, over the first line", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-title-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    // The capture's own title beats the first line of the body.
+    const titled = await addTextCapture(holder.db!, workspaceId, userId, BODY, "Captured title");
+    const viaCapture = await convertCaptureToDocument(auth, { captureId: titled.id, expectedVersion: titled.version });
+    const [captureTitled] = await holder.db!.select().from(documents).where(eq(documents.id, viaCapture.documentId!));
+    expect(captureTitled.title).toBe("Captured title");
+
+    // A title passed at conversion time beats the stored one.
+    const bare = await addTextCapture(holder.db!, workspaceId, userId, BODY);
+    const viaInput = await convertCaptureToDocument(auth, {
+      captureId: bare.id,
+      expectedVersion: bare.version,
+      title: "Conversion title",
+    });
+    const [inputTitled] = await holder.db!.select().from(documents).where(eq(documents.id, viaInput.documentId!));
+    expect(inputTitled.title).toBe("Conversion title");
   });
 
   it("feeds the existing pipeline: extraction succeeds from the bytes, zettel proposals quote it verbatim", async () => {
@@ -82,7 +126,10 @@ suite("convertCaptureToDocument", () => {
     const auth = ownerAuth(userId, workspaceId);
     const capture = await addTextCapture(holder.db!, workspaceId, userId, BODY);
 
-    const { documentId } = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
+    const { documentId } = await convertCaptureToDocument(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
     const extraction = await extractDocument(auth, { documentId: documentId! });
     expect(extraction.ok).toBe(true);
 
@@ -91,19 +138,26 @@ suite("convertCaptureToDocument", () => {
       extractor: {
         name: "test-extractor",
         extract: async () => [
-          { title: "One idea per card", claim: "A zettel holds exactly one idea.", quote: "A zettel carries one idea, verbatim evidence" },
+          {
+            title: "One idea per card",
+            claim: "A zettel holds exactly one idea.",
+            quote: "A zettel carries one idea, verbatim evidence",
+          },
           { title: "Invented", claim: "Not in the text.", quote: "this passage was never written down anywhere" },
         ],
       },
     });
     expect(created).toHaveLength(1); // the invented quote is dropped
     expect(created[0].quote).toBe("A zettel carries one idea, verbatim evidence");
-    const [extractionRow] = await holder.db!
-      .select()
+    const [extractionRow] = await holder
+      .db!.select()
       .from(documentExtractions)
       .where(and(eq(documentExtractions.documentId, documentId!), eq(documentExtractions.status, "succeeded")));
     expect(created[0].extractionId).toBe(extractionRow.id);
-    const [proposal] = await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.documentId, documentId!));
+    const [proposal] = await holder
+      .db!.select()
+      .from(zettelProposals)
+      .where(eq(zettelProposals.documentId, documentId!));
     expect(proposal.status).toBe("proposed");
   });
 
@@ -112,24 +166,28 @@ suite("convertCaptureToDocument", () => {
     const auth = ownerAuth(userId, workspaceId);
     const capture = await addTextCapture(holder.db!, workspaceId, userId, BODY);
 
-    await expect(convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version + 1 }))
-      .rejects.toBeInstanceOf(StaleWriteError);
+    await expect(
+      convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version + 1 }),
+    ).rejects.toBeInstanceOf(StaleWriteError);
     await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
-    await expect(convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version }))
-      .rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version }),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("refuses a capture with no text and another workspace's capture", async () => {
     const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-empty-${Date.now()}`);
     const auth = ownerAuth(userId, workspaceId);
     const empty = await addTextCapture(holder.db!, workspaceId, userId, null);
-    await expect(convertCaptureToDocument(auth, { captureId: empty.id, expectedVersion: empty.version }))
-      .rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      convertCaptureToDocument(auth, { captureId: empty.id, expectedVersion: empty.version }),
+    ).rejects.toBeInstanceOf(ConflictError);
 
     const other = await seedWorkspace(holder.db!, `c2d-other-${Date.now()}`);
     const foreign = await addTextCapture(holder.db!, other.workspaceId, other.userId, BODY);
-    await expect(convertCaptureToDocument(auth, { captureId: foreign.id, expectedVersion: foreign.version }))
-      .rejects.toBeInstanceOf(StaleWriteError);
+    await expect(
+      convertCaptureToDocument(auth, { captureId: foreign.id, expectedVersion: foreign.version }),
+    ).rejects.toBeInstanceOf(StaleWriteError);
   });
 
   it("carries the capture's url onto the document", async () => {
@@ -138,7 +196,10 @@ suite("convertCaptureToDocument", () => {
     const url = `https://example.com/provenance-${Date.now()}`;
     const capture = await createCapture(auth, { text: BODY, url, mode: "selection" });
 
-    const { documentId } = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
+    const { documentId } = await convertCaptureToDocument(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
 
     const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, documentId!));
     expect(doc.sourceUrl).toBe(url);
@@ -152,16 +213,20 @@ suite("convertCaptureToDocument", () => {
     const first = await createCapture(auth, { text: BODY, url, mode: "selection" });
     const second = await createCapture(auth, { text: `${BODY}\n\nA second reading.`, url, mode: "selection" });
 
-    const { documentId } = await convertCaptureToDocument(auth, { captureId: first.id, expectedVersion: first.version });
+    const { documentId } = await convertCaptureToDocument(auth, {
+      captureId: first.id,
+      expectedVersion: first.version,
+    });
 
-    const error = await convertCaptureToDocument(auth, { captureId: second.id, expectedVersion: second.version })
-      .catch((caught: unknown) => caught);
+    const error = await convertCaptureToDocument(auth, { captureId: second.id, expectedVersion: second.version }).catch(
+      (caught: unknown) => caught,
+    );
     expect(error).toBeInstanceOf(ConflictError);
     expect((error as ConflictError).code).toBe("conflict");
     expect((error as Error).message).toBe("That article is already in your library.");
 
-    const filed = await holder.db!
-      .select({ id: documents.id })
+    const filed = await holder
+      .db!.select({ id: documents.id })
       .from(documents)
       .where(and(eq(documents.workspaceId, workspaceId), eq(documents.sourceUrl, url)));
     expect(filed).toHaveLength(1);

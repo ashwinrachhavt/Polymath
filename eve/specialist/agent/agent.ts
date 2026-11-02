@@ -1,6 +1,7 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "../../polymath/agent/lib/gemini-openai";
+import { headroomFetch } from "../../../src/integrations/headroom/client";
 
 /*
  * The specialist agent: one shared runtime for every hired profile
@@ -27,7 +28,11 @@ function specialistModel() {
     apiKey,
     baseURL: GEMINI_OPENAI_BASE,
     name: "gemini",
-    fetch: geminiFetch(),
+    // Same seam as polymath (spec PR-3): the shim repairs first, then
+    // Headroom (env-gated, fail-open) compresses what finally goes on the
+    // wire. Unset HEADROOM_BASE_URL makes headroomFetch() the global fetch —
+    // the exact pre-Headroom construction.
+    fetch: geminiFetch(headroomFetch()),
   });
   return provider.chat(process.env.GEMINI_AGENT_MODEL || GEMINI_DEFAULT_MODEL);
 }

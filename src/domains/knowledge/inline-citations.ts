@@ -12,8 +12,7 @@ import type { DocumentCitation } from "@/domains/knowledge/agent-search";
  */
 
 export type CitationSegment =
-  | { type: "text"; text: string }
-  | { type: "citation"; index: number; citation: DocumentCitation };
+  { type: "text"; text: string } | { type: "citation"; index: number; citation: DocumentCitation };
 
 /** `[[3]]`, and the looser `[3]` a model sometimes writes anyway. */
 const MARKER = /\[\[(\d{1,3})\]\]|\[(\d{1,3})\]/g;
@@ -43,6 +42,20 @@ export function splitCitations(answer: string, citations: DocumentCitation[]): C
   }
   if (cursor < answer.length) segments.push({ type: "text", text: answer.slice(cursor) });
   return segments.length > 0 ? segments : [{ type: "text", text: answer }];
+}
+
+/**
+ * The indices into `citations` that an answer's markers actually resolve to:
+ * 0-based, deduplicated, ascending. The Sources strip filters on this, so it
+ * renders only passages the answer cited; a marker with no source behind it
+ * names nothing and is ignored here just as it is dropped in the prose.
+ */
+export function citedIndices(answer: string, citations: DocumentCitation[]): number[] {
+  const indices = new Set<number>();
+  for (const segment of splitCitations(answer, citations)) {
+    if (segment.type === "citation") indices.add(segment.index);
+  }
+  return [...indices].sort((a, b) => a - b);
 }
 
 /**

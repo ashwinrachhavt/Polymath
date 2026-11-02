@@ -26,15 +26,26 @@ const authContext = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => authContext);
 vi.mock("@/domains/identity/preferences", () => ({
-  getPreferences: vi.fn(async () => ({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", version: 1 })),
+  getPreferences: vi.fn(async () => ({
+    timezone: "UTC",
+    weekStart: 1,
+    appearance: "system",
+    motion: "full",
+    version: 1,
+  })),
 }));
 vi.mock("@/domains/agents/queries", () => ({ getDefaultProfile: vi.fn(async () => null) }));
 vi.mock("@/lib/capability-config", () => ({ capabilityStatus: vi.fn(() => []) }));
 
-import { SettingsSurface } from "@/app/(workspace)/settings/page";
+let SettingsSurface: typeof import("@/app/(workspace)/settings/page").SettingsSurface;
 
 describe("/settings route wiring", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Shared workers reuse the module registry across files: a page cached
+    // from a sibling settings test would carry that file's mocks. Re-import
+    // per test so this file's wiring is what runs.
+    vi.resetModules();
+    ({ SettingsSurface } = await import("@/app/(workspace)/settings/page"));
     settingsProps.fn.mockClear();
     authContext.getAuthContext.mockImplementation(async () => ({ userId: "u", workspaceId: "w", role: "owner" }));
   });

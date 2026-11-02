@@ -70,6 +70,7 @@ export async function getOpenQuestion(workspaceId: string, runId: string) {
       id: agentQuestions.id,
       question: agentQuestions.question,
       context: agentQuestions.context,
+      askedAt: agentQuestions.createdAt,
       options: agentQuestions.options,
     })
     .from(agentQuestions)
@@ -87,6 +88,7 @@ export async function getOpenQuestion(workspaceId: string, runId: string) {
     id: row.id,
     question: row.question,
     context: row.context,
+    askedAt: row.askedAt,
     options: Array.isArray(row.options) ? row.options.filter((o): o is string => typeof o === "string") : [],
   };
 }

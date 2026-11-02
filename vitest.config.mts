@@ -19,10 +19,17 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
-          // load-env first: a handful of unit files (the instant-tool and
-          // gateway suites) drive production code that opens the test database,
-          // and makeTestDb() now fails loudly rather than skipping.
-          setupFiles: ["tests/setup.load-env.ts", "tests/unit/setup.clock.ts", "tests/setup.fetch-guard.ts"],
+          // load-env first: unit files legitimately manipulate DATABASE_URL
+          // (e2e-database deletes it, live-polymath-pages stubs it empty) and
+          // src/lib/db-transaction.ts caches its client at first evaluation,
+          // so setup.db-url.ts pins the variable to the scratch database
+          // before any unit module graph loads. No unit file opens a database.
+          setupFiles: [
+            "tests/setup.load-env.ts",
+            "tests/unit/setup.db-url.ts",
+            "tests/unit/setup.clock.ts",
+            "tests/setup.fetch-guard.ts",
+          ],
           // Unit files are pure: no database, no shared filesystem state, so
           // their per-file startup (import + transform, the bulk of the serial
           // wall) can overlap safely. The root false below stays in force for
@@ -62,5 +69,13 @@ export default defineConfig({
     // files run one at a time (within a file, tests still parallelize where
     // independent).
     fileParallelism: false,
+    // The truncate-everything suites (document-schema, reliability) guard
+    // against the operator pointing DATABASE_URL at the scratch database.
+    // makeTestDb retargets process.env.DATABASE_URL in its own worker, and
+    // projects share the worker pool, so a guard reading the live variable
+    // sees whatever the previous file in that worker left behind. Capture the
+    // operator's value once here, in the parent, before any test can mutate
+    // it, and inject it into every worker read-only.
+    env: { PRISTINE_DATABASE_URL: process.env.DATABASE_URL ?? "" },
   },
 });

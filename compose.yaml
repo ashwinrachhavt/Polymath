@@ -39,6 +39,31 @@ services:
       - "127.0.0.1:5001:5001"
     restart: unless-stopped
 
+  # Headroom: compresses the LLM calls' context (fresh tool output and new
+  # turns — never conversation history) before it leaves this machine, for
+  # the product-runtime wiring in src/integrations/headroom/client.ts and the
+  # story in docs/headroom.md. The deployed Vercel app cannot reach this
+  # container; there, HEADROOM_BASE_URL stays unset and the app runs its
+  # fail-open passthrough until a hosted proxy is provisioned. Entrypoint is
+  # `headroom proxy`; the image refuses a non-loopback bind without the
+  # unauthenticated-bind acknowledgement below (its docker docs pair exactly
+  # these three: 0.0.0.0 bind, loopback publication, acknowledgement).
+  headroom:
+    image: ghcr.io/headroomlabs-ai/headroom
+    container_name: axiom-headroom
+    command: ["--host", "0.0.0.0", "--port", "8787"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      HEADROOM_ALLOW_UNAUTHENTICATED_BIND: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8787/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
   # Private metasearch for the agents' web.search tool and Firecrawl. No key,
   # no account, query leaves this machine only as the individual engines it
   # fans out to. JSON results are what the adapter and Firecrawl read.
