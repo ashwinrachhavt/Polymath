@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { documents, documentExtractions } from "@/domains/knowledge/schema";
+import { artifacts, artifactVersions, documents, documentExtractions } from "@/domains/knowledge/schema";
+import { eq } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -54,6 +55,55 @@ async function seedDocument(label: string, text: string) {
 }
 
 suite("the zettelization pipeline (real Postgres)", () => {
+  /** Seeds an artifact whose current version's plain text is `text` (Task 18's artifact path). */
+  async function seedTextArtifact(label: string, text: string) {
+    const db = holder.db!;
+    const seed = await seedWorkspace(db, `zpipe-art-${label}-${Date.now()}`);
+    const auth = ownerAuth(seed.userId, seed.workspaceId);
+    const [artifact] = await db
+      .insert(artifacts)
+      .values({
+        workspaceId: auth.workspaceId,
+        kind: "note",
+        title: "Lease notes",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: artifacts.id, version: artifacts.version });
+    const [version] = await db
+      .insert(artifactVersions)
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: artifact.id,
+        versionNumber: 1,
+        content: { format: "markdown", text },
+        plainText: text,
+        reason: "created",
+        createdBy: auth.userId,
+      })
+      .returning({ id: artifactVersions.id });
+    await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+    return { auth, artifactId: artifact.id };
+  }
+
+  it("drops a candidate whose quote is verbatim elsewhere but not in its own section", async () => {
+    const sectionTwoPassage = "Rent is due on the first of each month.";
+    const text = `## Section 1\nA first section about the porch, with no rent in it.\n\n## Section 2\n${sectionTwoPassage}`;
+    const { auth, artifactId } = await seedTextArtifact("reach", text);
+    const { proposeZettels } = await import("@/domains/knowledge/zettels");
+
+    // Section 1's candidate reaches across the document for a passage only
+    // section 2 contains. Evidence is per-section, so it must be dropped
+    // even though the quote is verbatim in the artifact as a whole.
+    const extractor = {
+      name: "fake",
+      extract: async (section: string) =>
+        section.includes("Section 1") ? [{ title: "Reach", claim: "A claim", quote: sectionTwoPassage }] : [],
+    };
+    const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
+    expect(proposals).toEqual([]);
+  });
+
   it("reads every section of a 30,000-character document", async () => {
     const { auth, documentId } = await seedDocument("full", LONG_TEXT);
     expect(LONG_TEXT.length).toBeGreaterThanOrEqual(30_000);
