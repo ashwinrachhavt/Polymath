@@ -76,12 +76,7 @@ suite("createProposal", () => {
     const rows = await db
       .select()
       .from(actionProposals)
-      .where(
-        and(
-          eq(actionProposals.workspaceId, workspaceId),
-          eq(actionProposals.dedupeKey, input.dedupeKey),
-        ),
-      );
+      .where(and(eq(actionProposals.workspaceId, workspaceId), eq(actionProposals.dedupeKey, input.dedupeKey)));
     expect(rows).toHaveLength(1);
   });
 
@@ -97,22 +92,30 @@ suite("createProposal", () => {
     };
 
     // The unique index, not application timing, is what makes this hold.
-    const results = await Promise.all([propose(workspaceId, input), propose(workspaceId, input), propose(workspaceId, input)]);
+    const results = await Promise.all([
+      propose(workspaceId, input),
+      propose(workspaceId, input),
+      propose(workspaceId, input),
+    ]);
 
     expect(new Set(results.map((r) => r.proposalId)).size).toBe(1);
     expect(results.filter((r) => r.deduplicated)).toHaveLength(2);
 
-    const rows = await db
-      .select()
-      .from(actionProposals)
-      .where(eq(actionProposals.workspaceId, workspaceId));
+    const rows = await db.select().from(actionProposals).where(eq(actionProposals.workspaceId, workspaceId));
     expect(rows).toHaveLength(1);
   });
 
   it("the same dedupe key in another workspace is a different proposal", async () => {
     const a = await seed("proposal-scope-a");
     const b = await seed("proposal-scope-b");
-    const shared = { capability: "gmail.send", riskClass: "external_write" as const, title: "x", expectedEffect: "y", runId: null, dedupeKey: "shared-key" };
+    const shared = {
+      capability: "gmail.send",
+      riskClass: "external_write" as const,
+      title: "x",
+      expectedEffect: "y",
+      runId: null,
+      dedupeKey: "shared-key",
+    };
 
     const pa = await propose(a, shared);
     const pb = await propose(b, shared);
@@ -134,10 +137,7 @@ suite("createProposal", () => {
       expiresAt: past,
     });
 
-    const [row] = await db
-      .select()
-      .from(actionProposals)
-      .where(eq(actionProposals.id, proposalId));
+    const [row] = await db.select().from(actionProposals).where(eq(actionProposals.id, proposalId));
     expect(row.riskClass).toBe("prepare");
     expect(row.status).toBe("pending");
     // Expiry adjustment is a later concern; the column round-trips now.
@@ -152,9 +152,16 @@ suite("createProposal", () => {
     const workspaceId = await seed("proposal-status-counts");
     const other = await seed("proposal-status-counts-other");
     const mk = (ws: string, key: string) =>
-      propose(ws, { capability: "gmail.send", riskClass: "external_write" as const, title: "t", expectedEffect: "e", dedupeKey: key, runId: null });
+      propose(ws, {
+        capability: "gmail.send",
+        riskClass: "external_write" as const,
+        title: "t",
+        expectedEffect: "e",
+        dedupeKey: key,
+        runId: null,
+      });
 
-    const [p1, p2, p3] = await Promise.all([
+    const [, p2, p3] = await Promise.all([
       mk(workspaceId, `pending:${workspaceId}`),
       mk(workspaceId, `approved:${workspaceId}`),
       mk(workspaceId, `rejected:${workspaceId}`),

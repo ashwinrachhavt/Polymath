@@ -1,0 +1,49 @@
+# Formatter boundaries. Everything listed here is either generated, vendored,
+# or published history that must never be rewritten (migrations are compared
+# byte-for-byte by scripts/check-migrations.ts).
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+
+# Published migration history: check:migrations rejects changed SQL.
+src/db/migrations/
+
+# Documentation is authored prose, not code: reflowing it would rewrite every
+# table, list and wrapped paragraph in a diff no reviewer can read. This also
+# covers docs/generated/inventory.md, which scripts/tech-spec-inventory.ts
+# emits and inventory:check compares byte-for-byte.
+docs/
+
+# Written by tests/e2e/perf-budget.spec.ts on every e2e run.
+perf-budget-report.json
+
+# Vendored and third-party code.
+extensions/
+.claude/
+.superpowers/
+.gstack/
+.run/
+.serena/
+
+# Gitignored local scratch the formatter must not walk (gitignored by design,
+# so this never affects CI; it only keeps a local `pnpm format` off a colleague's
+# multi-megabyte scratch dirs).
+.cache/
+.eve/
+.output/
+.playwright-mcp/
+mockups/
+outreach/
+
+# Binary assets.
+public/
+pnpm-lock.yaml
+*.min.js
+*.min.css
