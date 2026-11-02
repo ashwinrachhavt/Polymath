@@ -1,6 +1,6 @@
 {
-  "id": "406ffec6-2e72-458e-95c1-cc966c86c7c6",
-  "prevId": "16120a0e-b9bb-4ef8-b253-b7cc1fae89bc",
+  "id": "cbcd9bc4-5679-43b0-bda7-c2deb5ed93cb",
+  "prevId": "406ffec6-2e72-458e-95c1-cc966c86c7c6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20138,6 +20138,12 @@
         "project_id": {
           "name": "project_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repo_path": {
+          "name": "repo_path",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

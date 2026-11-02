@@ -38,9 +38,13 @@ export async function SettingsSurface({ projectId }: { projectId: string }) {
     <>
       <div className="border-b border-border px-6 py-3">
         <p className="text-[13px] text-muted-foreground">
-          <Link href="/projects" className="hover:underline">Projects</Link>
+          <Link href="/projects" className="hover:underline">
+            Projects
+          </Link>
           <span className="px-1.5">›</span>
-          <Link href={`/projects/${projectId}`} className="hover:underline">{project.title}</Link>
+          <Link href={`/projects/${projectId}`} className="hover:underline">
+            {project.title}
+          </Link>
           <span className="px-1.5">›</span>
           <span className="text-foreground">Settings</span>
         </p>
@@ -48,9 +52,20 @@ export async function SettingsSurface({ projectId }: { projectId: string }) {
       <div className="mx-auto w-full max-w-3xl px-6 py-8">
         <ProjectSettingsForm
           projectId={projectId}
-          project={{ title: project.title, description: project.description ?? project.descriptionSeed, instructions: project.instructions, emoji: project.emoji }}
+          project={{
+            title: project.title,
+            description: project.description ?? project.descriptionSeed,
+            instructions: project.instructions,
+            emoji: project.emoji,
+            repoPath: project.repoPath ?? null,
+          }}
           sources={sources.map((s) => ({ documentId: s.documentId, title: s.title, readiness: s.readiness }))}
-          automations={automations.map((a) => ({ id: a.id, prompt: a.prompt, schedule: a.schedule, enabled: a.enabled }))}
+          automations={automations.map((a) => ({
+            id: a.id,
+            prompt: a.prompt,
+            schedule: a.schedule,
+            enabled: a.enabled,
+          }))}
           memories={memories.map((m) => ({ id: m.id, content: m.content }))}
           connectors={connectors.flatMap((c) =>
             c.accounts.map((account) => ({

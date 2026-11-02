@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { CompanyResearchError, runCompanyResearch } from "@/domains/knowledge/company-research";
+import { ingestSessionRecords } from "@/domains/agents/session-scan";
 import { getProjectDetail } from "@/domains/knowledge/projects";
 import { editGeneratedDraft } from "@/domains/knowledge/studio";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { collectSessionRecords } from "@/lib/agent-artifacts/scan";
 import { DRAFT_LINK_TARGETS, linkDraftToRecord, unlinkDraftFromRecord } from "@/app/(workspace)/projects-links";
 
 /*
@@ -138,5 +140,64 @@ export async function researchDossierCompanyAction(input: {
   } catch (error) {
     if (error instanceof CompanyResearchError) return { ok: false as const, error: error.message };
     throw error;
+  }
+}
+
+/*
+ * Local agent-artifact scan (Workbench D1): read the user's own Claude Code /
+ * Codex folders, parse them defensively, and store sessions locally. Nothing
+ * is sent to a model or off the machine — the disclosure the brief carries is
+ * true because this action is the only ingest path. Scan scope is the whole
+ * workspace (roots come from env), matching happens by cwd, and the project
+ * page wires the button (PR C).
+ */
+const scanAgentSessionsInput = z.object({
+  /** What these sessions were for, when the operator says it at scan time. */
+  decisionNote: z.string().trim().min(1).max(2000).optional(),
+});
+
+export async function scanAgentSessionsAction(input: { decisionNote?: string }): Promise<
+  | {
+      ok: true;
+      imported: number;
+      updated: number;
+      blobsDeduped: number;
+      sessionIds: string[];
+      /** Files set aside by the guard or parsers, with reasons. */
+      skipped: { source: string; path: string; kind: string; reason: string }[];
+      /** Sources that could not be scanned at all (agent not installed, root missing). */
+      unavailable: { source: string; kind: string; message: string }[];
+      /** Defensive-decode counters: records read vs lines set aside. */
+      decode: { records: number; skippedRecords: number };
+    }
+  | { ok: false; error: string }
+> {
+  const auth = await authorize();
+  const parsed = scanAgentSessionsInput.safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: "A decision note is optional, but what you typed is too long (max 2000)." };
+
+  try {
+    const scan = await collectSessionRecords();
+    const ingest = await ingestSessionRecords(auth, scan.records, { decisionNote: parsed.data.decisionNote });
+    revalidate();
+    return {
+      ok: true,
+      imported: ingest.imported,
+      updated: ingest.updated,
+      blobsDeduped: ingest.blobsDeduped,
+      sessionIds: ingest.sessionIds,
+      skipped: scan.skipped,
+      unavailable: scan.unavailable,
+      decode: scan.records.reduce(
+        (totals, record) => ({
+          records: totals.records + record.parsed.stats.records,
+          skippedRecords: totals.skippedRecords + record.parsed.stats.skippedRecords,
+        }),
+        { records: 0, skippedRecords: 0 },
+      ),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The scan failed." };
   }
 }

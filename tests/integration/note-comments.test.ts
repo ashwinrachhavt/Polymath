@@ -41,7 +41,11 @@ suite("note comments", () => {
     const auth = ownerAuth(userId, workspaceId);
     const noteId = await seedNote(workspaceId);
 
-    const comment = await domain.addNoteComment(auth, { noteId, body: "  Expand the rollout section.  ", idempotencyKey: crypto.randomUUID() });
+    const comment = await domain.addNoteComment(auth, {
+      noteId,
+      body: "  Expand the rollout section.  ",
+      idempotencyKey: crypto.randomUUID(),
+    });
     expect(comment.body).toBe("Expand the rollout section.");
     expect(comment.resolvedAt).toBeNull();
 
@@ -53,15 +57,27 @@ suite("note comments", () => {
     expect(audits.map((a) => a.action)).toContain("note.comment_added");
 
     // The same key replays the stored comment instead of writing a twin.
-    const replay = await domain.addNoteComment(auth, { noteId, body: "Expand the rollout section.", idempotencyKey: "11111111-1111-4111-8111-111111111111" });
-    await domain.addNoteComment(auth, { noteId, body: "Expand the rollout section.", idempotencyKey: "11111111-1111-4111-8111-111111111111" });
+    const replay = await domain.addNoteComment(auth, {
+      noteId,
+      body: "Expand the rollout section.",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+    });
+    await domain.addNoteComment(auth, {
+      noteId,
+      body: "Expand the rollout section.",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+    });
     expect(replay.id).toBeDefined();
     const listed = await domain.listNoteComments(auth, noteId);
     expect(listed.filter((c) => c.body === "Expand the rollout section.")).toHaveLength(2);
 
     // Blank and overlong bodies are refused before anything is written.
-    await expect(domain.addNoteComment(auth, { noteId, body: "   " })).rejects.toMatchObject({ code: "note_comment_invalid" });
-    await expect(domain.addNoteComment(auth, { noteId, body: "x".repeat(2001) })).rejects.toMatchObject({ code: "note_comment_invalid" });
+    await expect(domain.addNoteComment(auth, { noteId, body: "   " })).rejects.toMatchObject({
+      code: "note_comment_invalid",
+    });
+    await expect(domain.addNoteComment(auth, { noteId, body: "x".repeat(2001) })).rejects.toMatchObject({
+      code: "note_comment_invalid",
+    });
   });
 
   it("keeps one workspace's comments invisible to another", async () => {
@@ -73,9 +89,9 @@ suite("note comments", () => {
 
     const comment = await domain.addNoteComment(authOne, { noteId, body: "Internal note." });
     await expect(domain.listNoteComments(authTwo, noteId)).rejects.toMatchObject({ code: "note_comment_invalid" });
-    await expect(
-      domain.resolveNoteComment(authTwo, { commentId: comment.id, resolved: true }),
-    ).rejects.toMatchObject({ code: "note_comment_invalid" });
+    await expect(domain.resolveNoteComment(authTwo, { commentId: comment.id, resolved: true })).rejects.toMatchObject({
+      code: "note_comment_invalid",
+    });
     // The refused resolve wrote nothing: no audit rows exist for the comment.
     const refused = await db
       .select({ action: auditEvents.action })
@@ -109,7 +125,8 @@ suite("note comments", () => {
     const actions = await db
       .select({ action: auditEvents.action, metadata: auditEvents.metadata })
       .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.subjectId, noteId)));
+      .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.subjectId, noteId)))
+      .orderBy(auditEvents.createdAt, auditEvents.id);
     expect(
       actions
         .filter((a) => a.action === "note.comment_resolved" || a.action === "note.comment_reopened")
