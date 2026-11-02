@@ -1,10 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, notExists, sql } from "drizzle-orm";
 import { listRecentRuns } from "@/domains/agents/queries";
 import { getOpenQuestion } from "@/domains/agents/run-context";
 import { listWorkspaceActivity, projectSummary } from "@/domains/audit/queries";
 import { listHomeQueue } from "@/domains/home/queue";
 import { db } from "@/lib/db";
-import { agentRuns, runState } from "@/domains/agents/schema";
+import { agentQuestions, agentRuns, runState } from "@/domains/agents/schema";
 
 /*
  * What needs the owner, in one place: the decisions queue that used to be the
@@ -193,7 +193,20 @@ export async function countRunsInFlight(workspaceId: string): Promise<number> {
   const rows = await db
     .select({ id: agentRuns.id })
     .from(agentRuns)
-    .where(and(eq(agentRuns.workspaceId, workspaceId), inArray(agentRuns.state, [...RUN_ACTION_STATE_LIST])));
+    .where(
+      and(
+        eq(agentRuns.workspaceId, workspaceId),
+        inArray(agentRuns.state, [...RUN_ACTION_STATE_LIST]),
+        // The question card owns a suspended run, so the run leaves the count
+        // with its question — count and cards must agree.
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(agentQuestions)
+            .where(and(eq(agentQuestions.runId, agentRuns.id), eq(agentQuestions.state, "open"))),
+        ),
+      ),
+    );
   return rows.length;
 }
 
@@ -362,17 +375,21 @@ export async function listTriageFeed(
         : { decisionType: "capture" },
   }));
 
-  const runItems: Extract<TriageItem, { kind: "run" }>[] = runs.map((run) => ({
-    kind: "run",
-    id: run.id,
-    runId: run.id,
-    runState: run.state,
-    stateLabel: RUN_STATE_LABEL[run.state] ?? run.state,
-    title: runTitle(run.summary, run.objective),
-    detail: run.error,
-    href: `/polymath/${run.id}`,
-    at: run.createdAt,
-  }));
+  const runItems: Extract<TriageItem, { kind: "run" }>[] = runs
+    // A suspended run speaks through its question card; listing it again as an
+    // in-flight card would show one run in two tabs.
+    .filter((run) => !openQuestions.has(run.id))
+    .map((run) => ({
+      kind: "run",
+      id: run.id,
+      runId: run.id,
+      runState: run.state,
+      stateLabel: RUN_STATE_LABEL[run.state] ?? run.state,
+      title: runTitle(run.summary, run.objective),
+      detail: run.error,
+      href: `/polymath/${run.id}`,
+      at: run.createdAt,
+    }));
 
   const failedRuns = runItems.filter((item) => classifyRunState(item.runState) === "failed");
   const inFlightRuns = runItems.filter((item) => classifyRunState(item.runState) === "active");

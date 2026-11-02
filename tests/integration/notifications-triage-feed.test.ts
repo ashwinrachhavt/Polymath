@@ -229,7 +229,9 @@ describe("listTriageFeed classification", () => {
       (item): item is Extract<TriageItem, { kind: "run" }> => item.kind === "run",
     );
     const runByRunId = new Map(runItemsInFeed.map((item) => [item.runId, item]));
-    expect(runByRunId.size).toBe(8);
+    // One run, one card: the run with an open question surfaces only as the
+    // question card, so seven of the eight runs have run items.
+    expect(runByRunId.size).toBe(7);
     const succeededItem = runByRunId.get(succeeded.id);
     if (!succeededItem) return expect.unreachable("every seeded run must surface as a run item");
     expect(succeededItem.title).toBe("Read three pages about Zettel sitting");
@@ -241,7 +243,12 @@ describe("listTriageFeed classification", () => {
     expect(triageTab(runByRunId.get(queued.id)!)).toBe("inFlight");
     expect(triageTab(failedItem)).toBe("inbox");
     expect(triageTab(succeededItem)).toBe("activity");
-    expect(triageTab(runByRunId.get(waitingWithQuestion.id)!)).toBe("inFlight");
+    // The question run has NO run item anywhere — its question card owns it.
+    expect(runByRunId.get(waitingWithQuestion.id)).toBeUndefined();
+    const questionRunCard = feed.items.find(
+      (item) => item.kind === "question" && item.runId === waitingWithQuestion.id,
+    );
+    expect(questionRunCard && triageTab(questionRunCard)).toBe("inbox");
 
     // Audit rows exist in the database and produce nothing: kinds are only
     // question, decision, run — and nothing links to /activity.
@@ -262,7 +269,7 @@ describe("listTriageFeed classification", () => {
     // database's count of non-terminal runs, not the page's slice; Activity
     // is the finished runs.
     expect(feed.counts.inbox).toBe(5);
-    expect(feed.counts.inFlight).toBe(5);
+    expect(feed.counts.inFlight).toBe(4); // parked + queued + running + waiting_approval — the question run belongs to its card
     expect(feed.counts.inFlight).toBe(await countRunsInFlight(ws.workspaceId));
     expect(feed.counts.activity).toBe(2);
   });
