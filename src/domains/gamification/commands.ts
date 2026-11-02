@@ -8,8 +8,10 @@ import {
   DIAMOND_LEVEL,
   DIAMOND_RULE,
   EMERALD_RULE,
+  FOCUS_DAILY_CAP,
   FOCUS_RULE,
   GARNET_RULE,
+  LEARNING_DAILY_CAP,
   RUBY_HIGH_PRIORITIES,
   RUBY_RULE,
   SAPPHIRE_DEEP_MINIMUM_MINUTES,
@@ -18,6 +20,7 @@ import {
   TOPAZ_STREAK_DAYS,
   QUARTZ_RULE,
   focusPointsForSession,
+  learningGateMet,
   levelForPoints,
   streakFromDays,
   type RuleText,
@@ -240,6 +243,41 @@ async function workspaceDay(tx: TxDrizzle, auth: AuthContext): Promise<string> {
   return (rows as unknown as Array<{ day: string }>)[0].day;
 }
 
+/**
+ * Spec §6: the per-user daily cap, enforced inside the award's own
+ * transaction. The advisory lock serializes racing awards for the same user,
+ * rule, and day (pg_advisory_xact_lock holds until commit), and the count
+ * runs after it - so concurrent finishes cannot each read "11 of 12" and
+ * both pay. Only points-bearing award rows count (reversals and zero-point
+ * collectibles do not), keyed to the award's own definition so a stone row
+ * for the same reason never consumes the budget.
+ */
+async function dailyCapReached(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  definitionKey: string,
+  cap: number,
+  day: string,
+): Promise<boolean> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`reward_cap:${auth.workspaceId}:${auth.userId}:${definitionKey}:${day}`}, 0))`,
+  );
+  const rows = await tx.execute(sql`
+    select count(*)::int as n
+    from reward_ledger l
+    join reward_definitions d on d.id = l.reward_definition_id
+    where l.workspace_id = ${auth.workspaceId}
+      and l.user_id = ${auth.userId}
+      and d.key = ${definitionKey}
+      and l.points > 0
+      and to_char(timezone(coalesce(
+        (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
+        'UTC'), l.created_at), 'YYYY-MM-DD') = ${day}
+  `);
+  const row = (rows as unknown as Array<{ n: number }>)[0];
+  return row.n >= cap;
+}
+
 async function ensureDefinition(
   tx: TxDrizzle,
   auth: AuthContext,
@@ -320,19 +358,27 @@ const LEARNING_REVIEWED = { key: "learning_reviewed", label: "Learning review", 
  * learning twin of recordDailyQuartz: the definition is provisioned lazily
  * with the donor's value (10 points), the idempotency key names the attempt
  * (`quiz_attempt:<id>`), and a replayed award is a silent skip, never a game
- * error. Returns whether this call earned the stone.
+ * error. Spec §6 hardening: the sitting must grade at least two thirds
+ * correct (learningGateMet), and a user earns at most one learning award
+ * per day (the cap), so re-taking a known quiz farms nothing. Returns
+ * whether this call earned the stone.
  */
 export async function recordLearningReview(
   tx: TxDrizzle,
   auth: AuthContext,
-  input: { subjectId: string; idempotencyKey: string },
+  input: { subjectId: string; idempotencyKey: string; correctCount: number; totalCount: number },
 ): Promise<boolean> {
+  if (!learningGateMet(input.correctCount, input.totalCount)) return false;
+
   const definition = await ensureDefinition(tx, auth, {
     ...LEARNING_REVIEWED,
     kind: "points",
     description: "Completed a learning review.",
   });
   if (!definition || !definition.active) return false;
+
+  const day = await workspaceDay(tx, auth);
+  if (await dailyCapReached(tx, auth, definition.key, LEARNING_DAILY_CAP, day)) return false;
 
   const [entry] = await tx
     .insert(rewardLedger)
@@ -398,33 +444,42 @@ export async function recordFocusReward(
   const definition = await ensureDefinition(tx, auth, { ...FOCUS_RULE, kind: "points", points: 0 });
   if (!definition || !definition.active) return false;
 
-  const [entry] = await tx
-    .insert(rewardLedger)
-    .values({
-      workspaceId: auth.workspaceId,
-      rewardDefinitionId: definition.id,
-      userId: auth.userId,
-      reason: "focus_completed",
-      subjectType: "focus_session",
-      subjectId: session.id,
-      points,
-      idempotencyKey: `focus:${session.id}`,
-    })
-    .onConflictDoNothing({
-      target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
-    })
-    .returning();
-  if (!entry) return false;
-  await recordAudit(
-    auth,
-    {
-      action: "reward.awarded",
-      subjectType: "reward_ledger",
-      subjectId: entry.id,
-      summary: `Focus earned (${points} pts, ${session.strictness})`,
-    },
-    tx,
-  );
+  // Spec §6: a per-user daily cap on paid sessions, counted in this same
+  // transaction (see dailyCapReached). A capped session still evaluates its
+  // once-ever stones below - the cap limits the farmable points, not the
+  // session's own record - but it writes no award row of its own.
+  const day = await workspaceDay(tx, auth);
+  const capReached = await dailyCapReached(tx, auth, definition.key, FOCUS_DAILY_CAP, day);
+
+  if (!capReached) {
+    const [entry] = await tx
+      .insert(rewardLedger)
+      .values({
+        workspaceId: auth.workspaceId,
+        rewardDefinitionId: definition.id,
+        userId: auth.userId,
+        reason: "focus_completed",
+        subjectType: "focus_session",
+        subjectId: session.id,
+        points,
+        idempotencyKey: `focus:${session.id}`,
+      })
+      .onConflictDoNothing({
+        target: [rewardLedger.workspaceId, rewardLedger.userId, rewardLedger.idempotencyKey],
+      })
+      .returning();
+    if (!entry) return false; // a replayed finish: the original already paid
+    await recordAudit(
+      auth,
+      {
+        action: "reward.awarded",
+        subjectType: "reward_ledger",
+        subjectId: entry.id,
+        summary: `Focus earned (${points} pts, ${session.strictness})`,
+      },
+      tx,
+    );
+  }
 
   // Session-scoped stones (spec §5), each a first-time collectible keyed to
   // the user: sapphire holds a deep session to its 45-minute floor, ruby
@@ -478,7 +533,7 @@ export async function recordFocusReward(
     longestStreakDays: streak.longest,
     lastActiveOn: progress.days.length > 0 ? progress.days[progress.days.length - 1] : null,
   });
-  return true;
+  return !capReached;
 }
 
 /*
