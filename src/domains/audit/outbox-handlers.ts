@@ -4,6 +4,7 @@ import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { DocumentNotFoundError, syncDocumentToGraph } from "@/domains/knowledge/document-graph";
 import { extractDocument } from "@/domains/knowledge/extraction";
+import { EMBEDDING_RETRY_TOPIC, embeddingRetryRequestedHandler } from "@/domains/knowledge/embedding-retry";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
@@ -33,11 +34,9 @@ export async function workspaceOwnerAuth(workspaceId: string): Promise<AuthConte
   const [row] = await db
     .select({ userId: memberships.userId })
     .from(memberships)
-    .where(and(
-      eq(memberships.workspaceId, workspaceId),
-      eq(memberships.role, "owner"),
-      eq(memberships.status, "active"),
-    ))
+    .where(
+      and(eq(memberships.workspaceId, workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")),
+    )
     .orderBy(asc(memberships.createdAt))
     .limit(1);
   return row ? { userId: row.userId, workspaceId, role: "owner" } : null;
@@ -118,81 +117,80 @@ function isProviderDown(cause: unknown): boolean {
 }
 
 export const crawlRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
-    const raw = event.payload ?? {};
-    // A payload that is not an object was never written by this handler's
-    // producer. Failing loudly beats completing silently with nothing done -
-    // that is how a double-encoded row would have dispatched as success.
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      throw new Error(`crawl.requested has a malformed payload (${typeof raw}); redeploy the producer`);
-    }
-    const payload = raw as CrawlPayload;
-    const url = typeof payload.url === "string" ? payload.url : null;
-    if (!url) throw new Error("crawl.requested has no url");
+  const raw = event.payload ?? {};
+  // A payload that is not an object was never written by this handler's
+  // producer. Failing loudly beats completing silently with nothing done -
+  // that is how a double-encoded row would have dispatched as success.
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error(`crawl.requested has a malformed payload (${typeof raw}); redeploy the producer`);
+  }
+  const payload = raw as CrawlPayload;
+  const url = typeof payload.url === "string" ? payload.url : null;
+  if (!url) throw new Error("crawl.requested has no url");
 
-    const limit = typeof payload.limit === "number" ? payload.limit : 10;
-    const maxDepth = typeof payload.maxDepth === "number" ? payload.maxDepth : 1;
-    const jobId = typeof payload.jobId === "string" ? payload.jobId : null;
+  const limit = typeof payload.limit === "number" ? payload.limit : 10;
+  const maxDepth = typeof payload.maxDepth === "number" ? payload.maxDepth : 1;
+  const jobId = typeof payload.jobId === "string" ? payload.jobId : null;
 
-    // Pass 1: no provider job yet.
-    if (!jobId) {
-      let submitted: { jobId: string };
-      try {
-        submitted = await submitCrawl(url, { limit, maxDepth });
-      } catch (cause) {
-        if (isProviderDown(cause)) throw new OutboxParkError(60_000, "Firecrawl is unreachable");
-        throw cause;
-      }
-      await updateOutboxPayload({
-        id: event.id,
-        leaseToken: event.leaseToken,
-        payload: { ...payload, jobId: submitted.jobId, startedAt: new Date().toISOString() },
-      });
-      throw new OutboxParkError(CRAWL_POLL_BASE_MS, "crawl submitted, awaiting pages");
-    }
-
-    // Pass n: read the job. A status endpoint that cannot answer is deferred,
-    // not failed - the crawl may still be running perfectly well.
-    let poll;
+  // Pass 1: no provider job yet.
+  if (!jobId) {
+    let submitted: { jobId: string };
     try {
-      poll = await pollCrawl(jobId);
+      submitted = await submitCrawl(url, { limit, maxDepth });
     } catch (cause) {
       if (isProviderDown(cause)) throw new OutboxParkError(60_000, "Firecrawl is unreachable");
       throw cause;
     }
+    await updateOutboxPayload({
+      id: event.id,
+      leaseToken: event.leaseToken,
+      payload: { ...payload, jobId: submitted.jobId, startedAt: new Date().toISOString() },
+    });
+    throw new OutboxParkError(CRAWL_POLL_BASE_MS, "crawl submitted, awaiting pages");
+  }
 
-    const startedAt = typeof payload.startedAt === "string" ? Date.parse(payload.startedAt) : null;
-    const abandoned = startedAt !== null && Date.now() - startedAt > CRAWL_MAX_AGE_MS;
+  // Pass n: read the job. A status endpoint that cannot answer is deferred,
+  // not failed - the crawl may still be running perfectly well.
+  let poll;
+  try {
+    poll = await pollCrawl(jobId);
+  } catch (cause) {
+    if (isProviderDown(cause)) throw new OutboxParkError(60_000, "Firecrawl is unreachable");
+    throw cause;
+  }
 
-    const polls = typeof payload.polls === "number" ? payload.polls : 0;
-    if (!isTerminalCrawlStatus(poll.status) && !abandoned) {
-      await updateOutboxPayload({
-        id: event.id,
-        leaseToken: event.leaseToken,
-        payload: { ...payload, polls: polls + 1 },
-      });
-      throw new OutboxParkError(nextPollMs(polls + 1), `crawl still ${poll.status}`);
-    }
+  const startedAt = typeof payload.startedAt === "string" ? Date.parse(payload.startedAt) : null;
+  const abandoned = startedAt !== null && Date.now() - startedAt > CRAWL_MAX_AGE_MS;
 
-    if (poll.status === "failed" || poll.status === "cancelled" || abandoned) {
-      // A real failure is a spent attempt with backoff; dead after the ceiling.
-      throw new Error(
-        abandoned
-          ? `crawl did not finish within ${Math.round(CRAWL_MAX_AGE_MS / 60_000)} minutes`
-          : poll.error ?? "crawl failed",
-      );
-    }
+  const polls = typeof payload.polls === "number" ? payload.polls : 0;
+  if (!isTerminalCrawlStatus(poll.status) && !abandoned) {
+    await updateOutboxPayload({
+      id: event.id,
+      leaseToken: event.leaseToken,
+      payload: { ...payload, polls: polls + 1 },
+    });
+    throw new OutboxParkError(nextPollMs(polls + 1), `crawl still ${poll.status}`);
+  }
 
-    const auth = await workspaceOwnerAuth(event.workspaceId);
-    if (!auth) throw new Error("workspace has no active owner to receive the crawled pages");
-    const outcome = await landCrawlPages(auth, { jobId, pages: poll.pages });
-    // A completed crawl whose pages all failed to file is not a success. Retry
-    // it: the alternative is a dispatched row, an empty library, and a person
-    // who was told the site had been captured.
-    if (outcome.failed > 0 && outcome.landed === 0) {
-      throw new Error(`crawl completed but none of its ${outcome.failed} page(s) could be filed`);
-    }
-  };
+  if (poll.status === "failed" || poll.status === "cancelled" || abandoned) {
+    // A real failure is a spent attempt with backoff; dead after the ceiling.
+    throw new Error(
+      abandoned
+        ? `crawl did not finish within ${Math.round(CRAWL_MAX_AGE_MS / 60_000)} minutes`
+        : (poll.error ?? "crawl failed"),
+    );
+  }
 
+  const auth = await workspaceOwnerAuth(event.workspaceId);
+  if (!auth) throw new Error("workspace has no active owner to receive the crawled pages");
+  const outcome = await landCrawlPages(auth, { jobId, pages: poll.pages });
+  // A completed crawl whose pages all failed to file is not a success. Retry
+  // it: the alternative is a dispatched row, an empty library, and a person
+  // who was told the site had been captured.
+  if (outcome.failed > 0 && outcome.landed === 0) {
+    throw new Error(`crawl completed but none of its ${outcome.failed} page(s) could be filed`);
+  }
+};
 
 /**
  * Every page becomes a document, and every page becomes a source row.
@@ -264,7 +262,10 @@ async function landCrawlPages(
       // One page failing is not the crawl failing. The rest still land, and the
       // page's absence is visible as a shorter library rather than an error.
       failed += 1;
-      console.warn(`crawl ${input.jobId}: could not file ${sourceUrl}:`, cause instanceof Error ? cause.message : cause);
+      console.warn(
+        `crawl ${input.jobId}: could not file ${sourceUrl}:`,
+        cause instanceof Error ? cause.message : cause,
+      );
     }
   }
   return { landed, failed };
@@ -302,6 +303,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
       await runZettelGenerationRequested(event, { auth: workspaceOwnerAuth });
     },
     [RUN_CRITIQUE_TOPIC]: runCritiqueRequestedHandler(workspaceOwnerAuth),
+    [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
   };
   return handlers;
 }
