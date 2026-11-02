@@ -1,13 +1,9 @@
-import { and, count, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
+import type { RateCardRates } from "@/domains/spending/pricing";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import {
-  modelRateCards,
-  spendingPolicies,
-  spendingReservations,
-  spendSettlements,
-} from "./schema";
+import { modelRateCards, spendingPolicies, spendingReservations, spendSettlements } from "./schema";
 
 /*
  * Read queries for the spending surface. Sums are derived from the ledger in
@@ -123,7 +119,13 @@ export async function pageSettlements(
   }
   const where = and(...filters);
   const [items, [totalRow]] = await Promise.all([
-    db.select().from(spendSettlements).where(where).orderBy(desc(spendSettlements.createdAt), desc(spendSettlements.id)).limit(input.limit).offset(input.offset),
+    db
+      .select()
+      .from(spendSettlements)
+      .where(where)
+      .orderBy(desc(spendSettlements.createdAt), desc(spendSettlements.id))
+      .limit(input.limit)
+      .offset(input.offset),
     db.select({ total: count() }).from(spendSettlements).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
@@ -137,8 +139,53 @@ export async function pageRateCards(auth: AuthContext, input: { query?: string; 
   }
   const where = and(...filters);
   const [items, [totalRow]] = await Promise.all([
-    db.select().from(modelRateCards).where(where).orderBy(desc(modelRateCards.effectiveFrom), desc(modelRateCards.id)).limit(input.limit).offset(input.offset),
+    db
+      .select()
+      .from(modelRateCards)
+      .where(where)
+      .orderBy(desc(modelRateCards.effectiveFrom), desc(modelRateCards.id))
+      .limit(input.limit)
+      .offset(input.offset),
     db.select({ total: count() }).from(modelRateCards).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
+}
+
+/**
+ * The rate card effective for one provider/model at an instant, or null when
+ * none is. Cards are half-open intervals: `effective_from <= at` and
+ * `valid_to > at` (or `valid_to is null` while open-ended), so the instant a
+ * card is closed is exactly the instant its successor opens — a lookup at
+ * that instant resolves to the successor, never to both.
+ *
+ * Used at ingestion to price the event now; backfill passes a historical
+ * instant. The newest `effective_from` wins if two cards somehow overlap.
+ */
+export async function findEffectiveRateCard(
+  workspaceId: string,
+  provider: string,
+  model: string,
+  at: Date,
+): Promise<RateCardRates | null> {
+  const [card] = await db
+    .select({
+      id: modelRateCards.id,
+      inputPerMillion: modelRateCards.inputPerMillion,
+      outputPerMillion: modelRateCards.outputPerMillion,
+      cacheReadPerMillion: modelRateCards.cacheReadPerMillion,
+      cacheWritePerMillion: modelRateCards.cacheWritePerMillion,
+    })
+    .from(modelRateCards)
+    .where(
+      and(
+        eq(modelRateCards.workspaceId, workspaceId),
+        eq(modelRateCards.provider, provider),
+        eq(modelRateCards.model, model),
+        lte(modelRateCards.effectiveFrom, at),
+        or(isNull(modelRateCards.validTo), gt(modelRateCards.validTo, at)),
+      ),
+    )
+    .orderBy(desc(modelRateCards.effectiveFrom))
+    .limit(1);
+  return card ?? null;
 }

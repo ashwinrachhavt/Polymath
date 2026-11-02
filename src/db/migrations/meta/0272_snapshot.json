@@ -1,6 +1,6 @@
 {
-  "id": "ec2417e3-900f-468f-8b48-b6874ed9e3ad",
-  "prevId": "498c2a47-54a7-40da-b422-501592bacb5f",
+  "id": "c2209790-ec6c-4810-80b4-2c27b7ba60d9",
+  "prevId": "ec2417e3-900f-468f-8b48-b6874ed9e3ad",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -22680,12 +22680,30 @@
           "primaryKey": false,
           "notNull": true
         },
+        "cache_read_per_million": {
+          "name": "cache_read_per_million",
+          "type": "numeric(12, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cache_write_per_million": {
+          "name": "cache_write_per_million",
+          "type": "numeric(12, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "effective_from": {
           "name": "effective_from",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_by": {
           "name": "created_by",
