@@ -10,6 +10,7 @@ import {
   Layers,
   LayoutList,
   Library,
+  ScanEye,
   Lightbulb,
   Moon,
   NotebookPen,
@@ -156,6 +157,13 @@ export const destinations: Destination[] = [
     purpose: "Close the day and seed tomorrow.",
     icon: Moon,
     group: "command-center",
+  },
+  {
+    href: "/supervision",
+    label: "Supervision",
+    purpose: "See what the agent is doing and what needs a person.",
+    icon: ScanEye,
+    group: "shared",
   },
   {
     href: "/reviews",
