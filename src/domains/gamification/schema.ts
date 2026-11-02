@@ -1,15 +1,4 @@
-import {
-  boolean,
-  date,
-  index,
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 
 /*
@@ -32,6 +21,9 @@ export const ledgerReason = pgEnum("ledger_reason", [
   "learning_reviewed",
   "weekly_review",
   "adjustment",
+  // Spec §7 foundry drop: a deep finish that rolled a designed stone. The
+  // label is append-only, so the drop joins at the end.
+  "foundry_drop",
 ]);
 
 export const rewardDefinitions = pgTable(
@@ -48,6 +40,13 @@ export const rewardDefinitions = pgTable(
     threshold: integer("threshold").notNull().default(1),
     /** A text equivalent always accompanies the visual, for accessibility. */
     accessibilityLabel: text("accessibility_label"),
+    /**
+     * The foundry recipe (spec §7), when this stone is ML-designed: the
+     * parsed {@link StoneRecipe} written only by the system - the approval
+     * path that applies an owner-approved proposal. Definition forms and the
+     * API never write it; a null is a catalog or rule-defined stone.
+     */
+    recipe: jsonb("recipe"),
     active: boolean("active").notNull().default(true),
     ...mutable,
   },
@@ -78,6 +77,20 @@ export const rewardLedger = pgTable(
     ...recorded,
   },
   (t) => [
+    /*
+     * Two idempotency indexes, on purpose (spec §6 anti-gaming):
+     *
+     * - (workspace, user, key) is the per-user contract: one ledger row per
+     *   user per event key. A user-scoped key like `quartz:<userId>:<day>`
+     *   collides only with its own replay, never with another user's same-day
+     *   award - under the workspace-wide index below, two users sharing a day
+     *   is exactly how the second user's Quartz silently vanished.
+     * - (workspace, key) stays because some keys are deliberately
+     *   workspace-scoped events: `shard-claim:<n>` and `reversal:<entryId>`
+     *   must be unique across every member, so a racing second claim from a
+     *   different user is still a conflict.
+     */
+    uniqueIndex("reward_ledger_user_idempotency_key").on(t.workspaceId, t.userId, t.idempotencyKey),
     uniqueIndex("reward_ledger_idempotency_key").on(t.workspaceId, t.idempotencyKey),
     index("reward_ledger_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("reward_ledger_definition_idx").on(t.rewardDefinitionId),

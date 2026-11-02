@@ -1,0 +1,123 @@
+/*
+ * Ghost interstitial — the page a blocked navigation lands on.
+ * Ethereal by intent: a held page should feel like a held breath, not an error.
+ */
+
+:root {
+  --ghost-bg: #0b0d12;
+  --ghost-card: rgba(22, 25, 33, 0.92);
+  --ghost-text: #e8eaf0;
+  --ghost-muted: #9aa1b2;
+  --ghost-accent: #aab6ff;
+  --ghost-border: rgba(170, 182, 255, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(120% 120% at 50% 0%, #12151d 0%, var(--ghost-bg) 60%);
+  color: var(--ghost-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 24px;
+}
+
+.ghost-card {
+  max-width: 30rem;
+  width: 100%;
+  text-align: center;
+  background: var(--ghost-card);
+  border: 1px solid var(--ghost-border);
+  border-radius: 20px;
+  padding: 40px 32px 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.ghost-glyph {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+  animation: drift 5s ease-in-out infinite;
+}
+
+.ghost-body {
+  fill: var(--ghost-accent);
+  opacity: 0.85;
+}
+
+.ghost-eye {
+  fill: var(--ghost-bg);
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.ghost-title {
+  margin: 8px 0 4px;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ghost-subject {
+  margin: 6px 0 0;
+  font-size: 1.02rem;
+  color: var(--ghost-text);
+  overflow-wrap: anywhere;
+}
+
+.ghost-remaining {
+  margin: 14px 0 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--ghost-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.ghost-explain {
+  margin: 14px auto 0;
+  max-width: 26rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ghost-muted);
+}
+
+.ghost-link {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--ghost-border);
+  color: var(--ghost-text);
+  text-decoration: none;
+  font-size: 0.92rem;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.ghost-link:hover,
+.ghost-link:focus-visible {
+  border-color: var(--ghost-accent);
+  background: rgba(170, 182, 255, 0.1);
+}
+
+.ghost-status {
+  margin: 18px 0 0;
+  font-size: 0.78rem;
+  color: var(--ghost-muted);
+}

@@ -1,8 +1,10 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { auditEvents } from "@/domains/audit/schema";
 import { tasks } from "@/domains/work/schema";
-import { focusSessions } from "./schema";
+import { focusBlocklist, focusSessions, type FocusStrictness } from "./schema";
+import { elapsedSecondsAt, remainingSecondsAt } from "./strictness";
 
 /*
  * Read queries for the focus surface (ASH-137 A09). Elapsed time is derived
@@ -16,22 +18,21 @@ export type FocusSessionView = typeof focusSessions.$inferSelect & {
   elapsedSeconds: number;
 };
 
+/** The active read joins the linked task's title, so a surface can name a session that has no subject of its own. */
+export type ActiveFocusSessionView = FocusSessionView & { taskTitle: string | null };
+
 export function withElapsed(session: typeof focusSessions.$inferSelect, now = new Date()): FocusSessionView {
   // startedAt is null while a session is only scheduled (ASH-308); a running
   // session always has the clock fields.
-  const clockStart = session.lastResumedAt ?? session.startedAt;
-  const openStretch =
-    session.state === "running" && clockStart
-      ? Math.max(0, Math.floor((now.getTime() - clockStart.getTime()) / 1000))
-      : 0;
-  return { ...session, elapsedSeconds: session.accumulatedSeconds + openStretch };
+  return { ...session, elapsedSeconds: elapsedSecondsAt(session, now) };
 }
 
 /** The one live session (running or paused), or null. Planned rows (started_at null) are not live. */
-export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSessionView | null> {
-  const [session] = await db
-    .select()
+export async function getActiveFocusSession(auth: AuthContext): Promise<ActiveFocusSessionView | null> {
+  const [row] = await db
+    .select({ session: focusSessions, taskTitle: tasks.title })
     .from(focusSessions)
+    .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
     .where(
       and(
         eq(focusSessions.workspaceId, auth.workspaceId),
@@ -41,7 +42,9 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
       ),
     )
     .limit(1);
-  return session ? withElapsed(session) : null;
+  // The title rides along so a surface can name a session that only links a
+  // task (subject null); the dock's read derives the same display.
+  return row ? { ...withElapsed(row.session), taskTitle: row.taskTitle } : null;
 }
 
 /**
@@ -50,15 +53,26 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
  * Same scoping and liveness rule as getActiveFocusSession, so the dock can
  * never disagree with the session the Work page controls.
  */
-export async function getLiveFocusDock(
-  auth: AuthContext,
-): Promise<{ id: string; state: "running" | "paused"; title: string } | null> {
+export async function getLiveFocusDock(auth: AuthContext): Promise<{
+  id: string;
+  state: "running" | "paused";
+  title: string;
+  /** Spec §1 tier; the extension's interstitial phrases itself by tier. */
+  strictness: FocusStrictness;
+  /** Server-computed plan remainder; null when the session set no plan. */
+  remainingSeconds: number | null;
+} | null> {
   const [row] = await db
     .select({
       id: focusSessions.id,
       state: focusSessions.state,
       subject: focusSessions.subject,
       taskTitle: tasks.title,
+      strictness: focusSessions.strictness,
+      plannedMinutes: focusSessions.plannedMinutes,
+      accumulatedSeconds: focusSessions.accumulatedSeconds,
+      lastResumedAt: focusSessions.lastResumedAt,
+      startedAt: focusSessions.startedAt,
     })
     .from(focusSessions)
     .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
@@ -72,7 +86,20 @@ export async function getLiveFocusDock(
     )
     .limit(1);
   if (!row || (row.state !== "running" && row.state !== "paused")) return null;
-  return { id: row.id, state: row.state, title: row.taskTitle ?? row.subject ?? "Focus session" };
+  const clock = {
+    state: row.state,
+    plannedMinutes: row.plannedMinutes,
+    accumulatedSeconds: row.accumulatedSeconds,
+    lastResumedAt: row.lastResumedAt,
+    startedAt: row.startedAt,
+  };
+  return {
+    id: row.id,
+    state: row.state,
+    title: row.taskTitle ?? row.subject ?? "Focus session",
+    strictness: row.strictness,
+    remainingSeconds: remainingSecondsAt(clock, new Date()),
+  };
 }
 
 /** Closed sessions, newest first. */
@@ -141,7 +168,11 @@ export async function listDayFocusSessions(auth: AuthContext, input: { from: Dat
         eq(focusSessions.workspaceId, auth.workspaceId),
         isNull(focusSessions.archivedAt),
         or(
-          and(gte(focusSessions.scheduledAt, input.from), lt(focusSessions.scheduledAt, input.to), isNull(focusSessions.startedAt)),
+          and(
+            gte(focusSessions.scheduledAt, input.from),
+            lt(focusSessions.scheduledAt, input.to),
+            isNull(focusSessions.startedAt),
+          ),
           and(gte(focusSessions.startedAt, input.from), lt(focusSessions.startedAt, input.to)),
           inArray(focusSessions.state, ["running", "paused"]),
         ),
@@ -149,4 +180,64 @@ export async function listDayFocusSessions(auth: AuthContext, input: { from: Dat
     )
     .orderBy(focusSessions.scheduledAt, focusSessions.startedAt);
   return rows.map((row) => withElapsed(row));
+}
+
+/*
+ * The blocklist the setup screen curates and the companion polls (ASH focus
+ * mode). The order is the contract, not presentation: allow rows come before
+ * block rows because a matching allow wins over any matching block, so a
+ * client can walk the list front to back and stop at the first hit. Within a
+ * kind, alphabetical by pattern, so consecutive polls of an unchanged list
+ * observe one stable order.
+ */
+export async function listFocusBlocklist(
+  auth: AuthContext,
+): Promise<Array<{ id: string; pattern: string; kind: "block" | "allow"; createdAt: Date; updatedAt: Date }>> {
+  return db
+    .select({
+      id: focusBlocklist.id,
+      pattern: focusBlocklist.pattern,
+      kind: focusBlocklist.kind,
+      createdAt: focusBlocklist.createdAt,
+      updatedAt: focusBlocklist.updatedAt,
+    })
+    .from(focusBlocklist)
+    .where(and(eq(focusBlocklist.workspaceId, auth.workspaceId), isNull(focusBlocklist.archivedAt)))
+    .orderBy(sql`(kind = 'allow') desc`, focusBlocklist.pattern);
+}
+
+/*
+ * The follow-up ghost's status for one closed session (spec §3). The outbox
+ * handler files its decision as an audit event keyed to the session
+ * (focus.follow_up_started / focus.follow_up_skipped), so the summary view
+ * reads the same trail every other observer sees - no second source of truth,
+ * and a session with no party resolved simply has no row yet. `none` covers
+ * that: nothing renders, rather than a placeholder claiming a decision.
+ */
+export type FocusFollowUpStatus =
+  { kind: "started"; summary: string; runId: string | null } | { kind: "skipped"; summary: string } | { kind: "none" };
+
+export async function getFocusFollowUp(auth: AuthContext, sessionId: string): Promise<FocusFollowUpStatus> {
+  const [row] = await db
+    .select({ action: auditEvents.action, summary: auditEvents.summary, metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.subjectType, "focus_session"),
+        eq(auditEvents.subjectId, sessionId),
+        like(auditEvents.action, "focus.follow_up_%"),
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  if (!row) return { kind: "none" };
+  if (row.action !== "focus.follow_up_started") return { kind: "skipped", summary: row.summary };
+  // The handler stores the started run in the event's metadata; a missing id
+  // degrades to the summary text, never a dead link.
+  const runId =
+    row.metadata && typeof row.metadata === "object" && typeof (row.metadata as { runId?: unknown }).runId === "string"
+      ? (row.metadata as { runId: string }).runId
+      : null;
+  return { kind: "started", summary: row.summary, runId };
 }

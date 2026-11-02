@@ -6,7 +6,6 @@ import { WORK_OPEN_STATUSES, WORK_PRIORITIES, countWorkByStatus, type WorkRow } 
 import {
   getTaskDetailForPage,
   getActiveFocusSessionForPage,
-  getLastTaskHandoffForPage,
   listFocusHistoryForPage,
   listWorkPageForPage,
   listWorkRowsForPage,
@@ -18,7 +17,7 @@ import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { getTaskProvenance } from "@/domains/knowledge/queries";
 import { TaskCard } from "./task-controls";
-import { FocusTaskButton, ActiveSessionControls } from "./focus-controls";
+import { FocusTaskButton } from "./focus-controls";
 import { TaskEvidence } from "./task-evidence";
 import { CommitList, WorkList } from "./work-list";
 import { DayStrip } from "./day-strip";
@@ -108,10 +107,7 @@ export async function NeonTasks({
     detailId ? getTaskDetailForPage(auth, detailId) : null,
     detailId ? listFocusHistoryForPage(auth, 5, detailId) : [],
   ]);
-  const [lastHandoff, provenance] = await Promise.all([
-    activeSession?.taskId ? getLastTaskHandoffForPage(auth, activeSession.taskId) : null,
-    detail ? getTaskProvenance(auth, detail.task.id) : [],
-  ]);
+  const [provenance] = await Promise.all([detail ? getTaskProvenance(auth, detail.task.id) : []]);
   const candidates = detail
     ? openRows.filter((r) => r.id !== detail.task.id).map((r) => ({ id: r.id, title: r.title }))
     : [];
@@ -139,8 +135,10 @@ export async function NeonTasks({
     <Screen
       title="Work"
       actions={
+        // The live session's controls live on Focus now; this entry points at
+        // its setup when nothing is running.
         <Link
-          href="/neuralflow/work?view=today"
+          href="/neuralflow/focus"
           className="inline-flex h-8 items-center rounded-md border border-border px-3 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           New session
@@ -148,32 +146,6 @@ export async function NeonTasks({
       }
     >
       {scope === "today" ? <DayStrip auth={auth} /> : null}
-
-      {activeSession ? (
-        <Panel
-          className="border-app-accent/40"
-          title={activeSession.subject || "Focus session"}
-          description={activeSession.state === "running" ? "A focus session is running." : "A focus session is paused."}
-        >
-          {lastHandoff ? (
-            <p className="mb-3 border-b border-border pb-3 text-[13px] text-muted-foreground">
-              Last time: {lastHandoff.nextStep}
-            </p>
-          ) : null}
-          <ActiveSessionControls
-            key={`${activeSession.id}:${activeSession.version}`}
-            session={{
-              id: activeSession.id,
-              subject: activeSession.subject,
-              state: activeSession.state as "running" | "paused",
-              plannedMinutes: activeSession.plannedMinutes,
-              elapsedSeconds: activeSession.elapsedSeconds,
-              version: activeSession.version,
-              hasTask: !!activeSession.taskId,
-            }}
-          />
-        </Panel>
-      ) : null}
 
       {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
           a count of real rows. Where the work is in its life, at a glance. */}

@@ -34,20 +34,37 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const TEXT = "The lease renews on March 1. Rent rises by 4% unless the tenant gives notice within 60 days. The deposit is held in escrow.";
+const TEXT =
+  "The lease renews on March 1. Rent rises by 4% unless the tenant gives notice within 60 days. The deposit is held in escrow.";
 
 async function seed() {
   const { userId, workspaceId } = await seedWorkspace(db, `learning-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
   return ownerAuth(userId, workspaceId);
 }
 
-async function seedDocument(auth: ReturnType<typeof ownerAuth>, text: string | null, status: "succeeded" | "failed" | null = "succeeded") {
+async function seedDocument(
+  auth: ReturnType<typeof ownerAuth>,
+  text: string | null,
+  status: "succeeded" | "failed" | null = "succeeded",
+) {
   const [blob] = await db
     .insert(blobObjects)
-    .values({ workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(), sizeBytes: 4, mimeType: "text/plain" })
+    .values({
+      workspaceId: auth.workspaceId,
+      storageKey: `private/${crypto.randomUUID()}`,
+      contentHash: crypto.randomUUID(),
+      sizeBytes: 4,
+      mimeType: "text/plain",
+    })
     .returning();
-  const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "fixture.txt" }).returning();
-  const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title: "Fixture lease", fileId: file.id, mimeType: "text/plain" }).returning();
+  const [file] = await db
+    .insert(files)
+    .values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "fixture.txt" })
+    .returning();
+  const [doc] = await db
+    .insert(documents)
+    .values({ workspaceId: auth.workspaceId, title: "Fixture lease", fileId: file.id, mimeType: "text/plain" })
+    .returning();
   const [extraction] = status
     ? await db
         .insert(documentExtractions)
@@ -93,7 +110,10 @@ function leaseQuestions() {
   ];
 }
 
-const fixtureGenerator = (questions = leaseQuestions()) => ({ name: "fixture:quiz", generate: async () => ({ questions }) });
+const fixtureGenerator = (questions = leaseQuestions()) => ({
+  name: "fixture:quiz",
+  generate: async () => ({ questions }),
+});
 
 suite("learning loop", () => {
   it("generates a ready quiz whose evidence spans re-locate exactly in the extraction", async () => {
@@ -108,7 +128,11 @@ suite("learning loop", () => {
     expect(quiz.status).toBe("ready");
     expect(quiz.sourceExtractionId).toBe(extraction.id);
     expect(quiz.model).toBe("fixture:quiz");
-    const questions = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, out.quizId)).orderBy(quizQuestions.ordinal);
+    const questions = await db
+      .select()
+      .from(quizQuestions)
+      .where(eq(quizQuestions.quizId, out.quizId))
+      .orderBy(quizQuestions.ordinal);
     expect(questions).toHaveLength(3);
     for (const [i, q] of questions.entries()) {
       expect(q.ordinal).toBe(i);
@@ -122,12 +146,18 @@ suite("learning loop", () => {
     const auth = await seed();
     await seedDocument(auth, null, "failed");
 
-    await expect(generate.generateQuiz(auth, { documentId: (await db.select().from(documents).where(eq(documents.workspaceId, auth.workspaceId)))[0].id }, fixtureGenerator()))
-      .rejects.toMatchObject({ code: "no_extraction" });
+    await expect(
+      generate.generateQuiz(
+        auth,
+        { documentId: (await db.select().from(documents).where(eq(documents.workspaceId, auth.workspaceId)))[0].id },
+        fixtureGenerator(),
+      ),
+    ).rejects.toMatchObject({ code: "no_extraction" });
     expect(await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId))).toHaveLength(0);
 
-    await expect(generate.generateQuiz(auth, { documentId: crypto.randomUUID() }, fixtureGenerator()))
-      .rejects.toMatchObject({ code: "document_not_found" });
+    await expect(
+      generate.generateQuiz(auth, { documentId: crypto.randomUUID() }, fixtureGenerator()),
+    ).rejects.toMatchObject({ code: "document_not_found" });
     expect(await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId))).toHaveLength(0);
   });
 
@@ -136,8 +166,9 @@ suite("learning loop", () => {
     const { doc } = await seedDocument(auth, TEXT);
     const thin = leaseQuestions().slice(0, 2);
 
-    await expect(generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator(thin)))
-      .rejects.toMatchObject({ code: "insufficient_evidence" });
+    await expect(generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator(thin))).rejects.toMatchObject({
+      code: "insufficient_evidence",
+    });
 
     const [failed] = await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId));
     expect(failed.status).toBe("failed");
@@ -154,28 +185,36 @@ suite("learning loop", () => {
     expect(questions).not.toBeNull();
     expect(questions!.questions).toHaveLength(3);
 
-    // One correct, one honest gap, one wrong: the server's grading decides
-    // the score - the client never sends one.
+    // Two correct, one wrong: the server's grading decides the score - the
+    // client never sends one. Two of three clears the §6 score gate (a
+    // sitting below two-thirds correct earns nothing).
     const answers = questions!.questions.map((q, i) =>
-      i === 0
-        ? { questionId: q.id, selectedValue: q.answerValue, dontKnow: false }
-        : i === 1
-          ? { questionId: q.id, selectedValue: null, dontKnow: true }
-          : { questionId: q.id, selectedValue: q.choices.find((c) => c.value !== q.answerValue)!.value, dontKnow: false },
+      i === 2
+        ? { questionId: q.id, selectedValue: q.choices.find((c) => c.value !== q.answerValue)!.value, dontKnow: false }
+        : { questionId: q.id, selectedValue: q.answerValue, dontKnow: false },
     );
     const idempotencyKey = `attempt-${crypto.randomUUID()}`;
     const first = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(first).toMatchObject({ correctCount: 1, totalCount: 3, stoneEarned: true, replayed: false });
+    expect(first).toMatchObject({ correctCount: 2, totalCount: 3, stoneEarned: true, replayed: false });
 
     const attempts = await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId));
     expect(attempts).toHaveLength(1);
-    expect(attempts[0].correctCount).toBe(1);
+    expect(attempts[0].correctCount).toBe(2);
     expect(attempts[0].totalCount).toBe(3);
 
     const ledger = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId));
     expect(ledger).toHaveLength(1);
-    expect(ledger[0]).toMatchObject({ reason: "learning_reviewed", points: 10, subjectType: "quiz_attempt", subjectId: first.attemptId, idempotencyKey: `quiz_attempt:${first.attemptId}` });
-    const [definition] = await db.select().from(rewardDefinitions).where(eq(rewardDefinitions.workspaceId, auth.workspaceId));
+    expect(ledger[0]).toMatchObject({
+      reason: "learning_reviewed",
+      points: 10,
+      subjectType: "quiz_attempt",
+      subjectId: first.attemptId,
+      idempotencyKey: `quiz_attempt:${first.attemptId}`,
+    });
+    const [definition] = await db
+      .select()
+      .from(rewardDefinitions)
+      .where(eq(rewardDefinitions.workspaceId, auth.workspaceId));
     expect(definition.key).toBe("learning_reviewed");
 
     // The score is a derivation: the overview reads the ledger, not a balance.
@@ -184,7 +223,7 @@ suite("learning loop", () => {
 
     // A lost response replayed: the attempt already happened, no second stone.
     const replay = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 1, stoneEarned: false, replayed: true });
+    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 2, stoneEarned: false, replayed: true });
     expect(await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId))).toHaveLength(1);
     expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId))).toHaveLength(1);
   });
@@ -196,16 +235,36 @@ suite("learning loop", () => {
     const sitting = await learningQueries.getQuizForSitting(auth, quizId);
 
     await expect(
-      commands.completeQuizAttempt(auth, { quizId, answers: [{ questionId: sitting!.questions[0].id, selectedValue: sitting!.questions[0].answerValue, dontKnow: false }], idempotencyKey: `k-${crypto.randomUUID()}` }),
+      commands.completeQuizAttempt(auth, {
+        quizId,
+        answers: [
+          { questionId: sitting!.questions[0].id, selectedValue: sitting!.questions[0].answerValue, dontKnow: false },
+        ],
+        idempotencyKey: `k-${crypto.randomUUID()}`,
+      }),
     ).rejects.toMatchObject({ code: "invalid_answers" });
 
     const [q0] = sitting!.questions;
     await expect(
-      commands.completeQuizAttempt(auth, { quizId, answers: [{ questionId: q0.id, selectedValue: "not-a-choice", dontKnow: false }, ...sitting!.questions.slice(1).map((q) => ({ questionId: q.id, selectedValue: null, dontKnow: true }))], idempotencyKey: `k-${crypto.randomUUID()}` }),
+      commands.completeQuizAttempt(auth, {
+        quizId,
+        answers: [
+          { questionId: q0.id, selectedValue: "not-a-choice", dontKnow: false },
+          ...sitting!.questions.slice(1).map((q) => ({ questionId: q.id, selectedValue: null, dontKnow: true })),
+        ],
+        idempotencyKey: `k-${crypto.randomUUID()}`,
+      }),
     ).rejects.toMatchObject({ code: "invalid_answers" });
 
     await expect(
-      commands.completeQuizAttempt(auth, { quizId, answers: [{ questionId: q0.id, selectedValue: q0.answerValue, dontKnow: true }, ...sitting!.questions.slice(1).map((q) => ({ questionId: q.id, selectedValue: null, dontKnow: true }))], idempotencyKey: `k-${crypto.randomUUID()}` }),
+      commands.completeQuizAttempt(auth, {
+        quizId,
+        answers: [
+          { questionId: q0.id, selectedValue: q0.answerValue, dontKnow: true },
+          ...sitting!.questions.slice(1).map((q) => ({ questionId: q.id, selectedValue: null, dontKnow: true })),
+        ],
+        idempotencyKey: `k-${crypto.randomUUID()}`,
+      }),
     ).rejects.toMatchObject({ code: "invalid_answers" });
   });
 
@@ -218,12 +277,22 @@ suite("learning loop", () => {
     expect(await learningQueries.getLearnLibrary(authB)).toHaveLength(0);
     expect(await learningQueries.getQuizForSitting(authB, quizId)).toBeNull();
     await expect(
-      commands.completeQuizAttempt(authB, { quizId, answers: [{ questionId: crypto.randomUUID(), selectedValue: null, dontKnow: true }], idempotencyKey: `k-${crypto.randomUUID()}` }),
+      commands.completeQuizAttempt(authB, {
+        quizId,
+        answers: [{ questionId: crypto.randomUUID(), selectedValue: null, dontKnow: true }],
+        idempotencyKey: `k-${crypto.randomUUID()}`,
+      }),
     ).rejects.toMatchObject({ code: "quiz_not_found" });
 
     const library = await learningQueries.getLearnLibrary(authA);
     expect(library).toHaveLength(1);
-    expect(library[0]).toMatchObject({ documentId: doc.id, quizId, questionCount: 3, bestCorrect: null, lastAttemptedAt: null });
+    expect(library[0]).toMatchObject({
+      documentId: doc.id,
+      quizId,
+      questionCount: 3,
+      bestCorrect: null,
+      lastAttemptedAt: null,
+    });
 
     // Completing in A stays in A: B's ledger is untouched.
     const sitting = await learningQueries.getQuizForSitting(authA, quizId);
@@ -232,15 +301,27 @@ suite("learning loop", () => {
       answers: sitting!.questions.map((q) => ({ questionId: q.id, selectedValue: q.answerValue, dontKnow: false })),
       idempotencyKey: `k-${crypto.randomUUID()}`,
     });
+    // Completing in A stays in A: B's ledger is untouched, and A's holds the
+    // sitting award plus the first-time perfect-sitting emerald stone.
     expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, authB.workspaceId))).toHaveLength(0);
-    expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, authA.workspaceId))).toHaveLength(1);
+    const aLedger = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, authA.workspaceId));
+    expect(aLedger.filter((r) => r.points > 0)).toHaveLength(1); // the sitting award
+    expect(aLedger.filter((r) => r.points === 0)).toHaveLength(1); // first-time emerald
   });
 
   it("regeneration creates a new quiz and the latest ready one wins", async () => {
     const auth = await seed();
     const { doc } = await seedDocument(auth, TEXT);
     const first = await generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator());
-    const second = await generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator(leaseQuestions().slice(0, 3).map((q) => ({ ...q, prompt: `${q.prompt} (v2)` }))));
+    const second = await generate.generateQuiz(
+      auth,
+      { documentId: doc.id },
+      fixtureGenerator(
+        leaseQuestions()
+          .slice(0, 3)
+          .map((q) => ({ ...q, prompt: `${q.prompt} (v2)` })),
+      ),
+    );
     expect(second.quizId).not.toBe(first.quizId);
     const latest = await learningQueries.latestReadyQuizForDocument(auth, doc.id);
     expect(latest?.id).toBe(second.quizId);

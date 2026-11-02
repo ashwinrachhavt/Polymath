@@ -1,11 +1,17 @@
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { Empty, Panel, Screen, Stat, Status } from "@/components/workspace/ui";
-import { getRewardsOverview, pickRewardAnnouncement, type RewardsOverview } from "@/domains/gamification/queries";
+import {
+  getRewardsOverview,
+  listFoundryProposals,
+  pickRewardAnnouncement,
+  type RewardsOverview,
+} from "@/domains/gamification/queries";
 import { getAuthContext } from "@/lib/auth";
 import { CoachMark } from "@/components/shell/coach-mark";
 import { ClaimShardButton } from "./claim-button";
 import { DefinitionForm } from "./definition-form";
+import { Foundry } from "./foundry";
 import { Jewels } from "./jewels";
 
 export const metadata = { title: "Stones & rewards · Polymath" };
@@ -44,13 +50,21 @@ export function LedgerEntry({ entry }: { entry: LedgerRow }) {
 async function Rewards() {
   await io();
   const auth = await getAuthContext();
-  const overview = await getRewardsOverview(auth);
+  const [overview, foundryProposals] = await Promise.all([getRewardsOverview(auth), listFoundryProposals(auth)]);
   const announcement = pickRewardAnnouncement(overview.ledger, new Date());
+  // The Foundry's forged shelf: approved designs carry their recipe; the
+  // stone's own SVG is the art, already schema-judged.
+  const forged = overview.definitions
+    .filter((definition) => definition.recipe !== null)
+    .map((definition) => ({
+      key: definition.key,
+      label: definition.label,
+      description: definition.description,
+      svg: (definition.recipe as { svg: string }).svg,
+    }));
 
   return (
-    <Screen
-      title="Stone collection"
-    >
+    <Screen title="Stone collection">
       <Jewels overview={overview} />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -62,12 +76,17 @@ async function Rewards() {
               title={announcement.milestone ? "Milestone reached" : "Stone earned"}
               actionLabel="View"
             >
-              {announcement.definitionLabel} · +{announcement.points} pts · {announcement.reason.replaceAll("_", " ")}. The collection is below.
+              {announcement.definitionLabel} · +{announcement.points} pts · {announcement.reason.replaceAll("_", " ")}.
+              The collection is below.
             </CoachMark>
           ) : null}
         </div>
         <Stat label="Active days" value={overview.activeDays} hint="Days with at least one entry" />
-        <Stat label="Reward definitions" value={overview.definitions.length} hint="The catalog earning rules reference" />
+        <Stat
+          label="Reward definitions"
+          value={overview.definitions.length}
+          hint="The catalog earning rules reference"
+        />
       </div>
 
       <Panel
@@ -75,6 +94,13 @@ async function Rewards() {
         description={`${overview.shards.stones} stone(s) recorded, ${overview.shards.claimed} shard(s) claimed. Five stones fuse into one shard - claimed by hand, never auto-converted.`}
       >
         <ClaimShardButton claimable={overview.shards.claimable} />
+      </Panel>
+
+      <Panel
+        title="Foundry"
+        description="Stones the agent designed await your decision here. Approving adds the stone to the collection; nothing drops into a session until it exists."
+      >
+        <Foundry proposals={foundryProposals} stones={forged} />
       </Panel>
 
       <Panel title="Definitions" description="Defining one changes no balances and awards nothing.">
@@ -86,16 +112,15 @@ async function Rewards() {
                   {definition.label} <span className="text-muted-foreground">({definition.key})</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {definition.kind} · {definition.points} pts{definition.threshold > 1 ? ` · needs ${definition.threshold}` : ""}
+                  {definition.kind} · {definition.points} pts
+                  {definition.threshold > 1 ? ` · needs ${definition.threshold}` : ""}
                   {definition.description ? ` · ${definition.description}` : ""}
                 </p>
               </div>
               <Status>{definition.active ? "active" : "disabled"}</Status>
             </div>
           ))}
-          {!overview.definitions.length ? (
-            <Empty title="No rewards defined" />
-          ) : null}
+          {!overview.definitions.length ? <Empty title="No rewards defined" /> : null}
         </div>
       </Panel>
 
@@ -108,9 +133,7 @@ async function Rewards() {
           {overview.ledger.map((entry) => (
             <LedgerEntry key={entry.id} entry={entry} />
           ))}
-          {!overview.ledger.length ? (
-            <Empty title="Nothing earned yet" />
-          ) : null}
+          {!overview.ledger.length ? <Empty title="Nothing earned yet" /> : null}
         </div>
       </Panel>
     </Screen>
@@ -119,7 +142,13 @@ async function Rewards() {
 
 export default function RewardsPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening the stone collection…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Opening the stone collection…
+        </p>
+      }
+    >
       <Rewards />
     </Suspense>
   );

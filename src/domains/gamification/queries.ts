@@ -1,6 +1,9 @@
 import { and, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { FOUNDRY_CAPABILITY } from "./proposals";
+import { rejectRecipe, stoneRecipeSchema, type StoneRecipe } from "./recipe";
+import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { rewardDefinitions, rewardLedger } from "./schema";
 
 /*
@@ -11,7 +14,14 @@ import { rewardDefinitions, rewardLedger } from "./schema";
 
 export type RewardsOverview = {
   definitions: Array<typeof rewardDefinitions.$inferSelect>;
-  ledger: Array<typeof rewardLedger.$inferSelect & { definitionKey: string; definitionLabel: string; definitionKind: string; definitionThreshold: number }>;
+  ledger: Array<
+    typeof rewardLedger.$inferSelect & {
+      definitionKey: string;
+      definitionLabel: string;
+      definitionKind: string;
+      definitionThreshold: number;
+    }
+  >;
   /** Sum of ledger points - the score is a derivation, not a record. */
   totalPoints: number;
   /** Distinct workspace-local days with at least one ledger entry. */
@@ -64,9 +74,11 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
     total_points: 0,
     active_days: 0,
   };
+  // Reversal rows (subject_type 'reward_ledger') reference the award they
+  // undo and never count as stones - a reversed award buys no shard credit.
   const shardRows = await db.execute(sql`
     select
-      count(*) filter (where d.key <> 'shard')::int as stones,
+      count(*) filter (where d.key <> 'shard' and l.subject_type is distinct from 'reward_ledger')::int as stones,
       count(*) filter (where d.key = 'shard')::int as claimed
     from reward_ledger l
     join reward_definitions d on d.id = l.reward_definition_id
@@ -96,7 +108,10 @@ export function pickRewardAnnouncement(
   now: Date,
 ): (RewardsOverview["ledger"][number] & { milestone: boolean }) | null {
   const entry = ledger.find(
-    (row) => row.points > 0 && row.reason !== "adjustment" && now.getTime() - row.createdAt.getTime() <= ANNOUNCEMENT_WINDOW_MS,
+    (row) =>
+      row.points > 0 &&
+      row.reason !== "adjustment" &&
+      now.getTime() - row.createdAt.getTime() <= ANNOUNCEMENT_WINDOW_MS,
   );
   if (!entry) return null;
   return { ...entry, milestone: entry.definitionKind === "badge" || entry.definitionThreshold > 1 };
@@ -127,4 +142,66 @@ export async function listStonesEarnedInRange(
     )
     .orderBy(rewardLedger.createdAt)
     .limit(200);
+}
+
+/*
+ * The Foundry's review section (spec §7): pending foundry proposals with
+ * their latest revision's recipe, parsed by the same schema the approval
+ * enforces. A payload that no longer parses (a schema tightened after the
+ * proposal landed) surfaces as a malformed card instead of a broken preview -
+ * and only the rejection reason is shown, never the raw payload. Expired
+ * proposals stay out: the queue's own cards cover them.
+ */
+export type FoundryProposal = {
+  proposalId: string;
+  revisionId: string;
+  expectedVersion: number;
+  title: string;
+  expectedEffect: string;
+  /** The parsed recipe, when the payload still satisfies the schema. */
+  recipe: StoneRecipe | null;
+  /** Why the payload does not parse, when it does not. */
+  rejection: string | null;
+  createdAt: Date;
+};
+
+export async function listFoundryProposals(auth: AuthContext): Promise<FoundryProposal[]> {
+  const rows = await db
+    .select({
+      proposalId: actionProposals.id,
+      revisionId: actionRevisions.id,
+      expectedVersion: actionProposals.version,
+      title: actionProposals.title,
+      expectedEffect: actionProposals.expectedEffect,
+      payload: actionRevisions.payload,
+      createdAt: actionProposals.createdAt,
+    })
+    .from(actionProposals)
+    .innerJoin(actionRevisions, eq(actionRevisions.proposalId, actionProposals.id))
+    .where(
+      and(
+        eq(actionProposals.workspaceId, auth.workspaceId),
+        eq(actionProposals.capability, FOUNDRY_CAPABILITY),
+        eq(actionProposals.status, "pending"),
+        sql`(${actionProposals.expiresAt} is null or ${actionProposals.expiresAt} > now())`,
+        // The latest revision only: an owner edit supersedes its ancestors.
+        sql`${actionRevisions.revisionNumber} = (select max(r.revision_number) from action_revisions r where r.proposal_id = ${actionProposals.id})`,
+      ),
+    )
+    .orderBy(desc(actionProposals.createdAt))
+    .limit(20);
+
+  return rows.map((row) => {
+    const rejection = rejectRecipe(row.payload);
+    return {
+      proposalId: row.proposalId,
+      revisionId: row.revisionId,
+      expectedVersion: row.expectedVersion,
+      title: row.title,
+      expectedEffect: row.expectedEffect,
+      recipe: rejection ? null : stoneRecipeSchema.parse(row.payload),
+      rejection: rejection ? `${rejection.field}: ${rejection.message}` : null,
+      createdAt: row.createdAt,
+    };
+  });
 }

@@ -1,12 +1,22 @@
 import { focusRecords } from "@/components/workspace/rewards";
 import type { Task, WorkspaceState } from "@/components/workspace/types";
+import {
+  DIAMOND_RULE,
+  EMERALD_RULE,
+  GARNET_RULE,
+  QUARTZ_RULE,
+  RUBY_RULE,
+  SAPPHIRE_RULE,
+  TOPAZ_RULE,
+} from "@/domains/gamification/rules";
 
 /*
  * The NeuralFlow stone catalog: names, themes and art come from the frozen
  * NeuralFlow donor (`src/lib/gamification/catalog.ts`, `public/*.png`), resized
- * into `public/neuralflow/stones`. Only stones with a `rewardTitle` are awarded
- * in Polymath; the rest are shown locked so the collection keeps its shape without
- * implying a rule that does not exist yet.
+ * into `public/neuralflow/stones`. Every stone's `rule` is the earning rule's
+ * own words, imported from the gamification rules module - the same text the
+ * server ensures into the definition row - so the catalog cannot drift from
+ * what the ledger actually awards.
  */
 type StoneSlug = "quartz" | "garnet" | "topaz" | "emerald" | "sapphire" | "ruby" | "diamond";
 export type Stone = {
@@ -27,7 +37,7 @@ export const stoneCatalog: Stone[] = [
     rarity: "Common",
     image: "/neuralflow/stones/quartz.webp",
     rewardTitle: "Clarity stone",
-    rule: "Finish a task-linked focus interval and record its outcome.",
+    rule: QUARTZ_RULE.description,
   },
   {
     slug: "garnet",
@@ -35,7 +45,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Recovery and reflection",
     rarity: "Common",
     image: "/neuralflow/stones/garnet.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: GARNET_RULE.description,
   },
   {
     slug: "topaz",
@@ -43,7 +53,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Consistency",
     rarity: "Rare",
     image: "/neuralflow/stones/topaz.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: TOPAZ_RULE.description,
   },
   {
     slug: "emerald",
@@ -51,7 +61,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Learning and growth",
     rarity: "Rare",
     image: "/neuralflow/stones/emerald.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: EMERALD_RULE.description,
   },
   {
     slug: "sapphire",
@@ -59,7 +69,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Deep focus",
     rarity: "Epic",
     image: "/neuralflow/stones/sapphire.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: SAPPHIRE_RULE.description,
   },
   {
     slug: "ruby",
@@ -67,7 +77,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Courage and shipping",
     rarity: "Epic",
     image: "/neuralflow/stones/ruby.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: RUBY_RULE.description,
   },
   {
     slug: "diamond",
@@ -75,7 +85,7 @@ export const stoneCatalog: Stone[] = [
     theme: "Mastery",
     rarity: "Legendary",
     image: "/neuralflow/stones/diamond.webp",
-    rule: "No earning rule in Polymath yet.",
+    rule: DIAMOND_RULE.description,
   },
 ];
 

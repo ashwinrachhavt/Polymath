@@ -11,8 +11,9 @@ type LiveSession = { id: string; state: "running" | "paused"; title: string };
 /*
  * The shell's reminder that a focus session is live while you are somewhere
  * else. On canonical routes it reads the REAL session (domains/focus, through
- * /api/v1/focus/live) so a session started on Work follows you across pages and
- * disappears when it ends. The browser-preview store has its own session on
+ * /api/v1/focus/live) so a session started from a task detail follows you
+ * across pages and disappears when it ends, linking to Focus, the screen that
+ * owns the live controls. The browser-preview store has its own session on
  * /apps screens; that one is shown only there and links to its own screen, so
  * the two are never substituted for each other.
  */
@@ -28,10 +29,10 @@ export function FocusDock() {
 function LiveDock({ pathname }: { pathname: string }) {
   // Keyed by the path it was read on, so a read from an earlier page is never shown as current.
   const [read, setRead] = useState<{ path: string; session: LiveSession | null; stale: boolean } | null>(null);
-  const onWork = pathname === "/neuralflow/work";
+  const ownsLiveControls = pathname === "/neuralflow/focus";
 
   useEffect(() => {
-    if (onWork) return; // Work renders the live controls itself.
+    if (ownsLiveControls) return; // The Focus screen renders the live controls itself.
     let cancelled = false;
     async function load() {
       try {
@@ -57,11 +58,11 @@ function LiveDock({ pathname }: { pathname: string }) {
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [pathname, onWork]);
+  }, [pathname, ownsLiveControls]);
 
   const session = read && read.path === pathname ? read.session : null;
   const stale = Boolean(read?.stale);
-  if (onWork || !session) return null;
+  if (ownsLiveControls || !session) return null;
   return (
     <aside
       aria-label="Focus session"
@@ -72,7 +73,7 @@ function LiveDock({ pathname }: { pathname: string }) {
       className="sticky bottom-[calc(57px+env(safe-area-inset-bottom))] z-10 mt-auto border-t border-border bg-background/95 px-4 py-2 backdrop-blur md:bottom-0"
     >
       <Link
-        href="/neuralflow/work?view=today"
+        href="/neuralflow/focus"
         className="flex min-h-8 items-center gap-3 rounded-md text-[13px] hover:text-app-accent"
       >
         <Timer aria-hidden className="size-4 shrink-0 text-app-accent" />

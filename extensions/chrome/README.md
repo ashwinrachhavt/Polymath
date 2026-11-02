@@ -93,3 +93,21 @@ URL-only capture is the one case safe to treat as already delivered.
 | Alt + N  | Toggle the floating dock |
 | Alt + S  | Save current selection or quick note |
 | Alt + P  | Capture entire page content |
+
+
+## Focus blocker
+
+When a Focus Mode session is live, a service-worker poller (on `chrome.alarms`, at most 30 s between
+checks) reads `/api/v1/focus/live` and `/api/v1/focus/blocklist` with the paired `axm_` machine key
+and caches both in `chrome.storage.local`. A running session installs the workspace blocklist as
+dynamic `declarativeNetRequest` rules — allow entries outrank block entries, and block rules redirect
+the browser tab to the ghost interstitial, which shows the session subject, the minutes remaining,
+and (on the deep tier) why there is no bypass. Paused, absent, or ended sessions clear the rules.
+
+If the server cannot be reached, the poller keeps the last-known rules for 10 minutes, then clears
+them: a dead server must never lock a user out of their own browser.
+
+The `declarativeNetRequest` redirect is what needs `<all_urls>` host access: Chrome applies redirect
+rules only on hosts the extension has host access for, and the interstitial has to take over any
+site the workspace lists. The capture content scripts already run on every page, so this aligns
+the permission with the footprint the extension already has.

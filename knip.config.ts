@@ -22,7 +22,10 @@ const config = {
     "extensions/chrome/manifest.json",
     "extensions/chrome/*.html",
     "extensions/chrome/*.css",
-    "extensions/chrome/{api,background,content,dashboard,extract,popup,sidepanel}.js",
+    // focus-block.js is script-tag-loaded by focus-block.html and
+    // focus-blocker.js importScripts-loaded by background.js (MV3 service
+    // workers resolve neither through the module graph).
+    "extensions/chrome/{api,background,content,dashboard,extract,focus-block,focus-blocker,popup,sidepanel}.js",
     "extensions/chrome/libs/{readability,turndown}.js",
 
     // Operator scripts invoked from the Makefile (queue-up, eve-up) or run by

@@ -131,9 +131,7 @@ const commitInput = z.object({
   idempotencyKey: key,
 });
 
-export async function commitNoteAction(
-  input: z.input<typeof commitInput>,
-): Promise<
+export async function commitNoteAction(input: z.input<typeof commitInput>): Promise<
   Result<{
     version: number;
     versionNumber: number;
@@ -359,9 +357,7 @@ const addCommentInput = z.object({
   idempotencyKey: key,
 });
 
-export async function addNoteCommentAction(
-  input: z.input<typeof addCommentInput>,
-): Promise<
+export async function addNoteCommentAction(input: z.input<typeof addCommentInput>): Promise<
   Result<{
     comment: { id: string; body: string; resolvedAt: string | null; createdAt: string; authorName: string | null };
   }>

@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 102 files, highest `0275_short_mikhail_rasputin`.
+Migrations: 106 files, highest `0279_stone_foundry`.
 
 ## Tests
 
-511 `.test.ts` and 44 `.spec.ts` files (unit: 307, integration: 201, e2e: 44).
+519 `.test.ts` and 45 `.spec.ts` files (unit: 311, integration: 205, e2e: 45).
 ## Domains
 
 24 folders; 19 own tables.
@@ -46,7 +46,7 @@ Migrations: 102 files, highest `0275_short_mikhail_rasputin`.
 | `capture` | 2 |
 | `crm` | 6 |
 | `daybook` | 1 |
-| `focus` | 1 |
+| `focus` | 2 |
 | `gamification` | 4 |
 | `identity` | 18 |
 | `integrations` | 7 |
@@ -124,6 +124,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `crm` | `follow_ups` | versioned |
 | `daybook` | `day_artifact_pins` | append-only |
 | `focus` | `focus_sessions` | versioned |
+| `focus` | `focus_blocklist` | versioned |
 | `gamification` | `reward_definitions` | versioned |
 | `gamification` | `reward_ledger` | append-only |
 | `gamification` | `user_progress` | versioned |
@@ -234,7 +235,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 99 versioned, 63 append-only, 7 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 100 versioned, 63 append-only, 7 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -257,6 +258,8 @@ Totals: 99 versioned, 63 append-only, 7 versionless but guarded (each declared w
 - `/api/v1/exports/manifests/[manifestId]/packet`
 - `/api/v1/exports/packets/[packetId]`
 - `/api/v1/files`
+- `/api/v1/focus/blocklist`
+- `/api/v1/focus/blocklist/[blockId]`
 - `/api/v1/focus/live`
 - `/api/v1/projects`
 - `/api/v1/projects/[projectId]/generate`

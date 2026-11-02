@@ -15,11 +15,17 @@
  *      relay their requests here. Only the origins listed in manifest.json
  *      are reachable — the URL is checked, not trusted.
  *   3. Side panel and keyboard commands.
+ *   4. The focus blocker. A chrome.alarms poll (30s) reads the workspace's
+ *      live focus session and blocklist and installs or clears the
+ *      declarativeNetRequest rules; the ghost interstitial lives in
+ *      focus-block.html. See focus-blocker.js and focus-core.js.
  */
 
-importScripts("outbox-core.js", "api.js");
+importScripts("outbox-core.js", "api.js", "focus-core.js", "focus-blocker.js");
 
 var Outbox = self.AxiomOutbox;
+var AxiomFocus = self.AxiomFocus;
+var AxiomFocusBlocker = self.AxiomFocusBlocker;
 var ALARM_NAME = "axiom-capture-outbox-pump";
 /** chrome.alarms will not fire sooner than ~30s; never schedule tighter. */
 var MIN_ALARM_MS = 30 * 1000;
@@ -245,6 +251,13 @@ async function scheduleAlarm(entries) {
 
 chrome.alarms.onAlarm.addListener(function (alarm) {
   if (alarm && alarm.name === ALARM_NAME) pump();
+  if (alarm && alarm.name === AxiomFocus.POLL_ALARM) AxiomFocusBlocker.pollAndEnforce();
+});
+
+// Pairing (or a key change) changes what the blocker may enforce — poll now
+// rather than waiting for the next tick.
+chrome.storage.onChanged.addListener(function (changes, area) {
+  if (area === "local" && changes.axiomToken) AxiomFocusBlocker.pollAndEnforce();
 });
 
 // ── History ──────────────────────────────────────────────────────────
@@ -558,10 +571,14 @@ chrome.runtime.onInstalled.addListener(function () {
   chrome.storage.local.remove(LEGACY_STORAGE_KEYS);
   pump(); // recover anything queued before an update or crash
   readOutbox().then(updateBadge);
+  AxiomFocusBlocker.ensureAlarm();
+  AxiomFocusBlocker.pollAndEnforce();
 });
 
 chrome.runtime.onStartup.addListener(function () {
   chrome.storage.local.remove(LEGACY_STORAGE_KEYS);
   pump();
   readOutbox().then(updateBadge);
+  AxiomFocusBlocker.ensureAlarm();
+  AxiomFocusBlocker.pollAndEnforce();
 });

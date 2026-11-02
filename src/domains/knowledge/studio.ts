@@ -208,15 +208,13 @@ export async function saveGeneratedDraft(
       .set({ currentVersionId: version.id, embedError: null })
       .where(eq(artifacts.id, artifact.id));
 
-    await tx
-      .insert(artifactLinks)
-      .values({
-        workspaceId: auth.workspaceId,
-        artifactId: artifact.id,
-        targetType: "run",
-        targetId: run.id,
-        label: "produced by",
-      });
+    await tx.insert(artifactLinks).values({
+      workspaceId: auth.workspaceId,
+      artifactId: artifact.id,
+      targetType: "run",
+      targetId: run.id,
+      label: "produced by",
+    });
     if (dossierSubject?.id) {
       // Same file-or-address rule as startStudioGenerate above: a queued URL or
       // YouTube capture is a pinned source before its bytes land, so its

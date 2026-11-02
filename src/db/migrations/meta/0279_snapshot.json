@@ -1,6 +1,6 @@
 {
-  "id": "16120a0e-b9bb-4ef8-b253-b7cc1fae89bc",
-  "prevId": "85b83b7a-e9ca-4250-87ca-f90cc47984ab",
+  "id": "406ffec6-2e72-458e-95c1-cc966c86c7c6",
+  "prevId": "16120a0e-b9bb-4ef8-b253-b7cc1fae89bc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9393,6 +9393,122 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.focus_blocklist": {
+      "name": "focus_blocklist",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pattern": {
+          "name": "pattern",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "focus_blocklist_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'block'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "focus_blocklist_pattern_key": {
+          "name": "focus_blocklist_pattern_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pattern",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"focus_blocklist\".\"archived_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "focus_blocklist_workspace_id_workspaces_id_fk": {
+          "name": "focus_blocklist_workspace_id_workspaces_id_fk",
+          "tableFrom": "focus_blocklist",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.focus_sessions": {
       "name": "focus_sessions",
       "schema": "",
@@ -9429,6 +9545,27 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'running'"
+        },
+        "strictness": {
+          "name": "strictness",
+          "type": "focus_strictness",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'normal'"
+        },
+        "pause_count": {
+          "name": "pause_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "abandon_requested_at": {
+          "name": "abandon_requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "planned_minutes": {
           "name": "planned_minutes",
@@ -9862,6 +9999,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "recipe": {
+          "name": "recipe",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -10029,6 +10172,33 @@
         }
       },
       "indexes": {
+        "reward_ledger_user_idempotency_key": {
+          "name": "reward_ledger_user_idempotency_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "reward_ledger_idempotency_key": {
           "name": "reward_ledger_idempotency_key",
           "columns": [
@@ -28825,6 +28995,14 @@
         "dormant"
       ]
     },
+    "public.focus_blocklist_kind": {
+      "name": "focus_blocklist_kind",
+      "schema": "public",
+      "values": [
+        "block",
+        "allow"
+      ]
+    },
     "public.focus_session_state": {
       "name": "focus_session_state",
       "schema": "public",
@@ -28834,6 +29012,15 @@
         "interrupted",
         "finished",
         "abandoned"
+      ]
+    },
+    "public.focus_strictness": {
+      "name": "focus_strictness",
+      "schema": "public",
+      "values": [
+        "normal",
+        "timeout",
+        "deep"
       ]
     },
     "public.ledger_reason": {
@@ -28846,7 +29033,8 @@
         "review_decided",
         "learning_reviewed",
         "weekly_review",
-        "adjustment"
+        "adjustment",
+        "foundry_drop"
       ]
     },
     "public.reward_kind": {

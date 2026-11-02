@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mintApiKeySecret, parseApiKey } from "@/domains/identity/machine";
+import { API_KEY_SCOPES, mintApiKeySecret, parseApiKey } from "@/domains/identity/machine";
 import { ForbiddenRoleError, requireScope } from "@/lib/auth/guards";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -59,5 +59,11 @@ describe("requireScope", () => {
   it("rejects a machine client missing the scope", () => {
     expect(() => requireScope(machine(["captures:read"]), "captures:write")).toThrow(ForbiddenRoleError);
     expect(() => requireScope(machine([]), "captures:read")).toThrow(ForbiddenRoleError);
+  });
+});
+
+describe("API_KEY_SCOPES", () => {
+  it("offers focus:read — the scope the focus routes require of machine keys", () => {
+    expect(API_KEY_SCOPES).toContain("focus:read");
   });
 });

@@ -97,7 +97,7 @@ export async function countRunsInFlight(workspaceId: string): Promise<number> {
  * the panel must never import it.
  */
 export { classifyRunState, triageTab } from "./triage";
-export type { RunState, TriageRunPhase, TriageItem, TriageFeed, TriageTab } from "./triage";
+export type { RunState, TriageItem, TriageFeed } from "./triage";
 
 import { classifyRunState } from "./triage";
 import type { TriageFeed, TriageItem } from "./triage";

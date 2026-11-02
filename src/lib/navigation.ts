@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
   SquareCheckBig,
+  Timer,
   Unplug,
   Users,
 } from "lucide-react";
@@ -72,6 +73,13 @@ export const destinations: Destination[] = [
     label: "Work",
     purpose: "Execute your commitments.",
     icon: SquareCheckBig,
+    group: "neuralflow",
+  },
+  {
+    href: "/neuralflow/focus",
+    label: "Focus",
+    purpose: "Run a strict focus session.",
+    icon: Timer,
     group: "neuralflow",
   },
   {

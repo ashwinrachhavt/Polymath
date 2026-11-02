@@ -22,7 +22,7 @@ import { apiClientUsage, apiClients } from "./schema";
 const DAILY_REQUEST_CEILING = 1_000;
 
 /** Every scope an API key can carry today; the Settings UI offers exactly these. */
-const API_KEY_SCOPES = ["captures:read", "captures:write"] as const;
+export const API_KEY_SCOPES = ["captures:read", "captures:write", "focus:read"] as const;
 type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 type MachineClient = {

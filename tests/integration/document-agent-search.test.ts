@@ -317,6 +317,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "instagram.media.read",
       "notebook.open",
       "tasks.create",
+      // ASH-137: a foundry stone proposal persists a recipe proposal - an
+      // internal write that still fails closed without the grant.
+      "stones.foundry.create",
       "web.search",
       "web.fetch",
       "artifacts.revise",
@@ -476,6 +479,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "instagram.media.read",
       "notebook.open",
       "tasks.create",
+      // ASH-137: a foundry stone proposal persists a recipe proposal - an
+      // internal write that still fails closed without the grant.
+      "stones.foundry.create",
       "web.search",
       "web.fetch",
       "artifacts.revise",
