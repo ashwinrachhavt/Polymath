@@ -89,15 +89,15 @@ suite("focus sessions", () => {
 
     const session = await commands.startFocusSession(auth, { subject: "Guarded" });
     // Version the caller never saw.
-    await expect(
-      commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 9 }),
-    ).rejects.toThrow(commands.StaleWriteError);
+    await expect(commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 9 })).rejects.toThrow(
+      commands.StaleWriteError,
+    );
     // A finish from the correct version works...
     await commands.finishFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
     // ...and a second finish matches no running/paused row: no duplicate, no resurrection.
-    await expect(
-      commands.finishFocusSession(auth, { sessionId: session.id, expectedVersion: 2 }),
-    ).rejects.toThrow(commands.StaleWriteError);
+    await expect(commands.finishFocusSession(auth, { sessionId: session.id, expectedVersion: 2 })).rejects.toThrow(
+      commands.StaleWriteError,
+    );
   });
 
   it("rejects the transitions the state matrix forbids", async () => {
@@ -106,17 +106,17 @@ suite("focus sessions", () => {
 
     // running x resume: resume is only legal from paused.
     const running = await commands.startFocusSession(auth, { subject: "Running" });
-    await expect(
-      commands.resumeFocusSession(auth, { sessionId: running.id, expectedVersion: 1 }),
-    ).rejects.toThrow(commands.StaleWriteError);
+    await expect(commands.resumeFocusSession(auth, { sessionId: running.id, expectedVersion: 1 })).rejects.toThrow(
+      commands.StaleWriteError,
+    );
     await commands.abandonFocusSession(auth, { sessionId: running.id, expectedVersion: 1 });
 
     // paused x pause: no double pause entry.
     const session = await commands.startFocusSession(auth, { subject: "Pausing twice" });
     await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
-    await expect(
-      commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 2 }),
-    ).rejects.toThrow(commands.StaleWriteError);
+    await expect(commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 2 })).rejects.toThrow(
+      commands.StaleWriteError,
+    );
     // The one live slot is still held by this paused session.
     await commands.abandonFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
 
@@ -167,14 +167,22 @@ suite("focus sessions", () => {
     expect((await queries.listFocusHistory(authB)).length).toBe(1);
     expect(await queries.listFocusHistory(authA)).toEqual([]);
   });
-
 });
 
 /** A capture the theatre can schedule from (ASH-308). */
 async function seedCapture(workspaceId: string, userId: string, title: string) {
   const [capture] = await db
     .insert(captures)
-    .values({ workspaceId, kind: "text", captureMode: "authored", rawPayload: { text: title }, text: title, title, createdBy: userId, updatedBy: userId })
+    .values({
+      workspaceId,
+      kind: "text",
+      captureMode: "authored",
+      rawPayload: { text: title },
+      text: title,
+      title,
+      createdBy: userId,
+      updatedBy: userId,
+    })
     .returning();
   return capture;
 }
@@ -200,6 +208,8 @@ suite("planned sessions (ASH-308)", () => {
       () => commands.resumeFocusSession(auth, { sessionId, expectedVersion: row.version }),
       () => commands.finishFocusSession(auth, { sessionId, expectedVersion: row.version }),
       () => commands.abandonFocusSession(auth, { sessionId, expectedVersion: row.version }),
+      () => commands.requestAbandonFocusSession(auth, { sessionId, expectedVersion: row.version }),
+      () => commands.confirmAbandonFocusSession(auth, { sessionId, expectedVersion: row.version }),
     ]) {
       await expect(transition()).rejects.toThrowError(/changed since you loaded/);
     }
@@ -213,7 +223,10 @@ suite("planned sessions (ASH-308)", () => {
     const { userId, workspaceId } = await seedWorkspace(db, `focus-planned-live-${Date.now()}`);
     const auth = ownerAuth(userId, workspaceId);
     const capture = await seedCapture(workspaceId, userId, "Inbox zero");
-    await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: new Date(Date.now() + 3600_000) });
+    await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: new Date(Date.now() + 3600_000),
+    });
 
     // Live means started: a planned row does not occupy the slot.
     const session = await commands.startFocusSession(auth, { subject: "Real work" });
@@ -233,9 +246,9 @@ suite("planned sessions (ASH-308)", () => {
     const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, sessionId));
 
     // A stale version is rejected; the row stays planned.
-    await expect(commands.startScheduledFocusSession(auth, { sessionId, expectedVersion: row.version + 1 })).rejects.toThrowError(
-      /changed since you loaded/,
-    );
+    await expect(
+      commands.startScheduledFocusSession(auth, { sessionId, expectedVersion: row.version + 1 }),
+    ).rejects.toThrowError(/changed since you loaded/);
 
     const started = await commands.startScheduledFocusSession(auth, { sessionId, expectedVersion: row.version });
     expect(started.state).toBe("running");
@@ -258,8 +271,16 @@ suite("planned sessions (ASH-308)", () => {
     const capture = await seedCapture(workspaceId, userId, "Sort the receipts");
     const slot = new Date(Date.now() + 3600_000);
 
-    const first = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: slot, idempotencyKey: "drop-1" });
-    const second = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: slot, idempotencyKey: "drop-1" });
+    const first = await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: slot,
+      idempotencyKey: "drop-1",
+    });
+    const second = await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: slot,
+      idempotencyKey: "drop-1",
+    });
     expect(second.sessionId).toBe(first.sessionId);
     expect(second.replayed).toBe(true);
     const rows = await db.select().from(focusSessions).where(eq(focusSessions.workspaceId, workspaceId));
@@ -272,7 +293,10 @@ suite("planned sessions (ASH-308)", () => {
     const capture = await seedCapture(workspaceId, userId, "Read the contract");
     const todaySlot = new Date();
     todaySlot.setHours(todaySlot.getHours() + 2);
-    const { sessionId } = await commands.scheduleSessionFromCapture(auth, { captureId: capture.id, scheduledAt: todaySlot });
+    const { sessionId } = await commands.scheduleSessionFromCapture(auth, {
+      captureId: capture.id,
+      scheduledAt: todaySlot,
+    });
     const running = await commands.startFocusSession(auth, { subject: "Now" });
 
     const from = new Date();
@@ -287,5 +311,199 @@ suite("planned sessions (ASH-308)", () => {
     const otherAuth = ownerAuth(other.userId, other.workspaceId);
     const otherDay = await queries.listDayFocusSessions(otherAuth, { from, to });
     expect(otherDay).toHaveLength(0);
+  });
+});
+
+/*
+ * Spec §1 strictness matrix. Every cooldown and cap runs on the server clock:
+ * no command takes a timestamp, so the suite moves the stored anchors (the
+ * same trick as `backdate` above) instead of waiting out real seconds.
+ */
+suite("strictness tiers (spec §1)", () => {
+  /** Move a pending abandon request into the past, as if the cooldown had run. */
+  async function backdateAbandonRequest(sessionId: string, secondsAgo: number) {
+    await db
+      .update(focusSessions)
+      .set({ abandonRequestedAt: new Date(Date.now() - secondsAgo * 1000) })
+      .where(eq(focusSessions.id, sessionId));
+  }
+
+  /** Move the live pause's log anchor into the past, as if the break had lasted that long. */
+  async function backdatePause(sessionId: string, secondsAgo: number) {
+    await db
+      .update(focusSessions)
+      .set({ interruptions: [{ at: new Date(Date.now() - secondsAgo * 1000).toISOString(), reason: "paused" }] })
+      .where(eq(focusSessions.id, sessionId));
+  }
+
+  it("deep focus does not pause", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-deep-pause-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Deep", plannedMinutes: 25, strictness: "deep" });
+    await expect(
+      commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: session.version }),
+    ).rejects.toThrow(commands.ConflictError);
+
+    const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, session.id));
+    expect(row.state).toBe("running");
+    expect(row.version).toBe(session.version); // A refused transition wrote nothing.
+  });
+
+  it("deep focus finishes only at its planned time", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-deep-finish-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Deep", plannedMinutes: 25, strictness: "deep" });
+    // Stopping at ~zero elapsed is quitting, not finishing: refused, with the row untouched.
+    await expect(
+      commands.finishFocusSession(auth, { sessionId: session.id, expectedVersion: session.version }),
+    ).rejects.toThrow(commands.ConflictError);
+
+    await backdate(session.id, 25 * 60 + 5);
+    const finished = await commands.finishFocusSession(auth, {
+      sessionId: session.id,
+      expectedVersion: session.version,
+    });
+    expect(finished.state).toBe("finished");
+    expect(finished.accumulatedSeconds).toBeGreaterThanOrEqual(25 * 60);
+  });
+
+  it("deep focus cools down 60 seconds before an abandon confirms", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-deep-abandon-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Deep", plannedMinutes: 25, strictness: "deep" });
+    // Confirming before any request is a bug in the caller, not an impulse.
+    await expect(
+      commands.confirmAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version }),
+    ).rejects.toThrowError(/Request the abandon/);
+
+    await commands.requestAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version });
+    // Inside the cooldown: refused, and the refusal says what is left.
+    await expect(
+      commands.confirmAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version + 1 }),
+    ).rejects.toThrowError(/cools down for \d+s more/);
+    // The refused confirm wrote nothing, so the same version still confirms once the window has passed.
+    await backdateAbandonRequest(session.id, 61);
+    const abandoned = await commands.confirmAbandonFocusSession(auth, {
+      sessionId: session.id,
+      expectedVersion: session.version + 1,
+    });
+    expect(abandoned.state).toBe("abandoned");
+    expect(abandoned.endedAt).not.toBeNull();
+  });
+
+  it("timeout focus allows two pauses and rejects the third", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-timeout-caps-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Timeout", strictness: "timeout" });
+    await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
+    await commands.resumeFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
+    await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 3 });
+    await commands.resumeFocusSession(auth, { sessionId: session.id, expectedVersion: 4 });
+
+    await expect(commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 5 })).rejects.toThrowError(
+      /two pauses/,
+    );
+
+    const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, session.id));
+    expect(row.state).toBe("running");
+    expect(row.pauseCount).toBe(2);
+    expect(row.version).toBe(5); // Resumes never count as pauses.
+  });
+
+  it("a timeout break past five minutes is ended by the server at the cap", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-timeout-cap-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Timeout", strictness: "timeout" });
+    const paused = await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
+    const banked = paused.accumulatedSeconds;
+
+    // The click lands six minutes later; the server resumes the clock at the
+    // five-minute cap, so the extra minute is focus, not break.
+    await backdatePause(session.id, 6 * 60);
+    const resumed = await commands.resumeFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
+    expect(resumed.state).toBe("running");
+    const cap = new Date(Date.now() - 60 * 1000).getTime(); // pauseAt (6 min ago) + the 5-minute cap
+    expect(Math.abs(resumed.lastResumedAt!.getTime() - cap)).toBeLessThan(3000);
+    expect(resumed.accumulatedSeconds).toBe(banked); // Paused time banks nothing, at any length.
+    const log = resumed.interruptions as Array<{ at: string; reason: string }>;
+    expect(log[log.length - 1].reason).toBe("auto-resumed");
+
+    // The read projection agrees: elapsed keeps running from the cap.
+    const active = await queries.getActiveFocusSession(auth);
+    expect(active?.elapsedSeconds).toBeGreaterThanOrEqual(55);
+    expect(active?.elapsedSeconds).toBeLessThan(70);
+  });
+
+  it("a timeout break within five minutes resumes normally at the click", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-timeout-within-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Timeout", strictness: "timeout" });
+    await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
+    await backdatePause(session.id, 4 * 60); // Still inside the cap.
+
+    const resumed = await commands.resumeFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
+    expect(resumed.state).toBe("running");
+    // The break did not expire: the clock resumes at the click, not at the cap.
+    expect(Math.abs(resumed.lastResumedAt!.getTime() - Date.now())).toBeLessThan(3000);
+    const log = resumed.interruptions as Array<{ at: string; reason: string }>;
+    expect(log[log.length - 1].reason).toBe("resumed");
+  });
+
+  it("timeout focus cools down 30 seconds before an abandon confirms", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-timeout-abandon-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Timeout", strictness: "timeout" });
+    await commands.requestAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version });
+    await expect(
+      commands.confirmAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version + 1 }),
+    ).rejects.toThrowError(/cools down for \d+s more/);
+
+    await backdateAbandonRequest(session.id, 31);
+    const abandoned = await commands.confirmAbandonFocusSession(auth, {
+      sessionId: session.id,
+      expectedVersion: session.version + 1,
+    });
+    expect(abandoned.state).toBe("abandoned");
+  });
+
+  it("normal focus requests and confirms an abandon in one breath, and a start rejects an unknown tier", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-normal-abandon-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Normal" });
+    expect(session.strictness).toBe("normal"); // The default tier behaves as always.
+    await commands.requestAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version });
+    const abandoned = await commands.confirmAbandonFocusSession(auth, {
+      sessionId: session.id,
+      expectedVersion: session.version + 1,
+    });
+    expect(abandoned.state).toBe("abandoned");
+
+    await expect(
+      commands.startFocusSession(auth, { subject: "Junk", strictness: "extreme" as never }),
+    ).rejects.toThrowError(/tier does not exist/);
+  });
+
+  it("resuming dissolves a pending abandon request", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `focus-abandon-clear-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    const session = await commands.startFocusSession(auth, { subject: "Second thoughts" });
+    await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: 1 });
+    await commands.requestAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: 2 });
+    await commands.resumeFocusSession(auth, { sessionId: session.id, expectedVersion: 3 });
+
+    const [row] = await db.select().from(focusSessions).where(eq(focusSessions.id, session.id));
+    expect(row.abandonRequestedAt).toBeNull(); // Back to work means the request is gone.
+    await expect(
+      commands.confirmAbandonFocusSession(auth, { sessionId: session.id, expectedVersion: row.version }),
+    ).rejects.toThrowError(/Request the abandon/);
   });
 });
