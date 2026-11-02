@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 /*
@@ -35,9 +35,25 @@ vi.mock("@/components/products/command-center/settings", () => ({
   },
 }));
 
-import { getAuthContext } from "@/lib/auth";
-import { SettingsSurface } from "@/app/(workspace)/settings/page";
-import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
+// Shared-worker rule (isolate:false): whichever test file evaluates the
+// settings page first caches it wired to THAT file's mocks, so a sibling's
+// page instance would answer this file's assertions with the wrong wiring.
+// Reset the registry and re-import per test so the vi.mock factories above
+// always own the modules under test.
+type AuthModule = typeof import("@/lib/auth");
+type PageModule = typeof import("@/app/(workspace)/settings/page");
+type ActionsModule = typeof import("@/app/(workspace)/settings/actions");
+let getAuthContext: AuthModule["getAuthContext"];
+let SettingsSurface: PageModule["SettingsSurface"];
+let loadPreferencesAction: ActionsModule["loadPreferencesAction"];
+let savePreferencesAction: ActionsModule["savePreferencesAction"];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ getAuthContext } = await import("@/lib/auth"));
+  ({ SettingsSurface } = await import("@/app/(workspace)/settings/page"));
+  ({ loadPreferencesAction, savePreferencesAction } = await import("@/app/(workspace)/settings/actions"));
+});
 
 describe("settings page without Clerk configured", () => {
   it("renders the capability panel when auth has no account", async () => {
