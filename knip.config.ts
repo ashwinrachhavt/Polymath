@@ -61,6 +61,7 @@ const config = {
     "src/domains/superagent/sources/**",
     "src/domains/superagent/decide/**",
     "src/domains/superagent/store/**",
+    "src/domains/superagent/assessor/**",
   ],
 
   // evals-langgraph runs `langgraphjs dev` with the binary resolving from the
