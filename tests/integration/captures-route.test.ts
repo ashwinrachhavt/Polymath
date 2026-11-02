@@ -19,17 +19,22 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 
-const holder: { db: ReturnType<typeof drizzle> | undefined; auth: { userId: string; workspaceId: string; role: "owner" } | undefined } = {
+const holder: {
+  db: ReturnType<typeof drizzle> | undefined;
+  auth: { userId: string; workspaceId: string; role: "owner" } | undefined;
+} = {
   db: undefined,
   auth: undefined,
 };
 
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
-    return (fn: Parameters<
-      typeof import("@/lib/db-transaction").withTransaction
-    >[0]) =>
+    return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
       (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
   },
 }));
@@ -42,6 +47,12 @@ vi.mock("@/domains/identity/resolve", () => ({
 }));
 
 import { POST } from "@/app/api/v1/captures/route";
+
+// The client is the file's, not any one suite's: a suite-scoped end() left
+// every suite after the first DB suite seeding against an ended connection.
+afterAll(async () => {
+  await handle?.client.end();
+});
 
 function captureRequest(body: unknown) {
   return new Request("https://axiom.dev/api/v1/captures", {
@@ -75,9 +86,6 @@ suite("POST /api/v1/captures duplicate contract", () => {
   beforeAll(async () => {
     if (!handle) return;
     holder.db = handle.db;
-  });
-  afterAll(async () => {
-    await handle?.client.end();
   });
 
   it("409 keeps the pinned four members byte-exact and adds existingCaptureId", async () => {
@@ -115,7 +123,10 @@ suite("POST /api/v1/captures duplicate contract", () => {
   it("records an explicit selection mode", async () => {
     const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-selection-${Date.now()}`);
     holder.auth = { userId, workspaceId, role: "owner" };
-    const res = await POST(captureRequest({ text: "fragment", url: "https://example.com/s", mode: "selection" }), undefined);
+    const res = await POST(
+      captureRequest({ text: "fragment", url: "https://example.com/s", mode: "selection" }),
+      undefined,
+    );
     expect(res.status).toBe(201);
     const capture = (await res.json()).capture;
     expect(capture.captureMode).toBe("selection");
@@ -135,5 +146,37 @@ suite("POST /api/v1/captures duplicate contract", () => {
     const res = await POST(captureRequest({ text: "legacy", url: "https://example.com/legacy" }), undefined);
     expect(res.status).toBe(201);
     expect((await res.json()).capture.captureMode).toBe("page");
+  });
+});
+
+suite("POST /api/v1/captures extension extraction metadata", () => {
+  it("keeps the companion's raw_markdown and quality on the capture", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-markdown-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(
+      captureRequest({
+        text: "A page grab whose formatted reading survives.",
+        url: "https://example.com/formatted",
+        mode: "page",
+        raw_markdown: "# A heading the flatten killed\n\nA paragraph.",
+        quality: "rich",
+      }),
+      undefined,
+    );
+    expect(res.status).toBe(201);
+    const capture = (await res.json()).capture;
+    // Provenance on the row, beside the members the payload always had.
+    expect(capture.rawPayload.url).toBe("https://example.com/formatted");
+    expect(capture.rawPayload.raw_markdown).toBe("# A heading the flatten killed\n\nA paragraph.");
+    expect(capture.rawPayload.quality).toBe("rich");
+  });
+
+  it("keeps the old raw_payload shape when the body has neither member", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-nometa-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(captureRequest({ text: "Plain words, no extraction." }), undefined);
+    expect(res.status).toBe(201);
+    const capture = (await res.json()).capture;
+    expect(capture.rawPayload).toEqual({ text: "Plain words, no extraction." });
   });
 });

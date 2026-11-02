@@ -113,7 +113,10 @@ describe("capture outbox entry lifecycle", () => {
   });
 
   it("recovers entries stranded in sending by a worker crash", () => {
-    const { entries, changed } = Outbox.recoverInFlight([entry({ status: "sending" }), entry({ id: "b", status: "failed" })]);
+    const { entries, changed } = Outbox.recoverInFlight([
+      entry({ status: "sending" }),
+      entry({ id: "b", status: "failed" }),
+    ]);
     expect(changed).toBe(true);
     expect(entries[0].status).toBe("queued");
     expect(entries[1].status).toBe("failed");
@@ -170,5 +173,23 @@ describe("capture outbox destination binding", () => {
     expect(parked.status).toBe("conflicted");
     expect(parked.text).toBe("hello world");
     expect(Outbox.isDue(parked, T0 + 999_999_999)).toBe(false);
+  });
+});
+
+describe("capture outbox delivery body", () => {
+  it("carries the extension's extraction metadata when the entry has it", () => {
+    // The extension's Readability→Turndown markdown and its quality grade
+    // ride in the POST body so the server can keep them as provenance
+    // instead of the work dying at display time.
+    const body = Outbox.deliveryBody(entry({ raw_markdown: "# Heading\n\nText", quality: "rich" }));
+    expect(body.raw_markdown).toBe("# Heading\n\nText");
+    expect(body.quality).toBe("rich");
+  });
+
+  it("sends the exact body it always sent when the entry has neither", () => {
+    // Entries queued by an older build (or a text-only note) deliver
+    // byte-identical: the metadata keys appear only when present.
+    const body = Outbox.deliveryBody(entry());
+    expect(body).toEqual({ text: "hello world", url: "https://example.com/a", title: "Example" });
   });
 });

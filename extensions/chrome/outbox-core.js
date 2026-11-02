@@ -123,6 +123,13 @@
       // field must still load and deliver, not fail on a missing key.
       mode: fields.mode || null,
       history: fields.history || null,
+      // The content script's extraction work — Readability→Turndown markdown
+      // and its quality grade — rides with the entry so the server can keep
+      // it as provenance instead of the work dying at display time. Null
+      // (not absent) so entries saved by a build that predates this field
+      // still load and deliver.
+      raw_markdown: fields.raw_markdown || null,
+      quality: fields.quality || null,
       destination: fields.destination || null,
       status: "queued", // queued | sending | failed | needs-auth | conflicted | parked-identity
       attempts: 0,
@@ -137,13 +144,19 @@
    * The POST body for one entry. Optional fields are omitted when empty rather
    * than sent as null, and `mode` is omitted rather than sent as null: an entry
    * queued before mode existed posts exactly the body it always posted, and the
-   * server infers the mode from what it receives.
+   * server infers the mode from what it receives. The same rule carries the
+   * extension's extraction metadata (`raw_markdown`, `quality`) to the server
+   * as provenance when the entry holds it.
+   * @param {{ text: string|null, url: string|null, title: string|null, mode: string|null, raw_markdown: string|null, quality: string|null }} entry
+   * @returns {{ text: string|null, url?: string, title?: string, mode?: string, raw_markdown?: string, quality?: string }}
    */
   function deliveryBody(entry) {
     const body = { text: entry.text };
     if (entry.url) body.url = entry.url;
     if (entry.title) body.title = entry.title;
     if (entry.mode) body.mode = entry.mode;
+    if (entry.raw_markdown) body.raw_markdown = entry.raw_markdown;
+    if (entry.quality) body.quality = entry.quality;
     return body;
   }
 
