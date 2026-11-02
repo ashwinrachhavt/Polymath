@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { problemResponse } from "@/lib/problems";
+import { effectHandlers, runSuperagentDispatch } from "@/domains/superagent/effects";
 
 /*
  * POST /api/internal/outbox - one dispatcher pass (ASH-134 Q03). Off unless
@@ -26,7 +27,14 @@ export async function POST(request: Request) {
   try {
     const recovered = await recoverStrandedOutbox(client);
     const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `route:${crypto.randomUUID()}` });
-    return Response.json({ recovered: recovered.length, ...result });
+    // The superagent domain's effects and reply lane drain in the same pass:
+    // the sweepers release leases from dead workers first, then handlers run.
+    // Kinds without a consumer yet park without failure, so a wave that lands
+    // before its consumer never turns intent into errors.
+    const superagent = await runSuperagentDispatch(client, effectHandlers({ rawClient: client }), {
+      workerId: `route:${crypto.randomUUID()}`,
+    });
+    return Response.json({ recovered: recovered.length, ...result, superagent });
   } finally {
     await client.end({ timeout: 5 });
   }

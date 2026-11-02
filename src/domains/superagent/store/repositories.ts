@@ -29,10 +29,10 @@
  * through this synchronous port — they use the SQL-side reads in `queries.ts`,
  * which lean on the generated columns these tables maintain.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Decision, Ticket, Trigger, TriggerDisposition, WorkThread } from "../core/model";
-import { latestRun } from "../core/model";
+import { conversationKey, latestRun } from "../core/model";
 import type { Outbox, OutboundMessage, ReplyStatus, Repositories } from "../core/ports";
 import { assessmentColumns, latestRunState, rowToDecision, rowToThread, rowToTicket, rowToTrigger } from "./mapping";
 import type { ThreadSubscriptionRow } from "./mapping";
@@ -44,8 +44,10 @@ import {
   workThreads,
   workTickets,
   workTriggers,
+  workEffects,
   workOutboxReceipts,
 } from "./schema";
+import type { EffectKind } from "./schema";
 
 /** Raised when a flush cannot make a row match the store's known version. */
 export class StoreFlushError extends Error {
@@ -58,6 +60,12 @@ export class StoreFlushError extends Error {
 type Entry<T> = { value: T; version: number; dirty: boolean };
 /** Receipts carry no aggregate version: send-once comes from the primary key, and status moves only forward. */
 type ReceiptEntry = { value: OutboundMessage; status: ReplyStatus; persisted: boolean; dirty: boolean };
+/**
+ * Effects carry no aggregate version either: coalescing comes from the pending (workspace, kind, key) unique index,
+ * and the first enqueue of a pair wins. Effects are never hydrated — the drain pass reads the table directly —
+ * so the cache only needs to survive until the flush that persists them.
+ */
+type EffectEntry = { kind: EffectKind; key: string; payload?: Record<string, unknown>; availableAt?: string; dirty: boolean };
 
 type CacheSnapshot = {
   triggers: [string, Entry<Trigger>][];
@@ -69,9 +77,27 @@ type CacheSnapshot = {
   hydrated: boolean;
 };
 
+export type EffectRequest = {
+  kind: EffectKind;
+  /** The unit of work the kind names — a run id, a ticket id, a conversation key. Opaque to the queue. */
+  key: string;
+  payload?: Record<string, unknown>;
+  /** When the effect first becomes due; omitted means immediately. */
+  availableAt?: string;
+};
+
 export type SuperagentStore = {
   repositories: Repositories;
   outbox: Outbox;
+  effects: {
+    /**
+     * Queue a durable effect — external work the engine asked for — inside the caller's command.
+     * The row commits with the domain state in the same flush transaction and runs only after,
+     * so a crash cannot leave work enqueued without its state, or state without its work.
+     * At most one pending effect per (kind, key): the first enqueue wins, later ones coalesce into it.
+     */
+    enqueue(effect: EffectRequest): void;
+  };
   /** Load the workspace's whole state into the cache; required before any read. */
   hydrate(): Promise<void>;
   /** Persist everything touched since the last success in one transaction. */
@@ -88,6 +114,7 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
   const tickets = new Map<string, Entry<Ticket>>();
   const decisions = new Map<string, Entry<Decision>>();
   const receipts = new Map<string, ReceiptEntry>();
+  const effects = new Map<string, EffectEntry>();
 
   let hydrated = false;
   /** The cache state to restore if the flush of the current command fails. */
@@ -124,6 +151,9 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
     for (const [id, entry] of snap.decisions) decisions.set(id, entry);
     receipts.clear();
     for (const [id, entry] of snap.receipts) receipts.set(id, entry);
+    // Effects are enqueue-only and not restorable from a snapshot: a failed flush rolls the
+    // command back, so its enqueues must vanish with it. A retried command enqueues again.
+    effects.clear();
     hydrated = snap.hydrated;
   }
 
@@ -212,10 +242,26 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
     },
   };
 
+  /** Queue one durable effect inside the caller's command; shared by the effects port and the outbox's reply lane. */
+  function enqueueEffect(effect: EffectRequest): void {
+    // Keep the first: coalescing means one pending row per (kind, key), in the cache as on disk.
+    const coalesceKey = `${effect.kind}:${effect.key}`;
+    if (!effects.has(coalesceKey)) effects.set(coalesceKey, { ...effect, dirty: true });
+  }
+
   const outbox: Outbox = {
     send: (message) => {
       if (!receipts.has(message.id)) {
         receipts.set(message.id, { value: clone(message), status: "pending", persisted: false, dirty: true });
+        // Schedule the conversation's send: a coalesced reply effect whose handler drains the
+        // conversation's pending receipts in seq order, retrying on the reply backoff curve
+        // (5s doubling to 300s) when a send fails, and raising a health entry after three.
+        const channel = message.channel;
+        enqueueEffect({
+          kind: "reply",
+          key: conversationKey(channel),
+          payload: { source: channel.source, thread: channel.thread },
+        });
       }
     },
     status: (id) => receipts.get(id)?.status,
@@ -407,13 +453,15 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
     const dirtyTickets = [...tickets.entries()].filter(([, entry]) => entry.dirty);
     const dirtyDecisions = [...decisions.entries()].filter(([, entry]) => entry.dirty);
     const dirtyReceipts = [...receipts.entries()].filter(([, entry]) => entry.dirty);
+    const dirtyEffects = [...effects.values()].filter((entry) => entry.dirty);
     if (
       dirtyTriggers.length === 0 &&
       dirtyDispositions.length === 0 &&
       dirtyThreads.length === 0 &&
       dirtyTickets.length === 0 &&
       dirtyDecisions.length === 0 &&
-      dirtyReceipts.length === 0
+      dirtyReceipts.length === 0 &&
+      dirtyEffects.length === 0
     ) {
       pendingSnapshot = null;
       return;
@@ -507,6 +555,24 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
               );
           }
         }
+        for (const entry of dirtyEffects) {
+          await tx
+            .insert(workEffects)
+            .values({
+              workspaceId,
+              kind: entry.kind,
+              key: entry.key,
+              payload: entry.payload ?? null,
+              ...(entry.availableAt === undefined ? {} : { availableAt: new Date(entry.availableAt) }),
+            })
+            // Coalescing: the partial unique index allows one pending row per (kind, key),
+            // so the first enqueue of the pair lands and later ones no-op.
+            .onConflictDoNothing({
+              target: [workEffects.workspaceId, workEffects.kind, workEffects.key],
+              where: sql`status = 'pending'`,
+            });
+          entry.dirty = false;
+        }
       });
     } catch (error) {
       if (pendingSnapshot) restore(pendingSnapshot);
@@ -537,6 +603,12 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
     }
     for (const [, entry] of dirtyDispositions) entry.dirty = false;
     for (const [, entry] of dirtyReceipts) entry.dirty = false;
+    // Effects are forget-once-persisted: from here the queue's partial unique
+    // index owns coalescing against pending rows on disk, and a later enqueue
+    // of the same (kind, key) must reach the database again (a drained row does
+    // not block the next one). Keeping the cache entry would swallow that
+    // enqueue for the life of the process.
+    for (const entry of dirtyEffects) effects.delete(`${entry.kind}:${entry.key}`);
     pendingSnapshot = null;
   }
 
@@ -622,5 +694,13 @@ export function createSuperagentStore(db: PostgresJsDatabase, workspaceId: strin
     pendingSnapshot = null;
   }
 
-  return { repositories, outbox, hydrate, flush };
+  return {
+    repositories,
+    outbox,
+    effects: {
+      enqueue: enqueueEffect,
+    },
+    hydrate,
+    flush,
+  };
 }
