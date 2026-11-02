@@ -88,6 +88,14 @@ export async function createCapture(
     title?: string;
     /** Omitted means the server infers it from what arrived. */
     mode?: CaptureMode;
+    /**
+     * Optional extraction metadata the companion computed (Readability→
+     * Turndown markdown and its quality grade). Provenance only — kept on
+     * the row's raw_payload, never classification input: the enrichment
+     * ladder reads the server's own fetch of the page.
+     */
+    raw_markdown?: string;
+    quality?: string;
     source?: (typeof captureSource.enumValues)[number];
     idempotencyKey?: string;
   },
@@ -117,6 +125,11 @@ export async function createCapture(
             ...(url ? { url } : {}),
             ...(isUrlReference ? {} : { text: trimmed }),
             ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+            // The companion's extraction work lands as provenance — the
+            // server fetches its own reading for classification, so this
+            // never feeds the ladder; it preserves what the flatten killed.
+            ...(input.raw_markdown ? { raw_markdown: input.raw_markdown } : {}),
+            ...(input.quality ? { quality: input.quality } : {}),
           },
           text,
           url,

@@ -24,6 +24,12 @@ const captureRequest = z
     url: z.string().url().max(2_000).optional(),
     title: z.string().max(500).optional(),
     mode: z.enum(["authored", "selection", "page", "url-reference"]).optional(),
+    // Optional extraction metadata from the companion: the Readability→
+    // Turndown markdown of what was captured plus its quality grade. Kept
+    // as capture provenance only — a body without them parses exactly as
+    // before, so older companions keep working.
+    raw_markdown: z.string().max(200_000).optional(),
+    quality: z.string().max(20).optional(),
   })
   .refine((value) => Boolean(value.text?.trim() || value.url), {
     message: "Send text, a url, or both.",
@@ -56,7 +62,7 @@ export const POST = authedHandler(async (auth, request) => {
     return withCors(problemResponse(422, "invalid_input", "Send text, a url, or both (max 200k chars)."), origin);
   }
 
-  const { text, url, title, mode } = parsed.data;
+  const { text, url, title, mode, raw_markdown, quality } = parsed.data;
   // A page grab arrives as { url, text }; a bare URL or a plain note is text-only.
   const body = text?.trim() || url || "";
   // An address that arrived with no text of its own is the address itself, not
@@ -74,6 +80,8 @@ export const POST = authedHandler(async (auth, request) => {
       url: url ?? undefined,
       title,
       mode: arrival,
+      raw_markdown,
+      quality,
       source: "companion",
       idempotencyKey,
     });

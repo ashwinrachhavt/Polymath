@@ -177,11 +177,21 @@ const AlfredAPI = {
    * ("authored" | "selection" | "page" | "url-reference"); omitted, the server
    * infers it. Server-side dedupe answers 409 for a repeated URL-only capture.
    */
-  async createCapture({ text, url, title, mode, idempotencyKey }) {
+  async createCapture({ text, url, title, mode, raw_markdown, quality, idempotencyKey }) {
+    // Extraction metadata rides only when present: undefined keys drop out of
+    // JSON.stringify, so a plain text save posts the exact body the server has
+    // always accepted.
     return this._fetch("/api/v1/captures", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey || crypto.randomUUID() },
-      body: JSON.stringify({ text, url, title, mode }),
+      body: JSON.stringify({
+        text,
+        url,
+        title,
+        mode,
+        ...(raw_markdown ? { raw_markdown } : {}),
+        ...(quality ? { quality } : {}),
+      }),
     });
   },
 
@@ -192,25 +202,28 @@ const AlfredAPI = {
   },
 
   /** Ingest a captured page (or a short excerpt) into the inbox. */
-  async capturePage({ url, title, content, history }) {
+  async capturePage({ url, title, content, raw_markdown, quality, history }) {
     const text = (content || "").trim();
     return this.queueCapture({
       mode: "page",
       text,
       url,
       title: title || url,
+      raw_markdown: raw_markdown || null,
+      quality: quality || null,
       history: history || { title: `[Page] ${title || url}`, url, type: "page-capture" },
     });
   },
 
   /** Capture a text selection into the inbox. */
-  async captureSelection({ url, title, selectedText, history }) {
+  async captureSelection({ url, title, selectedText, raw_markdown, history }) {
     const text = (selectedText || "").trim();
     return this.queueCapture({
       mode: "selection",
       text,
       url,
       title: title || url,
+      raw_markdown: raw_markdown || null,
       history: history || { title: text.slice(0, 80), url, type: "selection" },
     });
   },
@@ -226,7 +239,7 @@ const AlfredAPI = {
    * Falls back to a direct POST only when the worker cannot be messaged at
    * all (e.g. an unpacked dashboard outside the extension runtime).
    */
-  async queueCapture({ text, url, title, mode, history }) {
+  async queueCapture({ text, url, title, mode, raw_markdown, quality, history }) {
     const canMessage =
       typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage;
     if (canMessage) {
@@ -239,6 +252,8 @@ const AlfredAPI = {
             url,
             title,
             mode,
+            raw_markdown: raw_markdown || null,
+            quality: quality || null,
             history: history || null,
           },
           ENQUEUE_REPLY_DEADLINE_MS,
@@ -263,7 +278,7 @@ const AlfredAPI = {
       }
       return reply;
     }
-    await this.createCapture({ text, url, title, mode });
+    await this.createCapture({ text, url, title, mode, raw_markdown, quality });
     return { ok: true, delivered: true };
   },
 

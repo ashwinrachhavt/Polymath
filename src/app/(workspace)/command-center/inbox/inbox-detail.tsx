@@ -64,6 +64,23 @@ function priorKindLabel(kind: string): string {
   return PRIOR_KIND_LABEL[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
+/** A JSON object with string keys — the shape raw_payload has at this boundary. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type ExtensionExtraction = { markdown: string; quality: string | null };
+
+/** The companion's extraction metadata on raw_payload, when it is there and well-formed. */
+function readExtensionExtraction(rawPayload: unknown): ExtensionExtraction | null {
+  if (!isPlainObject(rawPayload)) return null;
+  if (typeof rawPayload.raw_markdown !== "string" || !rawPayload.raw_markdown.trim()) return null;
+  return {
+    markdown: rawPayload.raw_markdown,
+    quality: typeof rawPayload.quality === "string" ? rawPayload.quality : null,
+  };
+}
+
 export type CaptureSuggestion = {
   id: string;
   kind: string;
@@ -189,6 +206,7 @@ export function InboxDetail({
 
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
+  const extraction = readExtensionExtraction(capture.rawPayload);
   const title = captureTitle(capture);
   // A name only when one exists apart from the body; an unlabeled text capture
   // renders its body directly instead of the derived first line twice.
@@ -313,13 +331,16 @@ export function InboxDetail({
           />
         ) : isUrlOnly ? (
           capture.text ? (
-            <CaptureBody
-              captureId={capture.id}
-              version={capture.version}
-              text={capture.text}
-              label="From the page"
-              editable={state === "unprocessed" || state === "classifying"}
-            />
+            <>
+              <CaptureBody
+                captureId={capture.id}
+                version={capture.version}
+                text={capture.text}
+                label="From the page"
+                editable={state === "unprocessed" || state === "classifying"}
+              />
+              {extraction ? <ExtensionMarkdownBlock extraction={extraction} /> : null}
+            </>
           ) : fetchFailed ? (
             <div className="max-w-[70ch]" role="status">
               <p className="text-[13px] text-muted-foreground">
@@ -357,6 +378,7 @@ export function InboxDetail({
               // after conversion the derived task or note owns the text.
               editable={state === "unprocessed" || state === "classifying" || state === "enriched"}
             />
+            {extraction ? <ExtensionMarkdownBlock extraction={extraction} /> : null}
           </>
         )}
       </div>
@@ -552,6 +574,38 @@ function formatBytes(n: number | undefined): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/*
+ * The companion's own Readability→Turndown reading of the capture, kept
+ * verbatim on the row. The server fetches its own text for the working body,
+ * so this block is provenance — the formatting the flatten into plain text
+ * killed, exactly as the extension read it — and stays collapsed until asked
+ * for, out of the triage read's way.
+ */
+function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtraction }) {
+  const [open, setOpen] = useState(false);
+  const qualityLabel = extraction.quality === "rich" ? "rich" : extraction.quality === "basic" ? "basic" : null;
+  return (
+    <section aria-label="Original formatting kept by the extension" className="mt-3">
+      <p className="text-[13px] text-muted-foreground">
+        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""} —{" "}
+        <button
+          type="button"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "Hide it" : "Show it"}
+        </button>
+      </p>
+      {open ? (
+        <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-[12px] whitespace-pre-wrap">
+          {extraction.markdown}
+        </pre>
+      ) : null}
+    </section>
+  );
 }
 
 /*
