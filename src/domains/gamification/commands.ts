@@ -550,6 +550,13 @@ export async function recordFocusReward(
       subjectId: session.id,
     });
   }
+
+  // Spec §7 foundry drop: a deep finish rolls the server-side dice - a 25%
+  // chance drops one designed stone, at most one per user per day. The page
+  // renders what landed; the client never decides anything.
+  if (session.strictness === "deep") {
+    await recordFoundryDrop(tx, auth, session.id);
+  }
   await upsertUserProgress(tx, auth, {
     totalPoints: progress.totalPoints,
     currentStreakDays: streak.current,
@@ -557,6 +564,80 @@ export async function recordFocusReward(
     lastActiveOn: progress.days.length > 0 ? progress.days[progress.days.length - 1] : null,
   });
   return !capReached;
+}
+
+/*
+ * Spec §7 foundry drop: a deep finish rolls the dice - a 25% chance drops one
+ * ML-designed stone from the foundry's `gen-` namespace, at most one per user
+ * per day. The day is the ledger's own convention (the workspace preference's
+ * timezone), and the cap is the ledger's own idempotency: the key names the
+ * user and the day, so a second winning roll the same day conflicts on the
+ * unique index and is a silent skip - no count query to race. No recipes in
+ * the namespace, and the roll wins nothing: a deep finish without a designed
+ * stone drops nothing.
+ */
+export const FOUNDRY_DROP_CHANCE = 0.25;
+
+/** The pure dice, testable without a database: rolls under the chance win. */
+export function foundryDropWins(roll: number): boolean {
+  return roll < FOUNDRY_DROP_CHANCE;
+}
+
+export async function recordFoundryDrop(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  sessionId: string,
+  roll: number = Math.random(),
+): Promise<boolean> {
+  if (!foundryDropWins(roll)) return false;
+
+  const dayRows = await tx.execute(sql`
+    select to_char(timezone(coalesce((select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1), 'UTC'), now()), 'YYYY-MM-DD') as day
+  `);
+  const day = (dayRows as unknown as Array<{ day: string }>)[0]?.day;
+  if (!day) return false;
+
+  const [stone] = await tx
+    .select({ id: rewardDefinitions.id, label: rewardDefinitions.label })
+    .from(rewardDefinitions)
+    .where(
+      and(
+        eq(rewardDefinitions.workspaceId, auth.workspaceId),
+        eq(rewardDefinitions.kind, "collectible"),
+        eq(rewardDefinitions.active, true),
+        sql`${rewardDefinitions.recipe} is not null`,
+      ),
+    )
+    .orderBy(sql`random()`)
+    .limit(1);
+  if (!stone) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: stone.id,
+      userId: auth.userId,
+      reason: "foundry_drop",
+      subjectType: "focus_session",
+      subjectId: sessionId,
+      points: 0,
+      idempotencyKey: `foundry-drop:${auth.userId}:${day}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Foundry stone dropped: ${stone.label}`,
+    },
+    tx,
+  );
+  return true;
 }
 
 /*

@@ -21,6 +21,9 @@ export const ledgerReason = pgEnum("ledger_reason", [
   "learning_reviewed",
   "weekly_review",
   "adjustment",
+  // Spec §7 foundry drop: a deep finish that rolled a designed stone. The
+  // label is append-only, so the drop joins at the end.
+  "foundry_drop",
 ]);
 
 export const rewardDefinitions = pgTable(

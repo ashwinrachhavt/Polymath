@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { claimShard, createRewardDefinition } from "@/domains/gamification/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { decideProposalAction } from "@/app/(workspace)/reviews/actions";
 
 /*
  * Definitions are catalog rows, not earning rules: creating one changes no
@@ -50,5 +51,26 @@ export async function claimShardAction(): Promise<Result> {
     return { ok: false, error: error instanceof Error ? error.message : "The shard could not be claimed." };
   }
   revalidatePath("/apps/neuralflow/rewards");
+  return { ok: true };
+}
+
+/*
+ * A foundry stone decision (spec §7): the canonical Reviews decide action is
+ * the one path - it records the decision, and for an approval dispatches
+ * through LOCAL_WRITERS to apply the recipe. This wrapper only adds this
+ * page's revalidation, so the Foundry section and the collection refresh
+ * together; the decision semantics (CAS, idempotency, replay) stay in one
+ * place, the same queue every other proposal decides through.
+ */
+export async function decideFoundryProposalAction(input: {
+  proposalId: string;
+  expectedVersion: number;
+  revisionId: string;
+  idempotencyKey: string;
+  decision: "approved" | "rejected";
+}): Promise<Result> {
+  const result = await decideProposalAction(input);
+  revalidatePath("/apps/neuralflow/rewards");
+  if (!result.ok) return { ok: false, error: result.error };
   return { ok: true };
 }
