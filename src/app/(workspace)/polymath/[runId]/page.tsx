@@ -217,6 +217,18 @@ async function ConversationSurface({ runId }: { runId: string }) {
             />
           ) : (
             <div className="w-full space-y-3">
+              {/*
+               * A live run without the bridge has no composer and no follow-up
+               * field on purpose: the messages endpoint answers 503 in that
+               * state, so a control here would promise a reply it cannot send.
+               * Say why the page is quiet instead of leaving a dead end.
+               */}
+              {!finished && unavailable ? (
+                <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+                  This conversation cannot continue until the agent bridge is configured on this deployment. The run is
+                  still recorded, and its transcript is below.
+                </p>
+              ) : null}
               {visibleThread.length === 0 ? (
                 <p className="text-muted-foreground text-[13px]">This conversation has no messages yet.</p>
               ) : null}
