@@ -26,6 +26,7 @@ import {
   StaleWriteError as FocusStaleWriteError,
   startFocusSession,
 } from "@/domains/focus/commands";
+import { focusStrictness } from "@/domains/focus/schema";
 import { markSeedCommitted, dismissSeed } from "@/domains/work/seeds";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -46,6 +47,7 @@ const revalidate = (auth: AuthContext) => {
 const revalidateFocus = (auth: AuthContext) => {
   updateTag(focusTag(auth));
   revalidatePath("/neuralflow/work");
+  revalidatePath("/neuralflow/focus");
 };
 
 /*
@@ -161,10 +163,7 @@ export async function dismissSeedAction(input: z.input<typeof dismissSeedInput>)
   });
 }
 
-const completionSentence = z  .string()
-  .trim()
-  .max(280, "Keep the sentence under 280 characters.")
-  .optional();
+const completionSentence = z.string().trim().max(280, "Keep the sentence under 280 characters.").optional();
 
 export type CompleteTaskResult =
   | { ok: true; quartzEarned: boolean }
@@ -176,14 +175,12 @@ export type CompleteTaskResult =
   // sentence itself was rejected; editing and resubmitting is right.
   | { ok: false; kind: "conflict" | "validation"; error: string; sentenceRecorded?: boolean };
 
-export async function completeTaskAction(
-  taskId: string,
-  sentence?: string,
-): Promise<CompleteTaskResult> {
+export async function completeTaskAction(taskId: string, sentence?: string): Promise<CompleteTaskResult> {
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) return { ok: false, kind: "conflict", error: "That task no longer exists." };
   const noted = completionSentence.safeParse(sentence);
-  if (!noted.success) return { ok: false, kind: "validation", error: noted.error.issues[0]?.message ?? "That sentence is too long." };
+  if (!noted.success)
+    return { ok: false, kind: "validation", error: noted.error.issues[0]?.message ?? "That sentence is too long." };
 
   const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data, sentence: noted.data });
@@ -196,12 +193,19 @@ export async function completeTaskAction(
   // recorded - check the completed task's audit row before claiming either.
   const state = await getCompletionConflictState(auth, parsed.data);
   if (!state) return { ok: false, kind: "conflict", error: "That task is not available in this workspace." };
-  if (state.status === "cancelled") return { ok: false, kind: "conflict", error: "That task was cancelled, not completed." };
-  if (state.status !== "done") return { ok: false, kind: "conflict", error: "That task could not be completed. Reload to see its current state." };
+  if (state.status === "cancelled")
+    return { ok: false, kind: "conflict", error: "That task was cancelled, not completed." };
+  if (state.status !== "done")
+    return { ok: false, kind: "conflict", error: "That task could not be completed. Reload to see its current state." };
   const submitted = noted.data;
   if (submitted) {
     return state.completionNote === submitted
-      ? { ok: false, kind: "conflict", error: "This task was already completed - with this sentence recorded.", sentenceRecorded: true }
+      ? {
+          ok: false,
+          kind: "conflict",
+          error: "This task was already completed - with this sentence recorded.",
+          sentenceRecorded: true,
+        }
       : { ok: false, kind: "conflict", error: "This task was already completed.", sentenceRecorded: false };
   }
   return { ok: false, kind: "conflict", error: "This task was already completed." };
@@ -220,7 +224,17 @@ const bulkCompleteInput = z.array(z.string().uuid()).min(1).max(100);
 
 export async function completeTasksAction(
   taskIds: string[],
-): Promise<{ ok: true; completed: string[]; skipped: string[]; unknown: string[]; unattempted: string[]; quartzEarned: boolean } | { ok: false; error: string }> {
+): Promise<
+  | {
+      ok: true;
+      completed: string[];
+      skipped: string[];
+      unknown: string[];
+      unattempted: string[];
+      quartzEarned: boolean;
+    }
+  | { ok: false; error: string }
+> {
   const parsed = bulkCompleteInput.safeParse(taskIds);
   if (!parsed.success) return { ok: false, error: "Select between 1 and 100 tasks." };
 
@@ -320,7 +334,6 @@ export async function updateTaskAction(input: z.input<typeof patchInput>): Promi
   if (!parsed.success) return { ok: false, error: "Check the task fields and try again." };
   const auth = await authorize();
   return guarded(auth, async () => ({ version: (await updateTask(auth, parsed.data)).version }));
-
 }
 
 const subtaskInput = z.object({ parentTaskId: id, title: z.string().trim().min(1).max(300), idempotencyKey: key });
@@ -330,7 +343,6 @@ export async function createSubtaskAction(input: z.input<typeof subtaskInput>): 
   if (!parsed.success) return { ok: false, error: "Give the subtask a title." };
   const auth = await authorize();
   return guarded(auth, async () => ({ taskId: (await createSubtask(auth, parsed.data)).id }));
-
 }
 
 const moveInput = z.object({
@@ -341,12 +353,13 @@ const moveInput = z.object({
   idempotencyKey: key,
 });
 
-export async function moveTaskAction(input: z.input<typeof moveInput>): Promise<Result<{ rank: string; version: number }>> {
+export async function moveTaskAction(
+  input: z.input<typeof moveInput>,
+): Promise<Result<{ rank: string; version: number }>> {
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That move is not valid." };
   const auth = await authorize();
   return guarded(auth, async () => {
-
     const { rank, version } = await moveTask(auth, parsed.data);
     return { rank, version };
   });
@@ -360,12 +373,13 @@ const dependencyInput = z.object({
   idempotencyKey: key,
 });
 
-export async function addDependencyAction(input: z.input<typeof dependencyInput>): Promise<Result<{ dependencyId: string }>> {
+export async function addDependencyAction(
+  input: z.input<typeof dependencyInput>,
+): Promise<Result<{ dependencyId: string }>> {
   const parsed = dependencyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency is not valid." };
   const auth = await authorize();
   return guarded(auth, async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
-
 }
 
 export async function removeDependencyAction(input: { dependencyId: string; idempotencyKey: string }): Promise<Result> {
@@ -373,7 +387,6 @@ export async function removeDependencyAction(input: { dependencyId: string; idem
   if (!parsed.success) return { ok: false, error: "That dependency no longer exists." };
   const auth = await authorize();
   return guarded(auth, async () => {
-
     await removeDependency(auth, parsed.data);
     return {};
   });
@@ -411,6 +424,9 @@ export async function startSessionAction(input: unknown): Promise<FocusResult> {
       subject: z.string().trim().max(200).optional().default(""),
       plannedMinutes: z.number().int().min(1).max(480).nullable(),
       taskId: z.string().uuid().optional(),
+      // Spec §1: the tier is the session's contract; the domain re-validates
+      // against the same enum inside the transaction.
+      strictness: z.enum(focusStrictness.enumValues).optional(),
     })
     .safeParse(input);
   if (!parsed.success) {
@@ -425,6 +441,7 @@ export async function startSessionAction(input: unknown): Promise<FocusResult> {
       subject: parsed.data.subject || null,
       plannedMinutes: parsed.data.plannedMinutes,
       taskId: parsed.data.taskId ?? null,
+      strictness: parsed.data.strictness ?? null,
     });
   } catch (error) {
     return focusFail(error);
@@ -464,7 +481,12 @@ export async function finishSessionAction(input: unknown): Promise<FocusResult> 
   if (!parsed.success) return { ok: false, error: "Reload and try again." };
   const auth = await authorize();
   try {
-    await finishFocusSession(auth, { ...parsed.data, outcome: parsed.data.outcome || null, whatChanged: parsed.data.whatChanged || null, nextStep: parsed.data.nextStep || null });
+    await finishFocusSession(auth, {
+      ...parsed.data,
+      outcome: parsed.data.outcome || null,
+      whatChanged: parsed.data.whatChanged || null,
+      nextStep: parsed.data.nextStep || null,
+    });
   } catch (error) {
     return focusFail(error);
   }

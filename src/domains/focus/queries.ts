@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { auditEvents } from "@/domains/audit/schema";
 import { tasks } from "@/domains/work/schema";
 import { focusBlocklist, focusSessions, type FocusStrictness } from "./schema";
 import { elapsedSecondsAt, remainingSecondsAt } from "./strictness";
@@ -17,6 +18,9 @@ export type FocusSessionView = typeof focusSessions.$inferSelect & {
   elapsedSeconds: number;
 };
 
+/** The active read joins the linked task's title, so a surface can name a session that has no subject of its own. */
+export type ActiveFocusSessionView = FocusSessionView & { taskTitle: string | null };
+
 export function withElapsed(session: typeof focusSessions.$inferSelect, now = new Date()): FocusSessionView {
   // startedAt is null while a session is only scheduled (ASH-308); a running
   // session always has the clock fields.
@@ -24,10 +28,11 @@ export function withElapsed(session: typeof focusSessions.$inferSelect, now = ne
 }
 
 /** The one live session (running or paused), or null. Planned rows (started_at null) are not live. */
-export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSessionView | null> {
-  const [session] = await db
-    .select()
+export async function getActiveFocusSession(auth: AuthContext): Promise<ActiveFocusSessionView | null> {
+  const [row] = await db
+    .select({ session: focusSessions, taskTitle: tasks.title })
     .from(focusSessions)
+    .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
     .where(
       and(
         eq(focusSessions.workspaceId, auth.workspaceId),
@@ -37,7 +42,9 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
       ),
     )
     .limit(1);
-  return session ? withElapsed(session) : null;
+  // The title rides along so a surface can name a session that only links a
+  // task (subject null); the dock's read derives the same display.
+  return row ? { ...withElapsed(row.session), taskTitle: row.taskTitle } : null;
 }
 
 /**
@@ -197,4 +204,40 @@ export async function listFocusBlocklist(
     .from(focusBlocklist)
     .where(and(eq(focusBlocklist.workspaceId, auth.workspaceId), isNull(focusBlocklist.archivedAt)))
     .orderBy(sql`(kind = 'allow') desc`, focusBlocklist.pattern);
+}
+
+/*
+ * The follow-up ghost's status for one closed session (spec §3). The outbox
+ * handler files its decision as an audit event keyed to the session
+ * (focus.follow_up_started / focus.follow_up_skipped), so the summary view
+ * reads the same trail every other observer sees - no second source of truth,
+ * and a session with no party resolved simply has no row yet. `none` covers
+ * that: nothing renders, rather than a placeholder claiming a decision.
+ */
+export type FocusFollowUpStatus =
+  { kind: "started"; summary: string; runId: string | null } | { kind: "skipped"; summary: string } | { kind: "none" };
+
+export async function getFocusFollowUp(auth: AuthContext, sessionId: string): Promise<FocusFollowUpStatus> {
+  const [row] = await db
+    .select({ action: auditEvents.action, summary: auditEvents.summary, metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.subjectType, "focus_session"),
+        eq(auditEvents.subjectId, sessionId),
+        like(auditEvents.action, "focus.follow_up_%"),
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  if (!row) return { kind: "none" };
+  if (row.action !== "focus.follow_up_started") return { kind: "skipped", summary: row.summary };
+  // The handler stores the started run in the event's metadata; a missing id
+  // degrades to the summary text, never a dead link.
+  const runId =
+    row.metadata && typeof row.metadata === "object" && typeof (row.metadata as { runId?: unknown }).runId === "string"
+      ? (row.metadata as { runId: string }).runId
+      : null;
+  return { kind: "started", summary: row.summary, runId };
 }

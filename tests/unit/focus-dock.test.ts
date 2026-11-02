@@ -42,16 +42,16 @@ afterEach(() => {
 });
 
 describe("FocusDock", () => {
-  it("shows the real live session on a canonical page and links back to Work", async () => {
+  it("shows the real live session on a canonical page and links back to Focus", async () => {
     vi.stubGlobal("fetch", respond({ session: live }));
     render(h(FocusDock));
     const dock = await screen.findByLabelText("Focus session");
     expect(dock.textContent).toContain("Write the memo");
     expect(dock.textContent).toContain("Focus running");
-    expect(dock.querySelector("a")?.getAttribute("href")).toBe("/neuralflow/work?view=today");
+    expect(dock.querySelector("a")?.getAttribute("href")).toBe("/neuralflow/focus");
   });
 
-  it("renders nothing when no session is live, on Work, or when the read fails", async () => {
+  it("renders nothing when no session is live, on the Focus screen, or when the read fails", async () => {
     const none = respond({ session: null });
     vi.stubGlobal("fetch", none);
     const { unmount } = render(h(FocusDock));
@@ -59,12 +59,12 @@ describe("FocusDock", () => {
     expect(screen.queryByLabelText("Focus session")).toBeNull();
     unmount();
 
-    pathname = "/neuralflow/work";
-    const onWork = respond({ session: live });
-    vi.stubGlobal("fetch", onWork);
+    pathname = "/neuralflow/focus";
+    const onFocus = respond({ session: live });
+    vi.stubGlobal("fetch", onFocus);
     render(h(FocusDock));
     expect(screen.queryByLabelText("Focus session")).toBeNull();
-    expect(onWork).not.toHaveBeenCalled();
+    expect(onFocus).not.toHaveBeenCalled();
     cleanup();
 
     pathname = "/reviews";

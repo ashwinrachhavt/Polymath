@@ -287,7 +287,6 @@ for (const [from, to] of [
   ["/polymath/wiki", "/polymath/knowledge"],
   ["/command-center/briefing", "/neuralflow/work?view=today"],
   ["/command-center/opportunities", "/command-center/relationships/people"],
-  ["/neuralflow/focus", "/neuralflow/work"],
 ] as const) {
   test(`removed IA destination ${from} redirects to ${to}`, async ({ page }) => {
     await page.goto(`${from}?stale=param`);
