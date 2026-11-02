@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { importedAgentSessions } from "@/domains/agents/schema";
 import { auditEvents, blobObjects } from "@/domains/audit/schema";
+import type { AgentArtifactRoots } from "@/lib/agent-artifacts/scan";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -35,7 +36,7 @@ function fixtureText(relative: string): string {
   return readFileSync(fileURLToPath(new URL("../fixtures/agent-artifacts/" + relative, import.meta.url)), "utf8");
 }
 
-function writeFixtureTree(): { claudeRoot: string; codexRoot: string } {
+function writeFixtureTree(): AgentArtifactRoots {
   const home = mkdtempSync(join(tmpdir(), "aa-int-"));
   const slugDir = join(home, "projects", "-home-pino-Polymath");
   mkdirSync(slugDir, { recursive: true });
@@ -46,7 +47,7 @@ function writeFixtureTree(): { claudeRoot: string; codexRoot: string } {
   const day = join(home, "codex-home", "sessions", "2026", "11", "01");
   mkdirSync(day, { recursive: true });
   writeFileSync(join(day, CODEX_MAIN), fixtureText("codex/" + CODEX_MAIN));
-  return { claudeRoot: home, codexRoot: join(home, "codex-home") };
+  return { "claude-code": home, codex: join(home, "codex-home") };
 }
 
 suite("agent-artifact session ingest", () => {
@@ -138,7 +139,7 @@ suite("agent-artifact session ingest", () => {
 
   it("marks a noteless first import as inferred, not recorded", async () => {
     // A brand-new session, imported with no note on this batch.
-    const slugDir = join(roots.claudeRoot, "projects", "-home-pino-Polymath");
+    const slugDir = join(roots["claude-code"], "projects", "-home-pino-Polymath");
     writeFileSync(
       join(slugDir, "bbbb2222-2222-3333-4444-555555555555.jsonl"),
       '{"type":"user","uuid":"u-9","sessionId":"sess-later","cwd":"/home/pino/Polymath","timestamp":"2026-11-01T12:00:00.000Z","message":{"role":"user","content":"Second task"}}\n',
