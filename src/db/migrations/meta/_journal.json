@@ -664,7 +664,14 @@
       "idx": 268,
       "version": "7",
       "when": 1793687220000,
-      "tag": "0268_drop_retired_tables",
+      "tag": "0268_repo_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1793687280000,
+      "tag": "0269_drop_retired_tables",
       "breakpoints": true
     }
   ]

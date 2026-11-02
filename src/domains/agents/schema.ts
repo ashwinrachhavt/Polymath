@@ -15,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
+import { blobObjects } from "../audit/schema";
 import { memberships } from "../identity/schema";
 // users comes from tables, not schema: identity/schema sits in a cycle with
 // db/columns, and its partial evaluation under Turbopack drops the `export *`
@@ -41,14 +42,7 @@ export const runState = pgEnum("run_state", [
   "failed",
   "cancelled",
 ]);
-export const stepKind = pgEnum("step_kind", [
-  "model",
-  "tool",
-  "question",
-  "proposal",
-  "artifact",
-  "note",
-]);
+export const stepKind = pgEnum("step_kind", ["model", "tool", "question", "proposal", "artifact", "note"]);
 export const questionState = pgEnum("question_state", ["open", "answered", "dismissed"]);
 export const messageRole = pgEnum("message_role", ["user", "assistant", "system", "tool"]);
 export const memoryStatus = pgEnum("memory_status", ["proposed", "accepted", "rejected", "retired"]);
@@ -238,7 +232,9 @@ export const agentDelegationGrants = pgTable(
     index("agent_delegation_grants_principal_idx")
       .on(t.workspaceId, t.agentPrincipalId)
       .where(sql`revoked_at is null`),
-    index("agent_delegation_grants_parent_idx").on(t.parentGrantId).where(sql`parent_grant_id is not null`),
+    index("agent_delegation_grants_parent_idx")
+      .on(t.parentGrantId)
+      .where(sql`parent_grant_id is not null`),
   ],
 );
 
@@ -287,7 +283,9 @@ export const agentAuthorizationDecisions = pgTable(
     check("agent_authorization_decisions_decision_check", sql`"decision" in ('allowed', 'denied')`),
     index("agent_authorization_decisions_principal_idx").on(t.workspaceId, t.agentPrincipalId, t.createdAt),
     index("agent_authorization_decisions_grant_idx").on(t.grantId),
-    index("agent_authorization_decisions_denied_idx").on(t.workspaceId, t.createdAt).where(sql`decision = 'denied'`),
+    index("agent_authorization_decisions_denied_idx")
+      .on(t.workspaceId, t.createdAt)
+      .where(sql`decision = 'denied'`),
   ],
 );
 
@@ -397,7 +395,9 @@ export const agentRuns = pgTable(
   (t) => [
     index("agent_runs_workspace_created_idx").on(t.workspaceId, t.createdAt),
     // Partial index: the live queue is the non-terminal rows.
-    index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
+    index("agent_runs_active_idx")
+      .on(t.workspaceId, t.state)
+      .where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
     index("agent_runs_thread_idx").on(t.threadId),
     unique("agent_runs_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
@@ -644,6 +644,43 @@ export const contextManifestItems = pgTable(
       columns: [t.workspaceId, t.manifestId],
       foreignColumns: [contextManifests.workspaceId, contextManifests.id],
     }),
+  ],
+);
+
+/** One entry of the test-results file provided at capture time. */
+export type CapturedTestResult = { name: string; ok: boolean; runAt: string };
+
+/*
+ * Workbench checkpoint: the repository state an agent-authored change landed
+ * as, written by scripts/workbench/capture.ts at an explicit capture point.
+ * Capture is mechanical — git status/diff/log plus a provided test-results
+ * file; no hooks, no model. The diff bytes live in audit.blob_objects,
+ * deduped by content_hash. Append-only: a re-capture at the same commit
+ * writes a new row and reuses the blob; nothing here is ever updated.
+ */
+export const repoCheckpoints = pgTable(
+  "repo_checkpoints",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** The run whose change session produced the captured state; null when captured without a run record. */
+    runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "set null" }),
+    repoUrl: text("repo_url").notNull(),
+    baseCommitSha: text("base_commit_sha").notNull(),
+    commitSha: text("commit_sha").notNull(),
+    /** The base..HEAD diff bytes. Set null only if the blob's retention lapses; the diff is re-derivable from the commits. */
+    diffBlobId: uuid("diff_blob_id").references(() => blobObjects.id, { onDelete: "set null" }),
+    testResults: jsonb("test_results").$type<CapturedTestResult[]>(),
+    /** What the operator said the change was for, when they said it at all. */
+    decisionNote: text("decision_note"),
+    /** recorded: a human wrote decisionNote at capture time. inferred: the rationale was reconstructed afterwards. */
+    decisionStatus: text("decision_status").$type<"recorded" | "inferred">().notNull().default("inferred"),
+    ...recorded,
+  },
+  (t) => [
+    index("repo_checkpoints_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    index("repo_checkpoints_run_idx").on(t.runId),
+    check("repo_checkpoints_decision_status_check", sql`decision_status in ('recorded', 'inferred')`),
   ],
 );
 

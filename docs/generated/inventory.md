@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 94 files, highest `0267_onboarding_run_discarded_at`.
+Migrations: 95 files, highest `0268_repo_checkpoints`.
 
 ## Tests
 
-448 `.test.ts` and 43 `.spec.ts` files (unit: 267, integration: 180, e2e: 43).
+450 `.test.ts` and 43 `.spec.ts` files (unit: 268, integration: 181, e2e: 43).
 ## Domains
 
 22 folders; 17 own tables.
@@ -39,7 +39,7 @@ Migrations: 94 files, highest `0267_onboarding_run_discarded_at`.
 | Domain | Tables |
 | --- | ---: |
 | `actions` | 7 |
-| `agents` | 24 |
+| `agents` | 25 |
 | `applications` | 3 |
 | `audit` | 7 |
 | `calendar` | 6 |
@@ -89,6 +89,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `agents` | `run_artifacts` | append-only |
 | `agents` | `context_manifests` | append-only |
 | `agents` | `context_manifest_items` | append-only |
+| `agents` | `repo_checkpoints` | append-only |
 | `agents` | `memory_items` | versioned |
 | `agents` | `memory_revisions` | append-only |
 | `agents` | `memory_reviews` | append-only |
@@ -215,7 +216,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 90 versioned, 57 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 90 versioned, 58 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 

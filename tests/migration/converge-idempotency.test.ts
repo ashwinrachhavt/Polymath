@@ -16,15 +16,23 @@ import { makeTestDb } from "../helpers/test-workspace";
  * that later migrations retired (cards, areas, the sitting tables, learning_*,
  * the pre-rename dossier tables). On a database that is already current those
  * creates run for real and resurrect empty tables, which is the defect
- * 0268_drop_retired_tables exists to clean up. 0268 runs before this test, so
- * the first converge legitimately re-adds them; asserting it changed nothing
- * would fail on correct behaviour.
+ * 0269_drop_retired_tables exists to clean up. 0269 has already run when this
+ * test starts, so the first converge legitimately re-adds them; asserting it
+ * changed nothing would fail on correct behaviour.
+ *
+ * Because that first run leaves the database dirty, this file removes the
+ * resurrected tables again before it finishes. Every other suite then runs
+ * against the schema its migrations actually describe — without this cleanup,
+ * a converge run early in the file order silently puts back tables that
+ * tests/migration/schema-at-head.test.ts asserts are gone.
  *
  * The script runs as one multi-statement simple query, the same way
  * drizzle-kit applies a migration; DO-block bodies never need splitting.
  */
 
 const CONVERGE_FILE = "src/db/migrations/0266_converge_push_schema.sql";
+/** The retirement that undoes 0266's resurrected tables; re-applied on cleanup. */
+const RETIRE_FILE = "src/db/migrations/0269_drop_retired_tables.sql";
 
 async function schemaSnapshot(sql: postgres.Sql): Promise<string> {
   const columns = await sql`
@@ -56,6 +64,12 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  // Put the database back where the migration chain left it. Re-apply just the
+  // retirement (0269) rather than hand-listing tables, so this cleanup can
+  // never drift from the migration that owns the definition.
+  if (handle) {
+    await handle.client.unsafe(readFileSync(RETIRE_FILE, "utf8"));
+  }
   await handle?.client.end();
 });
 
@@ -71,7 +85,7 @@ suite("0266 converge idempotency", () => {
     const afterSecond = await schemaSnapshot(handle.client);
 
     // Convergence, not inertness: the first run is allowed to add the retired
-    // tables 0266 still carries creates for (0268 drops them again), but the
+    // tables 0266 still carries creates for (0269 drops them again), but the
     // second must change nothing or the script is not idempotent.
     expect(afterSecond).toBe(afterFirst);
   });

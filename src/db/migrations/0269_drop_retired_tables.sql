@@ -1,4 +1,8 @@
--- 0268: drop the retired tables that 0266 resurrected.
+-- 0269: drop the retired tables that 0266 resurrected.
+--
+-- Renumbered from 0268: a parallel branch shipped 0268_repo_checkpoints first.
+-- The two migrations are independent, and this one only needs to run after
+-- 0266, so the index moves rather than the intent.
 --
 -- 0266 reports its drop sections (0235_drop_learning, 0257_drop_daily_outcomes,
 -- 0263_drop_cards_areas_sittings, 0264) by header only: the DROP statements
