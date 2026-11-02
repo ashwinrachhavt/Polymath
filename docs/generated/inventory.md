@@ -27,14 +27,14 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 104 files, highest `0277_stone_foundry`.
+Migrations: 106 files, highest `0279_stone_foundry`.
 
 ## Tests
 
-492 `.test.ts` and 44 `.spec.ts` files (unit: 292, integration: 197, e2e: 44).
+519 `.test.ts` and 45 `.spec.ts` files (unit: 311, integration: 205, e2e: 45).
 ## Domains
 
-23 folders; 18 own tables.
+24 folders; 19 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -55,6 +55,7 @@ Migrations: 104 files, highest `0277_stone_foundry`.
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
+| `superagent` | 11 |
 | `work` | 10 |
 
 No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
@@ -212,6 +213,17 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `spending` | `spending_policies` | versioned |
 | `spending` | `spending_reservations` | versioned |
 | `spending` | `spend_settlements` | append-only |
+| `superagent` | `work_triggers` | versioned |
+| `superagent` | `work_threads` | versioned |
+| `superagent` | `work_assessments` | versioned |
+| `superagent` | `work_decisions` | versioned |
+| `superagent` | `work_tickets` | versioned |
+| `superagent` | `ticket_runs` | versioned |
+| `superagent` | `work_subscriptions` | append-only |
+| `superagent` | `work_effects` | append-only |
+| `superagent` | `work_outbox_receipts` | app-cas |
+| `superagent` | `superagent_policies` | app-cas |
+| `superagent` | `superagent_policy_rules` | append-only |
 | `work` | `spaces` | versioned |
 | `work` | `projects` | versioned |
 | `work` | `recurrence_templates` | versioned |
@@ -223,7 +235,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 94 versioned, 60 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 100 versioned, 63 append-only, 7 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -307,7 +319,7 @@ Totals: 94 versioned, 60 append-only, 5 versionless but guarded (each declared w
 
 ## Outbox
 
-Emitted topics: 24. Registered handlers: 10. Declared audit-only: 14.
+Emitted topics: 25. Registered handlers: 11. Declared audit-only: 14.
 
 Topics with no handler and no declaration (a defect if non-empty):
 

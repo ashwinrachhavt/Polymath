@@ -47,7 +47,7 @@ export const CATEGORY_CRITERIA = {
 export type Category = keyof typeof CATEGORY_CRITERIA;
 
 /** Where a judgment goes next, like Jev's route table. */
-export type Route = "auto" | "review";
+type Route = "auto" | "review";
 
 export type Judgment = {
   category: Category;
@@ -100,49 +100,128 @@ const SIGNALS: Partial<Record<Category, Signal[]>> = {
     s(/\bupi\b/, 1.2, "UPI payment"),
     s(/\b(self|own account|to savings|from savings|to checking|from checking)\b/, 1.5, "own-account wording"),
   ],
-  housing: [
-    s(/\b(rent|landlord|lease|mortgage|hoa|maintenance charges?|property)\b/, 4, "housing keyword", "out"),
-  ],
+  housing: [s(/\b(rent|landlord|lease|mortgage|hoa|maintenance charges?|property)\b/, 4, "housing keyword", "out")],
   groceries: [
-    s(/\b(grocer(y|ies)|supermarket|bigbasket|blinkit|zepto|instamart|kroger|safeway|trader joe|whole foods|costco|walmart|aldi|dmart|reliance fresh|more retail)\b/, 4, "grocery merchant", "out"),
+    s(
+      /\b(grocer(y|ies)|supermarket|bigbasket|blinkit|zepto|instamart|kroger|safeway|trader joe|whole foods|costco|walmart|aldi|dmart|reliance fresh|more retail)\b/,
+      4,
+      "grocery merchant",
+      "out",
+    ),
   ],
   dining: [
-    s(/\b(restaurant|cafe|coffee|starbucks|mcdonald|dominos|pizza|burger|zomato|swiggy|doordash|uber eats|grubhub|chipotle|bakery|dhaba|biryani|kitchen)\b/, 4, "dining merchant", "out"),
+    s(
+      /\b(restaurant|cafe|coffee|starbucks|mcdonald|dominos|pizza|burger|zomato|swiggy|doordash|uber eats|grubhub|chipotle|bakery|dhaba|biryani|kitchen)\b/,
+      4,
+      "dining merchant",
+      "out",
+    ),
   ],
   transport: [
-    s(/\b(uber|ola|lyft|rapido|metro|irctc|fuel|petrol|diesel|shell|chevron|bp|indian oil|hpcl|bpcl|fastag|toll|parking|transit|clipper)\b/, 3.6, "transport merchant", "out"),
+    s(
+      /\b(uber|ola|lyft|rapido|metro|irctc|fuel|petrol|diesel|shell|chevron|bp|indian oil|hpcl|bpcl|fastag|toll|parking|transit|clipper)\b/,
+      3.6,
+      "transport merchant",
+      "out",
+    ),
   ],
   utilities: [
-    s(/\b(electric(ity)?|bescom|tneb|water bill|gas bill|broadband|airtel|jio|vodafone|vi prepaid|comcast|xfinity|verizon|at&t|t-mobile|internet|utility|recharge)\b/, 3.8, "utility provider", "out"),
+    s(
+      /\b(electric(ity)?|bescom|tneb|water bill|gas bill|broadband|airtel|jio|vodafone|vi prepaid|comcast|xfinity|verizon|at&t|t-mobile|internet|utility|recharge)\b/,
+      3.8,
+      "utility provider",
+      "out",
+    ),
   ],
   subscriptions: [
-    s(/\b(netflix|spotify|prime video|amazon prime|hotstar|youtube premium|icloud|apple\.com\/bill|google (one|storage)|chatgpt|openai|anthropic|github|notion|linear|vercel|figma|dropbox|adobe|subscription|membership)\b/, 4, "subscription service", "out"),
+    s(
+      /\b(netflix|spotify|prime video|amazon prime|hotstar|youtube premium|icloud|apple\.com\/bill|google (one|storage)|chatgpt|openai|anthropic|github|notion|linear|vercel|figma|dropbox|adobe|subscription|membership)\b/,
+      4,
+      "subscription service",
+      "out",
+    ),
   ],
   shopping: [
-    s(/\b(amazon|flipkart|myntra|ajio|target|best buy|ebay|etsy|nykaa|shopify|apple store|ikea|retail|mart|store)\b/, 2.6, "retail merchant", "out"),
+    s(
+      /\b(amazon|flipkart|myntra|ajio|target|best buy|ebay|etsy|nykaa|shopify|apple store|ikea|retail|mart|store)\b/,
+      2.6,
+      "retail merchant",
+      "out",
+    ),
   ],
   health: [
-    s(/\b(pharmacy|apollo|medplus|hospital|clinic|doctor|dr\.|dental|diagnostic|cvs|walgreens|lab|medical)\b/, 3.8, "health provider", "out"),
+    s(
+      /\b(pharmacy|apollo|medplus|hospital|clinic|doctor|dr\.|dental|diagnostic|cvs|walgreens|lab|medical)\b/,
+      3.8,
+      "health provider",
+      "out",
+    ),
   ],
   travel: [
-    s(/\b(airlines?|air india|indigo|vistara|delta|united air|southwest|makemytrip|goibibo|booking\.com|airbnb|expedia|hotel|resort|marriott|hilton|oyo|cleartrip|redbus)\b/, 4, "travel merchant", "out"),
+    s(
+      /\b(airlines?|air india|indigo|vistara|delta|united air|southwest|makemytrip|goibibo|booking\.com|airbnb|expedia|hotel|resort|marriott|hilton|oyo|cleartrip|redbus)\b/,
+      4,
+      "travel merchant",
+      "out",
+    ),
   ],
   fees_interest: [
-    s(/\b(fee|fees|charges?|chgs?|penalty|late fee|service charge|sms charges|annual fee|gst on|interest (debit|charged)|overdraft|maintenance fee|atm fee|foreign transaction)\b/, 4, "fee keyword", "out"),
+    s(
+      /\b(fee|fees|charges?|chgs?|penalty|late fee|service charge|sms charges|annual fee|gst on|interest (debit|charged)|overdraft|maintenance fee|atm fee|foreign transaction)\b/,
+      4,
+      "fee keyword",
+      "out",
+    ),
   ],
   cash: [s(/\b(atm|cash (wdl|withdrawal|deposit)|nfs|cdm|cash)\b/, 3.8, "cash keyword")],
   tax: [
-    s(/\b(income tax|advance tax|tds|gst|irs|tax payment|cbdt|challan|state tax|franchise tax|taxes)\b/, 4, "tax keyword", "out"),
+    s(
+      /\b(income tax|advance tax|tds|gst|irs|tax payment|cbdt|challan|state tax|franchise tax|taxes)\b/,
+      4,
+      "tax keyword",
+      "out",
+    ),
   ],
   investment: [
-    s(/\b(zerodha|groww|upstox|robinhood|fidelity|vanguard|schwab|etrade|mutual fund|sip|nps|ppf|demat|brokerage|coinbase|kuvera)\b/, 4, "investment platform", "out"),
+    s(
+      /\b(zerodha|groww|upstox|robinhood|fidelity|vanguard|schwab|etrade|mutual fund|sip|nps|ppf|demat|brokerage|coinbase|kuvera)\b/,
+      4,
+      "investment platform",
+      "out",
+    ),
   ],
   loan_emi: [
-    s(/\b(emi|loan|repayment|instalment|installment|credit card (payment|bill)|card payment|autopay)\b/, 4, "loan or card repayment", "out"),
+    s(
+      /\b(emi|loan|repayment|instalment|installment|credit card (payment|bill)|card payment|autopay)\b/,
+      4,
+      "loan or card repayment",
+      "out",
+    ),
   ],
-  insurance: [s(/\b(insurance|premium|lic|geico|allstate|progressive|policy|star health|hdfc ergo|icici lombard)\b/, 4, "insurance keyword", "out")],
-  education: [s(/\b(tuition|university|college|school|course|coursera|udemy|edx|exam fee|books?)\b/, 3.6, "education keyword", "out")],
-  entertainment: [s(/\b(cinema|movie|pvr|inox|bookmyshow|steam|playstation|xbox|concert|ticketmaster|amc theatres)\b/, 4, "entertainment merchant", "out")],
+  insurance: [
+    s(
+      /\b(insurance|premium|lic|geico|allstate|progressive|policy|star health|hdfc ergo|icici lombard)\b/,
+      4,
+      "insurance keyword",
+      "out",
+    ),
+  ],
+  education: [
+    s(
+      /\b(tuition|university|college|school|course|coursera|udemy|edx|exam fee|books?)\b/,
+      3.6,
+      "education keyword",
+      "out",
+    ),
+  ],
+  entertainment: [
+    s(
+      /\b(cinema|movie|pvr|inox|bookmyshow|steam|playstation|xbox|concert|ticketmaster|amc theatres)\b/,
+      4,
+      "entertainment merchant",
+      "out",
+    ),
+  ],
 };
 
 const RAIL_PREFIX =
@@ -156,7 +235,10 @@ const RAIL_PREFIX =
 export function merchantKey(description: string): string {
   let text = description.toLowerCase().replace(/[^\p{L}\p{N}@&./ -]+/gu, " ");
   text = text.replace(/\b\d{6,}\b/g, " ").replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, " ");
-  text = text.replace(/\b(xx+|x{2,}\d*)\b/g, " ").replace(/\s+/g, " ").trim();
+  text = text
+    .replace(/\b(xx+|x{2,}\d*)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   for (let i = 0; i < 2; i += 1) text = text.replace(RAIL_PREFIX, "");
   const tokens = text
     .split(/[\s/]+/)
@@ -239,9 +321,6 @@ export function classifyTransaction(row: ClassifiableRow, options: ClassifyOptio
 export function classifyTransactions(rows: ClassifiableRow[], options: ClassifyOptions = {}): Judgment[] {
   return rows.map((row) => classifyTransaction(row, options));
 }
-
-/** Seam for a future provider. Local rules are the only implementation today. */
-export type Classifier = (rows: ClassifiableRow[]) => Promise<Judgment[]> | Judgment[];
 
 export type ClassificationSummary = {
   total: number;

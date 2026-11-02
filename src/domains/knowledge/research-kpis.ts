@@ -11,7 +11,7 @@ import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
  * invents it.
  */
 
-export const KPI_METRICS = [
+const KPI_METRICS = [
   "revenue",
   "gross profit",
   "operating income",
@@ -43,7 +43,10 @@ const METRIC_LOOKUP = new Map(KPI_METRICS.map((m) => [m.toLowerCase(), m]));
  * an empty array is a real result - the model found no supportable figures.
  */
 export function parseKpiRows(raw: string): unknown[] | null {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/, "");
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start === -1 || end <= start) return null;
@@ -69,7 +72,12 @@ export function validateKpiRows(parsed: unknown[], manifestSize: number): { rows
     const period = typeof r.period === "string" ? r.period.trim() : "";
     const value = typeof r.value === "number" ? String(r.value) : typeof r.value === "string" ? r.value.trim() : "";
     const sourceRaw = r.source ?? r.sourceRef ?? r.ref;
-    const sourceNum = typeof sourceRaw === "number" ? sourceRaw : typeof sourceRaw === "string" ? Number(sourceRaw.replace(/^S/i, "").trim()) : NaN;
+    const sourceNum =
+      typeof sourceRaw === "number"
+        ? sourceRaw
+        : typeof sourceRaw === "string"
+          ? Number(sourceRaw.replace(/^S/i, "").trim())
+          : NaN;
     if (!metric || !period || !value || !Number.isInteger(sourceNum) || sourceNum < 1 || sourceNum > manifestSize) {
       dropped += 1;
       continue;
@@ -93,9 +101,15 @@ export function renderKpiTable(rows: KpiRow[], dropped: number): string {
   const lines = [
     "| Metric | Period | Value | Currency | Basis | Source |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...rows.map((r) => `| ${cell(r.metric)} | ${cell(r.period)} | ${cell(r.value)} | ${cell(r.currency)} | ${cell(r.basis)} | [${r.sourceRef}] |`),
+    ...rows.map(
+      (r) =>
+        `| ${cell(r.metric)} | ${cell(r.period)} | ${cell(r.value)} | ${cell(r.currency)} | ${cell(r.basis)} | [${r.sourceRef}] |`,
+    ),
   ];
-  if (dropped > 0) lines.push(`\n_${dropped} reported figure${dropped === 1 ? "" : "s"} could not be grounded in the source manifest and ${dropped === 1 ? "was" : "were"} excluded._`);
+  if (dropped > 0)
+    lines.push(
+      `\n_${dropped} reported figure${dropped === 1 ? "" : "s"} could not be grounded in the source manifest and ${dropped === 1 ? "was" : "were"} excluded._`,
+    );
   return lines.join("\n");
 }
 
@@ -110,12 +124,16 @@ Report only figures that appear verbatim in the sources; invent nothing; separat
 
 /** Prompt for the financial section: structured extraction instead of prose. */
 export function buildKpiPrompt(input: CompanyResearchInput, manifest: SourceManifestEntry[]): string {
-  const lines = manifest.map((m) => `[${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"}`);
+  const lines = manifest.map(
+    (m) => `[${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"}`,
+  );
   return [
     `Extract period-aligned financials and KPIs for ${input.companyName.trim()} from this source manifest.`,
     input.asOfDate ? `Use only evidence available by ${input.asOfDate}.` : "",
     KPI_SYSTEM_RULES,
     "",
     ...lines,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
 import { artifactLinks, artifacts, artifactVersions } from "@/domains/knowledge/schema";
+import { captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -38,6 +39,26 @@ async function seed(slug: string) {
 async function auditCount(auth: { workspaceId: string }, subjectId: string) {
   const rows = await db.select().from(auditEvents).where(eq(auditEvents.workspaceId, auth.workspaceId));
   return rows.filter((row) => row.subjectId === subjectId).length;
+}
+
+/** A file capture with whatever a reading rung landed on its row (or null). */
+async function addBlobCapture(
+  auth: { workspaceId: string; userId: string },
+  input: { text: string | null; filename: string; mimeType: string },
+) {
+  const [row] = await db
+    .insert(captures)
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: "file",
+      captureMode: "blob",
+      rawPayload: { filename: input.filename, mimeType: input.mimeType, sizeBytes: 1024, contentHash: "test-hash" },
+      text: input.text,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .returning();
+  return row;
 }
 
 suite("capture inbox", () => {
@@ -337,5 +358,47 @@ suite("capture inbox", () => {
       tabs.converted,
     );
     expect((await queries.searchCaptures(auth, { filter: "all", limit: 10, offset: 0 })).total).toBe(tabs.all);
+  });
+
+  // File captures search by what their bytes SAID, not just what they are
+  // called: the OCR rung lands words on the row and the same text predicate
+  // matches them - an unread file stays findable by filename only.
+  it("search matches a file capture's extracted reading, not just its filename", async () => {
+    const auth = await seed("capture-file-search");
+    const read = await addBlobCapture(auth, {
+      text: "The receipt lists an absurd shipping fee of forty dollars",
+      filename: "receipt-screenshot.png",
+      mimeType: "image/png",
+    });
+    await addBlobCapture(auth, {
+      text: null,
+      filename: "whiteboard-arch.jpg",
+      mimeType: "image/jpeg",
+    });
+
+    // A word from inside the screenshot finds the capture; the unread file
+    // does not leak in - it carries no text at all.
+    const byReading = await queries.searchCaptures(auth, { query: "absurd shipping", limit: 10, offset: 0 });
+    expect(byReading.total).toBe(1);
+    expect(byReading.items[0]?.id).toBe(read.id);
+    // The preview reads from what the capture said, not its filename.
+    expect(byReading.items[0]?.preview).toContain("absurd shipping fee");
+
+    // An unread file is still findable by what its filename says.
+    const byFilename = await queries.searchCaptures(auth, { query: "whiteboard", limit: 10, offset: 0 });
+    expect(byFilename.total).toBe(1);
+    expect(byFilename.items[0]?.id).not.toBe(read.id);
+  });
+
+  it("the [[ ]] picker matches a reading's words too", async () => {
+    const auth = await seed("capture-link-reading");
+    const read = await addBlobCapture(auth, {
+      text: "Quarterly planning happens on the second Tuesday",
+      filename: "planning-photo.png",
+      mimeType: "image/png",
+    });
+
+    const targets = await queries.searchCapturesForLink(auth, "second Tuesday", 5);
+    expect(targets.map((target) => target.id)).toContain(read.id);
   });
 });

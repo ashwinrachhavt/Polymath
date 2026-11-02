@@ -8,10 +8,14 @@ import type { ReadFailure } from "./github";
  */
 
 export function malformedResponse(provider: string, what: string): ReadFailure {
-  return { ok: false, code: "malformed_response", message: `${provider} returned a ${what} response this app does not recognise.` };
+  return {
+    ok: false,
+    code: "malformed_response",
+    message: `${provider} returned a ${what} response this app does not recognise.`,
+  };
 }
 
-export function notConfiguredFor(provider: string): ReadFailure {
+function notConfiguredFor(provider: string): ReadFailure {
   return { ok: false, code: "not_configured", message: `This deployment cannot reach ${provider} yet.` };
 }
 

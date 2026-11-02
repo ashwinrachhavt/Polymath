@@ -13,8 +13,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
  * draft, which §7 accepts.
  */
 
-export const ideaDraftStorageKey = (workspaceId: string, ideaKey: string) =>
-  `polymath-idea-draft:${workspaceId}:${ideaKey}`;
+const ideaDraftStorageKey = (workspaceId: string, ideaKey: string) => `polymath-idea-draft:${workspaceId}:${ideaKey}`;
 
 export type IdeaDraftState = {
   draft: string;
@@ -60,7 +59,11 @@ export function createIdeaDraftStore(workspaceId: string, ideaKey: string) {
         },
         resolveConflict: (choice, serverContent) => {
           if (choice === "take-server" && serverContent !== undefined) {
-            set({ draft: serverContent, draftUpdatedAt: get().conflict?.serverUpdatedAt ?? Date.now(), conflict: null });
+            set({
+              draft: serverContent,
+              draftUpdatedAt: get().conflict?.serverUpdatedAt ?? Date.now(),
+              conflict: null,
+            });
           } else {
             set({ conflict: null });
           }
@@ -102,9 +105,12 @@ function debouncedStorage(getStorage: () => Storage, ms: number) {
       }, ms);
     },
     removeItem: (name: string): void => {
-      if (timer) { clearTimeout(timer); timer = null; pendingValue = null; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+        pendingValue = null;
+      }
       getStorage().removeItem(name);
     },
   };
 }
-export type IdeaDraftStore = ReturnType<typeof createIdeaDraftStore>;

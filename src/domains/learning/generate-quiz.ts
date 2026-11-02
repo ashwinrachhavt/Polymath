@@ -4,7 +4,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
-import { locateQuote } from "@/domains/knowledge/reading-summary";
+import { locateQuoteNormalized } from "@/domains/learning/locate-quote";
 import { currentExtractionIdSubquery } from "@/domains/knowledge/versions";
 import {
   defaultQuizGenerator,
@@ -67,8 +67,9 @@ export type VerifiedQuiz = {
  * Pure trust boundary between the model's proposal and a persistable quiz.
  * A question survives only when: the prompt is non-empty, choices number
  * 2-5 with unique non-empty values, answerValue names one of those values,
- * the explanation is non-empty, and the quote re-locates verbatim in the
- * text. Everything else is dropped and counted, never repaired.
+ * the explanation is non-empty, and the quote re-locates in the text
+ * (normalized matching - formatting-tolerant, content-strict, see
+ * locate-quote.ts). Everything else is dropped and counted, never repaired.
  */
 export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz {
   const questions: VerifiedQuestion[] = [];
@@ -106,12 +107,12 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       droppedQuestions++;
       continue;
     }
-    const span = locateQuote(text, quote);
+    const storedQuote = quote.slice(0, MAX_EVIDENCE_QUOTE_CHARS);
+    const span = locateQuoteNormalized(text, storedQuote);
     if (!span) {
       droppedQuestions++;
       continue;
     }
-    const storedQuote = quote.slice(0, MAX_EVIDENCE_QUOTE_CHARS);
     questions.push({
       prompt: prompt.slice(0, MAX_PROMPT_CHARS),
       choices: choices.map((c) => ({
@@ -123,9 +124,11 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       evidence: {
         quote: storedQuote,
         startOffset: span.start,
-        // The offsets must describe the stored quote, not the model's
-        // original: slicing the text by them has to return the quote.
-        endOffset: span.start + storedQuote.length,
+        // The offsets describe the stored quote: normalizing the raw span
+        // they cut returns the stored quote. Raw bytes can differ (markdown
+        // link syntax the model quotes past); the normalized equality is
+        // the guarantee.
+        endOffset: span.end,
       },
     });
     if (questions.length >= MAX_QUIZ_QUESTIONS) break;
@@ -148,13 +151,15 @@ async function loadCurrentExtraction(auth: AuthContext, documentId: string) {
     .select({ id: documentExtractions.id, text: documentExtractions.text, status: documentExtractions.status })
     .from(documents)
     .innerJoin(documentExtractions, eq(documentExtractions.documentId, documents.id))
-    .where(and(
-      eq(documents.id, documentId),
-      eq(documents.workspaceId, auth.workspaceId),
-      // Correlates against documents: currentExtractionIdSubquery resolves
-      // the document's active extraction, falling back to its newest row.
-      eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
-    ))
+    .where(
+      and(
+        eq(documents.id, documentId),
+        eq(documents.workspaceId, auth.workspaceId),
+        // Correlates against documents: currentExtractionIdSubquery resolves
+        // the document's active extraction, falling back to its newest row.
+        eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
+      ),
+    )
     .limit(1);
   if (!extraction || extraction.status !== "succeeded" || !extraction.text) {
     throw new QuizGenerationError("no_extraction", "This document has no succeeded extraction to quiz yet.");
@@ -265,7 +270,12 @@ export async function generateQuiz(
         subjectType: "quiz",
         subjectId: row.id,
         summary: `Generated a ${verified.questions.length}-question quiz from "${extraction.title}"`,
-        metadata: { documentId: input.documentId, droppedQuestions: verified.droppedQuestions, model: engine.name, promptVersion: QUIZ_PROMPT_VERSION },
+        metadata: {
+          documentId: input.documentId,
+          droppedQuestions: verified.droppedQuestions,
+          model: engine.name,
+          promptVersion: QUIZ_PROMPT_VERSION,
+        },
       },
       tx,
     );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,13 +9,10 @@ import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
-import { MessageActions } from "./message-actions";
 import { ComposerPlus, mentionAt, referenceLink, replaceMention, type RecordReference } from "./composer-plus";
-import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
-import { AgentPanel, type AgentPanelData } from "./agent-panel";
+import { ChatTranscript } from "./chat-transcript";
+import type { AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
-import { toolLabel } from "@/domains/agents/tool-labels";
-import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
 import {
   serializeChips,
@@ -26,26 +22,16 @@ import {
   type MentionEntity,
 } from "./mention-context";
 import { ContextChips } from "./context-chips";
-import { CitedText } from "./cited-text";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
-import { inline } from "@/components/markdown-inline";
-
-/**
- * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
- * blockIdFor in stream-contract.ts); the run_event it lands in carries the
- * same turnId, so feedback addresses the row through it.
- */
-function turnIdOf(blockId: string): string {
-  const parts = blockId.split(":");
-  return parts.length >= 2 ? parts[1] : blockId;
-}
 
 /*
  * ChatSurface — the one chat interface.
  *
  * Every place Polymath asks an agent something mounts this: the notebook pane,
- * a dossier tab, a command surface. It owns rendering, streaming, and the
- * composer; it does not own the run. The caller creates the run
+ * a dossier tab, a command surface. It owns streaming, the composer, and
+ * assembly — the transcript renders in chat-transcript.tsx, the Sources strip
+ * in citation-strip.tsx, the actions in message-actions.tsx. It does not own
+ * the run. The caller creates the run
  * (POST /api/v1/runs, idempotent) and hands in the runId, because run creation
  * needs a server-side AuthContext and a spend reservation.
  *
@@ -263,36 +249,6 @@ export function ChatSurface({
   const cited = new Set(citedIndices(lastText ?? "", chat.citations));
   const shownCitations = chat.citations.filter((_, index) => cited.has(index));
 
-  /*
-   * The chain of thought for the current turn: every reasoning block and tool
-   * call in arrival order, as one collapsible. The answer stays the thing being
-   * read; the working is one press away.
-   *
-   * Tools are keyed by callId and reasoning blocks by their own id, so the list
-   * is stable across a reconnect (a replayed frame updates a step in place
-   * rather than appending a second copy).
-   */
-  const steps: ThoughtStep[] = [
-    ...chat.blocks
-      .filter((block) => block.kind === "reasoning" && block.text.trim() !== "")
-      .map((block): ThoughtStep => ({
-        id: block.id,
-        kind: "reasoning",
-        label: block.done ? "Reasoned through the question" : "Reasoning",
-        text: block.text,
-        status: block.done ? "complete" : "running",
-      })),
-    ...chat.tools.map((tool): ThoughtStep => ({
-      id: `tool:${tool.callId}`,
-      kind: "tool",
-      label: toolLabel(tool.label),
-      ...(tool.detail ? { detail: tool.detail } : {}),
-      status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
-      tool: tool.label,
-      ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
-    })),
-  ];
-
   // Keep the newest text in view as it streams, without fighting a reader who
   // has scrolled up: only follow when already near the bottom.
   useEffect(() => {
@@ -465,125 +421,26 @@ export function ChatSurface({
       ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
-        <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
-          {agent ? <AgentPanel agent={agent} /> : null}
-          {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
-            <p className="text-muted-foreground max-w-xl text-[13px] leading-relaxed">
-              {emptyText ??
-                `Ask a question. Answers cite the ${subject.type === "project" ? "pinned sources" : "sources"} they use.`}
-            </p>
-          ) : (
-            <div className="w-full space-y-4">
-              {chat.blocks.map((block) =>
-                block.kind === "user" ? (
-                  <div
-                    key={block.id}
-                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
-                  >
-                    {inline(stripMentionContext(block.text))}
-                  </div>
-                ) : block.kind === "reasoning" ? null : (
-                  <div
-                    key={block.id}
-                    className="group/message prose-reading w-full font-[family-name:var(--font-reading)]"
-                  >
-                    {/* A run's citations apply to its answer, so the markers in
-                      the prose and the list below resolve in one numbering. */}
-                    <CitedText text={block.text} citations={chat.citations} />
-                    {block.kind === "assistant" && block.done ? (
-                      <MessageActions
-                        runId={runId}
-                        turnId={turnIdOf(block.id)}
-                        text={block.text}
-                        messageId={block.messageId ?? null}
-                      />
-                    ) : null}
-                  </div>
-                ),
-              )}
-              {optimistic ? (
-                <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                  {optimistic}
-                </div>
-              ) : null}
-              {waiting.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70"
-                >
-                  {inline(entry.text)}
-                </div>
-              ))}
-              {/* The working, after the turn's answer: reasoning and tool calls
-                as one block rather than a pill per step. */}
-              <ChainOfThought steps={steps} streaming={busy} />
-            </div>
-          )}
-
-          {shownCitations.length > 0 && (
-            <details className="group mt-3 rounded-xl border border-border text-[12px]">
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <BookOpen aria-hidden className="size-3.5 shrink-0" />
-                {/* Citations are passages, so one document can back several. The
-                  chip names the documents; the count would read as "5 sources"
-                  for one document. */}
-                <span className="shrink-0 font-medium text-foreground/80">
-                  Sources · {new Set(shownCitations.map((citation) => citation.documentId)).size}
-                </span>
-                <span className="min-w-0 flex-1 truncate group-open:hidden">
-                  {[...new Set(shownCitations.map((citation) => citation.title))].join(", ")}
-                </span>
-                <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
-              </summary>
-              <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
-                {shownCitations.map((citation, index) => (
-                  <li
-                    key={`${citation.documentId}:${citation.span.start}`}
-                    id={`citation-${index}`}
-                    className="scroll-mt-4"
-                  >
-                    {/* The title opens the document at its library route, so a
-                      citation is a way into the source rather than a label. */}
-                    <Link
-                      href={`/polymath/library/${citation.documentId}`}
-                      className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
-                    >
-                      {citation.title}
-                    </Link>
-                    {/* The passage is evidence for the answer. Chunks arrive
-                      mid-sentence, so the line is trimmed to a readable start
-                      before clamping. */}
-                    <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-
-          {chat.error && (
-            <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
-              {/* Retry guidance lives with the button that delivers it — only a
-                surface wired for a fresh-start retry promises one. */}
-              <p>
-                {chat.error}
-                {chat.runFailed && onRunFailedRetry ? " Retry it to start a new run." : ""}
-              </p>
-              {chat.connection === "error" && chat.retryable ? (
-                <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
-                  Retry
-                </Button>
-              ) : null}
-              {chat.runFailed && onRunFailedRetry ? (
-                // The run is terminal — the stream-side retry (chat.retry) would
-                // only replay a closed session, so this Retry is the caller's
-                // fresh-start action instead.
-                <Button type="button" size="sm" variant="outline" onClick={onRunFailedRetry}>
-                  Retry
-                </Button>
-              ) : null}
-            </div>
-          )}
-        </div>
+        <ChatTranscript
+          agent={agent}
+          blocks={chat.blocks}
+          tools={chat.tools}
+          citations={chat.citations}
+          shownCitations={shownCitations}
+          runId={runId}
+          transcriptEmpty={transcript.length === 0}
+          optimistic={optimistic}
+          waiting={waiting}
+          busy={busy}
+          emptyText={emptyText}
+          subjectType={subject.type}
+          error={chat.error}
+          runFailed={chat.runFailed}
+          connection={chat.connection}
+          retryable={chat.retryable}
+          onRetry={chat.retry}
+          onRunFailedRetry={onRunFailedRetry}
+        />
       </div>
 
       {/*
@@ -727,18 +584,4 @@ export function ThinkingPill({ text, done }: { text: string; done: boolean }) {
       </p>
     </details>
   );
-}
-
-/**
- * A search chunk starts wherever the span started, often mid-word. Trim to the
- * first full word so a citation opens with prose instead of a fragment like
- * "ion patterns of SMBs".
- */
-function trimPassage(text: string): string {
-  const trimmed = text.trimStart();
-  // A fragment begins lowercase or mid-token; drop the partial first word.
-  const firstBreak = trimmed.search(/[\s,.;:]/);
-  const firstWord = firstBreak === -1 ? trimmed : trimmed.slice(0, firstBreak);
-  const startsClean = /^[A-Z"“('[]/.test(firstWord) && firstWord.length > 2;
-  return startsClean ? trimmed : firstBreak === -1 ? trimmed : trimmed.slice(firstBreak + 1).trimStart();
 }

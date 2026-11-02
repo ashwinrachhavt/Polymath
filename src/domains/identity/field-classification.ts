@@ -13,7 +13,7 @@
  * and so a new sensitive column cannot ship without a conscious entry here.
  */
 
-export const FIELD_CLASSIFICATIONS = ["standard", "personal", "confidential", "restricted"] as const;
+const FIELD_CLASSIFICATIONS = ["standard", "personal", "confidential", "restricted"] as const;
 export type FieldClassification = (typeof FIELD_CLASSIFICATIONS)[number];
 
 /**

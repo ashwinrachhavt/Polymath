@@ -100,6 +100,10 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // AI changes to a saved artifact arrive as reviewable revision proposals,
   // never silent edits. Same prepare-risk class as tasks.create.
   "artifacts.revise",
+  // Ideas proposed from run material arrive as reviewable zettel proposals,
+  // never silent idea writes. Same prepare-risk class as tasks.create: the
+  // owner's accept is the only path that creates an idea artifact.
+  "zettels.propose",
   // Composio Instant tools (spec #316): derived capability names from the
   // generated catalog, granted to default profiles for the same reason as the
   // generic reads above. Regenerate with: pnpm exec tsx scripts/sync-instant-catalog.ts

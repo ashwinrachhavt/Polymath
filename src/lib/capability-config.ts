@@ -18,7 +18,7 @@
 /** Mirrors MIN_SECRET_LENGTH in src/domains/agents/bridge-token.ts. */
 const BRIDGE_SECRET_MIN_LENGTH = 32;
 
-export type CapabilityId =
+type CapabilityId =
   | "document-extraction-hosted"
   | "web-search-keyed"
   | "generation"

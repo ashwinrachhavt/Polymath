@@ -33,6 +33,7 @@ export type KnowledgeDebt = {
   unsupportedClaims: KnowledgeDebtSection;
   tasksWithoutRationale: KnowledgeDebtSection;
   neverOpenedDocuments: KnowledgeDebtSection;
+  staleIdeas: KnowledgeDebtSection;
 };
 
 /** Link rows touching an artifact, in either direction. */
@@ -96,6 +97,23 @@ export async function getKnowledgeDebt(auth: AuthContext): Promise<KnowledgeDebt
     .orderBy(desc(documents.updatedAt))
     .limit(LIST_CAP + 1);
 
+  // The staleness marker (plan task 23) names the ideas whose source text
+  // changed since they were decomposed; ordered by when the source changed,
+  // which is the order a review wants to re-decompose in.
+  const staleRows = await db
+    .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        inArray(artifacts.kind, ["note", "zettel"]),
+        ne(artifacts.status, "archived"),
+        sql`${artifacts.metadata} ->> 'sourceChangedAt' is not null`,
+      ),
+    )
+    .orderBy(sql`${artifacts.metadata} ->> 'sourceChangedAt' desc`)
+    .limit(LIST_CAP + 1);
+
   // Each list is capped at LIST_CAP + 1 so an 11th row tells us the true
   // count is "more than ten" without a second round-trip per section.
   const section = <T extends { id: string }>(rows: T[], map: (row: T) => KnowledgeDebtItem): KnowledgeDebtSection => ({
@@ -108,5 +126,6 @@ export async function getKnowledgeDebt(auth: AuthContext): Promise<KnowledgeDebt
     unsupportedClaims: section(claimRows, (r) => ({ id: r.id, title: r.statement, detail: r.status })),
     tasksWithoutRationale: section(taskRows, (r) => ({ id: r.id, title: r.title, detail: r.status })),
     neverOpenedDocuments: section(docRows, (r) => ({ id: r.id, title: r.title ?? "Untitled document" })),
+    staleIdeas: section(staleRows, (r) => ({ id: r.id, title: r.title, detail: r.kind })),
   };
 }

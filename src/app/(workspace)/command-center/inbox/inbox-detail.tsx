@@ -3,8 +3,17 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { acceptProposalAction, makeDraftAction, makeDocumentAction,
-  makeNoteAction, makeTaskAction, rejectProposalAction, retryCaptureUrlAction, setCaptureStateAction, unparkCaptureAction } from "./actions";
+import {
+  acceptProposalAction,
+  makeDraftAction,
+  makeDocumentAction,
+  makeNoteAction,
+  makeTaskAction,
+  rejectProposalAction,
+  retryCaptureUrlAction,
+  setCaptureStateAction,
+  unparkCaptureAction,
+} from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
@@ -55,6 +64,23 @@ function priorKindLabel(kind: string): string {
   return PRIOR_KIND_LABEL[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
+/** A JSON object with string keys — the shape raw_payload has at this boundary. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type ExtensionExtraction = { markdown: string; quality: string | null };
+
+/** The companion's extraction metadata on raw_payload, when it is there and well-formed. */
+function readExtensionExtraction(rawPayload: unknown): ExtensionExtraction | null {
+  if (!isPlainObject(rawPayload)) return null;
+  if (typeof rawPayload.raw_markdown !== "string" || !rawPayload.raw_markdown.trim()) return null;
+  return {
+    markdown: rawPayload.raw_markdown,
+    quality: typeof rawPayload.quality === "string" ? rawPayload.quality : null,
+  };
+}
+
 export type CaptureSuggestion = {
   id: string;
   kind: string;
@@ -96,18 +122,20 @@ export function InboxDetail({
   proposals = [],
 }: {
   proposals?: CaptureSuggestion[];
-  capture: (Omit<InboxRow, "preview"> & {
-    text: string | null;
-    cleanText?: string | null;
-    failureReason?: string | null;
-    /**
-     * What the page fetch produced (ed97a9b): null until a fetch is attempted,
-     * so a caller that does not pass it reads the legacy way - a reason on a
-     * capture with no text of its own means the page was not read.
-     */
-    fetchOutcome?: string | null;
-    rawPayload?: unknown;
-  }) | null;
+  capture:
+    | (Omit<InboxRow, "preview"> & {
+        text: string | null;
+        cleanText?: string | null;
+        failureReason?: string | null;
+        /**
+         * What the page fetch produced (ed97a9b): null until a fetch is attempted,
+         * so a caller that does not pass it reads the legacy way - a reason on a
+         * capture with no text of its own means the page was not read.
+         */
+        fetchOutcome?: string | null;
+        rawPayload?: unknown;
+      })
+    | null;
   /** What the workspace already holds about this capture's URL; null for non-URL captures. */
   priorWriting?: PriorWriting | null;
 }) {
@@ -178,6 +206,7 @@ export function InboxDetail({
 
   const state = optimisticState ?? capture.processingState;
   const isUrlOnly = !capture.text?.trim() && capture.url;
+  const extraction = readExtensionExtraction(capture.rawPayload);
   const title = captureTitle(capture);
   // A name only when one exists apart from the body; an unlabeled text capture
   // renders its body directly instead of the derived first line twice.
@@ -293,16 +322,25 @@ export function InboxDetail({
           capture's text under the new one's title. A new id remounts the body. */}
       <div key={capture.id} className="mt-6 border-border border-t pt-6">
         {capture.kind === "file" ? (
-          <FileCapturePanel captureId={capture.id} rawPayload={capture.rawPayload} />
+          <FileCapturePanel
+            captureId={capture.id}
+            rawPayload={capture.rawPayload}
+            text={capture.text}
+            processingState={state}
+            failureReason={capture.failureReason ?? null}
+          />
         ) : isUrlOnly ? (
           capture.text ? (
-            <CaptureBody
-              captureId={capture.id}
-              version={capture.version}
-              text={capture.text}
-              label="From the page"
-              editable={state === "unprocessed" || state === "classifying"}
-            />
+            <>
+              <CaptureBody
+                captureId={capture.id}
+                version={capture.version}
+                text={capture.text}
+                label="From the page"
+                editable={state === "unprocessed" || state === "classifying"}
+              />
+              {extraction ? <ExtensionMarkdownBlock extraction={extraction} /> : null}
+            </>
           ) : fetchFailed ? (
             <div className="max-w-[70ch]" role="status">
               <p className="text-[13px] text-muted-foreground">
@@ -332,12 +370,15 @@ export function InboxDetail({
               captureId={capture.id}
               version={capture.version}
               text={capture.text ?? ""}
-              label={capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`}
+              label={
+                capture.kind === "voice" ? "Voice note" : `Captured ${captureKindLabel(capture.kind).toLowerCase()}`
+              }
               // Only conversion closes editing: an enriched capture's words are
               // still the owner's working text (an edit re-runs classification);
               // after conversion the derived task or note owns the text.
               editable={state === "unprocessed" || state === "classifying" || state === "enriched"}
             />
+            {extraction ? <ExtensionMarkdownBlock extraction={extraction} /> : null}
           </>
         )}
       </div>
@@ -357,7 +398,9 @@ export function InboxDetail({
                 <span className="ml-2 text-xs text-muted-foreground">
                   {item.basis === "from-page" ? `${priorKindLabel(item.kind)} from this page` : "Mentions this link"}
                 </span>
-                {item.excerpt ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.excerpt}</p> : null}
+                {item.excerpt ? (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.excerpt}</p>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -365,7 +408,9 @@ export function InboxDetail({
       ) : null}
 
       {error ? (
-        <p className="mt-3 text-destructive text-[13px]" role="alert">{error}</p>
+        <p className="mt-3 text-destructive text-[13px]" role="alert">
+          {error}
+        </p>
       ) : null}
 
       {suggestions.length > 0 ? (
@@ -375,7 +420,10 @@ export function InboxDetail({
             if (!copy) return null;
             const confidence = confidenceLabel(suggestion.confidence);
             return (
-              <div key={suggestion.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+              <div
+                key={suggestion.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+              >
                 <Sparkles aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="text-[13px] font-medium">{copy.label}</span>
                 <span className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -387,11 +435,21 @@ export function InboxDetail({
                       <Link href="/command-center/relationships/contacts">Add contact</Link>
                     </Button>
                   ) : (
-                    <Button size="sm" variant="outline" disabled={pending} onClick={() => decideSuggestion(suggestion, "accept")}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => decideSuggestion(suggestion, "accept")}
+                    >
                       {copy.accept}
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" disabled={pending} onClick={() => decideSuggestion(suggestion, "reject")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => decideSuggestion(suggestion, "reject")}
+                  >
                     Dismiss
                   </Button>
                 </span>
@@ -402,15 +460,25 @@ export function InboxDetail({
       ) : null}
 
       <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
-        {state === "open" || state === "unprocessed" || state === "classifying" || state === "enriched" || state === "failed" ? (
+        {state === "open" ||
+        state === "unprocessed" ||
+        state === "classifying" ||
+        state === "enriched" ||
+        state === "failed" ? (
           <>
             {capture.kind === "file" || voiceWithoutTranscript ? null : (
               <Button size="sm" disabled={pending} onClick={saveAsNote}>
                 Save as note
               </Button>
             )}
-            {capture.kind === "file" || voiceWithoutTranscript || !(capture.cleanText ?? capture.text)?.trim() ? null : (
-              <Button size="sm" variant="outline" disabled={pending} onClick={saveAsDocument} title="File the text as a library document; zettel proposals follow">
+            {voiceWithoutTranscript || !(capture.cleanText ?? capture.text)?.trim() ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={saveAsDocument}
+                title="File the text as a library document; zettel proposals follow"
+              >
                 Save to library
               </Button>
             )}
@@ -421,17 +489,26 @@ export function InboxDetail({
             )}
             {capture.kind === "file" ? (
               <span className="flex items-center text-xs text-muted-foreground">
-                A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself.
+                {capture.text?.trim()
+                  ? "File the reading in the library, or make a task from its words - the file itself stays here."
+                  : "A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself."}
               </span>
             ) : voiceWithoutTranscript ? (
               <span className="flex items-center text-xs text-muted-foreground">
-                {capture.failureReason ?? "The transcript lands here once transcription runs; then it works like any text capture."}
+                {capture.failureReason ??
+                  "The transcript lands here once transcription runs; then it works like any text capture."}
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 Turn into
                 {DRAFT_TEMPLATES.map((template) => (
-                  <Button key={template} size="sm" variant="ghost" disabled={pending} onClick={() => saveAsDraft(template)}>
+                  <Button
+                    key={template}
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => saveAsDraft(template)}
+                  >
                     {DRAFT_TEMPLATE_LABEL[template]}
                   </Button>
                 ))}
@@ -464,14 +541,20 @@ export function InboxDetail({
             Restore capture
           </Button>
         ) : null}
-        {state === "converted" && (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) && capture.convertedId ? (
+        {state === "converted" &&
+        (capture.convertedType === "note" || capture.convertedType?.startsWith("draft:")) &&
+        capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/polymath/notes?id=${encodeURIComponent(capture.convertedId)}`}>{capture.convertedType === "note" ? "Open note" : "Open draft"}</Link>
+            <Link href={`/polymath/notes?id=${encodeURIComponent(capture.convertedId)}`}>
+              {capture.convertedType === "note" ? "Open note" : "Open draft"}
+            </Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "document" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open in Document Vault</Link>
+            <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>
+              Open in Document Vault
+            </Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
@@ -494,25 +577,96 @@ function formatBytes(n: number | undefined): string {
 }
 
 /*
- * A file capture's detail: the filename is the whole label. The bytes open or
- * download through the tenant-checked file route; the contents are never
- * extracted or searchable here. A quarantined file (type unrecognized) is
- * named as such and downloads rather than rendering.
+ * The companion's own Readability→Turndown reading of the capture, kept
+ * verbatim on the row. The server fetches its own text for the working body,
+ * so this block is provenance — the formatting the flatten into plain text
+ * killed, exactly as the extension read it — and stays collapsed until asked
+ * for, out of the triage read's way.
  */
-function FileCapturePanel({ captureId, rawPayload }: { captureId: string; rawPayload: unknown }) {
+function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtraction }) {
+  const [open, setOpen] = useState(false);
+  const qualityLabel = extraction.quality === "rich" ? "rich" : extraction.quality === "basic" ? "basic" : null;
+  return (
+    <section aria-label="Original formatting kept by the extension" className="mt-3">
+      <p className="text-[13px] text-muted-foreground">
+        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""} —{" "}
+        <button
+          type="button"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "Hide it" : "Show it"}
+        </button>
+      </p>
+      {open ? (
+        <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-[12px] whitespace-pre-wrap">
+          {extraction.markdown}
+        </pre>
+      ) : null}
+    </section>
+  );
+}
+
+/*
+ * A file capture's detail: the filename is the whole label; the bytes open or
+ * download through the tenant-checked file route. An image capture reports
+ * its reading honestly instead of pretending the contents were never asked
+ * for: extracted (excerpt shown, words searchable), pending (the read is in
+ * flight), or failed - with the named reason, which is either the provider's
+ * error or the deployment's not-configured shape. A quarantined file (type
+ * unrecognized) is named as such and downloads rather than rendering.
+ */
+function FileCapturePanel({
+  captureId,
+  rawPayload,
+  text,
+  processingState,
+  failureReason,
+}: {
+  captureId: string;
+  rawPayload: unknown;
+  text: string | null;
+  processingState: string;
+  failureReason: string | null;
+}) {
   const payload = (rawPayload ?? {}) as FilePayload;
   const filename = payload.filename?.trim() || "Captured file";
   const quarantined = payload.quarantined === true;
+  const isImage = !quarantined && (payload.mimeType ?? "").startsWith("image/");
+  const reading = text?.trim() ?? null;
+  const pendingRead = isImage && !reading && (processingState === "unprocessed" || processingState === "classifying");
+
   return (
     <section aria-label="Captured file" className="flex flex-col gap-3">
       <p className="text-[15px] font-medium break-words text-foreground">{filename}</p>
       <p className="text-[13px] text-muted-foreground">
-        {quarantined ? "Type not recognized - stored as-is" : (payload.mimeType ?? "File")} · {formatBytes(payload.sizeBytes)}
+        {quarantined ? "Type not recognized - stored as-is" : (payload.mimeType ?? "File")} ·{" "}
+        {formatBytes(payload.sizeBytes)}
       </p>
-      <p className="max-w-[70ch] text-[13px] text-muted-foreground">
-        Stored as captured. The file&apos;s contents aren&apos;t searchable; the filename is the label.
-        {quarantined ? " It downloads rather than opening in the browser." : ""}
-      </p>
+      {isImage ? (
+        reading ? (
+          <>
+            <p className="max-w-[70ch] text-[13px] break-words whitespace-pre-wrap text-foreground/90">
+              {reading.length > 300 ? `${reading.slice(0, 300)}…` : reading}
+            </p>
+            <p className="text-[13px] text-muted-foreground">The words were read from the image and are searchable.</p>
+          </>
+        ) : pendingRead ? (
+          <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+            Reading the image now. The words land here when they arrive.
+          </p>
+        ) : (
+          <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+            {failureReason ?? "Reading the image now. The words land here when they arrive."}
+          </p>
+        )
+      ) : (
+        <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+          Stored as captured. The file&apos;s contents aren&apos;t searchable; the filename is the label.
+          {quarantined ? " It downloads rather than opening in the browser." : ""}
+        </p>
+      )}
       <div>
         <a
           href={`/api/v1/captures/${captureId}/file`}

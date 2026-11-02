@@ -32,6 +32,7 @@
     "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",
     "inventory": "tsx scripts/tech-spec-inventory.ts",
     "inventory:check": "tsx scripts/tech-spec-inventory.ts --check",
+    "knip": "DATABASE_URL='postgresql://knip:unused@127.0.0.1:9/knip_never_connects' knip",
     "test:ci": "sh scripts/reset-test-db.sh && vitest run"
   },
   "dependencies": {
@@ -84,6 +85,7 @@
     "eslint-config-next": "16.4.2",
     "jsdom": "30.1.3",
     "just-bash": "^3.6.0",
+    "knip": "^6.44.1",
     "postgres": "^3.4.9",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.3",

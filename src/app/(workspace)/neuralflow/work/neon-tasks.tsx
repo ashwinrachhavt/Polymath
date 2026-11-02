@@ -52,7 +52,7 @@ const statusLabel: Record<WorkRow["status"], string> = {
 
 export type Scope = "today" | "open" | "done";
 
-export function scopeOf(show: string | undefined): Scope {
+function scopeOf(show: string | undefined): Scope {
   return show === "today" || show === "done" ? show : "open";
 }
 

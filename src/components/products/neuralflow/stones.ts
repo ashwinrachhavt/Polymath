@@ -18,7 +18,7 @@ import {
  * server ensures into the definition row - so the catalog cannot drift from
  * what the ledger actually awards.
  */
-export type StoneSlug = "quartz" | "garnet" | "topaz" | "emerald" | "sapphire" | "ruby" | "diamond";
+type StoneSlug = "quartz" | "garnet" | "topaz" | "emerald" | "sapphire" | "ruby" | "diamond";
 export type Stone = {
   slug: StoneSlug;
   name: string;

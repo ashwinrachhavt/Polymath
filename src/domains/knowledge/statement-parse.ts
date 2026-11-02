@@ -14,7 +14,7 @@
  * reconciled with the row that broke it.
  */
 
-export type TableCellInput = {
+type TableCellInput = {
   row: number;
   col: number;
   text: string;
@@ -41,7 +41,7 @@ export type LedgerRow = {
   page: number | null;
 };
 
-export type MappingReport = {
+type MappingReport = {
   page: number | null;
   accountLabel: string;
   header: string[];
@@ -49,7 +49,7 @@ export type MappingReport = {
   rowCount: number;
 };
 
-export type ReconciliationMismatch = {
+type ReconciliationMismatch = {
   accountLabel: string;
   position: number;
   occurredOn: string;
@@ -183,8 +183,18 @@ function fixed(value: number): string {
 }
 
 const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
 };
 
 type RawDate = { year: number; month: number; day: number; dayFirst: boolean; numeric?: true };
@@ -241,7 +251,10 @@ function resolveDayFirst(dates: RawDate[], text: string[]): boolean {
   if (activeDayFirst !== null) return activeDayFirst;
   // A component above 12 can only be a day, which settles the whole document.
   for (const value of text) {
-    const numeric = value.replace(/\s+/g, " ").trim().match(/^(\d{1,2})[./-](\d{1,2})[./-]\d{2,4}$/);
+    const numeric = value
+      .replace(/\s+/g, " ")
+      .trim()
+      .match(/^(\d{1,2})[./-](\d{1,2})[./-]\d{2,4}$/);
     if (numeric && Number(numeric[1]) > 12) return true;
   }
   for (const date of dates) if (date.month > 12) return true;
@@ -274,12 +287,9 @@ function isoDate(date: RawDate, dayFirst: boolean): string | null {
  * the first. Covered positions never overwrite a cell that has its own entry.
  */
 function grid(table: ParsedTable): string[][] {
-  const rows: string[][] = Array.from({ length: table.numRows }, () =>
-    Array.from({ length: table.numCols }, () => ""),
-  );
+  const rows: string[][] = Array.from({ length: table.numRows }, () => Array.from({ length: table.numCols }, () => ""));
   const owned = new Set<number>();
-  const inBounds = (row: number, col: number) =>
-    row >= 0 && row < table.numRows && col >= 0 && col < table.numCols;
+  const inBounds = (row: number, col: number) => row >= 0 && row < table.numRows && col >= 0 && col < table.numCols;
   for (const cell of table.cells) {
     if (!inBounds(cell.row, cell.col)) continue;
     rows[cell.row][cell.col] = cell.text.trim();
@@ -314,15 +324,7 @@ function headerFlags(table: ParsedTable): boolean[][] {
   return flags;
 }
 
-type ColumnRole =
-  | "date"
-  | "dateOrCheque"
-  | "description"
-  | "withdrawal"
-  | "deposit"
-  | "amount"
-  | "balance"
-  | "ignore";
+type ColumnRole = "date" | "dateOrCheque" | "description" | "withdrawal" | "deposit" | "amount" | "balance" | "ignore";
 
 const ROLE_PATTERNS: Array<[ColumnRole, RegExp]> = [
   ["balance", /(balance|running bal|available bal)/i],
@@ -437,7 +439,10 @@ function inferRoles(
   // wherever it is filled, and counting only filled cells would rank it as a
   // money column and steal the withdrawal column's role.
   const moneyCols = Array.from({ length: table.numCols }, (_, c) => c).filter((c) =>
-    looksLikeMoneyColumn(dataRows.map((row) => row[c] ?? ""), dataRows.length),
+    looksLikeMoneyColumn(
+      dataRows.map((row) => row[c] ?? ""),
+      dataRows.length,
+    ),
   );
   if (moneyCols.length === 0) return null;
   const balanceCol = moneyCols[moneyCols.length - 1];
@@ -488,8 +493,8 @@ function inferRoles(
    * page), the pair is recorded as ambiguous and the block-level reconciliation
    * settles it by trying both orders.
    */
-  const amountRoleCol = [...roles].find(([, role]) =>
-    role === "amount" || role === "withdrawal" || role === "deposit",
+  const amountRoleCol = [...roles].find(
+    ([, role]) => role === "amount" || role === "withdrawal" || role === "deposit",
   )?.[0];
   if (amountRoleCol !== undefined) {
     const numericUnmapped = Array.from({ length: table.numCols }, (_, c) => c).filter(
@@ -665,7 +670,8 @@ function labelFromDocumentText(text: string | undefined): string | null {
   return numbered ? numbered[1].replace(/\s+/g, " ").trim().slice(0, 120) : null;
 }
 
-function accountLabelFrom(rows: string[][], titleRows: number[], headerRow: number): string {  const candidates = [...titleRows.map((r) => rows[r].join(" ")), ...(rows[headerRow] ?? [])];
+function accountLabelFrom(rows: string[][], titleRows: number[], headerRow: number): string {
+  const candidates = [...titleRows.map((r) => rows[r].join(" ")), ...(rows[headerRow] ?? [])];
   for (const text of candidates) {
     const match = text.match(/([A-Za-z ]*account[^\d]*[\d*xX]{2,}[^\s,]*)/i);
     if (match) return match[1].trim().slice(0, 120);
@@ -703,9 +709,7 @@ function parseWithFormat(tables: ParsedTable[], statementText?: string): ParseRe
       headerRow = located.headerRow;
       titleRows = located.titleRows;
       const hasDate = [...roles.values()].some((r) => r === "date" || r === "dateOrCheque");
-      const hasMoney = [...roles.values()].some((r) =>
-        r === "amount" || r === "withdrawal" || r === "deposit",
-      );
+      const hasMoney = [...roles.values()].some((r) => r === "amount" || r === "withdrawal" || r === "deposit");
       if (!hasDate || !hasMoney) roles = null;
     }
     if (!roles) {
@@ -887,7 +891,8 @@ function parseWithFormat(tables: ParsedTable[], statementText?: string): ParseRe
   return {
     status: "parsed",
     rows: built,
-    accountLabel: labelFromDocumentText(statementText) ?? [...new Set(blocks.map((block) => block.accountLabel))].join(", "),
+    accountLabel:
+      labelFromDocumentText(statementText) ?? [...new Set(blocks.map((block) => block.accountLabel))].join(", "),
     periodStart,
     periodEnd,
     openingBalance,
@@ -917,7 +922,8 @@ const TOTAL_PATTERNS: Array<{ label: string; side: "out" | "in" | "count"; patte
   {
     label: "transaction count",
     side: "count",
-    pattern: /(?:total\s+(?:number\s+of\s+)?transactions?|no\.?\s+of\s+transactions?|transactions?\s+count)\b[^\d\n]{0,16}(\d+)\b/gi,
+    pattern:
+      /(?:total\s+(?:number\s+of\s+)?transactions?|no\.?\s+of\s+transactions?|transactions?\s+count)\b[^\d\n]{0,16}(\d+)\b/gi,
   },
 ];
 

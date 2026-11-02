@@ -28,7 +28,6 @@ import {
   resumeFocusSession,
   StaleWriteError as FocusStaleWriteError,
   startFocusSession,
-  updateFocusBlocklistEntry,
 } from "@/domains/focus/commands";
 import { focusStrictness } from "@/domains/focus/schema";
 import { markSeedCommitted, dismissSeed } from "@/domains/work/seeds";
@@ -545,28 +544,6 @@ export async function createBlocklistEntryAction(input: unknown): Promise<FocusR
   const auth = await authorize();
   try {
     await createFocusBlocklistEntry(auth, parsed.data);
-  } catch (error) {
-    return focusFail(error);
-  }
-  revalidateFocus(auth);
-  return { ok: true };
-}
-
-const blocklistUpdateInput = z.object({
-  blockId: z.string().uuid(),
-  pattern: z.string().trim().min(1).max(300).optional(),
-  kind: z.enum(["block", "allow"]).optional(),
-});
-
-export async function updateBlocklistEntryAction(input: unknown): Promise<FocusResult> {
-  const parsed = blocklistUpdateInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Reload and try again." };
-  const auth = await authorize();
-  try {
-    await updateFocusBlocklistEntry(auth, parsed.data.blockId, {
-      ...(parsed.data.pattern !== undefined ? { pattern: parsed.data.pattern } : {}),
-      ...(parsed.data.kind !== undefined ? { kind: parsed.data.kind } : {}),
-    });
   } catch (error) {
     return focusFail(error);
   }

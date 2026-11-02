@@ -10,8 +10,10 @@ queries rather than joining across domains.
 ## The trust boundary
 
 The model proposes questions, the domain disposes (`generate-quiz.ts`):
-`verifyQuiz` re-locates every question's evidence quote verbatim in the
-extraction and drops what it cannot prove. Fewer than three proven questions
+`verifyQuiz` re-locates every question's evidence quote in the extraction
+(normalized matching — markdown links, citation markers, and whitespace are
+tolerated; paraphrase is not, see `locate-quote.ts`) and drops what it
+cannot prove. Fewer than three proven questions
 is an honest typed failure (`insufficient_evidence`), never a padded quiz.
 This is the reading summary's discipline (ASH-292) with one deviation: there
 is no generate-then-accept split, because a quiz is low-stakes, regenerable,

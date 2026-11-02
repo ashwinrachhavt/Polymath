@@ -22,7 +22,7 @@ import { artifacts, artifactVersions } from "./schema";
  * and an edited brief is a new proposal, never a silent re-import.
  */
 
-export const CANVA_IMPORT_CAPABILITY = "canva.design.import";
+const CANVA_IMPORT_CAPABILITY = "canva.design.import";
 
 export class DesignBriefHandoffNotAllowedError extends Error {
   readonly code = "design_brief_handoff_not_allowed";

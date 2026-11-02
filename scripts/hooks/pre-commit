@@ -26,13 +26,16 @@ fi
 
 if [ -x node_modules/.bin/eslint ]; then
   # --max-warnings=0 keeps a warning from quietly becoming the new normal;
-  # CI's `pnpm lint` fails the same way. --no-warn-ignored honors the config's
-  # global ignores (extensions/** is deliberately unlinted): passing an
-  # ignored file explicitly would otherwise raise a warning and fail the
-  # gate, making every extension commit unpassable.
+  # CI's `pnpm lint` fails the same way.
+  # --no-warn-ignored: the config deliberately ignores some trees (extensions/,
+  # vendored libs). Naming one of those files explicitly makes eslint emit a
+  # "file ignored" warning, which --max-warnings=0 fails — so no commit under
+  # an ignored path could ever pass this hook. Whole-tree lint (CI) skips
+  # ignored files silently; this hook skips them the same way. Real findings
+  # in staged source still fail the commit.
   git diff --cached -z --name-only --diff-filter=ACM \
     | grep -zE '\.(js|jsx|ts|tsx|mjs|cjs)$' \
-    | xargs -0 npx eslint --no-warn-ignored --max-warnings=0 || fails=1
+    | xargs -0 npx eslint --max-warnings=0 --no-warn-ignored || fails=1
 fi
 
 # The app renders two <main> elements (shell content main plus the route

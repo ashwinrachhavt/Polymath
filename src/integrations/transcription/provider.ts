@@ -12,7 +12,7 @@
  * unconfigured is surfaced on the capture, never papered over.
  */
 
-export type TranscribeInput = {
+type TranscribeInput = {
   bytes: Uint8Array;
   /** The sniffed content type (audio/webm, audio/mp4, ...), never the client's claim. */
   mimeType: string;

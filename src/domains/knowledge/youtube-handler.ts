@@ -6,7 +6,12 @@ import { OutboxParkError } from "@/domains/audit/outbox";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
-import { fetchTranscript, type FetchLike, type TranscriptCue, type TranscriptResult } from "@/integrations/youtube/transcript";
+import {
+  fetchTranscript,
+  type FetchLike,
+  type TranscriptCue,
+  type TranscriptResult,
+} from "@/integrations/youtube/transcript";
 import { extractDocument } from "./extraction";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
 import { captureUrl } from "./capture-url";
@@ -33,7 +38,7 @@ import { YOUTUBE_TOPIC } from "./youtube-capture";
 
 const PROVIDER_DOWN = (cause: unknown) => cause instanceof TypeError;
 
-export const youtubeTranscriptRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
+const youtubeTranscriptRequestedHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`youtube.transcript_requested has a malformed payload (${typeof raw}); redeploy the producer`);
@@ -41,7 +46,10 @@ export const youtubeTranscriptRequestedHandler: OutboxHandler = async (event: Cl
   const payload = raw as { documentId?: unknown; videoId?: unknown; sourceUrl?: unknown };
   const documentId = typeof payload.documentId === "string" ? payload.documentId : null;
   if (!documentId) throw new Error("youtube.transcript_requested has no documentId");
-  const sourceUrl = typeof payload.sourceUrl === "string" ? payload.sourceUrl : `https://www.youtube.com/watch?v=${payload.videoId ?? ""}`;
+  const sourceUrl =
+    typeof payload.sourceUrl === "string"
+      ? payload.sourceUrl
+      : `https://www.youtube.com/watch?v=${payload.videoId ?? ""}`;
 
   const [doc] = await db
     .select({ id: documents.id, fileId: documents.fileId, title: documents.title })
@@ -57,7 +65,7 @@ export const youtubeTranscriptRequestedHandler: OutboxHandler = async (event: Cl
 
   let result: TranscriptResult;
   try {
-    result = await fetchTranscript(sourceUrl, { fetchImpl: (globalThis.fetch as unknown as FetchLike) });
+    result = await fetchTranscript(sourceUrl, { fetchImpl: globalThis.fetch as unknown as FetchLike });
   } catch (cause) {
     if (PROVIDER_DOWN(cause)) throw new OutboxParkError(60_000, "YouTube is unreachable");
     throw cause;
@@ -99,7 +107,13 @@ export const youtubeTranscriptRequestedHandler: OutboxHandler = async (event: Cl
     throw cause;
   }
 
-  await writeCues(auth, { documentId, videoId: result.videoId, cues: result.cues, language: result.language, generated: result.generated });
+  await writeCues(auth, {
+    documentId,
+    videoId: result.videoId,
+    cues: result.cues,
+    language: result.language,
+    generated: result.generated,
+  });
   // The text is durable; extraction and embedding follow through their own path.
   await extractDocument(auth, { documentId });
 };
@@ -112,7 +126,9 @@ async function writeCues(
   const [latest] = await db
     .select({ id: documentExtractions.id })
     .from(documentExtractions)
-    .where(and(eq(documentExtractions.documentId, input.documentId), eq(documentExtractions.workspaceId, auth.workspaceId)))
+    .where(
+      and(eq(documentExtractions.documentId, input.documentId), eq(documentExtractions.workspaceId, auth.workspaceId)),
+    )
     .orderBy(desc(documentExtractions.createdAt))
     .limit(1);
 
@@ -151,7 +167,14 @@ async function recordTranscriptFailure(auth: AuthContext, documentId: string, er
     .limit(1);
   await db
     .insert(documentExtractions)
-    .values({ workspaceId: auth.workspaceId, documentId, contentHash, status: "failed", error, extractor: "youtube-transcript" })
+    .values({
+      workspaceId: auth.workspaceId,
+      documentId,
+      contentHash,
+      status: "failed",
+      error,
+      extractor: "youtube-transcript",
+    })
     .onConflictDoUpdate({
       target: [documentExtractions.documentId, documentExtractions.contentHash],
       set: { error, createdAt: new Date() },
@@ -184,9 +207,9 @@ async function recordTranscriptFailure(auth: AuthContext, documentId: string, er
  * running it from the outbox keeps the request short without a second fetch
  * path.
  */
-export const URL_IMPORT_TOPIC = "source.url_import_requested";
+const URL_IMPORT_TOPIC = "source.url_import_requested";
 
-export const urlImportHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
+const urlImportHandler: OutboxHandler = async (event: ClaimedOutboxEvent) => {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`source.url_import_requested has a malformed payload (${typeof raw}); redeploy the producer`);

@@ -29,9 +29,9 @@ import { commitNoteSnapshot, createNote, getNote } from "./notes";
  * commit/merge/link decisions a review surface drives.
  */
 
-export type DecompositionRole = "principle" | "decision" | "checklist";
+type DecompositionRole = "principle" | "decision" | "checklist";
 export type DecompositionSpan = { start: number; end: number; quote: string };
-export type DecompositionCandidate = {
+type DecompositionCandidate = {
   /** Dedupe key: source hash + span (§4). Stable across re-analysis of the same paste. */
   id: string;
   role: DecompositionRole;
@@ -93,8 +93,19 @@ export function analyzePaste(text: string, raw: z.infer<typeof decompositionResp
     const spans = candidate.quotes.map((q) => locateSpan(text, q)).filter((s): s is DecompositionSpan => s !== null);
     if (spans.length === 0) continue; // no verbatim support: no proposal
     const first = spans[0];
-    const id = createHash("sha256").update(`${hash}:${first.start}:${first.end}:${candidate.title}`).digest("hex").slice(0, 24);
-    candidates.push({ id, role: candidate.role, kind: candidate.kind, title: candidate.title, content: candidate.content, spans, similar: [] });
+    const id = createHash("sha256")
+      .update(`${hash}:${first.start}:${first.end}:${candidate.title}`)
+      .digest("hex")
+      .slice(0, 24);
+    candidates.push({
+      id,
+      role: candidate.role,
+      kind: candidate.kind,
+      title: candidate.title,
+      content: candidate.content,
+      spans,
+      similar: [],
+    });
   }
   const omitted = raw.omitted
     .map((o) => ({ ...o, span: locateSpan(text, o.quote) }))
@@ -193,7 +204,15 @@ export async function commitDecomposition(
             content: [
               ...existing,
               { type: "paragraph", content: [{ type: "text", text: candidate.content }] },
-              { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: candidate.spans.map((sp) => sp.quote).join("\n") }]}] },
+              {
+                type: "blockquote",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: candidate.spans.map((sp) => sp.quote).join("\n") }],
+                  },
+                ],
+              },
             ],
           },
           note: `Merged decomposition candidate: ${candidate.title}`,
@@ -211,7 +230,9 @@ export async function commitDecomposition(
         const [receipt] = await db
           .select({ response: requestReceipts.response })
           .from(requestReceipts)
-          .where(and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, `${key}:merge`)))
+          .where(
+            and(eq(requestReceipts.workspaceId, auth.workspaceId), eq(requestReceipts.idempotencyKey, `${key}:merge`)),
+          )
           .limit(1);
         if (!receipt) throw error;
         const prior = receipt.response as { versionNumber: number };

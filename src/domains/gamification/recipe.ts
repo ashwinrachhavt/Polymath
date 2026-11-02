@@ -93,7 +93,7 @@ export type StoneRecipeInput = z.input<typeof stoneRecipeSchema>;
  * One failure at a time (zod's first issue) as a flat, printable rejection -
  * the review card and the generator script share this shape.
  */
-export function recipeRejection(error: z.ZodError<StoneRecipe>): RecipeRejection {
+function recipeRejection(error: z.ZodError<StoneRecipe>): RecipeRejection {
   const issue = error.issues[0];
   return {
     field: issue.path.map(String).join(".") || "recipe",

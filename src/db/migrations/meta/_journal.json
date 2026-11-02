@@ -1,6 +1,4 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
@@ -705,28 +703,42 @@
       "idx": 274,
       "version": "7",
       "when": 1793687520000,
-      "tag": "0274_focus_strictness",
+      "tag": "0274_superagent_store",
       "breakpoints": true
     },
     {
       "idx": 275,
       "version": "7",
-      "when": 1793687580000,
-      "tag": "0275_focus_blocklist",
+      "when": 1793687520001,
+      "tag": "0275_short_mikhail_rasputin",
       "breakpoints": true
     },
     {
       "idx": 276,
       "version": "7",
-      "when": 1793687640000,
-      "tag": "0276_reward_integrity",
+      "when": 1793687521001,
+      "tag": "0276_focus_strictness",
       "breakpoints": true
     },
     {
       "idx": 277,
       "version": "7",
-      "when": 1793687640001,
-      "tag": "0277_stone_foundry",
+      "when": 1793687522001,
+      "tag": "0277_focus_blocklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1793687523001,
+      "tag": "0278_reward_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1793687524001,
+      "tag": "0279_stone_foundry",
       "breakpoints": true
     }
   ]

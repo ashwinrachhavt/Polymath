@@ -56,7 +56,7 @@ export function canvaImportLiveEnabled(): boolean {
   return process.env[ENABLED_ENV] === "true";
 }
 
-export class CanvaImportDisabledError extends Error {
+class CanvaImportDisabledError extends Error {
   readonly code = "canva_import_disabled";
   constructor() {
     super("Canva import is not enabled on this deployment.");
@@ -131,7 +131,12 @@ export async function createCanvaImportJob(input: {
 
   if (!result.ok) {
     // The proxy's own documented 4xx refused the call before dispatch.
-    if (result.code === "provider_error" && typeof result.status === "number" && result.status >= 400 && result.status < 500) {
+    if (
+      result.code === "provider_error" &&
+      typeof result.status === "number" &&
+      result.status >= 400 &&
+      result.status < 500
+    ) {
       throw new CanvaImportRejectedError(result.status);
     }
     throw new CanvaImportAmbiguousError(result.message);
@@ -153,12 +158,13 @@ export async function createCanvaImportJob(input: {
 }
 
 /** The terminal states a get-job read can report, in the sweep's vocabulary. */
-export type CanvaImportJobState =
+type CanvaImportJobState =
   | { status: "in_progress" }
   | { status: "success"; designId: string | null; editUrl: string | null }
   | { status: "failed"; errorCode: string | null };
 
-export type CanvaImportJobResult = { ok: true; job: CanvaImportJobState } | { ok: false; code: string; message: string };
+export type CanvaImportJobResult =
+  { ok: true; job: CanvaImportJobState } | { ok: false; code: string; message: string };
 
 /**
  * The sweep's one read question: "what did the job we created do?" Parsed

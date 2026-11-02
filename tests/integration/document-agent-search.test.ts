@@ -323,6 +323,9 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "web.search",
       "web.fetch",
       "artifacts.revise",
+      // Task 24: idea proposals persist as review-queue zettel proposals - an
+      // internal write, denied on every call without the grant.
+      "zettels.propose",
       // Composio Instant tools (spec #316): granted to default profiles; the
       // closed list stays deliberate — widening shows up in this diff.
       "instant.composio.composio_ask_oracle",

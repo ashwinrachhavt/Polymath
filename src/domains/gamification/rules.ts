@@ -16,14 +16,14 @@ import type { taskPriority } from "../work/schema";
  */
 
 /** Spec §5: points multiply by how strictly the session was held. */
-export const FOCUS_TIER_MULTIPLIER: Record<FocusStrictness, number> = {
+const FOCUS_TIER_MULTIPLIER: Record<FocusStrictness, number> = {
   normal: 1,
   timeout: 1.5,
   deep: 2,
 };
 
 /** One award unit: every this-many focused seconds earns one point, times the tier. */
-export const FOCUS_POINTS_UNIT_SECONDS = 600;
+const FOCUS_POINTS_UNIT_SECONDS = 600;
 
 /** Points for a finished session: whole 10-minute units of banked focus, times the tier. */
 export function focusPointsForSession(accumulatedSeconds: number, strictness: FocusStrictness): number {
@@ -33,7 +33,7 @@ export function focusPointsForSession(accumulatedSeconds: number, strictness: Fo
 }
 
 /** Level 2 begins at this many points; each further level costs one more step of the same size. */
-export const LEVEL_BASE_POINTS = 100;
+const LEVEL_BASE_POINTS = 100;
 
 /** Cumulative points where `level` begins: 100 × the (level−1)th triangular number. Level 1 starts at 0. */
 export function pointsForLevel(level: number): number {

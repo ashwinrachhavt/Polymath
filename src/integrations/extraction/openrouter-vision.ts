@@ -1,11 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 import { normalizePageText } from "./cleanup";
-import type {
-  ExtractionInput,
-  ExtractionProvider,
-  ExtractionResult,
-} from "./provider";
+import type { ExtractionInput, ExtractionProvider, ExtractionResult } from "./provider";
 
 /*
  * Vision OCR through the workspace's existing OpenRouter key: the rescue rung
@@ -64,7 +60,7 @@ import type {
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_OCR_MODEL = "anthropic/claude-haiku-4.5";
-export const DEFAULT_OCR_MAX_PAGES = 30;
+const DEFAULT_OCR_MAX_PAGES = 30;
 /** A page never rambles into an open-ended bill: output is capped per page. */
 const MAX_PAGE_OUTPUT_TOKENS = 2048;
 /*
@@ -107,6 +103,9 @@ const IMAGE_MIME: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/** The image types this adapter reads; the capture ladder gates its image rung on the same set. */
+export const OCR_IMAGE_MIMES: ReadonlySet<string> = new Set(Object.keys(IMAGE_MIME));
+
 /*
  * The model's way to say the page held nothing readable; anything else it
  * returns is the page's text. A sentinel beats a blank string because the
@@ -123,9 +122,7 @@ const chatResponse = z.object({
   choices: z
     .array(
       z.object({
-        message: z
-          .object({ content: z.string().nullish(), refusal: z.string().nullish() })
-          .optional(),
+        message: z.object({ content: z.string().nullish(), refusal: z.string().nullish() }).optional(),
         finish_reason: z.string().nullish(),
       }),
     )
@@ -243,14 +240,18 @@ export function createOpenRouterVisionProvider(
 
         // Every page is attempted even after a failure: the verdict names all
         // the pages the provider could not read, not just the first.
-        const outcomes: Array<{ text: string } | { error: string }> = await mapPool(pageParts, PAGE_CONCURRENCY, async (parts) => {
-          try {
-            return { text: await readPage(parts, controller.signal) };
-          } catch (cause) {
-            const message = cause instanceof Error ? cause.message : String(cause);
-            return { error: controller.signal.aborted ? "timed out" : message };
-          }
-        });
+        const outcomes: Array<{ text: string } | { error: string }> = await mapPool(
+          pageParts,
+          PAGE_CONCURRENCY,
+          async (parts) => {
+            try {
+              return { text: await readPage(parts, controller.signal) };
+            } catch (cause) {
+              const message = cause instanceof Error ? cause.message : String(cause);
+              return { error: controller.signal.aborted ? "timed out" : message };
+            }
+          },
+        );
         const failed = outcomes.flatMap((outcome, index) => ("error" in outcome ? [index + 1] : []));
         if (failed.length) {
           const detail = outcomes.find((o) => "error" in o);
@@ -296,9 +297,7 @@ export function createOpenRouterVisionProvider(
  * Every owner Retry is a new extraction and spends again: the cap bounds
  * pages per attempt, not dollars per day.
  */
-export function openRouterVisionProviderFromEnv(
-  env: Record<string, string | undefined>,
-): ExtractionProvider | null {
+export function openRouterVisionProviderFromEnv(env: Record<string, string | undefined>): ExtractionProvider | null {
   if (env.OCR_PROVIDER?.trim().toLowerCase() !== "openrouter") return null;
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;

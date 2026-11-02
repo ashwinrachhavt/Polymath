@@ -8,6 +8,7 @@ import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { intakeFile } from "@/domains/knowledge/intake";
+import { runExtractionPass } from "@/domains/knowledge/extraction";
 import {
   DRAFT_TEMPLATE_KIND,
   DRAFT_TEMPLATE_LABEL,
@@ -19,8 +20,9 @@ import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-propo
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
-import { findCaptureByUrl } from "./queries";
+import { findCaptureByUrl, findCaptureReadingExtractor } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
+import { OCR_IMAGE_MIMES } from "@/integrations/extraction/openrouter-vision";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
@@ -86,6 +88,14 @@ export async function createCapture(
     title?: string;
     /** Omitted means the server infers it from what arrived. */
     mode?: CaptureMode;
+    /**
+     * Optional extraction metadata the companion computed (Readability→
+     * Turndown markdown and its quality grade). Provenance only — kept on
+     * the row's raw_payload, never classification input: the enrichment
+     * ladder reads the server's own fetch of the page.
+     */
+    raw_markdown?: string;
+    quality?: string;
     source?: (typeof captureSource.enumValues)[number];
     idempotencyKey?: string;
   },
@@ -115,6 +125,11 @@ export async function createCapture(
             ...(url ? { url } : {}),
             ...(isUrlReference ? {} : { text: trimmed }),
             ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+            // The companion's extraction work lands as provenance — the
+            // server fetches its own reading for classification, so this
+            // never feeds the ladder; it preserves what the flatten killed.
+            ...(input.raw_markdown ? { raw_markdown: input.raw_markdown } : {}),
+            ...(input.quality ? { quality: input.quality } : {}),
           },
           text,
           url,
@@ -201,8 +216,10 @@ export async function createCapture(
  * quarantined capture carries rawPayload.quarantined and octet-stream, and
  * nothing downstream may promise its content (no extraction, no search text,
  * no preview) - the capture IS the file, its filename is the only label.
- * Verified files are likewise not extracted here: `text` stays null, so
- * search and semantic surfaces never imply the file's contents are readable.
+ * Verified files are likewise not extracted HERE - `text` starts null either
+ * way. Reading happens after the commit, on the outbox: audio is transcribed
+ * (ASH-298) and an image is read by the ladder's vision rung when the
+ * deployment opted into OCR, so storage never waits on a provider.
  */
 /** The receipt payload for a file capture - one shape so every replay and conflict check hashes the same bytes. */
 export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
@@ -315,11 +332,14 @@ export async function createFileCapture(
             },
             tx,
           );
-          // Audio is promised a transcript (ASH-298): the outbox carries the
-          // wait, and the handler's unconfigured path answers honestly instead
-          // of looping. Non-audio files have no text to classify - the capture
+          // Audio is promised a transcript (ASH-298), an image a reading when
+          // the deployment opts in (OCR_PROVIDER=openrouter): the outbox
+          // carries the wait, and the handler's unconfigured path answers
+          // honestly instead of looping. The gate here is only "could these
+          // bytes ever carry text" - config is resolved at run time, not
+          // upload time. Other files have no text to classify - the capture
           // IS the file - so nothing else enqueues.
-          if (capture.kind === "voice") {
+          if (capture.kind === "voice" || OCR_IMAGE_MIMES.has(mimeType)) {
             await enqueueOutbox(tx, auth, {
               topic: CAPTURE_ENRICHMENT_TOPIC,
               payload: { captureId: capture.id },
@@ -511,7 +531,7 @@ export async function convertCaptureToNote(
 }
 
 /**
- * Turn a text capture into a library document (Capture spec: the inbox owns
+ * Turn a capture into a library document (Capture spec: the inbox owns
  * the triggers that create zettels from captured knowledge). The capture's
  * cleaned text becomes the document's markdown bytes through the one intake
  * path, so extraction and the enrichment pipeline (embed, zettel proposals,
@@ -520,6 +540,10 @@ export async function convertCaptureToNote(
  * audit row ride inside intake's transaction: a stale version or an
  * already-converted capture rolls the whole intake back, never a second
  * document.
+ *
+ * A blob capture files once its bytes carry a reading: the OCR rung's words
+ * in `text` are the body. A genuinely textless blob keeps the refusal - the
+ * capture IS the file, and nothing invents words for it here.
  */
 export async function convertCaptureToDocument(
   auth: AuthContext,
@@ -543,6 +567,12 @@ export async function convertCaptureToDocument(
   // filename.
   const body = workingText(capture)?.trim() ?? "";
   if (!body) throw new ConflictError("That capture has no text to file.");
+  // A blob's reading carries its provenance: the rung's audit row names the
+  // reader that turned the bytes into words, and the document's extraction
+  // records that reader - not a fresh plain-text parse of the markdown copy.
+  // Text without such a row (the owner's words, a transcript) files like any
+  // text capture: the plain-text reader genuinely reads those bytes.
+  const extractor = capture.captureMode === "blob" ? await findCaptureReadingExtractor(auth, capture.id) : null;
   const firstLine =
     body
       .split("\n")
@@ -567,6 +597,7 @@ export async function convertCaptureToDocument(
       verdict: { ok: true, mimeType: "text/markdown" },
       origin: "capture",
       sourceUrl: capture.url ?? undefined,
+      ...(extractor ? { preExtracted: { text: body, extractor } } : {}),
       inTransaction: async (tx, { documentId }) => {
         const [updated] = await tx
           .update(captures)
@@ -603,6 +634,24 @@ export async function convertCaptureToDocument(
     // the code can sit one level down.
     if (isDuplicateSourceUrl(cause)) throw new ConflictError("That article is already in your library.");
     throw cause;
+  }
+  // The intake enqueued document.extraction_requested, but no server action
+  // drains it: uploads kick their extraction pass post-response
+  // (files/route.ts after()), and without a kick here the mirror and
+  // embedding would wait for the next dispatcher pass. Run the same pass the
+  // consumer runs, best-effort - it dedupes against the pre-written reading
+  // and then mirrors, so the document is searchable the moment the inbox
+  // refreshes. A failure is recorded on the durable extraction row; the
+  // dispatcher stays the retry driver. (A null documentId cannot occur under
+  // this ok verdict, but the intake type is honest about quarantine paths.)
+  if (result.documentId) {
+    try {
+      await runExtractionPass(auth, { documentId: result.documentId });
+    } catch (cause) {
+      console.error(
+        `extraction pass after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
   }
   return { documentId: result.documentId, fileId: result.fileId };
 }

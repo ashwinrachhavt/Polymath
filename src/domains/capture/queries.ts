@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 import { captureProposals, captures } from "./schema";
+import { auditEvents } from "../audit/schema";
 
 /*
  * Inbox reads over the canonical captures table (ASH-137 A02). The original
@@ -47,17 +48,15 @@ export async function findCaptureByUrl(
 }
 
 function stateWhere(auth: AuthContext, filter: InboxFilter): SQL {
-  return (
-    filter === "all"
-      ? eq(captures.workspaceId, auth.workspaceId)
-      : filter === "converted"
-        ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'converted'`
-        : filter === "discarded"
-          ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'discarded'`
-          : filter === "parked"
-            ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is not null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
-            : sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
-  );
+  return filter === "all"
+    ? eq(captures.workspaceId, auth.workspaceId)
+    : filter === "converted"
+      ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'converted'`
+      : filter === "discarded"
+        ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.processingState} = 'discarded'`
+        : filter === "parked"
+          ? sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is not null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`
+          : sql`${captures.workspaceId} = ${auth.workspaceId} and ${captures.parkedAt} is null and ${captures.processingState} in ('unprocessed', 'classifying', 'enriched', 'failed')`;
 }
 
 export async function listCaptures(auth: AuthContext, filter: InboxFilter = "unprocessed", limit = 100) {
@@ -77,7 +76,8 @@ const listColumns = {
   convertedId: captures.convertedId,
   // Enrichment's short noun phrase; the list's label leads with it.
   title: captures.title,
-  // A file capture has no text; its only searchable label is the filename.
+  // A file capture's preview is its reading once the OCR rung has landed one;
+  // until then the filename is the only label the row carries.
   preview: sql<string | null>`coalesce(left(${captures.text}, 300), ${captures.rawPayload}->>'filename')`,
 };
 
@@ -90,12 +90,22 @@ export async function searchCaptures(
   if (input.kind) parts.push(eq(captures.kind, input.kind));
   if (input.query?.trim()) {
     const like = `%${escapeLike(input.query.trim())}%`;
-    // The filename matches search too - the file's CONTENTS stay unsearchable.
-    parts.push(or(ilike(captures.text, like), ilike(captures.url, like), ilike(sql`${captures.rawPayload}->>'filename'`, like))!);
+    // The filename matches search too. A file capture's contents match once
+    // the OCR rung has read them into text; an unread file is found by its
+    // filename alone.
+    parts.push(
+      or(ilike(captures.text, like), ilike(captures.url, like), ilike(sql`${captures.rawPayload}->>'filename'`, like))!,
+    );
   }
   const where = and(...parts);
   const [items, [totalRow]] = await Promise.all([
-    db.select(listColumns).from(captures).where(where).orderBy(desc(captures.createdAt), desc(captures.id)).limit(input.limit).offset(input.offset),
+    db
+      .select(listColumns)
+      .from(captures)
+      .where(where)
+      .orderBy(desc(captures.createdAt), desc(captures.id))
+      .limit(input.limit)
+      .offset(input.offset),
     db.select({ total: count() }).from(captures).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
@@ -103,7 +113,10 @@ export async function searchCaptures(
 
 /** A capture's display label for link pickers: the first text line, else the URL host. */
 export function captureLinkLabel(row: { text: string | null; url: string | null }): string {
-  const line = row.text?.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  const line = row.text
+    ?.split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
   if (line) return line.length > 60 ? `${line.slice(0, 57)}...` : line;
   if (row.url) {
     try {
@@ -129,10 +142,21 @@ export async function searchCapturesForLink(auth: AuthContext, query: string, li
   const rows = await db
     .select({ id: captures.id, text: captures.text, url: captures.url })
     .from(captures)
-    .where(and(eq(captures.workspaceId, auth.workspaceId), isNull(captures.archivedAt), or(ilike(captures.text, like), ilike(captures.url, like))!))
+    .where(
+      and(
+        eq(captures.workspaceId, auth.workspaceId),
+        isNull(captures.archivedAt),
+        or(ilike(captures.text, like), ilike(captures.url, like))!,
+      ),
+    )
     .orderBy(desc(captures.createdAt), desc(captures.id))
     .limit(limit);
-  return rows.map((row) => ({ id: row.id, title: captureLinkLabel(row), kind: "capture" as const, href: `/command-center/inbox?id=${row.id}` }));
+  return rows.map((row) => ({
+    id: row.id,
+    title: captureLinkLabel(row),
+    kind: "capture" as const,
+    href: `/command-center/inbox?id=${row.id}`,
+  }));
 }
 
 /** The full row for the detail pane; the only inbox read that carries the whole text. */
@@ -143,6 +167,31 @@ export async function getCapture(auth: AuthContext, id: string) {
     .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, id)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The reader the OCR rung recorded for this capture's bytes, from its
+ * `capture.extracted` audit row - the durable provenance of a file capture's
+ * text. Null when nothing read the bytes: text the owner typed or a voice
+ * transcript carries no vision provenance, and files like any text capture.
+ */
+export async function findCaptureReadingExtractor(auth: AuthContext, captureId: string): Promise<string | null> {
+  const [event] = await db
+    .select({ metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.subjectType, "capture"),
+        eq(auditEvents.subjectId, captureId),
+        eq(auditEvents.action, "capture.extracted"),
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  // Audit metadata crosses a storage boundary: a non-string extractor is no extractor.
+  const extractor = (event?.metadata as { extractor?: unknown } | null)?.extractor;
+  return typeof extractor === "string" && extractor.trim() ? extractor.trim() : null;
 }
 
 /** One count per inbox filter tab, in one round trip. */

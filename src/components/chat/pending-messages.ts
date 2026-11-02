@@ -10,7 +10,7 @@
 
 export type PendingMessage = { id: string; text: string; baseline: number };
 
-export function countUserMessages(userTexts: readonly string[], text: string): number {
+function countUserMessages(userTexts: readonly string[], text: string): number {
   return userTexts.reduce((n, candidate) => (candidate === text ? n + 1 : n), 0);
 }
 

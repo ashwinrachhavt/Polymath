@@ -5,7 +5,7 @@ import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayer } from "@/components/shell/command-layer";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
-import type { NotificationFeed } from "@/domains/notifications/feed";
+import type { TriageFeed } from "@/domains/notifications/triage";
 
 /*
  * The header. Where-you-are on the left (the breadcrumb names the app in
@@ -24,7 +24,7 @@ export function TopBar({
 }: {
   clerkConfigured: boolean;
   interfaceMode?: "library" | "action";
-  notifications: NotificationFeed;
+  notifications: TriageFeed;
 }) {
   return (
     <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur max-[420px]:px-4">

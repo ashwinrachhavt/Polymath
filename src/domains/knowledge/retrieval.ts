@@ -22,10 +22,10 @@ import { vectorLiteral } from "./embedding";
  * alone, so search never errors for want of a key.
  */
 
-export const RRF_K = 60;
-export const LEG_DEPTH = 50;
+const RRF_K = 60;
+const LEG_DEPTH = 50;
 /** Chunks closer than this are noise; cosine distance, same scale as the link edges. */
-export const MEANING_MAX_DISTANCE = 0.6;
+const MEANING_MAX_DISTANCE = 0.6;
 export const SEARCH_KINDS = ["note", "zettel", "document", "memo", "report", "transcript"] as const;
 
 export type SearchMode = "hybrid" | "keyword" | "meaning";
@@ -42,6 +42,14 @@ export type SearchMode = "hybrid" | "keyword" | "meaning";
  *   (captured sources are not in this index at all; origin/channel provenance
  *   does not exist in the schema).
  *
+ * - tags narrow to artifacts holding ANY of the given free tags
+ *   (artifacts.tags, a jsonb string array) - the same any-of narrowing the
+ *   notes list applies.
+ * - domain narrows to material converted from a capture the Tier 2 reading
+ *   classified in that domain: the capture's domain rides along through the
+ *   conversion link (captures.converted_id), so a facet set at capture time
+ *   keeps describing the record it became.
+ *
  * The area dimension went with the areas subsystem: its resolver and table are
  * retired, so there is no way left to turn an area name into tags and the
  * filter has no caller. `tags` remains the supported way to narrow results.
@@ -50,13 +58,35 @@ export type SearchFilters = {
   from?: Date;
   to?: Date;
   provenance?: "agent" | "not-agent";
+  /** Any-of over the artifact's free tags (artifacts.tags jsonb array). */
+  tags?: string[];
+  /** The capture domain a converted capture carried (Tier 2 reading). */
+  domain?: string;
 };
 
 /** One predicate set for every leg and count: a filter means the same thing everywhere. */
 function filterSql(filters?: SearchFilters) {
   if (!filters) return sql``;
+  // Same shape the notes list's tag filter applies: trim, drop empties, cap.
+  const tags = (filters.tags ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  const domain = filters.domain?.trim();
   // postgres.js through db.execute cannot bind Date objects: send ISO strings.
-  return sql`${filters.from ? sql` and a.updated_at >= ${filters.from.toISOString()}::timestamptz` : sql``}${filters.to ? sql` and a.updated_at < ${filters.to.toISOString()}::timestamptz` : sql``}${filters.provenance === "agent" ? sql` and a.produced_by_run_id is not null` : sql``}${filters.provenance === "not-agent" ? sql` and a.produced_by_run_id is null` : sql``}`;
+  return sql`${filters.from ? sql` and a.updated_at >= ${filters.from.toISOString()}::timestamptz` : sql``}${filters.to ? sql` and a.updated_at < ${filters.to.toISOString()}::timestamptz` : sql``}${filters.provenance === "agent" ? sql` and a.produced_by_run_id is not null` : sql``}${filters.provenance === "not-agent" ? sql` and a.produced_by_run_id is null` : sql``}${tags.length ? tagFacetSql(tags) : sql``}${domain ? sql` and exists (select 1 from captures c where c.workspace_id = a.workspace_id and c.converted_id = a.id and lower(c.domain) = lower(${domain}))` : sql``}`;
+}
+
+/*
+ * Tags any-of: jsonb array containment per tag, OR-combined, each tag bound
+ * as a param (JSON.stringify makes the bound string a jsonb string literal,
+ * which @> matches against array elements).
+ */
+function tagFacetSql(tags: readonly string[]) {
+  return sql` and (${sql.join(
+    tags.map((t) => sql`a.tags @> ${JSON.stringify(t)}::jsonb`),
+    sql` or `,
+  )})`;
 }
 
 /** Kinds are interpolated into SQL as an enum array: only schema kinds may pass. */
@@ -118,7 +148,12 @@ export function fuse(keyword: { id: string }[], meaning: { id: string; distance:
   return [...scores.entries()].sort((a, b) => b[1].score - a[1].score).map(([id, e]) => ({ id, ...e }));
 }
 
-async function keywordLeg(auth: AuthContext, query: string, kinds: readonly string[], filters?: SearchFilters): Promise<KeywordRow[]> {
+async function keywordLeg(
+  auth: AuthContext,
+  query: string,
+  kinds: readonly string[],
+  filters?: SearchFilters,
+): Promise<KeywordRow[]> {
   const rows = await db.execute(sql`
     select a.id,
            (a.title ilike '%' || ${query} || '%' or ${query} <% a.title) as title_match,
@@ -141,10 +176,20 @@ async function keywordLeg(auth: AuthContext, query: string, kinds: readonly stri
     order by rank
     limit ${LEG_DEPTH}
   `);
-  return (rows as unknown as KeywordRow[]).map((r) => ({ id: r.id, rank: Number(r.rank), title_match: Boolean(r.title_match) }));
+  return (rows as unknown as KeywordRow[]).map((r) => ({
+    id: r.id,
+    rank: Number(r.rank),
+    title_match: Boolean(r.title_match),
+  }));
 }
 
-async function meaningLeg(auth: AuthContext, vector: number[], model: string, kinds: readonly string[], filters?: SearchFilters): Promise<MeaningRow[]> {
+async function meaningLeg(
+  auth: AuthContext,
+  vector: number[],
+  model: string,
+  kinds: readonly string[],
+  filters?: SearchFilters,
+): Promise<MeaningRow[]> {
   const literal = vectorLiteral(vector);
   const rows = await db.execute(sql`
     select c.owner_id as id, min(c.distance) as distance
@@ -167,7 +212,11 @@ async function meaningLeg(auth: AuthContext, vector: number[], model: string, ki
     order by distance
     limit ${LEG_DEPTH}
   `);
-  return (rows as unknown as { id: string; distance: number | string }[]).map((r, i) => ({ id: r.id, rank: i + 1, distance: Number(r.distance) }));
+  return (rows as unknown as { id: string; distance: number | string }[]).map((r, i) => ({
+    id: r.id,
+    rank: i + 1,
+    distance: Number(r.distance),
+  }));
 }
 
 /*
@@ -188,7 +237,14 @@ async function embedQuery(provider: EmbeddingProvider, query: string): Promise<n
 
 export async function searchKnowledge(
   auth: AuthContext,
-  input: { query: string; limit?: number; mode?: SearchMode; kinds?: readonly string[]; filters?: SearchFilters; provider?: EmbeddingProvider },
+  input: {
+    query: string;
+    limit?: number;
+    mode?: SearchMode;
+    kinds?: readonly string[];
+    filters?: SearchFilters;
+    provider?: EmbeddingProvider;
+  },
 ): Promise<SearchResult> {
   const started = performance.now();
   const query = input.query.trim();
@@ -217,7 +273,10 @@ export async function searchKnowledge(
             return [];
           }
         })();
-  const [kw, mn] = await Promise.all([mode === "meaning" ? Promise.resolve([]) : keywordLeg(auth, query, kinds, input.filters), meaningPromise]);
+  const [kw, mn] = await Promise.all([
+    mode === "meaning" ? Promise.resolve([]) : keywordLeg(auth, query, kinds, input.filters),
+    meaningPromise,
+  ]);
 
   const fused = fuse(kw, mn).slice(0, limit);
   if (!fused.length) return { hits: [], meaning: meaningState, ms: Math.round(performance.now() - started) };
@@ -234,26 +293,30 @@ export async function searchKnowledge(
       and a.id = any(${sql.raw(`array[${ids.map((id) => `'${id}'`).join(",")}]::uuid[]`)})
   `);
   const byId = new Map(
-    (meta as unknown as { id: string; title: string; kind: string; updated_at_epoch: number; snippet: string | null }[]).map((r) => [r.id, r]),
+    (
+      meta as unknown as { id: string; title: string; kind: string; updated_at_epoch: number; snippet: string | null }[]
+    ).map((r) => [r.id, r]),
   );
   const titleMatch = new Map(kw.map((r) => [r.id, r.title_match]));
   const hits = fused.flatMap((f): SearchHit[] => {
     const m = byId.get(f.id);
     if (!m) return [];
-    return [{
-      id: f.id,
-      title: m.title,
-      kind: m.kind,
-      updatedAt: new Date(m.updated_at_epoch * 1000),
-      score: f.score,
-      why: {
-        keywordRank: f.kw,
-        meaningRank: f.mn,
-        similarity: f.distance == null ? null : 1 - f.distance,
-        titleMatch: titleMatch.get(f.id) ?? false,
+    return [
+      {
+        id: f.id,
+        title: m.title,
+        kind: m.kind,
+        updatedAt: new Date(m.updated_at_epoch * 1000),
+        score: f.score,
+        why: {
+          keywordRank: f.kw,
+          meaningRank: f.mn,
+          similarity: f.distance == null ? null : 1 - f.distance,
+          titleMatch: titleMatch.get(f.id) ?? false,
+        },
+        snippet: m.snippet?.replace(/\s+/g, " ").trim() || null,
       },
-      snippet: m.snippet?.replace(/\s+/g, " ").trim() || null,
-    }];
+    ];
   });
   return { hits, meaning: meaningState, ms: Math.round(performance.now() - started) };
 }
@@ -327,7 +390,7 @@ export async function countMeaningUncoveredByState(
  * edge's recorded context is the reason/passage the spec asks for - a
  * "source" edge carries the supporting quote verbatim.
  */
-export type HitConnection = {
+type HitConnection = {
   id: string;
   title: string;
   kind: string;
@@ -352,7 +415,10 @@ export const HIT_CONNECTION_CAP = 3;
 /** Hard row bound per direction for the batch read; hub cards never blow the page up. */
 const HIT_CONNECTION_ROW_LIMIT = 500;
 
-export async function listHitConnections(auth: AuthContext, ids: readonly string[]): Promise<Map<string, HitConnections>> {
+export async function listHitConnections(
+  auth: AuthContext,
+  ids: readonly string[],
+): Promise<Map<string, HitConnections>> {
   const byId = new Map<string, HitConnections>();
   if (!ids.length) return byId;
   for (const id of ids) byId.set(id, { out: [], in: [], outTotal: 0, inTotal: 0 });
@@ -387,16 +453,27 @@ export async function listHitConnections(auth: AuthContext, ids: readonly string
        limit ${HIT_CONNECTION_ROW_LIMIT})
     ) e
   `);
-  for (const r of rows as unknown as { direction: "out" | "in"; hit_id: string; other_id: string; title: string; kind: string; link_type: string; context: string | null; total: number }[]) {
+  for (const r of rows as unknown as {
+    direction: "out" | "in";
+    hit_id: string;
+    other_id: string;
+    title: string;
+    kind: string;
+    link_type: string;
+    context: string | null;
+    total: number;
+  }[]) {
     const entry = byId.get(r.hit_id);
     if (!entry) continue;
     const total = Number(r.total);
     if (r.direction === "out") {
       entry.outTotal = total;
-      if (entry.out.length < HIT_CONNECTION_CAP) entry.out.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
+      if (entry.out.length < HIT_CONNECTION_CAP)
+        entry.out.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
     } else {
       entry.inTotal = total;
-      if (entry.in.length < HIT_CONNECTION_CAP) entry.in.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
+      if (entry.in.length < HIT_CONNECTION_CAP)
+        entry.in.push({ id: r.other_id, title: r.title, kind: r.kind, linkType: r.link_type, context: r.context });
     }
   }
   return byId;

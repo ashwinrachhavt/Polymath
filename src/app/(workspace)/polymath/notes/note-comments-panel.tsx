@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { timeAgo } from "@/lib/time";
 import { addNoteCommentAction, resolveNoteCommentAction } from "./actions";
@@ -29,11 +28,15 @@ function CommentRow({ comment }: { comment: PanelComment }) {
   // but does not remount this row, so without it the panel would keep
   // showing the old state and the next click would send the same toggle.
   const [resolvedOverride, setResolvedOverride] = useState<boolean | null>(null);
-  const resolved = resolvedOverride ?? (comment.resolvedAt !== null);
+  const resolved = resolvedOverride ?? comment.resolvedAt !== null;
   const toggle = async () => {
     setBusy(true);
     const next = !resolved;
-    const result = await resolveNoteCommentAction({ commentId: comment.id, resolved: next, idempotencyKey: crypto.randomUUID() });
+    const result = await resolveNoteCommentAction({
+      commentId: comment.id,
+      resolved: next,
+      idempotencyKey: crypto.randomUUID(),
+    });
     setBusy(false);
     if (!result.ok) return;
     setResolvedOverride(result.resolvedAt !== null);
@@ -42,14 +45,27 @@ function CommentRow({ comment }: { comment: PanelComment }) {
   return (
     <li className={`rounded-md border px-3 py-2.5 ${resolved ? "border-transparent bg-muted/30" : "border-border"}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[13px] font-medium ${resolved ? "text-muted-foreground" : ""}`}>{comment.authorName ?? "You"}</span>
+        <span className={`text-[13px] font-medium ${resolved ? "text-muted-foreground" : ""}`}>
+          {comment.authorName ?? "You"}
+        </span>
         <time className="text-[11px] text-muted-foreground" dateTime={comment.createdAt}>
           {timeAgo(comment.createdAt)}
         </time>
       </div>
-      <p className={`mt-1 whitespace-pre-wrap text-[13px] leading-6 ${resolved ? "text-muted-foreground line-through decoration-border" : ""}`}>{comment.body}</p>
+      <p
+        className={`mt-1 whitespace-pre-wrap text-[13px] leading-6 ${resolved ? "text-muted-foreground line-through decoration-border" : ""}`}
+      >
+        {comment.body}
+      </p>
       <div className="mt-1.5">
-        <Button type="button" variant="ghost" size="xs" className="text-muted-foreground" disabled={busy} onClick={toggle}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground"
+          disabled={busy}
+          onClick={toggle}
+        >
           {resolved ? "Reopen" : "Resolve"}
         </Button>
       </div>
@@ -87,7 +103,9 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
         Comments <span className="tabular-nums">{openCount}</span>
       </h2>
       {comments.length === 0 ? (
-        <p className="text-[13px] leading-6 text-muted-foreground/80">Nothing here yet. Write what this note still owes you.</p>
+        <p className="text-[13px] leading-6 text-muted-foreground/80">
+          Nothing here yet. Write what this note still owes you.
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {comments.map((comment) => (
@@ -129,16 +147,5 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
         </div>
       </form>
     </section>
-  );
-}
-
-/** The header-zone marker shown only when the note has open comments. */
-export function CommentsBadge({ count }: { count: number }) {
-  if (count === 0) return null;
-  return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-      <Check aria-hidden className="size-3" />
-      <span className="tabular-nums">{count}</span>
-    </span>
   );
 }

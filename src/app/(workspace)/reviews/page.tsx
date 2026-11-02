@@ -70,6 +70,12 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   }
   const auth = await getAuthContext();
   const raw = await searchParams;
+
+  // The notifications panel's deep link lands here (?proposal=<id>, emitted by
+  // the home queue for every agent decision); the queue scrolls to and rings
+  // the matching card.
+  const proposalParam = Array.isArray(raw.proposal) ? raw.proposal[0] : raw.proposal;
+  const highlightProposalId = proposalParam?.trim() || null;
   const list = parseListParams(raw, {
     filters: { status: [...REVIEW_QUEUE_STATUSES, "all"], risk: REVIEW_RISK_CLASSES },
     defaultPageSize: 10,
@@ -120,7 +126,9 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     expired: isExpired(item.expiresAt),
     flags: item.flags,
     latestRevision: item.latestRevision,
-    proposedBy: item.runId ? (attributions.get(item.runId)?.profileName ?? attributions.get(item.runId)?.objective ?? null) : null,
+    proposedBy: item.runId
+      ? (attributions.get(item.runId)?.profileName ?? attributions.get(item.runId)?.objective ?? null)
+      : null,
     reviews: (reviewsByProposal.get(item.id) ?? []).map((review) => ({
       id: review.id,
       decision: review.decision,
@@ -177,6 +185,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
           holds the just-decided card's refusal or outcome until navigation. */}
       <ReviewsQueue
         items={cards}
+        highlightProposalId={highlightProposalId}
         emptyState={
           <NoResults
             filtered={filtered}
@@ -193,7 +202,13 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
 
 export default function ReviewsPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading the review queue…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading the review queue…
+        </p>
+      }
+    >
       <Reviews searchParams={searchParams} />
     </Suspense>
   );

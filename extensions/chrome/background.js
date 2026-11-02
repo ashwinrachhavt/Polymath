@@ -47,6 +47,41 @@ async function readOutbox() {
 
 async function writeOutbox(entries) {
   await chrome.storage.local.set({ [Outbox.STORAGE_KEY]: entries });
+  // Every outbox write is a possible badge change, and this is the one
+  // chokepoint every mutation goes through.
+  await updateBadge(entries);
+}
+
+// ── Parked badge ─────────────────────────────────────────────────
+
+/**
+ * The extension icon carries the parked count so recovery never depends on
+ * opening the popup: a red number means captures on this device need a
+ * person. "Parked" is the states the pump cannot fix by itself — failed,
+ * needs-auth, parked-identity, conflicted — not "queued", which is the
+ * ordinary sync-in-progress state the popup reports separately.
+ */
+var PARKED_STATUSES = {
+  "failed": true,
+  "needs-auth": true,
+  "parked-identity": true,
+  "conflicted": true,
+};
+
+async function updateBadge(entries) {
+  var parked = 0;
+  for (var i = 0; i < entries.length; i++) {
+    if (PARKED_STATUSES[entries[i].status]) parked++;
+  }
+  try {
+    // Chrome renders at most 4 characters; 99+ bounds the read honestly.
+    await chrome.action.setBadgeText({ text: parked === 0 ? "" : parked > 99 ? "99+" : String(parked) });
+    if (parked > 0) await chrome.action.setBadgeBackgroundColor({ color: "#b91c1c" });
+  } catch (error) {
+    // A badge the icon cannot render must never break a delivery — say so
+    // and move on; the popup's outbox status still carries the counts.
+    console.warn("Polymath capture: the parked badge could not be updated.", error);
+  }
 }
 
 // ── Destination identity ───────────────────────────────────────────
@@ -264,6 +299,10 @@ async function enqueueCapture(msg) {
       url: (msg.url || "").trim(),
       title: (msg.title || "").trim(),
       mode: msg.mode || null,
+      // Extraction metadata from the content script (raw_markdown + quality
+      // grade) travels with the entry and out in its delivery body.
+      raw_markdown: msg.raw_markdown || null,
+      quality: msg.quality || null,
       history: msg.history || null,
       destination: await currentDestination(),
     },
@@ -421,6 +460,10 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           title: source.title,
           // The replacement is the same arrival mode as the capture it rescues.
           mode: source.mode || null,
+          // The rescue keeps the extraction work: the text is the same
+          // selection, only the deduping URL is stripped.
+          raw_markdown: source.raw_markdown || null,
+          quality: source.quality || null,
           history: source.history,
           destination: await currentDestination(),
         },
@@ -527,6 +570,7 @@ chrome.commands.onCommand.addListener(function (command) {
 chrome.runtime.onInstalled.addListener(function () {
   chrome.storage.local.remove(LEGACY_STORAGE_KEYS);
   pump(); // recover anything queued before an update or crash
+  readOutbox().then(updateBadge);
   AxiomFocusBlocker.ensureAlarm();
   AxiomFocusBlocker.pollAndEnforce();
 });
@@ -534,6 +578,7 @@ chrome.runtime.onInstalled.addListener(function () {
 chrome.runtime.onStartup.addListener(function () {
   chrome.storage.local.remove(LEGACY_STORAGE_KEYS);
   pump();
+  readOutbox().then(updateBadge);
   AxiomFocusBlocker.ensureAlarm();
   AxiomFocusBlocker.pollAndEnforce();
 });

@@ -10,7 +10,7 @@ import { openAICompatibleProvider } from "./openai-compatible";
  * resolveProviderConfig(id, env).
  */
 
-export type ProviderCatalogEntry = {
+type ProviderCatalogEntry = {
   baseUrl: string;
   /** Env vars checked in order for the API key; the first set one wins. */
   apiKeyEnv: readonly string[];
@@ -21,8 +21,13 @@ export type ProviderCatalogEntry = {
   streamUsage?: boolean;
 };
 
-export const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
+const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
   mercury: {
+    // Inception Labs' Mercury suite, designed in (owner directive 2026-11-02):
+    // mercury-3 is the chat default and the assessor profile's; mercury-voice is
+    // reserved for latency-sensitive turns; mercury-decide answers the Decisions
+    // endpoint only — it never serves /chat/completions, so it is declared in
+    // src/domains/superagent/decide, not here or in the chat model catalog.
     baseUrl: "https://api.inceptionlabs.ai/v1",
     apiKeyEnv: ["MERCURY_API_KEY", "INCEPTION_API_KEY"],
     defaultModel: "mercury-3",

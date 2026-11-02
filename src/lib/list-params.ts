@@ -9,7 +9,7 @@
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
-export const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 const MAX_QUERY_LENGTH = 120;
 
 export type ListState<F extends string = string> = {
@@ -31,7 +31,7 @@ function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export function positiveInt(value: string | undefined): number | undefined {
+function positiveInt(value: string | undefined): number | undefined {
   if (!value || !/^\d{1,6}$/.test(value)) return undefined;
   const n = Number(value);
   return n >= 1 ? n : undefined;
@@ -115,7 +115,11 @@ export function matchesQuery(q: string, ...fields: Array<string | null | undefin
   return fields.some((f) => f?.toLowerCase().includes(needle));
 }
 
-export function paginate<T>(items: readonly T[], page: number, pageSize: number): { items: T[]; page: number; total: number } {
+export function paginate<T>(
+  items: readonly T[],
+  page: number,
+  pageSize: number,
+): { items: T[]; page: number; total: number } {
   const total = items.length;
   const safe = clampPage(page, total, pageSize);
   const start = offsetFor(safe, pageSize);

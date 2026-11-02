@@ -17,7 +17,7 @@ import { SURFACE_HREF } from "./navigation";
 
 export const SURFACE_CARD_PART = "supervisor-surface";
 
-export type SurfaceCardItem = { label: string; href?: string; meta?: string };
+type SurfaceCardItem = { label: string; href?: string; meta?: string };
 
 export type SurfaceCard = {
   surface: SurfaceKind | "note_search";
@@ -64,7 +64,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
         items: tasks.map((task) => ({
           label: task.title,
           href: `/neuralflow/work?task=${task.id}`,
-          meta: task.dueAt ? `due ${fmtDay(task.dueAt)}` : task.priority ?? undefined,
+          meta: task.dueAt ? `due ${fmtDay(task.dueAt)}` : (task.priority ?? undefined),
         })),
         emptyText: "No open tasks.",
       };
@@ -113,7 +113,8 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
     }
     case "calendar": {
       const now = new Date();
-      const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+      const dayStart = new Date(now);
+      dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
       const events = await listEventsBetween(auth, dayStart, dayEnd);
       return {

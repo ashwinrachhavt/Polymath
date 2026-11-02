@@ -13,7 +13,7 @@ import { join, relative } from "node:path";
  * green build.
  */
 
-export type RowState = "versioned" | "append-only" | "mutable-unversioned";
+type RowState = "versioned" | "append-only" | "mutable-unversioned";
 
 /*
  * A guard is one mechanism, not a table's whole story. Tables routinely have
@@ -22,7 +22,7 @@ export type RowState = "versioned" | "append-only" | "mutable-unversioned";
  * Collapsing that to a single label overstates whichever mechanism got named and
  * lets someone delete the others believing the trigger covers them.
  */
-export type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease";
+type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease";
 
 export type Guard = {
   kind: GuardKind;
@@ -73,7 +73,8 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
     guards: [
       {
         kind: "atomic-counter",
-        detail: "increment happens in the statement: SET reserved = reserved + EXCLUDED.reserved, with a guard clause in WHERE",
+        detail:
+          "increment happens in the statement: SET reserved = reserved + EXCLUDED.reserved, with a guard clause in WHERE",
         evidence: "src/integrations/providers/quota.ts:91-113",
       },
     ],
@@ -88,13 +89,15 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
       },
       {
         kind: "app-cas",
-        detail: "status transitions are compare-and-set in the WHERE clause: status in ('pending','failed','unknown'). The trigger does NOT constrain status, so this is the only thing preventing two senders.",
+        detail:
+          "status transitions are compare-and-set in the WHERE clause: status in ('pending','failed','unknown'). The trigger does NOT constrain status, so this is the only thing preventing two senders.",
         evidence: "src/domains/agents/runtime-persistence.ts:301",
         columns: ["status"],
       },
       {
         kind: "trigger-immutable",
-        detail: "BEFORE UPDATE trigger freezes execution_id, signal_key, payload_revision and payload_hash; it does not touch status",
+        detail:
+          "BEFORE UPDATE trigger freezes execution_id, signal_key, payload_revision and payload_hash; it does not touch status",
         evidence: "src/db/migrations/0150_runtime_persistence.sql:145-160",
         columns: ["execution_id", "signal_key", "payload_revision", "payload_hash"],
       },
@@ -104,13 +107,15 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
     guards: [
       {
         kind: "trigger-immutable",
-        detail: "BEFORE UPDATE trigger freezes request identity (run_id, invocation_id, tool_name, arguments_hash, effect_class) and refuses to reopen a terminal state, so the state machine is enforced by the database rather than by the writer",
+        detail:
+          "BEFORE UPDATE trigger freezes request identity (run_id, invocation_id, tool_name, arguments_hash, effect_class) and refuses to reopen a terminal state, so the state machine is enforced by the database rather than by the writer",
         evidence: "src/db/migrations/0150_runtime_persistence.sql:189-202",
         columns: ["run_id", "invocation_id", "tool_name", "arguments_hash", "effect_class", "state"],
       },
       {
         kind: "app-cas",
-        detail: "belt and braces on the same transition: requested -> in_flight, then settle only where state not in ('succeeded','failed')",
+        detail:
+          "belt and braces on the same transition: requested -> in_flight, then settle only where state not in ('succeeded','failed')",
         evidence: "src/domains/agents/runtime-persistence.ts:374,383",
         columns: ["state"],
       },
@@ -120,8 +125,30 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
     guards: [
       {
         kind: "app-cas",
-        detail: "the only write is a single-statement upsert: INSERT ... ON CONFLICT (notebook_id, gateway_account_id) DO UPDATE SET enabled — the unique key makes it idempotent and the toggled column is a scalar boolean written without a read, so there is no read-modify-write to race. updated_at exists (applied history, NOT NULL default now()) but no update touches it",
+        detail:
+          "the only write is a single-statement upsert: INSERT ... ON CONFLICT (notebook_id, gateway_account_id) DO UPDATE SET enabled — the unique key makes it idempotent and the toggled column is a scalar boolean written without a read, so there is no read-modify-write to race. updated_at exists (applied history, NOT NULL default now()) but no update touches it",
         evidence: "src/domains/knowledge/project-settings.ts:163-175",
+      },
+    ],
+  },
+  "superagent.work_outbox_receipts": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail:
+          "send-once comes from the primary key: the only insert is INSERT ... ON CONFLICT (workspace_id, id) DO NOTHING, so a queued id keeps its first message; the only update sets status='dropped' WHERE status='pending', so status never moves backwards and a sender process that already resolved the row wins",
+        evidence: "src/domains/superagent/store/repositories.ts:471-490",
+        columns: ["status"],
+      },
+    ],
+  },
+  "superagent.superagent_policies": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail:
+          "the only write is a single-statement upsert: INSERT ... ON CONFLICT (workspace_id) DO UPDATE SET the full document and rule list replace, so there is no read-modify-write to race and the workspace key makes it idempotent",
+        evidence: "src/domains/superagent/store/policy.ts:62-67",
       },
     ],
   },
@@ -129,7 +156,8 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
     guards: [
       {
         kind: "lease",
-        detail: "the only production path to the stage writes is extractDocument after it claims the document_extractions lease; enrichAfterText is reached only from that function. This holds because retryDocumentEnrichment, which calls advanceDocumentEnrichment directly and bypasses the lease, has no production caller - the moment one appears this declaration is false.",
+        detail:
+          "the only production path to the stage writes is extractDocument after it claims the document_extractions lease; enrichAfterText is reached only from that function. This holds because retryDocumentEnrichment, which calls advanceDocumentEnrichment directly and bypasses the lease, has no production caller - the moment one appears this declaration is false.",
         evidence: "src/domains/knowledge/extraction.ts:83,176,271",
         singleEntryPath: {
           callers: {
@@ -156,7 +184,8 @@ export const VERSIONED_WITH_TRIGGER_INVARIANT: Record<string, TableDeclaration> 
     guards: [
       {
         kind: "trigger-immutable",
-        detail: "admission inputs fixed at start: policy_snapshot, agent_profile_id and profile_revision_id cannot change once set, so a run cannot widen its own authority mid-flight",
+        detail:
+          "admission inputs fixed at start: policy_snapshot, agent_profile_id and profile_revision_id cannot change once set, so a run cannot widen its own authority mid-flight",
         evidence: "src/db/migrations/0150_runtime_persistence.sql:40-56",
         columns: ["policy_snapshot", "agent_profile_id", "profile_revision_id"],
       },
@@ -166,7 +195,8 @@ export const VERSIONED_WITH_TRIGGER_INVARIANT: Record<string, TableDeclaration> 
     guards: [
       {
         kind: "trigger-immutable",
-        detail: "the grant's content is frozen, including allowed_operations and allowed_resources, so an issued delegation cannot be widened in place",
+        detail:
+          "the grant's content is frozen, including allowed_operations and allowed_resources, so an issued delegation cannot be widened in place",
         evidence: "src/db/migrations/0171_agent_delegation_grants.sql:55-70",
         columns: ["allowed_operations", "allowed_resources"],
       },
@@ -174,7 +204,7 @@ export const VERSIONED_WITH_TRIGGER_INVARIANT: Record<string, TableDeclaration> 
   },
 };
 
-export function classifyRowState(body: string): RowState {
+function classifyRowState(body: string): RowState {
   const versioned = body.includes("...mutable") || /\bversion:\s*(integer|int)/.test(body);
   if (versioned) return "versioned";
   const mutable = /\b(updated_at|updatedAt|archived_at|archivedAt)\b/.test(body);

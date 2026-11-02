@@ -26,7 +26,7 @@ import { searchChunks, searchChunksFts, type ChunkHit } from "./search";
 export const DOCUMENTS_SEARCH_CAPABILITY = "documents.search";
 export const AGENT_SEARCH_MAX_RESULTS = 10;
 /** A passage is capped so one result cannot flood the model's context. */
-export const AGENT_SEARCH_MAX_TEXT = 1200;
+const AGENT_SEARCH_MAX_TEXT = 1200;
 
 /**
  * The relevance floor on a hit's fused score, which lives on a (0, 1] scale:

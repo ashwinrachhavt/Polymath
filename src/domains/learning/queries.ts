@@ -22,7 +22,7 @@ export type LearnLibraryRow = {
   questionCount: number | null;
   /** The user's best score on the current quiz, correct out of questionCount. */
   bestCorrect: number | null;
-  lastAttemptedAt: Date | null;
+  lastAttemptedAt: string | Date | null;
 };
 
 export type QuizForSitting = {
@@ -65,24 +65,36 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
   if (documentRows.length === 0) return [];
 
   const quizRows = await db
-    .select({ id: quizzes.id, documentId: quizzes.documentId, createdAt: quizzes.createdAt, questionCount: quizzes.questionCount })
+    .select({
+      id: quizzes.id,
+      documentId: quizzes.documentId,
+      createdAt: quizzes.createdAt,
+      questionCount: quizzes.questionCount,
+    })
     .from(quizzes)
     .where(and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.status, "ready")))
     .orderBy(desc(quizzes.createdAt));
   const latestByDocument = latestReadyQuizByDocument(quizRows);
   const latestQuizIds = [...latestByDocument.values()].map((q) => q.id);
 
-  const attemptRows = latestQuizIds.length === 0
-    ? []
-    : await db
-        .select({
-          quizId: quizAttempts.quizId,
-          bestCorrect: sql<number>`max(${quizAttempts.correctCount})::int`,
-          lastAttemptedAt: sql<Date>`max(${quizAttempts.createdAt})`,
-        })
-        .from(quizAttempts)
-        .where(and(eq(quizAttempts.workspaceId, auth.workspaceId), eq(quizAttempts.userId, auth.userId), inArray(quizAttempts.quizId, latestQuizIds)))
-        .groupBy(quizAttempts.quizId);
+  const attemptRows =
+    latestQuizIds.length === 0
+      ? []
+      : await db
+          .select({
+            quizId: quizAttempts.quizId,
+            bestCorrect: sql<number>`max(${quizAttempts.correctCount})::int`,
+            lastAttemptedAt: sql<string | Date>`max(${quizAttempts.createdAt})`,
+          })
+          .from(quizAttempts)
+          .where(
+            and(
+              eq(quizAttempts.workspaceId, auth.workspaceId),
+              eq(quizAttempts.userId, auth.userId),
+              inArray(quizAttempts.quizId, latestQuizIds),
+            ),
+          )
+          .groupBy(quizAttempts.quizId);
   const attemptsByQuiz = new Map(attemptRows.map((a) => [a.quizId, a]));
 
   return documentRows.map((doc) => {
@@ -105,7 +117,9 @@ export async function latestReadyQuizForDocument(auth: AuthContext, documentId: 
   const [quiz] = await db
     .select({ id: quizzes.id, questionCount: quizzes.questionCount, sourceExtractionId: quizzes.sourceExtractionId })
     .from(quizzes)
-    .where(and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.documentId, documentId), eq(quizzes.status, "ready")))
+    .where(
+      and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.documentId, documentId), eq(quizzes.status, "ready")),
+    )
     .orderBy(desc(quizzes.createdAt))
     .limit(1);
   return quiz ?? null;

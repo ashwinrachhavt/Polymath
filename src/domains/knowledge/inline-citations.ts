@@ -12,8 +12,7 @@ import type { DocumentCitation } from "@/domains/knowledge/agent-search";
  */
 
 export type CitationSegment =
-  | { type: "text"; text: string }
-  | { type: "citation"; index: number; citation: DocumentCitation };
+  { type: "text"; text: string } | { type: "citation"; index: number; citation: DocumentCitation };
 
 /** `[[3]]`, and the looser `[3]` a model sometimes writes anyway. */
 const MARKER = /\[\[(\d{1,3})\]\]|\[(\d{1,3})\]/g;
@@ -58,13 +57,6 @@ export function citedIndices(answer: string, citations: DocumentCitation[]): num
   }
   return [...indices].sort((a, b) => a - b);
 }
-
-/**
- * The prompt fragment that teaches the model the marker convention. Kept here
- * so the parser and the instruction cannot drift.
- */
-export const CITATION_INSTRUCTION =
-  "Cite the sources you use inline as [[n]], where n is the source's number in the list you were given. Put the marker at the end of the sentence it supports. Do not invent a number that is not in the list.";
 
 /**
  * A citation list with one entry per document, in first-seen order, so the

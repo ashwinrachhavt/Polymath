@@ -11,7 +11,7 @@ import { z } from "zod";
  * built from.
  */
 
-export const deckSlide = z.object({
+const deckSlide = z.object({
   title: z.string().trim().min(1).max(200),
   bullets: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
   /** Optional speaker note, shown only in the editor. */
@@ -25,12 +25,12 @@ export const deckContent = z.object({
   slides: z.array(deckSlide).min(1).max(60),
 });
 
-export const infographicSection = z.object({
+const infographicSection = z.object({
   heading: z.string().trim().min(1).max(160),
   body: z.string().trim().min(1).max(1200),
 });
 
-export const infographicStat = z.object({
+const infographicStat = z.object({
   label: z.string().trim().min(1).max(120),
   value: z.string().trim().min(1).max(40),
   /** The document the number came from; required so a stat is never unattributed. */
@@ -48,7 +48,6 @@ export const infographicContent = z.object({
 });
 
 export type DeckContent = z.infer<typeof deckContent>;
-export type DeckSlide = z.infer<typeof deckSlide>;
 export type InfographicContent = z.infer<typeof infographicContent>;
 
 export type StructuredContent = DeckContent | InfographicContent;
@@ -72,14 +71,18 @@ export function parseStructuredContent(kind: string, content: unknown): Structur
  * it would be a bug in the caller, not in the model.
  */
 export function parseGeneratedContent(kind: "deck" | "infographic", raw: string): StructuredContent | null {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
     return null;
   }
-  const withKind = typeof value === "object" && value !== null && !("kind" in value) ? { ...(value as object), kind } : value;
+  const withKind =
+    typeof value === "object" && value !== null && !("kind" in value) ? { ...(value as object), kind } : value;
   return parseStructuredContent(kind, withKind);
 }
 
@@ -93,11 +96,12 @@ export function filterCitations(
   allowedDocumentIds: ReadonlySet<string>,
 ): { content: StructuredContent; droppedCitations: number } {
   let dropped = 0;
-  const drop = (ids: string[]) => ids.filter((id) => {
-    if (allowedDocumentIds.has(id)) return true;
-    dropped += 1;
-    return false;
-  });
+  const drop = (ids: string[]) =>
+    ids.filter((id) => {
+      if (allowedDocumentIds.has(id)) return true;
+      dropped += 1;
+      return false;
+    });
 
   if (content.kind === "deck") {
     const slides = content.slides.map((slide) => ({ ...slide, citations: drop(slide.citations) }));
@@ -116,7 +120,9 @@ export function filterCitations(
 /** A plain-text projection, so search and the version list can show a deck. */
 export function structuredPlainText(content: StructuredContent): string {
   if (content.kind === "deck") {
-    return content.slides.map((s, i) => [`# ${i + 1}. ${s.title}`, ...s.bullets.map((b) => `- ${b}`)].join("\n")).join("\n\n");
+    return content.slides
+      .map((s, i) => [`# ${i + 1}. ${s.title}`, ...s.bullets.map((b) => `- ${b}`)].join("\n"))
+      .join("\n\n");
   }
   return [content.headline, ...content.sections.map((s) => `## ${s.heading}\n${s.body}`)].join("\n\n");
 }

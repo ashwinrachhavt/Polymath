@@ -53,7 +53,7 @@ export function remainingSecondsAt(session: ClockFields & { plannedMinutes: numb
  * paused. A scheduled row (the borrowed 'paused', never started) has an empty
  * log and no anchor.
  */
-export function pauseStartedAt(session: Pick<typeof focusSessions.$inferSelect, "interruptions">): Date | null {
+function pauseStartedAt(session: Pick<typeof focusSessions.$inferSelect, "interruptions">): Date | null {
   const log = Array.isArray(session.interruptions) ? (session.interruptions as Array<{ at?: unknown }>) : [];
   const last = log[log.length - 1];
   if (!last || typeof last.at !== "string") return null;

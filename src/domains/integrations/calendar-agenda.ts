@@ -35,7 +35,7 @@ export type AgendaEvent = {
   location: string | null;
 };
 
-export type AgendaAccount =
+type AgendaAccount =
   /** `calendar: "primary"` - the read cannot vouch for the account's other calendars. */
   | { status: "ok"; alias: string; calendar: "primary"; events: AgendaEvent[] }
   | { status: "unconfigured"; alias: string }
@@ -66,8 +66,14 @@ export function toAgendaEvent(event: GoogleEvent): AgendaEvent | null {
 /** The UTC instant of local midnight at the start of `day` (YYYY-MM-DD) in `tz`. */
 function localMidnightUtc(day: string, tz: string): Date {
   const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
   });
   const targetMs = Date.parse(`${day}T00:00:00Z`);
   let utc = new Date(targetMs);
@@ -83,7 +89,12 @@ function localMidnightUtc(day: string, tz: string): Date {
 
 /** [start, end) of the workspace-local day containing `now`, as RFC3339 instants. */
 export function workspaceDayWindow(tz: string, now: Date): { timeMin: string; timeMax: string; day: string } {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
   const start = localMidnightUtc(day, tz);
   const nextDay = new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   const end = localMidnightUtc(nextDay, tz);
@@ -122,11 +133,13 @@ export async function getTodayAgenda(
   const accounts = await db
     .select({ alias: externalAccounts.alias, composioConnectedAccountId: externalAccounts.composioConnectedAccountId })
     .from(externalAccounts)
-    .where(and(
-      eq(externalAccounts.workspaceId, auth.workspaceId),
-      eq(externalAccounts.provider, "google-calendar"),
-      eq(externalAccounts.status, "active"),
-    ));
+    .where(
+      and(
+        eq(externalAccounts.workspaceId, auth.workspaceId),
+        eq(externalAccounts.provider, "google-calendar"),
+        eq(externalAccounts.status, "active"),
+      ),
+    );
   if (accounts.length === 0) return { status: "not_connected" };
 
   const tz = await workspaceTimezone(auth);
@@ -140,9 +153,16 @@ export async function getTodayAgenda(
       continue;
     }
     try {
-      const { events, truncated } = await clientFor(account.composioConnectedAccountId).listEventsUpdatedSince(null, { timeMin, timeMax });
+      const { events, truncated } = await clientFor(account.composioConnectedAccountId).listEventsUpdatedSince(null, {
+        timeMin,
+        timeMax,
+      });
       if (truncated) {
-        results.push({ status: "unavailable", alias: account.alias, reason: "This calendar has more events today than can be shown." });
+        results.push({
+          status: "unavailable",
+          alias: account.alias,
+          reason: "This calendar has more events today than can be shown.",
+        });
         continue;
       }
       const agenda = events

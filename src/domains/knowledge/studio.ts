@@ -32,7 +32,17 @@ import {
 
 export class StudioError extends Error {
   constructor(
-    public readonly code: "project_not_found" | "run_not_found" | "no_output" | "not_a_draft" | "draft_not_found" | "record_not_found" | "empty_text" | "stale_or_locked" | "unsupported_kind" | "unreadable_output",
+    public readonly code:
+      | "project_not_found"
+      | "run_not_found"
+      | "no_output"
+      | "not_a_draft"
+      | "draft_not_found"
+      | "record_not_found"
+      | "empty_text"
+      | "stale_or_locked"
+      | "unsupported_kind"
+      | "unreadable_output",
     message: string,
   ) {
     super(message);
@@ -74,7 +84,10 @@ export async function startStudioGenerate(
   const pinnedDocuments = await db
     .select({ id: documents.id, title: documents.title })
     .from(notebookSources)
-    .innerJoin(notebooks, and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
+    .innerJoin(
+      notebooks,
+      and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)),
+    )
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
     .innerJoin(
       documents,
@@ -114,7 +127,10 @@ function dedupeDocuments(rows: Array<{ id: string; title: string }>): Array<{ id
  * per run (one artifact per run). Links the project's documents with the
  * content hash each was pinned at, and the run itself.
  */
-export async function saveGeneratedDraft(auth: AuthContext, input: { runId: string; title?: string; kind?: GeneratableKind }) {
+export async function saveGeneratedDraft(
+  auth: AuthContext,
+  input: { runId: string; title?: string; kind?: GeneratableKind },
+) {
   const kind = input.kind ?? "report";
   if (!isGeneratableKind(kind)) throw new StudioError("unsupported_kind", "That artifact kind is not generated here.");
   return withTransaction(async (tx) => {
@@ -135,9 +151,13 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
     const events = await tx
       .select({ data: runEvents.data })
       .from(runEvents)
-      .where(and(eq(runEvents.runId, run.id), eq(runEvents.workspaceId, auth.workspaceId), eq(runEvents.type, "message")))
+      .where(
+        and(eq(runEvents.runId, run.id), eq(runEvents.workspaceId, auth.workspaceId), eq(runEvents.type, "message")),
+      )
       .orderBy(desc(runEvents.sequence));
-    const last = events.map((e) => e.data as { role?: string; content?: unknown }).find((d) => d?.role === "assistant" && typeof d.content === "string");
+    const last = events
+      .map((e) => e.data as { role?: string; content?: unknown })
+      .find((d) => d?.role === "assistant" && typeof d.content === "string");
     if (!last) throw new StudioError("no_output", "This run has produced no output yet.");
     const text = last.content as string;
 
@@ -149,7 +169,10 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
     if (kind !== "report") {
       const parsed = parseGeneratedContent(kind, text);
       if (!parsed) {
-        throw new StudioError("unreadable_output", `That run did not produce a readable ${kind}. Regenerate it and try again.`);
+        throw new StudioError(
+          "unreadable_output",
+          `That run did not produce a readable ${kind}. Regenerate it and try again.`,
+        );
       }
       content = parsed as unknown as Record<string, unknown>;
       plainText = structuredPlainText(parsed);
@@ -170,11 +193,28 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       .returning({ id: artifacts.id });
     const [version] = await tx
       .insert(artifactVersions)
-      .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, versionNumber: 1, content, plainText, reason: "generated", createdBy: auth.userId })
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: artifact.id,
+        versionNumber: 1,
+        content,
+        plainText,
+        reason: "generated",
+        createdBy: auth.userId,
+      })
       .returning({ id: artifactVersions.id });
-    await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+    await tx
+      .update(artifacts)
+      .set({ currentVersionId: version.id, embedError: null })
+      .where(eq(artifacts.id, artifact.id));
 
-    await tx.insert(artifactLinks).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "run", targetId: run.id, label: "produced by" });
+    await tx.insert(artifactLinks).values({
+      workspaceId: auth.workspaceId,
+      artifactId: artifact.id,
+      targetType: "run",
+      targetId: run.id,
+      label: "produced by",
+    });
     if (dossierSubject?.id) {
       // Same file-or-address rule as startStudioGenerate above: a queued URL or
       // YouTube capture is a pinned source before its bytes land, so its
@@ -182,7 +222,10 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
       const pinned = await tx
         .select({ documentId: documents.id, hash: notebookSources.pinnedContentHash })
         .from(notebookSources)
-        .innerJoin(notebooks, and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
+        .innerJoin(
+          notebooks,
+          and(eq(notebooks.id, notebookSources.notebookId), eq(notebooks.workspaceId, auth.workspaceId)),
+        )
         .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
         .innerJoin(
           documents,
@@ -194,12 +237,22 @@ export async function saveGeneratedDraft(auth: AuthContext, input: { runId: stri
             ),
           ),
         )
-        .where(and(eq(notebookSources.notebookId, dossierSubject.id), eq(notebookSources.workspaceId, auth.workspaceId)));
+        .where(
+          and(eq(notebookSources.notebookId, dossierSubject.id), eq(notebookSources.workspaceId, auth.workspaceId)),
+        );
       for (const p of pinned) {
         await tx
           .insert(artifactLinks)
-          .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, targetType: "document", targetId: p.documentId, label: `pinned:${p.hash ?? "none"}` })
-          .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            targetType: "document",
+            targetId: p.documentId,
+            label: `pinned:${p.hash ?? "none"}`,
+          })
+          .onConflictDoNothing({
+            target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId],
+          });
       }
     }
     return { artifactId: artifact.id, created: true };
@@ -211,40 +264,72 @@ async function decide(auth: AuthContext, artifactId: string, status: "reviewed" 
     // Only a draft can be decided, so a saved or discarded one is never rewritten.
     const [row] = await tx
       .update(artifacts)
-      .set({ status, updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1`, ...(status === "archived" ? { archivedAt: new Date() } : {}) })
-      .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.status, "draft")))
+      .set({
+        status,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+        version: sql`${artifacts.version} + 1`,
+        ...(status === "archived" ? { archivedAt: new Date() } : {}),
+      })
+      .where(
+        and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.status, "draft")),
+      )
       .returning({ id: artifacts.id });
     if (!row) throw new StudioError("not_a_draft", "This draft was not found or was already decided.");
     await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId, actorId: auth.userId, actorKind: "user", action,
-      subjectType: "artifact", subjectId: artifactId, summary: action === "draft.saved" ? "Saved generated draft" : "Discarded generated draft",
+      workspaceId: auth.workspaceId,
+      actorId: auth.userId,
+      actorKind: "user",
+      action,
+      subjectType: "artifact",
+      subjectId: artifactId,
+      summary: action === "draft.saved" ? "Saved generated draft" : "Discarded generated draft",
     });
   });
 }
 
 /** Keep the draft. It becomes "reviewed", never "published". */
-export const saveDraft = (auth: AuthContext, input: { artifactId: string }) => decide(auth, input.artifactId, "reviewed", "draft.saved");
+export const saveDraft = (auth: AuthContext, input: { artifactId: string }) =>
+  decide(auth, input.artifactId, "reviewed", "draft.saved");
 /** Throw it away: archived, hidden, versions kept for the record. */
-export const discardDraft = (auth: AuthContext, input: { artifactId: string }) => decide(auth, input.artifactId, "archived", "draft.discarded");
+export const discardDraft = (auth: AuthContext, input: { artifactId: string }) =>
+  decide(auth, input.artifactId, "archived", "draft.discarded");
 
 /** The artifact each run produced, keyed by run id — so a run row can render its save/keep/discard state. */
 export async function draftsForRuns(auth: AuthContext, runIds: string[]) {
   const map = new Map<string, { artifactId: string; status: string; version: number }>();
   if (runIds.length === 0) return map;
   const rows = await db
-    .select({ runId: artifacts.producedByRunId, artifactId: artifacts.id, status: artifacts.status, version: artifacts.version })
+    .select({
+      runId: artifacts.producedByRunId,
+      artifactId: artifacts.id,
+      status: artifacts.status,
+      version: artifacts.version,
+    })
     .from(artifacts)
     .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.producedByRunId, runIds)));
-  for (const row of rows) if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status, version: row.version });
+  for (const row of rows)
+    if (row.runId) map.set(row.runId, { artifactId: row.artifactId, status: row.status, version: row.version });
   return map;
 }
 
 /** Open generated drafts, newest first — the list behind GET /api/v1/drafts. */
 export async function listDrafts(auth: AuthContext) {
   return db
-    .select({ artifactId: artifacts.id, title: artifacts.title, runId: artifacts.producedByRunId, createdAt: artifacts.createdAt })
+    .select({
+      artifactId: artifacts.id,
+      title: artifacts.title,
+      runId: artifacts.producedByRunId,
+      createdAt: artifacts.createdAt,
+    })
     .from(artifacts)
-    .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.status, "draft"), sql`${artifacts.archivedAt} is null`))
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        eq(artifacts.status, "draft"),
+        sql`${artifacts.archivedAt} is null`,
+      ),
+    )
     .orderBy(desc(artifacts.createdAt))
     .limit(100);
 }
@@ -259,7 +344,7 @@ export async function listDrafts(auth: AuthContext) {
 export type DraftLinkRow = { id: string; targetType: string; targetId: string; label: string | null };
 
 /** One entry in an artifact's append-only version history. */
-export type DraftVersionRow = { versionNumber: number; reason: string; note: string | null; createdAt: Date };
+type DraftVersionRow = { versionNumber: number; reason: string; note: string | null; createdAt: Date };
 
 export type DraftDetail = {
   artifact: { id: string; title: string; kind: string; status: string; version: number };
@@ -306,7 +391,9 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     ? await db
         .select({ plainText: artifactVersions.plainText, content: artifactVersions.content })
         .from(artifactVersions)
-        .where(and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)))
+        .where(
+          and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)),
+        )
         .limit(1)
     : [null];
 
@@ -335,7 +422,12 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
     );
 
   const linkRows = await db
-    .select({ id: artifactLinks.id, targetType: artifactLinks.targetType, targetId: artifactLinks.targetId, label: artifactLinks.label })
+    .select({
+      id: artifactLinks.id,
+      targetType: artifactLinks.targetType,
+      targetId: artifactLinks.targetId,
+      label: artifactLinks.label,
+    })
     .from(artifactLinks)
     .where(and(eq(artifactLinks.artifactId, artifact.id), eq(artifactLinks.workspaceId, auth.workspaceId)));
 
@@ -349,7 +441,13 @@ export async function getDraftDetail(auth: AuthContext, artifactId: string): Pro
   const docTitles = new Map(docs.map((d) => [d.id, d.title]));
 
   return {
-    artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, status: artifact.status, version: artifact.version },
+    artifact: {
+      id: artifact.id,
+      title: artifact.title,
+      kind: artifact.kind,
+      status: artifact.status,
+      version: artifact.version,
+    },
     versions: versionRows,
     pendingRevisions: Number(pendingRev?.n ?? 0),
     text: version?.plainText ?? "",
@@ -396,75 +494,90 @@ export async function editGeneratedDraft(
   },
 ) {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "editGeneratedDraft", ...input }, async () => {
-      const [current] = await tx
-        .select({ kind: artifacts.kind })
-        .from(artifacts)
-        .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
-        .limit(1);
-      if (!current || !isGeneratableKind(current.kind)) throw new StudioError("draft_not_found", "No such draft.");
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "editGeneratedDraft", ...input },
+      async () => {
+        const [current] = await tx
+          .select({ kind: artifacts.kind })
+          .from(artifacts)
+          .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!current || !isGeneratableKind(current.kind)) throw new StudioError("draft_not_found", "No such draft.");
 
-      let content: Record<string, unknown>;
-      let plainText: string;
-      if (current.kind === "report") {
-        const text = input.text?.trim();
-        if (!text) throw new StudioError("empty_text", "The draft needs some text.");
-        content = { text };
-        plainText = text;
-      } else {
-        if (!input.structured) throw new StudioError("empty_text", "The draft needs its content.");
-        const parsed = current.kind === "deck" ? deckContent.safeParse(input.structured) : infographicContent.safeParse(input.structured);
-        if (!parsed.success) throw new StudioError("empty_text", "That content does not match the draft's shape.");
-        content = parsed.data as unknown as Record<string, unknown>;
-        plainText = structuredPlainText(parsed.data);
-      }
-      const [updated] = await tx
-        .update(artifacts)
-        .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
-        .where(
-          and(
-            eq(artifacts.id, input.artifactId),
-            eq(artifacts.workspaceId, auth.workspaceId),
-            eq(artifacts.version, input.expectedVersion),
-            inArray(artifacts.kind, GENERATABLE_KINDS),
-            inArray(artifacts.status, ["draft", "reviewed"]),
-          ),
-        )
-        .returning({ id: artifacts.id });
-      if (!updated) throw new StudioError("stale_or_locked", "This draft changed elsewhere or was archived. Reload and try again.");
-      const [last] = await tx
-        .select({ n: artifactVersions.versionNumber })
-        .from(artifactVersions)
-        .where(and(eq(artifactVersions.artifactId, input.artifactId), eq(artifactVersions.workspaceId, auth.workspaceId)))
-        .orderBy(desc(artifactVersions.versionNumber))
-        .limit(1);
-      const [version] = await tx
-        .insert(artifactVersions)
-        .values({
+        let content: Record<string, unknown>;
+        let plainText: string;
+        if (current.kind === "report") {
+          const text = input.text?.trim();
+          if (!text) throw new StudioError("empty_text", "The draft needs some text.");
+          content = { text };
+          plainText = text;
+        } else {
+          if (!input.structured) throw new StudioError("empty_text", "The draft needs its content.");
+          const parsed =
+            current.kind === "deck"
+              ? deckContent.safeParse(input.structured)
+              : infographicContent.safeParse(input.structured);
+          if (!parsed.success) throw new StudioError("empty_text", "That content does not match the draft's shape.");
+          content = parsed.data as unknown as Record<string, unknown>;
+          plainText = structuredPlainText(parsed.data);
+        }
+        const [updated] = await tx
+          .update(artifacts)
+          .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
+          .where(
+            and(
+              eq(artifacts.id, input.artifactId),
+              eq(artifacts.workspaceId, auth.workspaceId),
+              eq(artifacts.version, input.expectedVersion),
+              inArray(artifacts.kind, GENERATABLE_KINDS),
+              inArray(artifacts.status, ["draft", "reviewed"]),
+            ),
+          )
+          .returning({ id: artifacts.id });
+        if (!updated)
+          throw new StudioError(
+            "stale_or_locked",
+            "This draft changed elsewhere or was archived. Reload and try again.",
+          );
+        const [last] = await tx
+          .select({ n: artifactVersions.versionNumber })
+          .from(artifactVersions)
+          .where(
+            and(eq(artifactVersions.artifactId, input.artifactId), eq(artifactVersions.workspaceId, auth.workspaceId)),
+          )
+          .orderBy(desc(artifactVersions.versionNumber))
+          .limit(1);
+        const [version] = await tx
+          .insert(artifactVersions)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: input.artifactId,
+            versionNumber: (last?.n ?? 0) + 1,
+            content,
+            plainText,
+            reason: "edited",
+            createdBy: auth.userId,
+          })
+          .returning({ id: artifactVersions.id });
+        await tx
+          .update(artifacts)
+          .set({ currentVersionId: version.id, embedError: null })
+          .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
+        await tx.insert(auditEvents).values({
           workspaceId: auth.workspaceId,
-          artifactId: input.artifactId,
-          versionNumber: (last?.n ?? 0) + 1,
-          content,
-          plainText,
-          reason: "edited",
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id });
-      await tx
-        .update(artifacts)
-        .set({ currentVersionId: version.id, embedError: null })
-        .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
-      await tx.insert(auditEvents).values({
-        workspaceId: auth.workspaceId,
-        actorId: auth.userId,
-        actorKind: "user",
-        action: "draft.edited",
-        subjectType: "artifact",
-        subjectId: input.artifactId,
-        summary: "Edited Studio draft",
-      });
-      return { artifactId: input.artifactId, version: input.expectedVersion + 1 };
-    });
+          actorId: auth.userId,
+          actorKind: "user",
+          action: "draft.edited",
+          subjectType: "artifact",
+          subjectId: input.artifactId,
+          summary: "Edited Studio draft",
+        });
+        return { artifactId: input.artifactId, version: input.expectedVersion + 1 };
+      },
+    );
     return value;
   });
 }

@@ -10,7 +10,6 @@ import { Select } from "@/components/ui/select";
 import {
   addDependencyAction,
   createSubtaskAction,
-  moveTaskAction,
   removeDependencyAction,
   reopenTaskAction,
   updateTaskAction,
@@ -222,8 +221,8 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
               audit trail stay on record, external effects cannot be undone,
               and a blocker link that changed since stays exactly as it is. */}
           <p className="text-xs text-muted-foreground">
-            Back to Ready. Any stone earned and the history stay on record. Blockers its completion released wait on
-            it again; a link that changed since stays as it is.
+            Back to Ready. Any stone earned and the history stay on record. Blockers its completion released wait on it
+            again; a link that changed since stays as it is.
           </p>
           {reopenNote ? <p className="text-xs text-muted-foreground">{reopenNote}</p> : null}
           <ErrorLine error={reopenRun.error} />
@@ -265,10 +264,20 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             e.preventDefault();
             const value = subTitle.trim();
             if (!value) return;
-            subRun.run(sub, () => createSubtaskAction({ parentTaskId: data.id, title: value, idempotencyKey: sub.key() }), () => setSubTitle(""));
+            subRun.run(
+              sub,
+              () => createSubtaskAction({ parentTaskId: data.id, title: value, idempotencyKey: sub.key() }),
+              () => setSubTitle(""),
+            );
           }}
         >
-          <Input aria-label="New subtask title" placeholder="Add a subtask" value={subTitle} maxLength={300} onChange={(e) => setSubTitle(e.target.value)} />
+          <Input
+            aria-label="New subtask title"
+            placeholder="Add a subtask"
+            value={subTitle}
+            maxLength={300}
+            onChange={(e) => setSubTitle(e.target.value)}
+          />
           <Button type="submit" variant="outline" disabled={subRun.pending || !subTitle.trim()}>
             Add subtask
           </Button>
@@ -278,12 +287,24 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
 
       <section aria-label="Dependencies" className="grid gap-2">
         <h3 className="text-[13px] font-medium">Dependencies</h3>
-        {data.blockedBy.length === 0 && data.blocking.length === 0 && <p className="text-xs text-muted-foreground">Nothing blocks this task and it blocks nothing.</p>}
+        {data.blockedBy.length === 0 && data.blocking.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nothing blocks this task and it blocks nothing.</p>
+        )}
         <ul className="divide-y divide-border">
           {data.blockedBy.map((d) => (
             <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-[13px]">
               <span>Blocked by {d.title}</span>
-              <Button size="sm" variant="ghost" disabled={rmRun.pending} aria-label={`Remove dependency on ${d.title}`} onClick={() => rmRun.run(rm, () => removeDependencyAction({ dependencyId: d.dependencyId, idempotencyKey: rm.key() }))}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={rmRun.pending}
+                aria-label={`Remove dependency on ${d.title}`}
+                onClick={() =>
+                  rmRun.run(rm, () =>
+                    removeDependencyAction({ dependencyId: d.dependencyId, idempotencyKey: rm.key() }),
+                  )
+                }
+              >
                 Remove
               </Button>
             </li>
@@ -291,7 +312,17 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
           {data.blocking.map((d) => (
             <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-[13px]">
               <span>Blocks {d.title}</span>
-              <Button size="sm" variant="ghost" disabled={rmRun.pending} aria-label={`Remove dependency from ${d.title}`} onClick={() => rmRun.run(rm, () => removeDependencyAction({ dependencyId: d.dependencyId, idempotencyKey: rm.key() }))}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={rmRun.pending}
+                aria-label={`Remove dependency from ${d.title}`}
+                onClick={() =>
+                  rmRun.run(rm, () =>
+                    removeDependencyAction({ dependencyId: d.dependencyId, idempotencyKey: rm.key() }),
+                  )
+                }
+              >
                 Remove
               </Button>
             </li>
@@ -304,14 +335,28 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             onSubmit={(e) => {
               e.preventDefault();
               if (!otherId) return;
-              depRun.run(dep, () => addDependencyAction({ taskId: data.id, otherTaskId: otherId, kind, idempotencyKey: dep.key() }), () => setOtherId(""));
+              depRun.run(
+                dep,
+                () => addDependencyAction({ taskId: data.id, otherTaskId: otherId, kind, idempotencyKey: dep.key() }),
+                () => setOtherId(""),
+              );
             }}
           >
-            <Select aria-label="Dependency kind" className="w-auto" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <Select
+              aria-label="Dependency kind"
+              className="w-auto"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as typeof kind)}
+            >
               <option value="blocked_by">Is blocked by</option>
               <option value="blocks">Blocks</option>
             </Select>
-            <Select aria-label="Other task" className="w-auto min-w-40 flex-1" value={otherId} onChange={(e) => setOtherId(e.target.value)}>
+            <Select
+              aria-label="Other task"
+              className="w-auto min-w-40 flex-1"
+              value={otherId}
+              onChange={(e) => setOtherId(e.target.value)}
+            >
               <option value="">Choose a task</option>
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -326,83 +371,6 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
         )}
         <ErrorLine error={depRun.error} />
       </section>
-    </div>
-  );
-}
-
-export function BoardCard({
-  taskId,
-  title,
-  status,
-  priority,
-  version,
-  detailHref,
-  blockedBy,
-  up,
-  down,
-}: {
-  taskId: string;
-  title: string;
-  status: Status;
-  priority: Priority;
-  version: number;
-  detailHref: string;
-  blockedBy: number;
-  up: { after?: string; before?: string } | null;
-  down: { after?: string; before?: string } | null;
-}) {
-  const intent = useIntent();
-  const { pending, error, run } = useRun();
-  return (
-    <div className="panel rounded-lg p-3">
-      <div className="flex items-start justify-between gap-2">
-        <a href={detailHref} className="min-w-0 text-[13px] font-medium hover:underline">
-          {title}
-        </a>
-        <div className="flex shrink-0 gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending || !up}
-            aria-label={`Move ${title} up`}
-            onClick={() =>
-              up && run(intent, () => moveTaskAction({ taskId, expectedVersion: version, afterTaskId: up.after, beforeTaskId: up.before, idempotencyKey: intent.key() }))
-            }
-          >
-            Up
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending || !down}
-            aria-label={`Move ${title} down`}
-            onClick={() =>
-              down && run(intent, () => moveTaskAction({ taskId, expectedVersion: version, afterTaskId: down.after, beforeTaskId: down.before, idempotencyKey: intent.key() }))
-            }
-          >
-            Down
-          </Button>
-        </div>
-      </div>
-      <div className="my-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        {priority !== "none" && <span>{priority}</span>}
-        {blockedBy > 0 && <span>Blocked by {blockedBy}</span>}
-      </div>
-      <Select
-        aria-label={`Move ${title} to status`}
-        value={status}
-        disabled={pending}
-        onChange={(event) =>
-          run(intent, () => updateTaskAction({ taskId, expectedVersion: version, idempotencyKey: intent.key(), patch: { status: event.target.value as Status } }))
-        }
-      >
-        {statuses.map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </Select>
-      <ErrorLine error={error} />
     </div>
   );
 }

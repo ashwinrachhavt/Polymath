@@ -27,9 +27,9 @@ import { searchWebForAgent } from "./web-search";
  */
 
 export const DEEP_DIVE_MAX_HOPS = 8;
-export const DEEP_DIVE_NODES_PER_HOP = 3;
-export const DEEP_DIVE_SEARCHES_PER_NODE = 1;
-export const DEEP_DIVE_CANDIDATES_PER_SEARCH = 3;
+const DEEP_DIVE_NODES_PER_HOP = 3;
+const DEEP_DIVE_SEARCHES_PER_NODE = 1;
+const DEEP_DIVE_CANDIDATES_PER_SEARCH = 3;
 
 export type ResearchBudget = {
   hopsUsed: number;
@@ -51,9 +51,9 @@ export type ResearchNode = {
 };
 
 /** A web page worth reading, not yet part of the graph. */
-export type ResearchCandidate = WebSearchResult & { fromArtifactId: string };
+type ResearchCandidate = WebSearchResult & { fromArtifactId: string };
 
-export type HopStop = "budget" | "exhausted" | "provider_limit";
+type HopStop = "budget" | "exhausted" | "provider_limit";
 
 export type HopResult =
   | {
@@ -79,7 +79,12 @@ export type HopInput = {
   callsMax?: number;
 };
 
-export function budgetOf(input: { hopsUsed: number; callsUsed: number; hopsMax?: number; callsMax?: number }): ResearchBudget {
+export function budgetOf(input: {
+  hopsUsed: number;
+  callsUsed: number;
+  hopsMax?: number;
+  callsMax?: number;
+}): ResearchBudget {
   const hopsMax = Math.min(input.hopsMax ?? DEEP_DIVE_MAX_HOPS, DEEP_DIVE_MAX_HOPS);
   return {
     hopsUsed: input.hopsUsed,
@@ -118,7 +123,10 @@ export async function expandResearchHop(auth: AuthContext, input: HopInput): Pro
   };
 }
 
-async function resolveSeed(auth: AuthContext, input: HopInput): Promise<{ ok: true; seed: ResearchNode } | { ok: false; error: string }> {
+async function resolveSeed(
+  auth: AuthContext,
+  input: HopInput,
+): Promise<{ ok: true; seed: ResearchNode } | { ok: false; error: string }> {
   if (input.fromArtifactId) {
     const [row] = await db
       .select({ id: artifacts.id, title: artifacts.title })
@@ -142,7 +150,12 @@ async function expandFrom(
   auth: AuthContext,
   seed: ResearchNode,
   input: HopInput,
-): Promise<{ nodes: ResearchNode[]; candidates: ResearchCandidate[]; callsUsed: number; stoppedBecause: HopStop | null }> {
+): Promise<{
+  nodes: ResearchNode[];
+  candidates: ResearchCandidate[];
+  callsUsed: number;
+  stoppedBecause: HopStop | null;
+}> {
   const depth = input.hopsUsed + 1;
 
   // The library's own edges: free, and evidence the owner already collected.
@@ -185,7 +198,10 @@ async function expandFrom(
     return { nodes: [], candidates: [], callsUsed: input.callsUsed, stoppedBecause: "budget" };
   }
 
-  const searches = Math.min(DEEP_DIVE_SEARCHES_PER_NODE, (input.callsMax ?? Number.POSITIVE_INFINITY) - input.callsUsed);
+  const searches = Math.min(
+    DEEP_DIVE_SEARCHES_PER_NODE,
+    (input.callsMax ?? Number.POSITIVE_INFINITY) - input.callsUsed,
+  );
   let callsUsed = input.callsUsed;
   const candidates: ResearchCandidate[] = [];
   let stoppedBecause: HopStop | null = null;

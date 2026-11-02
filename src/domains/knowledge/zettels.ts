@@ -48,7 +48,7 @@ import {
  * structured provenance underneath it.
  */
 
-export const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
+const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
@@ -64,7 +64,7 @@ export function isDuplicateDistance(distance: number): boolean {
   return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
 }
 
-export type DuplicateHit = { artifactId: string; title: string; distance: number };
+type DuplicateHit = { artifactId: string; title: string; distance: number };
 
 /**
  * The one accepted idea this claim would duplicate, nearest first, or null.
@@ -72,7 +72,7 @@ export type DuplicateHit = { artifactId: string; title: string; distance: number
  * through so a caller can degrade), then reads the corpus once. `conn`
  * lets the proposal pass run the lookup inside its own transaction.
  */
-export async function findDuplicateIdea(
+async function findDuplicateIdea(
   auth: AuthContext,
   claim: string,
   options: { provider?: EmbeddingProvider; excludeArtifactId?: string; conn?: Pick<TxDrizzle, "execute"> } = {},
@@ -106,11 +106,72 @@ export function zettelDedupeKey(prefix: "doc" | "artifact", sourceId: string, sp
   return `zettel:${prefix}:${sourceId}:${spanStart}-${spanEnd}`;
 }
 
+/** The thread's own earlier proposals for one artifact, pending and accepted: the repeat surface of a re-zettelize pass. */
+async function listEarlierProposals(auth: AuthContext, sourceArtifactId: string, conn: Pick<TxDrizzle, "select">) {
+  return conn
+    .select({ claim: zettelProposals.claim, quote: zettelProposals.quote })
+    .from(zettelProposals)
+    .where(
+      and(
+        eq(zettelProposals.workspaceId, auth.workspaceId),
+        eq(zettelProposals.sourceArtifactId, sourceArtifactId),
+        inArray(zettelProposals.status, ["proposed", "accepted"]),
+      ),
+    );
+}
+
+/** Whitespace-collapsed form of a verbatim quote, for the containment check. */
+function normalizedQuote(quote: string): string {
+  return quote.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * True when either quote contains the other — the same passage read at
+ * different widths. Every quote is a verbatim span of one source text, so
+ * this is exact, and exact is what a re-chunked repeat needs: no model, no
+ * threshold, just the passage itself.
+ */
+export function quotesOverlap(a: string, b: string): boolean {
+  const left = normalizedQuote(a);
+  const right = normalizedQuote(b);
+  return left.length > 0 && right.length > 0 && (left.includes(right) || right.includes(left));
+}
+
+/** Cosine distance (1 − cosine similarity) between two equal-length vectors. */
+export function cosineDistance(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 1 : 1 - dot / denom;
+}
+
+type EarlierProposal = { claim: string; quote: string; vector?: number[] };
+
+/**
+ * Whether a candidate repeats one of the thread's own earlier proposals.
+ * Quote containment first (exact, free); then the claim at the corpus
+ * distance when the earlier claims could be embedded. A hit proposes
+ * nothing — the earlier row already stands for the owner to decide on.
+ */
+async function isRepeatProposal(candidate: SectionCandidate, earlier: EarlierProposal[]): Promise<boolean> {
+  if (earlier.some((p) => quotesOverlap(candidate.quote, p.quote))) return true;
+  if (!earlier.some((p) => p.vector)) return false;
+  const provider = embeddingProvider();
+  const [vector] = await provider.embed([candidate.claim]);
+  return earlier.some((p) => p.vector && isDuplicateDistance(cosineDistance(vector, p.vector)));
+}
+
 export type ZettelSourceInput =
   | { documentId: string; extractor?: ZettelExtractor; tx?: TxDrizzle }
   | { sourceArtifactId: string; extractor?: ZettelExtractor; tx?: TxDrizzle };
 
-export type ResolvedZettelSource = {
+type ResolvedZettelSource = {
   text: string;
   documentId: string | null;
   extractionId: string | null;
@@ -124,7 +185,7 @@ export type ResolvedZettelSource = {
  * always used; the artifact branch reads the artifact's current version body,
  * so a conversation mined for ideas proposes against exactly what it shows.
  */
-export async function resolveZettelSource(
+async function resolveZettelSource(
   auth: AuthContext,
   input: ZettelSourceInput,
   conn: Pick<TxDrizzle, "select">,
@@ -290,9 +351,36 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
     merged = await mergeCandidates(survivors, { provider: generationProvider() });
   }
 
+  // Re-zettelize dedup: the thread's own earlier proposals for this artifact
+  // are judged before anything is inserted. The (source_artifact_id,
+  // dedupe_key) span index only catches an identical span, and a live
+  // extractor re-chunks a region between passes — so the repeat is judged on
+  // claim/quote text instead. Earlier proposals carry no stored vectors (only
+  // accepted cards do), so their claims are embedded here, with the same
+  // provider and threshold the corpus dedup uses. Rejected rows are
+  // deliberately out: a standing "no" is a review decision, not a dedupe
+  // state. Without an embedding provider the pass degrades to the quote
+  // check alone, as the corpus dedup degrades below.
+  const earlier: EarlierProposal[] = [];
+  if (origin.path === "artifact") {
+    const rows = await listEarlierProposals(auth, origin.id, conn);
+    if (rows.length) {
+      try {
+        const provider = embeddingProvider();
+        const vectors = await provider.embed(rows.map((p) => p.claim));
+        earlier.push(...rows.map((p, i) => ({ ...p, vector: vectors[i] })));
+      } catch (cause) {
+        if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+        console.warn("[zettels] earlier-proposal claim dedup degraded: no embedding provider configured");
+        earlier.push(...rows);
+      }
+    }
+  }
+
   const proposals = [];
   let dedupDegraded = false;
   for (const z of merged.slice(0, ZETTEL_MAX_PER_SOURCE)) {
+    if (await isRepeatProposal(z, earlier)) continue;
     // Corpus-aware dedup flags twins; it decides nothing. Without an embedding
     // provider the pass degrades to unflagged proposals rather than failing —
     // a missing key must not block reading a document.
