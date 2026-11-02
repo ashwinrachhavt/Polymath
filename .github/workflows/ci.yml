@@ -27,8 +27,9 @@ jobs:
   # not feed boot smoke — so the monolith is now three parallel legs, each
   # owning the service it needs. Every existing gate survives exactly once;
   # only job placement moved:
-  #   check-lint   — lint + typecheck. The fast-fail surface: a lint or tsc
-  #                  break shows up in ~2 min instead of trailing a serial job.
+  #   check-lint   — lint + typecheck + knip. The fast-fail surface: a lint,
+  #                  tsc, or dead-code break shows up in ~2 min instead of
+  #                  trailing a serial job.
   #   check-tests  — vitest (all projects) + inventory:check + the two
   #                  migration guards, on the pgvector service the db project
   #                  needs.
@@ -48,6 +49,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      # Dead-code guard: fails the build when a file, export, or dependency
+      # becomes unused. Entry points live in knip.json; fix the code or the
+      # config, never a per-line suppression.
+      - run: pnpm knip
 
   check-tests:
     name: check / vitest + migration & drift gates
