@@ -42,14 +42,7 @@ export const runState = pgEnum("run_state", [
   "failed",
   "cancelled",
 ]);
-export const stepKind = pgEnum("step_kind", [
-  "model",
-  "tool",
-  "question",
-  "proposal",
-  "artifact",
-  "note",
-]);
+export const stepKind = pgEnum("step_kind", ["model", "tool", "question", "proposal", "artifact", "note"]);
 export const questionState = pgEnum("question_state", ["open", "answered", "dismissed"]);
 export const messageRole = pgEnum("message_role", ["user", "assistant", "system", "tool"]);
 export const memoryStatus = pgEnum("memory_status", ["proposed", "accepted", "rejected", "retired"]);
@@ -239,7 +232,9 @@ export const agentDelegationGrants = pgTable(
     index("agent_delegation_grants_principal_idx")
       .on(t.workspaceId, t.agentPrincipalId)
       .where(sql`revoked_at is null`),
-    index("agent_delegation_grants_parent_idx").on(t.parentGrantId).where(sql`parent_grant_id is not null`),
+    index("agent_delegation_grants_parent_idx")
+      .on(t.parentGrantId)
+      .where(sql`parent_grant_id is not null`),
   ],
 );
 
@@ -288,7 +283,9 @@ export const agentAuthorizationDecisions = pgTable(
     check("agent_authorization_decisions_decision_check", sql`"decision" in ('allowed', 'denied')`),
     index("agent_authorization_decisions_principal_idx").on(t.workspaceId, t.agentPrincipalId, t.createdAt),
     index("agent_authorization_decisions_grant_idx").on(t.grantId),
-    index("agent_authorization_decisions_denied_idx").on(t.workspaceId, t.createdAt).where(sql`decision = 'denied'`),
+    index("agent_authorization_decisions_denied_idx")
+      .on(t.workspaceId, t.createdAt)
+      .where(sql`decision = 'denied'`),
   ],
 );
 
@@ -398,7 +395,9 @@ export const agentRuns = pgTable(
   (t) => [
     index("agent_runs_workspace_created_idx").on(t.workspaceId, t.createdAt),
     // Partial index: the live queue is the non-terminal rows.
-    index("agent_runs_active_idx").on(t.workspaceId, t.state).where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
+    index("agent_runs_active_idx")
+      .on(t.workspaceId, t.state)
+      .where(sql`state in ('queued', 'running', 'waiting_input', 'waiting_approval')`),
     index("agent_runs_thread_idx").on(t.threadId),
     unique("agent_runs_workspace_id_id_key").on(t.workspaceId, t.id),
   ],

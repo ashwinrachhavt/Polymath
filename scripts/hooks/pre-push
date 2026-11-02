@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pre-push gate for the CI split (perf: a red lint/typecheck push costs a full
 # CI round trip across three parallel legs; locally it costs ~90s). Fast checks
-# only — build, tests, and e2e stay in CI. Installed via the prepare script:
+# only — build and e2e stay in CI. Installed via the prepare script:
 #   git config core.hooksPath scripts/hooks
 # A non-zero exit aborts the push.
 set -e
@@ -13,3 +13,9 @@ PNPM="pnpm"
 command -v pnpm >/dev/null 2>&1 || PNPM="corepack pnpm"
 
 $PNPM lint && $PNPM typecheck
+
+# Vitest runs last so a lint or type failure stops before paying for it.
+# Measured 91s locally (2200 passing, 274 files); with lint and typecheck the
+# whole gate is ~3 min per push. Build, e2e and the postgres-backed integration
+# suites stay in CI — those describe.skip without a database anyway.
+$PNPM test

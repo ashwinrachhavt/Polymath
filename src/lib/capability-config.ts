@@ -74,7 +74,6 @@ const has = (env: Record<string, string | undefined>, key: string) => set(env, k
  * INCEPTION_API_KEY) must not read as missing one of them.
  */
 type Alternatives = readonly (readonly string[])[];
-const single = (key: string): Alternatives => [[key]];
 
 function selectorResolution(
   env: Record<string, string | undefined>,
@@ -148,7 +147,14 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "document-extraction-hosted",
     label: "Hosted document extraction",
-    watches: ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER", "OCR_MODEL", "OCR_ALLOW_UNVERIFIED_UPSTREAM"],
+    watches: [
+      "DOCLING_SERVE_URL",
+      "REDUCTO_API_KEY",
+      "LLAMAPARSE_API_KEY",
+      "OCR_PROVIDER",
+      "OCR_MODEL",
+      "OCR_ALLOW_UNVERIFIED_UPSTREAM",
+    ],
     // Mirrors extractionProvider() plus the vision-OCR rescue in
     // extractDocument(): a hosted reader is configured by any one of the three
     // provider keys, or by the explicit OCR_PROVIDER=openrouter opt-in with the
@@ -172,7 +178,12 @@ const DEFINITIONS: readonly Definition[] = [
       }
       // The opt-in was set but its key is missing: name the key, not the menu.
       if (set(env, "OCR_PROVIDER")?.toLowerCase() === "openrouter") return ["OPENROUTER_API_KEY"];
-      return ["DOCLING_SERVE_URL", "REDUCTO_API_KEY", "LLAMAPARSE_API_KEY", "OCR_PROVIDER=openrouter (uses OPENROUTER_API_KEY)"];
+      return [
+        "DOCLING_SERVE_URL",
+        "REDUCTO_API_KEY",
+        "LLAMAPARSE_API_KEY",
+        "OCR_PROVIDER=openrouter (uses OPENROUTER_API_KEY)",
+      ];
     },
     subject: "Scanned PDFs and images cannot be read; text-layer PDFs still can",
     action:
@@ -229,8 +240,7 @@ const DEFINITIONS: readonly Definition[] = [
       return [];
     },
     subject: "Runs cannot start",
-    action:
-      "set EVE_BRIDGE_SECRET to 32 or more characters, and EVE_BASE_URL when the agent runs on another host",
+    action: "set EVE_BRIDGE_SECRET to 32 or more characters, and EVE_BASE_URL when the agent runs on another host",
   },
   {
     id: "calendar-sync",
@@ -261,8 +271,7 @@ const DEFINITIONS: readonly Definition[] = [
     // Mirrors objectStoreMode(): cloud storage needs a credential, but a
     // development build stores to local disk and works. Production without a
     // key is the state this entry is for.
-    ready: (env) =>
-      has(env, "BLOB_READ_WRITE_TOKEN") || has(env, "BLOB_STORE_ID") || env.NODE_ENV !== "production",
+    ready: (env) => has(env, "BLOB_READ_WRITE_TOKEN") || has(env, "BLOB_STORE_ID") || env.NODE_ENV !== "production",
     missing: (env) =>
       has(env, "BLOB_READ_WRITE_TOKEN") || has(env, "BLOB_STORE_ID") || env.NODE_ENV !== "production"
         ? []
@@ -272,9 +281,7 @@ const DEFINITIONS: readonly Definition[] = [
   },
 ];
 
-export function capabilityStatus(
-  env: Record<string, string | undefined> = process.env,
-): CapabilityStatus[] {
+export function capabilityStatus(env: Record<string, string | undefined> = process.env): CapabilityStatus[] {
   return DEFINITIONS.map((definition) => {
     const configured = definition.ready(env);
     const missingEnv = configured ? [] : definition.missing(env);

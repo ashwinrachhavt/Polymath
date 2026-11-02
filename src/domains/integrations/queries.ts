@@ -83,35 +83,35 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
   // not a broken deployment — naming it on the card would make every
   // provider on a working deployment read as "Setup needed".
   return catalog.map((row) => {
-    const { configured, missingConfig } = connectorConfigState({
+    const { missingConfig } = connectorConfigState({
       composioApiKey: process.env.COMPOSIO_API_KEY,
       providerEnv: {},
     });
     return {
-    provider: row.provider,
-    displayName: row.displayName,
-    capabilities: row.capabilities as string[],
-    riskByCapability: row.riskByCapability as Record<string, string>,
-    requiresApproval: row.requiresApproval,
-    accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
-    configured: missingConfig.length === 0,
-    missingConfig,
-    accounts: accounts
-      .filter((account) => account.provider === row.provider)
-      .map((account) => ({
-        id: account.id,
-        alias: account.alias,
-        status: account.status,
-        displayName: account.displayName,
-        isDefaultForWrites: account.isDefaultForWrites,
-        allowRead: account.allowRead,
-        allowWrite: account.allowWrite,
-        accessTier: account.accessTier,
-        disabledCapabilities: (account.disabledCapabilities as string[]) ?? [],
-        lastHealthyAt: account.lastHealthyAt,
-        lastError: account.lastError,
-        version: account.version,
-      })),
+      provider: row.provider,
+      displayName: row.displayName,
+      capabilities: row.capabilities as string[],
+      riskByCapability: row.riskByCapability as Record<string, string>,
+      requiresApproval: row.requiresApproval,
+      accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
+      configured: missingConfig.length === 0,
+      missingConfig,
+      accounts: accounts
+        .filter((account) => account.provider === row.provider)
+        .map((account) => ({
+          id: account.id,
+          alias: account.alias,
+          status: account.status,
+          displayName: account.displayName,
+          isDefaultForWrites: account.isDefaultForWrites,
+          allowRead: account.allowRead,
+          allowWrite: account.allowWrite,
+          accessTier: account.accessTier,
+          disabledCapabilities: (account.disabledCapabilities as string[]) ?? [],
+          lastHealthyAt: account.lastHealthyAt,
+          lastError: account.lastError,
+          version: account.version,
+        })),
     };
   });
 }
@@ -184,11 +184,14 @@ export async function resolveConnectedAccount(
     .orderBy(asc(externalAccounts.alias))
     .limit(25);
 
-  const connected = rows.filter((row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0);
+  const connected = rows.filter(
+    (row) => typeof row.connectedAccountId === "string" && row.connectedAccountId.length > 0,
+  );
   // undefined = no grant policy (unrestricted); [] = a grant saved empty,
   // which blocks every sender - an empty list must NOT fall back to all
   // connected accounts.
-  const usable = restrictToAliases === undefined ? connected : connected.filter((row) => restrictToAliases.includes(row.alias));
+  const usable =
+    restrictToAliases === undefined ? connected : connected.filter((row) => restrictToAliases.includes(row.alias));
 
   let match: (typeof usable)[number] | undefined;
   if (alias) {

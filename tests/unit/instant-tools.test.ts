@@ -76,7 +76,6 @@ beforeEach(() => {
 });
 
 import {
-  InstantToolNotExecutableError,
   deriveInstantCapability,
   executeInstantTool,
   listInstantTools,
@@ -101,9 +100,7 @@ describe("deriveInstantCapability / resolveInstantCapability", () => {
   });
 
   it("collapses non-alphanumerics and trims underscores", () => {
-    expect(deriveInstantCapability("google-drive", "DRIVE--files::list")).toBe(
-      "instant.google-drive.drive_files_list",
-    );
+    expect(deriveInstantCapability("google-drive", "DRIVE--files::list")).toBe("instant.google-drive.drive_files_list");
   });
 
   it("returns null for non-instant names and unknown toolkits", () => {
@@ -126,7 +123,11 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
     registryGate.unverified = true;
     try {
       await expect(
-        executeInstantTool({ toolSlug: "instant.hackernews.hackernews_get_frontpage", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+        executeInstantTool({
+          toolSlug: "instant.hackernews.hackernews_get_frontpage",
+          args: {},
+          workspaceId: "00000000-0000-0000-0000-000000000000",
+        }),
       ).rejects.toMatchObject({ reason: "registry_unverified" });
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
@@ -140,18 +141,23 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
     // Cache a catalog where the tool exists but noAuth is false.
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: false }] }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: false }] }),
+            { status: 200 },
+          ),
       ),
     );
     await listInstantTools("hackernews");
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
     await expect(
-      executeInstantTool({ toolSlug: "instant.hackernews.hackernews_get_frontpage", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+      executeInstantTool({
+        toolSlug: "instant.hackernews.hackernews_get_frontpage",
+        args: {},
+        workspaceId: "00000000-0000-0000-0000-000000000000",
+      }),
     ).rejects.toMatchObject({ reason: "not_no_auth" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -163,18 +169,23 @@ describe("executeInstantTool gates (no fetch on refusal)", () => {
     // any spend or second fetch.
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ items: [{ slug: "HACKERNEWS_UNKNOWN_TOOL", name: "Unknown", no_auth: true }] }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ items: [{ slug: "HACKERNEWS_UNKNOWN_TOOL", name: "Unknown", no_auth: true }] }),
+            { status: 200 },
+          ),
       ),
     );
     await listInstantTools("hackernews");
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
     await expect(
-      executeInstantTool({ toolSlug: "instant.hackernews.hackernews_unknown_tool", args: {}, workspaceId: "00000000-0000-0000-0000-000000000000" }),
+      executeInstantTool({
+        toolSlug: "instant.hackernews.hackernews_unknown_tool",
+        args: {},
+        workspaceId: "00000000-0000-0000-0000-000000000000",
+      }),
     ).rejects.toMatchObject({ reason: "write_unverified" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -184,22 +195,29 @@ describe("listInstantTools cache behavior", () => {
   it("serves the stale cache when a later fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: true }] }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ items: [{ slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", no_auth: true }] }),
+            { status: 200 },
+          ),
       ),
     );
     const first = await listInstantTools("hackernews");
     expect(first).toHaveLength(1);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
     const second = await listInstantTools("hackernews");
     expect(second).toEqual(first);
   });
 
   it("throws when there is no cached copy and the fetch fails", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
     await expect(listInstantTools("hackernews")).rejects.toThrow(/unreachable/);
   });
 });
@@ -266,7 +284,12 @@ suite("executeInstantTool spend-guard atomicity (real Postgres)", () => {
       { slug: "HACKERNEWS_GET_FRONTPAGE", name: "Fetch users", noAuth: true, riskClass: "read" },
     ]);
     // Network failure inside the guarded call: withQuota must release.
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("socket died"); }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("socket died");
+      }),
+    );
     const result = await executeInstantTool({
       toolSlug: "instant.hackernews.hackernews_get_frontpage",
       args: {},

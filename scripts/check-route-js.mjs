@@ -38,7 +38,6 @@ function manifestJsonFor(route) {
   return JSON.parse(text.slice(eq + 1).replace(/;\s*$/, ""));
 }
 
-let warned = false;
 for (const { route, budgetKb, source } of BUDGETS) {
   const files = new Set();
 
@@ -66,7 +65,6 @@ for (const { route, budgetKb, source } of BUDGETS) {
         existsSync(".next") ? readdirSync(".next").join(", ") : "(no .next)"
       }) - measurement skipped, CI stays green`,
     );
-    warned = true;
     continue;
   }
 
@@ -84,8 +82,8 @@ for (const { route, budgetKb, source } of BUDGETS) {
   );
   if (over) {
     console.log(rows.join("\n"));
-    warned = true;
   }
 }
 
+// Report-only by design (see the header): this is never a failing gate.
 process.exit(0);

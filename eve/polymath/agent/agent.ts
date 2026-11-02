@@ -30,21 +30,6 @@ import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models"
  * cannot declare it at the top level); it feeds the compaction trigger, which
  * otherwise demands AI Gateway catalog metadata an unlisted model lacks.
  */
-const GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/";
-/**
- * The latest model, on the free tier. `geminiFetch` makes it work with tools by
- * repairing both directions of the OpenAI-compatible exchange: it adds the
- * `index` Gemini omits from streaming tool calls, and it round-trips the 3.x
- * `thought_signature` the API requires back on the next request. Without the
- * second half, a tool-using turn fails on the follow-up with "Function call is
- * missing a thought_signature in functionCall parts" — which is exactly what the
- * first app-level run hit.
- *
- * `eve eval chat-grounding` is the check that this still works: it drives a real
- * tool call and a follow-up turn. Run it before changing this value.
- */
-const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
-
 /*
  * The model for one step.
  *
@@ -55,7 +40,10 @@ const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
  * Gemini — two numbers that disagreed and only one of them was billed.
  *
  * `runModel` is passed by the session context (`axiom-run-model`); when it is
- * absent the env var decides, which is what evals and the local TUI use.
+ * absent the env var decides, which is what evals and the local TUI use. The
+ * catalog (src/domains/agents/models.ts) owns the ids, base URLs and key env
+ * names; `eve eval chat-grounding` drives a real tool call and follow-up turn,
+ * so run it before changing the default entry.
  */
 function polymathModel(runModel?: string | null) {
   const wanted = runModel ?? process.env.GEMINI_AGENT_MODEL ?? DEFAULT_MODEL_ID;
@@ -64,7 +52,9 @@ function polymathModel(runModel?: string | null) {
   // row while another answered — the lie the spend contract forbids.
   const entry = modelById(wanted);
   if (!entry) {
-    throw new Error(`Model "${wanted}" is not in the catalog. Choose another model; the run's frozen model is never silently substituted.`);
+    throw new Error(
+      `Model "${wanted}" is not in the catalog. Choose another model; the run's frozen model is never silently substituted.`,
+    );
   }
 
   const apiKey = (process.env[entry.keyEnv] ?? "").trim();

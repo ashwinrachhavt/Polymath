@@ -5,17 +5,34 @@ import { makeTestDb } from "../helpers/test-workspace";
 
 /*
  * 0266_converge_push_schema heals any historical push-era schema to current.
- * Every statement is additive or catalog-guarded, so running it on an already
- * current database must change nothing. The proof: execute the whole script
- * twice against the real test database (whose schema the CI setup migrates to
- * current) and require both runs to succeed with a byte-identical
- * information_schema snapshot in between — columns, indexes, constraints.
+ * Its statements are additive or catalog-guarded, so a second run must be a
+ * no-op: the second execution has to leave the schema exactly as the first one
+ * did. That is the invariant that keeps a re-run safe on prod — a converge that
+ * kept accumulating objects on every run would drift a database it was meant to
+ * heal.
+ *
+ * The first run is deliberately NOT required to be a no-op. 0266 carries the
+ * full historical chain's `CREATE TABLE IF NOT EXISTS` bodies, including tables
+ * that later migrations retired (cards, areas, the sitting tables, learning_*,
+ * the pre-rename dossier tables). On a database that is already current those
+ * creates run for real and resurrect empty tables, which is the defect
+ * 0269_drop_retired_tables exists to clean up. 0269 has already run when this
+ * test starts, so the first converge legitimately re-adds them; asserting it
+ * changed nothing would fail on correct behaviour.
+ *
+ * Because that first run leaves the database dirty, this file removes the
+ * resurrected tables again before it finishes. Every other suite then runs
+ * against the schema its migrations actually describe — without this cleanup,
+ * a converge run early in the file order silently puts back tables that
+ * tests/migration/schema-at-head.test.ts asserts are gone.
  *
  * The script runs as one multi-statement simple query, the same way
  * drizzle-kit applies a migration; DO-block bodies never need splitting.
  */
 
 const CONVERGE_FILE = "src/db/migrations/0266_converge_push_schema.sql";
+/** The retirement that undoes 0266's resurrected tables; re-applied on cleanup. */
+const RETIRE_FILE = "src/db/migrations/0269_drop_retired_tables.sql";
 
 async function schemaSnapshot(sql: postgres.Sql): Promise<string> {
   const columns = await sql`
@@ -47,25 +64,29 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  // Put the database back where the migration chain left it. Re-apply just the
+  // retirement (0269) rather than hand-listing tables, so this cleanup can
+  // never drift from the migration that owns the definition.
+  if (handle) {
+    await handle.client.unsafe(readFileSync(RETIRE_FILE, "utf8"));
+  }
   await handle?.client.end();
 });
 
 suite("0266 converge idempotency", () => {
-  it("runs twice with a byte-identical schema snapshot in between", async () => {
+  it("settles after one run: the second leaves the schema byte-identical", async () => {
     if (!handle) throw new Error("unreachable");
     const script = readFileSync(CONVERGE_FILE, "utf8");
     expect(script).toContain("CREATE TABLE IF NOT EXISTS");
 
-    const before = await schemaSnapshot(handle.client);
     await handle.client.unsafe(script);
     const afterFirst = await schemaSnapshot(handle.client);
     await handle.client.unsafe(script);
     const afterSecond = await schemaSnapshot(handle.client);
 
-    // The test database starts at the current schema, so both runs are pure
-    // no-ops — the invariant that keeps the converge safe on prod and on any
-    // historical state is that neither run changes anything.
-    expect(afterFirst).toBe(before);
+    // Convergence, not inertness: the first run is allowed to add the retired
+    // tables 0266 still carries creates for (0269 drops them again), but the
+    // second must change nothing or the script is not idempotent.
     expect(afterSecond).toBe(afterFirst);
   });
 });

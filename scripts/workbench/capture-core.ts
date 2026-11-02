@@ -15,12 +15,7 @@ import { sha256Hex } from "@/lib/hash";
 
 export class CaptureError extends Error {
   constructor(
-    readonly code:
-      | "bad_base"
-      | "dirty_tree"
-      | "empty_diff"
-      | "diff_too_large"
-      | "invalid_test_results",
+    readonly code: "bad_base" | "dirty_tree" | "empty_diff" | "diff_too_large" | "invalid_test_results",
     message: string,
   ) {
     super(message);
@@ -74,10 +69,15 @@ function runGit(repoPath: string, args: string[]): Promise<string> {
 // stored patch and its hash for any file whose bytes are not valid UTF-8.
 function runGitBuffer(repoPath: string, args: string[]): Promise<Buffer> {
   return new Promise((resolvePromise, reject) => {
-    execFile("git", ["-C", repoPath, ...args], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) reject(new Error(`git ${args.join(" ")} failed: ${stderr.toString().trim() || error.message}`));
-      else resolvePromise(stdout);
-    });
+    execFile(
+      "git",
+      ["-C", repoPath, ...args],
+      { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) reject(new Error(`git ${args.join(" ")} failed: ${stderr.toString().trim() || error.message}`));
+        else resolvePromise(stdout);
+      },
+    );
   });
 }
 
@@ -106,12 +106,22 @@ export async function collectGitState(input: { repoPath: string; baseSha: string
   // --no-textconv and --no-ext-diff: a converted or external rendering must
   // never stand in for the actual bytes, and identical conversions or empty
   // external output could read as an empty diff.
-  const diffBytes: Uint8Array = await runGitBuffer(repoPath, ["diff", "--binary", "--no-textconv", "--no-ext-diff", baseSha, headSha]);
+  const diffBytes: Uint8Array = await runGitBuffer(repoPath, [
+    "diff",
+    "--binary",
+    "--no-textconv",
+    "--no-ext-diff",
+    baseSha,
+    headSha,
+  ]);
   if (diffBytes.length === 0) {
     throw new CaptureError("empty_diff", `No diff between ${baseSha} and ${headSha}; nothing to capture`);
   }
   if (diffBytes.byteLength > MAX_UPLOAD_BYTES) {
-    throw new CaptureError("diff_too_large", `Diff is ${diffBytes.byteLength} bytes, over the ${MAX_UPLOAD_BYTES}-byte blob limit`);
+    throw new CaptureError(
+      "diff_too_large",
+      `Diff is ${diffBytes.byteLength} bytes, over the ${MAX_UPLOAD_BYTES}-byte blob limit`,
+    );
   }
   const changedPaths = (await runGit(repoPath, ["diff", "--name-status", baseSha, headSha]))
     .split("\n")
@@ -125,7 +135,15 @@ export async function collectGitState(input: { repoPath: string; baseSha: string
       return { sha, subject: subject ?? "" };
     });
   const remote = (await runGit(repoPath, ["remote", "get-url", "origin"]).catch(() => "")).trim();
-  return { repoPath, repoUrl: remote || `file://${repoPath}`, baseSha, headSha, diffBytes, changedPaths, commitSubjects };
+  return {
+    repoPath,
+    repoUrl: remote || `file://${repoPath}`,
+    baseSha,
+    headSha,
+    diffBytes,
+    changedPaths,
+    commitSubjects,
+  };
 }
 
 const testResultEntry = z.object({
@@ -150,14 +168,18 @@ export function parseTestResults(raw: string, capturedAt: string): CapturedTestR
   const parsed = testResultsPayload.safeParse(parsedJson);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-    throw new CaptureError("invalid_test_results", `Test-results file does not match { name, ok, runAt?[] }: ${detail}`);
+    throw new CaptureError(
+      "invalid_test_results",
+      `Test-results file does not match { name, ok, runAt?[] }: ${detail}`,
+    );
   }
   const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.results;
   return entries.map((entry) => ({ name: entry.name, ok: entry.ok, runAt: entry.runAt ?? capturedAt }));
 }
 
 /** The disclosure line every brief carries: capture is local and model-free. */
-export const CAPTURE_DISCLOSURE = "Captured locally from git state and provided test results. Nothing was sent to a model.";
+export const CAPTURE_DISCLOSURE =
+  "Captured locally from git state and provided test results. Nothing was sent to a model.";
 /** The literal fallback when no decision was recorded at capture time. */
 export const RATIONALE_INFERRED = "rationale inferred after implementation";
 
@@ -204,24 +226,24 @@ export function buildCapturePlan(input: {
     `- Decision (${input.decisionStatus}): ${decisionLine}`,
     "",
   ].join("\n");
-  return sha256Hex(state.diffBytes).then(
-    (diffHash): CapturePlan => ({
-      repoUrl: state.repoUrl,
-      baseSha: state.baseSha,
-      headSha: state.headSha,
-      diffBytes: state.diffBytes,
-      diffHash,
-      diffByteLength: state.diffBytes.byteLength,
-      changedPaths: state.changedPaths,
-      commitSubjects: state.commitSubjects,
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      testResults: input.testResults,
-      decisionNote: input.decisionNote,
-      decisionStatus: input.decisionStatus,
-      artifactTitle: `Change checkpoint ${state.headSha.slice(0, 12)}`,
-      briefMarkdown,
-      linkContext: input.decisionNote ?? `Mechanical capture of ${state.baseSha.slice(0, 12)}..${state.headSha.slice(0, 12)} git state`,
-    }),
-  );
+  return sha256Hex(state.diffBytes).then((diffHash): CapturePlan => ({
+    repoUrl: state.repoUrl,
+    baseSha: state.baseSha,
+    headSha: state.headSha,
+    diffBytes: state.diffBytes,
+    diffHash,
+    diffByteLength: state.diffBytes.byteLength,
+    changedPaths: state.changedPaths,
+    commitSubjects: state.commitSubjects,
+    workspaceId: input.workspaceId,
+    runId: input.runId,
+    testResults: input.testResults,
+    decisionNote: input.decisionNote,
+    decisionStatus: input.decisionStatus,
+    artifactTitle: `Change checkpoint ${state.headSha.slice(0, 12)}`,
+    briefMarkdown,
+    linkContext:
+      input.decisionNote ??
+      `Mechanical capture of ${state.baseSha.slice(0, 12)}..${state.headSha.slice(0, 12)} git state`,
+  }));
 }

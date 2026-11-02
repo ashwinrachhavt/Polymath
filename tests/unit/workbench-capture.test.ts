@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,6 +23,17 @@ function git(repoPath: string, ...args: string[]): string {
   return execFileSync("git", ["-C", repoPath, ...args], { encoding: "utf8" });
 }
 
+/**
+ * `sed -i` is not portable: BSD sed (macOS) requires an explicit backup suffix
+ * after -i and reads `s/before/after/` as one, while GNU sed (CI) accepts it
+ * bare. Spawning sed was never the point — the capture point is that the file
+ * changes outside the editor — so do the substitution in Node and stay honest
+ * on both platforms.
+ */
+function sedReplace(filePath: string): void {
+  writeFileSync(filePath, readFileSync(filePath, "utf8").replace("before", "after"));
+}
+
 function makeFixtureRepo(): { repoPath: string; baseSha: string; filePath: string } {
   const repoPath = mkdtempSync(join(tmpdir(), "wb-capture-"));
   git(repoPath, "init", "-b", "main");
@@ -37,7 +48,7 @@ function makeFixtureRepo(): { repoPath: string; baseSha: string; filePath: strin
 
 /** The shell-made change: sed, then a commit, so the capture point is clean. */
 function sedChange(repoPath: string, filePath: string): void {
-  execFileSync("sed", ["-i", "s/before/after/", filePath]);
+  sedReplace(filePath);
   git(repoPath, "add", ".");
   git(repoPath, "commit", "-m", "shell-made change");
 }
@@ -66,7 +77,7 @@ describe("workbench capture-core", () => {
 
   it("fails on a dirty tree — base..HEAD is only complete when nothing is uncommitted", async () => {
     const fixture = makeFixtureRepo();
-    execFileSync("sed", ["-i", "s/before/after/", fixture.filePath]);
+    sedReplace(fixture.filePath);
     await expect(collectGitState({ repoPath: fixture.repoPath, baseSha: fixture.baseSha })).rejects.toMatchObject({
       code: "dirty_tree",
     });
@@ -102,7 +113,11 @@ describe("workbench capture-core", () => {
     // record must carry the full resolved commit SHA.
     expect(state.baseSha).toBe(fixture.baseSha);
 
-    const raw = execFileSync("git", ["-C", fixture.repoPath, "diff", "--binary", "--no-textconv", "--no-ext-diff", fixture.baseSha, "HEAD"], { encoding: "buffer" });
+    const raw = execFileSync(
+      "git",
+      ["-C", fixture.repoPath, "diff", "--binary", "--no-textconv", "--no-ext-diff", fixture.baseSha, "HEAD"],
+      { encoding: "buffer" },
+    );
     expect(raw.includes(0xe9)).toBe(true);
     expect(Buffer.from(state.diffBytes).equals(raw)).toBe(true);
   });

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -22,13 +22,30 @@ const suite = handle ? describe : describe.skip;
 type HandleDb = NonNullable<typeof handle>["db"];
 const holder: { db: HandleDb | undefined } = { db: undefined };
 
-vi.mock("@/lib/db", () => ({ get db() { return holder.db as never; } }));
-vi.mock("@/lib/db-transaction", () => ({ withTransaction: async () => { throw new Error("script entrypoint is not used in tests"); } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db as never;
+  },
+}));
+vi.mock("@/lib/db-transaction", () => ({
+  withTransaction: async () => {
+    throw new Error("script entrypoint is not used in tests");
+  },
+}));
 
 const { captureToWorkspace } = await import("../../scripts/workbench/capture");
 
 function git(repoPath: string, ...args: string[]): string {
   return execFileSync("git", ["-C", repoPath, ...args], { encoding: "utf8" });
+}
+
+/**
+ * `sed -i` is not portable: BSD sed (macOS) requires an explicit backup suffix
+ * after -i and reads `s/before/after/` as one, GNU sed (CI) accepts it bare.
+ * The point is a change made outside the editor, not the tool that made it.
+ */
+function sedReplace(filePath: string): void {
+  writeFileSync(filePath, readFileSync(filePath, "utf8").replace("before", "after"));
 }
 
 suite("workbench checkpoint capture", () => {
@@ -57,8 +74,8 @@ suite("workbench checkpoint capture", () => {
   });
 
   async function createRun(objective: string): Promise<string> {
-    const [run] = await holder.db!
-      .insert(agentRuns)
+    const [run] = await holder
+      .db!.insert(agentRuns)
       .values({
         workspaceId: auth.workspaceId,
         agentProfileId: profileId,
@@ -83,7 +100,7 @@ suite("workbench checkpoint capture", () => {
     git(repoPath, "add", ".");
     git(repoPath, "commit", "-m", "base");
     const baseSha = git(repoPath, "rev-parse", "HEAD").trim();
-    execFileSync("sed", ["-i", "s/before/after/", filePath]);
+    sedReplace(filePath);
     git(repoPath, "add", ".");
     git(repoPath, "commit", "-m", "shell-made change");
     const state = await collectGitState({ repoPath, baseSha });
@@ -103,7 +120,10 @@ suite("workbench checkpoint capture", () => {
     const { plan } = await makePlan(runId, "e2e");
     const result = await holder.db!.transaction((tx) => captureToWorkspace(auth, plan, tx));
 
-    const [checkpoint] = await holder.db!.select().from(repoCheckpoints).where(eq(repoCheckpoints.id, result.checkpointId));
+    const [checkpoint] = await holder
+      .db!.select()
+      .from(repoCheckpoints)
+      .where(eq(repoCheckpoints.id, result.checkpointId));
     expect(checkpoint.workspaceId).toBe(auth.workspaceId);
     expect(checkpoint.runId).toBe(runId);
     expect(checkpoint.baseCommitSha).toBe(plan.baseSha);
@@ -122,14 +142,23 @@ suite("workbench checkpoint capture", () => {
     expect(artifact.kind).toBe("report");
     expect(artifact.status).toBe("generated");
     expect(artifact.producedByRunId).toBe(runId);
-    const [version] = await holder.db!.select().from(artifactVersions).where(eq(artifactVersions.artifactId, artifact.id));
+    const [version] = await holder
+      .db!.select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.artifactId, artifact.id));
     expect(version.versionNumber).toBe(1);
     expect(version.plainText).toContain(CAPTURE_DISCLOSURE);
 
-    const links = await holder.db!
-      .select()
+    const links = await holder
+      .db!.select()
       .from(artifactLinks)
-      .where(and(eq(artifactLinks.artifactId, artifact.id), eq(artifactLinks.targetType, "run"), eq(artifactLinks.targetId, runId)));
+      .where(
+        and(
+          eq(artifactLinks.artifactId, artifact.id),
+          eq(artifactLinks.targetType, "run"),
+          eq(artifactLinks.targetId, runId),
+        ),
+      );
     expect(links).toHaveLength(1);
     expect(links[0].linkType).toBe("explains");
     expect(result.linkCreated).toBe(true);
@@ -149,13 +178,13 @@ suite("workbench checkpoint capture", () => {
     expect(second.blobId).toBe(first.blobId);
     // Dedupe is per workspace: the lookup and the unique index are scoped by
     // workspace_id, so other workspaces may hold their own row for the same bytes.
-    const blobs = await holder.db!
-      .select()
+    const blobs = await holder
+      .db!.select()
       .from(blobObjects)
       .where(and(eq(blobObjects.workspaceId, auth.workspaceId), eq(blobObjects.contentHash, plan.diffHash)));
     expect(blobs).toHaveLength(1);
-    const checkpoints = await holder.db!
-      .select()
+    const checkpoints = await holder
+      .db!.select()
       .from(repoCheckpoints)
       .where(and(eq(repoCheckpoints.workspaceId, auth.workspaceId), eq(repoCheckpoints.commitSha, plan.headSha)));
     expect(checkpoints).toHaveLength(2);

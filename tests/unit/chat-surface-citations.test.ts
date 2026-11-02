@@ -23,9 +23,6 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
 }));
 
-const failedConnect = vi.fn().mockImplementation(() => {
-  throw new Error("unit test must not open a stream");
-});
 // Captures the options the surface hands the hook: the seed is a pass-through,
 // so asserting it landed here is what proves the wiring, not the mock's state.
 const sentOptions: Array<{ initial?: { blocks?: Array<{ id: string }> } } | undefined> = [];
@@ -61,7 +58,9 @@ describe("ChatSurface seeded transcript", () => {
   it("forwards the stored transcript to the stream hook as its initial blocks", () => {
     mockChatState = stateWith([]);
     sentOptions.length = 0;
-    const initial = [{ id: "assistant:turn_0:0", kind: "assistant" as const, text: "Sierra retired its legacy rounds.", done: true }];
+    const initial = [
+      { id: "assistant:turn_0:0", kind: "assistant" as const, text: "Sierra retired its legacy rounds.", done: true },
+    ];
     renderToStaticMarkup(
       createElement(ChatSurface, { runId: "run-1", subject: { type: "artifact", id: "run-1" }, initial }),
     );
@@ -71,9 +70,7 @@ describe("ChatSurface seeded transcript", () => {
   it("passes no seed when the run has no stored history", () => {
     mockChatState = stateWith([]);
     sentOptions.length = 0;
-    renderToStaticMarkup(
-      createElement(ChatSurface, { runId: "run-1", subject: { type: "artifact", id: "run-1" } }),
-    );
+    renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "artifact", id: "run-1" } }));
     expect(sentOptions.at(-1)?.initial).toBeUndefined();
   });
 
@@ -122,7 +119,7 @@ describe("ChatSurface sources chip", () => {
     // Collapsed: the summary row names the document once — the expanded
     // passage rows are hidden content that static markup still emits, so the
     // collapsed-title assertion targets the summary's join line.
-    expect(html).toContain("<span class=\"min-w-0 flex-1 truncate group-open:hidden\">Cardinal handbook</span>");
+    expect(html).toContain('<span class="min-w-0 flex-1 truncate group-open:hidden">Cardinal handbook</span>');
   });
 
   it("lists distinct titles for several documents and keeps every passage when expanded", () => {

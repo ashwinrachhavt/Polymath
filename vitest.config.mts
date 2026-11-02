@@ -19,7 +19,10 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
-          setupFiles: ["tests/unit/setup.clock.ts", "tests/setup.fetch-guard.ts"],
+          // load-env first: a handful of unit files (the instant-tool and
+          // gateway suites) drive production code that opens the test database,
+          // and makeTestDb() now fails loudly rather than skipping.
+          setupFiles: ["tests/setup.load-env.ts", "tests/unit/setup.clock.ts", "tests/setup.fetch-guard.ts"],
           // Unit files are pure: no database, no shared filesystem state, so
           // their per-file startup (import + transform, the bulk of the serial
           // wall) can overlap safely. The root false below stays in force for
@@ -34,7 +37,10 @@ export default defineConfig({
           // Loopback-only rather than deny-all: integration tests drive real
           // production code (the outbox dispatchers) against local mock HTTP
           // servers. See tests/setup.fetch-guard.loopback.ts.
-          setupFiles: ["tests/setup.fetch-guard.loopback.ts"],
+          // load-env runs first so TEST_DATABASE_URL exists on a developer
+          // machine; without it every file here silently skips locally and the
+          // suite reports green without opening a connection.
+          setupFiles: ["tests/setup.load-env.ts", "tests/setup.fetch-guard.loopback.ts"],
         },
       },
       // Component tests render React, so they need a DOM and a `.tsx` include

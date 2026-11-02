@@ -156,7 +156,14 @@ export async function captureToWorkspace(auth: AuthContext, plan: CapturePlan, t
     tx,
   );
 
-  return { checkpointId: checkpoint.id, artifactId: artifact.id, versionId: version.id, blobId, diffBlobDeduped, linkCreated };
+  return {
+    checkpointId: checkpoint.id,
+    artifactId: artifact.id,
+    versionId: version.id,
+    blobId,
+    diffBlobDeduped,
+    linkCreated,
+  };
 }
 
 /** Resolve the workspace (from --run or --workspace) and the owning user for the audit trail. */
@@ -170,7 +177,10 @@ async function resolveContext(input: { runId: string | null; workspaceId: string
       .limit(1);
     if (!run) throw new CaptureError("bad_base", `No agent run ${input.runId}`);
     if (workspaceId && workspaceId !== run.workspaceId) {
-      throw new CaptureError("bad_base", `Run ${input.runId} belongs to workspace ${run.workspaceId}, not ${workspaceId}`);
+      throw new CaptureError(
+        "bad_base",
+        `Run ${input.runId} belongs to workspace ${run.workspaceId}, not ${workspaceId}`,
+      );
     }
     workspaceId = run.workspaceId;
   }
@@ -178,9 +188,15 @@ async function resolveContext(input: { runId: string | null; workspaceId: string
   const [owner] = await db
     .select({ userId: memberships.userId })
     .from(memberships)
-    .where(and(eq(memberships.workspaceId, workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")))
+    .where(
+      and(eq(memberships.workspaceId, workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")),
+    )
     .limit(1);
-  if (!owner) throw new CaptureError("bad_base", `Workspace ${workspaceId} has no active owner membership to attribute the capture to`);
+  if (!owner)
+    throw new CaptureError(
+      "bad_base",
+      `Workspace ${workspaceId} has no active owner membership to attribute the capture to`,
+    );
   return { userId: owner.userId, workspaceId, role: "owner" };
 }
 
@@ -217,7 +233,9 @@ async function runCapture(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   if (!args.base) throw new CaptureError("bad_base", "Pass --base <sha> (the commit the session started from)");
   const state = await collectGitState({ repoPath: args.repo, baseSha: args.base });
-  const testResults = args.testResultsPath ? parseTestResults(readFileSync(args.testResultsPath, "utf8"), new Date().toISOString()) : [];
+  const testResults = args.testResultsPath
+    ? parseTestResults(readFileSync(args.testResultsPath, "utf8"), new Date().toISOString())
+    : [];
 
   if (!args.apply) {
     const plan = await buildCapturePlan({
@@ -229,7 +247,13 @@ async function runCapture(argv: string[]): Promise<void> {
       decisionStatus: args.decisionStatus,
     });
     const { briefMarkdown, ...summary } = plan;
-    console.log(JSON.stringify({ ...summary, diffBytes: undefined, briefMarkdownLines: briefMarkdown.split("\n").length }, null, 2));
+    console.log(
+      JSON.stringify(
+        { ...summary, diffBytes: undefined, briefMarkdownLines: briefMarkdown.split("\n").length },
+        null,
+        2,
+      ),
+    );
     console.log("\nDry run — pass --apply to write this checkpoint.");
     return;
   }

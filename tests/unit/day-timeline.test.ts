@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline, type TimelineRow } from "@/app/(workspace)/command-center/day/[date]/timeline";
+import { buildTimeline } from "@/app/(workspace)/command-center/day/[date]/timeline";
 import type { DayPage } from "@/domains/daybook/queries";
 
 /*
@@ -36,7 +36,9 @@ describe("buildTimeline", () => {
         captured: [{ id: "c1", kind: "text", title: "a capture", at: at("2026-10-29T10:00:00Z") }],
         created: [{ id: "n1", kind: "note", title: "a note", at: at("2026-10-29T09:00:00Z") }],
         workedOn: [{ id: "w1", kind: "note.snapshot", title: "a change", at: at("2026-10-29T11:00:00Z") }],
-        sessions: [{ id: "s1", subject: "deep work", startedAt: at("2026-10-29T08:00:00Z"), endedAt: null, minutes: 45 }],
+        sessions: [
+          { id: "s1", subject: "deep work", startedAt: at("2026-10-29T08:00:00Z"), endedAt: null, minutes: 45 },
+        ],
         meetings: [{ id: "m1", kind: "event", title: "standup", at: at("2026-10-29T09:30:00Z") }],
       }),
     );
